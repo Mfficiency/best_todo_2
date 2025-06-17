@@ -14,3 +14,9 @@
 ```bash
 flutter pub get
 flutter run
+```
+
+When running the app on Chrome, swipe gestures can be hard to test.
+Each task tile includes a **swipe** icon that performs the same action
+as dragging the tile. Use this button to simulate a swipe when testing
+in the browser.

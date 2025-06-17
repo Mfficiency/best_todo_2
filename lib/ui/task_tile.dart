@@ -10,15 +10,20 @@ class TaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      leading: Checkbox(
+        value: task.isDone,
+        onChanged: (_) => onChanged(),
+      ),
       title: Text(
         task.title,
         style: TextStyle(
           decoration: task.isDone ? TextDecoration.lineThrough : null,
         ),
       ),
-      trailing: Checkbox(
-        value: task.isDone,
-        onChanged: (_) => onChanged(),
+      trailing: IconButton(
+        icon: const Icon(Icons.swipe),
+        tooltip: 'Simulate swipe',
+        onPressed: onChanged,
       ),
     );
   }

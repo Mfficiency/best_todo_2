@@ -48,7 +48,15 @@ class _HomePageState extends State<HomePage> {
               itemCount: _tasks.length,
               itemBuilder: (context, index) {
                 final task = _tasks[index];
-                return TaskTile(task: task, onChanged: () => setState(task.toggleDone));
+                return Dismissible(
+                  key: ValueKey('${task.title}-$index'),
+                  background: Container(color: Colors.greenAccent.withOpacity(0.5)),
+                  onDismissed: (_) => setState(task.toggleDone),
+                  child: TaskTile(
+                    task: task,
+                    onChanged: () => setState(task.toggleDone),
+                  ),
+                );
               },
             ),
           )
