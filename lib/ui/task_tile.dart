@@ -6,14 +6,12 @@ class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
   final void Function(int destination) onMove;
-  final VoidCallback onSwiped;
 
   const TaskTile({
     Key? key,
     required this.task,
     required this.onChanged,
     required this.onMove,
-    required this.onSwiped,
   }) : super(key: key);
 
   @override
@@ -80,11 +78,8 @@ class _TaskTileState extends State<TaskTile> {
             )
           : IconButton(
               icon: const Icon(Icons.swipe),
-              tooltip: 'Move to next page',
-              onPressed: () {
-                widget.onSwiped();
-                _startOptions();
-              },
+              tooltip: 'Reschedule',
+              onPressed: _startOptions,
             ),
     );
   }

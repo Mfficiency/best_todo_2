@@ -133,7 +133,6 @@ class _HomePageState extends State<HomePage>
                   task: task,
                   onChanged: () => setState(task.toggleDone),
                   onMove: (dest) => _moveTask(pageIndex, index, dest),
-                  onSwiped: () => _moveTaskToNextPage(index),
                 ),
               );
             },

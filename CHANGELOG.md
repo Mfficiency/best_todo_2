@@ -7,3 +7,5 @@
 - Added Day After Tomorrow and Next Week pages.
 - Swipe button now reveals options for 2 seconds to move a task to Tomorrow,
   Day After Tomorrow, or Next Week (defaulting to Tomorrow if none selected).
+- Fixed swipe button logic so tasks move only after the 2-second delay if no
+  option is tapped.
