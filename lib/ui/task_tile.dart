@@ -25,7 +25,7 @@ class _TaskTileState extends State<TaskTile> {
   void _startOptions() {
     setState(() => _showOptions = true);
     _timer?.cancel();
-    _timer = Timer(const Duration(seconds: 2), () {
+    _timer = Timer(const Duration(seconds: 5), () {
       if (mounted && _showOptions) {
         widget.onMove(1); // default to tomorrow
         setState(() => _showOptions = false);
