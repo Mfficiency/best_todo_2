@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../config.dart';
 import 'task_tile.dart';
 
 class HomePage extends StatefulWidget {
@@ -11,11 +12,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
-  final List<Task> _todayTasks = [
-    Task(title: 'Get milk'),
-    Task(title: 'Go to the car shop to get my carburator fixed'),
-    Task(title: '@myself remember to do sports & drink water'),
-  ];
+  final List<Task> _todayTasks =
+      Config.initialTasks.map((t) => Task(title: t)).toList();
   final List<Task> _tomorrowTasks = [];
   final List<Task> _dayAfterTasks = [];
   final List<Task> _nextWeekTasks = [];
@@ -26,7 +24,8 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController =
+        TabController(length: Config.tabs.length, vsync: this);
   }
 
   @override
@@ -109,6 +108,7 @@ class _HomePageState extends State<HomePage>
                 child: TextField(
                   controller: _controller,
                   decoration: const InputDecoration(labelText: 'Add task'),
+                  onSubmitted: _addTask,
                 ),
               ),
               IconButton(
@@ -149,12 +149,7 @@ class _HomePageState extends State<HomePage>
         title: const Text('Best Todo 2'),
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'Today'),
-            Tab(text: 'Tomorrow'),
-            Tab(text: 'Day After Tomorrow'),
-            Tab(text: 'Next Week'),
-          ],
+          tabs: Config.tabs.map((t) => Tab(text: t)).toList(),
         ),
       ),
       body: TabBarView(

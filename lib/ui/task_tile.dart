@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../models/task.dart';
+import '../config.dart';
 
 class TaskTile extends StatefulWidget {
   final Task task;
@@ -18,16 +19,30 @@ class TaskTile extends StatefulWidget {
   State<TaskTile> createState() => _TaskTileState();
 }
 
-class _TaskTileState extends State<TaskTile> {
+class _TaskTileState extends State<TaskTile>
+    with SingleTickerProviderStateMixin {
   bool _showOptions = false;
   Timer? _timer;
+  late final AnimationController _progressController;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressController = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: Config.defaultDelaySeconds),
+    );
+  }
 
   void _startOptions() {
     setState(() => _showOptions = true);
     _timer?.cancel();
-    _timer = Timer(const Duration(seconds: 5), () {
+    _progressController.reset();
+    _progressController.forward();
+    _timer = Timer(Duration(seconds: Config.defaultDelaySeconds), () {
       if (mounted && _showOptions) {
         widget.onMove(1); // default to tomorrow
+        _progressController.stop();
         setState(() => _showOptions = false);
       }
     });
@@ -35,6 +50,7 @@ class _TaskTileState extends State<TaskTile> {
 
   void _select(int dest) {
     _timer?.cancel();
+    _progressController.stop();
     widget.onMove(dest);
     setState(() => _showOptions = false);
   }
@@ -42,6 +58,7 @@ class _TaskTileState extends State<TaskTile> {
   @override
   void dispose() {
     _timer?.cancel();
+    _progressController.dispose();
     super.dispose();
   }
 
@@ -59,20 +76,35 @@ class _TaskTileState extends State<TaskTile> {
         ),
       ),
       trailing: _showOptions
-          ? Row(
+          ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton(
-                  onPressed: () => _select(1),
-                  child: const Text('Tomorrow'),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: () => _select(1),
+                      child: const Text('Tomorrow'),
+                    ),
+                    TextButton(
+                      onPressed: () => _select(2),
+                      child: const Text('Day After Tomorrow'),
+                    ),
+                    TextButton(
+                      onPressed: () => _select(3),
+                      child: const Text('Next Week'),
+                    ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: () => _select(2),
-                  child: const Text('Day After Tomorrow'),
-                ),
-                TextButton(
-                  onPressed: () => _select(3),
-                  child: const Text('Next Week'),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: 60,
+                  child: AnimatedBuilder(
+                    animation: _progressController,
+                    builder: (context, child) {
+                      return LinearProgressIndicator(value: _progressController.value);
+                    },
+                  ),
                 ),
               ],
             )
