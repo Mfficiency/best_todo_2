@@ -13,7 +13,8 @@
 ## 🛠️ Getting Started
 ```bash
 flutter pub get
-flutter run
+flutter run -d chrome
+
 ```
 
 When running the app on Chrome, swipe gestures can be hard to test.
