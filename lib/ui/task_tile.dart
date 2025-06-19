@@ -4,8 +4,14 @@ import '../models/task.dart';
 class TaskTile extends StatelessWidget {
   final Task task;
   final VoidCallback onChanged;
+  final VoidCallback onSwiped;
 
-  const TaskTile({Key? key, required this.task, required this.onChanged}) : super(key: key);
+  const TaskTile({
+    Key? key,
+    required this.task,
+    required this.onChanged,
+    required this.onSwiped,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -22,8 +28,8 @@ class TaskTile extends StatelessWidget {
       ),
       trailing: IconButton(
         icon: const Icon(Icons.swipe),
-        tooltip: 'Simulate swipe',
-        onPressed: onChanged,
+        tooltip: 'Move to next page',
+        onPressed: onSwiped,
       ),
     );
   }
