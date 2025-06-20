@@ -22,12 +22,21 @@ class TaskTile extends StatefulWidget {
 class _TaskTileState extends State<TaskTile>
     with SingleTickerProviderStateMixin {
   bool _showOptions = false;
+  bool _expanded = false;
   Timer? _timer;
   late final AnimationController _progressController;
+  late final TextEditingController _titleController;
+  late final TextEditingController _descController;
+  late final TextEditingController _noteController;
+  late final TextEditingController _labelController;
 
   @override
   void initState() {
     super.initState();
+    _titleController = TextEditingController(text: widget.task.title);
+    _descController = TextEditingController(text: widget.task.description);
+    _noteController = TextEditingController(text: widget.task.note);
+    _labelController = TextEditingController(text: widget.task.label);
     _progressController = AnimationController(
       vsync: this,
       duration: Duration(seconds: Config.defaultDelaySeconds),
@@ -55,64 +64,131 @@ class _TaskTileState extends State<TaskTile>
     setState(() => _showOptions = false);
   }
 
+  void _toggleExpanded() {
+    setState(() => _expanded = !_expanded);
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    _titleController.dispose();
+    _descController.dispose();
+    _noteController.dispose();
+    _labelController.dispose();
     _progressController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Checkbox(
-        value: widget.task.isDone,
-        onChanged: (_) => widget.onChanged(),
-      ),
-      title: Text(
-        widget.task.title,
-        style: TextStyle(
-          decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
-        ),
-      ),
-      trailing: _showOptions
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextButton(
-                      onPressed: () => _select(1),
-                      child: const Text('Tomorrow'),
-                    ),
-                    TextButton(
-                      onPressed: () => _select(2),
-                      child: const Text('Day After Tomorrow'),
-                    ),
-                    TextButton(
-                      onPressed: () => _select(3),
-                      child: const Text('Next Week'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                SizedBox(
-                  width: 60,
-                  child: AnimatedBuilder(
-                    animation: _progressController,
-                    builder: (context, child) {
-                      return LinearProgressIndicator(value: _progressController.value);
-                    },
-                  ),
-                ),
-              ],
-            )
-          : IconButton(
-              icon: const Icon(Icons.swipe),
-              tooltip: 'Reschedule',
-              onPressed: _startOptions,
+    return InkWell(
+      onTap: _toggleExpanded,
+      child: Column(
+        children: [
+          ListTile(
+            leading: Checkbox(
+              value: widget.task.isDone,
+              onChanged: (_) => setState(() => widget.onChanged()),
             ),
+            title: Text(
+              widget.task.title,
+              style: TextStyle(
+                decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
+              ),
+            ),
+            trailing: _showOptions
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(
+                            onPressed: () => _select(1),
+                            child: const Text('Tomorrow'),
+                          ),
+                          TextButton(
+                            onPressed: () => _select(2),
+                            child: const Text('Day After Tomorrow'),
+                          ),
+                          TextButton(
+                            onPressed: () => _select(3),
+                            child: const Text('Next Week'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 60,
+                        child: AnimatedBuilder(
+                          animation: _progressController,
+                          builder: (context, child) {
+                            return LinearProgressIndicator(value: _progressController.value);
+                          },
+                        ),
+                      ),
+                    ],
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.swipe),
+                    tooltip: 'Reschedule',
+                    onPressed: _startOptions,
+                  ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(labelText: 'Title'),
+                    onChanged: (v) => widget.task.title = v,
+                  ),
+                  TextField(
+                    controller: _descController,
+                    decoration: const InputDecoration(labelText: 'Description'),
+                    onChanged: (v) => widget.task.description = v,
+                  ),
+                  TextField(
+                    controller: _noteController,
+                    decoration: const InputDecoration(labelText: 'Note'),
+                    onChanged: (v) => widget.task.note = v,
+                  ),
+                  TextField(
+                    controller: _labelController,
+                    decoration: const InputDecoration(labelText: 'Label'),
+                    onChanged: (v) => widget.task.label = v,
+                  ),
+                  Row(
+                    children: [
+                      Text(widget.task.dueDate == null
+                          ? 'No due date'
+                          : 'Due: '
+                              '${widget.task.dueDate!.toLocal().toString().split(' ')[0]}'),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: widget.task.dueDate ?? DateTime.now(),
+                            firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                            lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                          );
+                          if (picked != null) {
+                            setState(() => widget.task.dueDate = picked);
+                          }
+                        },
+                        child: const Text('Pick due date'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
