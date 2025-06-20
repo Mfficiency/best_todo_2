@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../config.dart';
+import 'about_page.dart';
+import 'settings_page.dart';
 import 'task_tile.dart';
 
 class HomePage extends StatefulWidget {
@@ -98,6 +101,42 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  void _advanceDay() {
+    setState(() {
+      final temp = List<Task>.from(_todayTasks);
+      _todayTasks
+        ..clear()
+        ..addAll(_tomorrowTasks);
+      _tomorrowTasks
+        ..clear()
+        ..addAll(_dayAfterTasks);
+      _dayAfterTasks
+        ..clear()
+        ..addAll(_nextWeekTasks);
+      _nextWeekTasks
+        ..clear()
+        ..addAll(temp);
+    });
+  }
+
+  void _rewindDay() {
+    setState(() {
+      final temp = List<Task>.from(_nextWeekTasks);
+      _nextWeekTasks
+        ..clear()
+        ..addAll(_dayAfterTasks);
+      _dayAfterTasks
+        ..clear()
+        ..addAll(_tomorrowTasks);
+      _tomorrowTasks
+        ..clear()
+        ..addAll(_todayTasks);
+      _todayTasks
+        ..clear()
+        ..addAll(temp);
+    });
+  }
+
   Widget _buildTaskList(List<Task> tasks, int pageIndex) {
     return Column(
       children: [
@@ -145,8 +184,51 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: Drawer(
+        child: ListView(
+          children: [
+            const DrawerHeader(
+              child: Text('Menu'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
       appBar: AppBar(
         title: const Text('Best Todo 2'),
+        actions: Config.isDev
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _rewindDay,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.arrow_forward),
+                  onPressed: _advanceDay,
+                ),
+              ]
+            : null,
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
