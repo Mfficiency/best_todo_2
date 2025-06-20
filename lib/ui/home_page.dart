@@ -14,20 +14,31 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
-  final List<Task> _todayTasks =
-      Config.initialTasks.map((t) => Task(title: t)).toList();
-  final List<Task> _tomorrowTasks = [];
-  final List<Task> _dayAfterTasks = [];
-  final List<Task> _nextWeekTasks = [];
+  /// Current virtual date for the app. In dev mode this can be changed
+  /// using the arrows in the app bar.
+  DateTime _currentDate = DateTime.now();
+
+  /// All tasks in the app. Tasks are assigned a dueDate when created and
+  /// filtered into the appropriate lists based on [_currentDate].
+  final List<Task> _tasks = [];
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
+
+  /// Day offsets for each tab. The last entry represents "next week".
+  static const List<int> _offsetDays = [0, 1, 2, 7];
 
   @override
   void initState() {
     super.initState();
     _tabController =
         TabController(length: Config.tabs.length, vsync: this);
+
+    // Initialize task list with the default tasks scheduled for today.
+    _tasks.addAll(
+      Config.initialTasks
+          .map((t) => Task(title: t, dueDate: _currentDate)),
+    );
   }
 
   @override
@@ -39,67 +50,72 @@ class _HomePageState extends State<HomePage>
 
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
+    final offset = _offsetDays[_tabController.index];
+    final task = Task(
+      title: title,
+      dueDate: _currentDate.add(Duration(days: offset)),
+    );
     setState(() {
-      switch (_tabController.index) {
-        case 0:
-          _todayTasks.add(Task(title: title));
-          break;
-        case 1:
-          _tomorrowTasks.add(Task(title: title));
-          break;
-        case 2:
-          _dayAfterTasks.add(Task(title: title));
-          break;
-        default:
-          _nextWeekTasks.add(Task(title: title));
-      }
+      _tasks.add(task);
     });
     _controller.clear();
   }
 
-  void _moveTaskToNextPage(int index) {
-    final from = _tabController.index;
+  void _moveTaskToNextPage(int pageIndex, int index) {
+    final tasks = _tasksForTab(pageIndex);
     int? destination;
-    if (from == 0) destination = 1;
-    if (from == 1) destination = 2;
-    if (from == 2) destination = 3;
+    if (pageIndex == 0) destination = 1;
+    if (pageIndex == 1) destination = 2;
+    if (pageIndex == 2) destination = 3;
     setState(() {
+      if (index >= tasks.length) return;
+      final task = tasks[index];
       if (destination != null) {
-        final fromList = _listFor(from);
-        if (index < fromList.length) {
-          final task = fromList.removeAt(index);
-          _listFor(destination).add(task);
-        }
-      } else if (from == 3) {
-        final fromList = _listFor(from);
-        if (index < fromList.length) fromList.removeAt(index);
+        task.dueDate =
+            _currentDate.add(Duration(days: _offsetDays[destination]));
+      } else {
+        _tasks.remove(task);
       }
     });
   }
 
-  List<Task> _listFor(int page) {
-    switch (page) {
-      case 0:
-        return _todayTasks;
-      case 1:
-        return _tomorrowTasks;
-      case 2:
-        return _dayAfterTasks;
-      default:
-        return _nextWeekTasks;
-    }
-  }
-
   void _moveTask(int pageIndex, int index, int destination) {
     setState(() {
-      final fromList = _listFor(pageIndex);
-      if (index >= fromList.length) return;
-      final task = fromList.removeAt(index);
-      _listFor(destination).add(task);
+      final tasks = _tasksForTab(pageIndex);
+      if (index >= tasks.length) return;
+      final task = tasks[index];
+      task.dueDate =
+          _currentDate.add(Duration(days: _offsetDays[destination]));
     });
   }
 
-  Widget _buildTaskList(List<Task> tasks, int pageIndex) {
+  /// Change the current virtual date by the given number of days.
+  /// When moving forward, overdue tasks remain visible in the Today tab.
+  void _changeDate(int delta) {
+    setState(() {
+      _currentDate = _currentDate.add(Duration(days: delta));
+      // Remove completed tasks when progressing to the next day so that
+      // finished items no longer clutter the lists.
+      if (delta > 0) {
+        _tasks.removeWhere((t) => t.isDone);
+      }
+    });
+  }
+
+  /// Returns the list of tasks that should appear on the given tab index.
+  List<Task> _tasksForTab(int pageIndex) {
+    return _tasks.where((task) {
+      if (task.dueDate == null) return false;
+      final diff = task.dueDate!.difference(_currentDate).inDays;
+      if (pageIndex == 0) return diff <= 0;
+      if (pageIndex == 1) return diff == 1;
+      if (pageIndex == 2) return diff == 2;
+      return diff >= 3;
+    }).toList();
+  }
+
+  Widget _buildTaskList(int pageIndex) {
+    final tasks = _tasksForTab(pageIndex);
     return Column(
       children: [
         Padding(
@@ -130,7 +146,7 @@ class _HomePageState extends State<HomePage>
                 background: Container(
                   color: Colors.greenAccent.withOpacity(0.5),
                 ),
-                onDismissed: (_) => _moveTaskToNextPage(index),
+                onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
                 child: TaskTile(
                   task: task,
                   onChanged: () => setState(task.toggleDone),
@@ -179,18 +195,43 @@ class _HomePageState extends State<HomePage>
       ),
       appBar: AppBar(
         title: const Text('Best Todo 2'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: Config.tabs.map((t) => Tab(text: t)).toList(),
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
+          child: Column(
+            children: [
+              if (Config.isDev)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: () => _changeDate(-1),
+                    ),
+                    Text(
+                      _currentDate.toLocal().toString().split(' ')[0],
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () => _changeDate(1),
+                    ),
+                  ],
+                ),
+              TabBar(
+                controller: _tabController,
+                tabs: Config.tabs.map((t) => Tab(text: t)).toList(),
+              ),
+            ],
+          ),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildTaskList(_todayTasks, 0),
-          _buildTaskList(_tomorrowTasks, 1),
-          _buildTaskList(_dayAfterTasks, 2),
-          _buildTaskList(_nextWeekTasks, 3),
+          _buildTaskList(0),
+          _buildTaskList(1),
+          _buildTaskList(2),
+          _buildTaskList(3),
         ],
       ),
     );
