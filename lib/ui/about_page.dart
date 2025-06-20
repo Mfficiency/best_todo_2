@@ -10,7 +10,10 @@ class AboutPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('About')),
       body: Center(
-        child: Text('Best Todo 2\nRunning in $mode mode'),
+        child: Text(
+          'Best Todo 2 v${Config.version}\nRunning in $mode mode',
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
