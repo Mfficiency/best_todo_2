@@ -207,9 +207,9 @@ class _TaskTileState extends State<TaskTile>
         behavior: HitTestBehavior.opaque,
         onHorizontalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0;
-          if (velocity < 0) {
+          if (velocity > 0) {
             _startOptions();
-          } else if (velocity > 0) {
+          } else if (velocity < 0) {
             widget.onDelete();
           }
         },
