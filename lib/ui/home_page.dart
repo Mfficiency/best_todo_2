@@ -199,6 +199,7 @@ class _HomePageState extends State<HomePage>
                 task: task,
                 onChanged: () => setState(task.toggleDone),
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
+                onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
                 onDelete: () => _deleteTask(pageIndex, index),
                 showSwipeButton: !isAndroid,
                 swipeLeftDelete: Config.swipeLeftDelete,

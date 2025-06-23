@@ -8,6 +8,7 @@ class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
   final void Function(int destination) onMove;
+  final VoidCallback onMoveNext;
   final VoidCallback onDelete;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
@@ -17,6 +18,7 @@ class TaskTile extends StatefulWidget {
     required this.task,
     required this.onChanged,
     required this.onMove,
+    required this.onMoveNext,
     required this.onDelete,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
@@ -211,7 +213,7 @@ class _TaskTileState extends State<TaskTile>
           final velocity = details.primaryVelocity ?? 0;
           if (widget.swipeLeftDelete) {
             if (velocity > 0) {
-              _startOptions();
+              widget.onMoveNext();
             } else if (velocity < 0) {
               widget.onDelete();
             }
@@ -219,7 +221,7 @@ class _TaskTileState extends State<TaskTile>
             if (velocity > 0) {
               widget.onDelete();
             } else if (velocity < 0) {
-              _startOptions();
+              widget.onMoveNext();
             }
           }
         },
