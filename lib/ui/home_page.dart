@@ -138,6 +138,10 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  void _updateSettings() {
+    setState(() {});
+  }
+
   /// Change the current virtual date by the given number of days.
   /// When moving forward, overdue tasks remain visible in the Today tab.
   void _changeDate(int delta) {
@@ -197,6 +201,7 @@ class _HomePageState extends State<HomePage>
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
                 onDelete: () => _deleteTask(pageIndex, index),
                 showSwipeButton: !isAndroid,
+                swipeLeftDelete: Config.swipeLeftDelete,
               );
               return isAndroid
                   ? tile
@@ -241,7 +246,11 @@ class _HomePageState extends State<HomePage>
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                  MaterialPageRoute(
+                    builder: (_) => SettingsPage(
+                      onSettingsChanged: _updateSettings,
+                    ),
+                  ),
                 );
               },
             ),

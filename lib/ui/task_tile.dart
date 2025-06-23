@@ -10,6 +10,7 @@ class TaskTile extends StatefulWidget {
   final void Function(int destination) onMove;
   final VoidCallback onDelete;
   final bool showSwipeButton;
+  final bool swipeLeftDelete;
 
   const TaskTile({
     Key? key,
@@ -18,6 +19,7 @@ class TaskTile extends StatefulWidget {
     required this.onMove,
     required this.onDelete,
     this.showSwipeButton = true,
+    this.swipeLeftDelete = true,
   }) : super(key: key);
 
   @override
@@ -207,10 +209,18 @@ class _TaskTileState extends State<TaskTile>
         behavior: HitTestBehavior.opaque,
         onHorizontalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0;
-          if (velocity > 0) {
-            _startOptions();
-          } else if (velocity < 0) {
-            widget.onDelete();
+          if (widget.swipeLeftDelete) {
+            if (velocity > 0) {
+              _startOptions();
+            } else if (velocity < 0) {
+              widget.onDelete();
+            }
+          } else {
+            if (velocity > 0) {
+              widget.onDelete();
+            } else if (velocity < 0) {
+              _startOptions();
+            }
           }
         },
         child: content,
