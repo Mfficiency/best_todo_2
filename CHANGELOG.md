@@ -1,6 +1,8 @@
 # Changelog
 
-## [0.1.2] - Unreleased
+## [0.1.3] - Unreleased
+
+## [0.1.2] - 2025-06-23
 - Added default example tasks on startup.
 - Introduced two pages (Today and Tomorrow) with swipe/drag to move tasks to the next page.
 - Added changelog file.

@@ -1,7 +1,7 @@
 name: best_todo_2
 description: A simple Flutter to-do application
 publish_to: 'none'
-version: 0.1.2
+version: 0.1.3
 
 environment:
   sdk: '>=2.17.0 <3.0.0'
@@ -12,6 +12,7 @@ dependencies:
 
   cupertino_icons: ^1.0.2
   path_provider: ^2.0.0
+  flutter_markdown: ^0.6.10
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +20,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - CHANGELOG.md
