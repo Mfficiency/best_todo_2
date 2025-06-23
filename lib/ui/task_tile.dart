@@ -10,6 +10,7 @@ class TaskTile extends StatefulWidget {
   final void Function(int destination) onMove;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
+  final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
 
@@ -20,6 +21,7 @@ class TaskTile extends StatefulWidget {
     required this.onMove,
     required this.onMoveNext,
     required this.onDelete,
+    required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
   }) : super(key: key);
@@ -38,6 +40,7 @@ class _TaskTileState extends State<TaskTile>
   late final TextEditingController _descController;
   late final TextEditingController _noteController;
   late final TextEditingController _labelController;
+  late final List<int> _destinations;
 
   @override
   void initState() {
@@ -50,6 +53,8 @@ class _TaskTileState extends State<TaskTile>
       vsync: this,
       duration: Duration(seconds: Config.defaultDelaySeconds),
     );
+    _destinations = List<int>.generate(Config.tabs.length, (i) => i)
+      ..remove(widget.pageIndex);
   }
 
   void _startOptions() {
@@ -116,18 +121,11 @@ class _TaskTileState extends State<TaskTile>
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          TextButton(
-                            onPressed: () => _select(1),
-                            child: const Text('Tomorrow'),
-                          ),
-                          TextButton(
-                            onPressed: () => _select(2),
-                            child: const Text('Day After Tomorrow'),
-                          ),
-                          TextButton(
-                            onPressed: () => _select(3),
-                            child: const Text('Next Week'),
-                          ),
+                          for (var dest in _destinations)
+                            TextButton(
+                              onPressed: () => _select(dest),
+                              child: Text(Config.tabs[dest]),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 4),
