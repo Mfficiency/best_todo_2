@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
 import 'task_tile.dart';
@@ -92,16 +93,42 @@ class _HomePageState extends State<HomePage>
   }
 
   void _deleteTask(int pageIndex, int index) {
+    final tasks = _tasksForTab(pageIndex);
+    if (index >= tasks.length) return;
+    final task = tasks[index];
+    final originalIndex = _tasks.indexOf(task);
+
     setState(() {
-      final tasks = _tasksForTab(pageIndex);
-      if (index >= tasks.length) return;
-      final task = tasks[index];
-      _tasks.remove(task);
-      _deletedTasks.insert(0, task);
-      if (_deletedTasks.length > 100) {
-        _deletedTasks.removeLast();
-      }
+      _tasks.removeAt(originalIndex);
     });
+
+    late Timer timer;
+    timer = Timer(const Duration(seconds: Config.defaultDelaySeconds), () {
+      setState(() {
+        _deletedTasks.insert(0, task);
+        if (_deletedTasks.length > 100) {
+          _deletedTasks.removeLast();
+        }
+      });
+    });
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${task.title}"'),
+          duration: const Duration(seconds: Config.defaultDelaySeconds),
+          action: SnackBarAction(
+            label: 'Cancel',
+            onPressed: () {
+              timer.cancel();
+              setState(() {
+                _tasks.insert(originalIndex, task);
+              });
+            },
+          ),
+        ),
+      );
   }
 
   /// Change the current virtual date by the given number of days.

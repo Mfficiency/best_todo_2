@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import 'task_detail_page.dart';
 
 class DeletedItemsPage extends StatelessWidget {
   final List<Task> items;
@@ -16,6 +17,13 @@ class DeletedItemsPage extends StatelessWidget {
           return ListTile(
             title: Text(task.title),
             subtitle: task.description.isNotEmpty ? Text(task.description) : null,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TaskDetailPage(task: task),
+                ),
+              );
+            },
           );
         },
       ),
