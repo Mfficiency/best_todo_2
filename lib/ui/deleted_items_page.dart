@@ -4,7 +4,12 @@ import 'task_detail_page.dart';
 
 class DeletedItemsPage extends StatelessWidget {
   final List<Task> items;
-  const DeletedItemsPage({Key? key, required this.items}) : super(key: key);
+  final void Function(Task task) onRestore;
+  const DeletedItemsPage({
+    Key? key,
+    required this.items,
+    required this.onRestore,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -15,6 +20,11 @@ class DeletedItemsPage extends StatelessWidget {
         itemBuilder: (context, index) {
           final task = items[index];
           return ListTile(
+            leading: IconButton(
+              icon: const Icon(Icons.restore),
+              tooltip: 'Restore',
+              onPressed: () => onRestore(task),
+            ),
             title: Text(task.title),
             subtitle: task.description.isNotEmpty ? Text(task.description) : null,
             onTap: () {

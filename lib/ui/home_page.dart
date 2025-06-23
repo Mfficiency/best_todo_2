@@ -131,6 +131,13 @@ class _HomePageState extends State<HomePage>
       );
   }
 
+  void _restoreTask(Task task) {
+    setState(() {
+      _deletedTasks.remove(task);
+      _tasks.add(task);
+    });
+  }
+
   /// Change the current virtual date by the given number of days.
   /// When moving forward, overdue tasks remain visible in the Today tab.
   void _changeDate(int delta) {
@@ -245,7 +252,10 @@ class _HomePageState extends State<HomePage>
                 Navigator.pop(context);
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => DeletedItemsPage(items: _deletedTasks),
+                    builder: (_) => DeletedItemsPage(
+                      items: _deletedTasks,
+                      onRestore: _restoreTask,
+                    ),
                   ),
                 );
               },
