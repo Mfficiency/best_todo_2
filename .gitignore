@@ -7,6 +7,7 @@
 .buildlog/
 .history
 promptlinks.md
+.idea/
 
 
 # Flutter repo-specific
@@ -47,9 +48,11 @@ unlinked.ds
 unlinked_spec.ds
 
 # Android related
+android/
 **/android/**/gradle-wrapper.jar
 .gradle/
 **/android/captures/
+android/app/build/
 **/android/gradlew
 **/android/gradlew.bat
 **/android/local.properties
