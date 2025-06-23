@@ -8,6 +8,7 @@ class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
   final void Function(int destination) onMove;
+  final VoidCallback onDelete;
   final bool showSwipeButton;
 
   const TaskTile({
@@ -15,6 +16,7 @@ class TaskTile extends StatefulWidget {
     required this.task,
     required this.onChanged,
     required this.onMove,
+    required this.onDelete,
     this.showSwipeButton = true,
   }) : super(key: key);
 
@@ -203,7 +205,14 @@ class _TaskTileState extends State<TaskTile>
     if (isAndroid) {
       content = GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: (_) => _startOptions(),
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          if (velocity > 0) {
+            _startOptions();
+          } else if (velocity < 0) {
+            widget.onDelete();
+          }
+        },
         child: content,
       );
     }

@@ -4,6 +4,7 @@ import '../config.dart';
 import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
+import 'deleted_items_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -21,6 +22,7 @@ class _HomePageState extends State<HomePage>
   /// All tasks in the app. Tasks are assigned a dueDate when created and
   /// filtered into the appropriate lists based on [_currentDate].
   final List<Task> _tasks = [];
+  final List<Task> _deletedTasks = [];
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
@@ -89,6 +91,19 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  void _deleteTask(int pageIndex, int index) {
+    setState(() {
+      final tasks = _tasksForTab(pageIndex);
+      if (index >= tasks.length) return;
+      final task = tasks[index];
+      _tasks.remove(task);
+      _deletedTasks.insert(0, task);
+      if (_deletedTasks.length > 100) {
+        _deletedTasks.removeLast();
+      }
+    });
+  }
+
   /// Change the current virtual date by the given number of days.
   /// When moving forward, overdue tasks remain visible in the Today tab.
   void _changeDate(int delta) {
@@ -146,6 +161,7 @@ class _HomePageState extends State<HomePage>
                 task: task,
                 onChanged: () => setState(task.toggleDone),
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
+                onDelete: () => _deleteTask(pageIndex, index),
                 showSwipeButton: !isAndroid,
               );
               return isAndroid
@@ -192,6 +208,18 @@ class _HomePageState extends State<HomePage>
                 Navigator.pop(context);
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const SettingsPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: const Text('Deleted Items'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DeletedItemsPage(items: _deletedTasks),
+                  ),
                 );
               },
             ),
