@@ -4,7 +4,7 @@
 
 ## Fundamentals
 1. less than 1 second cold startup
-2. the absolute minimum of clicks/steps to perform any action
+2. it must not be possible in less clicks/steps
 3. open source
 
 ## 🚀 MVP Features
