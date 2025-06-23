@@ -59,7 +59,7 @@ class _TaskTileState extends State<TaskTile>
     _progressController.forward();
     _timer = Timer(Duration(seconds: Config.defaultDelaySeconds), () {
       if (mounted && _showOptions) {
-        widget.onMove(1); // default to tomorrow
+        widget.onMoveNext();
         _progressController.stop();
         setState(() => _showOptions = false);
       }
@@ -213,7 +213,7 @@ class _TaskTileState extends State<TaskTile>
           final velocity = details.primaryVelocity ?? 0;
           if (widget.swipeLeftDelete) {
             if (velocity > 0) {
-              widget.onMoveNext();
+              _startOptions();
             } else if (velocity < 0) {
               widget.onDelete();
             }
@@ -221,7 +221,7 @@ class _TaskTileState extends State<TaskTile>
             if (velocity > 0) {
               widget.onDelete();
             } else if (velocity < 0) {
-              widget.onMoveNext();
+              _startOptions();
             }
           }
         },
