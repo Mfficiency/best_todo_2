@@ -2,6 +2,11 @@
 
 📝 Swipe-first, ultra-fast to-do app built with Flutter. Tasks default to today. Move with gestures. Notes, labels, and smart rescheduling.
 
+## Fundamentals
+1. less than 1 second cold startup
+2. the absolute minimum of clicks/steps to perform any action
+3. open source
+
 ## 🚀 MVP Features
 - Add task: description, note, labels
 - Tasks default to today
