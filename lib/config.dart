@@ -20,4 +20,8 @@ class Config {
     'Day After Tomorrow',
     'Next Week',
   ];
+
+  /// If true, swipe left deletes a task and swipe right shows options.
+  /// Otherwise the directions are reversed.
+  static bool swipeLeftDelete = true;
 }

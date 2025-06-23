@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
 import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
+import 'deleted_items_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -21,6 +23,7 @@ class _HomePageState extends State<HomePage>
   /// All tasks in the app. Tasks are assigned a dueDate when created and
   /// filtered into the appropriate lists based on [_currentDate].
   final List<Task> _tasks = [];
+  final List<Task> _deletedTasks = [];
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
@@ -89,6 +92,56 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  void _deleteTask(int pageIndex, int index) {
+    final tasks = _tasksForTab(pageIndex);
+    if (index >= tasks.length) return;
+    final task = tasks[index];
+    final originalIndex = _tasks.indexOf(task);
+
+    setState(() {
+      _tasks.removeAt(originalIndex);
+    });
+
+    late Timer timer;
+    timer = Timer(const Duration(seconds: Config.defaultDelaySeconds), () {
+      setState(() {
+        _deletedTasks.insert(0, task);
+        if (_deletedTasks.length > 100) {
+          _deletedTasks.removeLast();
+        }
+      });
+    });
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${task.title}"'),
+          duration: const Duration(seconds: Config.defaultDelaySeconds),
+          action: SnackBarAction(
+            label: 'Cancel',
+            onPressed: () {
+              timer.cancel();
+              setState(() {
+                _tasks.insert(originalIndex, task);
+              });
+            },
+          ),
+        ),
+      );
+  }
+
+  void _restoreTask(Task task) {
+    setState(() {
+      _deletedTasks.remove(task);
+      _tasks.add(task);
+    });
+  }
+
+  void _updateSettings() {
+    setState(() {});
+  }
+
   /// Change the current virtual date by the given number of days.
   /// When moving forward, overdue tasks remain visible in the Today tab.
   void _changeDate(int delta) {
@@ -141,18 +194,26 @@ class _HomePageState extends State<HomePage>
             itemCount: tasks.length,
             itemBuilder: (context, index) {
               final task = tasks[index];
-              return Dismissible(
-                key: ValueKey('${task.title}-$index-$pageIndex'),
-                background: Container(
-                  color: Colors.greenAccent.withOpacity(0.5),
-                ),
-                onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                child: TaskTile(
-                  task: task,
-                  onChanged: () => setState(task.toggleDone),
-                  onMove: (dest) => _moveTask(pageIndex, index, dest),
-                ),
+              final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+              final tile = TaskTile(
+                task: task,
+                onChanged: () => setState(task.toggleDone),
+                onMove: (dest) => _moveTask(pageIndex, index, dest),
+                onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
+                onDelete: () => _deleteTask(pageIndex, index),
+                showSwipeButton: !isAndroid,
+                swipeLeftDelete: Config.swipeLeftDelete,
               );
+              return isAndroid
+                  ? tile
+                  : Dismissible(
+                      key: ValueKey('${task.title}-$index-$pageIndex'),
+                      background: Container(
+                        color: Colors.greenAccent.withOpacity(0.5),
+                      ),
+                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
+                      child: tile,
+                    );
             },
           ),
         )
@@ -186,7 +247,26 @@ class _HomePageState extends State<HomePage>
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                  MaterialPageRoute(
+                    builder: (_) => SettingsPage(
+                      onSettingsChanged: _updateSettings,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: const Text('Deleted Items'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DeletedItemsPage(
+                      items: _deletedTasks,
+                      onRestore: _restoreTask,
+                    ),
+                  ),
                 );
               },
             ),
