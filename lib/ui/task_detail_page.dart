@@ -14,7 +14,10 @@ class TaskDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(task.title, style: Theme.of(context).textTheme.headline6),
+            Text(
+              task.title,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             if (task.description.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(task.description),
