@@ -66,19 +66,15 @@ class _HomePageState extends State<HomePage>
 
   void _moveTaskToNextPage(int pageIndex, int index) {
     final tasks = _tasksForTab(pageIndex);
-    int? destination;
-    if (pageIndex == 0) destination = 1;
-    if (pageIndex == 1) destination = 2;
-    if (pageIndex == 2) destination = 3;
+    int destination = pageIndex + 1;
+    if (destination >= Config.tabs.length) {
+      destination = 0;
+    }
     setState(() {
       if (index >= tasks.length) return;
       final task = tasks[index];
-      if (destination != null) {
-        task.dueDate =
-            _currentDate.add(Duration(days: _offsetDays[destination]));
-      } else {
-        _tasks.remove(task);
-      }
+      task.dueDate =
+          _currentDate.add(Duration(days: _offsetDays[destination]));
     });
   }
 
@@ -201,6 +197,7 @@ class _HomePageState extends State<HomePage>
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
                 onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
                 onDelete: () => _deleteTask(pageIndex, index),
+                pageIndex: pageIndex,
                 showSwipeButton: !isAndroid,
                 swipeLeftDelete: Config.swipeLeftDelete,
               );
