@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
+import '../services/storage_service.dart';
 import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
@@ -24,6 +25,7 @@ class _HomePageState extends State<HomePage>
   /// filtered into the appropriate lists based on [_currentDate].
   final List<Task> _tasks = [];
   final List<Task> _deletedTasks = [];
+  final StorageService _storageService = StorageService();
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
@@ -31,17 +33,27 @@ class _HomePageState extends State<HomePage>
   /// Day offsets for each tab. The last entry represents "next week".
   static const List<int> _offsetDays = [0, 1, 2, 7];
 
+  Future<void> _loadTasks() async {
+    final loaded = await _storageService.loadTaskList();
+    if (loaded.isEmpty) {
+      _tasks.addAll(
+        Config.initialTasks
+            .map((t) => Task(title: t, dueDate: _currentDate)),
+      );
+    } else {
+      _tasks.addAll(loaded);
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _tabController =
         TabController(length: Config.tabs.length, vsync: this);
-
-    // Initialize task list with the default tasks scheduled for today.
-    _tasks.addAll(
-      Config.initialTasks
-          .map((t) => Task(title: t, dueDate: _currentDate)),
-    );
+    _loadTasks();
   }
 
   @override
@@ -62,6 +74,7 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _controller.clear();
+    _storageService.saveTaskList(_tasks);
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -76,6 +89,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
+    _storageService.saveTaskList(_tasks);
   }
 
   void _moveTask(int pageIndex, int index, int destination) {
@@ -86,6 +100,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
+    _storageService.saveTaskList(_tasks);
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -97,6 +112,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _tasks.removeAt(originalIndex);
     });
+    _storageService.saveTaskList(_tasks);
 
     late Timer timer;
     timer = Timer(const Duration(seconds: Config.defaultDelaySeconds), () {
@@ -121,6 +137,7 @@ class _HomePageState extends State<HomePage>
               setState(() {
                 _tasks.insert(originalIndex, task);
               });
+              _storageService.saveTaskList(_tasks);
             },
           ),
         ),
@@ -132,6 +149,7 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.remove(task);
       _tasks.add(task);
     });
+    _storageService.saveTaskList(_tasks);
   }
 
   void _updateSettings() {
@@ -149,6 +167,7 @@ class _HomePageState extends State<HomePage>
         _tasks.removeWhere((t) => t.isDone);
       }
     });
+    _storageService.saveTaskList(_tasks);
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
@@ -193,7 +212,10 @@ class _HomePageState extends State<HomePage>
               final isAndroid = Theme.of(context).platform == TargetPlatform.android;
               final tile = TaskTile(
                 task: task,
-                onChanged: () => setState(task.toggleDone),
+                onChanged: () {
+                  setState(task.toggleDone);
+                  _storageService.saveTaskList(_tasks);
+                },
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
                 onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
                 onDelete: () => _deleteTask(pageIndex, index),
