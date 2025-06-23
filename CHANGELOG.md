@@ -1,6 +1,14 @@
 # Changelog
 
+
+## [0.1.3] - Unreleased
+- restored tasks go to today by default.
+- automatic update version number
+
 ## [0.1.2] - Unreleased
+- ensure tasks persist across app restarts.
+
+## [0.1.1] - Unreleased
 - Added default example tasks on startup.
 - Introduced two pages (Today and Tomorrow) with swipe/drag to move tasks to the next page.
 - Added changelog file.

@@ -147,6 +147,7 @@ class _HomePageState extends State<HomePage>
   void _restoreTask(Task task) {
     setState(() {
       _deletedTasks.remove(task);
+      task.dueDate = _currentDate;
       _tasks.add(task);
     });
     _storageService.saveTaskList(_tasks);
