@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
@@ -7,12 +8,14 @@ class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
   final void Function(int destination) onMove;
+  final bool showSwipeButton;
 
   const TaskTile({
     Key? key,
     required this.task,
     required this.onChanged,
     required this.onMove,
+    this.showSwipeButton = true,
   }) : super(key: key);
 
   @override
@@ -81,11 +84,15 @@ class _TaskTileState extends State<TaskTile>
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    Widget content = InkWell(
       onTap: _toggleExpanded,
       child: Column(
         children: [
           ListTile(
+            contentPadding:
+                isAndroid ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16.0),
+            minLeadingWidth: isAndroid ? 0 : null,
             leading: Checkbox(
               value: widget.task.isDone,
               onChanged: (_) => setState(() => widget.onChanged()),
@@ -129,11 +136,13 @@ class _TaskTileState extends State<TaskTile>
                       ),
                     ],
                   )
-                : IconButton(
-                    icon: const Icon(Icons.swipe),
-                    tooltip: 'Reschedule',
-                    onPressed: _startOptions,
-                  ),
+                : (widget.showSwipeButton
+                    ? IconButton(
+                        icon: const Icon(Icons.swipe),
+                        tooltip: 'Reschedule',
+                        onPressed: _startOptions,
+                      )
+                    : null),
           ),
           if (_expanded)
             Padding(
@@ -190,5 +199,15 @@ class _TaskTileState extends State<TaskTile>
         ],
       ),
     );
+
+    if (isAndroid) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => _startOptions(),
+        child: content,
+      );
+    }
+
+    return content;
   }
 }

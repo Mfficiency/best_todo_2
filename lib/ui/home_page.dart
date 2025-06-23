@@ -141,18 +141,23 @@ class _HomePageState extends State<HomePage>
             itemCount: tasks.length,
             itemBuilder: (context, index) {
               final task = tasks[index];
-              return Dismissible(
-                key: ValueKey('${task.title}-$index-$pageIndex'),
-                background: Container(
-                  color: Colors.greenAccent.withOpacity(0.5),
-                ),
-                onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                child: TaskTile(
-                  task: task,
-                  onChanged: () => setState(task.toggleDone),
-                  onMove: (dest) => _moveTask(pageIndex, index, dest),
-                ),
+              final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+              final tile = TaskTile(
+                task: task,
+                onChanged: () => setState(task.toggleDone),
+                onMove: (dest) => _moveTask(pageIndex, index, dest),
+                showSwipeButton: !isAndroid,
               );
+              return isAndroid
+                  ? tile
+                  : Dismissible(
+                      key: ValueKey('${task.title}-$index-$pageIndex'),
+                      background: Container(
+                        color: Colors.greenAccent.withOpacity(0.5),
+                      ),
+                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
+                      child: tile,
+                    );
             },
           ),
         )
