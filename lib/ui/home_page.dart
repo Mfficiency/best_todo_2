@@ -7,6 +7,7 @@ import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
 import 'deleted_items_page.dart';
+import 'changelog_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -272,6 +273,16 @@ class _HomePageState extends State<HomePage>
                       onSettingsChanged: _updateSettings,
                     ),
                   ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Changelog'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ChangelogPage()),
                 );
               },
             ),
