@@ -19,6 +19,7 @@
 ```bash
 flutter pub get
 flutter run -d chrome
+flutter build apk --release
 
 ```
 
@@ -34,6 +35,7 @@ the build output with the version number.
 
 ```bash
 sh tool/build.sh <platform>
+# Example: sh tool/build.sh apk # for Android APK
 ```
 
 For example `sh tool/build.sh web` will create a folder like
