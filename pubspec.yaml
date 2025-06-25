@@ -13,7 +13,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   path_provider: ^2.0.0
   flutter_markdown: ^0.6.10
-  home_widget: ^0.4.0
+  home_widget: ^0.5.0
 
 dev_dependencies:
   flutter_test:
