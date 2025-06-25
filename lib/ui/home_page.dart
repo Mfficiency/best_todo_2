@@ -3,6 +3,7 @@ import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
 import '../services/storage_service.dart';
+import '../home_widget_helper.dart';
 import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
@@ -76,6 +77,7 @@ class _HomePageState extends State<HomePage>
     });
     _controller.clear();
     _storageService.saveTaskList(_tasks);
+    HomeWidgetHelper.updateTodayWidget(_tasks);
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -91,6 +93,7 @@ class _HomePageState extends State<HomePage>
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _storageService.saveTaskList(_tasks);
+    HomeWidgetHelper.updateTodayWidget(_tasks);
   }
 
   void _moveTask(int pageIndex, int index, int destination) {
@@ -102,6 +105,7 @@ class _HomePageState extends State<HomePage>
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _storageService.saveTaskList(_tasks);
+    HomeWidgetHelper.updateTodayWidget(_tasks);
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -152,6 +156,7 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _storageService.saveTaskList(_tasks);
+    HomeWidgetHelper.updateTodayWidget(_tasks);
   }
 
   void _updateSettings() {
@@ -170,6 +175,7 @@ class _HomePageState extends State<HomePage>
       }
     });
     _storageService.saveTaskList(_tasks);
+    HomeWidgetHelper.updateTodayWidget(_tasks);
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
