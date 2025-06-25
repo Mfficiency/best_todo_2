@@ -19,7 +19,7 @@
 ```bash
 flutter pub get
 flutter run -d chrome
-
+flutter build apk --release
 ```
 
 When running the app on Chrome, swipe gestures can be hard to test.
