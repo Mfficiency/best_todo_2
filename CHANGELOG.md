@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.4] - 2025-06-25
+## [0.1.5] - 2025-06-25
 - Added Android home screen widget showing today's tasks.
 
 ## [0.1.4] - 2025-06-25
