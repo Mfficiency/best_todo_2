@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.4] - 2025-06-25
+- should have a widget now
+
 ## [0.1.3] - 2025-06-23
 - restored tasks go to today by default.
 - automatic update version number
