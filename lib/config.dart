@@ -15,6 +15,7 @@ class Config {
   ];
 
   static const List<String> tabs = [
+    'Calendar',
     'Today',
     'Tomorrow',
     'Day After Tomorrow',
