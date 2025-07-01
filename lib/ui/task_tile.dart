@@ -82,6 +82,7 @@ class _TaskTileState extends State<TaskTile>
 
   void _toggleExpanded() {
     setState(() => _expanded = !_expanded);
+    widget.onDueDateChanged();
   }
 
   @override
