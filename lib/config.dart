@@ -24,4 +24,7 @@ class Config {
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
   static bool swipeLeftDelete = true;
+
+  /// If true, the app uses a dark color scheme.
+  static bool darkMode = false;
 }
