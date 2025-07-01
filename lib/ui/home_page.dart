@@ -305,7 +305,7 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: const Text('Best Todo 2'),
+        title: Text('Best Todo 2 v${Config.version}'),
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(
