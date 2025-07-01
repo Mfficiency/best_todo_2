@@ -53,9 +53,11 @@ class _TaskTileState extends State<TaskTile>
       vsync: this,
       duration: Duration(seconds: Config.defaultDelaySeconds),
     );
-    _destinations = List<int>.generate(Config.tabs.length, (i) => i)
-        .where((i) => i != widget.pageIndex && i != 0)
-        .toList();
+    // Destination indices correspond to the tab indices defined in Config.
+    // Skip the calendar tab (index 0) and the current tab.
+    _destinations =
+        List<int>.generate(Config.tabs.length - 1, (i) => i + 1)
+          ..remove(widget.pageIndex + 1);
   }
 
   void _startOptions() {

@@ -344,7 +344,7 @@ class _HomePageState extends State<HomePage>
       body: TabBarView(
         controller: _tabController,
         children: [
-          const CalendarTab(),
+          CalendarTab(tasks: _tasks, currentDate: _currentDate),
           _buildTaskList(0),
           _buildTaskList(1),
           _buildTaskList(2),
