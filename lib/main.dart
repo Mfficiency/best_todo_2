@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'ui/home_page.dart';
 import 'config.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'l10n/app_localizations.dart';
 
 void main() {
   runApp(const MyApp());
@@ -30,11 +31,16 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Best Todo 2',
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       theme: ThemeData(primarySwatch: Colors.blue),
       locale: _locale,
       supportedLocales: Config.supportedLocales,
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: const HomePage(),
     );
   }

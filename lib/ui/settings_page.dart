@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
+import '../l10n/app_localizations.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
@@ -27,17 +28,18 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(l10n.settings)),
       body: ListView(
         children: [
           SwitchListTile(
-            title: const Text('Enable notifications'),
+            title: Text(l10n.enableNotifications),
             value: _notifications,
             onChanged: (val) => setState(() => _notifications = val),
           ),
           SwitchListTile(
-            title: const Text('Swipe left to delete'),
+            title: Text(l10n.swipeLeftDelete),
             value: _swipeLeftDelete,
             onChanged: (val) {
               setState(() => _swipeLeftDelete = val);
@@ -46,7 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           ListTile(
-            title: const Text('Language'),
+            title: Text(l10n.language),
             trailing: DropdownButton<Locale>(
               value: _selectedLocale,
               onChanged: (Locale? val) {

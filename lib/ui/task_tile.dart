@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
+import '../l10n/app_localizations.dart';
 
 class TaskTile extends StatefulWidget {
   final Task task;
@@ -143,7 +144,7 @@ class _TaskTileState extends State<TaskTile>
                 : (widget.showSwipeButton
                     ? IconButton(
                         icon: const Icon(Icons.swipe),
-                        tooltip: 'Reschedule',
+                        tooltip: AppLocalizations.of(context).reschedule,
                         onPressed: _startOptions,
                       )
                     : null),
