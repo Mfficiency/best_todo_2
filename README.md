@@ -20,7 +20,6 @@
 flutter pub get
 flutter run -d chrome
 flutter build apk --release
-
 ```
 
 When running the app on Chrome, swipe gestures can be hard to test.
@@ -40,3 +39,4 @@ sh tool/build.sh <platform>
 
 For example `sh tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.
+
