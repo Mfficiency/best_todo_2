@@ -54,7 +54,8 @@ class _TaskTileState extends State<TaskTile>
       duration: Duration(seconds: Config.defaultDelaySeconds),
     );
     _destinations = List<int>.generate(Config.tabs.length, (i) => i)
-      ..remove(widget.pageIndex);
+        .where((i) => i != widget.pageIndex && i != 0)
+        .toList();
   }
 
   void _startOptions() {

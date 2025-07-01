@@ -8,6 +8,7 @@ import 'about_page.dart';
 import 'settings_page.dart';
 import 'deleted_items_page.dart';
 import 'changelog_page.dart';
+import 'calendar_tab.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -66,7 +67,9 @@ class _HomePageState extends State<HomePage>
 
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
-    final offset = _offsetDays[_tabController.index];
+    final tabIndex = _tabController.index - 1;
+    if (tabIndex < 0 || tabIndex >= _offsetDays.length) return;
+    final offset = _offsetDays[tabIndex];
     final task = Task(
       title: title,
       dueDate: _currentDate.add(Duration(days: offset)),
@@ -81,7 +84,7 @@ class _HomePageState extends State<HomePage>
   void _moveTaskToNextPage(int pageIndex, int index) {
     final tasks = _tasksForTab(pageIndex);
     int destination = pageIndex + 1;
-    if (destination >= Config.tabs.length) {
+    if (destination >= _offsetDays.length) {
       destination = 0;
     }
     setState(() {
@@ -98,8 +101,10 @@ class _HomePageState extends State<HomePage>
       final tasks = _tasksForTab(pageIndex);
       if (index >= tasks.length) return;
       final task = tasks[index];
+      final destIndex = destination - 1;
+      if (destIndex < 0 || destIndex >= _offsetDays.length) return;
       task.dueDate =
-          _currentDate.add(Duration(days: _offsetDays[destination]));
+          _currentDate.add(Duration(days: _offsetDays[destIndex]));
     });
     _storageService.saveTaskList(_tasks);
   }
@@ -339,6 +344,7 @@ class _HomePageState extends State<HomePage>
       body: TabBarView(
         controller: _tabController,
         children: [
+          const CalendarTab(),
           _buildTaskList(0),
           _buildTaskList(1),
           _buildTaskList(2),
