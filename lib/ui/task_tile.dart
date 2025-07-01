@@ -96,58 +96,75 @@ class _TaskTileState extends State<TaskTile>
   @override
   Widget build(BuildContext context) {
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final trailing = widget.showSwipeButton
+        ? IconButton(
+            icon: const Icon(Icons.swipe),
+            tooltip: 'Reschedule',
+            onPressed: _startOptions,
+          )
+        : null;
+
+    final listTile = ListTile(
+      contentPadding:
+          isAndroid ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16.0),
+      minLeadingWidth: isAndroid ? 0 : null,
+      leading: Checkbox(
+        value: widget.task.isDone,
+        onChanged: (_) => setState(() => widget.onChanged()),
+      ),
+      title: Text(
+        widget.task.title,
+        style: TextStyle(
+          decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
+        ),
+      ),
+      trailing: trailing,
+    );
+
+    final stackTile = Stack(
+      children: [
+        listTile,
+        if (_showOptions)
+          Positioned.fill(
+            child: Container(
+              color: Theme.of(context).cardColor.withOpacity(0.9),
+              alignment: Alignment.centerRight,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var dest in _destinations)
+                        TextButton(
+                          onPressed: () => _select(dest),
+                          child: Text(Config.tabs[dest]),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 60,
+                    child: AnimatedBuilder(
+                      animation: _progressController,
+                      builder: (context, child) {
+                        return LinearProgressIndicator(value: _progressController.value);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+
     Widget content = InkWell(
       onTap: _toggleExpanded,
       child: Column(
         children: [
-          ListTile(
-            contentPadding:
-                isAndroid ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16.0),
-            minLeadingWidth: isAndroid ? 0 : null,
-            leading: Checkbox(
-              value: widget.task.isDone,
-              onChanged: (_) => setState(() => widget.onChanged()),
-            ),
-            title: Text(
-              widget.task.title,
-              style: TextStyle(
-                decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
-              ),
-            ),
-            trailing: _showOptions
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var dest in _destinations)
-                            TextButton(
-                              onPressed: () => _select(dest),
-                              child: Text(Config.tabs[dest]),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        width: 60,
-                        child: AnimatedBuilder(
-                          animation: _progressController,
-                          builder: (context, child) {
-                            return LinearProgressIndicator(value: _progressController.value);
-                          },
-                        ),
-                      ),
-                    ],
-                  )
-                : (widget.showSwipeButton
-                    ? IconButton(
-                        icon: const Icon(Icons.swipe),
-                        tooltip: 'Reschedule',
-                        onPressed: _startOptions,
-                      )
-                    : null),
-          ),
+          stackTile,
           if (_expanded)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),

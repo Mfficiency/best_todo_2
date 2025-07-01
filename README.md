@@ -26,3 +26,17 @@ When running the app on Chrome, swipe gestures can be hard to test.
 Each task tile includes a **swipe** icon that performs the same action
 as dragging the tile. Use this button to simulate a swipe when testing
 in the browser.
+
+## 🏗️ Building Releases
+Run the helper script in the `tool` directory to build production
+artifacts. The script automatically bumps the patch version and names
+the build output with the version number.
+
+```bash
+sh tool/build.sh <platform>
+# Example: sh tool/build.sh apk # for Android APK
+```
+
+For example `sh tool/build.sh web` will create a folder like
+`build/web-0.1.4` containing the compiled app.
+
