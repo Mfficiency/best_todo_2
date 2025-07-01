@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../l10n/app_localizations.dart';
 
 class TaskDetailPage extends StatelessWidget {
   final Task task;
@@ -7,8 +8,9 @@ class TaskDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Task Details')),
+      appBar: AppBar(title: Text(l10n.taskDetails)),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -24,18 +26,18 @@ class TaskDetailPage extends StatelessWidget {
             ],
             if (task.note.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('Note: ${task.note}'),
+              Text('${l10n.note}: ${task.note}'),
             ],
             if (task.label.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('Label: ${task.label}'),
+              Text('${l10n.label}: ${task.label}'),
             ],
             if (task.dueDate != null) ...[
               const SizedBox(height: 8),
-              Text('Due: ${task.dueDate!.toLocal().toString().split(' ')[0]}'),
+              Text('${l10n.due}: ${task.dueDate!.toLocal().toString().split(' ')[0]}'),
             ],
             const SizedBox(height: 8),
-            Text('Completed: ${task.isDone ? 'Yes' : 'No'}'),
+            Text('${l10n.completed}: ${task.isDone ? l10n.yes : l10n.no}'),
           ],
         ),
       ),

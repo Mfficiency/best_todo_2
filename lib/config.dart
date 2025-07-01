@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class Config {
   static const int defaultDelaySeconds = 5;
 
@@ -20,6 +22,20 @@ class Config {
     'Day After Tomorrow',
     'Next Week',
   ];
+
+  /// Supported locales for the app.
+  static const List<Locale> supportedLocales = [
+    Locale('en'),
+    Locale('es'),
+    Locale('fr'),
+  ];
+
+  /// Human readable names for the supported locales.
+  static const Map<String, String> localeNames = {
+    'en': 'English',
+    'es': 'Spanish',
+    'fr': 'French',
+  };
 
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.

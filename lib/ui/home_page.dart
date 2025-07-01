@@ -8,6 +8,8 @@ import 'about_page.dart';
 import 'settings_page.dart';
 import 'deleted_items_page.dart';
 import 'changelog_page.dart';
+import '../main.dart' show MyApp;
+import '../l10n/app_localizations.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -125,14 +127,15 @@ class _HomePageState extends State<HomePage>
       });
     });
 
+    final l10n = AppLocalizations.of(context);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('Deleted "${task.title}"'),
+          content: Text(l10n.deleted(task.title)),
           duration: const Duration(seconds: Config.defaultDelaySeconds),
           action: SnackBarAction(
-            label: 'Cancel',
+            label: l10n.cancel,
             onPressed: () {
               timer.cancel();
               setState(() {
@@ -156,6 +159,11 @@ class _HomePageState extends State<HomePage>
 
   void _updateSettings() {
     setState(() {});
+  }
+
+  void _setLocale(Locale locale) {
+    final state = MyApp.of(context);
+    state?.setLocale(locale);
   }
 
   /// Change the current virtual date by the given number of days.
@@ -195,7 +203,9 @@ class _HomePageState extends State<HomePage>
               Expanded(
                 child: TextField(
                   controller: _controller,
-                  decoration: const InputDecoration(labelText: 'Add task'),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.of(context).addTask,
+                  ),
                   onSubmitted: _addTask,
                 ),
               ),
@@ -248,13 +258,16 @@ class _HomePageState extends State<HomePage>
       drawer: Drawer(
         child: ListView(
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Text('Menu', style: TextStyle(color: Colors.white)),
+            DrawerHeader(
+              decoration: const BoxDecoration(color: Colors.blue),
+              child: Text(
+                AppLocalizations.of(context).menu,
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.info),
-              title: const Text('About'),
+              title: Text(AppLocalizations.of(context).about),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
@@ -264,13 +277,14 @@ class _HomePageState extends State<HomePage>
             ),
             ListTile(
               leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
+              title: Text(AppLocalizations.of(context).settings),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => SettingsPage(
                       onSettingsChanged: _updateSettings,
+                      onLanguageChanged: _setLocale,
                     ),
                   ),
                 );
@@ -278,7 +292,7 @@ class _HomePageState extends State<HomePage>
             ),
             ListTile(
               leading: const Icon(Icons.history),
-              title: const Text('Changelog'),
+              title: Text(AppLocalizations.of(context).changelog),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
@@ -288,7 +302,7 @@ class _HomePageState extends State<HomePage>
             ),
             ListTile(
               leading: const Icon(Icons.delete),
-              title: const Text('Deleted Items'),
+              title: Text(AppLocalizations.of(context).deletedItems),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
@@ -305,7 +319,7 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: const Text('Best Todo 2'),
+        title: Text(AppLocalizations.of(context).appTitle),
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(
@@ -330,7 +344,10 @@ class _HomePageState extends State<HomePage>
                 ),
               TabBar(
                 controller: _tabController,
-                tabs: Config.tabs.map((t) => Tab(text: t)).toList(),
+                tabs: AppLocalizations.of(context)
+                    .tabs
+                    .map((t) => Tab(text: t))
+                    .toList(),
               ),
             ],
           ),

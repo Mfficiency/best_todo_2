@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 import 'task_detail_page.dart';
+import '../l10n/app_localizations.dart';
 
 class DeletedItemsPage extends StatelessWidget {
   final List<Task> items;
@@ -13,8 +14,9 @@ class DeletedItemsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Deleted Items')),
+      appBar: AppBar(title: Text(l10n.deletedItems)),
       body: ListView.builder(
         itemCount: items.length,
         itemBuilder: (context, index) {
@@ -22,7 +24,7 @@ class DeletedItemsPage extends StatelessWidget {
           return ListTile(
             leading: IconButton(
               icon: const Icon(Icons.restore),
-              tooltip: 'Restore',
+              tooltip: l10n.restore,
               onPressed: () => onRestore(task),
             ),
             title: Text(task.title),
