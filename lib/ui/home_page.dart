@@ -8,6 +8,7 @@ import 'about_page.dart';
 import 'settings_page.dart';
 import 'deleted_items_page.dart';
 import 'changelog_page.dart';
+import '../main.dart' show MyApp;
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -158,6 +159,11 @@ class _HomePageState extends State<HomePage>
     setState(() {});
   }
 
+  void _setLocale(Locale locale) {
+    final state = MyApp.of(context);
+    state?.setLocale(locale);
+  }
+
   /// Change the current virtual date by the given number of days.
   /// When moving forward, overdue tasks remain visible in the Today tab.
   void _changeDate(int delta) {
@@ -271,6 +277,7 @@ class _HomePageState extends State<HomePage>
                   MaterialPageRoute(
                     builder: (_) => SettingsPage(
                       onSettingsChanged: _updateSettings,
+                      onLanguageChanged: _setLocale,
                     ),
                   ),
                 );

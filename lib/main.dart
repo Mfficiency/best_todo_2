@@ -1,18 +1,40 @@
 import 'package:flutter/material.dart';
 import 'ui/home_page.dart';
+import 'config.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({Key? key}) : super(key: key);
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+
+  static _MyAppState? of(BuildContext context) {
+    return context.findAncestorStateOfType<_MyAppState>();
+  }
+}
+
+class _MyAppState extends State<MyApp> {
+  Locale? _locale;
+
+  void setLocale(Locale locale) {
+    setState(() {
+      _locale = locale;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Best Todo 2',
       theme: ThemeData(primarySwatch: Colors.blue),
+      locale: _locale,
+      supportedLocales: Config.supportedLocales,
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: const HomePage(),
     );
   }
