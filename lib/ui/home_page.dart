@@ -54,7 +54,7 @@ class _HomePageState extends State<HomePage>
   void initState() {
     super.initState();
     _tabController =
-        TabController(length: Config.tabs.length, vsync: this);
+        TabController(length: Config.tabs.length, vsync: this, initialIndex: 1);
     _loadTasks();
   }
 

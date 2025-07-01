@@ -97,11 +97,86 @@ class _CalendarTabState extends State<CalendarTab>
   }
 
   Widget _buildMonthView() {
-    return CalendarDatePicker(
-      initialDate: _focusedDay,
-      firstDate: DateTime(_focusedDay.year - 1),
-      lastDate: DateTime(_focusedDay.year + 1),
-      onDateChanged: (d) => setState(() => _focusedDay = d),
+    final firstDayOfMonth = DateTime(_focusedDay.year, _focusedDay.month, 1);
+    final daysBefore = firstDayOfMonth.weekday - 1;
+    final lastDay = DateTime(_focusedDay.year, _focusedDay.month + 1, 0).day;
+    final total = daysBefore + lastDay;
+    final weeks = (total / 7).ceil();
+    final start = firstDayOfMonth.subtract(Duration(days: daysBefore));
+    final days =
+        List.generate(weeks * 7, (i) => start.add(Duration(days: i)));
+
+    Widget dayCell(DateTime day) {
+      final tasksForDay = widget.tasks.where((t) =>
+          t.dueDate != null &&
+          t.dueDate!.year == day.year &&
+          t.dueDate!.month == day.month &&
+          t.dueDate!.day == day.day);
+      final faded = day.month != _focusedDay.month;
+      return GestureDetector(
+        onTap: () => setState(() => _focusedDay = day),
+        child: Padding(
+          padding: const EdgeInsets.all(2.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: CircleAvatar(
+                  radius: 14,
+                  backgroundColor:
+                      faded ? Colors.grey.shade300 : Colors.blue.shade50,
+                  child: Text(
+                    '${day.day}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: faded ? Colors.grey : Colors.black),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              for (final task in tasksForDay)
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 1),
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    task.title,
+                    style: const TextStyle(fontSize: 10),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                for (final w in _weekdays)
+                  Expanded(child: Center(child: Text(w))),
+              ],
+            ),
+            const SizedBox(height: 4),
+            for (int w = 0; w < weeks; w++)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (int i = 0; i < 7; i++)
+                    Expanded(child: dayCell(days[w * 7 + i])),
+                ],
+              ),
+          ],
+        ),
+      ),
     );
   }
 
