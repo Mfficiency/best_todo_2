@@ -67,3 +67,6 @@ flutter clean
 flutter pub get
 flutter run
 ```
+## Update icon
+
+python ./tool/update_icon.py
