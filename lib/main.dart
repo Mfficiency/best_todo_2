@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
+
 import 'ui/home_page.dart';
 import 'config.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  HomeWidget.setAppGroupId('best.todo.widget');
   runApp(const MyApp());
 }
 
