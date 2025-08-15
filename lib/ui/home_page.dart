@@ -3,6 +3,7 @@ import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
 import '../services/storage_service.dart';
+import '../services/widget_service.dart';
 import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
@@ -28,6 +29,16 @@ class _HomePageState extends State<HomePage>
   final List<Task> _deletedTasks = [];
   final StorageService _storageService = StorageService();
 
+  void _saveTasks() {
+    _storageService.saveTaskList(_tasks);
+    WidgetService.updateTaskSummary(_widgetSummary());
+  }
+
+  String _widgetSummary() {
+    if (_tasks.isEmpty) return 'No tasks';
+    return 'Next: ${_tasks.first.title}';
+  }
+
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
 
@@ -46,6 +57,7 @@ class _HomePageState extends State<HomePage>
     }
     if (mounted) {
       setState(() {});
+      WidgetService.updateTaskSummary(_widgetSummary());
     }
   }
 
@@ -75,7 +87,7 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _controller.clear();
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -90,7 +102,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
   }
 
   void _moveTask(int pageIndex, int index, int destination) {
@@ -101,7 +113,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -113,7 +125,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _tasks.removeAt(originalIndex);
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
 
     late Timer timer;
     timer = Timer(const Duration(seconds: Config.defaultDelaySeconds), () {
@@ -138,7 +150,7 @@ class _HomePageState extends State<HomePage>
               setState(() {
                 _tasks.insert(originalIndex, task);
               });
-              _storageService.saveTaskList(_tasks);
+              _saveTasks();
             },
           ),
         ),
@@ -151,7 +163,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate = _currentDate;
       _tasks.add(task);
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
   }
 
   void _updateSettings() {
@@ -169,7 +181,7 @@ class _HomePageState extends State<HomePage>
         _tasks.removeWhere((t) => t.isDone);
       }
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
@@ -216,7 +228,7 @@ class _HomePageState extends State<HomePage>
                 task: task,
                 onChanged: () {
                   setState(task.toggleDone);
-                  _storageService.saveTaskList(_tasks);
+                  _saveTasks();
                 },
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
                 onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
