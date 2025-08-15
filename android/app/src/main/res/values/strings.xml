@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="version_widget_name">App Version</string>
+    <string name="version_widget_name">Today's Tasks</string>
 </resources>
