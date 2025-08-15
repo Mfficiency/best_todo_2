@@ -1,5 +1,9 @@
 # Changelog
 
+
+## [0.1.5] - 2025-08-15
+- cleanup main branch with android folder attached
+
 ## [0.1.4] - 2025-08-15
 - cleanup of the ui when doing the swipe gesture
 - update sdk and dependencies
