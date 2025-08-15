@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.4] - 2025-08-15
+- cleanup of the ui when doing the swipe gesture
+- update sdk and dependencies
+
 ## [0.1.3] - 2025-06-23
 - restored tasks go to today by default.
 - automatic update version number
