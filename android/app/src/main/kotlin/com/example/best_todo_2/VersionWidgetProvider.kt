@@ -41,7 +41,7 @@ class VersionWidgetProvider : AppWidgetProvider() {
         return try {
             val file = File(context.filesDir, "tasks.json")
             if (!file.exists()) {
-                Log.d(TAG, "tasks.json not found at \${file.absolutePath}")
+                Log.d(TAG, "tasks.json not found at: \${file.absolutePath}")
                 return context.getString(R.string.no_tasks_today)
             }
             val json = file.readText()
