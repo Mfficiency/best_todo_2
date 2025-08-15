@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.7] - 2025-08-15
+- Updated the widget so when you click on it, it opens the app.
+- showing the correct logo and icons
+
 ## [0.1.6] - 2025-08-15
 - a working version where the widget shows the version number
 
