@@ -39,7 +39,10 @@ class VersionWidgetProvider : AppWidgetProvider() {
 
     private fun loadTodayTasks(context: Context): String {
         return try {
-            val file = File(context.filesDir, "tasks.json")
+            // tasks.json is stored in the same location as used by Flutter's
+            // StorageService.loadTaskList(), which resolves to the app_flutter
+            // directory under the app's data folder.
+            val file = File(context.filesDir.parentFile, "app_flutter/tasks.json")
             if (!file.exists()) {
                 Log.d(TAG, "tasks.json not found at: \${file.absolutePath}")
                 return context.getString(R.string.no_tasks_today)
