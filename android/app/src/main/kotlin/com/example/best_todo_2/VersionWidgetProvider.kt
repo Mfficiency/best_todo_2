@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.widget.RemoteViews
 import java.io.File
 import java.text.SimpleDateFormat
@@ -13,6 +14,9 @@ import java.util.Locale
 import org.json.JSONArray
 
 class VersionWidgetProvider : AppWidgetProvider() {
+    companion object {
+        private const val TAG = "VersionWidget"
+    }
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -37,6 +41,7 @@ class VersionWidgetProvider : AppWidgetProvider() {
         return try {
             val file = File(context.filesDir, "tasks.json")
             if (!file.exists()) {
+                Log.d(TAG, "tasks.json not found at \${file.absolutePath}")
                 return context.getString(R.string.no_tasks_today)
             }
             val json = file.readText()
@@ -56,11 +61,13 @@ class VersionWidgetProvider : AppWidgetProvider() {
                 }
             }
             if (lines.isEmpty()) {
+                Log.d(TAG, "No tasks due today")
                 context.getString(R.string.no_tasks_today)
             } else {
                 lines.joinToString("\n")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading tasks", e)
             context.getString(R.string.no_tasks_today)
         }
     }
