@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.widget.RemoteViews
+import com.example.best_todo_2.BuildConfig
 
 class VersionWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(
