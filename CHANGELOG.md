@@ -1,7 +1,11 @@
 # Changelog
 
-## [0.1.6] - 2025-08-15
+## [0.1.7] - 2025-08-15
 - widget now lists today's tasks and opens the app when tapped
+- logos and icons updated
+
+## [0.1.6] - 2025-08-15
+- widget shows the version number
 
 ## [0.1.5] - 2025-08-15
 - cleanup main branch with android folder attached
