@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.8] - 2025-08-15
+- Widget now displays tasks due today instead of app version.
+
 ## [0.1.7] - 2025-08-15
 - Updated the widget so when you click on it, it opens the app.
 - showing the correct logo and icons
