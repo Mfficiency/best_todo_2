@@ -3,11 +3,13 @@ import 'dart:async';
 import '../models/task.dart';
 import '../config.dart';
 import '../services/storage_service.dart';
+import '../services/log_service.dart';
 import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
 import 'deleted_items_page.dart';
 import 'changelog_page.dart';
+import 'user_logs_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -44,6 +46,7 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
+    LogService.add('Loaded ${_tasks.length} tasks');
     if (mounted) {
       setState(() {});
     }
@@ -76,6 +79,7 @@ class _HomePageState extends State<HomePage>
     });
     _controller.clear();
     _storageService.saveTaskList(_tasks);
+    LogService.add('Added task: $title');
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -84,24 +88,26 @@ class _HomePageState extends State<HomePage>
     if (destination >= Config.tabs.length) {
       destination = 0;
     }
+    if (index >= tasks.length) return;
+    final task = tasks[index];
     setState(() {
-      if (index >= tasks.length) return;
-      final task = tasks[index];
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _storageService.saveTaskList(_tasks);
+    LogService.add('Moved "${task.title}" to page $destination');
   }
 
   void _moveTask(int pageIndex, int index, int destination) {
+    final tasks = _tasksForTab(pageIndex);
+    if (index >= tasks.length) return;
+    final task = tasks[index];
     setState(() {
-      final tasks = _tasksForTab(pageIndex);
-      if (index >= tasks.length) return;
-      final task = tasks[index];
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _storageService.saveTaskList(_tasks);
+    LogService.add('Moved "${task.title}" to page $destination');
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -114,6 +120,7 @@ class _HomePageState extends State<HomePage>
       _tasks.removeAt(originalIndex);
     });
     _storageService.saveTaskList(_tasks);
+    LogService.add('Deleted "${task.title}"');
 
     late Timer timer;
     timer = Timer(const Duration(seconds: Config.defaultDelaySeconds), () {
@@ -139,6 +146,7 @@ class _HomePageState extends State<HomePage>
                 _tasks.insert(originalIndex, task);
               });
               _storageService.saveTaskList(_tasks);
+              LogService.add('Restored from undo "${task.title}"');
             },
           ),
         ),
@@ -152,10 +160,12 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _storageService.saveTaskList(_tasks);
+    LogService.add('Restored "${task.title}"');
   }
 
   void _updateSettings() {
     setState(() {});
+    LogService.add('Settings updated');
   }
 
   /// Change the current virtual date by the given number of days.
@@ -170,6 +180,7 @@ class _HomePageState extends State<HomePage>
       }
     });
     _storageService.saveTaskList(_tasks);
+    LogService.add('Changed date by $delta to $_currentDate');
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
@@ -186,6 +197,7 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildTaskList(int pageIndex) {
     final tasks = _tasksForTab(pageIndex);
+    LogService.add('Building tab $pageIndex with ${tasks.length} tasks');
     return Column(
       children: [
         Padding(
@@ -283,6 +295,16 @@ class _HomePageState extends State<HomePage>
                 Navigator.pop(context);
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ChangelogPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.list_alt),
+              title: const Text('User Logs'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const UserLogsPage()),
                 );
               },
             ),
