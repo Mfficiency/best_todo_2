@@ -9,7 +9,7 @@ import 'about_page.dart';
 import 'settings_page.dart';
 import 'deleted_items_page.dart';
 import 'changelog_page.dart';
-import 'user_logs_page.dart';
+import 'app_logs_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -46,7 +46,8 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
-    LogService.add('Loaded ${_tasks.length} tasks');
+    LogService.add('HomePage._loadTasks',
+        '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
       setState(() {});
     }
@@ -79,7 +80,7 @@ class _HomePageState extends State<HomePage>
     });
     _controller.clear();
     _storageService.saveTaskList(_tasks);
-    LogService.add('Added task: $title');
+    LogService.add('HomePage._addTask', 'Added task: $title');
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -95,7 +96,8 @@ class _HomePageState extends State<HomePage>
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _storageService.saveTaskList(_tasks);
-    LogService.add('Moved "${task.title}" to page $destination');
+    LogService.add('HomePage._moveTaskToNextPage',
+        'Moved "${task.title}" to page $destination');
   }
 
   void _moveTask(int pageIndex, int index, int destination) {
@@ -107,7 +109,8 @@ class _HomePageState extends State<HomePage>
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _storageService.saveTaskList(_tasks);
-    LogService.add('Moved "${task.title}" to page $destination');
+    LogService.add(
+        'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -120,7 +123,7 @@ class _HomePageState extends State<HomePage>
       _tasks.removeAt(originalIndex);
     });
     _storageService.saveTaskList(_tasks);
-    LogService.add('Deleted "${task.title}"');
+    LogService.add('HomePage._deleteTask', 'Deleted "${task.title}"');
 
     late Timer timer;
     timer = Timer(const Duration(seconds: Config.defaultDelaySeconds), () {
@@ -146,7 +149,8 @@ class _HomePageState extends State<HomePage>
                 _tasks.insert(originalIndex, task);
               });
               _storageService.saveTaskList(_tasks);
-              LogService.add('Restored from undo "${task.title}"');
+              LogService.add('HomePage._deleteTask',
+                  'Restored from undo "${task.title}"');
             },
           ),
         ),
@@ -160,12 +164,12 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _storageService.saveTaskList(_tasks);
-    LogService.add('Restored "${task.title}"');
+    LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
   }
 
   void _updateSettings() {
     setState(() {});
-    LogService.add('Settings updated');
+    LogService.add('HomePage._updateSettings', 'Settings updated');
   }
 
   /// Change the current virtual date by the given number of days.
@@ -180,7 +184,8 @@ class _HomePageState extends State<HomePage>
       }
     });
     _storageService.saveTaskList(_tasks);
-    LogService.add('Changed date by $delta to $_currentDate');
+    LogService.add('HomePage._changeDate',
+        'Changed date by $delta to $_currentDate');
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
@@ -197,7 +202,8 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildTaskList(int pageIndex) {
     final tasks = _tasksForTab(pageIndex);
-    LogService.add('Building tab $pageIndex with ${tasks.length} tasks');
+    LogService.add('HomePage._buildTaskList',
+        'Building tab $pageIndex with ${tasks.length} tasks');
     return Column(
       children: [
         Padding(
@@ -300,11 +306,11 @@ class _HomePageState extends State<HomePage>
             ),
             ListTile(
               leading: const Icon(Icons.list_alt),
-              title: const Text('User Logs'),
+              title: const Text('App Logs'),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const UserLogsPage()),
+                  MaterialPageRoute(builder: (_) => const AppLogsPage()),
                 );
               },
             ),

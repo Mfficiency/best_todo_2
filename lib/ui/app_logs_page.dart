@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../services/log_service.dart';
 
-/// Displays logs collected during user interactions and widget updates.
-class UserLogsPage extends StatelessWidget {
-  const UserLogsPage({Key? key}) : super(key: key);
+/// Displays logs collected during app interactions and widget updates.
+class AppLogsPage extends StatelessWidget {
+  const AppLogsPage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('User Logs')),
+      appBar: AppBar(title: const Text('App Logs')),
       body: ValueListenableBuilder<List<String>>(
         valueListenable: LogService.logs,
         builder: (context, logs, _) {
