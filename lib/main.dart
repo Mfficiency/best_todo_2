@@ -23,7 +23,13 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Best Todo 2',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
+        textTheme: ThemeData.light()
+            .textTheme
+            .apply(bodyColor: Colors.black, displayColor: Colors.black),
+      ),
       darkTheme: ThemeData.dark(),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
       home: const HomePage(),
