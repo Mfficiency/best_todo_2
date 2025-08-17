@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.9] - 2025-08-15
+- updated widget color to be better visible on all devices
+
 ## [0.1.8] - 2025-08-15
 - Widget now displays tasks due today instead of app version.
 
