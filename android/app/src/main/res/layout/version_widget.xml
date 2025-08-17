@@ -2,7 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#00FF00">
+    android:background="#ffffffc8">
 
     <TextView
         android:id="@+id/appwidget_text"
@@ -11,7 +11,7 @@
         android:gravity="start|top"
         android:padding="8dp"
         android:text="@string/version_widget_name"
-        android:textColor="#FF0000"
+        android:textColor="#000000ff"
         android:textSize="14sp"
         android:lineSpacingExtra="2dp" />
 </FrameLayout>
