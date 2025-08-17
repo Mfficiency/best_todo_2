@@ -24,7 +24,7 @@ class VersionWidgetProvider : AppWidgetProvider() {
     ) {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.version_widget)
-            views.setTextViewText(R.id.appwidget_text, loadTodayTasks(context))
+            views.setTextViewText(R.id.appwidget_text, loadDueTasks(context))
             val intent = Intent(context, MainActivity::class.java)
             val pendingIntent = PendingIntent.getActivity(
                 context,
@@ -37,7 +37,7 @@ class VersionWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun loadTodayTasks(context: Context): String {
+    private fun loadDueTasks(context: Context): String {
         return try {
             // tasks.json is stored in the same location as used by Flutter's
             // StorageService.loadTaskList(), which resolves to the app_flutter
@@ -50,7 +50,7 @@ class VersionWidgetProvider : AppWidgetProvider() {
             val json = file.readText()
             val tasks = JSONArray(json)
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val today = sdf.format(Date())
+            val today = sdf.parse(sdf.format(Date()))
             val lines = mutableListOf<String>()
             for (i in 0 until tasks.length()) {
                 val obj = tasks.getJSONObject(i)
@@ -58,13 +58,14 @@ class VersionWidgetProvider : AppWidgetProvider() {
                 val isDone = obj.optBoolean("isDone", false)
                 if (dueDate.isNotEmpty() && !isDone) {
                     val datePart = dueDate.substring(0, 10)
-                    if (datePart == today) {
+                    val due = sdf.parse(datePart)
+                    if (today != null && due != null && !due.after(today)) {
                         lines.add("• " + obj.optString("title", ""))
                     }
                 }
             }
             if (lines.isEmpty()) {
-                Log.d(TAG, "No tasks due today")
+                Log.d(TAG, "No due tasks")
                 context.getString(R.string.no_tasks_today)
             } else {
                 lines.joinToString("\n")
