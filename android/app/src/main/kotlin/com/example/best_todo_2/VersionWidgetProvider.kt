@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
+import androidx.annotation.VisibleForTesting
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -37,17 +38,16 @@ class VersionWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun loadDueTasks(context: Context): String {
+    @VisibleForTesting
+    internal fun loadDueTasks(context: Context): String {
         return try {
             // tasks.json is stored in the same location as used by Flutter's
             // StorageService.loadTaskList(). Using Context.getDir ensures the
-            // path exists on any device or installation type.
-            val dir = context.getDir("app_flutter", Context.MODE_PRIVATE)
-            val file = File(dir, "tasks.json")
-            if (!file.exists()) {
-                Log.d(TAG, "tasks.json not found at: \${file.absolutePath}")
-                return context.getString(R.string.no_tasks_today)
-            }
+            // path exists on any device or installation type.  Some devices
+            // store the file in a different location, so check a few common
+            // directories before giving up.
+            val file = findTasksFile(context)
+                ?: return context.getString(R.string.no_tasks_today)
             val json = file.readText()
             val tasks = JSONArray(json)
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -77,5 +77,25 @@ class VersionWidgetProvider : AppWidgetProvider() {
             Log.e(TAG, "Error loading tasks", e)
             context.getString(R.string.no_tasks_today)
         }
+    }
+
+    @VisibleForTesting
+    internal fun findTasksFile(context: Context): File? {
+        val candidates = listOf(
+            File(context.getDir("app_flutter", Context.MODE_PRIVATE), "tasks.json"),
+            File(context.filesDir, "tasks.json"),
+            File(context.noBackupFilesDir, "tasks.json"),
+            context.getExternalFilesDir(null)?.let { File(it, "tasks.json") }
+        ).filterNotNull()
+
+        for (candidate in candidates) {
+            if (candidate.exists()) {
+                Log.d(TAG, "Found tasks.json at: ${candidate.absolutePath}")
+                return candidate
+            } else {
+                Log.d(TAG, "tasks.json not found at: ${candidate.absolutePath}")
+            }
+        }
+        return null
     }
 }

@@ -46,3 +46,10 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("androidx.annotation:annotation:1.7.1")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.10.3")
+    testImplementation("androidx.test:core:1.5.0")
+}
