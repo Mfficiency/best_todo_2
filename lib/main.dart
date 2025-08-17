@@ -25,10 +25,10 @@ class _MyAppState extends State<MyApp> {
       title: 'Best Todo 2',
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.white,
+        scaffoldBackgroundColor: Colors.green,
         textTheme: ThemeData.light()
             .textTheme
-            .apply(bodyColor: Colors.black, displayColor: Colors.black),
+            .apply(bodyColor: Colors.red, displayColor: Colors.red),
       ),
       darkTheme: ThemeData.dark(),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
