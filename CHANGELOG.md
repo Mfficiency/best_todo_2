@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.11] - 2025-08-17
+- changed saving location
+
 ## [0.1.10] - 2025-08-17
 - (fix) Widget now displays all tasks due today
 

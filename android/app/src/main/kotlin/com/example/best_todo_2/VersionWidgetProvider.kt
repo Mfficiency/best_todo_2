@@ -40,9 +40,10 @@ class VersionWidgetProvider : AppWidgetProvider() {
     private fun loadDueTasks(context: Context): String {
         return try {
             // tasks.json is stored in the same location as used by Flutter's
-            // StorageService.loadTaskList(), which resolves to the app_flutter
-            // directory under the app's data folder.
-            val file = File(context.filesDir.parentFile, "app_flutter/tasks.json")
+            // StorageService.loadTaskList(). Using Context.getDir ensures the
+            // path exists on any device or installation type.
+            val dir = context.getDir("app_flutter", Context.MODE_PRIVATE)
+            val file = File(dir, "tasks.json")
             if (!file.exists()) {
                 Log.d(TAG, "tasks.json not found at: \${file.absolutePath}")
                 return context.getString(R.string.no_tasks_today)
@@ -68,6 +69,8 @@ class VersionWidgetProvider : AppWidgetProvider() {
                 Log.d(TAG, "No due tasks")
                 context.getString(R.string.no_tasks_today)
             } else {
+                val titlesForLog = lines.map { it.removePrefix("• ") }
+                Log.d(TAG, "tasks loaded to display on widget: ${titlesForLog.joinToString(", ")}")
                 lines.joinToString("\n")
             }
         } catch (e: Exception) {
