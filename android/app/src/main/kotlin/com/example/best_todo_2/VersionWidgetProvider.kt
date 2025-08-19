@@ -53,10 +53,12 @@ class VersionWidgetProvider : AppWidgetProvider() {
                 val tasks = JSONArray(json)
                 val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                 val today = sdf.parse(sdf.format(Date()))
+
                 for (i in 0 until tasks.length()) {
                     val obj = tasks.getJSONObject(i)
                     val dueDate = obj.optString("dueDate", "")
                     val isDone = obj.optBoolean("isDone", false)
+                    Log.d(TAG, "Processing task: ${obj.optString("title", "")}, dueDate: $dueDate, isDone: $isDone")
                     if (dueDate.isNotEmpty() && !isDone) {
                         val datePart = dueDate.substring(0, 10)
                         val due = sdf.parse(datePart)
