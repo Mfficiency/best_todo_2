@@ -202,8 +202,8 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildTaskList(int pageIndex) {
     final tasks = _tasksForTab(pageIndex);
-    LogService.add('HomePage._buildTaskList',
-        'Building tab $pageIndex with ${tasks.length} tasks');
+    // LogService.add('HomePage._buildTaskList',
+    //     'Building tab $pageIndex with ${tasks.length} tasks');
     return Column(
       children: [
         Padding(

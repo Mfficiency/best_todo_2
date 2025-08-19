@@ -21,6 +21,12 @@ class Config {
     'Next Week',
   ];
 
+  /// Page shown when the app starts.
+  /// Default is the Today list.
+  static const String startPage = 'today';
+  // static const String startPage = 'app_logs'; // App logs page
+  // static const String startPage = 'settings'; // Settings page
+
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
   static bool swipeLeftDelete = true;

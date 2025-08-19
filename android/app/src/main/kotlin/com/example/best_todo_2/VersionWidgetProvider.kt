@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
+import androidx.annotation.VisibleForTesting
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -37,45 +38,65 @@ class VersionWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun loadDueTasks(context: Context): String {
+    @VisibleForTesting
+    internal fun loadDueTasks(context: Context): String {
         return try {
             // tasks.json is stored in the same location as used by Flutter's
             // StorageService.loadTaskList(). Using Context.getDir ensures the
-            // path exists on any device or installation type.
-            val dir = context.getDir("app_flutter", Context.MODE_PRIVATE)
-            val file = File(dir, "tasks.json")
-            if (!file.exists()) {
-                Log.d(TAG, "tasks.json not found at: \${file.absolutePath}")
-                return context.getString(R.string.no_tasks_today)
-            }
-            val json = file.readText()
-            val tasks = JSONArray(json)
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val today = sdf.parse(sdf.format(Date()))
+            // path exists on any device or installation type. Some devices
+            // store the file in a different location, so check a few common
+            // directories before giving up.
             val lines = mutableListOf<String>()
-            for (i in 0 until tasks.length()) {
-                val obj = tasks.getJSONObject(i)
-                val dueDate = obj.optString("dueDate", "")
-                val isDone = obj.optBoolean("isDone", false)
-                if (dueDate.isNotEmpty() && !isDone) {
-                    val datePart = dueDate.substring(0, 10)
-                    val due = sdf.parse(datePart)
-                    if (today != null && due != null && !due.after(today)) {
-                        lines.add("• " + obj.optString("title", ""))
+            val file = findTasksFile(context)
+            if (file != null) {
+                val json = file.readText()
+                val tasks = JSONArray(json)
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val today = sdf.parse(sdf.format(Date()))
+
+                for (i in 0 until tasks.length()) {
+                    val obj = tasks.getJSONObject(i)
+                    val dueDate = obj.optString("dueDate", "")
+                    val isDone = obj.optBoolean("isDone", false)
+                    Log.d(TAG, "Processing task: ${obj.optString("title", "")}, dueDate: $dueDate, isDone: $isDone")
+                    if (dueDate.isNotEmpty() && !isDone) {
+                        val datePart = dueDate.substring(0, 10)
+                        val due = sdf.parse(datePart)
+                        if (today != null && due != null && !due.after(today)) {
+                            lines.add("• " + obj.optString("title", ""))
+                        }
                     }
                 }
-            }
-            if (lines.isEmpty()) {
-                Log.d(TAG, "No due tasks")
-                context.getString(R.string.no_tasks_today)
             } else {
-                val titlesForLog = lines.map { it.removePrefix("• ") }
-                Log.d(TAG, "tasks loaded to display on widget: ${titlesForLog.joinToString(", ")}")
-                lines.joinToString("\n")
+                Log.d(TAG, "tasks.json not found; using placeholder item")
             }
+            lines.add("• cow")
+            val titlesForLog = lines.map { it.removePrefix("• ") }
+            Log.d(TAG, "tasks loaded to display on widget: ${titlesForLog.joinToString(", ")}")
+            lines.joinToString("\n")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading tasks", e)
-            context.getString(R.string.no_tasks_today)
+            "• cow"
         }
+    }
+
+    @VisibleForTesting
+    internal fun findTasksFile(context: Context): File? {
+        val candidates = listOf(
+            File(context.getDir("app_flutter", Context.MODE_PRIVATE), "tasks.json"),
+            File(context.filesDir, "tasks.json"),
+            File(context.noBackupFilesDir, "tasks.json"),
+            context.getExternalFilesDir(null)?.let { File(it, "tasks.json") }
+        ).filterNotNull()
+
+        for (candidate in candidates) {
+            if (candidate.exists()) {
+                Log.d(TAG, "Found tasks.json at: ${candidate.absolutePath}")
+                return candidate
+            } else {
+                Log.d(TAG, "tasks.json not found at: ${candidate.absolutePath}")
+            }
+        }
+        return null
     }
 }
