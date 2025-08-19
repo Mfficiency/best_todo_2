@@ -3,8 +3,11 @@ import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'config.dart';
+import 'services/log_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LogService.init();
   runApp(const MyApp());
 }
 

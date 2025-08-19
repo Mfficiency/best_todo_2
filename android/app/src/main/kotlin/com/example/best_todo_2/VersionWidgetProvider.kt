@@ -23,6 +23,7 @@ class VersionWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
+        logToFile(context, "onUpdate for ${appWidgetIds.size} widget(s)")
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.version_widget)
             views.setTextViewText(R.id.appwidget_text, loadDueTasks(context))
@@ -58,7 +59,9 @@ class VersionWidgetProvider : AppWidgetProvider() {
                     val obj = tasks.getJSONObject(i)
                     val dueDate = obj.optString("dueDate", "")
                     val isDone = obj.optBoolean("isDone", false)
-                    Log.d(TAG, "Processing task: ${obj.optString("title", "")}, dueDate: $dueDate, isDone: $isDone")
+                    val msg = "Processing task: ${obj.optString("title", "")}, dueDate: $dueDate, isDone: $isDone"
+                    Log.d(TAG, msg)
+                    logToFile(context, msg)
                     if (dueDate.isNotEmpty() && !isDone) {
                         val datePart = dueDate.substring(0, 10)
                         val due = sdf.parse(datePart)
@@ -68,14 +71,19 @@ class VersionWidgetProvider : AppWidgetProvider() {
                     }
                 }
             } else {
-                Log.d(TAG, "tasks.json not found; using placeholder item")
+                val msg = "tasks.json not found; using placeholder item"
+                Log.d(TAG, msg)
+                logToFile(context, msg)
             }
             lines.add("• cow")
             val titlesForLog = lines.map { it.removePrefix("• ") }
-            Log.d(TAG, "tasks loaded to display on widget: ${titlesForLog.joinToString(", ")}")
+            val msg = "tasks loaded to display on widget: ${titlesForLog.joinToString(", ")}"
+            Log.d(TAG, msg)
+            logToFile(context, msg)
             lines.joinToString("\n")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading tasks", e)
+            logToFile(context, "Error loading tasks: ${e.message}")
             "• cow"
         }
     }
@@ -91,12 +99,27 @@ class VersionWidgetProvider : AppWidgetProvider() {
 
         for (candidate in candidates) {
             if (candidate.exists()) {
-                Log.d(TAG, "Found tasks.json at: ${candidate.absolutePath}")
+                val msg = "Found tasks.json at: ${candidate.absolutePath}"
+                Log.d(TAG, msg)
+                logToFile(context, msg)
                 return candidate
             } else {
-                Log.d(TAG, "tasks.json not found at: ${candidate.absolutePath}")
+                val msg = "tasks.json not found at: ${candidate.absolutePath}"
+                Log.d(TAG, msg)
+                logToFile(context, msg)
             }
         }
         return null
+    }
+
+    private fun logToFile(context: Context, message: String) {
+        try {
+            val dir = context.getDir("app_flutter", Context.MODE_PRIVATE)
+            val logFile = File(dir, "app_logs.txt")
+            val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+            logFile.appendText("$timestamp [VersionWidgetProvider] $message\n")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to log to file", e)
+        }
     }
 }

@@ -3,8 +3,19 @@ import 'package:flutter/material.dart';
 import '../services/log_service.dart';
 
 /// Displays logs collected during app interactions and widget updates.
-class AppLogsPage extends StatelessWidget {
+class AppLogsPage extends StatefulWidget {
   const AppLogsPage({Key? key}) : super(key: key);
+
+  @override
+  State<AppLogsPage> createState() => _AppLogsPageState();
+}
+
+class _AppLogsPageState extends State<AppLogsPage> {
+  @override
+  void initState() {
+    super.initState();
+    LogService.init();
+  }
 
   @override
   Widget build(BuildContext context) {
