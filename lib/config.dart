@@ -22,9 +22,9 @@ class Config {
   ];
 
   /// Page shown when the app starts.
-  /// Default is the app logs page.
-  static const String startPage = 'app_logs';
-  // static const String startPage = 'today'; // Today list
+  /// Default is the Today list.
+  static const String startPage = 'today';
+  // static const String startPage = 'app_logs'; // App logs page
   // static const String startPage = 'settings'; // Settings page
 
   /// If true, swipe left deletes a task and swipe right shows options.

@@ -43,39 +43,38 @@ class VersionWidgetProvider : AppWidgetProvider() {
         return try {
             // tasks.json is stored in the same location as used by Flutter's
             // StorageService.loadTaskList(). Using Context.getDir ensures the
-            // path exists on any device or installation type.  Some devices
+            // path exists on any device or installation type. Some devices
             // store the file in a different location, so check a few common
             // directories before giving up.
-            val file = findTasksFile(context)
-                ?: return context.getString(R.string.no_tasks_today)
-            val json = file.readText()
-            val tasks = JSONArray(json)
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val today = sdf.parse(sdf.format(Date()))
             val lines = mutableListOf<String>()
-            for (i in 0 until tasks.length()) {
-                val obj = tasks.getJSONObject(i)
-                val dueDate = obj.optString("dueDate", "")
-                val isDone = obj.optBoolean("isDone", false)
-                if (dueDate.isNotEmpty() && !isDone) {
-                    val datePart = dueDate.substring(0, 10)
-                    val due = sdf.parse(datePart)
-                    if (today != null && due != null && !due.after(today)) {
-                        lines.add("• " + obj.optString("title", ""))
+            val file = findTasksFile(context)
+            if (file != null) {
+                val json = file.readText()
+                val tasks = JSONArray(json)
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val today = sdf.parse(sdf.format(Date()))
+                for (i in 0 until tasks.length()) {
+                    val obj = tasks.getJSONObject(i)
+                    val dueDate = obj.optString("dueDate", "")
+                    val isDone = obj.optBoolean("isDone", false)
+                    if (dueDate.isNotEmpty() && !isDone) {
+                        val datePart = dueDate.substring(0, 10)
+                        val due = sdf.parse(datePart)
+                        if (today != null && due != null && !due.after(today)) {
+                            lines.add("• " + obj.optString("title", ""))
+                        }
                     }
                 }
-            }
-            if (lines.isEmpty()) {
-                Log.d(TAG, "No due tasks")
-                context.getString(R.string.no_tasks_today)
             } else {
-                val titlesForLog = lines.map { it.removePrefix("• ") }
-                Log.d(TAG, "tasks loaded to display on widget: ${titlesForLog.joinToString(", ")}")
-                lines.joinToString("\n")
+                Log.d(TAG, "tasks.json not found; using placeholder item")
             }
+            lines.add("• cow")
+            val titlesForLog = lines.map { it.removePrefix("• ") }
+            Log.d(TAG, "tasks loaded to display on widget: ${titlesForLog.joinToString(", ")}")
+            lines.joinToString("\n")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading tasks", e)
-            context.getString(R.string.no_tasks_today)
+            "• cow"
         }
     }
 
