@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'ui/home_page.dart';
+import 'ui/settings_page.dart';
+import 'ui/app_logs_page.dart';
 import 'config.dart';
 
 void main() {
@@ -19,6 +21,18 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   void updateTheme() => setState(() {});
 
+  Widget _initialPage() {
+    switch (Config.startPage) {
+      case 'settings':
+        return const SettingsPage();
+      case 'today':
+        return const HomePage();
+      case 'app_logs':
+      default:
+        return const AppLogsPage();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -26,7 +40,7 @@ class _MyAppState extends State<MyApp> {
       theme: ThemeData(primarySwatch: Colors.blue),
       darkTheme: ThemeData.dark(),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: const HomePage(),
+      home: _initialPage(),
     );
   }
 }
