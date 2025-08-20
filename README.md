@@ -49,24 +49,30 @@ flutter create .
 flutter pub get
 ```
 
-### LogicalSize
+### ViewConfiguration error
 
-if you get this
-/C:/Users/noone/AppData/Local/Pub/Cache/hosted/pub.dev/home_widget-0.3.1/lib/home_widget.dart:137:11: 
+If you see a build failure like:
+
+```
 Error: No named parameter with the name 'size'.
-          size: logicalSize,
-          ^^^^
-/C:/dev/flutter/packages/flutter/lib/src/rendering/view.dart:33:9: Context: Found this candidate, but 
-the arguments don't match.
-  const ViewConfiguration({
-        ^^^^^^^^^^^^^^^^^
+```
 
-just 
+ensure the `home_widget` dependency is version `0.4.0` or higher:
+
+```bash
+flutter pub upgrade home_widget
+```
+
+Then run a clean build:
+
 ```bash
 flutter clean
 flutter pub get
 flutter run
 ```
+
 ## Update icon
 
+```bash
 python ./tool/update_icon.py
+```
