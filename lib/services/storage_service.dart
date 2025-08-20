@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:home_widget/home_widget.dart';
 
 import '../models/task.dart';
 
@@ -17,6 +18,11 @@ class StorageService {
     final file = await _getLocalFile();
     final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
     await file.writeAsString(jsonString, flush: true);
+    final dueTasks = _buildDueTasksString(tasks);
+    await HomeWidget.saveWidgetData('due_tasks', dueTasks);
+    await HomeWidget.updateWidget(
+      androidName: 'VersionWidgetProvider',
+    );
   }
 
   Future<List<Task>> loadTaskList() async {
@@ -34,4 +40,17 @@ class StorageService {
       return <Task>[];
     }
   }
+}
+
+String _buildDueTasksString(List<Task> tasks) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final lines = tasks.where((t) {
+    final due = t.dueDate;
+    return due != null && !t.isDone && !due.isAfter(today);
+  }).map((t) => '• ${t.title}').toList();
+  if (lines.isEmpty) {
+    return '• cow';
+  }
+  return lines.join('\n');
 }
