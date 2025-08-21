@@ -1,3 +1,5 @@
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -40,6 +42,18 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+android.applicationVariants.all {
+    if (buildType.name == "release") {
+        outputs
+            .map { it as BaseVariantOutputImpl }
+            .forEach { output ->
+                val version = versionName
+                val type = buildType.name
+                output.outputFileName = "app-${type}_v${version}.apk"
+            }
     }
 }
 
