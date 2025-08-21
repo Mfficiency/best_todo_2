@@ -135,7 +135,7 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._deleteTask', 'Deleted "${task.title}"');
 
     late Timer timer;
-    timer = Timer(const Duration(seconds: Config.defaultDelaySeconds), () {
+    timer = Timer(Config.delayDuration, () {
       setState(() {
         _deletedTasks.insert(0, task);
         if (_deletedTasks.length > 100) {
@@ -149,7 +149,7 @@ class _HomePageState extends State<HomePage>
       ..showSnackBar(
         SnackBar(
           content: Text('Deleted "${task.title}"'),
-          duration: const Duration(seconds: Config.defaultDelaySeconds),
+          duration: Config.delayDuration,
           action: SnackBarAction(
             label: 'Cancel',
             onPressed: () {

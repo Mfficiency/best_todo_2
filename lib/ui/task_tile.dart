@@ -55,7 +55,7 @@ class _TaskTileState extends State<TaskTile>
     _labelController = TextEditingController(text: widget.task.label);
     _progressController = AnimationController(
       vsync: this,
-      duration: Duration(seconds: Config.defaultDelaySeconds),
+      duration: Config.delayDuration,
     );
     _destinations = List<int>.generate(Config.tabs.length, (i) => i)
       ..remove(widget.pageIndex);
@@ -86,7 +86,7 @@ class _TaskTileState extends State<TaskTile>
     _timer?.cancel();
     _progressController.reset();
     _progressController.forward();
-    _timer = Timer(Duration(seconds: Config.defaultDelaySeconds), () {
+    _timer = Timer(Config.delayDuration, () {
       if (mounted && _showOptions) {
         widget.onMoveNext();
         _progressController.stop();
