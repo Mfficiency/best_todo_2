@@ -1,7 +1,17 @@
 # Changelog
 
-## [0.1.18] - 2025-08-21
+## [0.1.21] - 2025-08-21
 - Added Next Month tab to organize tasks beyond a week ahead.
+
+## [0.1.20] - 2025-08-21
+- Added animated feedback for swipe gestures.
+
+## [0.1.19] - 2025-08-21
+- make delay for swipe button configurable in settings.
+
+## [0.1.18] - 2025-08-21
+- updated app theme to use base hue #005FDD
+- aligned web manifest colors with new theme
 
 ## [0.1.17] - 2025-08-21
 - delete button only visible in dev mode.

@@ -14,6 +14,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _notifications = false;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
+  double _defaultDelaySeconds = Config.defaultDelaySeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +45,22 @@ class _SettingsPageState extends State<SettingsPage> {
               Config.swipeLeftDelete = val;
               widget.onSettingsChanged?.call();
             },
+          ),
+          ListTile(
+            title: Text(
+                'Default delay (${_defaultDelaySeconds.toStringAsFixed(1)}s)'),
+            subtitle: Slider(
+              value: _defaultDelaySeconds,
+              min: 0,
+              max: 10,
+              divisions: 100,
+              onChanged: (val) {
+                final newVal = (val * 10).round() / 10;
+                setState(() => _defaultDelaySeconds = newVal);
+                Config.defaultDelaySeconds = newVal;
+                widget.onSettingsChanged?.call();
+              },
+            ),
           ),
         ],
       ),

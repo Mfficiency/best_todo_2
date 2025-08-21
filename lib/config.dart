@@ -1,12 +1,15 @@
 class Config {
-  static const int defaultDelaySeconds = 5;
+  static double defaultDelaySeconds = 5.0;
+
+  static Duration get delayDuration =>
+      Duration(milliseconds: (defaultDelaySeconds * 1000).round());
 
   /// Whether the app is running in development mode.
   /// Uses the `dart.vm.product` flag to detect production builds.
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
   /// Current application version.
-  static const String version = '0.1.18';
+  static const String version = '0.1.21';
 
   static const List<String> initialTasks = [
     'Get milk',
