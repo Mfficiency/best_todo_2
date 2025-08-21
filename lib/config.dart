@@ -6,7 +6,7 @@ class Config {
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
   /// Current application version.
-  static const String version = '0.1.12';
+  static const String version = '0.1.13';
 
   static const List<String> initialTasks = [
     'Get milk',

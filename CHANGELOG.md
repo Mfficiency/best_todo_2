@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.13] - 2025-08-21
+- dont show tasks that are done in the widget.
+
 ## [0.1.12] - 2025-08-21
 - Removed old version widget and associated Android resources.
 - widget works and shows tasks due today.
