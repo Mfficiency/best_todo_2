@@ -265,7 +265,14 @@ class _HomePageState extends State<HomePage>
               final tile = TaskTile(
                 task: task,
                 onChanged: () {
-                  setState(task.toggleDone);
+                  setState(() {
+                    task.toggleDone();
+                    if (task.isDone) {
+                      _tasks
+                        ..remove(task)
+                        ..add(task);
+                    }
+                  });
                   _saveTasks();
                 },
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
