@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Resize existing PNG icons for all platforms."""
+# run this script from the root of the project:
+# python tool/update_app_logo.py
 import os
 from PIL import Image
 
