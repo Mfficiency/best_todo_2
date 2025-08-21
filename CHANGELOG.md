@@ -3,6 +3,8 @@
 ## [0.1.16] - 2025-08-21
 
 - completed tasks now move to the end of their list when checked.
+- delete button added to task tile when in dev mode.
+- delete all completed tasks when a new day starts.
 
 ## [0.1.15] - 2025-08-21
 - ensure tasks due tomorrow are excluded from today's list.
