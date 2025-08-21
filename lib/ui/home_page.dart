@@ -11,6 +11,7 @@ import 'settings_page.dart';
 import 'deleted_items_page.dart';
 import 'changelog_page.dart';
 import 'app_logs_page.dart';
+import '../utils/date_utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -224,7 +225,10 @@ class _HomePageState extends State<HomePage>
   List<Task> _tasksForTab(int pageIndex) {
     return _tasks.where((task) {
       if (task.dueDate == null) return false;
-      final diff = task.dueDate!.difference(_currentDate).inDays;
+      // Compare dates without considering the time of day so that tasks due
+      // tomorrow don't appear in today's list simply because they are less
+      // than 24 hours away.
+      final diff = dateDiffInDays(task.dueDate!, _currentDate);
       if (pageIndex == 0) return diff <= 0;
       if (pageIndex == 1) return diff == 1;
       if (pageIndex == 2) return diff == 2;
