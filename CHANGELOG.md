@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.15] - 2025-08-21
+- support dark mode in home screen widget
+
 ## [0.1.14] - 2025-08-21
 - only show pending tasks due today or earlier on the home widget.
 - update padding in widget layout to improve appearance on various devices.

@@ -25,7 +25,7 @@ class SimpleWidgetProvider : HomeWidgetProvider() {
                 setInt(R.id.widget_container, "setBackgroundColor", bgColor)
                 setTextColor(R.id.widget_text, textColor)
             }
-			val intent = Intent(context, MainActivity::class.java)
+            val intent = Intent(context, MainActivity::class.java)
             val pendingIntent = PendingIntent.getActivity(
                 context,
                 0,
