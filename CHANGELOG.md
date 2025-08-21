@@ -2,6 +2,7 @@
 
 ## [0.1.12] - 2025-08-21
 - Removed old version widget and associated Android resources.
+- widget works and shows tasks due today.
 
 ## [0.1.11] - 2025-08-17
 - changed saving location
