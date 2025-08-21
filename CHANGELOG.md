@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.16] - 2025-08-21
+
+- completed tasks now move to the end of their list when checked.
+
 ## [0.1.15] - 2025-08-21
 - ensure tasks due tomorrow are excluded from today's list.
 - made background black in widget as a temporary fix.
