@@ -2,11 +2,13 @@ package com.example.best_todo_2
 
 import android.appwidget.AppWidgetManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
+import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
 
 class SimpleWidgetProvider : HomeWidgetProvider() {
@@ -34,6 +36,20 @@ class SimpleWidgetProvider : HomeWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widget_text, pendingIntent)
             appWidgetManager.updateAppWidget(widgetId, views)
+        }
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == Intent.ACTION_CONFIGURATION_CHANGED) {
+            val manager = AppWidgetManager.getInstance(context)
+            val component = ComponentName(context, SimpleWidgetProvider::class.java)
+            val ids = manager.getAppWidgetIds(component)
+            val prefs = context.getSharedPreferences(
+                HomeWidgetPlugin.SHARED_PREFERENCES_NAME,
+                Context.MODE_PRIVATE
+            )
+            onUpdate(context, manager, ids, prefs)
         }
     }
 }
