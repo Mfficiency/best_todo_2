@@ -256,28 +256,28 @@ class _TaskTileState extends State<TaskTile>
       ),
     );
 
-    if (isAndroid && _isEmulator) {
-      content = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          if (widget.swipeLeftDelete) {
-            if (velocity > 0) {
-              _startOptions();
-            } else if (velocity < 0) {
-              widget.onDelete();
-            }
-          } else {
-            if (velocity > 0) {
-              widget.onDelete();
-            } else if (velocity < 0) {
-              _startOptions();
-            }
+    
+    content = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (widget.swipeLeftDelete) {
+          if (velocity > 0) {
+            _startOptions();
+          } else if (velocity < 0) {
+            widget.onDelete();
           }
-        },
-        child: content,
-      );
-    }
+        } else {
+          if (velocity > 0) {
+            widget.onDelete();
+          } else if (velocity < 0) {
+            _startOptions();
+          }
+        }
+      },
+      child: content,
+    );
+    
 
     return content;
   }
