@@ -9,7 +9,12 @@
     android:padding="8dp">
     <TextView
         android:id="@+id/widget_text"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello Widget"/>
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="start|top"
+        android:padding="8dp"
+        android:text="Hello Widget"
+        android:textColor="@android:color/black"
+        android:textSize="14sp"
+        android:lineSpacingExtra="2dp" />
 </LinearLayout>

@@ -1,4 +1,4 @@
-package com.example.test_widget_1
+package com.example.best_todo_2
 
 import android.appwidget.AppWidgetManager
 import android.content.Context
