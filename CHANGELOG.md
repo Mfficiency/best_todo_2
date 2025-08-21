@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.18] - 2025-08-21
+- updated app theme to use base hue #005FDD
+- aligned web manifest colors with new theme
+
 ## [0.1.17] - 2025-08-21
 - delete button only visible in dev mode.
 
