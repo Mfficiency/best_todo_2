@@ -4,6 +4,8 @@ import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'config.dart';
 
+const Color _seedColor = Color(0xFF005FDD);
+
 void main() {
   runApp(const MyApp());
 }
@@ -37,8 +39,17 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Best Todo 2',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      darkTheme: ThemeData.dark(),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: _seedColor),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _seedColor,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
       home: _initialPage(),
     );

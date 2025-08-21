@@ -1,6 +1,7 @@
 name: best_todo_2
 description: A simple Flutter to-do application
 publish_to: 'none'
+
 version: 0.1.19
 
 environment:
