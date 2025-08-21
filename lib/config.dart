@@ -9,7 +9,7 @@ class Config {
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
   /// Current application version.
-  static const String version = '0.1.22';
+  static const String version = '0.1.23';
 
   static const List<String> initialTasks = [
     'Get milk',
@@ -37,4 +37,8 @@ class Config {
 
   /// If true, the app uses a dark color scheme.
   static bool darkMode = false;
+
+  /// If true, the tab bar shows icons for unselected tabs.
+  /// When false, all tabs display text labels only.
+  static bool useIconTabs = false;
 }

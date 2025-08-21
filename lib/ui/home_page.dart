@@ -416,20 +416,20 @@ class _HomePageState extends State<HomePage>
               TabBar(
                 controller: _tabController,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 1),
-                tabs: Config.tabs.map((t) => Tab(text: t)).toList(),
-
-                // tabs: List.generate(Config.tabs.length, (index) {
-                //   final selected = _tabController.index == index;
-                //   if (selected) {
-                //     return Tab(text: Config.tabs[index]);
-                //   }
-                //   return Tab(
-                //     icon: Image.asset(
-                //       _tabIconPaths[index],
-                //       height: 24,
-                //     ),
-                //   );
-                // }),
+                tabs: Config.useIconTabs
+                    ? List.generate(Config.tabs.length, (index) {
+                        final selected = _tabController.index == index;
+                        if (selected) {
+                          return Tab(text: Config.tabs[index]);
+                        }
+                        return Tab(
+                          icon: Image.asset(
+                            _tabIconPaths[index],
+                            height: 24,
+                          ),
+                        );
+                      })
+                    : Config.tabs.map((t) => Tab(text: t)).toList(),
               ),
             ],
           ),
