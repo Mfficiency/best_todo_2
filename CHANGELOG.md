@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.21] - 2025-08-21
+- Added Next Month tab to organize tasks beyond a week ahead.
+
 ## [0.1.20] - 2025-08-21
 - Added animated feedback for swipe gestures.
 

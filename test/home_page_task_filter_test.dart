@@ -24,4 +24,27 @@ void main() {
     final tomorrowMorning = DateTime(2024, 5, 4, 1);
     expect(dateDiffInDays(tomorrowMorning, now), 1);
   });
+
+  test('tasks beyond 30 days fall into next month list', () {
+    final now = DateTime(2024, 5, 3);
+    final tasks = [
+      Task(title: 'next week', dueDate: now.add(const Duration(days: 5))),
+      Task(title: 'next month', dueDate: now.add(const Duration(days: 40))),
+    ];
+
+    final nextWeekTasks = tasks.where((task) {
+      final diff = dateDiffInDays(task.dueDate!, now);
+      return diff >= 3 && diff < 30;
+    }).toList();
+
+    final nextMonthTasks = tasks.where((task) {
+      final diff = dateDiffInDays(task.dueDate!, now);
+      return diff >= 30;
+    }).toList();
+
+    expect(nextWeekTasks.length, 1);
+    expect(nextWeekTasks.first.title, 'next week');
+    expect(nextMonthTasks.length, 1);
+    expect(nextMonthTasks.first.title, 'next month');
+  });
 }

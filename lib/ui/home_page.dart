@@ -40,8 +40,9 @@ class _HomePageState extends State<HomePage>
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
 
-  /// Day offsets for each tab. The last entry represents "next week".
-  static const List<int> _offsetDays = [0, 1, 2, 7];
+  /// Day offsets for each tab. The last two entries represent
+  /// "next week" and "next month" respectively.
+  static const List<int> _offsetDays = [0, 1, 2, 7, 30];
 
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
@@ -232,7 +233,8 @@ class _HomePageState extends State<HomePage>
       if (pageIndex == 0) return diff <= 0;
       if (pageIndex == 1) return diff == 1;
       if (pageIndex == 2) return diff == 2;
-      return diff >= 3;
+      if (pageIndex == 3) return diff >= 3 && diff < 30;
+      return diff >= 30;
     }).toList();
   }
 
@@ -414,6 +416,7 @@ class _HomePageState extends State<HomePage>
           _buildTaskList(1),
           _buildTaskList(2),
           _buildTaskList(3),
+          _buildTaskList(4),
         ],
       ),
     );
