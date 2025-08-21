@@ -65,6 +65,7 @@ just
 ```bash
 flutter clean
 flutter pub get
+flutter create .
 flutter run
 ```
 ## Update icon
