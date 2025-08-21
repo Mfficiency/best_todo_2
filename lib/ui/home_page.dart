@@ -44,6 +44,15 @@ class _HomePageState extends State<HomePage>
   /// "next week" and "next month" respectively.
   static const List<int> _offsetDays = [0, 1, 2, 7, 30];
 
+  /// Asset paths for tab icons used when a tab is not selected.
+  static const List<String> _tabIconPaths = [
+    'assets/icons/today.png',
+    'assets/icons/tomorrow.png',
+    'assets/icons/the_day_after.png',
+    'assets/icons/next_week.png',
+    'assets/icons/next_month.png',
+  ];
+
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
     if (loaded.isEmpty) {
@@ -67,6 +76,9 @@ class _HomePageState extends State<HomePage>
     super.initState();
     _tabController =
         TabController(length: Config.tabs.length, vsync: this);
+    _tabController.addListener(() {
+      setState(() {});
+    });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
     _loadTasks();
   }
@@ -403,7 +415,18 @@ class _HomePageState extends State<HomePage>
                 ),
               TabBar(
                 controller: _tabController,
-                tabs: Config.tabs.map((t) => Tab(text: t)).toList(),
+                tabs: List.generate(Config.tabs.length, (index) {
+                  final selected = _tabController.index == index;
+                  if (selected) {
+                    return Tab(text: Config.tabs[index]);
+                  }
+                  return Tab(
+                    icon: Image.asset(
+                      _tabIconPaths[index],
+                      height: 24,
+                    ),
+                  );
+                }),
               ),
             ],
           ),
