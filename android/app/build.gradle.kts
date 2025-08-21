@@ -1,4 +1,4 @@
-import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import com.android.build.api.variant.VariantOutputConfiguration
 
 plugins {
     id("com.android.application")
@@ -45,15 +45,16 @@ android {
     }
 }
 
-android.applicationVariants.all {
-    if (buildType.name == "release") {
-        outputs
-            .map { it as BaseVariantOutputImpl }
-            .forEach { output ->
-                val version = versionName
-                val type = buildType.name
-                output.outputFileName = "app-${type}_v${version}.apk"
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { output ->
+            if (output.outputType == VariantOutputConfiguration.OutputType.SINGLE) {
+                val version = variant.versionName.get()
+                val type = variant.buildType
+                output.outputFileName.set("app-${type}_v${version}.apk")
             }
+        }
     }
 }
 
