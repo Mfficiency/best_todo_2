@@ -1,5 +1,8 @@
 class Config {
-  static const int defaultDelaySeconds = 5;
+  static double defaultDelaySeconds = 5.0;
+
+  static Duration get delayDuration =>
+      Duration(milliseconds: (defaultDelaySeconds * 1000).round());
 
   /// Whether the app is running in development mode.
   /// Uses the `dart.vm.product` flag to detect production builds.
