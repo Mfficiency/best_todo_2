@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:gravity="center"
     android:orientation="vertical"
-    android:background="#FFFFFF"
+    android:background="@android:color/black"
     android:padding="4dp">
     <TextView
         android:id="@+id/widget_text"
@@ -17,7 +17,7 @@
         android:paddingRight="8dp"
         android:paddingBottom="1px"
         android:text="Hello Widget"
-        android:textColor="@android:color/black"
+        android:textColor="@android:color/white"
         android:textSize="14sp"
         android:lineSpacingExtra="2dp" />
 </LinearLayout>
