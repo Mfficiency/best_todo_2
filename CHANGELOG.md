@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.19] - 2025-08-21
+- make delay for swipe button configurable in settings.
+
 ## [0.1.17] - 2025-08-21
 - delete button only visible in dev mode.
 
