@@ -96,13 +96,22 @@ class _TaskTileState extends State<TaskTile>
   @override
   Widget build(BuildContext context) {
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-    final trailing = widget.showSwipeButton
-        ? IconButton(
+    final trailing = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.showSwipeButton)
+          IconButton(
             icon: const Icon(Icons.swipe),
             tooltip: 'Reschedule',
             onPressed: _startOptions,
-          )
-        : null;
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            tooltip: 'Delete',
+            onPressed: widget.onDelete,
+          ),
+        ],
+      );
 
     final listTile = ListTile(
       contentPadding:
