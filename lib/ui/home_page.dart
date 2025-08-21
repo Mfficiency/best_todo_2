@@ -197,7 +197,11 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _updateHomeWidget() async {
-    final data = _tasks.map((t) => '• ${t.title}').join('\n');
+    final data = _tasks
+      .where((t) => !t.isDone) // keep only tasks that are not done
+      .map((t) => '• ${t.title}')
+      .join('\n');
+
     try {
       await HomeWidget.saveWidgetData(dataKey, data);
       await HomeWidget.updateWidget(
