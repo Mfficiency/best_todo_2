@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="simple_widget_name">Due Tasks</string>
     <string name="no_tasks_today">No due tasks</string>
 </resources>
