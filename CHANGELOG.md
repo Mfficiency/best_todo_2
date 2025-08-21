@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.20] - 2025-08-21
+- Added animated feedback for swipe gestures.
+
 ## [0.1.19] - 2025-08-21
 - make delay for swipe button configurable in settings.
 

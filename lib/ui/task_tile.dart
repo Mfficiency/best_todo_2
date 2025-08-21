@@ -45,6 +45,8 @@ class _TaskTileState extends State<TaskTile>
   late final TextEditingController _noteController;
   late final TextEditingController _labelController;
   late final List<int> _destinations;
+  double _dragOffset = 0;
+  bool _dragging = false;
 
   @override
   void initState() {
@@ -257,27 +259,46 @@ class _TaskTileState extends State<TaskTile>
     );
 
     
-    content = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragEnd: (details) {
-        final velocity = details.primaryVelocity ?? 0;
-        if (widget.swipeLeftDelete) {
-          if (velocity > 0) {
-            _startOptions();
-          } else if (velocity < 0) {
-            widget.onDelete();
-          }
-        } else {
-          if (velocity > 0) {
-            widget.onDelete();
-          } else if (velocity < 0) {
-            _startOptions();
-          }
-        }
-      },
+    content = AnimatedSlide(
+      offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
+      duration:
+          _dragging ? Duration.zero : const Duration(milliseconds: 200),
       child: content,
     );
-    
+
+    if (isAndroid) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) {
+          setState(() => _dragging = true);
+        },
+        onHorizontalDragUpdate: (details) {
+          setState(() => _dragOffset += details.delta.dx);
+        },
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          const threshold = 100;
+          if (widget.swipeLeftDelete) {
+            if (_dragOffset > threshold || velocity > 500) {
+              _startOptions();
+            } else if (_dragOffset < -threshold || velocity < -500) {
+              widget.onDelete();
+            }
+          } else {
+            if (_dragOffset > threshold || velocity > 500) {
+              widget.onDelete();
+            } else if (_dragOffset < -threshold || velocity < -500) {
+              _startOptions();
+            }
+          }
+          setState(() {
+            _dragging = false;
+            _dragOffset = 0;
+          });
+        },
+        child: content,
+      );
+    }
 
     return content;
   }
