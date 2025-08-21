@@ -44,6 +44,10 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
+    final savedDate = await _storageService.loadSavedDate();
+    final now = DateTime.now();
+    _currentDate = DateTime(now.year, now.month, now.day);
+
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks
@@ -52,12 +56,27 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
+
+    bool removed = false;
+    if (savedDate != null) {
+      final last = DateTime(savedDate.year, savedDate.month, savedDate.day);
+      if (_currentDate.isAfter(last)) {
+        _tasks.removeWhere((t) => t.isDone);
+        removed = true;
+      }
+    }
+
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
       setState(() {});
     }
-    _updateHomeWidget();
+    if (removed) {
+      _saveTasks();
+    } else {
+      _storageService.saveCurrentDate(_currentDate);
+      _updateHomeWidget();
+    }
   }
 
   @override
@@ -217,6 +236,7 @@ class _HomePageState extends State<HomePage>
 
   void _saveTasks() {
     _storageService.saveTaskList(_tasks);
+    _storageService.saveCurrentDate(_currentDate);
     _updateHomeWidget();
   }
 
