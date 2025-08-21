@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.22] - 2025-08-21
+- widen the tabs.
+- added icons in background ready to be used in next version
+
 ## [0.1.21] - 2025-08-21
 - Added Next Month tab to organize tasks beyond a week ahead.
 
