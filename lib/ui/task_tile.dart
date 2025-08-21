@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:async';
+import 'dart:io' show Platform;
+
 import '../models/task.dart';
 import '../config.dart';
 
@@ -34,6 +37,7 @@ class _TaskTileState extends State<TaskTile>
     with SingleTickerProviderStateMixin {
   bool _showOptions = false;
   bool _expanded = false;
+  bool _isEmulator = false;
   Timer? _timer;
   late final AnimationController _progressController;
   late final TextEditingController _titleController;
@@ -55,6 +59,26 @@ class _TaskTileState extends State<TaskTile>
     );
     _destinations = List<int>.generate(Config.tabs.length, (i) => i)
       ..remove(widget.pageIndex);
+    _checkEmulator();
+  }
+
+  Future<void> _checkEmulator() async {
+    final plugin = DeviceInfoPlugin();
+    var isEmulator = true;
+    try {
+      if (kIsWeb) {
+        isEmulator = true;
+      } else if (Platform.isAndroid) {
+        final info = await plugin.androidInfo;
+        isEmulator = !info.isPhysicalDevice;
+      } else if (Platform.isIOS) {
+        final info = await plugin.iosInfo;
+        isEmulator = !info.isPhysicalDevice;
+      }
+    } catch (_) {
+      isEmulator = true;
+    }
+    if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
   void _startOptions() {
@@ -99,19 +123,21 @@ class _TaskTileState extends State<TaskTile>
     final trailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.showSwipeButton)
-          IconButton(
-            icon: const Icon(Icons.swipe),
-            tooltip: 'Reschedule',
-            onPressed: _startOptions,
-          ),
+        if (_isEmulator) ...[
+          if (widget.showSwipeButton)
+            IconButton(
+              icon: const Icon(Icons.swipe),
+              tooltip: 'Reschedule',
+              onPressed: _startOptions,
+            ),
           IconButton(
             icon: const Icon(Icons.delete),
             tooltip: 'Delete',
             onPressed: widget.onDelete,
           ),
         ],
-      );
+      ],
+    );
 
     final listTile = ListTile(
       contentPadding:
@@ -230,28 +256,28 @@ class _TaskTileState extends State<TaskTile>
       ),
     );
 
-    if (isAndroid) {
-      content = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          if (widget.swipeLeftDelete) {
-            if (velocity > 0) {
-              _startOptions();
-            } else if (velocity < 0) {
-              widget.onDelete();
-            }
-          } else {
-            if (velocity > 0) {
-              widget.onDelete();
-            } else if (velocity < 0) {
-              _startOptions();
-            }
+    
+    content = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (widget.swipeLeftDelete) {
+          if (velocity > 0) {
+            _startOptions();
+          } else if (velocity < 0) {
+            widget.onDelete();
           }
-        },
-        child: content,
-      );
-    }
+        } else {
+          if (velocity > 0) {
+            widget.onDelete();
+          } else if (velocity < 0) {
+            _startOptions();
+          }
+        }
+      },
+      child: content,
+    );
+    
 
     return content;
   }

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.17] - 2025-08-21
+- delete button only visible in dev mode.
+
 ## [0.1.16] - 2025-08-21
 
 - completed tasks now move to the end of their list when checked.
