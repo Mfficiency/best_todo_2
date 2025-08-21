@@ -4,6 +4,7 @@ import '../models/task.dart';
 import '../config.dart';
 import '../services/storage_service.dart';
 import '../services/log_service.dart';
+import 'package:home_widget/home_widget.dart';
 import 'task_tile.dart';
 import 'about_page.dart';
 import 'settings_page.dart';
@@ -30,6 +31,11 @@ class _HomePageState extends State<HomePage>
   final List<Task> _deletedTasks = [];
   final StorageService _storageService = StorageService();
 
+  final String appGroupId = 'group.homeScreenApp';
+  final String iOSWidgetName = 'SimpleWidgetProvider';
+  final String androidWidgetName = 'SimpleWidgetProvider';
+  final String dataKey = 'text_from_flutter_app';
+
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
 
@@ -51,6 +57,7 @@ class _HomePageState extends State<HomePage>
     if (mounted) {
       setState(() {});
     }
+    _updateHomeWidget();
   }
 
   @override
@@ -58,6 +65,7 @@ class _HomePageState extends State<HomePage>
     super.initState();
     _tabController =
         TabController(length: Config.tabs.length, vsync: this);
+    HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
     _loadTasks();
   }
 
@@ -79,7 +87,7 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _controller.clear();
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
   }
 
@@ -95,7 +103,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
     LogService.add('HomePage._moveTaskToNextPage',
         'Moved "${task.title}" to page $destination');
   }
@@ -108,7 +116,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate =
           _currentDate.add(Duration(days: _offsetDays[destination]));
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
     LogService.add(
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
   }
@@ -122,7 +130,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _tasks.removeAt(originalIndex);
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
     LogService.add('HomePage._deleteTask', 'Deleted "${task.title}"');
 
     late Timer timer;
@@ -148,7 +156,7 @@ class _HomePageState extends State<HomePage>
               setState(() {
                 _tasks.insert(originalIndex, task);
               });
-              _storageService.saveTaskList(_tasks);
+              _saveTasks();
               LogService.add('HomePage._deleteTask',
                   'Restored from undo "${task.title}"');
             },
@@ -163,7 +171,7 @@ class _HomePageState extends State<HomePage>
       task.dueDate = _currentDate;
       _tasks.add(task);
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
   }
 
@@ -183,9 +191,23 @@ class _HomePageState extends State<HomePage>
         _tasks.removeWhere((t) => t.isDone);
       }
     });
-    _storageService.saveTaskList(_tasks);
+    _saveTasks();
     LogService.add('HomePage._changeDate',
         'Changed date by $delta to $_currentDate');
+  }
+
+  Future<void> _updateHomeWidget() async {
+    final data = _tasks.map((t) => '• ${t.title}').join('\n');
+    try {
+      await HomeWidget.saveWidgetData(dataKey, data);
+      await HomeWidget.updateWidget(
+          iOSName: iOSWidgetName, androidName: androidWidgetName);
+    } catch (_) {}
+  }
+
+  void _saveTasks() {
+    _storageService.saveTaskList(_tasks);
+    _updateHomeWidget();
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
@@ -234,7 +256,7 @@ class _HomePageState extends State<HomePage>
                 task: task,
                 onChanged: () {
                   setState(task.toggleDone);
-                  _storageService.saveTaskList(_tasks);
+                  _saveTasks();
                 },
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
                 onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
