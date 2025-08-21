@@ -1,3 +1,5 @@
+import com.android.build.api.variant.VariantOutputConfiguration
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -39,6 +41,19 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { output ->
+            if (output.outputType == VariantOutputConfiguration.OutputType.SINGLE) {
+                val version = variant.versionName.get()
+                val type = variant.buildType
+                output.outputFileName.set("app-${type}_v${version}.apk")
+            }
         }
     }
 }
