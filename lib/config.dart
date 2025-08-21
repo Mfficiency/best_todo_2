@@ -37,4 +37,8 @@ class Config {
 
   /// If true, the app uses a dark color scheme.
   static bool darkMode = false;
+
+  /// If true, the tab bar shows icons for unselected tabs.
+  /// When false, all tabs display text labels only.
+  static bool useIconTabs = false;
 }

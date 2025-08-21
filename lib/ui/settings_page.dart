@@ -14,6 +14,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _notifications = false;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
+  bool _useIconTabs = Config.useIconTabs;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
 
   @override
@@ -43,6 +44,15 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (val) {
               setState(() => _swipeLeftDelete = val);
               Config.swipeLeftDelete = val;
+              widget.onSettingsChanged?.call();
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Use tab icons'),
+            value: _useIconTabs,
+            onChanged: (val) {
+              setState(() => _useIconTabs = val);
+              Config.useIconTabs = val;
               widget.onSettingsChanged?.call();
             },
           ),
