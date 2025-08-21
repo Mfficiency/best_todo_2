@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.23] - 2025-08-21
+- Added icons for unselected tabs.
+- added settings to toggle icon tabs.
+
 ## [0.1.22] - 2025-08-21
 - widen the tabs.
 - added icons in background ready to be used in next version
