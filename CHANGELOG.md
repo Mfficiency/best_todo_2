@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.14] - 2025-08-21
+- update padding in widget layout to improve appearance on various devices.
+
 ## [0.1.13] - 2025-08-21
 - dont show tasks that are done in the widget.
 
