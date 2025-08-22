@@ -78,7 +78,7 @@ class _IntroPageState extends State<IntroPage> {
         children: pages,
       ),
       bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
