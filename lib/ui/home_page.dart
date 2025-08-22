@@ -88,7 +88,7 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
-  void _addTask(String title) {
+  Future<void> _addTask(String title) async {
     if (title.trim().isEmpty) return;
     final offset = _offsetDays[_tabController.index];
     final task = Task(
@@ -99,11 +99,11 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _controller.clear();
-    _saveTasks();
+    await _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
   }
 
-  void _moveTaskToNextPage(int pageIndex, int index) {
+  Future<void> _moveTaskToNextPage(int pageIndex, int index) async {
     final tasks = _tasksForTab(pageIndex);
     int destination = pageIndex + 1;
     if (destination >= Config.tabs.length) {
@@ -114,24 +114,24 @@ class _HomePageState extends State<HomePage>
     setState(() {
       task.dueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
     });
-    _saveTasks();
+    await _saveTasks();
     LogService.add('HomePage._moveTaskToNextPage',
         'Moved "${task.title}" to page $destination');
   }
 
-  void _moveTask(int pageIndex, int index, int destination) {
+  Future<void> _moveTask(int pageIndex, int index, int destination) async {
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
     setState(() {
       task.dueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
     });
-    _saveTasks();
+    await _saveTasks();
     LogService.add(
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
   }
 
-  void _deleteTask(int pageIndex, int index) {
+  Future<void> _deleteTask(int pageIndex, int index) async {
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
@@ -140,7 +140,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _tasks.removeAt(originalIndex);
     });
-    _saveTasks();
+    await _saveTasks();
     LogService.add('HomePage._deleteTask', 'Deleted "${task.title}"');
 
     late Timer timer;
@@ -175,13 +175,13 @@ class _HomePageState extends State<HomePage>
       );
   }
 
-  void _restoreTask(Task task) {
+  Future<void> _restoreTask(Task task) async {
     setState(() {
       _deletedTasks.remove(task);
       task.dueDate = _currentDate;
       _tasks.add(task);
     });
-    _saveTasks();
+    await _saveTasks();
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
   }
 
@@ -192,7 +192,7 @@ class _HomePageState extends State<HomePage>
 
   /// Change the current virtual date by the given number of days.
   /// When moving forward, overdue tasks remain visible in the Today tab.
-  void _changeDate(int delta) {
+  Future<void> _changeDate(int delta) async {
     setState(() {
       _currentDate = _currentDate.add(Duration(days: delta));
       // Remove completed tasks when progressing to the next day so that
@@ -201,14 +201,15 @@ class _HomePageState extends State<HomePage>
         _tasks.removeWhere((t) => t.isDone);
       }
     });
-    _saveTasks();
+    await _saveTasks();
     LogService.add(
         'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }
 
   Future<void> _updateHomeWidget() async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    // Use the app's current virtual date so the widget mirrors the Today tab.
+    final today =
+        DateTime(_currentDate.year, _currentDate.month, _currentDate.day);
     final data = _tasks
         .where((t) {
           if (t.dueDate == null) return false;
@@ -226,9 +227,9 @@ class _HomePageState extends State<HomePage>
     } catch (_) {}
   }
 
-  void _saveTasks() {
-    _storageService.saveTaskList(_tasks);
-    _updateHomeWidget();
+  Future<void> _saveTasks() async {
+    await _storageService.saveTaskList(_tasks);
+    await _updateHomeWidget();
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
@@ -261,14 +262,14 @@ class _HomePageState extends State<HomePage>
                 child: TextField(
                   controller: _controller,
                   decoration: const InputDecoration(labelText: 'Add task'),
-                  onSubmitted: _addTask,
+                  onSubmitted: (text) { _addTask(text); },
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.add),
-                onPressed: () => _addTask(_controller.text),
-              )
-            ],
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () { _addTask(_controller.text); },
+                ),
+              ],
           ),
         ),
         Expanded(
@@ -280,34 +281,36 @@ class _HomePageState extends State<HomePage>
                   Theme.of(context).platform == TargetPlatform.android;
               final tile = TaskTile(
                 task: task,
-                onChanged: () {
-                  setState(() {
-                    task.toggleDone();
-                    if (task.isDone) {
-                      _tasks
-                        ..remove(task)
-                        ..add(task);
-                    }
-                  });
-                  _saveTasks();
-                },
-                onMove: (dest) => _moveTask(pageIndex, index, dest),
-                onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
-                onDelete: () => _deleteTask(pageIndex, index),
+                  onChanged: () async {
+                    setState(() {
+                      task.toggleDone();
+                      if (task.isDone) {
+                        _tasks
+                          ..remove(task)
+                          ..add(task);
+                      }
+                    });
+                    await _saveTasks();
+                  },
+                  onMove: (dest) { _moveTask(pageIndex, index, dest); },
+                  onMoveNext: () { _moveTaskToNextPage(pageIndex, index); },
+                  onDelete: () { _deleteTask(pageIndex, index); },
                 pageIndex: pageIndex,
                 showSwipeButton: !isAndroid,
                 swipeLeftDelete: Config.swipeLeftDelete,
               );
               return isAndroid
                   ? tile
-                  : Dismissible(
-                      key: ValueKey('${task.title}-$index-$pageIndex'),
-                      background: Container(
-                        color: Colors.greenAccent.withOpacity(0.5),
-                      ),
-                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                      child: tile,
-                    );
+                    : Dismissible(
+                        key: ValueKey('${task.title}-$index-$pageIndex'),
+                        background: Container(
+                          color: Colors.greenAccent.withOpacity(0.5),
+                        ),
+                        onDismissed: (_) {
+                          _moveTaskToNextPage(pageIndex, index);
+                        },
+                        child: tile,
+                      );
             },
           ),
         )
