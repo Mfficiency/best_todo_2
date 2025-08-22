@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../main.dart';
+import '../widget_update_worker.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
@@ -12,6 +13,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _notifications = Config.enableNotifications;
+  bool _widgetUpdates = Config.enableWidgetUpdates;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
   bool _useIconTabs = Config.useIconTabs;
@@ -30,6 +32,20 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() => _notifications = val);
               Config.enableNotifications = val;
               await Config.save();
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Refresh home widget at midnight'),
+            value: _widgetUpdates,
+            onChanged: (val) async {
+              setState(() => _widgetUpdates = val);
+              Config.enableWidgetUpdates = val;
+              await Config.save();
+              if (val) {
+                registerWidgetUpdate();
+              } else {
+                cancelWidgetUpdate();
+              }
             },
           ),
           SwitchListTile(

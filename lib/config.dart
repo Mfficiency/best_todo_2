@@ -50,6 +50,9 @@ class Config {
   /// When false, all tabs display text labels only.
   static bool useIconTabs = false;
 
+  /// If true, the home screen widget updates automatically.
+  static bool enableWidgetUpdates = true;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -69,6 +72,8 @@ class Config {
         enableNotifications =
             data['enableNotifications'] ?? enableNotifications;
         useIconTabs = data['useIconTabs'] ?? useIconTabs;
+        enableWidgetUpdates =
+            data['enableWidgetUpdates'] ?? enableWidgetUpdates;
         defaultDelaySeconds =
             (data['defaultDelaySeconds'] as num?)?.toDouble() ??
                 defaultDelaySeconds;
@@ -85,6 +90,7 @@ class Config {
         'darkMode': darkMode,
         'enableNotifications': enableNotifications,
         'useIconTabs': useIconTabs,
+        'enableWidgetUpdates': enableWidgetUpdates,
         'defaultDelaySeconds': defaultDelaySeconds,
       };
       await file.writeAsString(jsonEncode(data), flush: true);

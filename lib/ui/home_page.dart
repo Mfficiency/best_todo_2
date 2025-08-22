@@ -21,7 +21,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// Current virtual date for the app. In dev mode this can be changed
   /// using the arrows in the app bar.
   DateTime _currentDate = DateTime.now();
@@ -74,6 +74,7 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController =
         TabController(length: Config.tabs.length, vsync: this);
     _tabController.addListener(() {
@@ -87,7 +88,24 @@ class _HomePageState extends State<HomePage>
   void dispose() {
     _tabController.dispose();
     _controller.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final current = DateTime(
+          _currentDate.year, _currentDate.month, _currentDate.day);
+      final diff = today.difference(current).inDays;
+      if (diff > 0) {
+        _changeDate(diff);
+      } else {
+        _updateHomeWidget();
+      }
+    }
   }
 
   void _addTask(String title) {
@@ -211,6 +229,7 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _updateHomeWidget() async {
+    if (!Config.enableWidgetUpdates) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final data = _tasks
