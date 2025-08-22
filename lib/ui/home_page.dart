@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 
@@ -244,13 +244,10 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _importTasks() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-    );
-    if (result == null || result.files.single.path == null) return;
-    final imported =
-        await _storageService.importTaskList(result.files.single.path!);
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final file = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (file == null) return;
+    final imported = await _storageService.importTaskList(file.path);
     if (imported.isEmpty) return;
     setState(() {
       _tasks
