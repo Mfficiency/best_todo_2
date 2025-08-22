@@ -214,7 +214,10 @@ class _TaskTileState extends State<TaskTile>
                     child: TextField(
                       controller: _titleController,
                       decoration: const InputDecoration(labelText: 'Title'),
-                      onChanged: (v) => widget.task.title = v,
+                      onChanged: (v) {
+                        setState(() => widget.task.title = v);
+                        widget.onChanged();
+                      },
                     ),
                   ),
                   Focus(
@@ -226,7 +229,10 @@ class _TaskTileState extends State<TaskTile>
                       decoration: const InputDecoration(labelText: 'Description'),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
-                      onChanged: (v) => widget.task.description = v,
+                      onChanged: (v) {
+                        setState(() => widget.task.description = v);
+                        widget.onChanged();
+                      },
                     ),
                   ),
                   Focus(
@@ -238,7 +244,10 @@ class _TaskTileState extends State<TaskTile>
                       decoration: const InputDecoration(labelText: 'Note'),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
-                      onChanged: (v) => widget.task.note = v,
+                      onChanged: (v) {
+                        setState(() => widget.task.note = v);
+                        widget.onChanged();
+                      },
                     ),
                   ),
                   Focus(
@@ -248,7 +257,10 @@ class _TaskTileState extends State<TaskTile>
                     child: TextField(
                       controller: _labelController,
                       decoration: const InputDecoration(labelText: 'Label'),
-                      onChanged: (v) => widget.task.label = v,
+                      onChanged: (v) {
+                        setState(() => widget.task.label = v);
+                        widget.onChanged();
+                      },
                     ),
                   ),
                   Row(
