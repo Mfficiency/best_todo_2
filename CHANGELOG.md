@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.27] - 2025-08-22
+
+
 ## [0.1.26] - 2025-08-22
 - Added introduction screens highlighting core values: Speed, Minimal Interactions, Open Source.
 
