@@ -56,17 +56,17 @@ class _IntroPageState extends State<IntroPage> {
     final pages = [
       _buildPage(
         'Privacy First',
-        'No ads, no tracking. Your data stays on your device.',
+        'F*ck big tech, No ads, No tracking!',
         Icons.lock,
       ),
       _buildPage(
         'Open Source & Fast',
-        'Transparent code and boots in under one second.',
+        'Transparent code and boots in under one second!',
         Icons.speed,
       ),
       _buildPage(
         'Minimal Interactions',
-        'Designed for the fewest clicks possible.',
+        'Designed for the fewest clicks possible!',
         Icons.touch_app,
       ),
     ];
