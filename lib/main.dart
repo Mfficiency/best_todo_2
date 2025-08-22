@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
+import 'ui/intro_page.dart';
 import 'config.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
@@ -9,11 +11,14 @@ const Color _seedColor = Color(0xFF005FDD);
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Config.load();
-  runApp(const MyApp());
+  final prefs = await SharedPreferences.getInstance();
+  final showIntro = !(prefs.getBool('intro_shown') ?? false);
+  runApp(MyApp(showIntro: showIntro));
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({Key? key}) : super(key: key);
+  final bool showIntro;
+  const MyApp({Key? key, required this.showIntro}) : super(key: key);
 
   static _MyAppState? of(BuildContext context) =>
       context.findAncestorStateOfType<_MyAppState>();
@@ -23,7 +28,22 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  late bool _showIntro = widget.showIntro;
+
   void updateTheme() => setState(() {});
+
+  Future<void> _finishIntro() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('intro_shown', true);
+    setState(() => _showIntro = false);
+  }
+
+  Future<void> restartIntro() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('intro_shown', false);
+    setState(() => _showIntro = true);
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
 
   Widget _initialPage() {
     switch (Config.startPage) {
@@ -40,7 +60,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Best Todo 2',
+      title: 'BestToDo',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: _seedColor),
         useMaterial3: true,
@@ -53,7 +73,7 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: _initialPage(),
+      home: _showIntro ? IntroPage(onFinished: _finishIntro) : _initialPage(),
     );
   }
 }

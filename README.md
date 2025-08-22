@@ -1,4 +1,4 @@
-# Best To-Do 2
+# BestToDo
 
 📝 Swipe-first, ultra-fast to-do app built with Flutter. Tasks default to today. Move with gestures. Notes, labels, and smart rescheduling.
 
@@ -44,6 +44,10 @@ For example `sh tool/build.sh web` will create a folder like
 ### Android
 follow this tutorial to publish the app on the Play Store:
 https://www.youtube.com/watch?v=ZxjgV1YaOcQ
+
+```bash
+flutter build appbundle --release
+```
 
 ## Issues
 

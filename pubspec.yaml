@@ -1,8 +1,8 @@
-name: best_todo_2
+name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.1.25
+version: 0.1.26
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -16,6 +16,7 @@ dependencies:
   flutter_markdown: ^0.6.10
   home_widget: ^0.8.0
   device_info_plus: ^9.0.2
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:

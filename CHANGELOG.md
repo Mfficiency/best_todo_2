@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.26] - 2025-08-22
+- Added introduction screens highlighting core values: Speed, Minimal Interactions, Open Source.
+
 ## [0.1.25] - 2025-08-22
 - save task description and notes automatically when editing.
 - still have the bug where the title changes when you edit stuff

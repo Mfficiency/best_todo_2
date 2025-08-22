@@ -57,8 +57,7 @@ class _HomePageState extends State<HomePage>
     final loaded = await _storageService.loadTaskList();
     if (loaded.isEmpty) {
       _tasks.addAll(
-        Config.initialTasks
-            .map((t) => Task(title: t, dueDate: _currentDate)),
+        Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
       );
     } else {
       _tasks.addAll(loaded);
@@ -74,8 +73,7 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
-    _tabController =
-        TabController(length: Config.tabs.length, vsync: this);
+    _tabController = TabController(length: Config.tabs.length, vsync: this);
     _tabController.addListener(() {
       setState(() {});
     });
@@ -114,8 +112,7 @@ class _HomePageState extends State<HomePage>
     if (index >= tasks.length) return;
     final task = tasks[index];
     setState(() {
-      task.dueDate =
-          _currentDate.add(Duration(days: _offsetDays[destination]));
+      task.dueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _saveTasks();
     LogService.add('HomePage._moveTaskToNextPage',
@@ -127,8 +124,7 @@ class _HomePageState extends State<HomePage>
     if (index >= tasks.length) return;
     final task = tasks[index];
     setState(() {
-      task.dueDate =
-          _currentDate.add(Duration(days: _offsetDays[destination]));
+      task.dueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
     });
     _saveTasks();
     LogService.add(
@@ -171,8 +167,8 @@ class _HomePageState extends State<HomePage>
                 _tasks.insert(originalIndex, task);
               });
               _saveTasks();
-              LogService.add('HomePage._deleteTask',
-                  'Restored from undo "${task.title}"');
+              LogService.add(
+                  'HomePage._deleteTask', 'Restored from undo "${task.title}"');
             },
           ),
         ),
@@ -206,8 +202,8 @@ class _HomePageState extends State<HomePage>
       }
     });
     _saveTasks();
-    LogService.add('HomePage._changeDate',
-        'Changed date by $delta to $_currentDate');
+    LogService.add(
+        'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }
 
   Future<void> _updateHomeWidget() async {
@@ -216,7 +212,8 @@ class _HomePageState extends State<HomePage>
     final data = _tasks
         .where((t) {
           if (t.dueDate == null) return false;
-          final due = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+          final due =
+              DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
           return !t.isDone && !due.isAfter(today);
         }) // keep only pending tasks due today or earlier
         .map((t) => '• ${t.title}')
@@ -279,7 +276,8 @@ class _HomePageState extends State<HomePage>
             itemCount: tasks.length,
             itemBuilder: (context, index) {
               final task = tasks[index];
-              final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+              final isAndroid =
+                  Theme.of(context).platform == TargetPlatform.android;
               final tile = TaskTile(
                 task: task,
                 onChanged: () {
@@ -390,7 +388,7 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: Text('Best Todo 2 v${Config.version}'),
+        title: Text('BestToDo v${Config.version}'),
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(
