@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.32] - 2025-08-22
+- request storage permission before exporting tasks on Android
+
+## [0.1.31] - 2025-08-22
+- allow selecting a folder when exporting tasks in sandboxed macOS builds.
+
 ## [0.1.30] - 2025-08-22
 - add update button on about page to check for new versions.
 

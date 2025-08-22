@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../config.dart';
 import '../models/task.dart';
@@ -237,6 +238,15 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _exportTasks() async {
+    if (Platform.isAndroid) {
+      final status = await Permission.storage.request();
+      if (!status.isGranted) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Storage permission denied')));
+        return;
+      }
+    }
     final downloadsDir = await getDownloadsDirectory();
     final now = DateTime.now();
     final ts =
