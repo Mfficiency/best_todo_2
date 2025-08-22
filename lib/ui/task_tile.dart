@@ -125,19 +125,24 @@ class _TaskTileState extends State<TaskTile>
     final trailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_isEmulator) ...[
-          if (widget.showSwipeButton)
-            IconButton(
-              icon: const Icon(Icons.swipe),
-              tooltip: 'Reschedule',
-              onPressed: _startOptions,
-            ),
+        if (_isEmulator && widget.showSwipeButton)
+          IconButton(
+            icon: const Icon(Icons.swipe),
+            tooltip: 'Reschedule',
+            onPressed: _startOptions,
+          ),
+        if (_expanded)
+          IconButton(
+            icon: const Icon(Icons.expand_less),
+            tooltip: 'Collapse',
+            onPressed: _toggleExpanded,
+          ),
+        if (_isEmulator)
           IconButton(
             icon: const Icon(Icons.delete),
             tooltip: 'Delete',
             onPressed: widget.onDelete,
           ),
-        ],
       ],
     );
 
@@ -207,61 +212,25 @@ class _TaskTileState extends State<TaskTile>
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Column(
                 children: [
-                  Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
-                    },
-                    child: TextField(
-                      controller: _titleController,
-                      decoration: const InputDecoration(labelText: 'Title'),
-                      onChanged: (v) {
-                        setState(() => widget.task.title = v);
-                        widget.onChanged();
-                      },
-                    ),
+                  TextField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(labelText: 'Title'),
+                    onChanged: (v) => widget.task.title = v,
                   ),
-                  Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
-                    },
-                    child: TextField(
-                      controller: _descController,
-                      decoration: const InputDecoration(labelText: 'Description'),
-                      keyboardType: TextInputType.multiline,
-                      maxLines: null,
-                      onChanged: (v) {
-                        setState(() => widget.task.description = v);
-                        widget.onChanged();
-                      },
-                    ),
+                  TextField(
+                    controller: _descController,
+                    decoration: const InputDecoration(labelText: 'Description'),
+                    onChanged: (v) => widget.task.description = v,
                   ),
-                  Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
-                    },
-                    child: TextField(
-                      controller: _noteController,
-                      decoration: const InputDecoration(labelText: 'Note'),
-                      keyboardType: TextInputType.multiline,
-                      maxLines: null,
-                      onChanged: (v) {
-                        setState(() => widget.task.note = v);
-                        widget.onChanged();
-                      },
-                    ),
+                  TextField(
+                    controller: _noteController,
+                    decoration: const InputDecoration(labelText: 'Note'),
+                    onChanged: (v) => widget.task.note = v,
                   ),
-                  Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
-                    },
-                    child: TextField(
-                      controller: _labelController,
-                      decoration: const InputDecoration(labelText: 'Label'),
-                      onChanged: (v) {
-                        setState(() => widget.task.label = v);
-                        widget.onChanged();
-                      },
-                    ),
+                  TextField(
+                    controller: _labelController,
+                    decoration: const InputDecoration(labelText: 'Label'),
+                    onChanged: (v) => widget.task.label = v,
                   ),
                   Row(
                     children: [
