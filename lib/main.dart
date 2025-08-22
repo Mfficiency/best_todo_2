@@ -6,7 +6,9 @@ import 'config.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Config.load();
   runApp(const MyApp());
 }
 

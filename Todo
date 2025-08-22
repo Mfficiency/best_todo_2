@@ -1,4 +1,7 @@
 make sure the next default action each time is the next list
 when the item is open you should also be able to swipe to the right to move to the next list.
 when swiping multiple items they should all be moved to the next list.
-
+sliver app bar and floating
+have selectable text everyhere
+make sure you can export everything to json
+make sure you can import from json
