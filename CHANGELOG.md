@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.28] - 2025-08-22
+- allow choosing export location, defaulting to Downloads folder.
+
 ## [0.1.27] - 2025-08-22
 - leave more space at the bottom of the intro screen for devices with gesture navigation.
 - added import and export buttons for tasks in the settings page.

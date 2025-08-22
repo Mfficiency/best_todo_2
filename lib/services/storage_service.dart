@@ -69,14 +69,9 @@ class StorageService {
     }
   }
 
-  Future<File?> exportTaskList(List<Task> tasks) async {
+  Future<File?> exportTaskList(List<Task> tasks, String path) async {
     try {
-      final downloadsDir = await getDownloadsDirectory();
-      final dir = downloadsDir ?? await getApplicationDocumentsDirectory();
-      final now = DateTime.now();
-      final ts =
-          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-      final file = File('${dir.path}/tasks_$ts.json');
+      final file = File(path);
       final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
       await file.writeAsString(jsonString, flush: true);
       return file;
