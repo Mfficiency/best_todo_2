@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/task.dart';
@@ -235,7 +237,22 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _exportTasks() async {
-    final file = await _storageService.exportTaskList(_tasks);
+    final downloadsDir = await getDownloadsDirectory();
+    final now = DateTime.now();
+    final ts =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    final directory = await getDirectoryPath(
+      initialDirectory: downloadsDir?.path,
+    );
+    if (directory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Export canceled')));
+      return;
+    }
+    final sep = Platform.pathSeparator;
+    final path = '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
+    final file = await _storageService.exportTaskList(_tasks, path);
     if (!mounted) return;
     final message =
         file != null ? 'Exported to ${file.path}' : 'Failed to export tasks';
