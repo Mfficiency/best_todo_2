@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.best_todo_2"
+    namespace = "com.mfficiency.best_todo_2"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
