@@ -207,25 +207,49 @@ class _TaskTileState extends State<TaskTile>
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Column(
                 children: [
-                  TextField(
-                    controller: _titleController,
-                    decoration: const InputDecoration(labelText: 'Title'),
-                    onChanged: (v) => widget.task.title = v,
+                  Focus(
+                    onFocusChange: (hasFocus) {
+                      if (!hasFocus) widget.onChanged();
+                    },
+                    child: TextField(
+                      controller: _titleController,
+                      decoration: const InputDecoration(labelText: 'Title'),
+                      onChanged: (v) => widget.task.title = v,
+                    ),
                   ),
-                  TextField(
-                    controller: _descController,
-                    decoration: const InputDecoration(labelText: 'Description'),
-                    onChanged: (v) => widget.task.description = v,
+                  Focus(
+                    onFocusChange: (hasFocus) {
+                      if (!hasFocus) widget.onChanged();
+                    },
+                    child: TextField(
+                      controller: _descController,
+                      decoration: const InputDecoration(labelText: 'Description'),
+                      keyboardType: TextInputType.multiline,
+                      maxLines: null,
+                      onChanged: (v) => widget.task.description = v,
+                    ),
                   ),
-                  TextField(
-                    controller: _noteController,
-                    decoration: const InputDecoration(labelText: 'Note'),
-                    onChanged: (v) => widget.task.note = v,
+                  Focus(
+                    onFocusChange: (hasFocus) {
+                      if (!hasFocus) widget.onChanged();
+                    },
+                    child: TextField(
+                      controller: _noteController,
+                      decoration: const InputDecoration(labelText: 'Note'),
+                      keyboardType: TextInputType.multiline,
+                      maxLines: null,
+                      onChanged: (v) => widget.task.note = v,
+                    ),
                   ),
-                  TextField(
-                    controller: _labelController,
-                    decoration: const InputDecoration(labelText: 'Label'),
-                    onChanged: (v) => widget.task.label = v,
+                  Focus(
+                    onFocusChange: (hasFocus) {
+                      if (!hasFocus) widget.onChanged();
+                    },
+                    child: TextField(
+                      controller: _labelController,
+                      decoration: const InputDecoration(labelText: 'Label'),
+                      onChanged: (v) => widget.task.label = v,
+                    ),
                   ),
                   Row(
                     children: [
