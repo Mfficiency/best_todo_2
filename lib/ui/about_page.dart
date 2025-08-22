@@ -15,7 +15,7 @@ class AboutPage extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              'Best Todo 2 v${Config.version}\nRunning in $mode mode',
+              'BestToDo v${Config.version}\nRunning in $mode mode',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),

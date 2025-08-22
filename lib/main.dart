@@ -60,7 +60,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Best Todo 2',
+      title: 'BestToDo',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: _seedColor),
         useMaterial3: true,
@@ -73,9 +73,7 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: _showIntro
-          ? IntroPage(onFinished: _finishIntro)
-          : _initialPage(),
+      home: _showIntro ? IntroPage(onFinished: _finishIntro) : _initialPage(),
     );
   }
 }

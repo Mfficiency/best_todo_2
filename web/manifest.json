@@ -1,6 +1,6 @@
 {
-    "name": "best_todo_2",
-    "short_name": "best_todo_2",
+    "name": "BestToDo",
+    "short_name": "BestToDo",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#005FDD",
