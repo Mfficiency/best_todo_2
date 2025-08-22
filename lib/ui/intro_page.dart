@@ -29,7 +29,11 @@ class _IntroPageState extends State<IntroPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 72),
+          Icon(
+            icon,
+            size: 72,
+            color: Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(height: 24),
           Text(
             title,

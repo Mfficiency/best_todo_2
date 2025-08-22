@@ -37,6 +37,13 @@ class _MyAppState extends State<MyApp> {
     setState(() => _showIntro = false);
   }
 
+  Future<void> restartIntro() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('intro_shown', false);
+    setState(() => _showIntro = true);
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   Widget _initialPage() {
     switch (Config.startPage) {
       case 'settings':
