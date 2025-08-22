@@ -11,7 +11,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _notifications = false;
+  bool _notifications = Config.enableNotifications;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
   bool _useIconTabs = Config.useIconTabs;
@@ -26,14 +26,19 @@ class _SettingsPageState extends State<SettingsPage> {
           SwitchListTile(
             title: const Text('Enable notifications'),
             value: _notifications,
-            onChanged: (val) => setState(() => _notifications = val),
+            onChanged: (val) async {
+              setState(() => _notifications = val);
+              Config.enableNotifications = val;
+              await Config.save();
+            },
           ),
           SwitchListTile(
             title: const Text('Dark mode'),
             value: _darkMode,
-            onChanged: (val) {
+            onChanged: (val) async {
               setState(() => _darkMode = val);
               Config.darkMode = val;
+              await Config.save();
               MyApp.of(context)?.updateTheme();
               widget.onSettingsChanged?.call();
             },
@@ -41,18 +46,20 @@ class _SettingsPageState extends State<SettingsPage> {
           SwitchListTile(
             title: const Text('Swipe left to delete'),
             value: _swipeLeftDelete,
-            onChanged: (val) {
+            onChanged: (val) async {
               setState(() => _swipeLeftDelete = val);
               Config.swipeLeftDelete = val;
+              await Config.save();
               widget.onSettingsChanged?.call();
             },
           ),
           SwitchListTile(
             title: const Text('Use tab icons'),
             value: _useIconTabs,
-            onChanged: (val) {
+            onChanged: (val) async {
               setState(() => _useIconTabs = val);
               Config.useIconTabs = val;
+              await Config.save();
               widget.onSettingsChanged?.call();
             },
           ),
@@ -64,10 +71,11 @@ class _SettingsPageState extends State<SettingsPage> {
               min: 0,
               max: 10,
               divisions: 100,
-              onChanged: (val) {
+              onChanged: (val) async {
                 final newVal = (val * 10).round() / 10;
                 setState(() => _defaultDelaySeconds = newVal);
                 Config.defaultDelaySeconds = newVal;
+                await Config.save();
                 widget.onSettingsChanged?.call();
               },
             ),

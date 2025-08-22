@@ -8,8 +8,9 @@ import 'config.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Config.load();
   final prefs = await SharedPreferences.getInstance();
   final showIntro = !(prefs.getBool('intro_shown') ?? false);
   runApp(MyApp(showIntro: showIntro));
