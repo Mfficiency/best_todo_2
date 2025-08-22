@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.24] - 2025-08-22
+- Persist settings across app restarts.
+
 ## [0.1.23] - 2025-08-21
 - Added icons for unselected tabs.
 - added settings to toggle icon tabs.
