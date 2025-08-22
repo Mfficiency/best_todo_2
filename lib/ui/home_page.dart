@@ -1,17 +1,20 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
-import '../models/task.dart';
-import '../config.dart';
-import '../services/storage_service.dart';
-import '../services/log_service.dart';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
-import 'task_tile.dart';
-import 'about_page.dart';
-import 'settings_page.dart';
-import 'deleted_items_page.dart';
-import 'changelog_page.dart';
-import 'app_logs_page.dart';
+
+import '../config.dart';
+import '../models/task.dart';
+import '../services/log_service.dart';
+import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
+import 'about_page.dart';
+import 'app_logs_page.dart';
+import 'changelog_page.dart';
+import 'deleted_items_page.dart';
+import 'settings_page.dart';
+import 'task_tile.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -231,6 +234,36 @@ class _HomePageState extends State<HomePage>
     _updateHomeWidget();
   }
 
+  Future<void> _exportTasks() async {
+    final file = await _storageService.exportTaskList(_tasks);
+    if (!mounted) return;
+    final message =
+        file != null ? 'Exported to ${file.path}' : 'Failed to export tasks';
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _importTasks() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    if (result == null || result.files.single.path == null) return;
+    final imported =
+        await _storageService.importTaskList(result.files.single.path!);
+    if (imported.isEmpty) return;
+    setState(() {
+      _tasks
+        ..clear()
+        ..addAll(imported);
+    });
+    _saveTasks();
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Tasks imported')));
+    }
+  }
+
   /// Returns the list of tasks that should appear on the given tab index.
   List<Task> _tasksForTab(int pageIndex) {
     return _tasks.where((task) {
@@ -382,6 +415,22 @@ class _HomePageState extends State<HomePage>
                     ),
                   ),
                 );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_download),
+              title: const Text('Export Tasks'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportTasks();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_upload),
+              title: const Text('Import Tasks'),
+              onTap: () {
+                Navigator.pop(context);
+                _importTasks();
               },
             ),
           ],

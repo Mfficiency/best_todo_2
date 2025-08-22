@@ -17,6 +17,7 @@ dependencies:
   home_widget: ^0.8.0
   device_info_plus: ^9.0.2
   shared_preferences: ^2.2.2
+  file_picker: ^5.2.10
 
 dev_dependencies:
   flutter_test:
