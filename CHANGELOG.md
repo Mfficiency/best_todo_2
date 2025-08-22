@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.29] - 2025-08-22
+- allow choosing export location, defaulting to Downloads folder.
+
 ## [0.1.28] - 2025-08-22
 - fixed a bug where the widget would not update
 
