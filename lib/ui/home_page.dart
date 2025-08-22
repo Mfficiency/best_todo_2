@@ -281,6 +281,7 @@ class _HomePageState extends State<HomePage>
               final task = tasks[index];
               final isAndroid = Theme.of(context).platform == TargetPlatform.android;
               final tile = TaskTile(
+                key: ValueKey(task),
                 task: task,
                 onChanged: () {
                   setState(() {
@@ -293,6 +294,10 @@ class _HomePageState extends State<HomePage>
                   });
                   _saveTasks();
                 },
+                onUpdate: () {
+                  setState(() {});
+                  _saveTasks();
+                },
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
                 onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
                 onDelete: () => _deleteTask(pageIndex, index),
@@ -303,7 +308,7 @@ class _HomePageState extends State<HomePage>
               return isAndroid
                   ? tile
                   : Dismissible(
-                      key: ValueKey('${task.title}-$index-$pageIndex'),
+                      key: ValueKey(task),
                       background: Container(
                         color: Colors.greenAccent.withOpacity(0.5),
                       ),

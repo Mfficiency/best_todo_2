@@ -10,6 +10,7 @@ import '../config.dart';
 class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
+  final VoidCallback onUpdate;
   final void Function(int destination) onMove;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
@@ -21,6 +22,7 @@ class TaskTile extends StatefulWidget {
     Key? key,
     required this.task,
     required this.onChanged,
+    required this.onUpdate,
     required this.onMove,
     required this.onMoveNext,
     required this.onDelete,
@@ -215,7 +217,7 @@ class _TaskTileState extends State<TaskTile>
                 children: [
                   Focus(
                     onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
+                      if (!hasFocus) widget.onUpdate();
                     },
                     child: TextField(
                       controller: _titleController,
@@ -225,7 +227,7 @@ class _TaskTileState extends State<TaskTile>
                   ),
                   Focus(
                     onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
+                      if (!hasFocus) widget.onUpdate();
                     },
                     child: TextField(
                       controller: _descController,
@@ -237,7 +239,7 @@ class _TaskTileState extends State<TaskTile>
                   ),
                   Focus(
                     onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
+                      if (!hasFocus) widget.onUpdate();
                     },
                     child: TextField(
                       controller: _noteController,
@@ -249,7 +251,7 @@ class _TaskTileState extends State<TaskTile>
                   ),
                   Focus(
                     onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
+                      if (!hasFocus) widget.onUpdate();
                     },
                     child: TextField(
                       controller: _labelController,
@@ -274,6 +276,7 @@ class _TaskTileState extends State<TaskTile>
                           );
                           if (picked != null) {
                             setState(() => widget.task.dueDate = picked);
+                            widget.onUpdate();
                           }
                         },
                         child: const Text('Pick due date'),
