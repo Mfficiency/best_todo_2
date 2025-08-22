@@ -16,6 +16,7 @@ dependencies:
   flutter_markdown: ^0.6.10
   home_widget: ^0.8.0
   device_info_plus: ^9.0.2
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
