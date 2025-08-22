@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -240,16 +241,17 @@ class _HomePageState extends State<HomePage>
     final now = DateTime.now();
     final ts =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-    final path = await getSavePath(
+    final directory = await getDirectoryPath(
       initialDirectory: downloadsDir?.path,
-      suggestedName: 'tasks_$ts.json',
     );
-    if (path == null) {
+    if (directory == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Export canceled')));
       return;
     }
+    final sep = Platform.pathSeparator;
+    final path = '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
     final file = await _storageService.exportTaskList(_tasks, path);
     if (!mounted) return;
     final message =
