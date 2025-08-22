@@ -40,6 +40,11 @@ sh tool/build.sh <platform>
 For example `sh tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.
 
+## Publishing
+### Android
+follow this tutorial to publish the app on the Play Store:
+https://www.youtube.com/watch?v=ZxjgV1YaOcQ
+
 ## Issues
 
 ### build the android file
