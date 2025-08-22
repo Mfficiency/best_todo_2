@@ -2,6 +2,8 @@
 
 ## [0.1.27] - 2025-08-22
 - leave more space at the bottom of the intro screen for devices with gesture navigation.
+- added import and export buttons for tasks in the settings page.
+- updated logo
 
 ## [0.1.26] - 2025-08-22
 - Added introduction screens highlighting core values: Speed, Minimal Interactions, Open Source.
