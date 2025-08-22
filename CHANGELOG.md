@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.30] - 2025-08-22
+- add update button on about page to check for new versions.
+
 ## [0.1.29] - 2025-08-22
 - allow choosing export location, defaulting to Downloads folder.
 
