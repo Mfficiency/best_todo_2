@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.33] - 2025-08-25
+- undid the storage permission, this was not working.
+
 ## [0.1.32] - 2025-08-22
 - request storage permission before exporting tasks on Android
 
