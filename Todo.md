@@ -19,6 +19,10 @@
 - add video to youtube channel
 - be able to manually change the order
 - add story and vision to about page
+- add to f-droid store if possible
+- add to galaxy store if possible
+- web version
+- add to apple store (much later)
 - make header like google mail 2 menus with search in the middle
 - make a menu on the top right with sorting options
 - make it an option that the menu is always visible on the left but only the icons
