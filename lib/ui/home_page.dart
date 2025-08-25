@@ -195,6 +195,11 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._updateSettings', 'Settings updated');
   }
 
+  void _taskDueDateChanged() {
+    setState(() {});
+    _storageService.saveTaskList(_tasks);
+  }
+
   /// Change the current virtual date by the given number of days.
   /// When moving forward, overdue tasks remain visible in the Today tab.
   void _changeDate(int delta) {
@@ -341,6 +346,7 @@ class _HomePageState extends State<HomePage>
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
                 onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
                 onDelete: () => _deleteTask(pageIndex, index),
+                onDueDateChanged: _taskDueDateChanged,
                 pageIndex: pageIndex,
                 showSwipeButton: !isAndroid,
                 swipeLeftDelete: Config.swipeLeftDelete,
