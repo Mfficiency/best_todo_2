@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:best_todo_2/models/task.dart';
 import 'package:best_todo_2/services/storage_service.dart';
@@ -32,5 +33,22 @@ void main() {
     final loaded = await service.loadTaskList();
     expect(loaded.length, 1);
     expect(loaded.first.title, 'pending');
+  });
+
+  test('importTaskList assigns unique ids to imported tasks', () async {
+    final tempDir = await Directory.systemTemp.createTemp();
+    final file = File('${tempDir.path}/import.json');
+    final data = [
+      {'title': 'a', 'id': 'same'},
+      {'title': 'b', 'id': 'same'}, // duplicate id
+      {'title': 'c'}, // missing id
+    ];
+    await file.writeAsString(jsonEncode(data));
+
+    final service = StorageService();
+    final imported = await service.importTaskList(file.path);
+
+    final ids = imported.map((t) => t.id).toSet();
+    expect(ids.length, imported.length); // all ids are unique
   });
 }

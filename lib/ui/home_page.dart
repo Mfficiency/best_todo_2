@@ -231,7 +231,14 @@ class _HomePageState extends State<HomePage>
     } catch (_) {}
   }
 
+  void _updateListRankings() {
+    for (var i = 0; i < Config.tabs.length; i++) {
+      _tasksForTab(i); // _tasksForTab assigns listRanking
+    }
+  }
+
   void _saveTasks() {
+    _updateListRankings();
     _storageService.saveTaskList(_tasks);
     _updateHomeWidget();
   }
@@ -280,7 +287,7 @@ class _HomePageState extends State<HomePage>
 
   /// Returns the list of tasks that should appear on the given tab index.
   List<Task> _tasksForTab(int pageIndex) {
-    return _tasks.where((task) {
+    final filtered = _tasks.where((task) {
       if (task.dueDate == null) return false;
       // Compare dates without considering the time of day so that tasks due
       // tomorrow don't appear in today's list simply because they are less
@@ -292,6 +299,11 @@ class _HomePageState extends State<HomePage>
       if (pageIndex == 3) return diff >= 3 && diff < 30;
       return diff >= 30;
     }).toList();
+
+    for (var i = 0; i < filtered.length; i++) {
+      filtered[i].listRanking = i + 1;
+    }
+    return filtered;
   }
 
   Widget _buildTaskList(int pageIndex) {
@@ -348,7 +360,7 @@ class _HomePageState extends State<HomePage>
               return isAndroid
                   ? tile
                   : Dismissible(
-                      key: ValueKey('${task.title}-$index-$pageIndex'),
+                      key: ValueKey(task.id),
                       background: Container(
                         color: Colors.greenAccent.withOpacity(0.5),
                       ),

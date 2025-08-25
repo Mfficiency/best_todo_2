@@ -59,6 +59,7 @@ class StorageService {
       final tasks = data
           .map((e) => Task.fromJson(e as Map<String, dynamic>))
           .toList();
+      Task.ensureUniqueIds(tasks);
       if (isNewDay) {
         tasks.removeWhere((t) => t.isDone);
         await saveTaskList(tasks);
@@ -86,9 +87,11 @@ class StorageService {
       if (!await file.exists()) return <Task>[];
       final contents = await file.readAsString();
       final List<dynamic> data = jsonDecode(contents);
-      return data
+      final tasks = data
           .map((e) => Task.fromJson(e as Map<String, dynamic>))
           .toList();
+      Task.ensureUniqueIds(tasks);
+      return tasks;
     } catch (_) {
       return <Task>[];
     }
