@@ -1,6 +1,11 @@
 # Changelog
 
-## [0.1.33] - 2025-08-25
+## [0.1.37] - 2025-08-27
+- added uid to tasks for better identification.
+- added list number to tasks for ordering within a list.
+
+## [0.1.36] - 2025-08-25
+- this is actually 0.1.33, but i fucked up the versioning
 - undid the storage permission, this was not working.
 
 ## [0.1.32] - 2025-08-22
