@@ -46,6 +46,7 @@ class _HomePageState extends State<HomePage>
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
+  Timer? _midnightTimer;
 
   /// Day offsets for each tab. The last two entries represent
   /// "next week" and "next month" respectively.
@@ -86,13 +87,26 @@ class _HomePageState extends State<HomePage>
     });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
     _loadTasks();
+    _scheduleMidnightUpdate();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _controller.dispose();
+    _midnightTimer?.cancel();
     super.dispose();
+  }
+
+  void _scheduleMidnightUpdate() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final duration = tomorrow.difference(now);
+    _midnightTimer = Timer(duration, () {
+      _updateHomeWidget();
+      _scheduleMidnightUpdate();
+    });
   }
 
   void _addTask(String title) {
