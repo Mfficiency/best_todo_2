@@ -515,7 +515,14 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: Text('BestToDo v${Config.version}'),
+        title: const TextField(
+          enabled: false,
+          decoration: InputDecoration(
+            hintText: 'search soon available',
+            border: InputBorder.none,
+            prefixIcon: Icon(Icons.search),
+          ),
+        ),
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(
