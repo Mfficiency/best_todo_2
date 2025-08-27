@@ -231,15 +231,18 @@ class _HomePageState extends State<HomePage>
   Future<void> _updateHomeWidget() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final data = _tasks
+    final tasks = _tasks
         .where((t) {
           if (t.dueDate == null) return false;
           final due =
               DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
           return !t.isDone && !due.isAfter(today);
-        }) // keep only pending tasks due today or earlier
-        .map((t) => '• ${t.title}')
-        .join('\n');
+        })
+        .toList()
+      ..sort((a, b) => (a.listRanking ?? 1 << 31)
+          .compareTo(b.listRanking ?? 1 << 31));
+
+    final data = tasks.map((t) => '• ${t.title}').join('\n');
 
     try {
       await HomeWidget.saveWidgetData(dataKey, data);
