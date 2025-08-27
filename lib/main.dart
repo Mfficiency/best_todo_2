@@ -5,12 +5,19 @@ import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'config.dart';
+import 'services/widget_refresh_service.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Config.load();
+  await WidgetRefreshService.init();
+  if (Config.enableWidgetRefresh) {
+    await WidgetRefreshService.schedule();
+  } else {
+    await WidgetRefreshService.cancel();
+  }
   final prefs = await SharedPreferences.getInstance();
   final showIntro = !(prefs.getBool('intro_shown') ?? false);
   runApp(MyApp(showIntro: showIntro));

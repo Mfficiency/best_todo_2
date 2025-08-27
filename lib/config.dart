@@ -46,6 +46,9 @@ class Config {
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
+  /// If true, the home widget refreshes automatically at midnight.
+  static bool enableWidgetRefresh = true;
+
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
   static bool useIconTabs = false;
@@ -69,6 +72,8 @@ class Config {
         enableNotifications =
             data['enableNotifications'] ?? enableNotifications;
         useIconTabs = data['useIconTabs'] ?? useIconTabs;
+        enableWidgetRefresh =
+            data['enableWidgetRefresh'] ?? enableWidgetRefresh;
         defaultDelaySeconds =
             (data['defaultDelaySeconds'] as num?)?.toDouble() ??
                 defaultDelaySeconds;
@@ -84,6 +89,7 @@ class Config {
         'swipeLeftDelete': swipeLeftDelete,
         'darkMode': darkMode,
         'enableNotifications': enableNotifications,
+        'enableWidgetRefresh': enableWidgetRefresh,
         'useIconTabs': useIconTabs,
         'defaultDelaySeconds': defaultDelaySeconds,
       };
