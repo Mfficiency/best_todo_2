@@ -15,6 +15,7 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
@@ -251,7 +252,9 @@ class _HomePageState extends State<HomePage>
       ..sort((a, b) => (a.listRanking ?? 1 << 31)
           .compareTo(b.listRanking ?? 1 << 31));
 
-    final data = tasks.map((t) => '• ${t.title}').join('\n');
+    final data = tasks.isEmpty
+        ? 'No tasks for today'
+        : tasks.map((t) => '• ${t.title}').join('\n');
 
     try {
       await HomeWidget.saveWidgetData(dataKey, data);
@@ -363,42 +366,46 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         Expanded(
-          child: ReorderableListView.builder(
-            itemCount: tasks.length,
-            onReorder: (oldIndex, newIndex) =>
-                _reorderTask(pageIndex, oldIndex, newIndex),
-            buildDefaultDragHandles: true,
-            itemBuilder: (context, index) {
-              final task = tasks[index];
-              final isAndroid =
-                  Theme.of(context).platform == TargetPlatform.android;
-              final tile = TaskTile(
-                key: isAndroid ? ValueKey(task.uid) : null,
-                task: task,
-                onChanged: () {
-                  setState(task.toggleDone);
-                  _saveTasks();
-                },
-                onMove: (dest) => _moveTask(pageIndex, index, dest),
-                onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
-                onDelete: () => _deleteTask(pageIndex, index),
-                pageIndex: pageIndex,
-                showSwipeButton: !isAndroid,
-                swipeLeftDelete: Config.swipeLeftDelete,
-              );
-              if (isAndroid) {
-                return tile;
-              }
-              return Dismissible(
-                key: ValueKey(task.uid),
-                background: Container(
-                  color: Colors.greenAccent.withOpacity(0.5),
+          child: tasks.isEmpty && pageIndex == 0
+              ? const Center(child: Text('No tasks for today'))
+              : ReorderableListView.builder(
+                  itemCount: tasks.length,
+                  onReorder: (oldIndex, newIndex) =>
+                      _reorderTask(pageIndex, oldIndex, newIndex),
+                  buildDefaultDragHandles: true,
+                  itemBuilder: (context, index) {
+                    final task = tasks[index];
+                    final isAndroid =
+                        Theme.of(context).platform == TargetPlatform.android;
+                    final tile = TaskTile(
+                      key: isAndroid ? ValueKey(task.uid) : null,
+                      task: task,
+                      onChanged: _saveTasks,
+                      onToggle: () {
+                        setState(task.toggleDone);
+                        _saveTasks();
+                      },
+                      onMove: (dest) => _moveTask(pageIndex, index, dest),
+                      onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
+                      onDelete: () => _deleteTask(pageIndex, index),
+                      pageIndex: pageIndex,
+                      showSwipeButton: !isAndroid,
+                      swipeLeftDelete: Config.swipeLeftDelete,
+                    );
+                    if (isAndroid) {
+                      return tile;
+                    }
+                    return Dismissible(
+                      key: ValueKey(task.uid),
+                      background: Container(
+                        color: Colors.greenAccent.withOpacity(0.5),
+                      ),
+                      onDismissed: (_) =>
+                          _moveTaskToNextPage(pageIndex, index),
+                      child: tile,
+                    );
+                  },
                 ),
-                onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                child: tile,
-              );
-            },
-          ),
         )
       ],
     );
@@ -410,8 +417,8 @@ class _HomePageState extends State<HomePage>
       drawer: Drawer(
         child: ListView(
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
+            DrawerHeader(
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary,),
               child: Text('Menu', style: TextStyle(color: Colors.white)),
             ),
             ListTile(
@@ -455,6 +462,16 @@ class _HomePageState extends State<HomePage>
                 Navigator.pop(context);
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.show_chart),
+              title: const Text('Startup Times'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const StartupTimesPage()),
                 );
               },
             ),
