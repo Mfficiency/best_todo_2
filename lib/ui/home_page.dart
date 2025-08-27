@@ -136,6 +136,22 @@ class _HomePageState extends State<HomePage>
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
   }
 
+  void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
+    final tasks = _tasksForTab(pageIndex);
+    if (oldIndex >= tasks.length || newIndex > tasks.length) return;
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final task = tasks.removeAt(oldIndex);
+      tasks.insert(newIndex, task);
+      for (var i = 0; i < tasks.length; i++) {
+        tasks[i].listRanking = i + 1;
+      }
+    });
+    _saveTasks();
+    LogService.add('HomePage._reorderTask',
+        'Reordered task to position ${newIndex + 1} on page $pageIndex');
+  }
+
   void _deleteTask(int pageIndex, int index) {
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
@@ -286,7 +302,7 @@ class _HomePageState extends State<HomePage>
 
   /// Returns the list of tasks that should appear on the given tab index.
   List<Task> _tasksForTab(int pageIndex) {
-    return _tasks.where((task) {
+    final list = _tasks.where((task) {
       if (task.dueDate == null) return false;
       // Compare dates without considering the time of day so that tasks due
       // tomorrow don't appear in today's list simply because they are less
@@ -298,6 +314,9 @@ class _HomePageState extends State<HomePage>
       if (pageIndex == 3) return diff >= 3 && diff < 30;
       return diff >= 30;
     }).toList();
+    list.sort((a, b) => (a.listRanking ?? 1 << 31)
+        .compareTo(b.listRanking ?? 1 << 31));
+    return list;
   }
 
   Widget _buildTaskList(int pageIndex) {
@@ -325,13 +344,17 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         Expanded(
-          child: ListView.builder(
+          child: ReorderableListView.builder(
             itemCount: tasks.length,
+            onReorder: (oldIndex, newIndex) =>
+                _reorderTask(pageIndex, oldIndex, newIndex),
+            buildDefaultDragHandles: true,
             itemBuilder: (context, index) {
               final task = tasks[index];
               final isAndroid =
                   Theme.of(context).platform == TargetPlatform.android;
               final tile = TaskTile(
+                key: isAndroid ? ValueKey(task.uid) : null,
                 task: task,
                 onChanged: () {
                   setState(() {
@@ -351,16 +374,17 @@ class _HomePageState extends State<HomePage>
                 showSwipeButton: !isAndroid,
                 swipeLeftDelete: Config.swipeLeftDelete,
               );
-              return isAndroid
-                  ? tile
-                  : Dismissible(
-                      key: ValueKey('${task.title}-$index-$pageIndex'),
-                      background: Container(
-                        color: Colors.greenAccent.withOpacity(0.5),
-                      ),
-                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                      child: tile,
-                    );
+              if (isAndroid) {
+                return tile;
+              }
+              return Dismissible(
+                key: ValueKey(task.uid),
+                background: Container(
+                  color: Colors.greenAccent.withOpacity(0.5),
+                ),
+                onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
+                child: tile,
+              );
             },
           ),
         )
