@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../main.dart';
+import '../services/widget_refresh_service.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
@@ -16,6 +17,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _darkMode = Config.darkMode;
   bool _useIconTabs = Config.useIconTabs;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
+  bool _widgetRefresh = Config.enableWidgetRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +32,21 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() => _notifications = val);
               Config.enableNotifications = val;
               await Config.save();
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Auto-refresh widget'),
+            value: _widgetRefresh,
+            onChanged: (val) async {
+              setState(() => _widgetRefresh = val);
+              Config.enableWidgetRefresh = val;
+              await Config.save();
+              if (val) {
+                await WidgetRefreshService.schedule();
+              } else {
+                await WidgetRefreshService.cancel();
+              }
+              widget.onSettingsChanged?.call();
             },
           ),
           SwitchListTile(
