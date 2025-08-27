@@ -9,6 +9,16 @@ class StorageService {
   static const _fileName = 'tasks.json';
   static const _dateFileName = 'last_opened.txt';
 
+  void _ensureUniqueIds(List<Task> tasks) {
+    final ids = <String>{};
+    for (final t in tasks) {
+      if (t.uid.isEmpty || ids.contains(t.uid)) {
+        t.uid = Task.newUid();
+      }
+      ids.add(t.uid);
+    }
+  }
+
   Future<File> _getLocalFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_fileName');
@@ -59,6 +69,7 @@ class StorageService {
       final tasks = data
           .map((e) => Task.fromJson(e as Map<String, dynamic>))
           .toList();
+      _ensureUniqueIds(tasks);
       if (isNewDay) {
         tasks.removeWhere((t) => t.isDone);
         await saveTaskList(tasks);
@@ -86,9 +97,11 @@ class StorageService {
       if (!await file.exists()) return <Task>[];
       final contents = await file.readAsString();
       final List<dynamic> data = jsonDecode(contents);
-      return data
+      final tasks = data
           .map((e) => Task.fromJson(e as Map<String, dynamic>))
           .toList();
+      _ensureUniqueIds(tasks);
+      return tasks;
     } catch (_) {
       return <Task>[];
     }

@@ -11,6 +11,7 @@ import '../models/task.dart';
 import '../services/log_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
+import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
@@ -72,7 +73,7 @@ class _HomePageState extends State<HomePage>
     if (mounted) {
       setState(() {});
     }
-    _updateHomeWidget();
+    _saveTasks();
   }
 
   @override
@@ -134,6 +135,22 @@ class _HomePageState extends State<HomePage>
     _saveTasks();
     LogService.add(
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
+  }
+
+  void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
+    final tasks = _tasksForTab(pageIndex);
+    if (oldIndex >= tasks.length || newIndex > tasks.length) return;
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final task = tasks.removeAt(oldIndex);
+      tasks.insert(newIndex, task);
+      for (var i = 0; i < tasks.length; i++) {
+        tasks[i].listRanking = i + 1;
+      }
+    });
+    _saveTasks();
+    LogService.add('HomePage._reorderTask',
+        'Reordered task to position ${newIndex + 1} on page $pageIndex');
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -200,10 +217,17 @@ class _HomePageState extends State<HomePage>
   void _changeDate(int delta) {
     setState(() {
       _currentDate = _currentDate.add(Duration(days: delta));
-      // Remove completed tasks when progressing to the next day so that
-      // finished items no longer clutter the lists.
+      // Move completed tasks to the deleted list when progressing to the next
+      // day so that finished items no longer clutter the lists.
       if (delta > 0) {
-        _tasks.removeWhere((t) => t.isDone);
+        final doneTasks = _tasks.where((t) => t.isDone).toList();
+        for (final task in doneTasks) {
+          _tasks.remove(task);
+          _deletedTasks.insert(0, task);
+          if (_deletedTasks.length > 100) {
+            _deletedTasks.removeLast();
+          }
+        }
       }
     });
     _saveTasks();
@@ -214,15 +238,18 @@ class _HomePageState extends State<HomePage>
   Future<void> _updateHomeWidget() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final data = _tasks
+    final tasks = _tasks
         .where((t) {
           if (t.dueDate == null) return false;
           final due =
               DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
           return !t.isDone && !due.isAfter(today);
-        }) // keep only pending tasks due today or earlier
-        .map((t) => '• ${t.title}')
-        .join('\n');
+        })
+        .toList()
+      ..sort((a, b) => (a.listRanking ?? 1 << 31)
+          .compareTo(b.listRanking ?? 1 << 31));
+
+    final data = tasks.map((t) => '• ${t.title}').join('\n');
 
     try {
       await HomeWidget.saveWidgetData(dataKey, data);
@@ -232,6 +259,12 @@ class _HomePageState extends State<HomePage>
   }
 
   void _saveTasks() {
+    for (var i = 0; i < Config.tabs.length; i++) {
+      final listTasks = _tasksForTab(i);
+      for (var j = 0; j < listTasks.length; j++) {
+        listTasks[j].listRanking = j + 1;
+      }
+    }
     _storageService.saveTaskList(_tasks);
     _updateHomeWidget();
   }
@@ -280,7 +313,7 @@ class _HomePageState extends State<HomePage>
 
   /// Returns the list of tasks that should appear on the given tab index.
   List<Task> _tasksForTab(int pageIndex) {
-    return _tasks.where((task) {
+    final list = _tasks.where((task) {
       if (task.dueDate == null) return false;
       // Compare dates without considering the time of day so that tasks due
       // tomorrow don't appear in today's list simply because they are less
@@ -292,6 +325,8 @@ class _HomePageState extends State<HomePage>
       if (pageIndex == 3) return diff >= 3 && diff < 30;
       return diff >= 30;
     }).toList();
+    sortTasks(list);
+    return list;
   }
 
   Widget _buildTaskList(int pageIndex) {
@@ -319,23 +354,21 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         Expanded(
-          child: ListView.builder(
+          child: ReorderableListView.builder(
             itemCount: tasks.length,
+            onReorder: (oldIndex, newIndex) =>
+                _reorderTask(pageIndex, oldIndex, newIndex),
+            buildDefaultDragHandles: true,
             itemBuilder: (context, index) {
               final task = tasks[index];
               final isAndroid =
                   Theme.of(context).platform == TargetPlatform.android;
               final tile = TaskTile(
+                key: isAndroid ? ValueKey(task.uid) : null,
                 task: task,
-                onChanged: () {
-                  setState(() {
-                    task.toggleDone();
-                    if (task.isDone) {
-                      _tasks
-                        ..remove(task)
-                        ..add(task);
-                    }
-                  });
+                onChanged: _saveTasks,
+                onToggle: () {
+                  setState(task.toggleDone);
                   _saveTasks();
                 },
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
@@ -345,16 +378,17 @@ class _HomePageState extends State<HomePage>
                 showSwipeButton: !isAndroid,
                 swipeLeftDelete: Config.swipeLeftDelete,
               );
-              return isAndroid
-                  ? tile
-                  : Dismissible(
-                      key: ValueKey('${task.title}-$index-$pageIndex'),
-                      background: Container(
-                        color: Colors.greenAccent.withOpacity(0.5),
-                      ),
-                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                      child: tile,
-                    );
+              if (isAndroid) {
+                return tile;
+              }
+              return Dismissible(
+                key: ValueKey(task.uid),
+                background: Container(
+                  color: Colors.greenAccent.withOpacity(0.5),
+                ),
+                onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
+                child: tile,
+              );
             },
           ),
         )
