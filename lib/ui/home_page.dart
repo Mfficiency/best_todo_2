@@ -11,6 +11,7 @@ import '../models/task.dart';
 import '../services/log_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
+import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
@@ -67,6 +68,7 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
+    sortTasks(_tasks);
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
@@ -101,7 +103,7 @@ class _HomePageState extends State<HomePage>
       dueDate: _currentDate.add(Duration(days: offset)),
     );
     setState(() {
-      _tasks.add(task);
+      insertTask(_tasks, task);
     });
     _controller.clear();
     _saveTasks();
@@ -184,7 +186,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _deletedTasks.remove(task);
       task.dueDate = _currentDate;
-      _tasks.add(task);
+      insertTask(_tasks, task);
     });
     _saveTasks();
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
@@ -270,6 +272,7 @@ class _HomePageState extends State<HomePage>
       _tasks
         ..clear()
         ..addAll(imported);
+      sortTasks(_tasks);
     });
     _saveTasks();
     if (mounted) {
@@ -330,11 +333,7 @@ class _HomePageState extends State<HomePage>
                 onChanged: () {
                   setState(() {
                     task.toggleDone();
-                    if (task.isDone) {
-                      _tasks
-                        ..remove(task)
-                        ..add(task);
-                    }
+                    reorderAfterToggle(_tasks, task);
                   });
                   _saveTasks();
                 },
