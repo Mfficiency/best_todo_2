@@ -25,13 +25,13 @@ class AboutPage extends StatelessWidget {
               const Text(
                 'BestToDo is a lightweight, privacy-focused task manager designed to help you stay productive without the clutter.\n'
                 'It emphasizes:\n\n'
-                'Speed – launches in under a second.\n\n'
-                'Minimal interactions – built for the fewest clicks possible.\n\n'
-                'Privacy first – no ads, no tracking, no data collection.\n\n'
-                'Open source – transparent code you can trust.\n\n'
+                'Speed: launches in under a second.\n'
+                'Minimal interactions: built for the fewest clicks possible.\n'
+                'Privacy first: no ads, no tracking, no data collection.\n'
+                'Open source: transparent code you can trust.\n\n'
                 'With simple swipes you can reschedule tasks for tomorrow, next week, or later. Notes and labels help keep things organized while keeping the interface clean and intuitive.\n\n'
                 'BestToDo is a product of Mfficiency, created to make everyday productivity tools faster, leaner, and user-controlled.',
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.left,
               ),
               const SizedBox(height: 24),
               ElevatedButton(
