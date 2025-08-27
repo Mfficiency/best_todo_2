@@ -1,15 +1,19 @@
 ## MVP
-- make animation more clear that yuo are deleting or moving
+### TODO
 - make a tab statistics with startup times
 - when the item is open you should also be able to swipe to the right to move to the next list.
 - when swiping multiple items they should all be moved to the next list.
 - enlarge icons and put text on two rows
-- make sure everything is exported to json
-- make sure you can import from json
 - fix bug moving items and opening tasks
 - show no tasks for today if there are none
 - log the boot times
 - check if the id works and all the other parameter
+
+### Done
+- make animation more clear that yuo are deleting or moving
+- make sure everything is exported to json
+- make sure you can import from json
+
 
 ## After MVP
 - 1 working automatic test when building or pushing
@@ -37,3 +41,4 @@
 - encrypt the local db
 - add a web version to your own server
 - automatic backup to any cloud service
+- make calendar view
