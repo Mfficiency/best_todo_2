@@ -301,8 +301,15 @@ class _TaskTileState extends State<TaskTile>
       final dragToDelete =
           widget.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
       if (dragToDelete) {
+        final alignment =
+            widget.swipeLeftDelete ? Alignment.centerRight : Alignment.centerLeft;
         background = Positioned.fill(
-          child: Container(color: Colors.red.withOpacity(0.5)),
+          child: Container(
+            color: Colors.red.withOpacity(0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Icon(Icons.delete, color: Colors.white),
+          ),
         );
       } else {
         final alignment =
