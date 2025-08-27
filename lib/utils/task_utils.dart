@@ -6,7 +6,8 @@ void sortTasks(List<Task> list) {
   list.sort((a, b) {
     final doneCompare = (a.isDone ? 1 : 0).compareTo(b.isDone ? 1 : 0);
     if (doneCompare != 0) return doneCompare;
-    return (a.listRanking ?? 1 << 31)
-        .compareTo(b.listRanking ?? 1 << 31);
+    const maxRank = 1 << 31;
+    return (a.listRanking ?? maxRank)
+        .compareTo(b.listRanking ?? maxRank);
   });
 }
