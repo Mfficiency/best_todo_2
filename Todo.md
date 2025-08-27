@@ -1,6 +1,7 @@
 ## MVP
 ### TODO
 - fix auto update widget at midnight
+- add a simplified mode
 
 ### Done
 - when the item is open you should also be able to swipe to the right to move to the next list.
@@ -46,3 +47,7 @@
 - add a web version to your own server
 - automatic backup to any cloud service
 - make calendar view
+- ask feedback sanja
+- let user chose a time for the deadline
+- daily notification of tasks due today
+- reports on what you did
