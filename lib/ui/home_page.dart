@@ -217,10 +217,17 @@ class _HomePageState extends State<HomePage>
   void _changeDate(int delta) {
     setState(() {
       _currentDate = _currentDate.add(Duration(days: delta));
-      // Remove completed tasks when progressing to the next day so that
-      // finished items no longer clutter the lists.
+      // Move completed tasks to the deleted list when progressing to the next
+      // day so that finished items no longer clutter the lists.
       if (delta > 0) {
-        _tasks.removeWhere((t) => t.isDone);
+        final doneTasks = _tasks.where((t) => t.isDone).toList();
+        for (final task in doneTasks) {
+          _tasks.remove(task);
+          _deletedTasks.insert(0, task);
+          if (_deletedTasks.length > 100) {
+            _deletedTasks.removeLast();
+          }
+        }
       }
     });
     _saveTasks();
