@@ -1,6 +1,10 @@
 ## MVP
 ### TODO
 - fix auto update widget at midnight
+- menu should be name
+placeholder search bar
+menu smaller
+texts centered
 
 
 ### Done
