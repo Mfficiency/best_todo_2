@@ -1,11 +1,5 @@
 ## MVP
 ### TODO
-- fix auto update widget at midnight
-- menu should be name
-placeholder search bar
-menu smaller
-texts centered
-
 
 ### Done
 - when the item is open you should also be able to swipe to the right to move to the next list.
@@ -19,7 +13,11 @@ texts centered
 - check if the id works and all the other parameter
 - make a tab statistics with startup times
 - log the boot times
-
+- fix auto update widget at midnight
+- menu should be name
+- placeholder search bar
+- menu smaller
+- texts centered
 
 
 
