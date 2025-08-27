@@ -72,7 +72,7 @@ class _HomePageState extends State<HomePage>
     if (mounted) {
       setState(() {});
     }
-    _updateHomeWidget();
+    _saveTasks();
   }
 
   @override
@@ -232,6 +232,12 @@ class _HomePageState extends State<HomePage>
   }
 
   void _saveTasks() {
+    for (var i = 0; i < Config.tabs.length; i++) {
+      final listTasks = _tasksForTab(i);
+      for (var j = 0; j < listTasks.length; j++) {
+        listTasks[j].listRanking = j + 1;
+      }
+    }
     _storageService.saveTaskList(_tasks);
     _updateHomeWidget();
   }
