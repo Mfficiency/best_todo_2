@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.40] - 2025-08-27
+- update icons to V2
+
 ## [0.1.39] - 2025-08-27
 - added animation for sliding actions
 - fixed a bug where tasks would glitch when editing them.
