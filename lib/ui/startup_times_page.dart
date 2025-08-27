@@ -35,13 +35,35 @@ class _StartupTimesPageState extends State<StartupTimesPage> {
               padding: const EdgeInsets.all(16),
               child: LineChart(
                 LineChartData(
+                  minY: 0,
+                  maxY: 3,
+                  rangeAnnotations: RangeAnnotations(
+                    horizontalRangeAnnotations: [
+                      HorizontalRangeAnnotation(
+                        y1: 1,
+                        y2: 3,
+                        color: Colors.red.withOpacity(0.2),
+                      ),
+                    ],
+                  ),
                   borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) => Text('${value.toInt()}s'),
+                      ),
+                    ),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
                   lineBarsData: [
                     LineChartBarData(
                       spots: [
                         for (var i = 0; i < _times.length; i++)
-                          FlSpot(i.toDouble(), _times[i].toDouble()),
+                          FlSpot(i.toDouble(), _times[i] / 1000.0),
                       ],
                       isCurved: false,
                       dotData: FlDotData(show: true),
