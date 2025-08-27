@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.39] - 2025-08-27
+- added animation for sliding actions
+
 ## [0.1.38] - 2025-08-27
 - fixed order update in widget
 - move done tasks to the end of their list when marking them as done.

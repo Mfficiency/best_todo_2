@@ -288,12 +288,50 @@ class _TaskTileState extends State<TaskTile>
       ),
     );
 
-    
-    content = AnimatedSlide(
+
+    final slide = AnimatedSlide(
       offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
       duration:
           _dragging ? Duration.zero : const Duration(milliseconds: 200),
       child: content,
+    );
+
+    Widget? background;
+    if (_dragOffset != 0) {
+      final dragToDelete =
+          widget.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
+      if (dragToDelete) {
+        final alignment =
+            widget.swipeLeftDelete ? Alignment.centerRight : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.red.withOpacity(0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Icon(Icons.delete, color: Colors.white),
+          ),
+        );
+      } else {
+        final alignment =
+            widget.swipeLeftDelete ? Alignment.centerLeft : Alignment.centerRight;
+        final icon =
+            widget.swipeLeftDelete ? Icons.arrow_forward : Icons.arrow_back;
+        background = Positioned.fill(
+          child: Container(
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Icon(icon,
+                color: Theme.of(context).colorScheme.primary),
+          ),
+        );
+      }
+    }
+
+    content = Stack(
+      children: [
+        if (background != null) background,
+        slide,
+      ],
     );
 
     if (isAndroid) {
