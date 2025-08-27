@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.38] - 2025-08-27
+- try to move tasks to the end of the list when they are marked as done.
+
 ## [0.1.37] - 2025-08-27
 - added uid to tasks for better identification.
 - added list number to tasks for ordering within a list.
