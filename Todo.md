@@ -1,7 +1,7 @@
 ## MVP
 ### TODO
 - fix auto update widget at midnight
-- add a simplified mode
+
 
 ### Done
 - when the item is open you should also be able to swipe to the right to move to the next list.
@@ -22,6 +22,7 @@
 
 ## After MVP
 - 1 working automatic test when building or pushing
+- add a simplified mode
 
 ## Later
 - add logo in banners etc
