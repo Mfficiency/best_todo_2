@@ -27,7 +27,7 @@ class WidgetRefreshService {
       _taskName,
       _taskName,
       initialDelay: delay,
-      constraints: const Constraints(
+      constraints: Constraints(
         networkType: NetworkType.not_required,
       ),
     );
@@ -73,7 +73,7 @@ void callbackDispatcher() {
         _taskName,
         _taskName,
         initialDelay: delay,
-        constraints: const Constraints(
+        constraints: Constraints(
           networkType: NetworkType.not_required,
         ),
       );
