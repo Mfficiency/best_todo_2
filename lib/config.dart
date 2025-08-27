@@ -25,9 +25,9 @@ class Config {
   static const List<String> tabs = [
     'Today',
     'Tomorrow',
-    'Day After Tomorrow',
-    'Next Week',
-    'Next Month',
+    'Day After\nTomorrow',
+    'Next\nWeek',
+    'Next\nMonth',
   ];
 
   /// Page shown when the app starts.
