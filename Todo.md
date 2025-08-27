@@ -1,11 +1,10 @@
 ## MVP
 ### TODO
-- make a tab statistics with startup times
-- when the item is open you should also be able to swipe to the right to move to the next list.
-- fix bug moving items and opening tasks
-- log the boot times
+- fix auto update widget at midnight
 
 ### Done
+- when the item is open you should also be able to swipe to the right to move to the next list.
+- fix bug moving items and opening tasks
 - make animation more clear that yuo are deleting or moving
 - make sure everything is exported to json
 - make sure you can import from json
@@ -13,6 +12,10 @@
 - enlarge icons and put text on two rows
 - when swiping multiple items they should all be moved to the next list.
 - check if the id works and all the other parameter
+- make a tab statistics with startup times
+- log the boot times
+
+
 
 
 
