@@ -8,4 +8,13 @@ void main() {
     task.toggleDone();
     expect(task.isDone, isTrue);
   });
+
+  test('tasks generate unique ids', () {
+    final a = Task(title: 'a');
+    final b = Task(title: 'b');
+    expect(a.uid, isNotEmpty);
+    expect(b.uid, isNotEmpty);
+    expect(a.uid, isNot(b.uid));
+    expect(a.listRanking, isNull);
+  });
 }
