@@ -2,6 +2,7 @@
 
 ## [0.1.39] - 2025-08-27
 - added animation for sliding actions
+- fixed a bug where tasks would glitch when editing them.
 
 ## [0.1.38] - 2025-08-27
 - fixed order update in widget
