@@ -10,6 +10,7 @@ import '../config.dart';
 class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
+  final VoidCallback onToggle;
   final void Function(int destination) onMove;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
@@ -21,6 +22,7 @@ class TaskTile extends StatefulWidget {
     Key? key,
     required this.task,
     required this.onChanged,
+    required this.onToggle,
     required this.onMove,
     required this.onMoveNext,
     required this.onDelete,
@@ -153,7 +155,7 @@ class _TaskTileState extends State<TaskTile>
       minLeadingWidth: isAndroid ? 0 : null,
       leading: Checkbox(
         value: widget.task.isDone,
-        onChanged: (_) => setState(() => widget.onChanged()),
+        onChanged: (_) => setState(() => widget.onToggle()),
       ),
       title: Text(
         widget.task.title,

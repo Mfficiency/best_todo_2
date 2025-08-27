@@ -366,7 +366,8 @@ class _HomePageState extends State<HomePage>
               final tile = TaskTile(
                 key: isAndroid ? ValueKey(task.uid) : null,
                 task: task,
-                onChanged: () {
+                onChanged: _saveTasks,
+                onToggle: () {
                   setState(task.toggleDone);
                   _saveTasks();
                 },
