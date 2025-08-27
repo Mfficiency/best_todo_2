@@ -11,6 +11,7 @@ import '../models/task.dart';
 import '../services/log_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
+import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
@@ -317,8 +318,7 @@ class _HomePageState extends State<HomePage>
       if (pageIndex == 3) return diff >= 3 && diff < 30;
       return diff >= 30;
     }).toList();
-    list.sort((a, b) => (a.listRanking ?? 1 << 31)
-        .compareTo(b.listRanking ?? 1 << 31));
+    sortTasks(list);
     return list;
   }
 
@@ -360,14 +360,7 @@ class _HomePageState extends State<HomePage>
                 key: isAndroid ? ValueKey(task.uid) : null,
                 task: task,
                 onChanged: () {
-                  setState(() {
-                    task.toggleDone();
-                    if (task.isDone) {
-                      _tasks
-                        ..remove(task)
-                        ..add(task);
-                    }
-                  });
+                  setState(task.toggleDone);
                   _saveTasks();
                 },
                 onMove: (dest) => _moveTask(pageIndex, index, dest),
