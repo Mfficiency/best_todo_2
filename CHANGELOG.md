@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.41] - 2025-08-27
+- log startup duration and display graph of last 100 startups
+
 ## [0.1.40] - 2025-08-27
 - update icons to V2
 - added text "no tasks for today" when there are no tasks for today.
