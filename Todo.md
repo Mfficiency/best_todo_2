@@ -4,7 +4,6 @@
 - when the item is open you should also be able to swipe to the right to move to the next list.
 - fix bug moving items and opening tasks
 - log the boot times
-- check if the id works and all the other parameter
 
 ### Done
 - make animation more clear that yuo are deleting or moving
@@ -13,6 +12,8 @@
 - show no tasks for today if there are none
 - enlarge icons and put text on two rows
 - when swiping multiple items they should all be moved to the next list.
+- check if the id works and all the other parameter
+
 
 
 ## After MVP
