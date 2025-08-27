@@ -402,8 +402,8 @@ class _HomePageState extends State<HomePage>
       drawer: Drawer(
         child: ListView(
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
+            DrawerHeader(
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary,),
               child: Text('Menu', style: TextStyle(color: Colors.white)),
             ),
             ListTile(
