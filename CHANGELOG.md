@@ -4,6 +4,8 @@
 - update icons to V2
 - added text "no tasks for today" when there are no tasks for today.
 - text of tabs is now on two lines to make it more readable.
+- log startup duration and display graph of last 100 startups
+- show startup time graph scaled 0–3s with a red zone above 1s
 - added short text in About page.
 
 ## [0.1.39] - 2025-08-27
