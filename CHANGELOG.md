@@ -4,6 +4,7 @@
 - update icons to V2
 - added text "no tasks for today" when there are no tasks for today.
 - text of tabs is now on two lines to make it more readable.
+- added short text in About page.
 
 ## [0.1.39] - 2025-08-27
 - added animation for sliding actions
