@@ -18,7 +18,8 @@ class SimpleWidgetProvider : HomeWidgetProvider() {
         appWidgetIds.forEach { widgetId ->
             val views = RemoteViews(context.packageName, R.layout.simple_widget_layout).apply {
                 val text = widgetData.getString("text_from_flutter_app", "")
-                setTextViewText(R.id.widget_text, text)
+                val displayText = if (text.isNullOrBlank()) "No tasks for today" else text
+                setTextViewText(R.id.widget_text, displayText)
             }
 			val intent = Intent(context, MainActivity::class.java)
             val pendingIntent = PendingIntent.getActivity(
