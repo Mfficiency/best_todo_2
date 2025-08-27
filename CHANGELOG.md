@@ -2,6 +2,7 @@
 
 ## [0.1.38] - 2025-08-27
 - fixed order update in widget
+- move done tasks to the end of their list when marking them as done.
 
 ## [0.1.37] - 2025-08-27
 - added uid to tasks for better identification.
