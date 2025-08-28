@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../main.dart';
+import '../services/demo_service.dart';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({Key? key}) : super(key: key);
@@ -32,6 +33,19 @@ class AboutPage extends StatelessWidget {
                 'With simple swipes you can reschedule tasks for tomorrow, next week, or later. Notes and labels help keep things organized while keeping the interface clean and intuitive.\n\n'
                 'BestToDo is a product of Mfficiency, created to make everyday productivity tools faster, leaner, and user-controlled.',
                 textAlign: TextAlign.left,
+              ),
+              const SizedBox(height: 24),
+              ValueListenableBuilder<bool>(
+                valueListenable: DemoService.demoMode,
+                builder: (context, demo, _) {
+                  return SwitchListTile(
+                    title: const Text('Demo Mode'),
+                    value: demo,
+                    onChanged: (value) {
+                      DemoService.demoMode.value = value;
+                    },
+                  );
+                },
               ),
               const SizedBox(height: 24),
               ElevatedButton(

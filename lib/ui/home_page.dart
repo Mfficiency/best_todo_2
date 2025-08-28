@@ -10,6 +10,7 @@ import '../config.dart';
 import '../models/task.dart';
 import '../services/log_service.dart';
 import '../services/storage_service.dart';
+import '../services/demo_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
@@ -47,6 +48,7 @@ class _HomePageState extends State<HomePage>
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
   Timer? _midnightTimer;
+  late final VoidCallback _demoListener;
 
   /// Day offsets for each tab. The last two entries represent
   /// "next week" and "next month" respectively.
@@ -88,6 +90,8 @@ class _HomePageState extends State<HomePage>
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
     _loadTasks();
     _scheduleMidnightUpdate();
+    _demoListener = _onDemoModeChanged;
+    DemoService.demoMode.addListener(_demoListener);
   }
 
   @override
@@ -95,6 +99,7 @@ class _HomePageState extends State<HomePage>
     _tabController.dispose();
     _controller.dispose();
     _midnightTimer?.cancel();
+    DemoService.demoMode.removeListener(_demoListener);
     super.dispose();
   }
 
@@ -276,6 +281,7 @@ class _HomePageState extends State<HomePage>
   }
 
   void _saveTasks() {
+    if (DemoService.demoMode.value) return;
     for (var i = 0; i < Config.tabs.length; i++) {
       final listTasks = _tasksForTab(i);
       for (var j = 0; j < listTasks.length; j++) {
@@ -326,6 +332,26 @@ class _HomePageState extends State<HomePage>
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Tasks imported')));
     }
+  }
+
+  void _onDemoModeChanged() {
+    final demo = DemoService.demoMode.value;
+    setState(() {
+      if (demo) {
+        DemoService.backupTasks =
+            _tasks.map((t) => Task.fromJson(t.toJson())).toList();
+        _tasks
+          ..clear()
+          ..addAll(DemoService.demoTasks(_currentDate));
+        _updateHomeWidget();
+      } else {
+        _tasks
+          ..clear()
+          ..addAll(DemoService.backupTasks);
+        DemoService.backupTasks = [];
+        _saveTasks();
+      }
+    });
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
