@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.41] - 2025-08-27
+- changed menu items
+- added padding to startup time graph
+
 ## [0.1.40] - 2025-08-27
 - update icons to V2
 - added text "no tasks for today" when there are no tasks for today.

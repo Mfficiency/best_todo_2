@@ -422,19 +422,13 @@ class _HomePageState extends State<HomePage>
       drawer: Drawer(
         child: ListView(
           children: [
-            DrawerHeader(
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary,),
-              child: Text('Menu', style: TextStyle(color: Colors.white)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.info),
-              title: const Text('About'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AboutPage()),
-                );
-              },
+            Container(
+              padding: const EdgeInsets.all(16), // adjust as you like
+              color: Theme.of(context).colorScheme.primary,
+              child: Text(
+                'BestToDo v${Config.version}',
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.settings),
@@ -447,6 +441,31 @@ class _HomePageState extends State<HomePage>
                       onSettingsChanged: _updateSettings,
                     ),
                   ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: const Text('Deleted Items'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DeletedItemsPage(
+                      items: _deletedTasks,
+                      onRestore: _restoreTask,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AboutPage()),
                 );
               },
             ),
@@ -481,21 +500,6 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text('Deleted Items'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DeletedItemsPage(
-                      items: _deletedTasks,
-                      onRestore: _restoreTask,
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.file_download),
               title: const Text('Export Tasks'),
               onTap: () {
@@ -520,7 +524,7 @@ class _HomePageState extends State<HomePage>
           decoration: InputDecoration(
             hintText: 'search soon available',
             border: InputBorder.none,
-            prefixIcon: Icon(Icons.search),
+            suffixIcon: Icon(Icons.search),
           ),
         ),
         bottom: PreferredSize(
@@ -552,7 +556,12 @@ class _HomePageState extends State<HomePage>
                     ? List.generate(Config.tabs.length, (index) {
                         final selected = _tabController.index == index;
                         if (selected) {
-                          return Tab(text: Config.tabs[index]);
+                          return Tab(
+                            child: Text(
+                              Config.tabs[index],
+                              textAlign: TextAlign.center, // ✅ center multiline titles
+                            ),
+                          );
                         }
                         return Tab(
                           icon: Image.asset(
