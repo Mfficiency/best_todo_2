@@ -8,6 +8,7 @@ import '../models/task.dart';
 class StorageService {
   static const _fileName = 'tasks.json';
   static const _dateFileName = 'last_opened.txt';
+  static const _deletedFileName = 'deleted_tasks.json';
 
   void _ensureUniqueIds(List<Task> tasks) {
     final ids = <String>{};
@@ -27,6 +28,11 @@ class StorageService {
   Future<File> _getDateFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_dateFileName');
+  }
+
+  Future<File> _getDeletedFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_deletedFileName');
   }
 
   Future<bool> _isNewDay() async {
@@ -57,6 +63,12 @@ class StorageService {
     await file.writeAsString(jsonString, flush: true);
   }
 
+  Future<void> saveDeletedTaskList(List<Task> tasks) async {
+    final file = await _getDeletedFile();
+    final jsonString = jsonEncode(tasks.take(100).map((t) => t.toJson()).toList());
+    await file.writeAsString(jsonString, flush: true);
+  }
+
   Future<List<Task>> loadTaskList() async {
     try {
       final isNewDay = await _isNewDay();
@@ -66,14 +78,34 @@ class StorageService {
       }
       final contents = await file.readAsString();
       final List<dynamic> data = jsonDecode(contents);
-      final tasks = data
-          .map((e) => Task.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final tasks =
+          data.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
       _ensureUniqueIds(tasks);
       if (isNewDay) {
+        final deleted = await loadDeletedTaskList();
+        final removed = tasks.where((t) => t.isDone).toList();
         tasks.removeWhere((t) => t.isDone);
         await saveTaskList(tasks);
+        if (removed.isNotEmpty) {
+          deleted.insertAll(0, removed);
+          await saveDeletedTaskList(deleted);
+        }
       }
+      return tasks;
+    } catch (_) {
+      return <Task>[];
+    }
+  }
+
+  Future<List<Task>> loadDeletedTaskList() async {
+    try {
+      final file = await _getDeletedFile();
+      if (!await file.exists()) return <Task>[];
+      final contents = await file.readAsString();
+      final List<dynamic> data = jsonDecode(contents);
+      final tasks =
+          data.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
+      _ensureUniqueIds(tasks);
       return tasks;
     } catch (_) {
       return <Task>[];

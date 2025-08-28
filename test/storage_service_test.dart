@@ -15,7 +15,8 @@ class _FakePathProvider extends PathProviderPlatform {
 }
 
 void main() {
-  test('loadTaskList removes completed tasks on new day', () async {
+  test('loadTaskList moves completed tasks to deleted file on new day',
+      () async {
     final tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
 
@@ -33,6 +34,8 @@ void main() {
     final loaded = await service.loadTaskList();
     expect(loaded.length, 1);
     expect(loaded.first.title, 'pending');
+    final deleted = await service.loadDeletedTaskList();
+    expect(deleted.map((t) => t.title).toList(), ['done']);
   });
 
   test('importTaskList assigns unique ids when missing or duplicated', () async {

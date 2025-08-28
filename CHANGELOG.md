@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.42] - 2025-08-27
+- move automatically deleted tasks to Deleted Items list so they can be restored later.
+
 ## [0.1.41] - 2025-08-27
 - changed menu items
 - added padding to startup time graph
