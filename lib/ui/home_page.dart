@@ -63,6 +63,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
+    final deleted = await _storageService.loadDeletedTaskList();
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
@@ -70,6 +71,7 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
+    _deletedTasks.addAll(deleted);
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
@@ -188,6 +190,7 @@ class _HomePageState extends State<HomePage>
           _deletedTasks.removeLast();
         }
       });
+      _saveTasks();
     });
 
     ScaffoldMessenger.of(context)
@@ -283,6 +286,7 @@ class _HomePageState extends State<HomePage>
       }
     }
     _storageService.saveTaskList(_tasks);
+    _storageService.saveDeletedTaskList(_deletedTasks);
     _updateHomeWidget();
   }
 
