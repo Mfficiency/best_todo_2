@@ -22,6 +22,7 @@ class DeletedItemsPage extends StatelessWidget {
           return ListTile(
             leading: IconButton(
               icon: const Icon(Icons.restore),
+              iconSize: 30,
               tooltip: 'Restore',
               onPressed: () => onRestore(task),
             ),

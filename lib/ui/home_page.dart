@@ -365,6 +365,7 @@ class _HomePageState extends State<HomePage>
               ),
               IconButton(
                 icon: const Icon(Icons.add),
+                iconSize: 30,
                 onPressed: () => _addTask(_controller.text),
               )
             ],
@@ -431,7 +432,7 @@ class _HomePageState extends State<HomePage>
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.settings),
+              leading: const Icon(Icons.settings, size: 30),
               title: const Text('Settings'),
               onTap: () {
                 Navigator.pop(context);
@@ -445,7 +446,7 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete),
+              leading: const Icon(Icons.delete, size: 30),
               title: const Text('Deleted Items'),
               onTap: () {
                 Navigator.pop(context);
@@ -460,7 +461,7 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.info),
+              leading: const Icon(Icons.info, size: 30),
               title: const Text('About'),
               onTap: () {
                 Navigator.pop(context);
@@ -470,7 +471,7 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.history),
+              leading: const Icon(Icons.history, size: 30),
               title: const Text('Changelog'),
               onTap: () {
                 Navigator.pop(context);
@@ -480,7 +481,7 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.list_alt),
+              leading: const Icon(Icons.list_alt, size: 30),
               title: const Text('App Logs'),
               onTap: () {
                 Navigator.pop(context);
@@ -490,7 +491,7 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.show_chart),
+              leading: const Icon(Icons.show_chart, size: 30),
               title: const Text('Startup Times'),
               onTap: () {
                 Navigator.pop(context);
@@ -500,7 +501,7 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.file_download),
+              leading: const Icon(Icons.file_download, size: 30),
               title: const Text('Export Tasks'),
               onTap: () {
                 Navigator.pop(context);
@@ -508,7 +509,7 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.file_upload),
+              leading: const Icon(Icons.file_upload, size: 30),
               title: const Text('Import Tasks'),
               onTap: () {
                 Navigator.pop(context);
@@ -537,6 +538,7 @@ class _HomePageState extends State<HomePage>
                   children: [
                     IconButton(
                       icon: const Icon(Icons.chevron_left),
+                      iconSize: 30,
                       onPressed: () => _changeDate(-1),
                     ),
                     Text(
@@ -545,6 +547,7 @@ class _HomePageState extends State<HomePage>
                     ),
                     IconButton(
                       icon: const Icon(Icons.chevron_right),
+                      iconSize: 30,
                       onPressed: () => _changeDate(1),
                     ),
                   ],

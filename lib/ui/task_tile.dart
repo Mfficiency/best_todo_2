@@ -130,6 +130,7 @@ class _TaskTileState extends State<TaskTile>
         if (_expanded)
           IconButton(
             icon: const Icon(Icons.expand_less),
+            iconSize: 30,
             tooltip: 'Collapse',
             onPressed: _toggleExpanded,
           ),
@@ -137,11 +138,13 @@ class _TaskTileState extends State<TaskTile>
           if (widget.showSwipeButton)
             IconButton(
               icon: const Icon(Icons.swipe),
+              iconSize: 30,
               tooltip: 'Reschedule',
               onPressed: _startOptions,
             ),
           IconButton(
             icon: const Icon(Icons.delete),
+            iconSize: 30,
             tooltip: 'Delete',
             onPressed: widget.onDelete,
           ),
@@ -310,7 +313,7 @@ class _TaskTileState extends State<TaskTile>
             color: Colors.red.withOpacity(0.5),
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Icon(Icons.delete, color: Colors.white),
+            child: const Icon(Icons.delete, color: Colors.white, size: 30),
           ),
         );
       } else {
@@ -322,8 +325,11 @@ class _TaskTileState extends State<TaskTile>
           child: Container(
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Icon(icon,
-                color: Theme.of(context).colorScheme.primary),
+            child: Icon(
+              icon,
+              color: Theme.of(context).colorScheme.primary,
+              size: 30,
+            ),
           ),
         );
       }
