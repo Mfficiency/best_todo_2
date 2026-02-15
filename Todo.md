@@ -1,6 +1,8 @@
 ## After MVP
 ### TODO
+- add home to menu
 - in your stats, hide the date picker when not in dev mode
+- on the start screen, have 3 buttons, populate with example data or start fresh or import previous data
 - 1 working automatic test when building or pushing
 - add a simplified mode
 - delete all, select before delete
