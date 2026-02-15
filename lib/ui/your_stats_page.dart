@@ -166,7 +166,7 @@ class _YourStatsPageState extends State<YourStatsPage>
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Text(
-            'Deleted items over the last 52 weeks',
+            'Completed items over the last 52 weeks',
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
