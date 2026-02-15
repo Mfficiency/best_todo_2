@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import 'subpage_app_bar.dart';
 
 class YourStatsPage extends StatefulWidget {
   final List<Task> deletedItems;
@@ -291,8 +292,9 @@ class _YourStatsPageState extends State<YourStatsPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Your Stats'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Your Stats',
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(

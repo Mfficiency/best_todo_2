@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
 class DeletedItemsPage extends StatelessWidget {
@@ -24,7 +25,7 @@ class DeletedItemsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Deleted Items')),
+      appBar: buildSubpageAppBar(context, title: 'Deleted Items'),
       body: ListView.builder(
         itemCount: items.length,
         itemBuilder: (context, index) {
