@@ -67,14 +67,15 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'BestToDo',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: _seedColor),
+        colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
+            .copyWith(primary: _seedColor),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: _seedColor,
           brightness: Brightness.dark,
-        ),
+        ).copyWith(primary: _seedColor),
         useMaterial3: true,
       ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
