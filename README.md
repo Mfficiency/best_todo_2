@@ -23,7 +23,7 @@
 
 flutter pub get
 flutter run -d chrome
-flutter build apk --release
+flutter build apk --release #after installing the android SDK
 ```
 
 When running the app on Chrome, swipe gestures can be hard to test.
@@ -86,3 +86,21 @@ flutter run
 ## Update icon
 
 python ./tool/update_icon.py
+
+## Build number
+version in pubspec.yaml is:
+<version_name>+<build_number>
+
+So in:
+version: 0.1.41+11
+0.1.41 = human-facing app version (versionName on Android, CFBundleShortVersionString on iOS)
+11 = internal build number (versionCode on Android, CFBundleVersion on iOS)
+You increment +11 for each new store/build upload, even if the visible version stays the same.
+
+im creating version 0.1.42, what should the buildnumber be?
+Use +12 if your current released/uploaded build was +11.
+
+So set:
+version: 0.1.42+12
+
+Rule of thumb: keep build number strictly increasing for every new build you distribute.
