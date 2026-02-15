@@ -98,6 +98,11 @@ class _HomePageState extends State<HomePage>
     _tabController.addListener(() {
       setState(() {});
     });
+    Config.ensureVersionLoaded().then((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
     _loadTasks();
     _scheduleMidnightUpdate();

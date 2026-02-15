@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.45] - 2026-02-15
+- automatic versioning
+
+## [0.1.44] - 2026-02-15
+- update filename
+
+## [0.1.43] - 2026-02-15
+- delete message fading away
+
 ## [0.1.42] - 2026-02-15
 - bringing back deleted items
 
@@ -160,3 +169,4 @@
 - Added dev mode date navigation and automatic cleanup of completed tasks.
 - Reschedule options now appear when swiping tasks and the swipe button is hidden on Android.
 - Swipe gestures now move tasks to the next list by default and wrap from Next Week back to Today.
+

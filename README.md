@@ -104,3 +104,13 @@ So set:
 version: 0.1.42+12
 
 Rule of thumb: keep build number strictly increasing for every new build you distribute.
+
+## Versioning workflow
+Use one command to keep `pubspec.yaml` and `CHANGELOG.md` in sync:
+
+```bash
+dart run tool/bump_version.dart 0.1.45+15 "automatic versioning"
+```
+
+This updates the `version:` field in `pubspec.yaml` and prepends a new
+`CHANGELOG.md` section for `0.1.45` with today's date.
