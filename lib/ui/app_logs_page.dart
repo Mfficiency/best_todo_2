@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/log_service.dart';
+import 'subpage_app_bar.dart';
 
 /// Displays logs collected during app interactions and widget updates.
 class AppLogsPage extends StatelessWidget {
@@ -9,7 +10,7 @@ class AppLogsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('App Logs')),
+      appBar: buildSubpageAppBar(context, title: 'App Logs'),
       body: ValueListenableBuilder<List<String>>(
         valueListenable: LogService.logs,
         builder: (context, logs, _) {

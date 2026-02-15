@@ -5,9 +5,9 @@
 - have a way to sent a notification about that item in 5- 20 or 60 minutes
 
 ## [0.1.47] - 2026-02-15
-- show your stats
+- stats page
 - heatmap like github with amount of closed items related to shade of blue
-- next to back button also just menu button
+- also just return
 
 ## [0.1.46] - 2026-02-15
 - able to permanently delete the deleted items

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../main.dart';
+import 'subpage_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
@@ -20,7 +21,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: buildSubpageAppBar(context, title: 'Settings'),
       body: ListView(
         children: [
           SwitchListTile(
