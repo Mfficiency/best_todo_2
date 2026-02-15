@@ -186,6 +186,7 @@ class _HomePageState extends State<HomePage>
     if (index >= tasks.length) return;
     final task = tasks[index];
     final originalIndex = _tasks.indexOf(task);
+    final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
       _tasks.removeAt(originalIndex);
@@ -195,13 +196,16 @@ class _HomePageState extends State<HomePage>
 
     late Timer timer;
     timer = Timer(Config.delayDuration, () {
+      if (!mounted) return;
       setState(() {
         _addToDeletedTasks(task);
       });
       _saveDeletedTasks();
+      // Explicitly close the snackbar when its undo window expires.
+      messenger.hideCurrentSnackBar();
     });
 
-    ScaffoldMessenger.of(context)
+    messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
@@ -211,6 +215,8 @@ class _HomePageState extends State<HomePage>
             label: 'Undo',
             onPressed: () {
               timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
               setState(() {
                 _tasks.insert(originalIndex, task);
               });
