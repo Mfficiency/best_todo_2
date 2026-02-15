@@ -11,6 +11,7 @@ class Task {
   String note;
   String label;
   DateTime? dueDate;
+  DateTime? deletedAt;
   bool isDone;
   int? listRanking;
 
@@ -21,6 +22,7 @@ class Task {
     this.note = '',
     this.label = '',
     this.dueDate,
+    this.deletedAt,
     this.isDone = false,
     this.listRanking,
   }) : uid = uid ?? Task.newUid();
@@ -39,6 +41,9 @@ class Task {
       dueDate: json['dueDate'] != null
           ? DateTime.parse(json['dueDate'] as String)
           : null,
+      deletedAt: json['deletedAt'] != null
+          ? DateTime.parse(json['deletedAt'] as String)
+          : null,
       isDone: json['isDone'] as bool? ?? false,
       listRanking: json['listRanking'] as int?,
     );
@@ -51,6 +56,7 @@ class Task {
         'note': note,
         'label': label,
         'dueDate': dueDate?.toIso8601String(),
+        'deletedAt': deletedAt?.toIso8601String(),
         'isDone': isDone,
         if (listRanking != null) 'listRanking': listRanking,
       };

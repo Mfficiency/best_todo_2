@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../main.dart';
+import 'subpage_app_bar.dart';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({Key? key}) : super(key: key);
@@ -10,16 +11,21 @@ class AboutPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final mode = Config.isDev ? 'Development' : 'Production';
     return Scaffold(
-      appBar: AppBar(title: const Text('About')),
+      appBar: buildSubpageAppBar(context, title: 'About'),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                'BestToDo v${Config.version}\nRunning in $mode mode',
-                textAlign: TextAlign.center,
+              FutureBuilder<void>(
+                future: Config.ensureVersionLoaded(),
+                builder: (context, snapshot) {
+                  return Text(
+                    'BestToDo v${Config.versionWithBuild}\nRunning in $mode mode',
+                    textAlign: TextAlign.center,
+                  );
+                },
               ),
               const SizedBox(height: 24),
               const Text(

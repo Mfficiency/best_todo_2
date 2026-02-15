@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.1.52] - 2026-02-15
+- new stats added below heatmap
+
+## [0.1.51] - 2026-02-15
+- update bar location
+- populate historic data for graph in dev mode
+- update colors
+
+## [0.1.50] - 2026-02-15
+- widget progress line
+
+## [0.1.49] - 2026-02-15
+- take into account navigation bar
+- auto apk naming
+
+## [0.1.48] - 2026-02-15
+- send notifiction
+
+## [0.1.47] - 2026-02-15
+- stats page
+- heatmap like github with amount of closed items related to shade of blue
+- also just return
+
+## [0.1.46] - 2026-02-15
+- able to permanently delete the deleted items
+
+## [0.1.45] - 2026-02-15
+- automatic versioning
+
+## [0.1.44] - 2026-02-15
+- update filename
+
+## [0.1.43] - 2026-02-15
+- delete message fading away
+
+## [0.1.42] - 2026-02-15
+- bringing back deleted items
+
 ## [0.1.41] - 2025-08-27
 - changed menu items
 - added padding to startup time graph

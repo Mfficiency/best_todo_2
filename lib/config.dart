@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class Config {
   static double defaultDelaySeconds = 5.0;
@@ -13,8 +14,30 @@ class Config {
   /// Uses the `dart.vm.product` flag to detect production builds.
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
-  /// Current application version.
-  static const String version = '0.1.41';
+  static String _appVersion = 'unknown';
+  static String _buildNumber = '';
+  static Future<void>? _versionLoadFuture;
+
+  /// Current application version, read from pubspec at runtime.
+  static String get version => _appVersion;
+
+  /// Current application version including build number when available.
+  static String get versionWithBuild =>
+      _buildNumber.isEmpty ? _appVersion : '$_appVersion+$_buildNumber';
+
+  /// Ensures app version metadata has been loaded from the platform.
+  static Future<void> ensureVersionLoaded() {
+    _versionLoadFuture ??= _loadVersion();
+    return _versionLoadFuture!;
+  }
+
+  static Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appVersion = info.version;
+      _buildNumber = info.buildNumber;
+    } catch (_) {}
+  }
 
   static const List<String> initialTasks = [
     'Get milk',
@@ -46,9 +69,16 @@ class Config {
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
+  /// Default delay before sending a manual notification from a task bell.
+  /// Dev builds use 00:03 for faster testing, production defaults to 05:00.
+  static int defaultNotificationDelaySeconds = isDev ? 3 : 300;
+
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
   static bool useIconTabs = false;
+
+  /// If true, the homescreen widget shows today's completion progress line.
+  static bool showWidgetProgressLine = true;
 
   static const _settingsFileName = 'settings.json';
 
@@ -68,7 +98,12 @@ class Config {
         darkMode = data['darkMode'] ?? darkMode;
         enableNotifications =
             data['enableNotifications'] ?? enableNotifications;
+        defaultNotificationDelaySeconds =
+            (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
+                defaultNotificationDelaySeconds;
         useIconTabs = data['useIconTabs'] ?? useIconTabs;
+        showWidgetProgressLine =
+            data['showWidgetProgressLine'] ?? showWidgetProgressLine;
         defaultDelaySeconds =
             (data['defaultDelaySeconds'] as num?)?.toDouble() ??
                 defaultDelaySeconds;
@@ -84,7 +119,9 @@ class Config {
         'swipeLeftDelete': swipeLeftDelete,
         'darkMode': darkMode,
         'enableNotifications': enableNotifications,
+        'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
         'useIconTabs': useIconTabs,
+        'showWidgetProgressLine': showWidgetProgressLine,
         'defaultDelaySeconds': defaultDelaySeconds,
       };
       await file.writeAsString(jsonEncode(data), flush: true);
