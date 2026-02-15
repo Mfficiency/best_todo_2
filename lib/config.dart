@@ -14,7 +14,7 @@ class Config {
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
   /// Current application version.
-  static const String version = '0.1.39';
+  static const String version = '0.1.41';
 
   static const List<String> initialTasks = [
     'Get milk',
@@ -25,9 +25,9 @@ class Config {
   static const List<String> tabs = [
     'Today',
     'Tomorrow',
-    'Day After Tomorrow',
-    'Next Week',
-    'Next Month',
+    ' Day After\nTomorrow',
+    ' Next\nWeek',
+    ' Next\nMonth',
   ];
 
   /// Page shown when the app starts.

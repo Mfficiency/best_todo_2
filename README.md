@@ -53,6 +53,8 @@ https://www.youtube.com/watch?v=ZxjgV1YaOcQ
 flutter build appbundle --release
 ```
 
+## Colors
+Primary: rgba(0, 95, 221, 1)
 ## Issues
 
 ### build the android file
