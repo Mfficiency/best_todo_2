@@ -15,10 +15,12 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
+import 'your_stats_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -490,6 +492,7 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: homeScaffoldKey,
       drawer: Drawer(
         child: ListView(
           children: [
@@ -527,6 +530,18 @@ class _HomePageState extends State<HomePage>
                       onRestore: _restoreTask,
                       onDeletePermanently: _deleteTaskPermanently,
                     ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insights),
+              title: const Text('Your Stats'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => YourStatsPage(deletedItems: _deletedTasks),
                   ),
                 );
               },

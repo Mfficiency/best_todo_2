@@ -57,17 +57,19 @@ void main(List<String> args) {
   final date =
       '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   final entryLine = changelogEntry.isEmpty ? '- TBD' : '- $changelogEntry';
-  final newSection = '## [$versionOnly] - $date\n$entryLine\n\n';
+  final newSection = '## [$versionOnly] - $date\n$entryLine\n';
 
   const header = '# Changelog';
-  if (changelog.startsWith('$header\n\n')) {
-    final updated = changelog.replaceFirst('$header\n\n', '$header\n\n$newSection');
-    changelogFile.writeAsStringSync(updated);
-    stdout.writeln('Prepended CHANGELOG.md entry for $versionOnly.');
-    return;
+  final lines = changelog.split(RegExp(r'\r?\n'));
+  final bodyStart =
+      lines.isNotEmpty && lines.first.trim() == header ? 1 : 0;
+  final bodyLines = lines.sublist(bodyStart);
+
+  while (bodyLines.isNotEmpty && bodyLines.first.trim().isEmpty) {
+    bodyLines.removeAt(0);
   }
 
-  final updated = '$header\n\n$newSection${changelog.trimLeft()}';
+  final updated = '$header\n\n$newSection\n${bodyLines.join('\n').trimRight()}';
   changelogFile.writeAsStringSync('$updated\n');
-  stdout.writeln('Normalized CHANGELOG.md and added entry for $versionOnly.');
+  stdout.writeln('Updated CHANGELOG.md entry for $versionOnly.');
 }
