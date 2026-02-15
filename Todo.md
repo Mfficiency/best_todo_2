@@ -5,6 +5,8 @@
 - delete all, select before delete
 - have a way to sent a notification about that item in 5- 20 or 60 minutes
 - recurring tasks
+- extra stats
+- So I want, on the page of my stats, another tab where I can just have, for each day, a graph. I want to see how many tasks I had at the beginning of the day, at the end of the day, and how many were completed at the end of the day.so it will be a vertical bar of blocks, the hight of the bar is total amount of tasks. a red block is a task that was there in the beginning of the day but moved to another date, dark green is a task that was there in the beginning of the day and got completed, dark grey is a task that was there in the beginning of the day and did not get completed. light green is a task that wasn't there in the beginning of the day (so was created during the day) and got completed, light grey is a task that wasn't there in the beginning of the day and did not get completed. so every day has the day of the month under it  
 
 ## Later
 - add logo in banners etc
