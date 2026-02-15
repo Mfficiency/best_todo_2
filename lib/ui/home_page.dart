@@ -45,6 +45,9 @@ class _HomePageState extends State<HomePage>
   final String iOSWidgetName = 'SimpleWidgetProvider';
   final String androidWidgetName = 'SimpleWidgetProvider';
   final String dataKey = 'text_from_flutter_app';
+  final String progressVisibleKey = 'widget_progress_visible';
+  final String progressPercentKey = 'widget_progress_percent';
+  final String progressColorKey = 'widget_progress_color';
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
@@ -299,6 +302,7 @@ class _HomePageState extends State<HomePage>
 
   void _updateSettings() {
     setState(() {});
+    _updateHomeWidget();
     LogService.add('HomePage._updateSettings', 'Settings updated');
   }
 
@@ -326,23 +330,44 @@ class _HomePageState extends State<HomePage>
   Future<void> _updateHomeWidget() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final tasks = _tasks
+    final todayTasks = _tasks
         .where((t) {
           if (t.dueDate == null) return false;
           final due =
               DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-          return !t.isDone && !due.isAfter(today);
+          return !due.isAfter(today);
         })
         .toList()
       ..sort((a, b) => (a.listRanking ?? 1 << 31)
           .compareTo(b.listRanking ?? 1 << 31));
 
-    final data = tasks.isEmpty
+    final openTasks = todayTasks.where((t) => !t.isDone).toList();
+    final totalCount = todayTasks.length;
+    final completedCount = totalCount - openTasks.length;
+    final remainingCount = openTasks.length;
+    final percent = totalCount == 0
+        ? 0
+        : ((completedCount / totalCount) * 100).round().clamp(0, 100);
+
+    String progressColor = 'green';
+    if (completedCount == totalCount && totalCount > 0) {
+      progressColor = 'green';
+    } else if (remainingCount >= 5) {
+      progressColor = 'red';
+    } else if (remainingCount == 4) {
+      progressColor = 'orange';
+    }
+
+    final data = openTasks.isEmpty
         ? 'No tasks for today'
-        : tasks.map((t) => '• ${t.title}').join('\n');
+        : openTasks.map((t) => '- ${t.title}').join('\n');
 
     try {
       await HomeWidget.saveWidgetData(dataKey, data);
+      await HomeWidget.saveWidgetData(
+          progressVisibleKey, Config.showWidgetProgressLine);
+      await HomeWidget.saveWidgetData(progressPercentKey, percent);
+      await HomeWidget.saveWidgetData(progressColorKey, progressColor);
       await HomeWidget.updateWidget(
           iOSName: iOSWidgetName, androidName: androidWidgetName);
     } catch (_) {}

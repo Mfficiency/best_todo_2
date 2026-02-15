@@ -1,8 +1,11 @@
 # Changelog
 
+## [0.1.51] - 2026-02-15
+- update bar location
+- populate historic data for graph in dev mode
+
 ## [0.1.50] - 2026-02-15
 - widget progress line
-- populate historic data for graph in dev mode
 
 ## [0.1.49] - 2026-02-15
 - take into account navigation bar
