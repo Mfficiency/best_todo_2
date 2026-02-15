@@ -208,7 +208,7 @@ class _HomePageState extends State<HomePage>
           content: Text('Deleted "${task.title}"'),
           duration: Config.delayDuration,
           action: SnackBarAction(
-            label: 'Cancel',
+            label: 'Undo',
             onPressed: () {
               timer.cancel();
               setState(() {
