@@ -69,6 +69,10 @@ class Config {
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
+  /// Default delay before sending a manual notification from a task bell.
+  /// Dev builds use 00:03 for faster testing, production defaults to 05:00.
+  static int defaultNotificationDelaySeconds = isDev ? 3 : 300;
+
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
   static bool useIconTabs = false;
@@ -91,6 +95,9 @@ class Config {
         darkMode = data['darkMode'] ?? darkMode;
         enableNotifications =
             data['enableNotifications'] ?? enableNotifications;
+        defaultNotificationDelaySeconds =
+            (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
+                defaultNotificationDelaySeconds;
         useIconTabs = data['useIconTabs'] ?? useIconTabs;
         defaultDelaySeconds =
             (data['defaultDelaySeconds'] as num?)?.toDouble() ??
@@ -107,6 +114,7 @@ class Config {
         'swipeLeftDelete': swipeLeftDelete,
         'darkMode': darkMode,
         'enableNotifications': enableNotifications,
+        'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
         'useIconTabs': useIconTabs,
         'defaultDelaySeconds': defaultDelaySeconds,
       };

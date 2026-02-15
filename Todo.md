@@ -1,30 +1,10 @@
-## MVP
-### TODO
-
-### Done
-- when the item is open you should also be able to swipe to the right to move to the next list.
-- fix bug moving items and opening tasks
-- make animation more clear that yuo are deleting or moving
-- make sure everything is exported to json
-- make sure you can import from json
-- show no tasks for today if there are none
-- enlarge icons and put text on two rows
-- when swiping multiple items they should all be moved to the next list.
-- check if the id works and all the other parameter
-- make a tab statistics with startup times
-- log the boot times
-- fix auto update widget at midnight
-- menu should be name
-- placeholder search bar
-- menu smaller
-- texts centered
-
-
-
-
 ## After MVP
+- the widget should have a line showing how much of the tasks have been completed today, 3 or less left is green, 4 orange, 5 or more will be red, the line is ful aand green when all tasks are completed. example: If I only have two tasks for today and none completed, there's just a grey line visible, if i complete one than the line will be 50% green. This whole think can be turned on or of in the settings.
 - 1 working automatic test when building or pushing
 - add a simplified mode
+- delete all, select before delete
+- have a way to sent a notification about that item in 5- 20 or 60 minutes
+- recurring tasks
 
 ## Later
 - add logo in banners etc
@@ -54,3 +34,24 @@
 - let user chose a time for the deadline
 - daily notification of tasks due today
 - reports on what you did
+
+## MVP
+### TODO
+
+### Done
+- when the item is open you should also be able to swipe to the right to move to the next list.
+- fix bug moving items and opening tasks
+- make animation more clear that yuo are deleting or moving
+- make sure everything is exported to json
+- make sure you can import from json
+- show no tasks for today if there are none
+- enlarge icons and put text on two rows
+- when swiping multiple items they should all be moved to the next list.
+- check if the id works and all the other parameter
+- make a tab statistics with startup times
+- log the boot times
+- fix auto update widget at midnight
+- menu should be name
+- placeholder search bar
+- menu smaller
+- texts centered

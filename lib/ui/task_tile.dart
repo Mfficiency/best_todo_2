@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import '../models/task.dart';
 import '../config.dart';
+import '../services/notification_service.dart';
 
 class TaskTile extends StatefulWidget {
   final Task task;
@@ -72,12 +72,12 @@ class _TaskTileState extends State<TaskTile>
     try {
       if (kIsWeb) {
         isEmulator = true;
-      } else if (Platform.isAndroid) {
-        final info = await plugin.androidInfo;
-        isEmulator = !info.isPhysicalDevice;
-      } else if (Platform.isIOS) {
-        final info = await plugin.iosInfo;
-        isEmulator = !info.isPhysicalDevice;
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidInfo = await plugin.androidInfo;
+        isEmulator = !androidInfo.isPhysicalDevice;
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final iosInfo = await plugin.iosInfo;
+        isEmulator = !iosInfo.isPhysicalDevice;
       }
     } catch (_) {
       isEmulator = true;
@@ -110,6 +110,34 @@ class _TaskTileState extends State<TaskTile>
     setState(() => _expanded = !_expanded);
   }
 
+  Future<void> _sendTaskNotification() async {
+    if (!Config.enableNotifications) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enable notifications in Settings first')),
+      );
+      return;
+    }
+    final delaySeconds = Config.defaultNotificationDelaySeconds;
+    final sent = await NotificationService.showTaskNotification(
+      widget.task.title,
+      delaySeconds: delaySeconds,
+    );
+    if (!mounted) return;
+    if (sent) {
+      final minutes = (delaySeconds ~/ 60).toString().padLeft(2, '0');
+      final seconds = (delaySeconds % 60).toString().padLeft(2, '0');
+      final when = delaySeconds == 0 ? 'now' : 'in $minutes:$seconds';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Notification scheduled $when')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notification permission is required')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -127,12 +155,6 @@ class _TaskTileState extends State<TaskTile>
     final trailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_expanded)
-          IconButton(
-            icon: const Icon(Icons.expand_less),
-            tooltip: 'Collapse',
-            onPressed: _toggleExpanded,
-          ),
         if (_isEmulator) ...[
           if (widget.showSwipeButton)
             IconButton(
@@ -146,6 +168,18 @@ class _TaskTileState extends State<TaskTile>
             onPressed: widget.onDelete,
           ),
         ],
+        if (_expanded)
+          IconButton(
+            icon: const Icon(Icons.notifications_none),
+            tooltip: 'Notify',
+            onPressed: _sendTaskNotification,
+          ),
+        if (_expanded)
+          IconButton(
+            icon: const Icon(Icons.expand_less),
+            tooltip: 'Collapse',
+            onPressed: _toggleExpanded,
+          ),
       ],
     );
 
