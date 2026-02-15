@@ -7,6 +7,7 @@
 ## [0.1.47] - 2026-02-15
 - show your stats
 - heatmap like github with amount of closed items related to shade of blue
+- next to back button also just menu button
 
 ## [0.1.46] - 2026-02-15
 - able to permanently delete the deleted items
