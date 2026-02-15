@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.52] - 2026-02-15
+- new stats added below heatmap
+
+## [0.1.51] - 2026-02-15
+- update bar location
+- populate historic data for graph in dev mode
+- update colors
+
+## [0.1.50] - 2026-02-15
+- widget progress line
+
 ## [0.1.49] - 2026-02-15
 - take into account navigation bar
 - auto apk naming

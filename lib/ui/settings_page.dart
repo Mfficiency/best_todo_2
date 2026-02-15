@@ -16,6 +16,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
   bool _useIconTabs = Config.useIconTabs;
+  bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
 
@@ -134,6 +135,17 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (val) async {
               setState(() => _useIconTabs = val);
               Config.useIconTabs = val;
+              await Config.save();
+              widget.onSettingsChanged?.call();
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Widget progress line'),
+            subtitle: const Text('Show completion line on the home widget'),
+            value: _showWidgetProgressLine,
+            onChanged: (val) async {
+              setState(() => _showWidgetProgressLine = val);
+              Config.showWidgetProgressLine = val;
               await Config.save();
               widget.onSettingsChanged?.call();
             },

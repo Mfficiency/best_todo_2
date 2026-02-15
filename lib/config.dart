@@ -77,6 +77,9 @@ class Config {
   /// When false, all tabs display text labels only.
   static bool useIconTabs = false;
 
+  /// If true, the homescreen widget shows today's completion progress line.
+  static bool showWidgetProgressLine = true;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -99,6 +102,8 @@ class Config {
             (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
                 defaultNotificationDelaySeconds;
         useIconTabs = data['useIconTabs'] ?? useIconTabs;
+        showWidgetProgressLine =
+            data['showWidgetProgressLine'] ?? showWidgetProgressLine;
         defaultDelaySeconds =
             (data['defaultDelaySeconds'] as num?)?.toDouble() ??
                 defaultDelaySeconds;
@@ -116,6 +121,7 @@ class Config {
         'enableNotifications': enableNotifications,
         'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
         'useIconTabs': useIconTabs,
+        'showWidgetProgressLine': showWidgetProgressLine,
         'defaultDelaySeconds': defaultDelaySeconds,
       };
       await file.writeAsString(jsonEncode(data), flush: true);
