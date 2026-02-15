@@ -3,6 +3,7 @@
 ## [0.1.51] - 2026-02-15
 - update bar location
 - populate historic data for graph in dev mode
+- update colors
 
 ## [0.1.50] - 2026-02-15
 - widget progress line
