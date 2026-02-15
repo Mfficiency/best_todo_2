@@ -3,11 +3,13 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../models/daily_task_stats.dart';
 import '../models/task.dart';
 
 class StorageService {
   static const _fileName = 'tasks.json';
   static const _deletedFileName = 'deleted_tasks.json';
+  static const _dailyStatsFileName = 'daily_task_stats.json';
   static const _dateFileName = 'last_opened.txt';
   static const _maxDeletedTasks = 100;
 
@@ -34,6 +36,11 @@ class StorageService {
   Future<File> _getDeletedFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_deletedFileName');
+  }
+
+  Future<File> _getDailyStatsFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_dailyStatsFileName');
   }
 
   void _trimDeletedTasks(List<Task> tasks) {
@@ -125,6 +132,33 @@ class StorageService {
       return tasks;
     } catch (_) {
       return <Task>[];
+    }
+  }
+
+  Future<void> saveDailyTaskStats(
+      Map<String, DailyTaskStats> dailyStatsByDay) async {
+    final file = await _getDailyStatsFile();
+    final jsonString = jsonEncode(
+      dailyStatsByDay.values.map((stats) => stats.toJson()).toList(),
+    );
+    await file.writeAsString(jsonString, flush: true);
+  }
+
+  Future<Map<String, DailyTaskStats>> loadDailyTaskStats() async {
+    try {
+      final file = await _getDailyStatsFile();
+      if (!await file.exists()) {
+        return <String, DailyTaskStats>{};
+      }
+      final contents = await file.readAsString();
+      final List<dynamic> data = jsonDecode(contents);
+      final values = data
+          .map((e) => DailyTaskStats.fromJson(e as Map<String, dynamic>))
+          .where((stats) => stats.dayKey.isNotEmpty)
+          .toList();
+      return {for (final item in values) item.dayKey: item};
+    } catch (_) {
+      return <String, DailyTaskStats>{};
     }
   }
 

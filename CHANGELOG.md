@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.52] - 2026-02-15
+- new stats tab
+
 ## [0.1.51] - 2026-02-15
 - update bar location
 - populate historic data for graph in dev mode

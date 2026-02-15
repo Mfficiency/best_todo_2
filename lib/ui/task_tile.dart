@@ -14,6 +14,7 @@ class TaskTile extends StatefulWidget {
   final void Function(int destination) onMove;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
+  final void Function(DateTime? oldDueDate, DateTime? newDueDate)? onDueDateChanged;
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
@@ -26,6 +27,7 @@ class TaskTile extends StatefulWidget {
     required this.onMove,
     required this.onMoveNext,
     required this.onDelete,
+    this.onDueDateChanged,
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
@@ -309,7 +311,9 @@ class _TaskTileState extends State<TaskTile>
                             lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
                           );
                           if (picked != null) {
+                            final oldDueDate = widget.task.dueDate;
                             setState(() => widget.task.dueDate = picked);
+                            widget.onDueDateChanged?.call(oldDueDate, picked);
                           }
                         },
                         child: const Text('Pick due date'),

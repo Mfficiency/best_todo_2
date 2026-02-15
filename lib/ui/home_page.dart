@@ -7,6 +7,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
+import '../models/daily_task_stats.dart';
 import '../models/task.dart';
 import '../services/log_service.dart';
 import '../services/storage_service.dart';
@@ -39,6 +40,7 @@ class _HomePageState extends State<HomePage>
   /// filtered into the appropriate lists based on [_currentDate].
   final List<Task> _tasks = [];
   final List<Task> _deletedTasks = [];
+  final Map<String, DailyTaskStats> _dailyStatsByDay = {};
   final StorageService _storageService = StorageService();
 
   final String appGroupId = 'group.homeScreenApp';
@@ -134,9 +136,63 @@ class _HomePageState extends State<HomePage>
     return seeded;
   }
 
+  Map<String, DailyTaskStats> _buildDevDailyStatsSeed(DateTime referenceDate) {
+    final seeds = <String, DailyTaskStats>{};
+    final dayStart = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+    const pattern = <Map<String, int>>[
+      {'opening': 7, 'moved': 1, 'doneOpening': 3, 'created': 2, 'doneCreated': 1},
+      {'opening': 6, 'moved': 2, 'doneOpening': 2, 'created': 1, 'doneCreated': 0},
+      {'opening': 5, 'moved': 0, 'doneOpening': 3, 'created': 3, 'doneCreated': 2},
+      {'opening': 8, 'moved': 1, 'doneOpening': 4, 'created': 0, 'doneCreated': 0},
+      {'opening': 4, 'moved': 1, 'doneOpening': 1, 'created': 2, 'doneCreated': 1},
+      {'opening': 9, 'moved': 2, 'doneOpening': 5, 'created': 1, 'doneCreated': 1},
+      {'opening': 3, 'moved': 0, 'doneOpening': 1, 'created': 4, 'doneCreated': 2},
+    ];
+
+    for (var offset = 13; offset >= 0; offset--) {
+      final date = dayStart.subtract(Duration(days: offset));
+      final key = _dayKey(date);
+      final row = pattern[offset % pattern.length];
+      final opening = row['opening'] ?? 0;
+      final moved = row['moved'] ?? 0;
+      final doneOpening = row['doneOpening'] ?? 0;
+      final created = row['created'] ?? 0;
+      final doneCreated = row['doneCreated'] ?? 0;
+
+      final stats = DailyTaskStats(dayKey: key);
+
+      for (var i = 0; i < opening; i++) {
+        final id = 'dev_open_${key}_$i';
+        stats.openingTaskIds.add(id);
+        if (i < moved) {
+          stats.movedFromOpeningTaskIds.add(id);
+        } else if (i < moved + doneOpening) {
+          stats.completedFromOpeningTaskIds.add(id);
+        }
+      }
+
+      for (var i = 0; i < created; i++) {
+        final id = 'dev_new_${key}_$i';
+        stats.createdDuringDayTaskIds.add(id);
+        if (i < doneCreated) {
+          stats.completedFromCreatedTaskIds.add(id);
+        }
+      }
+
+      seeds[key] = stats;
+    }
+
+    return seeds;
+  }
+
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
     final loadedDeleted = await _storageService.loadDeletedTaskList();
+    final loadedDailyStats = await _storageService.loadDailyTaskStats();
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
@@ -150,6 +206,13 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
       _saveDeletedTasks();
     }
+    if (loadedDailyStats.isNotEmpty) {
+      _dailyStatsByDay.addAll(loadedDailyStats);
+    } else if (Config.isDev) {
+      _dailyStatsByDay.addAll(_buildDevDailyStatsSeed(_currentDate));
+      _saveDailyStats();
+    }
+    _initializeStatsForCurrentDay();
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
@@ -160,6 +223,105 @@ class _HomePageState extends State<HomePage>
 
   void _saveDeletedTasks() {
     _storageService.saveDeletedTaskList(_deletedTasks);
+  }
+
+  void _saveDailyStats() {
+    _storageService.saveDailyTaskStats(_dailyStatsByDay);
+  }
+
+  DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+
+  bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
+
+  String _dayKey(DateTime date) {
+    final d = _dateOnly(date);
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$m-$day';
+  }
+
+  List<Task> _tasksDueOn(DateTime date) {
+    return _tasks.where((task) {
+      final dueDate = task.dueDate;
+      if (dueDate == null) return false;
+      return _isSameDay(dueDate, date);
+    }).toList();
+  }
+
+  DailyTaskStats _getOrCreateDailyStats(DateTime date) {
+    final key = _dayKey(date);
+    return _dailyStatsByDay.putIfAbsent(
+      key,
+      () => DailyTaskStats(dayKey: key),
+    );
+  }
+
+  void _initializeStatsForCurrentDay() {
+    final key = _dayKey(_currentDate);
+    if (_dailyStatsByDay.containsKey(key)) return;
+    final stats = DailyTaskStats(dayKey: key);
+    stats.openingTaskIds.addAll(_tasksDueOn(_currentDate).map((task) => task.uid));
+    _dailyStatsByDay[key] = stats;
+    _saveDailyStats();
+  }
+
+  void _trackTaskCreated(Task task) {
+    final dueDate = task.dueDate;
+    if (dueDate == null || !_isSameDay(dueDate, _currentDate)) return;
+    final stats = _getOrCreateDailyStats(_currentDate);
+    if (stats.openingTaskIds.contains(task.uid)) return;
+    stats.createdDuringDayTaskIds.add(task.uid);
+    if (task.isDone) {
+      stats.completedFromCreatedTaskIds.add(task.uid);
+    }
+    _saveDailyStats();
+  }
+
+  void _trackTaskMove(Task task, DateTime? oldDueDate, DateTime? newDueDate) {
+    if (oldDueDate == null && newDueDate == null) return;
+    final currentDay = _dateOnly(_currentDate);
+    final wasToday = oldDueDate != null && _isSameDay(oldDueDate, currentDay);
+    final isToday = newDueDate != null && _isSameDay(newDueDate, currentDay);
+    if (!wasToday && !isToday) return;
+
+    final stats = _getOrCreateDailyStats(currentDay);
+    if (wasToday && !isToday && stats.openingTaskIds.contains(task.uid)) {
+      stats.movedFromOpeningTaskIds.add(task.uid);
+      stats.completedFromOpeningTaskIds.remove(task.uid);
+      _saveDailyStats();
+      return;
+    }
+    if (!wasToday && isToday && !stats.openingTaskIds.contains(task.uid)) {
+      stats.createdDuringDayTaskIds.add(task.uid);
+      if (task.isDone) {
+        stats.completedFromCreatedTaskIds.add(task.uid);
+      }
+      _saveDailyStats();
+    }
+  }
+
+  void _trackTaskDoneState(Task task, bool wasDone) {
+    if (task.isDone == wasDone) return;
+    final dueDate = task.dueDate;
+    if (dueDate == null || !_isSameDay(dueDate, _currentDate)) return;
+    final stats = _getOrCreateDailyStats(_currentDate);
+    final isDoneNow = task.isDone;
+    if (stats.openingTaskIds.contains(task.uid)) {
+      if (isDoneNow) {
+        stats.completedFromOpeningTaskIds.add(task.uid);
+      } else {
+        stats.completedFromOpeningTaskIds.remove(task.uid);
+      }
+      _saveDailyStats();
+      return;
+    }
+    stats.createdDuringDayTaskIds.add(task.uid);
+    if (isDoneNow) {
+      stats.completedFromCreatedTaskIds.add(task.uid);
+    } else {
+      stats.completedFromCreatedTaskIds.remove(task.uid);
+    }
+    _saveDailyStats();
   }
 
   void _addToDeletedTasks(Task task) {
@@ -216,6 +378,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _tasks.add(task);
     });
+    _trackTaskCreated(task);
     _controller.clear();
     _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
@@ -229,9 +392,13 @@ class _HomePageState extends State<HomePage>
     }
     if (index >= tasks.length) return;
     final task = tasks[index];
+    final oldDueDate = task.dueDate;
+    final newDueDate =
+        _currentDate.add(Duration(days: _offsetDays[destination]));
     setState(() {
-      task.dueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
+      task.dueDate = newDueDate;
     });
+    _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
     LogService.add('HomePage._moveTaskToNextPage',
         'Moved "${task.title}" to page $destination');
@@ -241,9 +408,12 @@ class _HomePageState extends State<HomePage>
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
+    final oldDueDate = task.dueDate;
+    final newDueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
     setState(() {
-      task.dueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
+      task.dueDate = newDueDate;
     });
+    _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
     LogService.add(
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
@@ -394,6 +564,7 @@ class _HomePageState extends State<HomePage>
         }
       }
     });
+    _initializeStatsForCurrentDay();
     _saveTasks();
     _saveDeletedTasks();
     LogService.add(
@@ -492,6 +663,7 @@ class _HomePageState extends State<HomePage>
         ..clear()
         ..addAll(imported);
     });
+    _initializeStatsForCurrentDay();
     _saveTasks();
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -558,7 +730,13 @@ class _HomePageState extends State<HomePage>
                       task: task,
                       onChanged: _saveTasks,
                       onToggle: () {
+                        final wasDone = task.isDone;
                         setState(task.toggleDone);
+                        _trackTaskDoneState(task, wasDone);
+                        _saveTasks();
+                      },
+                      onDueDateChanged: (oldDueDate, newDueDate) {
+                        _trackTaskMove(task, oldDueDate, newDueDate);
                         _saveTasks();
                       },
                       onMove: (dest) => _moveTask(pageIndex, index, dest),
@@ -639,7 +817,10 @@ class _HomePageState extends State<HomePage>
                 Navigator.pop(context);
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => YourStatsPage(deletedItems: _deletedTasks),
+                    builder: (_) => YourStatsPage(
+                      deletedItems: _deletedTasks,
+                      dailyStatsByDay: _dailyStatsByDay,
+                    ),
                   ),
                 );
               },
