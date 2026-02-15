@@ -63,6 +63,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
+    final loadedDeleted = await _storageService.loadDeletedTaskList();
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
@@ -70,6 +71,7 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
+    _deletedTasks.addAll(loadedDeleted);
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
@@ -78,12 +80,29 @@ class _HomePageState extends State<HomePage>
     _saveTasks();
   }
 
+  void _saveDeletedTasks() {
+    _storageService.saveDeletedTaskList(_deletedTasks);
+  }
+
+  void _addToDeletedTasks(Task task) {
+    task.deletedAt = DateTime.now();
+    _deletedTasks.insert(0, task);
+    if (_deletedTasks.length > 100) {
+      _deletedTasks.removeLast();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: Config.tabs.length, vsync: this);
     _tabController.addListener(() {
       setState(() {});
+    });
+    Config.ensureVersionLoaded().then((_) {
+      if (mounted) {
+        setState(() {});
+      }
     });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
     _loadTasks();
@@ -173,6 +192,7 @@ class _HomePageState extends State<HomePage>
     if (index >= tasks.length) return;
     final task = tasks[index];
     final originalIndex = _tasks.indexOf(task);
+    final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
       _tasks.removeAt(originalIndex);
@@ -182,24 +202,27 @@ class _HomePageState extends State<HomePage>
 
     late Timer timer;
     timer = Timer(Config.delayDuration, () {
+      if (!mounted) return;
       setState(() {
-        _deletedTasks.insert(0, task);
-        if (_deletedTasks.length > 100) {
-          _deletedTasks.removeLast();
-        }
+        _addToDeletedTasks(task);
       });
+      _saveDeletedTasks();
+      // Explicitly close the snackbar when its undo window expires.
+      messenger.hideCurrentSnackBar();
     });
 
-    ScaffoldMessenger.of(context)
+    messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           content: Text('Deleted "${task.title}"'),
           duration: Config.delayDuration,
           action: SnackBarAction(
-            label: 'Cancel',
+            label: 'Undo',
             onPressed: () {
               timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
               setState(() {
                 _tasks.insert(originalIndex, task);
               });
@@ -215,11 +238,61 @@ class _HomePageState extends State<HomePage>
   void _restoreTask(Task task) {
     setState(() {
       _deletedTasks.remove(task);
+      task.deletedAt = null;
       task.dueDate = _currentDate;
       _tasks.add(task);
     });
     _saveTasks();
+    _saveDeletedTasks();
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
+  }
+
+  void _deleteTaskPermanently(Task task) {
+    final originalIndex = _deletedTasks.indexOf(task);
+    if (originalIndex < 0) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() {
+      _deletedTasks.removeAt(originalIndex);
+    });
+    _saveDeletedTasks();
+    LogService.add(
+        'HomePage._deleteTaskPermanently', 'Queued permanent delete "${task.title}"');
+
+    late Timer timer;
+    timer = Timer(Config.delayDuration, () {
+      if (!mounted) return;
+      // Explicitly close the snackbar when its undo window expires.
+      messenger.hideCurrentSnackBar();
+      LogService.add('HomePage._deleteTaskPermanently',
+          'Permanent delete finalized "${task.title}"');
+    });
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Permanently deleted "${task.title}"'),
+          duration: Config.delayDuration,
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
+              setState(() {
+                final insertAt = originalIndex <= _deletedTasks.length
+                    ? originalIndex
+                    : _deletedTasks.length;
+                _deletedTasks.insert(insertAt, task);
+              });
+              _saveDeletedTasks();
+              LogService.add('HomePage._deleteTaskPermanently',
+                  'Restored from undo "${task.title}"');
+            },
+          ),
+        ),
+      );
   }
 
   void _updateSettings() {
@@ -238,14 +311,12 @@ class _HomePageState extends State<HomePage>
         final doneTasks = _tasks.where((t) => t.isDone).toList();
         for (final task in doneTasks) {
           _tasks.remove(task);
-          _deletedTasks.insert(0, task);
-          if (_deletedTasks.length > 100) {
-            _deletedTasks.removeLast();
-          }
+          _addToDeletedTasks(task);
         }
       }
     });
     _saveTasks();
+    _saveDeletedTasks();
     LogService.add(
         'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }
@@ -454,6 +525,7 @@ class _HomePageState extends State<HomePage>
                     builder: (_) => DeletedItemsPage(
                       items: _deletedTasks,
                       onRestore: _restoreTask,
+                      onDeletePermanently: _deleteTaskPermanently,
                     ),
                   ),
                 );

@@ -17,9 +17,14 @@ class AboutPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                'BestToDo v${Config.version}\nRunning in $mode mode',
-                textAlign: TextAlign.center,
+              FutureBuilder<void>(
+                future: Config.ensureVersionLoaded(),
+                builder: (context, snapshot) {
+                  return Text(
+                    'BestToDo v${Config.versionWithBuild}\nRunning in $mode mode',
+                    textAlign: TextAlign.center,
+                  );
+                },
               ),
               const SizedBox(height: 24),
               const Text(

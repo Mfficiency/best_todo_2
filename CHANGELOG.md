@@ -1,5 +1,25 @@
 # Changelog
 
+## todo
+- delete all, select before delete
+- heatmap like github with amount of closed items related to shade of blue
+- have a way to sent a notification about that item in 5- 20 or 60 minutes
+
+## [0.1.46] - 2026-02-15
+- able to permanently delete the deleted items
+
+## [0.1.45] - 2026-02-15
+- automatic versioning
+
+## [0.1.44] - 2026-02-15
+- update filename
+
+## [0.1.43] - 2026-02-15
+- delete message fading away
+
+## [0.1.42] - 2026-02-15
+- bringing back deleted items
+
 ## [0.1.41] - 2025-08-27
 - changed menu items
 - added padding to startup time graph
@@ -157,3 +177,5 @@
 - Added dev mode date navigation and automatic cleanup of completed tasks.
 - Reschedule options now appear when swiping tasks and the swipe button is hidden on Android.
 - Swipe gestures now move tasks to the next list by default and wrap from Next Week back to Today.
+
+
