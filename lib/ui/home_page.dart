@@ -15,6 +15,7 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
@@ -45,6 +46,7 @@ class _HomePageState extends State<HomePage>
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
+  Timer? _midnightTimer;
 
   /// Day offsets for each tab. The last two entries represent
   /// "next week" and "next month" respectively.
@@ -85,13 +87,26 @@ class _HomePageState extends State<HomePage>
     });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
     _loadTasks();
+    _scheduleMidnightUpdate();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _controller.dispose();
+    _midnightTimer?.cancel();
     super.dispose();
+  }
+
+  void _scheduleMidnightUpdate() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final duration = tomorrow.difference(now);
+    _midnightTimer = Timer(duration, () {
+      _updateHomeWidget();
+      _scheduleMidnightUpdate();
+    });
   }
 
   void _addTask(String title) {
@@ -249,7 +264,9 @@ class _HomePageState extends State<HomePage>
       ..sort((a, b) => (a.listRanking ?? 1 << 31)
           .compareTo(b.listRanking ?? 1 << 31));
 
-    final data = tasks.map((t) => '• ${t.title}').join('\n');
+    final data = tasks.isEmpty
+        ? 'No tasks for today'
+        : tasks.map((t) => '• ${t.title}').join('\n');
 
     try {
       await HomeWidget.saveWidgetData(dataKey, data);
@@ -354,43 +371,46 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         Expanded(
-          child: ReorderableListView.builder(
-            itemCount: tasks.length,
-            onReorder: (oldIndex, newIndex) =>
-                _reorderTask(pageIndex, oldIndex, newIndex),
-            buildDefaultDragHandles: true,
-            itemBuilder: (context, index) {
-              final task = tasks[index];
-              final isAndroid =
-                  Theme.of(context).platform == TargetPlatform.android;
-              final tile = TaskTile(
-                key: isAndroid ? ValueKey(task.uid) : null,
-                task: task,
-                onChanged: _saveTasks,
-                onToggle: () {
-                  setState(task.toggleDone);
-                  _saveTasks();
-                },
-                onMove: (dest) => _moveTask(pageIndex, index, dest),
-                onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
-                onDelete: () => _deleteTask(pageIndex, index),
-                pageIndex: pageIndex,
-                showSwipeButton: !isAndroid,
-                swipeLeftDelete: Config.swipeLeftDelete,
-              );
-              if (isAndroid) {
-                return tile;
-              }
-              return Dismissible(
-                key: ValueKey(task.uid),
-                background: Container(
-                  color: Colors.greenAccent.withOpacity(0.5),
+          child: tasks.isEmpty && pageIndex == 0
+              ? const Center(child: Text('No tasks for today'))
+              : ReorderableListView.builder(
+                  itemCount: tasks.length,
+                  onReorder: (oldIndex, newIndex) =>
+                      _reorderTask(pageIndex, oldIndex, newIndex),
+                  buildDefaultDragHandles: true,
+                  itemBuilder: (context, index) {
+                    final task = tasks[index];
+                    final isAndroid =
+                        Theme.of(context).platform == TargetPlatform.android;
+                    final tile = TaskTile(
+                      key: isAndroid ? ValueKey(task.uid) : null,
+                      task: task,
+                      onChanged: _saveTasks,
+                      onToggle: () {
+                        setState(task.toggleDone);
+                        _saveTasks();
+                      },
+                      onMove: (dest) => _moveTask(pageIndex, index, dest),
+                      onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
+                      onDelete: () => _deleteTask(pageIndex, index),
+                      pageIndex: pageIndex,
+                      showSwipeButton: !isAndroid,
+                      swipeLeftDelete: Config.swipeLeftDelete,
+                    );
+                    if (isAndroid) {
+                      return tile;
+                    }
+                    return Dismissible(
+                      key: ValueKey(task.uid),
+                      background: Container(
+                        color: Colors.greenAccent.withOpacity(0.5),
+                      ),
+                      onDismissed: (_) =>
+                          _moveTaskToNextPage(pageIndex, index),
+                      child: tile,
+                    );
+                  },
                 ),
-                onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                child: tile,
-              );
-            },
-          ),
         )
       ],
     );
@@ -402,19 +422,13 @@ class _HomePageState extends State<HomePage>
       drawer: Drawer(
         child: ListView(
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Text('Menu', style: TextStyle(color: Colors.white)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.info),
-              title: const Text('About'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AboutPage()),
-                );
-              },
+            Container(
+              padding: const EdgeInsets.all(16), // adjust as you like
+              color: Theme.of(context).colorScheme.primary,
+              child: Text(
+                'BestToDo v${Config.version}',
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.settings),
@@ -427,6 +441,31 @@ class _HomePageState extends State<HomePage>
                       onSettingsChanged: _updateSettings,
                     ),
                   ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: const Text('Deleted Items'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DeletedItemsPage(
+                      items: _deletedTasks,
+                      onRestore: _restoreTask,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AboutPage()),
                 );
               },
             ),
@@ -451,17 +490,12 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text('Deleted Items'),
+              leading: const Icon(Icons.show_chart),
+              title: const Text('Startup Times'),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DeletedItemsPage(
-                      items: _deletedTasks,
-                      onRestore: _restoreTask,
-                    ),
-                  ),
+                  MaterialPageRoute(builder: (_) => const StartupTimesPage()),
                 );
               },
             ),
@@ -485,7 +519,14 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: Text('BestToDo v${Config.version}'),
+        title: const TextField(
+          enabled: false,
+          decoration: InputDecoration(
+            hintText: 'search soon available',
+            border: InputBorder.none,
+            suffixIcon: Icon(Icons.search),
+          ),
+        ),
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(
@@ -515,7 +556,12 @@ class _HomePageState extends State<HomePage>
                     ? List.generate(Config.tabs.length, (index) {
                         final selected = _tabController.index == index;
                         if (selected) {
-                          return Tab(text: Config.tabs[index]);
+                          return Tab(
+                            child: Text(
+                              Config.tabs[index],
+                              textAlign: TextAlign.center, // ✅ center multiline titles
+                            ),
+                          );
                         }
                         return Tab(
                           icon: Image.asset(

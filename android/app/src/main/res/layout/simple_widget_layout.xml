@@ -16,7 +16,7 @@
         android:paddingTop="8dp"
         android:paddingRight="8dp"
         android:paddingBottom="1px"
-        android:text="Hello Widget"
+        android:text="BestTodo by Mfficiency"
         android:textColor="@android:color/white"
         android:textSize="14sp"
         android:lineSpacingExtra="2dp" />
