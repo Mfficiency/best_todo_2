@@ -66,6 +66,74 @@ class _HomePageState extends State<HomePage>
     'assets/icons/next_month.png',
   ];
 
+  List<Task> _buildDevDeletedSeed(DateTime referenceDate) {
+    final now = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+      12,
+    );
+    const titles = <String>[
+      'Lorem ipsum dolor sit amet',
+      'Consectetur adipiscing elit',
+      'Sed do eiusmod tempor',
+      'Incididunt ut labore et dolore',
+      'Magna aliqua ut enim ad',
+      'Minim veniam quis nostrud',
+      'Exercitation ullamco laboris nisi',
+      'Ut aliquip ex ea commodo',
+      'Duis aute irure dolor',
+      'In reprehenderit in voluptate',
+      'Velit esse cillum dolore',
+      'Eu fugiat nulla pariatur',
+      'Excepteur sint occaecat cupidatat',
+      'Non proident sunt in culpa',
+      'Qui officia deserunt mollit',
+      'Anim id est laborum',
+      'Curabitur pretium tincidunt lacus',
+      'Nulla gravida orci a odio',
+      'Nullam varius turpis et commodo',
+      'Suspendisse potenti in faucibus',
+    ];
+
+    // 20 total deleted tasks across the last 2 weeks.
+    // Includes examples of 1, 2, 3, 4, and 6 tasks completed in one day.
+    const dayBuckets = <MapEntry<int, int>>[
+      MapEntry(1, 6),
+      MapEntry(2, 4),
+      MapEntry(3, 3),
+      MapEntry(5, 2),
+      MapEntry(6, 1),
+      MapEntry(8, 1),
+      MapEntry(10, 1),
+      MapEntry(12, 1),
+      MapEntry(13, 1),
+    ];
+
+    final seeded = <Task>[];
+    var titleIndex = 0;
+    for (final bucket in dayBuckets) {
+      final dayOffset = bucket.key;
+      final count = bucket.value;
+      for (var i = 0; i < count; i++) {
+        final deletedAt =
+            now.subtract(Duration(days: dayOffset, minutes: i * 7));
+        seeded.add(
+          Task(
+            title: titles[titleIndex % titles.length],
+            description: 'Seeded dev deleted task',
+            dueDate: deletedAt.subtract(const Duration(days: 1)),
+            deletedAt: deletedAt,
+            isDone: true,
+          ),
+        );
+        titleIndex++;
+      }
+    }
+    seeded.sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
+    return seeded;
+  }
+
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
     final loadedDeleted = await _storageService.loadDeletedTaskList();
@@ -76,7 +144,12 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
-    _deletedTasks.addAll(loadedDeleted);
+    if (loadedDeleted.isNotEmpty) {
+      _deletedTasks.addAll(loadedDeleted);
+    } else if (Config.isDev) {
+      _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
+      _saveDeletedTasks();
+    }
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {

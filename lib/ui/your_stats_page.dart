@@ -81,9 +81,9 @@ class _YourStatsPageState extends State<YourStatsPage>
   List<Color> _legendColors(BuildContext context) {
     return [
       Theme.of(context).colorScheme.surfaceVariant,
-      Colors.blue.shade300,
+      Colors.blue.shade100,
+      Colors.blue.shade200,
       Colors.blue.shade500,
-      Colors.blue.shade700,
       Colors.blue.shade900,
     ];
   }
