@@ -61,6 +61,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _loadTasks() async {
     final loaded = await _storageService.loadTaskList();
+    final loadedDeleted = await _storageService.loadDeletedTaskList();
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
@@ -68,12 +69,24 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
+    _deletedTasks.addAll(loadedDeleted);
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
       setState(() {});
     }
     _saveTasks();
+  }
+
+  void _saveDeletedTasks() {
+    _storageService.saveDeletedTaskList(_deletedTasks);
+  }
+
+  void _addToDeletedTasks(Task task) {
+    _deletedTasks.insert(0, task);
+    if (_deletedTasks.length > 100) {
+      _deletedTasks.removeLast();
+    }
   }
 
   @override
@@ -168,11 +181,9 @@ class _HomePageState extends State<HomePage>
     late Timer timer;
     timer = Timer(Config.delayDuration, () {
       setState(() {
-        _deletedTasks.insert(0, task);
-        if (_deletedTasks.length > 100) {
-          _deletedTasks.removeLast();
-        }
+        _addToDeletedTasks(task);
       });
+      _saveDeletedTasks();
     });
 
     ScaffoldMessenger.of(context)
@@ -204,6 +215,7 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _saveTasks();
+    _saveDeletedTasks();
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
   }
 
@@ -223,14 +235,12 @@ class _HomePageState extends State<HomePage>
         final doneTasks = _tasks.where((t) => t.isDone).toList();
         for (final task in doneTasks) {
           _tasks.remove(task);
-          _deletedTasks.insert(0, task);
-          if (_deletedTasks.length > 100) {
-            _deletedTasks.removeLast();
-          }
+          _addToDeletedTasks(task);
         }
       }
     });
     _saveTasks();
+    _saveDeletedTasks();
     LogService.add(
         'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }

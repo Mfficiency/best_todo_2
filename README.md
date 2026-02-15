@@ -16,7 +16,11 @@
 - Unit and widget test coverage
 
 ## 🛠️ Getting Started
+
 ```bash
+## on first install https://docs.flutter.dev/install
+## install the flutter plugin in vscode
+
 flutter pub get
 flutter run -d chrome
 flutter build apk --release

@@ -33,6 +33,10 @@ void main() {
     final loaded = await service.loadTaskList();
     expect(loaded.length, 1);
     expect(loaded.first.title, 'pending');
+
+    final deleted = await service.loadDeletedTaskList();
+    expect(deleted.length, 1);
+    expect(deleted.first.title, 'done');
   });
 
   test('importTaskList assigns unique ids when missing or duplicated', () async {
