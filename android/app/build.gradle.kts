@@ -25,6 +25,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -73,8 +74,42 @@ flutter {
     source = "../.."
 }
 
+afterEvaluate {
+    val createVersionedReleaseApk = tasks.register("createVersionedReleaseApk") {
+        doLast {
+            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.48+18 -> 48)
+            val suffix = (flutter.versionName ?: "0.0.0")
+                .substringBefore("+")
+                .substringAfterLast(".")
+
+            val apkCandidates = listOf(
+                rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
+                rootProject.layout.buildDirectory.file("app/outputs/apk/release/app-release.apk").get().asFile,
+                layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile,
+            )
+
+            val sourceApk = apkCandidates.firstOrNull { it.exists() }
+            logger.lifecycle("[apk-rename] Looking for release APK. Checked: ${apkCandidates.joinToString { it.path }}")
+
+            if (sourceApk == null) {
+                logger.lifecycle("[apk-rename] No release APK found, skipping rename.")
+                return@doLast
+            }
+
+            val renamedApk = File(sourceApk.parentFile, "${sourceApk.nameWithoutExtension}_${suffix}.apk")
+            sourceApk.copyTo(renamedApk, overwrite = true)
+            logger.lifecycle("[apk-rename] Created ${renamedApk.path}")
+        }
+    }
+
+    tasks.matching { it.name in setOf("assembleRelease", "copyReleaseApk", "packageRelease") }.configureEach {
+        finalizedBy(createVersionedReleaseApk)
+    }
+}
+
 dependencies {
     implementation("androidx.annotation:annotation:1.7.1")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.10.3")
     testImplementation("androidx.test:core:1.5.0")
