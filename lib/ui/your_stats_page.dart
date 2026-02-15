@@ -18,8 +18,7 @@ class YourStatsPage extends StatefulWidget {
   State<YourStatsPage> createState() => _YourStatsPageState();
 }
 
-class _YourStatsPageState extends State<YourStatsPage>
-    with SingleTickerProviderStateMixin {
+class _YourStatsPageState extends State<YourStatsPage> {
   static const int _weeks = 52;
   static const int _daysPerWeek = 7;
   static const double _cellSize = 11;
@@ -39,7 +38,6 @@ class _YourStatsPageState extends State<YourStatsPage>
   static const Color _weekendTint = Color.fromARGB(29, 0, 96, 221);
   static const Color _weekendAccent = Color.fromARGB(255, 0, 95, 221);
 
-  late final TabController _tabController;
   final ScrollController _heatmapScrollController = ScrollController();
   final ScrollController _dailyBarsScrollController = ScrollController();
   DateTime _currentDate = DateTime.now();
@@ -48,12 +46,6 @@ class _YourStatsPageState extends State<YourStatsPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.index == 1) {
-        _scheduleScrollToRight();
-      }
-    });
     _scheduleScrollToRight();
   }
 
@@ -61,7 +53,6 @@ class _YourStatsPageState extends State<YourStatsPage>
   void dispose() {
     _heatmapScrollController.dispose();
     _dailyBarsScrollController.dispose();
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -170,108 +161,106 @@ class _YourStatsPageState extends State<YourStatsPage>
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: _leftLabelsWidth,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: _monthLabelHeight + 4),
-                    child: Column(
-                      children: List.generate(_daysPerWeek, (dayIndex) {
-                        final showLabel =
-                            dayIndex == 0 || dayIndex == 2 || dayIndex == 4;
-                        return SizedBox(
-                          height: _cellSize + _cellGap,
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              showLabel
-                                  ? (dayIndex == 0
-                                      ? 'Mon'
-                                      : dayIndex == 2
-                                          ? 'Wed'
-                                          : 'Fri')
-                                  : '',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: _leftLabelsWidth,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: _monthLabelHeight + 4),
+                  child: Column(
+                    children: List.generate(_daysPerWeek, (dayIndex) {
+                      final showLabel =
+                          dayIndex == 0 || dayIndex == 2 || dayIndex == 4;
+                      return SizedBox(
+                        height: _cellSize + _cellGap,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            showLabel
+                                ? (dayIndex == 0
+                                    ? 'Mon'
+                                    : dayIndex == 2
+                                        ? 'Wed'
+                                        : 'Fri')
+                                : '',
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
-                        );
-                      }),
-                    ),
+                        ),
+                      );
+                    }),
                   ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    controller: _heatmapScrollController,
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: List.generate(_weeks, (weekIndex) {
-                            final weekStart = weeksStart[weekIndex];
-                            final previousMonth = weekIndex == 0
-                                ? -1
-                                : weeksStart[weekIndex - 1].month;
-                            final label =
-                                weekIndex == 0 || weekStart.month != previousMonth
-                                    ? _shortMonthName(weekStart.month)
-                                    : '';
-                            return Padding(
-                              padding: const EdgeInsets.only(right: _weekGap),
-                              child: SizedBox(
-                                width: _cellSize,
-                                height: _monthLabelHeight,
-                                child: Text(
-                                  label,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _heatmapScrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: List.generate(_weeks, (weekIndex) {
+                          final weekStart = weeksStart[weekIndex];
+                          final previousMonth = weekIndex == 0
+                              ? -1
+                              : weeksStart[weekIndex - 1].month;
+                          final label =
+                              weekIndex == 0 || weekStart.month != previousMonth
+                                  ? _shortMonthName(weekStart.month)
+                                  : '';
+                          return Padding(
+                            padding: const EdgeInsets.only(right: _weekGap),
+                            child: SizedBox(
+                              width: _cellSize,
+                              height: _monthLabelHeight,
+                              child: Text(
+                                label,
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
-                            );
-                          }),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: List.generate(_weeks, (weekIndex) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: _weekGap),
-                              child: Column(
-                                children: List.generate(_daysPerWeek, (dayIndex) {
-                                  final date = weeksStart[weekIndex].add(
-                                    Duration(days: dayIndex),
-                                  );
-                                  final count = countsByDay[date] ?? 0;
-                                  final color = _colorForCount(count, context);
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: _cellGap),
-                                    child: Tooltip(
-                                      message:
-                                          '${date.toIso8601String().split('T').first}: $count deleted',
-                                      child: Container(
-                                        width: _cellSize,
-                                        height: _cellSize,
-                                        decoration: BoxDecoration(
-                                          color: color,
-                                          borderRadius: BorderRadius.circular(2),
-                                        ),
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: List.generate(_weeks, (weekIndex) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: _weekGap),
+                            child: Column(
+                              children: List.generate(_daysPerWeek, (dayIndex) {
+                                final date = weeksStart[weekIndex].add(
+                                  Duration(days: dayIndex),
+                                );
+                                final count = countsByDay[date] ?? 0;
+                                final color = _colorForCount(count, context);
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: _cellGap),
+                                  child: Tooltip(
+                                    message:
+                                        '${date.toIso8601String().split('T').first}: $count deleted',
+                                    child: Container(
+                                      width: _cellSize,
+                                      height: _cellSize,
+                                      decoration: BoxDecoration(
+                                        color: color,
+                                        borderRadius: BorderRadius.circular(2),
                                       ),
                                     ),
-                                  );
-                                }),
-                              ),
-                            );
-                          }),
-                        ),
-                      ],
-                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
         Padding(
@@ -488,22 +477,20 @@ class _YourStatsPageState extends State<YourStatsPage>
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _dailyBarsScrollController,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: bars,
-                ),
-                const SizedBox(height: 6),
-                Row(children: monthLabels),
-              ],
-            ),
+        SingleChildScrollView(
+          controller: _dailyBarsScrollController,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: bars,
+              ),
+              const SizedBox(height: 6),
+              Row(children: monthLabels),
+            ],
           ),
         ),
         Padding(
@@ -550,41 +537,30 @@ class _YourStatsPageState extends State<YourStatsPage>
         context,
         title: 'Your Stats',
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(72),
-          child: Column(
+          preferredSize: const Size.fromHeight(52),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: () => _changeDate(-1),
-                  ),
-                  Text(
-                    _currentDate.toLocal().toString().split(' ')[0],
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: () => _changeDate(1),
-                  ),
-                ],
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => _changeDate(-1),
               ),
-              TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(text: 'Deleted Heatmap'),
-                  Tab(text: 'Daily Bars'),
-                ],
+              Text(
+                _currentDate.toLocal().toString().split(' ')[0],
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: () => _changeDate(1),
               ),
             ],
           ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: ListView(
         children: [
           _buildHeatmapTab(),
+          const Divider(height: 1),
           _buildDailyBarsTab(),
         ],
       ),
