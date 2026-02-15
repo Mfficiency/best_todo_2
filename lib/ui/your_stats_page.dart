@@ -28,7 +28,7 @@ class _YourStatsPageState extends State<YourStatsPage>
   static const double _monthLabelHeight = 16;
   static const double _leftLabelsWidth = 32;
   static const double _barMaxHeight = 180;
-  static const double _barWidth = 22;
+  static const double _barWidth = 16;
   static const double _barGap = 6;
 
   static const Color _movedColor = Color(0xFFD84343);
@@ -496,12 +496,12 @@ class _YourStatsPageState extends State<YourStatsPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: monthLabels),
-                const SizedBox(height: 6),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: bars,
                 ),
+                const SizedBox(height: 6),
+                Row(children: monthLabels),
               ],
             ),
           ),
