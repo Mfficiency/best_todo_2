@@ -17,6 +17,74 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _darkMode = Config.darkMode;
   bool _useIconTabs = Config.useIconTabs;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
+  int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
+
+  String _formatMmSs(int totalSeconds) {
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    final mm = minutes.toString().padLeft(2, '0');
+    final ss = seconds.toString().padLeft(2, '0');
+    return '$mm:$ss';
+  }
+
+  int? _parseMmSs(String value) {
+    final normalized = value.trim();
+    final match = RegExp(r'^(\d{1,3}):([0-5]\d)$').firstMatch(normalized);
+    if (match == null) return null;
+    final minutes = int.parse(match.group(1)!);
+    final seconds = int.parse(match.group(2)!);
+    return minutes * 60 + seconds;
+  }
+
+  Future<void> _editNotificationDelay() async {
+    final controller = TextEditingController(
+      text: _formatMmSs(_defaultNotificationDelaySeconds),
+    );
+    String? errorText;
+
+    final parsed = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Default notification delay'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'MM:SS',
+                hintText: '00:30',
+                errorText: errorText,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final seconds = _parseMmSs(controller.text);
+                  if (seconds == null) {
+                    setDialogState(() => errorText = 'Use format MM:SS');
+                    return;
+                  }
+                  Navigator.of(context).pop(seconds);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (parsed == null) return;
+    setState(() => _defaultNotificationDelaySeconds = parsed);
+    Config.defaultNotificationDelaySeconds = parsed;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +100,12 @@ class _SettingsPageState extends State<SettingsPage> {
               Config.enableNotifications = val;
               await Config.save();
             },
+          ),
+          ListTile(
+            title: const Text('Default notification delay'),
+            subtitle: Text('MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})'),
+            trailing: const Icon(Icons.edit),
+            onTap: _editNotificationDelay,
           ),
           SwitchListTile(
             title: const Text('Dark mode'),
