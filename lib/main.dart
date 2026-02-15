@@ -68,6 +68,15 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'BestToDo',
+      builder: (context, child) {
+        return SafeArea(
+          top: false,
+          left: false,
+          right: false,
+          bottom: true,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
             .copyWith(primary: _seedColor),

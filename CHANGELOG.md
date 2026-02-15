@@ -1,12 +1,11 @@
 # Changelog
 
-## todo
-- delete all, select before delete
-- have a way to sent a notification about that item in 5- 20 or 60 minutes
+## [0.1.49] - 2026-02-15
+- take into account navigation bar
+- auto apk naming
 
 ## [0.1.48] - 2026-02-15
 - send notifiction
-- take into account navigation bar
 
 ## [0.1.47] - 2026-02-15
 - stats page
