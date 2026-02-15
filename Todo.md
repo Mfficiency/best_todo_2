@@ -1,9 +1,9 @@
 ## After MVP
+- the widget should have a line showing how much of the tasks have been completed today, 3 or less left is green, 4 orange, 5 or more will be red, the line is ful aand green when all tasks are completed. example: If I only have two tasks for today and none completed, there's just a grey line visible, if i complete one than the line will be 50% green. This whole think can be turned on or of in the settings.
 - 1 working automatic test when building or pushing
 - add a simplified mode
 - delete all, select before delete
 - have a way to sent a notification about that item in 5- 20 or 60 minutes
-- take into account navigation bar
 - recurring tasks
 
 ## Later
