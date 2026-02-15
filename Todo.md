@@ -1,5 +1,6 @@
 ## After MVP
 ### TODO
+- calendar view
 - add home to menu
 - in your stats, hide the date picker when not in dev mode
 - on the start screen, have 3 buttons, populate with example data or start fresh or import previous data
@@ -16,11 +17,12 @@
 
 ## Later
 - add logo in banners etc
+- link to google calendar
 - add video to youtube channel
-- be able to manually change the order
 - add story and vision to about page
 - add to f-droid store if possible
 - add to galaxy store if possible
+- update startup times
 - web version
 - add to apple store (much later)
 - make header like google mail 2 menus with search in the middle
@@ -47,6 +49,7 @@
 ### TODO
 
 ### Done
+- be able to manually change the order
 - when the item is open you should also be able to swipe to the right to move to the next list.
 - fix bug moving items and opening tasks
 - make animation more clear that yuo are deleting or moving
