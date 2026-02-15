@@ -1,5 +1,11 @@
 # Changelog
 
+
+- have a way to permanently delete the items
+- delete all, select before delete
+- heatmap like github with amount of closed items related to shade of blue
+- have a way to sent a notification about that item in 5- 20 or 60 minutes
+
 ## [0.1.45] - 2026-02-15
 - automatic versioning
 

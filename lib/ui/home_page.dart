@@ -85,6 +85,7 @@ class _HomePageState extends State<HomePage>
   }
 
   void _addToDeletedTasks(Task task) {
+    task.deletedAt = DateTime.now();
     _deletedTasks.insert(0, task);
     if (_deletedTasks.length > 100) {
       _deletedTasks.removeLast();
@@ -237,12 +238,61 @@ class _HomePageState extends State<HomePage>
   void _restoreTask(Task task) {
     setState(() {
       _deletedTasks.remove(task);
+      task.deletedAt = null;
       task.dueDate = _currentDate;
       _tasks.add(task);
     });
     _saveTasks();
     _saveDeletedTasks();
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
+  }
+
+  void _deleteTaskPermanently(Task task) {
+    final originalIndex = _deletedTasks.indexOf(task);
+    if (originalIndex < 0) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() {
+      _deletedTasks.removeAt(originalIndex);
+    });
+    _saveDeletedTasks();
+    LogService.add(
+        'HomePage._deleteTaskPermanently', 'Queued permanent delete "${task.title}"');
+
+    late Timer timer;
+    timer = Timer(Config.delayDuration, () {
+      if (!mounted) return;
+      // Explicitly close the snackbar when its undo window expires.
+      messenger.hideCurrentSnackBar();
+      LogService.add('HomePage._deleteTaskPermanently',
+          'Permanent delete finalized "${task.title}"');
+    });
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Permanently deleted "${task.title}"'),
+          duration: Config.delayDuration,
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
+              setState(() {
+                final insertAt = originalIndex <= _deletedTasks.length
+                    ? originalIndex
+                    : _deletedTasks.length;
+                _deletedTasks.insert(insertAt, task);
+              });
+              _saveDeletedTasks();
+              LogService.add('HomePage._deleteTaskPermanently',
+                  'Restored from undo "${task.title}"');
+            },
+          ),
+        ),
+      );
   }
 
   void _updateSettings() {
@@ -475,6 +525,7 @@ class _HomePageState extends State<HomePage>
                     builder: (_) => DeletedItemsPage(
                       items: _deletedTasks,
                       onRestore: _restoreTask,
+                      onDeletePermanently: _deleteTaskPermanently,
                     ),
                   ),
                 );

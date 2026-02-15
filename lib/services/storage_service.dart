@@ -114,6 +114,7 @@ class StorageService {
         if (doneTasks.isNotEmpty) {
           final deletedTasks = await loadDeletedTaskList();
           for (final task in doneTasks) {
+            task.deletedAt ??= DateTime.now();
             deletedTasks.insert(0, task);
           }
           await saveDeletedTaskList(deletedTasks);
