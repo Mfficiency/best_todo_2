@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
-import 'package:best_todo_2/config.dart';
+import 'package:besttodo/config.dart';
 
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.path);
@@ -42,3 +42,4 @@ void main() {
     expect(Config.defaultDelaySeconds, 7.5);
   });
 }
+
