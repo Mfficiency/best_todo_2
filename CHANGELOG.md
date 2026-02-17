@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.54] - 2026-02-17
+- update date on stats page
+
 ## [0.1.53] - 2026-02-17
 - working tests, 
 - update empty message, 

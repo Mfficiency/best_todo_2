@@ -554,38 +554,34 @@ class _YourStatsPageState extends State<YourStatsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final dateHeader = Config.isDev
-        ? Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => _changeDate(-1),
-              ),
-              Text(
-                _currentDate.toLocal().toString().split(' ')[0],
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => _changeDate(1),
-              ),
-            ],
-          )
-        : Center(
-            child: Text(
-              _currentDate.toLocal().toString().split(' ')[0],
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          );
-
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
         title: 'Your Stats',
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: dateHeader,
+          preferredSize: Size.fromHeight(Config.isDev ? 52 : 0),
+          child: Column(
+            children: [
+              if (Config.isDev)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: () => _changeDate(-1),
+                    ),
+                    Text(
+                      _currentDate.toLocal().toString().split(' ')[0],
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () => _changeDate(1),
+                    ),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
       body: ListView(
