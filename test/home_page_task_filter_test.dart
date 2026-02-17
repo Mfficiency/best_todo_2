@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:best_todo_2/models/task.dart';
-import 'package:best_todo_2/utils/date_utils.dart';
+import 'package:besttodo/models/task.dart';
+import 'package:besttodo/utils/date_utils.dart';
 
 void main() {
   test('tasks due tomorrow are not included in today list', () {
@@ -48,3 +48,4 @@ void main() {
     expect(nextMonthTasks.first.title, 'next month');
   });
 }
+

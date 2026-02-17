@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.54] - 2026-02-17
+- update date on stats page
+
+## [0.1.53] - 2026-02-17
+- working tests, 
+- update empty message, 
+- tooltip on heatmap, 
+- remove date selector if not dev
+
 ## [0.1.52] - 2026-02-15
 - new stats added below heatmap
 

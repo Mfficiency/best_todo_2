@@ -2,9 +2,9 @@ name: Run Flutter Tests
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, staging, dev]
   pull_request:
-    branches: [main, dev]
+    branches: [main, staging, dev]
 
 jobs:
   test:
@@ -24,4 +24,73 @@ jobs:
         run: flutter pub get
 
       - name: Run tests
-        run: flutter test --coverage
+        id: flutter_test
+        shell: bash
+        run: |
+          set +e
+          flutter test --coverage -r expanded 2>&1 | tee flutter_test_output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish clean test report
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          output_path = Path("flutter_test_output.txt")
+          raw = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else ""
+
+          progress_matches = list(re.finditer(r"\+(\d+)(?:\s+~(\d+))?(?:\s+-([0-9]+))?", raw))
+          passed = failed = skipped = 0
+          if progress_matches:
+            last = progress_matches[-1]
+            passed = int(last.group(1))
+            skipped = int(last.group(2) or 0)
+            failed = int(last.group(3) or 0)
+
+          total = passed + failed
+          score = 100.0 if total == 0 and failed == 0 else (passed / total * 100.0 if total else 0.0)
+          status = "PASS" if failed == 0 else "FAIL"
+
+          summary_lines = []
+          if failed == 0:
+            summary_lines.append("All tests passed, so keep this branch ready for merge and monitor only for regressions in new changes.")
+            summary_lines.append("Keep adding focused tests for new behavior to maintain confidence and reduce release risk.")
+          else:
+            summary_lines.append("One or more tests failed; open the detailed output below and fix the first failure before re-running the pipeline.")
+            summary_lines.append("Prioritize deterministic fixes, then re-run tests locally and push again to confirm the pipeline is green.")
+          summary_lines.append("If failures repeat, isolate flaky tests and stabilize them before adding new features.")
+
+          score_line = f"## Test Report: {score:.0f}% ({passed}/{total} passed) - {status}"
+          metrics = f"- Passed: {passed}\n- Failed: {failed}\n- Skipped: {skipped}\n- Total evaluated: {total}"
+          summary = " ".join(summary_lines[:3])
+
+          details_block = (
+            "<details><summary>Full flutter test output</summary>\n\n"
+            "```text\n"
+            f"{raw.strip()}\n"
+            "```\n"
+            "</details>\n"
+          )
+
+          report = f"{score_line}\n\n{metrics}\n\n### What to do next\n{summary}\n\n### Details\n{details_block}"
+          summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          summary_file.write_text(report, encoding="utf-8")
+          Path("flutter_test_report.md").write_text(report, encoding="utf-8")
+          PY
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-test-report
+          path: |
+            flutter_test_report.md
+          if-no-files-found: warn
+
+      - name: Fail workflow if tests failed
+        if: always() && steps.flutter_test.outputs.exit_code != '0'
+        run: exit 1
