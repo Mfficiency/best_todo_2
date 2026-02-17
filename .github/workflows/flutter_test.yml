@@ -83,6 +83,7 @@ jobs:
           PY
 
       - name: Upload test artifacts
+        id: upload_test_artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -90,6 +91,15 @@ jobs:
           path: |
             flutter_test_report.md
           if-no-files-found: warn
+
+      - name: Add artifact download link to summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${{ steps.upload_test_artifacts.outputs.artifact-url }}" ]; then
+            echo "### Download" >> "$GITHUB_STEP_SUMMARY"
+            echo "- [Download flutter-test-report artifact](${{ steps.upload_test_artifacts.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Fail workflow if tests failed
         if: always() && steps.flutter_test.outputs.exit_code != '0'
