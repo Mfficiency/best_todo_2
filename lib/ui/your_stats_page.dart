@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/task.dart';
 import 'subpage_app_bar.dart';
@@ -138,6 +139,24 @@ class _YourStatsPageState extends State<YourStatsPage> {
     return names[month];
   }
 
+  String _formatDate(DateTime date) {
+    final d = _dateOnly(date);
+    final month = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$month-$day';
+  }
+
+  void _showHeatmapDayDetails(DateTime date, int count) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('${_formatDate(date)}: $count completed'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   Widget _buildHeatmapTab() {
     final endDate = _dateOnly(_currentDate);
     final currentWeekStart =
@@ -241,12 +260,15 @@ class _YourStatsPageState extends State<YourStatsPage> {
                                   child: Tooltip(
                                     message:
                                         '${date.toIso8601String().split('T').first}: $count deleted',
-                                    child: Container(
-                                      width: _cellSize,
-                                      height: _cellSize,
-                                      decoration: BoxDecoration(
-                                        color: color,
-                                        borderRadius: BorderRadius.circular(2),
+                                    child: GestureDetector(
+                                      onTap: () => _showHeatmapDayDetails(date, count),
+                                      child: Container(
+                                        width: _cellSize,
+                                        height: _cellSize,
+                                        decoration: BoxDecoration(
+                                          color: color,
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -532,13 +554,8 @@ class _YourStatsPageState extends State<YourStatsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: buildSubpageAppBar(
-        context,
-        title: 'Your Stats',
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: Row(
+    final dateHeader = Config.isDev
+        ? Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
@@ -554,7 +571,21 @@ class _YourStatsPageState extends State<YourStatsPage> {
                 onPressed: () => _changeDate(1),
               ),
             ],
-          ),
+          )
+        : Center(
+            child: Text(
+              _currentDate.toLocal().toString().split(' ')[0],
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          );
+
+    return Scaffold(
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Your Stats',
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(52),
+          child: dateHeader,
         ),
       ),
       body: ListView(
