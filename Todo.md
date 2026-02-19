@@ -10,6 +10,12 @@
 - have a way to sent a notification about that item in 5- 20 or 60 minutes
 - recurring tasks
 - extra stats, when is the most productive day. When is the most productive time? When is the time where I plan the most? Which day do I postpone the most? All those kinds of variants 
+- make setting to have the new item added to the top or the bottom of the list
+- add an advanced mode switch in the menu that hides a lot of the settings for the non-advanced users.
+- settings for green progress bar to be green when 3 or less tasks are left, orange when 4 tasks are left and red when 5 or more tasks are left. to change the colors and the thresholds.
+- make a "future tab", that you can move away to just have the idea written down.
+- Make icons even bigger?
+- show in daily stats a different color if you have cleared tasks from a future date.
 
 ### DONE
 - the widget should have a line showing how much of the tasks have been completed today, 3 or less left is green, 4 orange, 5 or more will be red, the line is ful aand green when all tasks are completed. example: If I only have two tasks for today and none completed, there's just a grey line visible, if i complete one than the line will be 50% green. This whole think can be turned on or of in the settings.

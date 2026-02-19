@@ -603,7 +603,7 @@ class _HomePageState extends State<HomePage>
     }
 
     final data = openTasks.isEmpty
-        ? 'No tasks for today'
+        ? 'Well done!\nNo more tasks for today!'
         : openTasks.map((t) => '- ${t.title}').join('\n');
 
     try {
