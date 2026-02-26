@@ -109,7 +109,7 @@ Rule of thumb: keep build number strictly increasing for every new build you dis
 Use one command to keep `pubspec.yaml` and `CHANGELOG.md` in sync:
 
 ```bash
-dart run tool/bump_version.dart 0.1.45+15 "automatic versioning"
+dart run tool/bump_version.dart 0.1.55+25 "recurring tasks, new task at top or bottom"
 ```
 
 This updates the `version:` field in `pubspec.yaml` and prepends a new

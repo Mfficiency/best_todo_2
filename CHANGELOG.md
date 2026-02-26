@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.55] - 2026-02-26
+- recurring tasks
+- new task at top or bottom
+
 ## [0.1.54] - 2026-02-17
 - update date on stats page
 

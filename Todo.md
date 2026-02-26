@@ -1,5 +1,7 @@
 ## After MVP
 ### TODO
+- Settings onepager, click on top tabs to scroll down
+- integration test with screenshots
 - calendar view
 - add home to menu
 - in your stats, hide the date picker when not in dev mode
