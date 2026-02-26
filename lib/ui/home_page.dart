@@ -433,6 +433,24 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  int _listRankingForNewTask(int tabIndex, {required bool addToTop}) {
+    final pendingTasks =
+        _tasksForTab(tabIndex).where((task) => !task.isDone).toList();
+    if (pendingTasks.isEmpty) return 1;
+
+    if (addToTop) {
+      final minRanking = pendingTasks
+          .map((task) => task.listRanking ?? (1 << 31))
+          .reduce((a, b) => a < b ? a : b);
+      return minRanking - 1;
+    }
+
+    final maxRanking = pendingTasks
+        .map((task) => task.listRanking ?? 0)
+        .reduce((a, b) => a > b ? a : b);
+    return maxRanking + 1;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -471,10 +489,15 @@ class _HomePageState extends State<HomePage>
 
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
-    final offset = _offsetDays[_tabController.index];
+    final tabIndex = _tabController.index;
+    final offset = _offsetDays[tabIndex];
     final task = Task(
       title: title,
       dueDate: _currentDate.add(Duration(days: offset)),
+      listRanking: _listRankingForNewTask(
+        tabIndex,
+        addToTop: Config.addNewTasksToTop,
+      ),
     );
     setState(() {
       _tasks.add(task);
