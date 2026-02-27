@@ -1090,10 +1090,12 @@ class _HomePageState extends State<HomePage>
                           );
                         }
                         return Tab(
-                          icon: Image.asset(
-                            _tabIconPaths[index],
-                            height: 24,
-                          ),
+                          icon: index == _futureTabIndex
+                              ? const Text('✨', style: TextStyle(fontSize: 20))
+                              : Image.asset(
+                                  _tabIconPaths[index],
+                                  height: 24,
+                                ),
                         );
                       })
                     : Config.tabs.map((t) => Tab(text: t)).toList(),

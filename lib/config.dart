@@ -51,7 +51,7 @@ class Config {
     ' Day After\nTomorrow',
     ' Next\nWeek',
     ' Next\nMonth',
-    '✨ Future',
+    'Future',
   ];
 
   /// Page shown when the app starts.
