@@ -1,25 +1,26 @@
 ## After MVP
 ### TODO
 - Settings onepager, click on top tabs to scroll down
-- integration test with screenshots
+- improve integration test with screenshots
+- improve recurring tasks
 - calendar view
 - add home to menu
-- in your stats, hide the date picker when not in dev mode
 - on the start screen, have 3 buttons, populate with example data or start fresh or import previous data
 - 1 working automatic test when building or pushing
 - add a simplified mode
 - delete all, select before delete
 - have a way to sent a notification about that item in 5- 20 or 60 minutes
-- recurring tasks
 - extra stats, when is the most productive day. When is the most productive time? When is the time where I plan the most? Which day do I postpone the most? All those kinds of variants 
-- make setting to have the new item added to the top or the bottom of the list
 - add an advanced mode switch in the menu that hides a lot of the settings for the non-advanced users.
 - settings for green progress bar to be green when 3 or less tasks are left, orange when 4 tasks are left and red when 5 or more tasks are left. to change the colors and the thresholds.
-- make a "future tab", that you can move away to just have the idea written down.
 - Make icons even bigger?
 - show in daily stats a different color if you have cleared tasks from a future date.
 
 ### DONE
+- make a "future tab", that you can move away to just have the idea written down.
+- make setting to have the new item added to the top or the bottom of the list
+- recurring tasks
+- in your stats, hide the date picker when not in dev mode
 - the widget should have a line showing how much of the tasks have been completed today, 3 or less left is green, 4 orange, 5 or more will be red, the line is ful aand green when all tasks are completed. example: If I only have two tasks for today and none completed, there's just a grey line visible, if i complete one than the line will be 50% green. This whole think can be turned on or of in the settings.
 - So I want, on the page of my stats, another tab where I can just have, for each day, a graph. I want to see how many tasks I had at the beginning of the day, at the end of the day, and how many were completed at the end of the day.so it will be a vertical bar of blocks, the hight of the bar is total amount of tasks. a red block is a task that was there in the beginning of the day but moved to another date, dark green is a task that was there in the beginning of the day and got completed, dark grey is a task that was there in the beginning of the day and did not get completed. light green is a task that wasn't there in the beginning of the day (so was created during the day) and got completed, light grey is a task that wasn't there in the beginning of the day and did not get completed. so every day has the day of the month under it  
 
