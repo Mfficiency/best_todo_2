@@ -16,6 +16,7 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'calendar_overview_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -144,13 +145,55 @@ class _HomePageState extends State<HomePage>
       referenceDate.day,
     );
     const pattern = <Map<String, int>>[
-      {'opening': 7, 'moved': 1, 'doneOpening': 3, 'created': 2, 'doneCreated': 1},
-      {'opening': 6, 'moved': 2, 'doneOpening': 2, 'created': 1, 'doneCreated': 0},
-      {'opening': 5, 'moved': 0, 'doneOpening': 3, 'created': 3, 'doneCreated': 2},
-      {'opening': 8, 'moved': 1, 'doneOpening': 4, 'created': 0, 'doneCreated': 0},
-      {'opening': 4, 'moved': 1, 'doneOpening': 1, 'created': 2, 'doneCreated': 1},
-      {'opening': 9, 'moved': 2, 'doneOpening': 5, 'created': 1, 'doneCreated': 1},
-      {'opening': 3, 'moved': 0, 'doneOpening': 1, 'created': 4, 'doneCreated': 2},
+      {
+        'opening': 7,
+        'moved': 1,
+        'doneOpening': 3,
+        'created': 2,
+        'doneCreated': 1
+      },
+      {
+        'opening': 6,
+        'moved': 2,
+        'doneOpening': 2,
+        'created': 1,
+        'doneCreated': 0
+      },
+      {
+        'opening': 5,
+        'moved': 0,
+        'doneOpening': 3,
+        'created': 3,
+        'doneCreated': 2
+      },
+      {
+        'opening': 8,
+        'moved': 1,
+        'doneOpening': 4,
+        'created': 0,
+        'doneCreated': 0
+      },
+      {
+        'opening': 4,
+        'moved': 1,
+        'doneOpening': 1,
+        'created': 2,
+        'doneCreated': 1
+      },
+      {
+        'opening': 9,
+        'moved': 2,
+        'doneOpening': 5,
+        'created': 1,
+        'doneCreated': 1
+      },
+      {
+        'opening': 3,
+        'moved': 0,
+        'doneOpening': 1,
+        'created': 4,
+        'doneCreated': 2
+      },
     ];
 
     for (var offset = 13; offset >= 0; offset--) {
@@ -229,7 +272,8 @@ class _HomePageState extends State<HomePage>
     _storageService.saveDailyTaskStats(_dailyStatsByDay);
   }
 
-  DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+  DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
 
   bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
 
@@ -260,7 +304,8 @@ class _HomePageState extends State<HomePage>
     final key = _dayKey(_currentDate);
     if (_dailyStatsByDay.containsKey(key)) return;
     final stats = DailyTaskStats(dayKey: key);
-    stats.openingTaskIds.addAll(_tasksDueOn(_currentDate).map((task) => task.uid));
+    stats.openingTaskIds
+        .addAll(_tasksDueOn(_currentDate).map((task) => task.uid));
     _dailyStatsByDay[key] = stats;
     _saveDailyStats();
   }
@@ -409,7 +454,8 @@ class _HomePageState extends State<HomePage>
     if (index >= tasks.length) return;
     final task = tasks[index];
     final oldDueDate = task.dueDate;
-    final newDueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
+    final newDueDate =
+        _currentDate.add(Duration(days: _offsetDays[destination]));
     setState(() {
       task.dueDate = newDueDate;
     });
@@ -417,6 +463,90 @@ class _HomePageState extends State<HomePage>
     _saveTasks();
     LogService.add(
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
+  }
+
+  int _pageIndexForTask(Task task) {
+    final dueDate = task.dueDate;
+    if (dueDate == null) return 0;
+    final diff = dateDiffInDays(dueDate, _currentDate);
+    if (diff <= 0) return 0;
+    if (diff == 1) return 1;
+    if (diff == 2) return 2;
+    if (diff < 30) return 3;
+    return 4;
+  }
+
+  void _moveSpecificTask(Task task, int destination) {
+    final oldDueDate = task.dueDate;
+    final newDueDate =
+        _currentDate.add(Duration(days: _offsetDays[destination]));
+    setState(() {
+      task.dueDate = newDueDate;
+    });
+    _trackTaskMove(task, oldDueDate, newDueDate);
+    _saveTasks();
+    LogService.add('HomePage._moveSpecificTask',
+        'Moved "${task.title}" to page $destination');
+  }
+
+  void _moveSpecificTaskToNext(Task task) {
+    final currentIndex = _pageIndexForTask(task);
+    var destination = currentIndex + 1;
+    if (destination >= Config.tabs.length) {
+      destination = 0;
+    }
+    _moveSpecificTask(task, destination);
+  }
+
+  void _deleteTaskByTask(Task task) {
+    final pageIndex = _pageIndexForTask(task);
+    final tasks = _tasksForTab(pageIndex);
+    final index = tasks.indexOf(task);
+    if (index < 0) return;
+    _deleteTask(pageIndex, index);
+  }
+
+  void _toggleTaskByTask(Task task) {
+    final wasDone = task.isDone;
+    setState(task.toggleDone);
+    _trackTaskDoneState(task, wasDone);
+    _saveTasks();
+  }
+
+  void _addTaskForCalendarList(String title) {
+    if (title.trim().isEmpty) return;
+    final task = Task(
+      title: title,
+      dueDate: _currentDate,
+    );
+    setState(() {
+      _tasks.add(task);
+    });
+    _trackTaskCreated(task);
+    _saveTasks();
+    LogService.add('HomePage._addTaskForCalendarList', 'Added task: $title');
+  }
+
+  void _openCalendarOverview() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CalendarOverviewPage(
+          tasks: _tasks,
+          currentDate: _currentDate,
+          swipeLeftDelete: Config.swipeLeftDelete,
+          onAddTask: _addTaskForCalendarList,
+          onTaskChanged: (_) => _saveTasks(),
+          onToggleTask: _toggleTaskByTask,
+          onTaskDueDateChanged: (task, oldDueDate, newDueDate) {
+            _trackTaskMove(task, oldDueDate, newDueDate);
+            _saveTasks();
+          },
+          onMoveTask: _moveSpecificTask,
+          onMoveTaskToNext: _moveSpecificTaskToNext,
+          onDeleteTask: _deleteTaskByTask,
+        ),
+      ),
+    );
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
@@ -504,8 +634,8 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.removeAt(originalIndex);
     });
     _saveDeletedTasks();
-    LogService.add(
-        'HomePage._deleteTaskPermanently', 'Queued permanent delete "${task.title}"');
+    LogService.add('HomePage._deleteTaskPermanently',
+        'Queued permanent delete "${task.title}"');
 
     late Timer timer;
     timer = Timer(Config.delayDuration, () {
@@ -574,16 +704,13 @@ class _HomePageState extends State<HomePage>
   Future<void> _updateHomeWidget() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final todayTasks = _tasks
-        .where((t) {
-          if (t.dueDate == null) return false;
-          final due =
-              DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-          return !due.isAfter(today);
-        })
-        .toList()
-      ..sort((a, b) => (a.listRanking ?? 1 << 31)
-          .compareTo(b.listRanking ?? 1 << 31));
+    final todayTasks = _tasks.where((t) {
+      if (t.dueDate == null) return false;
+      final due = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      return !due.isAfter(today);
+    }).toList()
+      ..sort((a, b) =>
+          (a.listRanking ?? 1 << 31).compareTo(b.listRanking ?? 1 << 31));
 
     final openTasks = todayTasks.where((t) => !t.isDone).toList();
     final totalCount = todayTasks.length;
@@ -643,7 +770,8 @@ class _HomePageState extends State<HomePage>
       return;
     }
     final sep = Platform.pathSeparator;
-    final path = '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
+    final path =
+        '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
     final file = await _storageService.exportTaskList(_tasks, path);
     if (!mounted) return;
     final message =
@@ -754,8 +882,7 @@ class _HomePageState extends State<HomePage>
                       background: Container(
                         color: Colors.greenAccent.withOpacity(0.5),
                       ),
-                      onDismissed: (_) =>
-                          _moveTaskToNextPage(pageIndex, index),
+                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
                       child: tile,
                     );
                   },
@@ -885,12 +1012,22 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: const TextField(
+        title: TextField(
           enabled: false,
           decoration: InputDecoration(
             hintText: 'search soon available',
             border: InputBorder.none,
-            suffixIcon: Icon(Icons.search),
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.search),
+                IconButton(
+                  icon: const Icon(Icons.calendar_month),
+                  tooltip: 'Calendar list',
+                  onPressed: _openCalendarOverview,
+                ),
+              ],
+            ),
           ),
         ),
         bottom: PreferredSize(
@@ -925,7 +1062,8 @@ class _HomePageState extends State<HomePage>
                           return Tab(
                             child: Text(
                               Config.tabs[index],
-                              textAlign: TextAlign.center, // ✅ center multiline titles
+                              textAlign:
+                                  TextAlign.center, // ✅ center multiline titles
                             ),
                           );
                         }
