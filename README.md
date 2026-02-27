@@ -109,8 +109,27 @@ Rule of thumb: keep build number strictly increasing for every new build you dis
 Use one command to keep `pubspec.yaml` and `CHANGELOG.md` in sync:
 
 ```bash
-dart run tool/bump_version.dart 0.1.45+15 "automatic versioning"
+dart run tool/bump_version.dart 0.1.55+25 "recurring tasks, new task at top or bottom"
 ```
 
 This updates the `version:` field in `pubspec.yaml` and prepends a new
 `CHANGELOG.md` section for `0.1.45` with today's date.
+
+## Manual E2E screenshot test
+Proof-of-concept integration test:
+- opens the app on the home page
+- adds one new task
+- captures screenshots after each step
+
+Run manually on Windows desktop:
+```bash
+flutter test integration_test/create_task_screenshot_test.dart -d windows
+```
+
+Screenshots are written to:
+```bash
+build/e2e_screenshots/
+```
+
+Note: Windows desktop integration tests require Developer Mode enabled
+because Flutter plugins use symlinks.

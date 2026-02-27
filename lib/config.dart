@@ -51,6 +51,7 @@ class Config {
     ' Day After\nTomorrow',
     ' Next\nWeek',
     ' Next\nMonth',
+    'Future',
   ];
 
   /// Page shown when the app starts.
@@ -80,6 +81,10 @@ class Config {
   /// If true, the homescreen widget shows today's completion progress line.
   static bool showWidgetProgressLine = true;
 
+  /// If true, new tasks are inserted at the top of the current list.
+  /// Otherwise they are appended to the bottom.
+  static bool addNewTasksToTop = false;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -104,6 +109,7 @@ class Config {
         useIconTabs = data['useIconTabs'] ?? useIconTabs;
         showWidgetProgressLine =
             data['showWidgetProgressLine'] ?? showWidgetProgressLine;
+        addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
         defaultDelaySeconds =
             (data['defaultDelaySeconds'] as num?)?.toDouble() ??
                 defaultDelaySeconds;
@@ -122,6 +128,7 @@ class Config {
         'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
         'useIconTabs': useIconTabs,
         'showWidgetProgressLine': showWidgetProgressLine,
+        'addNewTasksToTop': addNewTasksToTop,
         'defaultDelaySeconds': defaultDelaySeconds,
       };
       await file.writeAsString(jsonEncode(data), flush: true);

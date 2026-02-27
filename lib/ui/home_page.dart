@@ -55,8 +55,10 @@ class _HomePageState extends State<HomePage>
   final TextEditingController _controller = TextEditingController();
   Timer? _midnightTimer;
 
-  /// Day offsets for each tab. The last two entries represent
-  /// "next week" and "next month" respectively.
+  static const int _futureTabIndex = 5;
+  static final DateTime _futureDueDate = DateTime(2300, 1, 1);
+
+  /// Day offsets for each non-future tab.
   static const List<int> _offsetDays = [0, 1, 2, 7, 30];
 
   /// Asset paths for tab icons used when a tab is not selected.
@@ -66,6 +68,7 @@ class _HomePageState extends State<HomePage>
     'assets/icons/the_day_after.png',
     'assets/icons/next_week.png',
     'assets/icons/next_month.png',
+    'assets/icons/next_year.png',
   ];
 
   List<Task> _buildDevDeletedSeed(DateTime referenceDate) {
@@ -144,13 +147,55 @@ class _HomePageState extends State<HomePage>
       referenceDate.day,
     );
     const pattern = <Map<String, int>>[
-      {'opening': 7, 'moved': 1, 'doneOpening': 3, 'created': 2, 'doneCreated': 1},
-      {'opening': 6, 'moved': 2, 'doneOpening': 2, 'created': 1, 'doneCreated': 0},
-      {'opening': 5, 'moved': 0, 'doneOpening': 3, 'created': 3, 'doneCreated': 2},
-      {'opening': 8, 'moved': 1, 'doneOpening': 4, 'created': 0, 'doneCreated': 0},
-      {'opening': 4, 'moved': 1, 'doneOpening': 1, 'created': 2, 'doneCreated': 1},
-      {'opening': 9, 'moved': 2, 'doneOpening': 5, 'created': 1, 'doneCreated': 1},
-      {'opening': 3, 'moved': 0, 'doneOpening': 1, 'created': 4, 'doneCreated': 2},
+      {
+        'opening': 7,
+        'moved': 1,
+        'doneOpening': 3,
+        'created': 2,
+        'doneCreated': 1
+      },
+      {
+        'opening': 6,
+        'moved': 2,
+        'doneOpening': 2,
+        'created': 1,
+        'doneCreated': 0
+      },
+      {
+        'opening': 5,
+        'moved': 0,
+        'doneOpening': 3,
+        'created': 3,
+        'doneCreated': 2
+      },
+      {
+        'opening': 8,
+        'moved': 1,
+        'doneOpening': 4,
+        'created': 0,
+        'doneCreated': 0
+      },
+      {
+        'opening': 4,
+        'moved': 1,
+        'doneOpening': 1,
+        'created': 2,
+        'doneCreated': 1
+      },
+      {
+        'opening': 9,
+        'moved': 2,
+        'doneOpening': 5,
+        'created': 1,
+        'doneCreated': 1
+      },
+      {
+        'opening': 3,
+        'moved': 0,
+        'doneOpening': 1,
+        'created': 4,
+        'doneCreated': 2
+      },
     ];
 
     for (var offset = 13; offset >= 0; offset--) {
@@ -200,6 +245,7 @@ class _HomePageState extends State<HomePage>
     } else {
       _tasks.addAll(loaded);
     }
+    _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
       _deletedTasks.addAll(loadedDeleted);
     } else if (Config.isDev) {
@@ -229,15 +275,80 @@ class _HomePageState extends State<HomePage>
     _storageService.saveDailyTaskStats(_dailyStatsByDay);
   }
 
-  DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+  DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
 
   bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
+
+  bool _isFutureBucketDate(DateTime date) =>
+      _isSameDay(date, _futureDueDate);
+
+  DateTime _dueDateForTab(int tabIndex) {
+    if (tabIndex == _futureTabIndex) return _futureDueDate;
+    return _currentDate.add(Duration(days: _offsetDays[tabIndex]));
+  }
 
   String _dayKey(DateTime date) {
     final d = _dateOnly(date);
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
     return '${d.year}-$m-$day';
+  }
+
+  void _refreshRecurringForTask(Task task) {
+    if (task.recurrenceParentUid != null) return;
+    final parentUid = task.uid;
+
+    if (!task.isRecurring ||
+        task.dueDate == null ||
+        task.recurrenceEndDate == null) {
+      _tasks.removeWhere((t) => t.recurrenceParentUid == parentUid);
+      return;
+    }
+
+    final intervalDays =
+        task.recurrenceIntervalDays < 1 ? 1 : task.recurrenceIntervalDays;
+    task.recurrenceIntervalDays = intervalDays;
+    final baseDate = _dateOnly(task.dueDate!);
+    final endDate = _dateOnly(task.recurrenceEndDate!);
+
+    final existingByKey = <String, Task>{};
+    _tasks.removeWhere((t) {
+      if (t.recurrenceParentUid != parentUid) return false;
+      final dueDate = t.dueDate;
+      if (dueDate == null) return true;
+      final d = _dateOnly(dueDate);
+      final diff = d.difference(baseDate).inDays;
+      final valid = diff > 0 && diff % intervalDays == 0 && !d.isAfter(endDate);
+      if (!valid) return true;
+      existingByKey[_dayKey(d)] = t;
+      return false;
+    });
+
+    for (var date = baseDate.add(Duration(days: intervalDays));
+        !date.isAfter(endDate);
+        date = date.add(Duration(days: intervalDays))) {
+      final key = _dayKey(date);
+      if (existingByKey.containsKey(key)) continue;
+      _tasks.add(
+        Task(
+          title: task.title,
+          description: task.description,
+          note: task.note,
+          label: task.label,
+          dueDate: date,
+          recurrenceParentUid: parentUid,
+          recurrenceInstanceKey: key,
+        ),
+      );
+    }
+  }
+
+  void _refreshAllRecurringTasks() {
+    final parents = _tasks.where((t) => t.recurrenceParentUid == null).toList();
+    for (final task in parents) {
+      _refreshRecurringForTask(task);
+    }
   }
 
   List<Task> _tasksDueOn(DateTime date) {
@@ -260,7 +371,8 @@ class _HomePageState extends State<HomePage>
     final key = _dayKey(_currentDate);
     if (_dailyStatsByDay.containsKey(key)) return;
     final stats = DailyTaskStats(dayKey: key);
-    stats.openingTaskIds.addAll(_tasksDueOn(_currentDate).map((task) => task.uid));
+    stats.openingTaskIds
+        .addAll(_tasksDueOn(_currentDate).map((task) => task.uid));
     _dailyStatsByDay[key] = stats;
     _saveDailyStats();
   }
@@ -332,6 +444,24 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  int _listRankingForNewTask(int tabIndex, {required bool addToTop}) {
+    final pendingTasks =
+        _tasksForTab(tabIndex).where((task) => !task.isDone).toList();
+    if (pendingTasks.isEmpty) return 1;
+
+    if (addToTop) {
+      final minRanking = pendingTasks
+          .map((task) => task.listRanking ?? (1 << 31))
+          .reduce((a, b) => a < b ? a : b);
+      return minRanking - 1;
+    }
+
+    final maxRanking = pendingTasks
+        .map((task) => task.listRanking ?? 0)
+        .reduce((a, b) => a > b ? a : b);
+    return maxRanking + 1;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -370,10 +500,14 @@ class _HomePageState extends State<HomePage>
 
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
-    final offset = _offsetDays[_tabController.index];
+    final tabIndex = _tabController.index;
     final task = Task(
       title: title,
-      dueDate: _currentDate.add(Duration(days: offset)),
+      dueDate: _dueDateForTab(tabIndex),
+      listRanking: _listRankingForNewTask(
+        tabIndex,
+        addToTop: Config.addNewTasksToTop,
+      ),
     );
     setState(() {
       _tasks.add(task);
@@ -392,11 +526,15 @@ class _HomePageState extends State<HomePage>
     }
     if (index >= tasks.length) return;
     final task = tasks[index];
+    if (task.recurrenceParentUid != null) {
+      task.recurrenceParentUid = null;
+      task.recurrenceInstanceKey = null;
+    }
     final oldDueDate = task.dueDate;
-    final newDueDate =
-        _currentDate.add(Duration(days: _offsetDays[destination]));
+    final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      _refreshRecurringForTask(task);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
@@ -408,10 +546,15 @@ class _HomePageState extends State<HomePage>
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
+    if (task.recurrenceParentUid != null) {
+      task.recurrenceParentUid = null;
+      task.recurrenceInstanceKey = null;
+    }
     final oldDueDate = task.dueDate;
-    final newDueDate = _currentDate.add(Duration(days: _offsetDays[destination]));
+    final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      _refreshRecurringForTask(task);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
@@ -444,6 +587,7 @@ class _HomePageState extends State<HomePage>
 
     setState(() {
       _tasks.removeAt(originalIndex);
+      _tasks.removeWhere((t) => t.recurrenceParentUid == task.uid);
     });
     _saveTasks();
     LogService.add('HomePage._deleteTask', 'Deleted "${task.title}"');
@@ -473,6 +617,7 @@ class _HomePageState extends State<HomePage>
               if (!mounted) return;
               setState(() {
                 _tasks.insert(originalIndex, task);
+                _refreshRecurringForTask(task);
               });
               _saveTasks();
               LogService.add(
@@ -489,6 +634,7 @@ class _HomePageState extends State<HomePage>
       task.deletedAt = null;
       task.dueDate = _currentDate;
       _tasks.add(task);
+      _refreshRecurringForTask(task);
     });
     _saveTasks();
     _saveDeletedTasks();
@@ -504,8 +650,8 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.removeAt(originalIndex);
     });
     _saveDeletedTasks();
-    LogService.add(
-        'HomePage._deleteTaskPermanently', 'Queued permanent delete "${task.title}"');
+    LogService.add('HomePage._deleteTaskPermanently',
+        'Queued permanent delete "${task.title}"');
 
     late Timer timer;
     timer = Timer(Config.delayDuration, () {
@@ -574,16 +720,13 @@ class _HomePageState extends State<HomePage>
   Future<void> _updateHomeWidget() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final todayTasks = _tasks
-        .where((t) {
-          if (t.dueDate == null) return false;
-          final due =
-              DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-          return !due.isAfter(today);
-        })
-        .toList()
-      ..sort((a, b) => (a.listRanking ?? 1 << 31)
-          .compareTo(b.listRanking ?? 1 << 31));
+    final todayTasks = _tasks.where((t) {
+      if (t.dueDate == null) return false;
+      final due = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      return !due.isAfter(today);
+    }).toList()
+      ..sort((a, b) =>
+          (a.listRanking ?? 1 << 31).compareTo(b.listRanking ?? 1 << 31));
 
     final openTasks = todayTasks.where((t) => !t.isDone).toList();
     final totalCount = todayTasks.length;
@@ -643,7 +786,8 @@ class _HomePageState extends State<HomePage>
       return;
     }
     final sep = Platform.pathSeparator;
-    final path = '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
+    final path =
+        '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
     final file = await _storageService.exportTaskList(_tasks, path);
     if (!mounted) return;
     final message =
@@ -662,6 +806,7 @@ class _HomePageState extends State<HomePage>
       _tasks
         ..clear()
         ..addAll(imported);
+      _refreshAllRecurringTasks();
     });
     _initializeStatsForCurrentDay();
     _saveTasks();
@@ -679,11 +824,13 @@ class _HomePageState extends State<HomePage>
       // tomorrow don't appear in today's list simply because they are less
       // than 24 hours away.
       final diff = dateDiffInDays(task.dueDate!, _currentDate);
+      final isFutureTask = _isFutureBucketDate(task.dueDate!);
       if (pageIndex == 0) return diff <= 0;
       if (pageIndex == 1) return diff == 1;
       if (pageIndex == 2) return diff == 2;
       if (pageIndex == 3) return diff >= 3 && diff < 30;
-      return diff >= 30;
+      if (pageIndex == 4) return diff >= 30 && !isFutureTask;
+      return isFutureTask;
     }).toList();
     sortTasks(list);
     return list;
@@ -736,7 +883,20 @@ class _HomePageState extends State<HomePage>
                         _saveTasks();
                       },
                       onDueDateChanged: (oldDueDate, newDueDate) {
-                        _trackTaskMove(task, oldDueDate, newDueDate);
+                        setState(() {
+                          if (task.recurrenceParentUid != null) {
+                            task.recurrenceParentUid = null;
+                            task.recurrenceInstanceKey = null;
+                          }
+                          _trackTaskMove(task, oldDueDate, newDueDate);
+                          _refreshRecurringForTask(task);
+                        });
+                        _saveTasks();
+                      },
+                      onRecurringChanged: () {
+                        setState(() {
+                          _refreshRecurringForTask(task);
+                        });
                         _saveTasks();
                       },
                       onMove: (dest) => _moveTask(pageIndex, index, dest),
@@ -754,8 +914,7 @@ class _HomePageState extends State<HomePage>
                       background: Container(
                         color: Colors.greenAccent.withOpacity(0.5),
                       ),
-                      onDismissed: (_) =>
-                          _moveTaskToNextPage(pageIndex, index),
+                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
                       child: tile,
                     );
                   },
@@ -925,15 +1084,18 @@ class _HomePageState extends State<HomePage>
                           return Tab(
                             child: Text(
                               Config.tabs[index],
-                              textAlign: TextAlign.center, // ✅ center multiline titles
+                              textAlign:
+                                  TextAlign.center, // ✅ center multiline titles
                             ),
                           );
                         }
                         return Tab(
-                          icon: Image.asset(
-                            _tabIconPaths[index],
-                            height: 24,
-                          ),
+                          icon: index == _futureTabIndex
+                              ? const Text('✨', style: TextStyle(fontSize: 20))
+                              : Image.asset(
+                                  _tabIconPaths[index],
+                                  height: 24,
+                                ),
                         );
                       })
                     : Config.tabs.map((t) => Tab(text: t)).toList(),
@@ -944,13 +1106,7 @@ class _HomePageState extends State<HomePage>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildTaskList(0),
-          _buildTaskList(1),
-          _buildTaskList(2),
-          _buildTaskList(3),
-          _buildTaskList(4),
-        ],
+        children: List.generate(Config.tabs.length, _buildTaskList),
       ),
     );
   }

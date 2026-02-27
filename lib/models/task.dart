@@ -14,6 +14,11 @@ class Task {
   DateTime? deletedAt;
   bool isDone;
   int? listRanking;
+  bool isRecurring;
+  DateTime? recurrenceEndDate;
+  int recurrenceIntervalDays;
+  String? recurrenceParentUid;
+  String? recurrenceInstanceKey;
 
   Task({
     String? uid,
@@ -25,6 +30,11 @@ class Task {
     this.deletedAt,
     this.isDone = false,
     this.listRanking,
+    this.isRecurring = false,
+    this.recurrenceEndDate,
+    this.recurrenceIntervalDays = 1,
+    this.recurrenceParentUid,
+    this.recurrenceInstanceKey,
   }) : uid = uid ?? Task.newUid();
 
   void toggleDone() {
@@ -46,6 +56,13 @@ class Task {
           : null,
       isDone: json['isDone'] as bool? ?? false,
       listRanking: json['listRanking'] as int?,
+      isRecurring: json['isRecurring'] as bool? ?? false,
+      recurrenceEndDate: json['recurrenceEndDate'] != null
+          ? DateTime.parse(json['recurrenceEndDate'] as String)
+          : null,
+      recurrenceIntervalDays: json['recurrenceIntervalDays'] as int? ?? 1,
+      recurrenceParentUid: json['recurrenceParentUid'] as String?,
+      recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
     );
   }
 
@@ -59,5 +76,12 @@ class Task {
         'deletedAt': deletedAt?.toIso8601String(),
         'isDone': isDone,
         if (listRanking != null) 'listRanking': listRanking,
+        'isRecurring': isRecurring,
+        'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
+        'recurrenceIntervalDays': recurrenceIntervalDays,
+        if (recurrenceParentUid != null)
+          'recurrenceParentUid': recurrenceParentUid,
+        if (recurrenceInstanceKey != null)
+          'recurrenceInstanceKey': recurrenceInstanceKey,
       };
 }
