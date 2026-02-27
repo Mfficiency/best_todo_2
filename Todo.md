@@ -1,29 +1,17 @@
 ## After MVP
 ### TODO
-- Start page
-Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
+- full testing suite, only merge if all test are complete
+- ios mode
+- calendar view
 
-Completed task behavior
-Auto-hide completed tasks after X time, or show them grouped at bottom.
-
-Auto-delete completed tasks
-Optional cleanup rule (e.g., after 7/30 days).
-
-Default due bucket
-When creating a task quickly, choose default target list (Today vs Future).
-
-Confirmation toggles
-Per-action confirmations: delete, clear completed, move all.
-
-Sort mode per list
-Manual only vs by created time / priority / due date.
-
-Notification quiet hours
-Suppress notifications in a time range, plus weekday/weekend override.
+- Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
+- Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).
+- Default due bucket: When creating a task quickly, choose default target list (Today vs Future).
+- Confirmation toggles: Per-action confirmations: delete, clear completed, move all.
+- Sort mode per list: Manual only vs by created time / priority / due date.
 - Settings onepager, click on top tabs to scroll down
 - improve integration test with screenshots
 - improve recurring tasks
-- calendar view
 - add home to menu
 - on the start screen, have 3 buttons, populate with example data or start fresh or import previous data
 - 1 working automatic test when building or pushing
@@ -37,6 +25,8 @@ Suppress notifications in a time range, plus weekday/weekend override.
 - show in daily stats a different color if you have cleared tasks from a future date.
 
 ### DONE
+- Notification quiet hours: Suppress notifications in a time range, plus weekday/weekend override.
+- Start page: Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
 - make a "future tab", that you can move away to just have the idea written down.
 - make setting to have the new item added to the top or the bottom of the list
 - recurring tasks
