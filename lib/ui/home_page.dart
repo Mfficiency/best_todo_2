@@ -242,6 +242,14 @@ class _HomePageState extends State<HomePage>
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
       );
+      _tasks.addAll(
+        Config.initialFutureTasks.map(
+          (t) => Task(
+            title: t,
+            dueDate: _futureDueDate,
+          ),
+        ),
+      );
     } else {
       _tasks.addAll(loaded);
     }

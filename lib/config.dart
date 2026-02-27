@@ -44,6 +44,9 @@ class Config {
     'Go to the car shop to get my carburator fixed',
     '@myself remember to do sports & drink water',
   ];
+  static const List<String> initialFutureTasks = [
+    'Here you put all your hopes and dreams.',
+  ];
 
   static const List<String> tabs = [
     'Today',

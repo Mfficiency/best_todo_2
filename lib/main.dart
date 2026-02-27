@@ -16,7 +16,7 @@ Future<void> main() async {
   await Config.load();
   await NotificationService.initialize();
   final prefs = await SharedPreferences.getInstance();
-  final showIntro = !(prefs.getBool('intro_shown') ?? false);
+  final showIntro = Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);
   runApp(MyApp(showIntro: showIntro));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
