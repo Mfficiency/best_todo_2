@@ -37,16 +37,16 @@ Use this file to document all screenshot and visual integration tests.
 | Test | Status | File |
 | --- | --- | --- |
 | Create Task Flow | Implemented | `integration_test/create_task_screenshot_test.dart` |
-| Modify Task Flow | Planned | `integration_test/modify_task_screenshot_test.dart` |
-| Open Task Flow | Planned | `integration_test/open_task_screenshot_test.dart` |
-| Close Task Flow | Planned | `integration_test/close_task_screenshot_test.dart` |
-| Move Task Flow | Planned | `integration_test/move_task_screenshot_test.dart` |
-| Delete Task Flow | Planned | `integration_test/delete_task_screenshot_test.dart` |
-| Add Description Flow | Planned | `integration_test/add_description_screenshot_test.dart` |
-| Add Note Flow | Planned | `integration_test/add_note_screenshot_test.dart` |
-| Add Label Flow | Planned | `integration_test/add_label_screenshot_test.dart` |
-| Pick Due Date Flow | Planned | `integration_test/pick_due_date_screenshot_test.dart` |
-| Set Notification Flow | Planned | `integration_test/set_notification_screenshot_test.dart` |
+| Modify Task Flow | Implemented | `integration_test/modify_task_screenshot_test.dart` |
+| Open Task Flow | Implemented | `integration_test/open_task_screenshot_test.dart` |
+| Close Task Flow | Implemented | `integration_test/close_task_screenshot_test.dart` |
+| Move Task Flow | Implemented | `integration_test/move_task_screenshot_test.dart` |
+| Delete Task Flow | Implemented | `integration_test/delete_task_screenshot_test.dart` |
+| Add Description Flow | Implemented | `integration_test/add_description_screenshot_test.dart` |
+| Add Note Flow | Implemented | `integration_test/add_note_screenshot_test.dart` |
+| Add Label Flow | Implemented | `integration_test/add_label_screenshot_test.dart` |
+| Pick Due Date Flow | Implemented | `integration_test/pick_due_date_screenshot_test.dart` |
+| Set Notification Flow | Implemented | `integration_test/set_notification_screenshot_test.dart` |
 | Settings - Dark Mode | Planned | `integration_test/settings_dark_mode_screenshot_test.dart` |
 | Settings - Use Tab Icons | Planned | `integration_test/settings_use_tab_icons_screenshot_test.dart` |
 | Settings - Add New Tasks At Top | Planned | `integration_test/settings_add_new_tasks_top_screenshot_test.dart` |
@@ -107,7 +107,7 @@ Copy this block for each test:
 - Expected Screenshots: Task before edit, edit form state, updated task tile/detail.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/modify_task_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Open Task Flow
 - File: `integration_test/open_task_screenshot_test.dart`
@@ -121,7 +121,7 @@ Copy this block for each test:
 - Expected Screenshots: Task list state, opened task detail page.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/open_task_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Close Task Flow
 - File: `integration_test/close_task_screenshot_test.dart`
@@ -135,7 +135,7 @@ Copy this block for each test:
 - Expected Screenshots: Open detail page, list view after close.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/close_task_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Move Task Flow
 - File: `integration_test/move_task_screenshot_test.dart`
@@ -150,7 +150,7 @@ Copy this block for each test:
 - Expected Screenshots: Source list state, move action state, destination list with task.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/move_task_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Delete Task Flow
 - File: `integration_test/delete_task_screenshot_test.dart`
@@ -165,7 +165,7 @@ Copy this block for each test:
 - Expected Screenshots: Pre-delete list, delete confirmation, post-delete list.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/delete_task_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Add Description Flow
 - File: `integration_test/add_description_screenshot_test.dart`
@@ -180,7 +180,7 @@ Copy this block for each test:
 - Expected Screenshots: Empty/input-ready state, typed description field, saved task with description shown.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/add_description_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Add Note Flow
 - File: `integration_test/add_note_screenshot_test.dart`
@@ -196,7 +196,7 @@ Copy this block for each test:
 - Expected Screenshots: Task detail without note, note entry state, task detail with saved note.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/add_note_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Add Label Flow
 - File: `integration_test/add_label_screenshot_test.dart`
@@ -212,7 +212,7 @@ Copy this block for each test:
 - Expected Screenshots: Task without label, label picker/input, task showing assigned label.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/add_label_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Pick Due Date Flow
 - File: `integration_test/pick_due_date_screenshot_test.dart`
@@ -228,7 +228,7 @@ Copy this block for each test:
 - Expected Screenshots: Pre-date state, date picker UI, task with selected due date.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/pick_due_date_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ### Set Notification Flow
 - File: `integration_test/set_notification_screenshot_test.dart`
@@ -244,7 +244,7 @@ Copy this block for each test:
 - Expected Screenshots: Task without reminder, reminder picker/configuration UI, task showing reminder set.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/set_notification_screenshot_test.dart -d windows`
-- Notes: Planned.
+- Notes: Implemented.
 
 ## Settings Tests
 

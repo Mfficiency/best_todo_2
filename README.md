@@ -160,3 +160,43 @@ Only the latest 5 sessions are kept. Each session stores:
 
 Note: Windows desktop integration tests require Developer Mode enabled
 because Flutter plugins use symlinks.
+
+Run all task screenshot tests (PowerShell):
+```powershell
+$tests = @(
+  "create_task",
+  "modify_task",
+  "open_task",
+  "close_task",
+  "move_task",
+  "delete_task",
+  "add_description",
+  "add_note",
+  "add_label",
+  "pick_due_date",
+  "set_notification"
+)
+
+foreach ($t in $tests) {
+  flutter test "integration_test/${t}_screenshot_test.dart" -d windows
+  if ($LASTEXITCODE -ne 0) { break }
+}
+```
+
+Run all task screenshot tests (bash):
+```bash
+for t in \
+  create_task \
+  modify_task \
+  open_task \
+  close_task \
+  move_task \
+  delete_task \
+  add_description \
+  add_note \
+  add_label \
+  pick_due_date \
+  set_notification; do
+  flutter test integration_test/${t}_screenshot_test.dart -d windows || exit 1
+done
+```
