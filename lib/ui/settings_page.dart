@@ -17,6 +17,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _darkMode = Config.darkMode;
   bool _useIconTabs = Config.useIconTabs;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
+  bool _addNewTasksToTop = Config.addNewTasksToTop;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
 
@@ -146,6 +147,17 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (val) async {
               setState(() => _showWidgetProgressLine = val);
               Config.showWidgetProgressLine = val;
+              await Config.save();
+              widget.onSettingsChanged?.call();
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Add new tasks at top'),
+            subtitle: const Text('Turn off to add new tasks at the bottom'),
+            value: _addNewTasksToTop,
+            onChanged: (val) async {
+              setState(() => _addNewTasksToTop = val);
+              Config.addNewTasksToTop = val;
               await Config.save();
               widget.onSettingsChanged?.call();
             },

@@ -14,7 +14,9 @@ class TaskTile extends StatefulWidget {
   final void Function(int destination) onMove;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
-  final void Function(DateTime? oldDueDate, DateTime? newDueDate)? onDueDateChanged;
+  final void Function(DateTime? oldDueDate, DateTime? newDueDate)?
+      onDueDateChanged;
+  final VoidCallback? onRecurringChanged;
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
@@ -28,6 +30,7 @@ class TaskTile extends StatefulWidget {
     required this.onMoveNext,
     required this.onDelete,
     this.onDueDateChanged,
+    this.onRecurringChanged,
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
@@ -51,6 +54,8 @@ class _TaskTileState extends State<TaskTile>
   late final List<int> _destinations;
   double _dragOffset = 0;
   bool _dragging = false;
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   @override
   void initState() {
@@ -154,6 +159,7 @@ class _TaskTileState extends State<TaskTile>
   @override
   Widget build(BuildContext context) {
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final isRecurringChild = widget.task.recurrenceParentUid != null;
     final trailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -186,8 +192,9 @@ class _TaskTileState extends State<TaskTile>
     );
 
     final listTile = ListTile(
-      contentPadding:
-          isAndroid ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16.0),
+      contentPadding: isAndroid
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 16.0),
       minLeadingWidth: isAndroid ? 0 : null,
       leading: Checkbox(
         value: widget.task.isDone,
@@ -230,7 +237,8 @@ class _TaskTileState extends State<TaskTile>
                     child: AnimatedBuilder(
                       animation: _progressController,
                       builder: (context, child) {
-                        return LinearProgressIndicator(value: _progressController.value);
+                        return LinearProgressIndicator(
+                            value: _progressController.value);
                       },
                     ),
                   ),
@@ -267,7 +275,8 @@ class _TaskTileState extends State<TaskTile>
                     },
                     child: TextField(
                       controller: _descController,
-                      decoration: const InputDecoration(labelText: 'Description'),
+                      decoration:
+                          const InputDecoration(labelText: 'Description'),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
                       onChanged: (v) => widget.task.description = v,
@@ -307,19 +316,108 @@ class _TaskTileState extends State<TaskTile>
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: widget.task.dueDate ?? DateTime.now(),
-                            firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                            lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                            firstDate: DateTime.now()
+                                .subtract(const Duration(days: 365)),
+                            lastDate: DateTime.now()
+                                .add(const Duration(days: 365 * 5)),
                           );
                           if (picked != null) {
                             final oldDueDate = widget.task.dueDate;
                             setState(() => widget.task.dueDate = picked);
                             widget.onDueDateChanged?.call(oldDueDate, picked);
+                            widget.onRecurringChanged?.call();
                           }
                         },
                         child: const Text('Pick due date'),
                       ),
                     ],
                   ),
+                  Row(
+                    children: [
+                      const Text('Recurring'),
+                      const Spacer(),
+                      Switch(
+                        value: widget.task.isRecurring,
+                        onChanged: isRecurringChild
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  widget.task.isRecurring = value;
+                                  if (value &&
+                                      widget.task.recurrenceEndDate == null) {
+                                    final start = _dateOnly(
+                                      widget.task.dueDate ?? DateTime.now(),
+                                    );
+                                    widget.task.recurrenceEndDate =
+                                        start.add(const Duration(days: 7));
+                                  }
+                                  if (!value) {
+                                    widget.task.recurrenceEndDate = null;
+                                  }
+                                });
+                                widget.onRecurringChanged?.call();
+                              },
+                      ),
+                    ],
+                  ),
+                  if (isRecurringChild)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('This is a generated recurring task.'),
+                    ),
+                  if (widget.task.isRecurring && !isRecurringChild)
+                    Row(
+                      children: [
+                        const Text('Every'),
+                        const SizedBox(width: 8),
+                        DropdownButton<int>(
+                          value: widget.task.recurrenceIntervalDays,
+                          items: const [
+                            DropdownMenuItem(value: 1, child: Text('1 day')),
+                            DropdownMenuItem(value: 2, child: Text('2 days')),
+                            DropdownMenuItem(value: 7, child: Text('7 days')),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              widget.task.recurrenceIntervalDays = value;
+                            });
+                            widget.onRecurringChanged?.call();
+                          },
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () async {
+                            final base = _dateOnly(
+                              widget.task.recurrenceEndDate ??
+                                  widget.task.dueDate ??
+                                  DateTime.now(),
+                            );
+                            final minDate = _dateOnly(
+                              widget.task.dueDate ?? DateTime.now(),
+                            );
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate:
+                                  base.isBefore(minDate) ? minDate : base,
+                              firstDate: minDate,
+                              lastDate:
+                                  minDate.add(const Duration(days: 365 * 5)),
+                            );
+                            if (picked == null) return;
+                            setState(() {
+                              widget.task.recurrenceEndDate = picked;
+                            });
+                            widget.onRecurringChanged?.call();
+                          },
+                          child: Text(
+                            widget.task.recurrenceEndDate == null
+                                ? 'Pick end date'
+                                : 'End: ${widget.task.recurrenceEndDate!.toLocal().toString().split(' ')[0]}',
+                          ),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 8),
                 ],
               ),
@@ -328,11 +426,9 @@ class _TaskTileState extends State<TaskTile>
       ),
     );
 
-
     final slide = AnimatedSlide(
       offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
-      duration:
-          _dragging ? Duration.zero : const Duration(milliseconds: 200),
+      duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
       child: content,
     );
 
@@ -341,8 +437,9 @@ class _TaskTileState extends State<TaskTile>
       final dragToDelete =
           widget.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
       if (dragToDelete) {
-        final alignment =
-            widget.swipeLeftDelete ? Alignment.centerRight : Alignment.centerLeft;
+        final alignment = widget.swipeLeftDelete
+            ? Alignment.centerRight
+            : Alignment.centerLeft;
         background = Positioned.fill(
           child: Container(
             color: Colors.red.withOpacity(0.5),
@@ -352,16 +449,16 @@ class _TaskTileState extends State<TaskTile>
           ),
         );
       } else {
-        final alignment =
-            widget.swipeLeftDelete ? Alignment.centerLeft : Alignment.centerRight;
+        final alignment = widget.swipeLeftDelete
+            ? Alignment.centerLeft
+            : Alignment.centerRight;
         final icon =
             widget.swipeLeftDelete ? Icons.arrow_forward : Icons.arrow_back;
         background = Positioned.fill(
           child: Container(
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Icon(icon,
-                color: Theme.of(context).colorScheme.primary),
+            child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
         );
       }
