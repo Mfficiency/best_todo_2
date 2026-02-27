@@ -20,9 +20,9 @@ class _SettingsPageState extends State<SettingsPage> {
   );
   final List<String> _sectionTitles = const [
     'Appearance',
-    'Notifications',
     'Tasks',
     'Widget',
+    'Notifications',
   ];
   int _activeSectionIndex = 0;
   static const double _tabsHeaderHeight = 60;
@@ -35,8 +35,12 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _useIconTabs = Config.useIconTabs;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
+  int _startTabIndex = Config.startTabIndex;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
+  bool _quietHoursEnabled = Config.quietHoursEnabled;
+  int _quietHoursStartMinutes = Config.quietHoursStartMinutes;
+  int _quietHoursEndMinutes = Config.quietHoursEndMinutes;
 
   @override
   void initState() {
@@ -63,6 +67,39 @@ class _SettingsPageState extends State<SettingsPage> {
     final minutes = int.parse(match.group(1)!);
     final seconds = int.parse(match.group(2)!);
     return minutes * 60 + seconds;
+  }
+
+  String _formatHourMinute(int totalMinutes) {
+    final minutes = totalMinutes.clamp(0, 1439);
+    final hour = (minutes ~/ 60).toString().padLeft(2, '0');
+    final minute = (minutes % 60).toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  Future<void> _pickQuietHour({
+    required bool isStart,
+  }) async {
+    final current = isStart ? _quietHoursStartMinutes : _quietHoursEndMinutes;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: current ~/ 60,
+        minute: current % 60,
+      ),
+    );
+    if (picked == null) return;
+    final minutes = picked.hour * 60 + picked.minute;
+    setState(() {
+      if (isStart) {
+        _quietHoursStartMinutes = minutes;
+      } else {
+        _quietHoursEndMinutes = minutes;
+      }
+    });
+    Config.quietHoursStartMinutes = _quietHoursStartMinutes;
+    Config.quietHoursEndMinutes = _quietHoursEndMinutes;
+    await Config.save();
+    widget.onSettingsChanged?.call();
   }
 
   Future<void> _editNotificationDelay() async {
@@ -140,7 +177,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final tabsBox = tabsContext.findRenderObject() as RenderBox?;
     if (tabsBox == null || !tabsBox.hasSize) return;
 
-    final tabsBottom = tabsBox.localToGlobal(Offset.zero).dy + tabsBox.size.height;
+    final tabsBottom =
+        tabsBox.localToGlobal(Offset.zero).dy + tabsBox.size.height;
     final activationLine = tabsBottom + _sectionActivationOffset;
     var index = 0;
 
@@ -181,7 +219,10 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: Text(
                 title,
-                style: Theme.of(context).textTheme.titleMedium,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
             ...children,
@@ -216,7 +257,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: List<Widget>.generate(_sectionTitles.length, (index) {
+                    children:
+                        List<Widget>.generate(_sectionTitles.length, (index) {
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: ChoiceChip(
@@ -253,7 +295,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       SwitchListTile(
                         title: const Text('Use tab icons'),
-                        subtitle: const Text('Show icons instead of text labels on the home screen'),
+                        subtitle: const Text(
+                            'Show icons instead of text labels on the home screen'),
                         value: _useIconTabs,
                         onChanged: (val) async {
                           setState(() => _useIconTabs = val);
@@ -266,34 +309,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   _buildSection(
                     index: 1,
-                    title: 'Notifications',
-                    children: [
-                      SwitchListTile(
-                        title: const Text('Enable notifications'),
-                        value: _notifications,
-                        onChanged: (val) async {
-                          setState(() => _notifications = val);
-                          Config.enableNotifications = val;
-                          await Config.save();
-                        },
-                      ),
-                      ListTile(
-                        title: const Text('Default notification delay'),
-                        subtitle: Text(
-                          'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
-                        ),
-                        trailing: const Icon(Icons.edit),
-                        onTap: _editNotificationDelay,
-                      ),
-                    ],
-                  ),
-                  _buildSection(
-                    index: 2,
                     title: 'Tasks',
                     children: [
                       SwitchListTile(
                         title: const Text('Add new tasks at top'),
-                        subtitle: const Text('Turn off to add new tasks at the bottom'),
+                        subtitle: const Text(
+                            'Turn off to add new tasks at the bottom'),
                         value: _addNewTasksToTop,
                         onChanged: (val) async {
                           setState(() => _addNewTasksToTop = val);
@@ -304,7 +325,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       SwitchListTile(
                         title: const Text('Swipe left to delete'),
-                        subtitle: const Text('Turn off to swipe right to delete and left to move'),
+                        subtitle: const Text(
+                            'Turn off to swipe right to delete and left to move'),
                         value: _swipeLeftDelete,
                         onChanged: (val) async {
                           setState(() => _swipeLeftDelete = val);
@@ -331,15 +353,40 @@ class _SettingsPageState extends State<SettingsPage> {
                           },
                         ),
                       ),
+                      ListTile(
+                        title: const Text('Start page'),
+                        subtitle:
+                            const Text('Open this tab when launching the app'),
+                        trailing: DropdownButton<int>(
+                          value: _startTabIndex,
+                          items: List.generate(
+                            Config.tabs.length,
+                            (index) => DropdownMenuItem<int>(
+                              value: index,
+                              child: Text(
+                                Config.tabs[index].replaceAll('\n', ' ').trim(),
+                              ),
+                            ),
+                          ),
+                          onChanged: (val) async {
+                            if (val == null) return;
+                            setState(() => _startTabIndex = val);
+                            Config.startTabIndex = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
+                      ),
                     ],
                   ),
                   _buildSection(
-                    index: 3,
+                    index: 2,
                     title: 'Widget',
                     children: [
                       SwitchListTile(
                         title: const Text('Widget progress line'),
-                        subtitle: const Text('Show completion line on the home widget'),
+                        subtitle: const Text(
+                            'Show completion line on the home widget'),
                         value: _showWidgetProgressLine,
                         onChanged: (val) async {
                           setState(() => _showWidgetProgressLine = val);
@@ -347,6 +394,57 @@ class _SettingsPageState extends State<SettingsPage> {
                           await Config.save();
                           widget.onSettingsChanged?.call();
                         },
+                      ),
+                    ],
+                  ),
+                  _buildSection(
+                    index: 3,
+                    title: 'Notifications',
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Enable notifications'),
+                        value: _notifications,
+                        onChanged: (val) async {
+                          setState(() => _notifications = val);
+                          Config.enableNotifications = val;
+                          await Config.save();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Quiet hours'),
+                        subtitle: const Text(
+                            'Delay notifications until quiet hours end'),
+                        value: _quietHoursEnabled,
+                        onChanged: (val) async {
+                          setState(() => _quietHoursEnabled = val);
+                          Config.quietHoursEnabled = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      if (_quietHoursEnabled)
+                        ListTile(
+                          title: const Text('Quiet hours start'),
+                          subtitle:
+                              Text(_formatHourMinute(_quietHoursStartMinutes)),
+                          trailing: const Icon(Icons.schedule),
+                          onTap: () => _pickQuietHour(isStart: true),
+                        ),
+                      if (_quietHoursEnabled)
+                        ListTile(
+                          title: const Text('Quiet hours end'),
+                          subtitle:
+                              Text(_formatHourMinute(_quietHoursEndMinutes)),
+                          trailing: const Icon(Icons.schedule),
+                          onTap: () => _pickQuietHour(isStart: false),
+                        ),
+                      ListTile(
+                        title: const Text('Default notification delay'),
+                        subtitle: Text(
+                          'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
+                        ),
+                        trailing: const Icon(Icons.edit),
+                        onTap: _editNotificationDelay,
                       ),
                     ],
                   ),

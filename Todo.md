@@ -1,5 +1,25 @@
 ## After MVP
 ### TODO
+- Start page
+Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
+
+Completed task behavior
+Auto-hide completed tasks after X time, or show them grouped at bottom.
+
+Auto-delete completed tasks
+Optional cleanup rule (e.g., after 7/30 days).
+
+Default due bucket
+When creating a task quickly, choose default target list (Today vs Future).
+
+Confirmation toggles
+Per-action confirmations: delete, clear completed, move all.
+
+Sort mode per list
+Manual only vs by created time / priority / due date.
+
+Notification quiet hours
+Suppress notifications in a time range, plus weekday/weekend override.
 - Settings onepager, click on top tabs to scroll down
 - improve integration test with screenshots
 - improve recurring tasks

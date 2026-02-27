@@ -16,7 +16,8 @@ Future<void> main() async {
   await Config.load();
   await NotificationService.initialize();
   final prefs = await SharedPreferences.getInstance();
-  final showIntro = Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);
+  final showIntro =
+      Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);
   runApp(MyApp(showIntro: showIntro));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
@@ -57,7 +58,7 @@ class _MyAppState extends State<MyApp> {
       case 'settings':
         return const SettingsPage();
       case 'today':
-        return const HomePage();
+        return HomePage(initialTabIndex: Config.startTabIndex);
       case 'app_logs':
       default:
         return const AppLogsPage();
