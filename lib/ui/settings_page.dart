@@ -12,6 +12,22 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _tabsHeaderKey = GlobalKey();
+  final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
+    4,
+    (_) => GlobalKey(),
+  );
+  final List<String> _sectionTitles = const [
+    'Appearance',
+    'Notifications',
+    'Tasks',
+    'Widget',
+  ];
+  int _activeSectionIndex = 0;
+  static const double _tabsHeaderHeight = 60;
+  static const double _sectionActivationOffset = 56;
+
   bool _notifications = Config.enableNotifications;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
@@ -20,6 +36,16 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _addNewTasksToTop = Config.addNewTasksToTop;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_updateActiveSectionFromScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _updateActiveSectionFromScroll();
+    });
+  }
 
   String _formatMmSs(int totalSeconds) {
     final minutes = totalSeconds ~/ 60;
@@ -88,99 +114,267 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  Future<void> _jumpToSection(int index) async {
+    setState(() => _activeSectionIndex = index);
+    final sectionContext = _sectionKeys[index].currentContext;
+    if (sectionContext == null) return;
+    await Scrollable.ensureVisible(
+      sectionContext,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOut,
+      alignment: 0.02,
+    );
+  }
+
+  void _updateActiveSectionFromScroll() {
+    final tabsContext = _tabsHeaderKey.currentContext;
+    if (tabsContext == null) return;
+    final tabsBox = tabsContext.findRenderObject() as RenderBox?;
+    if (tabsBox == null || !tabsBox.hasSize) return;
+
+    final tabsBottom = tabsBox.localToGlobal(Offset.zero).dy + tabsBox.size.height;
+    final activationLine = tabsBottom + _sectionActivationOffset;
+    var index = 0;
+
+    for (var i = 0; i < _sectionKeys.length; i++) {
+      final sectionContext = _sectionKeys[i].currentContext;
+      if (sectionContext == null) continue;
+      final sectionBox = sectionContext.findRenderObject() as RenderBox?;
+      if (sectionBox == null || !sectionBox.hasSize) continue;
+      final sectionTop = sectionBox.localToGlobal(Offset.zero).dy;
+      if (sectionTop <= activationLine) {
+        index = i;
+      } else {
+        break;
+      }
+    }
+
+    if (index != _activeSectionIndex && mounted) {
+      setState(() => _activeSectionIndex = index);
+    }
+  }
+
+  Widget _buildSection({
+    required int index,
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Container(
+      key: _sectionKeys[index],
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_updateActiveSectionFromScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Settings'),
-      body: ListView(
-        children: [
-          SwitchListTile(
-            title: const Text('Enable notifications'),
-            value: _notifications,
-            onChanged: (val) async {
-              setState(() => _notifications = val);
-              Config.enableNotifications = val;
-              await Config.save();
-            },
+      body: CustomScrollView(
+        controller: _scrollController,
+        slivers: [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _SettingsTabsHeaderDelegate(
+              height: _tabsHeaderHeight,
+              child: Container(
+                key: _tabsHeaderKey,
+                color: Theme.of(context).scaffoldBackgroundColor,
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List<Widget>.generate(_sectionTitles.length, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(_sectionTitles[index]),
+                          selected: _activeSectionIndex == index,
+                          onSelected: (_) => _jumpToSection(index),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ),
           ),
-          ListTile(
-            title: const Text('Default notification delay'),
-            subtitle: Text('MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})'),
-            trailing: const Icon(Icons.edit),
-            onTap: _editNotificationDelay,
-          ),
-          SwitchListTile(
-            title: const Text('Dark mode'),
-            value: _darkMode,
-            onChanged: (val) async {
-              setState(() => _darkMode = val);
-              Config.darkMode = val;
-              await Config.save();
-              MyApp.of(context)?.updateTheme();
-              widget.onSettingsChanged?.call();
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Swipe left to delete'),
-            value: _swipeLeftDelete,
-            onChanged: (val) async {
-              setState(() => _swipeLeftDelete = val);
-              Config.swipeLeftDelete = val;
-              await Config.save();
-              widget.onSettingsChanged?.call();
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Use tab icons'),
-            value: _useIconTabs,
-            onChanged: (val) async {
-              setState(() => _useIconTabs = val);
-              Config.useIconTabs = val;
-              await Config.save();
-              widget.onSettingsChanged?.call();
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Widget progress line'),
-            subtitle: const Text('Show completion line on the home widget'),
-            value: _showWidgetProgressLine,
-            onChanged: (val) async {
-              setState(() => _showWidgetProgressLine = val);
-              Config.showWidgetProgressLine = val;
-              await Config.save();
-              widget.onSettingsChanged?.call();
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Add new tasks at top'),
-            subtitle: const Text('Turn off to add new tasks at the bottom'),
-            value: _addNewTasksToTop,
-            onChanged: (val) async {
-              setState(() => _addNewTasksToTop = val);
-              Config.addNewTasksToTop = val;
-              await Config.save();
-              widget.onSettingsChanged?.call();
-            },
-          ),
-          ListTile(
-            title: Text(
-                'Default delay (${_defaultDelaySeconds.toStringAsFixed(1)}s)'),
-            subtitle: Slider(
-              value: _defaultDelaySeconds,
-              min: 0,
-              max: 10,
-              divisions: 100,
-              onChanged: (val) async {
-                final newVal = (val * 10).round() / 10;
-                setState(() => _defaultDelaySeconds = newVal);
-                Config.defaultDelaySeconds = newVal;
-                await Config.save();
-                widget.onSettingsChanged?.call();
-              },
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(
+                [
+                  _buildSection(
+                    index: 0,
+                    title: 'Appearance',
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Dark mode'),
+                        value: _darkMode,
+                        onChanged: (val) async {
+                          setState(() => _darkMode = val);
+                          Config.darkMode = val;
+                          await Config.save();
+                          MyApp.of(context)?.updateTheme();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Use tab icons'),
+                        subtitle: const Text('Show icons instead of text labels on the home screen'),
+                        value: _useIconTabs,
+                        onChanged: (val) async {
+                          setState(() => _useIconTabs = val);
+                          Config.useIconTabs = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                    ],
+                  ),
+                  _buildSection(
+                    index: 1,
+                    title: 'Notifications',
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Enable notifications'),
+                        value: _notifications,
+                        onChanged: (val) async {
+                          setState(() => _notifications = val);
+                          Config.enableNotifications = val;
+                          await Config.save();
+                        },
+                      ),
+                      ListTile(
+                        title: const Text('Default notification delay'),
+                        subtitle: Text(
+                          'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
+                        ),
+                        trailing: const Icon(Icons.edit),
+                        onTap: _editNotificationDelay,
+                      ),
+                    ],
+                  ),
+                  _buildSection(
+                    index: 2,
+                    title: 'Tasks',
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Add new tasks at top'),
+                        subtitle: const Text('Turn off to add new tasks at the bottom'),
+                        value: _addNewTasksToTop,
+                        onChanged: (val) async {
+                          setState(() => _addNewTasksToTop = val);
+                          Config.addNewTasksToTop = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Swipe left to delete'),
+                        subtitle: const Text('Turn off to swipe right to delete and left to move'),
+                        value: _swipeLeftDelete,
+                        onChanged: (val) async {
+                          setState(() => _swipeLeftDelete = val);
+                          Config.swipeLeftDelete = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      ListTile(
+                        title: Text(
+                          'Default delay (${_defaultDelaySeconds.toStringAsFixed(1)}s)',
+                        ),
+                        subtitle: Slider(
+                          value: _defaultDelaySeconds,
+                          min: 0,
+                          max: 10,
+                          divisions: 100,
+                          onChanged: (val) async {
+                            final newVal = (val * 10).round() / 10;
+                            setState(() => _defaultDelaySeconds = newVal);
+                            Config.defaultDelaySeconds = newVal;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildSection(
+                    index: 3,
+                    title: 'Widget',
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Widget progress line'),
+                        subtitle: const Text('Show completion line on the home widget'),
+                        value: _showWidgetProgressLine,
+                        onChanged: (val) async {
+                          setState(() => _showWidgetProgressLine = val);
+                          Config.showWidgetProgressLine = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _SettingsTabsHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double height;
+  final Widget child;
+
+  const _SettingsTabsHeaderDelegate({
+    required this.height,
+    required this.child,
+  });
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  bool shouldRebuild(covariant _SettingsTabsHeaderDelegate oldDelegate) {
+    return oldDelegate.height != height || oldDelegate.child != child;
   }
 }
