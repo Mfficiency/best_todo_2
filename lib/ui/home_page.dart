@@ -55,8 +55,10 @@ class _HomePageState extends State<HomePage>
   final TextEditingController _controller = TextEditingController();
   Timer? _midnightTimer;
 
-  /// Day offsets for each tab. The last two entries represent
-  /// "next week" and "next month" respectively.
+  static const int _futureTabIndex = 5;
+  static final DateTime _futureDueDate = DateTime(2300, 1, 1);
+
+  /// Day offsets for each non-future tab.
   static const List<int> _offsetDays = [0, 1, 2, 7, 30];
 
   /// Asset paths for tab icons used when a tab is not selected.
@@ -66,6 +68,7 @@ class _HomePageState extends State<HomePage>
     'assets/icons/the_day_after.png',
     'assets/icons/next_week.png',
     'assets/icons/next_month.png',
+    'assets/icons/next_year.png',
   ];
 
   List<Task> _buildDevDeletedSeed(DateTime referenceDate) {
@@ -276,6 +279,14 @@ class _HomePageState extends State<HomePage>
       DateTime(date.year, date.month, date.day);
 
   bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
+
+  bool _isFutureBucketDate(DateTime date) =>
+      _isSameDay(date, _futureDueDate);
+
+  DateTime _dueDateForTab(int tabIndex) {
+    if (tabIndex == _futureTabIndex) return _futureDueDate;
+    return _currentDate.add(Duration(days: _offsetDays[tabIndex]));
+  }
 
   String _dayKey(DateTime date) {
     final d = _dateOnly(date);
@@ -490,10 +501,9 @@ class _HomePageState extends State<HomePage>
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
     final tabIndex = _tabController.index;
-    final offset = _offsetDays[tabIndex];
     final task = Task(
       title: title,
-      dueDate: _currentDate.add(Duration(days: offset)),
+      dueDate: _dueDateForTab(tabIndex),
       listRanking: _listRankingForNewTask(
         tabIndex,
         addToTop: Config.addNewTasksToTop,
@@ -521,8 +531,7 @@ class _HomePageState extends State<HomePage>
       task.recurrenceInstanceKey = null;
     }
     final oldDueDate = task.dueDate;
-    final newDueDate =
-        _currentDate.add(Duration(days: _offsetDays[destination]));
+    final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
       _refreshRecurringForTask(task);
@@ -542,8 +551,7 @@ class _HomePageState extends State<HomePage>
       task.recurrenceInstanceKey = null;
     }
     final oldDueDate = task.dueDate;
-    final newDueDate =
-        _currentDate.add(Duration(days: _offsetDays[destination]));
+    final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
       _refreshRecurringForTask(task);
@@ -816,11 +824,13 @@ class _HomePageState extends State<HomePage>
       // tomorrow don't appear in today's list simply because they are less
       // than 24 hours away.
       final diff = dateDiffInDays(task.dueDate!, _currentDate);
+      final isFutureTask = _isFutureBucketDate(task.dueDate!);
       if (pageIndex == 0) return diff <= 0;
       if (pageIndex == 1) return diff == 1;
       if (pageIndex == 2) return diff == 2;
       if (pageIndex == 3) return diff >= 3 && diff < 30;
-      return diff >= 30;
+      if (pageIndex == 4) return diff >= 30 && !isFutureTask;
+      return isFutureTask;
     }).toList();
     sortTasks(list);
     return list;
@@ -1094,13 +1104,7 @@ class _HomePageState extends State<HomePage>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildTaskList(0),
-          _buildTaskList(1),
-          _buildTaskList(2),
-          _buildTaskList(3),
-          _buildTaskList(4),
-        ],
+        children: List.generate(Config.tabs.length, _buildTaskList),
       ),
     );
   }
