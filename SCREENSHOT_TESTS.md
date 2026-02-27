@@ -91,7 +91,7 @@ Copy this block for each test:
 - Expected Screenshots: Home page, add-task interaction, task-created result.
 - Output Path: `build/e2e_screenshots/`
 - Run Command: `flutter test integration_test/create_task_screenshot_test.dart -d windows`
-- Notes: Manual E2E proof-of-concept test.
+- Notes: Compares screenshots against historical golden references in `integration_test/goldens/create_task/`. To create/update goldens, run with `--dart-define=UPDATE_CREATE_TASK_GOLDENS=true`. To force a deterministic failure and verify the test can fail, run with `--dart-define=FORCE_CREATE_TASK_SCREENSHOT_FAILURE=true`. The test also keeps the latest 5 sessions in `build/e2e_screenshots/sessions_index.json`.
 
 ### Modify Task Flow
 - File: `integration_test/modify_task_screenshot_test.dart`

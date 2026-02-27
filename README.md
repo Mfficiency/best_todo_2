@@ -126,10 +126,37 @@ Run manually on Windows desktop:
 flutter test integration_test/create_task_screenshot_test.dart -d windows
 ```
 
+Force an intentional failure (sanity check for CI/local verification):
+```bash
+flutter test integration_test/create_task_screenshot_test.dart -d windows --dart-define=FORCE_CREATE_TASK_SCREENSHOT_FAILURE=true
+```
+
+Create/update historical golden references:
+```bash
+flutter test integration_test/create_task_screenshot_test.dart -d windows --dart-define=UPDATE_CREATE_TASK_GOLDENS=true
+```
+Golden reference files are stored in:
+```bash
+integration_test/goldens/create_task/
+```
+
 Screenshots are written to:
 ```bash
 build/e2e_screenshots/
 ```
+
+Session history metadata is written to:
+```bash
+build/e2e_screenshots/sessions_index.json
+```
+Only the latest 5 sessions are kept. Each session stores:
+- `id`
+- `testName`
+- `status`
+- `startedAt` / `finishedAt`
+- epoch seconds
+- `durationSeconds`
+- screenshot file list
 
 Note: Windows desktop integration tests require Developer Mode enabled
 because Flutter plugins use symlinks.
