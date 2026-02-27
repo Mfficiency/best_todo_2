@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:best_todo_2/models/task.dart';
-import 'package:best_todo_2/utils/date_utils.dart';
+import 'package:besttodo/models/task.dart';
+import 'package:besttodo/utils/date_utils.dart';
 
 void main() {
   test('tasks due tomorrow are not included in today list', () {
@@ -27,9 +27,11 @@ void main() {
 
   test('tasks beyond 30 days fall into next month list', () {
     final now = DateTime(2024, 5, 3);
+    final futureDate = DateTime(2300, 1, 1);
     final tasks = [
       Task(title: 'next week', dueDate: now.add(const Duration(days: 5))),
       Task(title: 'next month', dueDate: now.add(const Duration(days: 40))),
+      Task(title: 'future', dueDate: futureDate),
     ];
 
     final nextWeekTasks = tasks.where((task) {
@@ -39,12 +41,19 @@ void main() {
 
     final nextMonthTasks = tasks.where((task) {
       final diff = dateDiffInDays(task.dueDate!, now);
-      return diff >= 30;
+      return diff >= 30 && task.dueDate != futureDate;
+    }).toList();
+
+    final futureTasks = tasks.where((task) {
+      return task.dueDate == futureDate;
     }).toList();
 
     expect(nextWeekTasks.length, 1);
     expect(nextWeekTasks.first.title, 'next week');
     expect(nextMonthTasks.length, 1);
     expect(nextMonthTasks.first.title, 'next month');
+    expect(futureTasks.length, 1);
+    expect(futureTasks.first.title, 'future');
   });
 }
+

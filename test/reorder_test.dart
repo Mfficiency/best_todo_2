@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:best_todo_2/models/task.dart';
+import 'package:besttodo/models/task.dart';
 
 void main() {
   group('task reordering', () {
@@ -10,7 +10,8 @@ void main() {
         Task(title: 'c', listRanking: 3),
       ];
 
-      // Simulate reorder from index 0 to 2 (move first to end)
+      // Simulate ReorderableListView semantics from index 0 to 2.
+      // Because oldIndex < newIndex, insertion index becomes 1.
       final oldIndex = 0;
       var newIndex = 2;
       if (newIndex > oldIndex) newIndex -= 1;
@@ -20,10 +21,11 @@ void main() {
         tasks[i].listRanking = i + 1;
       }
 
-      expect(tasks.map((t) => t.title).toList(), ['b', 'c', 'a']);
+      expect(tasks.map((t) => t.title).toList(), ['b', 'a', 'c']);
       expect(tasks[0].listRanking, 1);
       expect(tasks[1].listRanking, 2);
       expect(tasks[2].listRanking, 3);
     });
   });
 }
+

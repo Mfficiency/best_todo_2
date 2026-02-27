@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
 
-import 'package:best_todo_2/models/task.dart';
-import 'package:best_todo_2/services/storage_service.dart';
+import 'package:besttodo/models/task.dart';
+import 'package:besttodo/services/storage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
@@ -33,6 +33,10 @@ void main() {
     final loaded = await service.loadTaskList();
     expect(loaded.length, 1);
     expect(loaded.first.title, 'pending');
+
+    final deleted = await service.loadDeletedTaskList();
+    expect(deleted.length, 1);
+    expect(deleted.first.title, 'done');
   });
 
   test('importTaskList assigns unique ids when missing or duplicated', () async {
@@ -51,3 +55,4 @@ void main() {
     expect(ids.length, 3);
   });
 }
+

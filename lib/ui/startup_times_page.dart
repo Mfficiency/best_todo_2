@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../services/startup_time_service.dart';
+import 'subpage_app_bar.dart';
 
 /// Displays a graph of recent application startup durations.
 class StartupTimesPage extends StatefulWidget {
@@ -28,7 +29,7 @@ class _StartupTimesPageState extends State<StartupTimesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Startup Times')),
+      appBar: buildSubpageAppBar(context, title: 'Startup Times'),
       body: _times.isEmpty
           ? const Center(child: Text('No startup records yet'))
           : Padding(

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:best_todo_2/models/task.dart';
+import 'package:besttodo/models/task.dart';
 
 void main() {
   test('done tasks move to deleted list on day change', () {
@@ -29,3 +29,4 @@ void main() {
     expect(deleted.map((t) => t.title).toList(), ['d2', 'd1']);
   });
 }
+

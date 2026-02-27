@@ -3,19 +3,60 @@
     android:id="@+id/widget_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="center"
     android:orientation="vertical"
     android:background="@android:color/black"
     android:padding="4dp">
+    <ProgressBar
+        android:id="@+id/widget_progress_green"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginLeft="8dp"
+        android:layout_marginRight="8dp"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/widget_progress_green"
+        android:indeterminate="false" />
+
+    <ProgressBar
+        android:id="@+id/widget_progress_orange"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginLeft="8dp"
+        android:layout_marginRight="8dp"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/widget_progress_orange"
+        android:indeterminate="false"
+        android:visibility="gone" />
+
+    <ProgressBar
+        android:id="@+id/widget_progress_red"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginLeft="8dp"
+        android:layout_marginRight="8dp"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/widget_progress_red"
+        android:indeterminate="false"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/widget_text"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:gravity="start|top"
         android:paddingLeft="8dp"
         android:paddingTop="8dp"
         android:paddingRight="8dp"
-        android:paddingBottom="1px"
+        android:paddingBottom="6dp"
         android:text="BestTodo by Mfficiency"
         android:textColor="@android:color/white"
         android:textSize="14sp"
