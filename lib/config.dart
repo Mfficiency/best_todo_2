@@ -86,7 +86,7 @@ class Config {
 
   /// If true, new tasks are inserted at the top of the current list.
   /// Otherwise they are appended to the bottom.
-  static bool addNewTasksToTop = false;
+  static bool addNewTasksToTop = true;
 
   static const _settingsFileName = 'settings.json';
 

@@ -3,6 +3,7 @@
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode
+- update settings menu
 
 ## [0.1.55] - 2026-02-26
 - recurring tasks
