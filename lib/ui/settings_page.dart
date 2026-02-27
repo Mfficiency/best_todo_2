@@ -27,6 +27,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _activeSectionIndex = 0;
   static const double _tabsHeaderHeight = 60;
   static const double _sectionActivationOffset = 56;
+  double _lastScrollOffset = 0;
 
   bool _notifications = Config.enableNotifications;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
@@ -127,6 +128,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _updateActiveSectionFromScroll() {
+    final currentOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : _lastScrollOffset;
+    final isScrollingDown = currentOffset > _lastScrollOffset + 0.5;
+    final isScrollingUp = currentOffset < _lastScrollOffset - 0.5;
+    _lastScrollOffset = currentOffset;
+
     final tabsContext = _tabsHeaderKey.currentContext;
     if (tabsContext == null) return;
     final tabsBox = tabsContext.findRenderObject() as RenderBox?;
@@ -148,6 +156,9 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       }
     }
+
+    if (isScrollingDown && index < _activeSectionIndex) return;
+    if (isScrollingUp && index > _activeSectionIndex) return;
 
     if (index != _activeSectionIndex && mounted) {
       setState(() => _activeSectionIndex = index);
