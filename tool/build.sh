@@ -5,6 +5,9 @@
 # Update version numbers in pubspec.yaml and other files.
 dart run tool/bump_version.dart
 
+# Run one small unit test as a build gate.
+flutter test test/build_smoke_test.dart
+
 # Extract the new version string from pubspec.yaml
 VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
 

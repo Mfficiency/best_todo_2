@@ -1,55 +1,75 @@
 import 'dart:io';
 
-void main() {
+void main(List<String> args) {
+  if (args.isEmpty) {
+    stderr.writeln(
+      'Usage: dart run tool/bump_version.dart <version>[+build] [changelog entry]',
+    );
+    exitCode = 64;
+    return;
+  }
+
+  final rawVersion = args.first.trim();
+  final changelogEntry = args.length > 1 ? args.sublist(1).join(' ').trim() : '';
+  final versionOnly = rawVersion.split('+').first;
+
   final pubspecFile = File('pubspec.yaml');
-  if (!pubspecFile.existsSync()) {
-    stderr.writeln('pubspec.yaml not found');
-    exit(1);
-  }
-
-  // Read pubspec.yaml and extract current version
-  final pubspecLines = pubspecFile.readAsLinesSync();
-  final versionIndex = pubspecLines.indexWhere((l) => l.startsWith('version:'));
-  if (versionIndex == -1) {
-    stderr.writeln('version not found in pubspec.yaml');
-    exit(1);
-  }
-  final currentVersion = pubspecLines[versionIndex].split(':')[1].trim();
-  final parts = currentVersion.split('.');
-  if (parts.length != 3) {
-    stderr.writeln('version format invalid: $currentVersion');
-    exit(1);
-  }
-  final major = int.parse(parts[0]);
-  final minor = int.parse(parts[1]);
-  var patch = int.parse(parts[2]);
-  patch++;
-  final newVersion = '$major.$minor.$patch';
-
-  pubspecLines[versionIndex] = 'version: $newVersion';
-  pubspecFile.writeAsStringSync(pubspecLines.join('\n'));
-
-  // Update lib/config.dart version constant
-  final configFile = File('lib/config.dart');
-  if (configFile.existsSync()) {
-    final configContent = configFile.readAsStringSync();
-    final updated = configContent.replaceFirst(
-        RegExp("version = '[^']+'"), "version = '$newVersion'");
-    configFile.writeAsStringSync(updated);
-  }
-
-  // Update CHANGELOG
   final changelogFile = File('CHANGELOG.md');
-  if (changelogFile.existsSync()) {
-    final lines = changelogFile.readAsLinesSync();
-    if (lines.length >= 2 && lines[1].contains('Unreleased')) {
-      final date = DateTime.now().toIso8601String().split('T').first;
-      lines[1] = lines[1].replaceFirst('Unreleased', date);
-    }
-    lines.insert(1, '## [$newVersion] - Unreleased');
-    lines.insert(2, '');
-    changelogFile.writeAsStringSync(lines.join('\n'));
+
+  if (!pubspecFile.existsSync()) {
+    stderr.writeln('pubspec.yaml not found.');
+    exitCode = 1;
+    return;
+  }
+  if (!changelogFile.existsSync()) {
+    stderr.writeln('CHANGELOG.md not found.');
+    exitCode = 1;
+    return;
   }
 
-  stdout.writeln('Bumped version to $newVersion');
+  final pubspec = pubspecFile.readAsStringSync();
+  final versionRegex = RegExp(r'^version:\s*(.+)$', multiLine: true);
+  final versionMatch = versionRegex.firstMatch(pubspec);
+
+  if (versionMatch == null) {
+    stderr.writeln('Could not find a `version:` line in pubspec.yaml.');
+    exitCode = 1;
+    return;
+  }
+
+  final currentVersion = versionMatch.group(1)!.trim();
+  if (currentVersion == rawVersion) {
+    stdout.writeln('pubspec.yaml already at version $rawVersion.');
+  } else {
+    final updatedPubspec =
+        pubspec.replaceFirst(versionRegex, 'version: $rawVersion');
+    pubspecFile.writeAsStringSync(updatedPubspec);
+    stdout.writeln('Updated pubspec.yaml: $currentVersion -> $rawVersion');
+  }
+
+  final changelog = changelogFile.readAsStringSync();
+  if (changelog.contains('## [$versionOnly] - ')) {
+    stdout.writeln('CHANGELOG.md already contains version $versionOnly.');
+    return;
+  }
+
+  final now = DateTime.now();
+  final date =
+      '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  final entryLine = changelogEntry.isEmpty ? '- TBD' : '- $changelogEntry';
+  final newSection = '## [$versionOnly] - $date\n$entryLine\n';
+
+  const header = '# Changelog';
+  final lines = changelog.split(RegExp(r'\r?\n'));
+  final bodyStart =
+      lines.isNotEmpty && lines.first.trim() == header ? 1 : 0;
+  final bodyLines = lines.sublist(bodyStart);
+
+  while (bodyLines.isNotEmpty && bodyLines.first.trim().isEmpty) {
+    bodyLines.removeAt(0);
+  }
+
+  final updated = '$header\n\n$newSection\n${bodyLines.join('\n').trimRight()}';
+  changelogFile.writeAsStringSync('$updated\n');
+  stdout.writeln('Updated CHANGELOG.md entry for $versionOnly.');
 }

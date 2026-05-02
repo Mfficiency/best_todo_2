@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:best_todo_2/models/task.dart';
-import 'package:best_todo_2/utils/task_utils.dart';
+import 'package:besttodo/models/task.dart';
+import 'package:besttodo/utils/task_utils.dart';
 
 void main() {
   test('completed tasks are sorted to the end', () {
@@ -30,3 +30,4 @@ void main() {
     expect(tasks.map((t) => t.title).toList(), ['pending1', 'new', 'done1']);
   });
 }
+

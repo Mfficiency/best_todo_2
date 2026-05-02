@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
-import 'package:best_todo_2/config.dart';
+import 'package:besttodo/config.dart';
 
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.path);
@@ -23,6 +23,7 @@ void main() {
     Config.swipeLeftDelete = false;
     Config.useIconTabs = true;
     Config.enableNotifications = true;
+    Config.addNewTasksToTop = true;
     Config.defaultDelaySeconds = 7.5;
     await Config.save();
 
@@ -31,6 +32,7 @@ void main() {
     Config.swipeLeftDelete = true;
     Config.useIconTabs = false;
     Config.enableNotifications = false;
+    Config.addNewTasksToTop = false;
     Config.defaultDelaySeconds = 5.0;
 
     await Config.load();
@@ -39,6 +41,8 @@ void main() {
     expect(Config.swipeLeftDelete, isFalse);
     expect(Config.useIconTabs, isTrue);
     expect(Config.enableNotifications, isTrue);
+    expect(Config.addNewTasksToTop, isTrue);
     expect(Config.defaultDelaySeconds, 7.5);
   });
 }
+

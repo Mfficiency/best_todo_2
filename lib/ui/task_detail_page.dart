@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import 'subpage_app_bar.dart';
 
 class TaskDetailPage extends StatelessWidget {
   final Task task;
@@ -8,7 +9,7 @@ class TaskDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Task Details')),
+      appBar: buildSubpageAppBar(context, title: 'Task Details'),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
