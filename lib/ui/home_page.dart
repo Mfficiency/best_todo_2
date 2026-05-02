@@ -24,7 +24,9 @@ import 'task_tile.dart';
 import 'your_stats_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({Key? key}) : super(key: key);
+  final int initialTabIndex;
+
+  const HomePage({Key? key, this.initialTabIndex = 0}) : super(key: key);
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -242,6 +244,14 @@ class _HomePageState extends State<HomePage>
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
       );
+      _tasks.addAll(
+        Config.initialFutureTasks.map(
+          (t) => Task(
+            title: t,
+            dueDate: _futureDueDate,
+          ),
+        ),
+      );
     } else {
       _tasks.addAll(loaded);
     }
@@ -280,8 +290,7 @@ class _HomePageState extends State<HomePage>
 
   bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
 
-  bool _isFutureBucketDate(DateTime date) =>
-      _isSameDay(date, _futureDueDate);
+  bool _isFutureBucketDate(DateTime date) => _isSameDay(date, _futureDueDate);
 
   DateTime _dueDateForTab(int tabIndex) {
     if (tabIndex == _futureTabIndex) return _futureDueDate;
@@ -465,7 +474,13 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: Config.tabs.length, vsync: this);
+    final safeInitialTab =
+        widget.initialTabIndex.clamp(0, Config.tabs.length - 1);
+    _tabController = TabController(
+      length: Config.tabs.length,
+      vsync: this,
+      initialIndex: safeInitialTab,
+    );
     _tabController.addListener(() {
       setState(() {});
     });

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.56] - 2026-02-27
+- extra default task future
+- skipping default screens in dev mode
+- update settings menu
+- add setting to choose startup tab
+- add notification quiet hours setting
+
 ## [0.1.55] - 2026-02-26
 - recurring tasks
 - new task at top or bottom

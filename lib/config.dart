@@ -44,6 +44,9 @@ class Config {
     'Go to the car shop to get my carburator fixed',
     '@myself remember to do sports & drink water',
   ];
+  static const List<String> initialFutureTasks = [
+    'Here you put all your hopes and dreams.',
+  ];
 
   static const List<String> tabs = [
     'Today',
@@ -60,6 +63,9 @@ class Config {
   // static const String startPage = 'app_logs'; // App logs page
   // static const String startPage = 'settings'; // Settings page
 
+  /// Home tab index shown when the app starts.
+  static int startTabIndex = 0;
+
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
   static bool swipeLeftDelete = true;
@@ -74,6 +80,15 @@ class Config {
   /// Dev builds use 00:03 for faster testing, production defaults to 05:00.
   static int defaultNotificationDelaySeconds = isDev ? 3 : 300;
 
+  /// If true, manual notifications are delayed until quiet hours end.
+  static bool quietHoursEnabled = false;
+
+  /// Start time for quiet hours in minutes since midnight.
+  static int quietHoursStartMinutes = 22 * 60;
+
+  /// End time for quiet hours in minutes since midnight.
+  static int quietHoursEndMinutes = 7 * 60;
+
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
   static bool useIconTabs = false;
@@ -83,7 +98,7 @@ class Config {
 
   /// If true, new tasks are inserted at the top of the current list.
   /// Otherwise they are appended to the bottom.
-  static bool addNewTasksToTop = false;
+  static bool addNewTasksToTop = true;
 
   static const _settingsFileName = 'settings.json';
 
@@ -106,6 +121,17 @@ class Config {
         defaultNotificationDelaySeconds =
             (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
                 defaultNotificationDelaySeconds;
+        startTabIndex = (data['startTabIndex'] as num?)
+                ?.round()
+                .clamp(0, tabs.length - 1) ??
+            startTabIndex;
+        quietHoursEnabled = data['quietHoursEnabled'] ?? quietHoursEnabled;
+        quietHoursStartMinutes =
+            (data['quietHoursStartMinutes'] as num?)?.round().clamp(0, 1439) ??
+                quietHoursStartMinutes;
+        quietHoursEndMinutes =
+            (data['quietHoursEndMinutes'] as num?)?.round().clamp(0, 1439) ??
+                quietHoursEndMinutes;
         useIconTabs = data['useIconTabs'] ?? useIconTabs;
         showWidgetProgressLine =
             data['showWidgetProgressLine'] ?? showWidgetProgressLine;
@@ -126,6 +152,10 @@ class Config {
         'darkMode': darkMode,
         'enableNotifications': enableNotifications,
         'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
+        'startTabIndex': startTabIndex,
+        'quietHoursEnabled': quietHoursEnabled,
+        'quietHoursStartMinutes': quietHoursStartMinutes,
+        'quietHoursEndMinutes': quietHoursEndMinutes,
         'useIconTabs': useIconTabs,
         'showWidgetProgressLine': showWidgetProgressLine,
         'addNewTasksToTop': addNewTasksToTop,
