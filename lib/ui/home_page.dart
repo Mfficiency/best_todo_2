@@ -1341,22 +1341,6 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.file_download),
-              title: const Text('Export Tasks'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportTasks();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.file_upload),
-              title: const Text('Import Tasks'),
-              onTap: () {
-                Navigator.pop(context);
-                _importTasks();
-              },
-            ),
           ],
         ),
       ),

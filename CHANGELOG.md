@@ -2,6 +2,8 @@
 
 ## [0.1.58] - 2026-05-03
 - export optimisation
+- exporting tasks and settings now possible
+- exporting and importing now moved to settings
 
 ## [0.1.57] - 2026-05-03
 - added time of day heatmap to stats
