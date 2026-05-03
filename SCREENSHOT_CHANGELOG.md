@@ -1,3 +1,21 @@
+## 2026-05-03T11:56:56.930771Z | branch: dev | source: 4fffd12
+
+- Folder: `docs/screenshots/home/20260503-115656-4fffd12`
+
+### Home
+![2026-05-03T11:56:56.930771Z - dev - home](docs/screenshots/home/20260503-115656-4fffd12/home_page.png)
+
+### Menu Open
+![2026-05-03T11:56:56.930771Z - dev - menu](docs/screenshots/home/20260503-115656-4fffd12/menu_open.png)
+
+### Settings
+![2026-05-03T11:56:56.930771Z - dev - settings](docs/screenshots/home/20260503-115656-4fffd12/settings_page.png)
+
+### Your Stats
+![2026-05-03T11:56:56.930771Z - dev - stats](docs/screenshots/home/20260503-115656-4fffd12/your_stats_page.png)
+
+---
+
 ## 2026-05-03T06:13:11.914028Z | branch: dev | source: 9baa5de
 
 - Folder: `docs/screenshots/home/20260503-061310-9baa5de`
