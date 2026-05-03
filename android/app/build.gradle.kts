@@ -41,7 +41,7 @@ android {
         applicationId = "com.mfficiency.best_todo_2"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -77,7 +77,7 @@ flutter {
 afterEvaluate {
     val createVersionedReleaseApk = tasks.register("createVersionedReleaseApk") {
         doLast {
-            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.48+18 -> 48)
+            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.57+27 -> 57)
             val suffix = (flutter.versionName ?: "0.0.0")
                 .substringBefore("+")
                 .substringAfterLast(".")
