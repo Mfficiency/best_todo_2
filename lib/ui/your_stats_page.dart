@@ -6,11 +6,13 @@ import '../models/task.dart';
 import 'subpage_app_bar.dart';
 
 class YourStatsPage extends StatefulWidget {
+  final List<Task> tasks;
   final List<Task> deletedItems;
   final Map<String, DailyTaskStats> dailyStatsByDay;
 
   const YourStatsPage({
     Key? key,
+    required this.tasks,
     required this.deletedItems,
     required this.dailyStatsByDay,
   }) : super(key: key);
@@ -19,7 +21,8 @@ class YourStatsPage extends StatefulWidget {
   State<YourStatsPage> createState() => _YourStatsPageState();
 }
 
-class _YourStatsPageState extends State<YourStatsPage> {
+class _YourStatsPageState extends State<YourStatsPage>
+    with SingleTickerProviderStateMixin {
   static const int _weeks = 52;
   static const int _daysPerWeek = 7;
   static const double _cellSize = 11;
@@ -41,17 +44,20 @@ class _YourStatsPageState extends State<YourStatsPage> {
 
   final ScrollController _heatmapScrollController = ScrollController();
   final ScrollController _dailyBarsScrollController = ScrollController();
+  late final TabController _activityTabController;
   DateTime _currentDate = DateTime.now();
   bool _didAutoScrollDailyBars = false;
 
   @override
   void initState() {
     super.initState();
+    _activityTabController = TabController(length: 5, vsync: this);
     _scheduleScrollToRight();
   }
 
   @override
   void dispose() {
+    _activityTabController.dispose();
     _heatmapScrollController.dispose();
     _dailyBarsScrollController.dispose();
     super.dispose();
@@ -552,6 +558,223 @@ class _YourStatsPageState extends State<YourStatsPage> {
     );
   }
 
+  List<Task> _allTasksForActivity() {
+    final byId = <String, Task>{};
+    for (final task in widget.tasks) {
+      byId[task.uid] = task;
+    }
+    for (final task in widget.deletedItems) {
+      byId[task.uid] = task;
+    }
+    return byId.values.toList();
+  }
+
+  DateTime _startOfWindow() => _dateOnly(_currentDate).subtract(const Duration(days: 30));
+
+  bool _isInWindow(DateTime localDateTime) {
+    final day = _dateOnly(localDateTime);
+    final start = _startOfWindow();
+    final end = _dateOnly(_currentDate);
+    return !day.isBefore(start) && !day.isAfter(end);
+  }
+
+  List<DateTime> _eventsForType(Task task, String type) {
+    if (type == 'Created') return task.createdAt == null ? <DateTime>[] : [task.createdAt!];
+    if (type == 'Completed') return task.completedAt == null ? <DateTime>[] : [task.completedAt!];
+    if (type == 'Moved') {
+      final events = <DateTime>[];
+      if (task.movedAt != null) events.add(task.movedAt!);
+      if (task.rescheduledAt != null && task.rescheduledAt != task.movedAt) {
+        events.add(task.rescheduledAt!);
+      }
+      return events;
+    }
+    if (type == 'Deleted') return task.deletedAt == null ? <DateTime>[] : [task.deletedAt!];
+    return <DateTime>[
+      ..._eventsForType(task, 'Created'),
+      ..._eventsForType(task, 'Completed'),
+      ..._eventsForType(task, 'Moved'),
+      ..._eventsForType(task, 'Deleted'),
+    ];
+  }
+
+  List<List<int>> _hourWeekdayCounts(String type) {
+    final grid = List<List<int>>.generate(24, (_) => List<int>.filled(7, 0));
+    for (final task in _allTasksForActivity()) {
+      for (final event in _eventsForType(task, type)) {
+        final local = event.toLocal();
+        if (!_isInWindow(local)) continue;
+        final dayCol = local.weekday - 1;
+        final hour = local.hour;
+        grid[hour][dayCol] += 1;
+      }
+    }
+    return grid;
+  }
+
+  Color _activityCellColor(int count, int maxCount, BuildContext context) {
+    final base = Theme.of(context).colorScheme.primary;
+    if (count <= 0 || maxCount <= 0) {
+      return Theme.of(context).colorScheme.surfaceVariant;
+    }
+    final t = count / maxCount;
+    return Color.lerp(base.withOpacity(0.18), base.withOpacity(0.92), t.clamp(0.0, 1.0))!;
+  }
+
+  String _weekdayName(int dayIndex) {
+    const names = <String>['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return names[dayIndex];
+  }
+
+  String _hourRangeLabel(int hour) {
+    final next = (hour + 1) % 24;
+    return '${hour.toString().padLeft(2, '0')}:00-${next.toString().padLeft(2, '0')}:00';
+  }
+
+  String _peakSummary(String type, List<List<int>> counts) {
+    var bestCount = 0;
+    var bestHour = 0;
+    var bestDay = 0;
+    for (var h = 0; h < 24; h++) {
+      for (var d = 0; d < 7; d++) {
+        if (counts[h][d] > bestCount) {
+          bestCount = counts[h][d];
+          bestHour = h;
+          bestDay = d;
+        }
+      }
+    }
+    if (bestCount == 0) {
+      return 'No $type activity in the last 31 days.';
+    }
+    return 'Most items are ${type.toLowerCase()} on ${_weekdayName(bestDay)} between ${_hourRangeLabel(bestHour)}.';
+  }
+
+  Widget _buildItemActivityHeatmapSection() {
+    final tabs = <String>['Created', 'Completed', 'Moved', 'Deleted', 'Combined'];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              'Item Activity Heatmap (Last 31 days)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TabBar(
+            controller: _activityTabController,
+            isScrollable: true,
+            tabs: tabs.map((t) => Tab(text: t)).toList(),
+          ),
+          SizedBox(
+            height: 520,
+            child: TabBarView(
+              controller: _activityTabController,
+              children: tabs.map((type) {
+                final counts = _hourWeekdayCounts(type);
+                var maxCount = 0;
+                for (final row in counts) {
+                  for (final value in row) {
+                    if (value > maxCount) maxCount = value;
+                  }
+                }
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 52,
+                            child: Column(
+                              children: [
+                                const SizedBox(height: 22),
+                                for (var hour = 0; hour < 24; hour++)
+                                  SizedBox(
+                                    height: 16,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        hour.toString().padLeft(2, '0'),
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            children: [
+                              Row(
+                                children: [
+                                  for (var day = 0; day < 7; day++)
+                                    SizedBox(
+                                      width: 26,
+                                      child: Center(
+                                        child: Text(
+                                          _weekdayName(day).substring(0, 3),
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              for (var hour = 0; hour < 24; hour++)
+                                Row(
+                                  children: [
+                                    for (var day = 0; day < 7; day++)
+                                      Padding(
+                                        padding: const EdgeInsets.all(1),
+                                        child: Tooltip(
+                                          message:
+                                              '${_weekdayName(day)}\n${_hourRangeLabel(hour)}\n$type\nCount: ${counts[hour][day]}',
+                                          child: Container(
+                                            width: 24,
+                                            height: 14,
+                                            decoration: BoxDecoration(
+                                              color: _activityCellColor(
+                                                counts[hour][day],
+                                                maxCount,
+                                                context,
+                                              ),
+                                              borderRadius: BorderRadius.circular(2),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        _peakSummary(type, counts),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -589,6 +812,8 @@ class _YourStatsPageState extends State<YourStatsPage> {
           _buildHeatmapTab(),
           const Divider(height: 1),
           _buildDailyBarsTab(),
+          const Divider(height: 1),
+          _buildItemActivityHeatmapSection(),
         ],
       ),
     );
