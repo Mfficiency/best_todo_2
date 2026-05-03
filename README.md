@@ -37,11 +37,14 @@ artifacts. The script automatically bumps the patch version and names
 the build output with the version number.
 
 ```bash
-sh tool/build.sh <platform>
-# Example: sh tool/build.sh apk # for Android APK
+# use this to be sure it works:
+& "C:\Program Files\Git\bin\bash.exe" ./tool/build.sh apk
+
+# but in theory you should be able to just run
+bash tool/build.sh apk
 ```
 
-For example `sh tool/build.sh web` will create a folder like
+For example `bash tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.
 
 ## Publishing

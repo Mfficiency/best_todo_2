@@ -129,6 +129,10 @@ class _HomePageState extends State<HomePage>
           Task(
             title: titles[titleIndex % titles.length],
             description: 'Seeded dev deleted task',
+            createdAt: deletedAt.subtract(const Duration(days: 3)),
+            completedAt: deletedAt.subtract(const Duration(hours: 1)),
+            movedAt: deletedAt.subtract(const Duration(days: 2)),
+            rescheduledAt: deletedAt.subtract(const Duration(days: 2)),
             dueDate: deletedAt.subtract(const Duration(days: 1)),
             deletedAt: deletedAt,
             isDone: true,
@@ -242,12 +246,17 @@ class _HomePageState extends State<HomePage>
     final loadedDailyStats = await _storageService.loadDailyTaskStats();
     if (loaded.isEmpty) {
       _tasks.addAll(
-        Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
+        Config.initialTasks.map((t) => Task(
+              title: t,
+              dueDate: _currentDate,
+              createdAt: DateTime.now(),
+            )),
       );
       _tasks.addAll(
         Config.initialFutureTasks.map(
           (t) => Task(
             title: t,
+            createdAt: DateTime.now(),
             dueDate: _futureDueDate,
           ),
         ),
@@ -345,6 +354,10 @@ class _HomePageState extends State<HomePage>
           description: task.description,
           note: task.note,
           label: task.label,
+          createdAt: task.createdAt,
+          completedAt: task.completedAt,
+          movedAt: task.movedAt,
+          rescheduledAt: task.rescheduledAt,
           dueDate: date,
           recurrenceParentUid: parentUid,
           recurrenceInstanceKey: key,
@@ -518,6 +531,7 @@ class _HomePageState extends State<HomePage>
     final tabIndex = _tabController.index;
     final task = Task(
       title: title,
+      createdAt: DateTime.now(),
       dueDate: _dueDateForTab(tabIndex),
       listRanking: _listRankingForNewTask(
         tabIndex,
@@ -549,6 +563,9 @@ class _HomePageState extends State<HomePage>
     final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
       _refreshRecurringForTask(task);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
@@ -569,6 +586,9 @@ class _HomePageState extends State<HomePage>
     final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
       _refreshRecurringForTask(task);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
@@ -893,7 +913,10 @@ class _HomePageState extends State<HomePage>
                       onChanged: _saveTasks,
                       onToggle: () {
                         final wasDone = task.isDone;
-                        setState(task.toggleDone);
+                        setState(() {
+                          task.toggleDone();
+                          task.completedAt = task.isDone ? DateTime.now() : null;
+                        });
                         _trackTaskDoneState(task, wasDone);
                         _saveTasks();
                       },
@@ -903,6 +926,9 @@ class _HomePageState extends State<HomePage>
                             task.recurrenceParentUid = null;
                             task.recurrenceInstanceKey = null;
                           }
+                          final now = DateTime.now();
+                          task.movedAt = now;
+                          task.rescheduledAt = now;
                           _trackTaskMove(task, oldDueDate, newDueDate);
                           _refreshRecurringForTask(task);
                         });
@@ -992,6 +1018,7 @@ class _HomePageState extends State<HomePage>
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => YourStatsPage(
+                      tasks: _tasks,
                       deletedItems: _deletedTasks,
                       dailyStatsByDay: _dailyStatsByDay,
                     ),

@@ -1,6 +1,7 @@
 # Changelog
 
 ## [0.1.57] - 2026-05-03
+- added time of day heatmap to stats
 - automate screenshot changelog updates on push to `dev`, `staging`, and `main`
 - prevent screenshot workflow self-trigger loops
 - capture and archive four screenshots per push (home, menu open, settings, your stats)
