@@ -3,13 +3,16 @@ name: Update Screenshot Changelog
 on:
   push:
     branches: [main, staging, dev]
+    paths-ignore:
+      - 'SCREENSHOT_CHANGELOG.md'
+      - 'docs/screenshots/home/**'
 
 permissions:
   contents: write
 
 jobs:
   screenshot-changelog:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip-screenshot-changelog]')
     runs-on: windows-latest
 
     steps:
@@ -68,5 +71,5 @@ jobs:
             exit 0
           }
 
-          git commit -m "chore: update home screenshot changelog [skip ci]"
+          git commit -m "chore: update home screenshot changelog [skip-screenshot-changelog]"
           git push
