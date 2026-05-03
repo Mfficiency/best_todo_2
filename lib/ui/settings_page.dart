@@ -5,7 +5,18 @@ import 'subpage_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
-  const SettingsPage({Key? key, this.onSettingsChanged}) : super(key: key);
+  final Future<void> Function()? onExportTasksRequested;
+  final Future<void> Function()? onExportSettingsRequested;
+  final Future<void> Function()? onExportEverythingRequested;
+  final Future<void> Function()? onImportRequested;
+  const SettingsPage({
+    Key? key,
+    this.onSettingsChanged,
+    this.onExportTasksRequested,
+    this.onExportSettingsRequested,
+    this.onExportEverythingRequested,
+    this.onImportRequested,
+  }) : super(key: key);
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -41,6 +52,21 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _quietHoursEnabled = Config.quietHoursEnabled;
   int _quietHoursStartMinutes = Config.quietHoursStartMinutes;
   int _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+
+  void _syncLocalStateFromConfig() {
+    _notifications = Config.enableNotifications;
+    _swipeLeftDelete = Config.swipeLeftDelete;
+    _darkMode = Config.darkMode;
+    _useIconTabs = Config.useIconTabs;
+    _showWidgetProgressLine = Config.showWidgetProgressLine;
+    _addNewTasksToTop = Config.addNewTasksToTop;
+    _startTabIndex = Config.startTabIndex;
+    _defaultDelaySeconds = Config.defaultDelaySeconds;
+    _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
+    _quietHoursEnabled = Config.quietHoursEnabled;
+    _quietHoursStartMinutes = Config.quietHoursStartMinutes;
+    _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+  }
 
   @override
   void initState() {
@@ -447,6 +473,61 @@ class _SettingsPageState extends State<SettingsPage> {
                         onTap: _editNotificationDelay,
                       ),
                     ],
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Export',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: widget.onExportTasksRequested,
+                            icon: const Icon(Icons.task_alt),
+                            label: const Text('Export Tasks'),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: widget.onExportSettingsRequested,
+                            icon: const Icon(Icons.tune),
+                            label: const Text('Export Settings'),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: widget.onExportEverythingRequested,
+                            icon: const Icon(Icons.file_download),
+                            label: const Text('Export Everything'),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            'Import',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: widget.onImportRequested == null
+                                ? null
+                                : () async {
+                                    await widget.onImportRequested!();
+                                    if (!mounted) return;
+                                    setState(_syncLocalStateFromConfig);
+                                  },
+                            icon: const Icon(Icons.file_upload),
+                            label: const Text('Import'),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),

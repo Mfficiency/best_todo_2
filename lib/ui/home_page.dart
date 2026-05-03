@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -806,14 +807,42 @@ class _HomePageState extends State<HomePage>
     _updateHomeWidget();
   }
 
-  Future<void> _exportTasks() async {
-    final downloadsDir = await getDownloadsDirectory();
+  String _timestampForFilename() {
     final now = DateTime.now();
-    final ts =
-        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-    final directory = await getDirectoryPath(
-      initialDirectory: downloadsDir?.path,
-    );
+    return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+  }
+
+  Future<String?> _pickDirectory() async {
+    final downloadsDir = await getDownloadsDirectory();
+    return getDirectoryPath(initialDirectory: downloadsDir?.path);
+  }
+
+  Future<void> _exportSettingsOnly() async {
+    final directory = await _pickDirectory();
+    if (directory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Export canceled')));
+      return;
+    }
+    final sep = Platform.pathSeparator;
+    final path =
+        '$directory${directory.endsWith(sep) ? '' : sep}settings_${_timestampForFilename()}.json';
+    final file = File(path);
+    final payload = <String, dynamic>{
+      'export_version': 1,
+      'exported_at': DateTime.now().toIso8601String(),
+      'settings': Config.toMap(),
+    };
+    await file.writeAsString(jsonEncode(payload), flush: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Exported to ${file.path}')));
+  }
+
+  Future<void> _exportTasks() async {
+    final ts = _timestampForFilename();
+    final directory = await _pickDirectory();
     if (directory == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -823,7 +852,12 @@ class _HomePageState extends State<HomePage>
     final sep = Platform.pathSeparator;
     final path =
         '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
-    final file = await _storageService.exportTaskList(_tasks, path);
+    final file = await _storageService.exportTaskData(
+      tasks: _tasks,
+      deletedTasks: _deletedTasks,
+      dailyStatsByDay: _dailyStatsByDay,
+      path: path,
+    );
     if (!mounted) return;
     final message =
         file != null ? 'Exported to ${file.path}' : 'Failed to export tasks';
@@ -831,23 +865,260 @@ class _HomePageState extends State<HomePage>
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _exportEverything() async {
+    final directory = await _pickDirectory();
+    if (directory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Export canceled')));
+      return;
+    }
+    final sep = Platform.pathSeparator;
+    final path =
+        '$directory${directory.endsWith(sep) ? '' : sep}besttodo_export_${_timestampForFilename()}.json';
+    final payload = <String, dynamic>{
+      'export_version': 1,
+      'exported_at': DateTime.now().toIso8601String(),
+      'settings': Config.toMap(),
+      'tasks_bundle': _storageService.buildTaskExportPayload(
+        tasks: _tasks,
+        deletedTasks: _deletedTasks,
+        dailyStatsByDay: _dailyStatsByDay,
+      ),
+    };
+    final file = File(path);
+    await file.writeAsString(jsonEncode(payload), flush: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Exported to ${file.path}')));
+  }
+
+  Future<void> _importSettingsOnly() async {
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final picked = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (picked == null) return;
+    try {
+      final decoded =
+          jsonDecode(await File(picked.path).readAsString()) as Map<String, dynamic>;
+      final settingsRaw = decoded['settings'];
+      final settings = settingsRaw is Map
+          ? Map<String, dynamic>.from(settingsRaw as Map)
+          : decoded;
+      Config.applyMap(settings);
+      await Config.save();
+      _updateSettings();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Settings imported')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Failed to import settings')));
+    }
+  }
+
   Future<void> _importTasks() async {
     const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file == null) return;
-    final imported = await _storageService.importTaskList(file.path);
-    if (imported.isEmpty) return;
+    final imported = await _storageService.importTaskData(file.path);
+    if (imported.tasks.isEmpty && imported.deletedTasks.isEmpty) return;
     setState(() {
       _tasks
         ..clear()
-        ..addAll(imported);
+        ..addAll(imported.tasks);
+      _deletedTasks
+        ..clear()
+        ..addAll(imported.deletedTasks);
+      _dailyStatsByDay
+        ..clear()
+        ..addAll(imported.dailyStatsByDay);
       _refreshAllRecurringTasks();
     });
     _initializeStatsForCurrentDay();
     _saveTasks();
+    _saveDeletedTasks();
+    _saveDailyStats();
     if (mounted) {
+      final warningSuffix = imported.warnings.isEmpty
+          ? ''
+          : ' (${imported.warnings.join(' | ')})';
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Tasks imported')));
+          .showSnackBar(SnackBar(content: Text('Tasks imported$warningSuffix')));
+    }
+  }
+
+  Future<void> _importEverything() async {
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final picked = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (picked == null) return;
+    try {
+      final decoded =
+          jsonDecode(await File(picked.path).readAsString()) as Map<String, dynamic>;
+      final settingsRaw = decoded['settings'];
+      if (settingsRaw is Map) {
+        Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+        await Config.save();
+      }
+
+      final tasksBundleRaw = decoded['tasks_bundle'];
+      if (tasksBundleRaw != null) {
+        final imported = _storageService.importTaskDataFromDecoded(tasksBundleRaw);
+        if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+          setState(() {
+            _tasks
+              ..clear()
+              ..addAll(imported.tasks);
+            _deletedTasks
+              ..clear()
+              ..addAll(imported.deletedTasks);
+            _dailyStatsByDay
+              ..clear()
+              ..addAll(imported.dailyStatsByDay);
+            _refreshAllRecurringTasks();
+          });
+          _initializeStatsForCurrentDay();
+          _saveTasks();
+          _saveDeletedTasks();
+          _saveDailyStats();
+        }
+      }
+      _updateSettings();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Everything imported')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to import full backup')));
+    }
+  }
+
+  Future<void> _importAutoDetect() async {
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final picked = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (picked == null) return;
+
+    try {
+      final decoded = jsonDecode(await File(picked.path).readAsString());
+      if (decoded is List) {
+        final imported = _storageService.importTaskDataFromDecoded(decoded);
+        if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+          setState(() {
+            _tasks
+              ..clear()
+              ..addAll(imported.tasks);
+            _deletedTasks
+              ..clear()
+              ..addAll(imported.deletedTasks);
+            _dailyStatsByDay
+              ..clear()
+              ..addAll(imported.dailyStatsByDay);
+            _refreshAllRecurringTasks();
+          });
+          _initializeStatsForCurrentDay();
+          _saveTasks();
+          _saveDeletedTasks();
+          _saveDailyStats();
+          if (!mounted) return;
+          final warningSuffix = imported.warnings.isEmpty
+              ? ''
+              : ' (${imported.warnings.join(' | ')})';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Tasks imported$warningSuffix')),
+          );
+        }
+        return;
+      }
+
+      if (decoded is! Map<String, dynamic>) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unsupported import file')),
+        );
+        return;
+      }
+
+      final hasSettings = decoded['settings'] is Map;
+      final hasEverythingBundle = decoded['tasks_bundle'] != null;
+      final hasTasksPayload = decoded.containsKey('tasks') ||
+          decoded.containsKey('deleted_tasks') ||
+          decoded.containsKey('daily_stats') ||
+          decoded.containsKey('task_events') ||
+          decoded.containsKey('export_version');
+
+      if (hasEverythingBundle) {
+        final settingsRaw = decoded['settings'];
+        if (settingsRaw is Map) {
+          Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+          await Config.save();
+        }
+        final imported =
+            _storageService.importTaskDataFromDecoded(decoded['tasks_bundle']);
+        if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+          setState(() {
+            _tasks
+              ..clear()
+              ..addAll(imported.tasks);
+            _deletedTasks
+              ..clear()
+              ..addAll(imported.deletedTasks);
+            _dailyStatsByDay
+              ..clear()
+              ..addAll(imported.dailyStatsByDay);
+            _refreshAllRecurringTasks();
+          });
+          _initializeStatsForCurrentDay();
+          _saveTasks();
+          _saveDeletedTasks();
+          _saveDailyStats();
+        }
+        _updateSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Everything imported')));
+        return;
+      }
+
+      if (hasSettings && !hasTasksPayload) {
+        Config.applyMap(Map<String, dynamic>.from(decoded['settings'] as Map));
+        await Config.save();
+        _updateSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Settings imported')));
+        return;
+      }
+
+      final imported = _storageService.importTaskDataFromDecoded(decoded);
+      if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+        setState(() {
+          _tasks
+            ..clear()
+            ..addAll(imported.tasks);
+          _deletedTasks
+            ..clear()
+            ..addAll(imported.deletedTasks);
+          _dailyStatsByDay
+            ..clear()
+            ..addAll(imported.dailyStatsByDay);
+          _refreshAllRecurringTasks();
+        });
+        _initializeStatsForCurrentDay();
+        _saveTasks();
+        _saveDeletedTasks();
+        _saveDailyStats();
+      }
+      if (!mounted) return;
+      final warningSuffix = imported.warnings.isEmpty
+          ? ''
+          : ' (${imported.warnings.join(' | ')})';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Tasks imported$warningSuffix')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Failed to import file')));
     }
   }
 
@@ -989,6 +1260,10 @@ class _HomePageState extends State<HomePage>
                   MaterialPageRoute(
                     builder: (_) => SettingsPage(
                       onSettingsChanged: _updateSettings,
+                      onExportTasksRequested: _exportTasks,
+                      onExportSettingsRequested: _exportSettingsOnly,
+                      onExportEverythingRequested: _exportEverything,
+                      onImportRequested: _importAutoDetect,
                     ),
                   ),
                 );

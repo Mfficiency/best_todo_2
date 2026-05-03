@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.58] - 2026-05-03
+- export optimisation
+
 ## [0.1.57] - 2026-05-03
 - added time of day heatmap to stats
 - automate screenshot changelog updates on push to `dev`, `staging`, and `main`
