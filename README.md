@@ -136,8 +136,12 @@ because Flutter plugins use symlinks.
 
 ## Automated Screenshot Changelog
 On every push to `dev`, `staging`, or `main`, GitHub Actions:
-- runs a Windows integration test that captures an up-to-date home-page screenshot
-- saves the image under `docs/screenshots/home/`
+- runs a Windows integration test that captures four up-to-date screenshots:
+  - home page
+  - home page with menu open
+  - settings page
+  - your stats page
+- saves all screenshots in one folder per push under `docs/screenshots/home/<timestamp>-<sha>/`
 - prepends a new entry to `SCREENSHOT_CHANGELOG.md` with timestamp, branch, and source commit
 
 Workflow file:

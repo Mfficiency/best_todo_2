@@ -44,17 +44,21 @@ jobs:
 
           $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
           $shortSha = "${{ github.sha }}".Substring(0, 7)
-          $fileName = "$timestamp-$shortSha.png"
-          $targetPath = Join-Path $targetDir $fileName
+          $folderName = "$timestamp-$shortSha"
+          $targetFolderPath = Join-Path $targetDir $folderName
+          New-Item -ItemType Directory -Path $targetFolderPath -Force | Out-Null
 
-          Copy-Item "build/e2e_screenshots/home_page.png" $targetPath -Force
+          Copy-Item "build/e2e_screenshots/home_page.png" (Join-Path $targetFolderPath "home_page.png") -Force
+          Copy-Item "build/e2e_screenshots/menu_open.png" (Join-Path $targetFolderPath "menu_open.png") -Force
+          Copy-Item "build/e2e_screenshots/settings_page.png" (Join-Path $targetFolderPath "settings_page.png") -Force
+          Copy-Item "build/e2e_screenshots/your_stats_page.png" (Join-Path $targetFolderPath "your_stats_page.png") -Force
 
-          "image_path=$targetPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "screenshot_folder=$targetDir/$folderName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Update screenshot changelog
         run: >
           dart run tool/update_screenshot_changelog.dart
-          --image-path "${{ steps.screenshot_meta.outputs.image_path }}"
+          --screenshot-folder "${{ steps.screenshot_meta.outputs.screenshot_folder }}"
           --branch "${{ github.ref_name }}"
           --source-sha "${{ github.sha }}"
 

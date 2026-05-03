@@ -35,33 +35,52 @@ void main() {
 
     final folder = Directory('build/e2e_screenshots');
     await folder.create(recursive: true);
-    final filePath = '${folder.path}/home_page.png';
+    Future<void> capture(String name) async {
+      final filePath = '${folder.path}/$name.png';
+      try {
+        await binding.takeScreenshot(name);
+      } catch (_) {
+        // Fallback for platforms where integration_test screenshot capture
+        // is not implemented.
+      }
 
-    try {
-      await binding.takeScreenshot('home_page');
-    } catch (_) {
-      // Fallback for platforms where integration_test screenshot capture
-      // is not implemented.
+      final boundaryContext = appBoundaryKey.currentContext;
+      if (boundaryContext == null) {
+        fail('Could not find repaint boundary context for screenshot.');
+      }
+      final boundary =
+          boundaryContext.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        fail('Could not find repaint boundary render object for screenshot.');
+      }
+      final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        fail('Could not encode screenshot for "$name".');
+      }
+      final bytes = byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      );
+      await File(filePath).writeAsBytes(bytes, flush: true);
     }
 
-    final boundaryContext = appBoundaryKey.currentContext;
-    if (boundaryContext == null) {
-      fail('Could not find repaint boundary context for screenshot.');
-    }
-    final boundary =
-        boundaryContext.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) {
-      fail('Could not find repaint boundary render object for screenshot.');
-    }
-    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (byteData == null) {
-      fail('Could not encode screenshot for home page.');
-    }
-    final bytes = byteData.buffer.asUint8List(
-      byteData.offsetInBytes,
-      byteData.lengthInBytes,
-    );
-    await File(filePath).writeAsBytes(bytes, flush: true);
+    await capture('home_page');
+
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await capture('menu_open');
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    await capture('settings_page');
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Your Stats'));
+    await tester.pumpAndSettle();
+    await capture('your_stats_page');
   });
 }

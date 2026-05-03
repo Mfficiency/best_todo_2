@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.57] - 2026-05-03
+- automate screenshot changelog updates on push to `dev`, `staging`, and `main`
+- prevent screenshot workflow self-trigger loops
+- capture and archive four screenshots per push (home, menu open, settings, your stats)
+- group screenshots in one folder per push and prepend grouped entries to `SCREENSHOT_CHANGELOG.md`
+
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode

@@ -2,12 +2,12 @@ import 'dart:io';
 
 void main(List<String> args) {
   final parsed = _parseArgs(args);
-  final imagePath = parsed['image-path'];
+  final screenshotFolder = parsed['screenshot-folder'];
   final branch = parsed['branch'];
   final sourceSha = parsed['source-sha'];
 
-  if (imagePath == null || imagePath.isEmpty) {
-    stderr.writeln('Missing required argument: --image-path');
+  if (screenshotFolder == null || screenshotFolder.isEmpty) {
+    stderr.writeln('Missing required argument: --screenshot-folder');
     exit(1);
   }
 
@@ -20,7 +20,21 @@ void main(List<String> args) {
   final entry = StringBuffer()
     ..writeln('## $now | branch: $safeBranch | source: $shortSha')
     ..writeln()
-    ..writeln('![$now - $safeBranch]($imagePath)')
+    ..writeln('- Folder: `$screenshotFolder`')
+    ..writeln()
+    ..writeln('### Home')
+    ..writeln('![$now - $safeBranch - home]($screenshotFolder/home_page.png)')
+    ..writeln()
+    ..writeln('### Menu Open')
+    ..writeln('![$now - $safeBranch - menu]($screenshotFolder/menu_open.png)')
+    ..writeln()
+    ..writeln('### Settings')
+    ..writeln(
+        '![$now - $safeBranch - settings]($screenshotFolder/settings_page.png)')
+    ..writeln()
+    ..writeln('### Your Stats')
+    ..writeln(
+        '![$now - $safeBranch - stats]($screenshotFolder/your_stats_page.png)')
     ..writeln()
     ..writeln('---')
     ..writeln();
