@@ -65,6 +65,18 @@ void main() {
       await File(filePath).writeAsBytes(bytes, flush: true);
     }
 
+    Future<void> popCurrentPage() async {
+      final backButton = find.byTooltip('Back');
+      if (backButton.evaluate().isNotEmpty) {
+        await tester.tap(backButton.first);
+        await tester.pumpAndSettle();
+        return;
+      }
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator).first);
+      navigator.pop();
+      await tester.pumpAndSettle();
+    }
+
     await capture('home_page');
 
     await tester.tap(find.byTooltip('Open navigation menu'));
@@ -75,8 +87,7 @@ void main() {
     await tester.pumpAndSettle();
     await capture('settings_page');
 
-    await tester.pageBack();
-    await tester.pumpAndSettle();
+    await popCurrentPage();
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Your Stats'));
