@@ -133,3 +133,19 @@ build/e2e_screenshots/
 
 Note: Windows desktop integration tests require Developer Mode enabled
 because Flutter plugins use symlinks.
+
+## Automated Screenshot Changelog
+On every push to `dev`, `staging`, or `main`, GitHub Actions:
+- runs a Windows integration test that captures an up-to-date home-page screenshot
+- saves the image under `docs/screenshots/home/`
+- prepends a new entry to `SCREENSHOT_CHANGELOG.md` with timestamp, branch, and source commit
+
+Workflow file:
+```bash
+.github/workflows/screenshot_changelog.yml
+```
+
+Loop protection is enabled to prevent infinite self-triggering:
+- the workflow ignores pushes that only change `SCREENSHOT_CHANGELOG.md` or `docs/screenshots/home/**`
+- bot commits include `[skip-screenshot-changelog]` and the job skips if that marker is present
+- the job also skips when the actor is `github-actions[bot]`
