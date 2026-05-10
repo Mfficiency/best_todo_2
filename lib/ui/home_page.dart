@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
@@ -598,6 +599,39 @@ class _HomePageState extends State<HomePage>
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
   }
 
+  DateTime _nextWeekdayDate(int weekday) {
+    final start = _dateOnly(_currentDate);
+    var daysUntil = (weekday - start.weekday) % 7;
+    if (daysUntil == 0) daysUntil = 7;
+    return start.add(Duration(days: daysUntil));
+  }
+
+  void _moveTaskToWeekday(int pageIndex, int index, int weekday) {
+    if (weekday < DateTime.monday || weekday > DateTime.sunday) return;
+    final tasks = _tasksForTab(pageIndex);
+    if (index >= tasks.length) return;
+    final task = tasks[index];
+    if (task.recurrenceParentUid != null) {
+      task.recurrenceParentUid = null;
+      task.recurrenceInstanceKey = null;
+    }
+    final oldDueDate = task.dueDate;
+    final newDueDate = _nextWeekdayDate(weekday);
+    setState(() {
+      task.dueDate = newDueDate;
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
+      _refreshRecurringForTask(task);
+    });
+    _trackTaskMove(task, oldDueDate, newDueDate);
+    _saveTasks();
+    LogService.add(
+      'HomePage._moveTaskToWeekday',
+      'Moved "${task.title}" to ${newDueDate.toIso8601String()}',
+    );
+  }
+
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
@@ -898,8 +932,8 @@ class _HomePageState extends State<HomePage>
     final picked = await openFile(acceptedTypeGroups: [typeGroup]);
     if (picked == null) return;
     try {
-      final decoded =
-          jsonDecode(await File(picked.path).readAsString()) as Map<String, dynamic>;
+      final decoded = jsonDecode(await File(picked.path).readAsString())
+          as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
       final settings = settingsRaw is Map
           ? Map<String, dynamic>.from(settingsRaw as Map)
@@ -912,8 +946,8 @@ class _HomePageState extends State<HomePage>
           .showSnackBar(const SnackBar(content: Text('Settings imported')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Failed to import settings')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to import settings')));
     }
   }
 
@@ -943,8 +977,8 @@ class _HomePageState extends State<HomePage>
       final warningSuffix = imported.warnings.isEmpty
           ? ''
           : ' (${imported.warnings.join(' | ')})';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Tasks imported$warningSuffix')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tasks imported$warningSuffix')));
     }
   }
 
@@ -953,8 +987,8 @@ class _HomePageState extends State<HomePage>
     final picked = await openFile(acceptedTypeGroups: [typeGroup]);
     if (picked == null) return;
     try {
-      final decoded =
-          jsonDecode(await File(picked.path).readAsString()) as Map<String, dynamic>;
+      final decoded = jsonDecode(await File(picked.path).readAsString())
+          as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
       if (settingsRaw is Map) {
         Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
@@ -963,7 +997,8 @@ class _HomePageState extends State<HomePage>
 
       final tasksBundleRaw = decoded['tasks_bundle'];
       if (tasksBundleRaw != null) {
-        final imported = _storageService.importTaskDataFromDecoded(tasksBundleRaw);
+        final imported =
+            _storageService.importTaskDataFromDecoded(tasksBundleRaw);
         if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
           setState(() {
             _tasks
@@ -1113,8 +1148,8 @@ class _HomePageState extends State<HomePage>
       final warningSuffix = imported.warnings.isEmpty
           ? ''
           : ' (${imported.warnings.join(' | ')})';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Tasks imported$warningSuffix')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tasks imported$warningSuffix')));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -1178,15 +1213,17 @@ class _HomePageState extends State<HomePage>
                     final task = tasks[index];
                     final isAndroid =
                         Theme.of(context).platform == TargetPlatform.android;
+                    final usesCustomSwipe = isAndroid || kIsWeb;
                     final tile = TaskTile(
-                      key: isAndroid ? ValueKey(task.uid) : null,
+                      key: usesCustomSwipe ? ValueKey(task.uid) : null,
                       task: task,
                       onChanged: _saveTasks,
                       onToggle: () {
                         final wasDone = task.isDone;
                         setState(() {
                           task.toggleDone();
-                          task.completedAt = task.isDone ? DateTime.now() : null;
+                          task.completedAt =
+                              task.isDone ? DateTime.now() : null;
                         });
                         _trackTaskDoneState(task, wasDone);
                         _saveTasks();
@@ -1212,13 +1249,15 @@ class _HomePageState extends State<HomePage>
                         _saveTasks();
                       },
                       onMove: (dest) => _moveTask(pageIndex, index, dest),
+                      onMoveToWeekday: (weekday) =>
+                          _moveTaskToWeekday(pageIndex, index, weekday),
                       onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
                       onDelete: () => _deleteTask(pageIndex, index),
                       pageIndex: pageIndex,
                       showSwipeButton: !isAndroid,
                       swipeLeftDelete: Config.swipeLeftDelete,
                     );
-                    if (isAndroid) {
+                    if (usesCustomSwipe) {
                       return tile;
                     }
                     return Dismissible(
