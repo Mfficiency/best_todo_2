@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.59] - 2026-05-10
+- swipe both ways
+
 ## [0.1.58] - 2026-05-03
 - export optimisation
 - exporting tasks and settings now possible
