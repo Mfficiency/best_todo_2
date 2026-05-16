@@ -1,8 +1,11 @@
 ## After MVP
 ### TODO
 - full testing suite, only merge if all test are complete
-- ios mode
 - calendar view
+- cancel swipe, when you swiped one way you can cancel the action by swiping the other way
+- build on github: have a manual action to build the apk on github so i can work remotely
+- ios mode
+- 
 
 - Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
 - Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).
