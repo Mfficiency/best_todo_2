@@ -35,6 +35,7 @@ in the browser.
 Run the helper script in the `tool` directory to build production
 artifacts. The script automatically bumps the patch version and names
 the build output with the version number.
+dart run tool/bump_version.dart 0.1.59+29 "swipe both ways"
 
 ```bash
 # use this to be sure it works:
