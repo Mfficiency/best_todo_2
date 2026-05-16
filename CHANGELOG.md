@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.60] - 2026-05-16
+- cancel a pending swipe action by swiping the opposite direction
+- show orange "Cancel" background while swiping back
+
 ## [0.1.59] - 2026-05-10
 - swipe both ways
 
