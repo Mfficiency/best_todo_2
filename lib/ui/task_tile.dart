@@ -7,11 +7,28 @@ import '../models/task.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 
+enum _SwipeOptionMode { move, delete }
+
+class _WeekdaySwipeOption {
+  final String label;
+  final int weekday;
+
+  const _WeekdaySwipeOption(this.label, this.weekday);
+}
+
+const _deleteSwipeWeekdayOptions = <_WeekdaySwipeOption>[
+  _WeekdaySwipeOption('Fri', DateTime.friday),
+  _WeekdaySwipeOption('Sat', DateTime.saturday),
+  _WeekdaySwipeOption('Sun', DateTime.sunday),
+  _WeekdaySwipeOption('Mon', DateTime.monday),
+];
+
 class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
   final VoidCallback onToggle;
   final void Function(int destination) onMove;
+  final void Function(int weekday)? onMoveToWeekday;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
   final void Function(DateTime? oldDueDate, DateTime? newDueDate)?
@@ -27,6 +44,7 @@ class TaskTile extends StatefulWidget {
     required this.onChanged,
     required this.onToggle,
     required this.onMove,
+    this.onMoveToWeekday,
     required this.onMoveNext,
     required this.onDelete,
     this.onDueDateChanged,
@@ -42,7 +60,7 @@ class TaskTile extends StatefulWidget {
 
 class _TaskTileState extends State<TaskTile>
     with SingleTickerProviderStateMixin {
-  bool _showOptions = false;
+  _SwipeOptionMode? _optionMode;
   bool _expanded = false;
   bool _isEmulator = false;
   Timer? _timer;
@@ -92,25 +110,50 @@ class _TaskTileState extends State<TaskTile>
     if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
-  void _startOptions() {
-    setState(() => _showOptions = true);
+  void _startOptions(_SwipeOptionMode mode) {
+    setState(() => _optionMode = mode);
     _timer?.cancel();
     _progressController.reset();
     _progressController.forward();
     _timer = Timer(Config.delayDuration, () {
-      if (mounted && _showOptions) {
+      if (!mounted || _optionMode != mode) return;
+      _progressController.stop();
+      setState(() => _optionMode = null);
+      if (mode == _SwipeOptionMode.move) {
         widget.onMoveNext();
-        _progressController.stop();
-        setState(() => _showOptions = false);
+      } else {
+        widget.onDelete();
       }
     });
   }
 
-  void _select(int dest) {
+  void _startMoveOptions() {
+    _startOptions(_SwipeOptionMode.move);
+  }
+
+  void _startDeleteOptions() {
+    _startOptions(_SwipeOptionMode.delete);
+  }
+
+  void _closeOptions() {
     _timer?.cancel();
     _progressController.stop();
+    if (mounted) setState(() => _optionMode = null);
+  }
+
+  void _selectMove(int dest) {
+    _closeOptions();
     widget.onMove(dest);
-    setState(() => _showOptions = false);
+  }
+
+  void _selectDelete() {
+    _closeOptions();
+    widget.onDelete();
+  }
+
+  void _selectWeekday(int weekday) {
+    _closeOptions();
+    widget.onMoveToWeekday?.call(weekday);
   }
 
   void _toggleExpanded() {
@@ -168,12 +211,12 @@ class _TaskTileState extends State<TaskTile>
             IconButton(
               icon: const Icon(Icons.swipe),
               tooltip: 'Reschedule',
-              onPressed: _startOptions,
+              onPressed: _startMoveOptions,
             ),
           IconButton(
             icon: const Icon(Icons.delete),
             tooltip: 'Delete',
-            onPressed: widget.onDelete,
+            onPressed: _startDeleteOptions,
           ),
         ],
         if (_expanded)
@@ -212,7 +255,7 @@ class _TaskTileState extends State<TaskTile>
     final stackTile = Stack(
       children: [
         listTile,
-        if (_showOptions)
+        if (_optionMode != null)
           Positioned.fill(
             child: Container(
               color: Theme.of(context).cardColor.withOpacity(0.9),
@@ -224,11 +267,23 @@ class _TaskTileState extends State<TaskTile>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      for (var dest in _destinations)
+                      if (_optionMode == _SwipeOptionMode.move)
+                        for (var dest in _destinations)
+                          TextButton(
+                            onPressed: () => _selectMove(dest),
+                            child: Text(Config.tabs[dest]),
+                          ),
+                      if (_optionMode == _SwipeOptionMode.delete) ...[
                         TextButton(
-                          onPressed: () => _select(dest),
-                          child: Text(Config.tabs[dest]),
+                          onPressed: _selectDelete,
+                          child: const Text('Delete'),
                         ),
+                        for (final option in _deleteSwipeWeekdayOptions)
+                          TextButton(
+                            onPressed: () => _selectWeekday(option.weekday),
+                            child: Text(option.label),
+                          ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -471,7 +526,7 @@ class _TaskTileState extends State<TaskTile>
       ],
     );
 
-    if (isAndroid) {
+    if (isAndroid || kIsWeb) {
       content = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragStart: (_) {
@@ -485,15 +540,15 @@ class _TaskTileState extends State<TaskTile>
           const threshold = 100;
           if (widget.swipeLeftDelete) {
             if (_dragOffset > threshold || velocity > 500) {
-              _startOptions();
+              _startMoveOptions();
             } else if (_dragOffset < -threshold || velocity < -500) {
-              widget.onDelete();
+              _startDeleteOptions();
             }
           } else {
             if (_dragOffset > threshold || velocity > 500) {
-              widget.onDelete();
+              _startDeleteOptions();
             } else if (_dragOffset < -threshold || velocity < -500) {
-              _startOptions();
+              _startMoveOptions();
             }
           }
           setState(() {

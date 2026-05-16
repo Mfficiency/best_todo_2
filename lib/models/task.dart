@@ -10,6 +10,10 @@ class Task {
   String description;
   String note;
   String label;
+  DateTime? createdAt;
+  DateTime? completedAt;
+  DateTime? movedAt;
+  DateTime? rescheduledAt;
   DateTime? dueDate;
   DateTime? deletedAt;
   bool isDone;
@@ -26,6 +30,10 @@ class Task {
     this.description = '',
     this.note = '',
     this.label = '',
+    this.createdAt,
+    this.completedAt,
+    this.movedAt,
+    this.rescheduledAt,
     this.dueDate,
     this.deletedAt,
     this.isDone = false,
@@ -48,6 +56,18 @@ class Task {
       description: json['description'] as String? ?? '',
       note: json['note'] as String? ?? '',
       label: json['label'] as String? ?? '',
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      completedAt: json['completedAt'] != null
+          ? DateTime.parse(json['completedAt'] as String)
+          : null,
+      movedAt: json['movedAt'] != null
+          ? DateTime.parse(json['movedAt'] as String)
+          : null,
+      rescheduledAt: json['rescheduledAt'] != null
+          ? DateTime.parse(json['rescheduledAt'] as String)
+          : null,
       dueDate: json['dueDate'] != null
           ? DateTime.parse(json['dueDate'] as String)
           : null,
@@ -72,6 +92,10 @@ class Task {
         'description': description,
         'note': note,
         'label': label,
+        'createdAt': createdAt?.toIso8601String(),
+        'completedAt': completedAt?.toIso8601String(),
+        'movedAt': movedAt?.toIso8601String(),
+        'rescheduledAt': rescheduledAt?.toIso8601String(),
         'dueDate': dueDate?.toIso8601String(),
         'deletedAt': deletedAt?.toIso8601String(),
         'isDone': isDone,

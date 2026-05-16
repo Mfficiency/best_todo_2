@@ -35,13 +35,17 @@ in the browser.
 Run the helper script in the `tool` directory to build production
 artifacts. The script automatically bumps the patch version and names
 the build output with the version number.
+dart run tool/bump_version.dart 0.1.59+29 "swipe both ways"
 
 ```bash
-sh tool/build.sh <platform>
-# Example: sh tool/build.sh apk # for Android APK
+# use this to be sure it works:
+& "C:\Program Files\Git\bin\bash.exe" ./tool/build.sh apk
+
+# but in theory you should be able to just run
+bash tool/build.sh apk
 ```
 
-For example `sh tool/build.sh web` will create a folder like
+For example `bash tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.
 
 ## Publishing
@@ -133,3 +137,23 @@ build/e2e_screenshots/
 
 Note: Windows desktop integration tests require Developer Mode enabled
 because Flutter plugins use symlinks.
+
+## Automated Screenshot Changelog
+On every push to `dev`, `staging`, or `main`, GitHub Actions:
+- runs a Windows integration test that captures four up-to-date screenshots:
+  - home page
+  - home page with menu open
+  - settings page
+  - your stats page
+- saves all screenshots in one folder per push under `docs/screenshots/home/<timestamp>-<sha>/`
+- prepends a new entry to `SCREENSHOT_CHANGELOG.md` with timestamp, branch, and source commit
+
+Workflow file:
+```bash
+.github/workflows/screenshot_changelog.yml
+```
+
+Loop protection is enabled to prevent infinite self-triggering:
+- the workflow ignores pushes that only change `SCREENSHOT_CHANGELOG.md` or `docs/screenshots/home/**`
+- bot commits include `[skip-screenshot-changelog]` and the job skips if that marker is present
+- the job also skips when the actor is `github-actions[bot]`

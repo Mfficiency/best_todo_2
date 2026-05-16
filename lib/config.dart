@@ -114,53 +114,58 @@ class Config {
       if (await file.exists()) {
         final data =
             jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-        swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
-        darkMode = data['darkMode'] ?? darkMode;
-        enableNotifications =
-            data['enableNotifications'] ?? enableNotifications;
-        defaultNotificationDelaySeconds =
-            (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
-                defaultNotificationDelaySeconds;
-        startTabIndex = (data['startTabIndex'] as num?)
-                ?.round()
-                .clamp(0, tabs.length - 1) ??
-            startTabIndex;
-        quietHoursEnabled = data['quietHoursEnabled'] ?? quietHoursEnabled;
-        quietHoursStartMinutes =
-            (data['quietHoursStartMinutes'] as num?)?.round().clamp(0, 1439) ??
-                quietHoursStartMinutes;
-        quietHoursEndMinutes =
-            (data['quietHoursEndMinutes'] as num?)?.round().clamp(0, 1439) ??
-                quietHoursEndMinutes;
-        useIconTabs = data['useIconTabs'] ?? useIconTabs;
-        showWidgetProgressLine =
-            data['showWidgetProgressLine'] ?? showWidgetProgressLine;
-        addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
-        defaultDelaySeconds =
-            (data['defaultDelaySeconds'] as num?)?.toDouble() ??
-                defaultDelaySeconds;
+        applyMap(data);
       }
     } catch (_) {}
+  }
+
+  static Map<String, dynamic> toMap() {
+    return {
+      'swipeLeftDelete': swipeLeftDelete,
+      'darkMode': darkMode,
+      'enableNotifications': enableNotifications,
+      'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
+      'startTabIndex': startTabIndex,
+      'quietHoursEnabled': quietHoursEnabled,
+      'quietHoursStartMinutes': quietHoursStartMinutes,
+      'quietHoursEndMinutes': quietHoursEndMinutes,
+      'useIconTabs': useIconTabs,
+      'showWidgetProgressLine': showWidgetProgressLine,
+      'addNewTasksToTop': addNewTasksToTop,
+      'defaultDelaySeconds': defaultDelaySeconds,
+    };
+  }
+
+  static void applyMap(Map<String, dynamic> data) {
+    swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
+    darkMode = data['darkMode'] ?? darkMode;
+    enableNotifications = data['enableNotifications'] ?? enableNotifications;
+    defaultNotificationDelaySeconds =
+        (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
+            defaultNotificationDelaySeconds;
+    startTabIndex =
+        (data['startTabIndex'] as num?)?.round().clamp(0, tabs.length - 1) ??
+            startTabIndex;
+    quietHoursEnabled = data['quietHoursEnabled'] ?? quietHoursEnabled;
+    quietHoursStartMinutes =
+        (data['quietHoursStartMinutes'] as num?)?.round().clamp(0, 1439) ??
+            quietHoursStartMinutes;
+    quietHoursEndMinutes =
+        (data['quietHoursEndMinutes'] as num?)?.round().clamp(0, 1439) ??
+            quietHoursEndMinutes;
+    useIconTabs = data['useIconTabs'] ?? useIconTabs;
+    showWidgetProgressLine =
+        data['showWidgetProgressLine'] ?? showWidgetProgressLine;
+    addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    defaultDelaySeconds =
+        (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
   }
 
   /// Persists the current settings to disk.
   static Future<void> save() async {
     try {
       final file = await _getSettingsFile();
-      final data = {
-        'swipeLeftDelete': swipeLeftDelete,
-        'darkMode': darkMode,
-        'enableNotifications': enableNotifications,
-        'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
-        'startTabIndex': startTabIndex,
-        'quietHoursEnabled': quietHoursEnabled,
-        'quietHoursStartMinutes': quietHoursStartMinutes,
-        'quietHoursEndMinutes': quietHoursEndMinutes,
-        'useIconTabs': useIconTabs,
-        'showWidgetProgressLine': showWidgetProgressLine,
-        'addNewTasksToTop': addNewTasksToTop,
-        'defaultDelaySeconds': defaultDelaySeconds,
-      };
+      final data = toMap();
       await file.writeAsString(jsonEncode(data), flush: true);
     } catch (_) {}
   }

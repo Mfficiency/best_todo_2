@@ -1,0 +1,79 @@
+name: Update Screenshot Changelog
+
+on:
+  push:
+    branches: [main, staging, dev]
+    paths-ignore:
+      - 'SCREENSHOT_CHANGELOG.md'
+      - 'docs/screenshots/home/**'
+
+permissions:
+  contents: write
+
+jobs:
+  screenshot-changelog:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip-screenshot-changelog]')
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Capture home page screenshot
+        run: flutter test integration_test/home_page_screenshot_test.dart -d windows
+
+      - name: Save screenshot in repo
+        id: screenshot_meta
+        shell: pwsh
+        run: |
+          $targetDir = "docs/screenshots/home"
+          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+
+          $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
+          $folderName = "$timestamp-$shortSha"
+          $targetFolderPath = Join-Path $targetDir $folderName
+          New-Item -ItemType Directory -Path $targetFolderPath -Force | Out-Null
+
+          Copy-Item "build/e2e_screenshots/home_page.png" (Join-Path $targetFolderPath "home_page.png") -Force
+          Copy-Item "build/e2e_screenshots/menu_open.png" (Join-Path $targetFolderPath "menu_open.png") -Force
+          Copy-Item "build/e2e_screenshots/settings_page.png" (Join-Path $targetFolderPath "settings_page.png") -Force
+          Copy-Item "build/e2e_screenshots/your_stats_page.png" (Join-Path $targetFolderPath "your_stats_page.png") -Force
+
+          "screenshot_folder=$targetDir/$folderName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Update screenshot changelog
+        run: >
+          dart run tool/update_screenshot_changelog.dart
+          --screenshot-folder "${{ steps.screenshot_meta.outputs.screenshot_folder }}"
+          --branch "${{ github.ref_name }}"
+          --source-sha "${{ github.sha }}"
+
+      - name: Commit and push changes
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add SCREENSHOT_CHANGELOG.md docs/screenshots/home
+
+          if (git diff --cached --quiet) {
+            Write-Output "No screenshot changelog changes to commit."
+            exit 0
+          }
+
+          git commit -m "chore: update home screenshot changelog [skip-screenshot-changelog]"
+          git push
