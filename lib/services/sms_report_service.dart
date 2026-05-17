@@ -174,8 +174,15 @@ class SmsReportService {
         summary: summary,
       );
 
-      await _diag(
-          'sending to $phone (nick="$nick", len=${message.length} chars)');
+      // GSM-7 single SMS is 160 chars; non-GSM (any unicode) is 70.
+      // If the message has any non-ASCII char treat the limit as 70.
+      final isNonAscii = message.runes.any((r) => r > 127);
+      final singlePartLimit = isNonAscii ? 70 : 160;
+      final isMultipart = message.length > singlePartLimit;
+
+      await _diag('sending to $phone (nick="$nick", '
+          'len=${message.length} chars, '
+          'nonAscii=$isNonAscii, multipart=$isMultipart)');
 
       final statusCompleter = Completer<String>();
       final statusEvents = <String>[];
@@ -195,6 +202,7 @@ class SmsReportService {
           to: phone,
           message: message,
           subscriptionId: config.subscriptionId,
+          isMultipart: isMultipart,
           statusListener: (SendStatus status) {
             statusEvents.add(status.toString());
             if (!statusCompleter.isCompleted) {

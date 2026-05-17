@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.65] - 2026-05-17
+- SMS report: auto-enable multipart when message exceeds single-SMS length (160 ASCII / 70 unicode chars) — previously long messages were silently dropped by the carrier
+
 ## [0.1.64] - 2026-05-17
 - SMS report: configurable SIM subscription id for dual-SIM devices (default -1 = system default)
 - SMS report: export history button on the log page (writes JSON to a chosen folder)
