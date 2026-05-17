@@ -1,9 +1,13 @@
 # Changelog
 
-## [0.1.60] - 2026-05-17
+## [0.1.61] - 2026-05-17
 - daily SMS report module: sends a scheduled text with today's completed/uncompleted task counts and the remaining list
 - configurable send time, recipient list (nickname + phone), and message template
 - dedicated SMS history page with per-message status and errors
+
+## [0.1.60] - 2026-05-16
+- cancel a pending swipe action by swiping the opposite direction
+- show orange "Cancel" background while swiping back
 
 ## [0.1.59] - 2026-05-10
 - swipe both ways
