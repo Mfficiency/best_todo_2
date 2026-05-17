@@ -73,26 +73,38 @@ class _SmsReportLogPageState extends State<SmsReportLogPage> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, i) {
                       final e = _entries[i];
-                      final label = e.recipientNickname.isEmpty
-                          ? e.recipientPhone
-                          : '${e.recipientNickname} (${e.recipientPhone})';
+                      final isDiag = e.kind == SmsLogKind.diag;
+                      final icon = isDiag
+                          ? (e.success ? Icons.info_outline : Icons.warning_amber)
+                          : (e.success ? Icons.check_circle : Icons.error);
+                      final color = e.success
+                          ? (isDiag ? Colors.blueGrey : Colors.green)
+                          : (isDiag ? Colors.orange : Colors.red);
+                      final title = isDiag
+                          ? e.message
+                          : (e.recipientNickname.isEmpty
+                              ? e.recipientPhone
+                              : '${e.recipientNickname} (${e.recipientPhone})');
+                      final subtitle = isDiag
+                          ? _formatTimestamp(e.sentAt)
+                          : '${_formatTimestamp(e.sentAt)}  '
+                              '• ${e.completedCount} done / ${e.uncompletedCount} left';
                       return ExpansionTile(
-                        leading: Icon(
-                          e.success ? Icons.check_circle : Icons.error,
-                          color: e.success ? Colors.green : Colors.red,
+                        leading: Icon(icon, color: color),
+                        title: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        title: Text(label),
-                        subtitle: Text(
-                          '${_formatTimestamp(e.sentAt)}  '
-                          '• ${e.completedCount} done / ${e.uncompletedCount} left',
-                        ),
-                        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        subtitle: Text(subtitle),
+                        childrenPadding:
+                            const EdgeInsets.fromLTRB(16, 0, 16, 12),
                         expandedCrossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (e.error != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(
+                              child: SelectableText(
                                 'Error: ${e.error}',
                                 style: const TextStyle(color: Colors.red),
                               ),

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../main.dart';
-import 'sms_report_settings_page.dart';
+import '../models/sms_recipient.dart';
+import '../models/sms_report_config.dart';
+import '../services/sms_report_config_service.dart';
+import '../services/sms_report_scheduler.dart';
+import '../services/sms_report_service.dart';
+import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -27,7 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    4,
+    6,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -35,6 +40,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'Tasks',
     'Widget',
     'Notifications',
+    'SMS report',
+    'Export',
   ];
   int _activeSectionIndex = 0;
   static const double _tabsHeaderHeight = 60;
@@ -53,6 +60,9 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _quietHoursEnabled = Config.quietHoursEnabled;
   int _quietHoursStartMinutes = Config.quietHoursStartMinutes;
   int _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+
+  SmsReportConfig? _smsConfig;
+  final TextEditingController _smsTemplateController = TextEditingController();
 
   void _syncLocalStateFromConfig() {
     _notifications = Config.enableNotifications;
@@ -73,10 +83,144 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_updateActiveSectionFromScroll);
+    _loadSmsConfig();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _updateActiveSectionFromScroll();
     });
+  }
+
+  Future<void> _loadSmsConfig() async {
+    final cfg = await SmsReportConfigService.load();
+    if (!mounted) return;
+    setState(() {
+      _smsConfig = cfg;
+      _smsTemplateController.text = cfg.template;
+    });
+  }
+
+  Future<void> _persistSms() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    await SmsReportConfigService.save(cfg);
+    await SmsReportScheduler.applyFromConfig();
+  }
+
+  String _formatHour24(int hour, int minute) =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+  Future<void> _pickSmsTime() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: cfg.hour, minute: cfg.minute),
+    );
+    if (picked == null) return;
+    setState(() {
+      cfg.hour = picked.hour;
+      cfg.minute = picked.minute;
+    });
+    await _persistSms();
+  }
+
+  Future<void> _editSmsRecipient({SmsRecipient? existing, int? index}) async {
+    final nicknameController =
+        TextEditingController(text: existing?.nickname ?? '');
+    final phoneController =
+        TextEditingController(text: existing?.phoneNumber ?? '');
+
+    final result = await showDialog<SmsRecipient>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(existing == null ? 'Add recipient' : 'Edit recipient'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nicknameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Nickname'),
+            ),
+            TextField(
+              controller: phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Phone number',
+                hintText: '+1234567890',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final phone = phoneController.text.trim();
+              if (phone.isEmpty) return;
+              Navigator.of(context).pop(SmsRecipient(
+                nickname: nicknameController.text.trim(),
+                phoneNumber: phone,
+              ));
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() {
+      if (index == null) {
+        cfg.recipients.add(result);
+      } else {
+        cfg.recipients[index] = result;
+      }
+    });
+    await _persistSms();
+  }
+
+  Future<void> _removeSmsRecipient(int index) async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() => cfg.recipients.removeAt(index));
+    await _persistSms();
+  }
+
+  Future<void> _saveSmsTemplate() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    cfg.template = _smsTemplateController.text;
+    await _persistSms();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Template saved')),
+    );
+  }
+
+  Future<void> _resetSmsTemplate() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() {
+      cfg.template = kDefaultSmsTemplate;
+      _smsTemplateController.text = kDefaultSmsTemplate;
+    });
+    await _persistSms();
+  }
+
+  Future<void> _sendSmsTestNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('Sending...')));
+    final sent = await SmsReportService.runDailyReport();
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('Sent to $sent recipient(s)')),
+    );
   }
 
   String _formatMmSs(int totalSeconds) {
@@ -259,10 +403,211 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildSmsReportSection() {
+    final cfg = _smsConfig;
+    if (cfg == null) {
+      return _buildSection(
+        index: 4,
+        title: 'SMS report',
+        children: const [
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: LinearProgressIndicator(),
+          ),
+        ],
+      );
+    }
+    return _buildSection(
+      index: 4,
+      title: 'SMS report',
+      children: [
+        SwitchListTile(
+          title: const Text('Enable daily SMS report'),
+          subtitle: const Text(
+              'Sends an SMS each day at the chosen time to all recipients'),
+          value: cfg.enabled,
+          onChanged: (v) async {
+            setState(() => cfg.enabled = v);
+            await _persistSms();
+          },
+        ),
+        ListTile(
+          title: const Text('Send time'),
+          subtitle: Text(_formatHour24(cfg.hour, cfg.minute)),
+          trailing: const Icon(Icons.schedule),
+          onTap: _pickSmsTime,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                'Recipients',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Add recipient',
+                icon: const Icon(Icons.add),
+                onPressed: () => _editSmsRecipient(),
+              ),
+            ],
+          ),
+        ),
+        if (cfg.recipients.isEmpty)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text('No recipients yet'),
+          )
+        else
+          ...List<Widget>.generate(cfg.recipients.length, (i) {
+            final r = cfg.recipients[i];
+            final label = r.nickname.isEmpty ? '(no nickname)' : r.nickname;
+            return ListTile(
+              title: Text(label),
+              subtitle: Text(r.phoneNumber),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () =>
+                        _editSmsRecipient(existing: r, index: i),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _removeSmsRecipient(i),
+                  ),
+                ],
+              ),
+            );
+          }),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Text(
+            'Message template',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Tokens: {hello} {nickname} {completed} {uncompleted} {date} {list}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _smsTemplateController,
+            maxLines: 8,
+            minLines: 4,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _saveSmsTemplate,
+                icon: const Icon(Icons.save),
+                label: const Text('Save template'),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: _resetSmsTemplate,
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.history),
+          title: const Text('Sent message history'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const SmsReportLogPage(),
+            ),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.send),
+          title: const Text('Send test now'),
+          subtitle:
+              const Text('Run the report immediately using today\'s tasks'),
+          onTap: _sendSmsTestNow,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExportSection() {
+    return _buildSection(
+      index: 5,
+      title: 'Export',
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FilledButton.icon(
+                onPressed: widget.onExportTasksRequested,
+                icon: const Icon(Icons.task_alt),
+                label: const Text('Export Tasks'),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: widget.onExportSettingsRequested,
+                icon: const Icon(Icons.tune),
+                label: const Text('Export Settings'),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: widget.onExportEverythingRequested,
+                icon: const Icon(Icons.file_download),
+                label: const Text('Export Everything'),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Import',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: widget.onImportRequested == null
+                    ? null
+                    : () async {
+                        await widget.onImportRequested!();
+                        if (!mounted) return;
+                        setState(_syncLocalStateFromConfig);
+                      },
+                icon: const Icon(Icons.file_upload),
+                label: const Text('Import'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _scrollController.removeListener(_updateActiveSectionFromScroll);
     _scrollController.dispose();
+    _smsTemplateController.dispose();
     super.dispose();
   }
 
@@ -473,75 +818,10 @@ class _SettingsPageState extends State<SettingsPage> {
                         trailing: const Icon(Icons.edit),
                         onTap: _editNotificationDelay,
                       ),
-                      ListTile(
-                        leading: const Icon(Icons.sms_outlined),
-                        title: const Text('Daily SMS report'),
-                        subtitle: const Text(
-                            'Send a daily text with completed and remaining tasks'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SmsReportSettingsPage(),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Export',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.icon(
-                            onPressed: widget.onExportTasksRequested,
-                            icon: const Icon(Icons.task_alt),
-                            label: const Text('Export Tasks'),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.icon(
-                            onPressed: widget.onExportSettingsRequested,
-                            icon: const Icon(Icons.tune),
-                            label: const Text('Export Settings'),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.icon(
-                            onPressed: widget.onExportEverythingRequested,
-                            icon: const Icon(Icons.file_download),
-                            label: const Text('Export Everything'),
-                          ),
-                          const SizedBox(height: 18),
-                          Text(
-                            'Import',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.icon(
-                            onPressed: widget.onImportRequested == null
-                                ? null
-                                : () async {
-                                    await widget.onImportRequested!();
-                                    if (!mounted) return;
-                                    setState(_syncLocalStateFromConfig);
-                                  },
-                            icon: const Icon(Icons.file_upload),
-                            label: const Text('Import'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _buildSmsReportSection(),
+                  _buildExportSection(),
                 ],
               ),
             ),

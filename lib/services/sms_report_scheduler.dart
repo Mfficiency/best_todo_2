@@ -1,7 +1,7 @@
-import 'dart:io' show Platform;
 import 'dart:ui';
 
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../models/sms_report_config.dart';
@@ -10,6 +10,9 @@ import 'sms_report_service.dart';
 
 /// Fixed alarm id so re-scheduling replaces the previous registration.
 const int kSmsReportAlarmId = 0x517D;
+
+bool get _isAndroidNative =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
 /// Top-level entry point invoked from the background isolate when the daily
 /// alarm fires. Must be a top-level/static function and annotated
@@ -27,14 +30,14 @@ class SmsReportScheduler {
   static bool _initialized = false;
 
   static Future<void> initialize() async {
-    if (_initialized || !Platform.isAndroid) return;
+    if (_initialized || !_isAndroidNative) return;
     await AndroidAlarmManager.initialize();
     _initialized = true;
   }
 
   /// Reads config and schedules / cancels the daily alarm accordingly.
   static Future<void> applyFromConfig() async {
-    if (!Platform.isAndroid) return;
+    if (!_isAndroidNative) return;
     await initialize();
     final config = await SmsReportConfigService.load();
     if (!config.enabled || config.recipients.isEmpty) {
@@ -45,7 +48,7 @@ class SmsReportScheduler {
   }
 
   static Future<void> schedule(SmsReportConfig config) async {
-    if (!Platform.isAndroid) return;
+    if (!_isAndroidNative) return;
     await initialize();
     await AndroidAlarmManager.cancel(kSmsReportAlarmId);
     final fireAt = _nextFireTime(config.hour, config.minute);
@@ -62,7 +65,7 @@ class SmsReportScheduler {
   }
 
   static Future<void> cancel() async {
-    if (!Platform.isAndroid) return;
+    if (!_isAndroidNative) return;
     await initialize();
     await AndroidAlarmManager.cancel(kSmsReportAlarmId);
   }

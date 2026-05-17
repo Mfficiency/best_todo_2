@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.62] - 2026-05-17
+- SMS report: only request SMS permission (no longer asks for phone access)
+- SMS report: SMS settings now inline in Settings as their own tab/section
+- SMS report: persistent diagnostic log of every run (start, config, permission, summary, per-send errors) to make failures debuggable
+
 ## [0.1.61] - 2026-05-17
 - daily SMS report module: sends a scheduled text with today's completed/uncompleted task counts and the remaining list
 - configurable send time, recipient list (nickname + phone), and message template

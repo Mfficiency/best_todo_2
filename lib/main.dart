@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ui/home_page.dart';
@@ -16,7 +17,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Config.load();
   await NotificationService.initialize();
-  await SmsReportScheduler.applyFromConfig();
+  if (!kIsWeb) {
+    await SmsReportScheduler.applyFromConfig();
+  }
   final prefs = await SharedPreferences.getInstance();
   final showIntro =
       Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);
