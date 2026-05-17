@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.60] - 2026-05-17
+- daily SMS report module: sends a scheduled text with today's completed/uncompleted task counts and the remaining list
+- configurable send time, recipient list (nickname + phone), and message template
+- dedicated SMS history page with per-message status and errors
+
 ## [0.1.59] - 2026-05-10
 - swipe both ways
 
