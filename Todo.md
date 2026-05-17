@@ -2,7 +2,6 @@
 ### TODO
 - full testing suite, only merge if all test are complete
 - calendar view
-- cancel swipe, when you swiped one way you can cancel the action by swiping the other way
 - build on github: have a manual action to build the apk on github so i can work remotely
 - ios mode
 - 
@@ -28,6 +27,7 @@
 - show in daily stats a different color if you have cleared tasks from a future date.
 
 ### DONE
+- cancel swipe, when you swiped one way you can cancel the action by swiping the other way
 - Notification quiet hours: Suppress notifications in a time range, plus weekday/weekend override.
 - Start page: Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
 - make a "future tab", that you can move away to just have the idea written down.

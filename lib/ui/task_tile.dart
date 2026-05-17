@@ -489,9 +489,31 @@ class _TaskTileState extends State<TaskTile>
 
     Widget? background;
     if (_dragOffset != 0) {
+      final originalWasRight = _optionMode != null &&
+          widget.swipeLeftDelete == (_optionMode == _SwipeOptionMode.move);
+      final isCancelDrag = _optionMode != null &&
+          ((originalWasRight && _dragOffset < 0) ||
+              (!originalWasRight && _dragOffset > 0));
       final dragToDelete =
           widget.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
-      if (dragToDelete) {
+      if (isCancelDrag) {
+        final alignment =
+            _dragOffset < 0 ? Alignment.centerRight : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.orange.withOpacity(0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      } else if (dragToDelete) {
         final alignment = widget.swipeLeftDelete
             ? Alignment.centerRight
             : Alignment.centerLeft;
@@ -538,16 +560,25 @@ class _TaskTileState extends State<TaskTile>
         onHorizontalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0;
           const threshold = 100;
-          if (widget.swipeLeftDelete) {
-            if (_dragOffset > threshold || velocity > 500) {
+          final swipedRight = _dragOffset > threshold || velocity > 500;
+          final swipedLeft = _dragOffset < -threshold || velocity < -500;
+          if (_optionMode != null) {
+            final originalWasRight =
+                widget.swipeLeftDelete == (_optionMode == _SwipeOptionMode.move);
+            if ((originalWasRight && swipedLeft) ||
+                (!originalWasRight && swipedRight)) {
+              _closeOptions();
+            }
+          } else if (widget.swipeLeftDelete) {
+            if (swipedRight) {
               _startMoveOptions();
-            } else if (_dragOffset < -threshold || velocity < -500) {
+            } else if (swipedLeft) {
               _startDeleteOptions();
             }
           } else {
-            if (_dragOffset > threshold || velocity > 500) {
+            if (swipedRight) {
               _startDeleteOptions();
-            } else if (_dragOffset < -threshold || velocity < -500) {
+            } else if (swipedLeft) {
               _startMoveOptions();
             }
           }
