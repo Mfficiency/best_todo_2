@@ -29,6 +29,8 @@
 - settings for green progress bar to be green when 3 or less tasks are left, orange when 4 tasks are left and red when 5 or more tasks are left. to change the colors and the thresholds.
 - Make icons even bigger?
 - show in daily stats a different color if you have cleared tasks from a future date.
+- add a demo mode that you can toggle, like an interactive walktrough
+- add a language selection somewhere.
 
 ### DONE
 - cancel swipe, when you swiped one way you can cancel the action by swiping the other way
