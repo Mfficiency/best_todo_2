@@ -51,4 +51,21 @@ class SmsReportLogService {
       if (await file.exists()) await file.delete();
     } catch (_) {}
   }
+
+  /// Copies the log JSON to [destinationPath] and returns the written file,
+  /// or null if there is nothing to export / writing failed.
+  static Future<File?> exportTo(String destinationPath) async {
+    try {
+      final src = await _file();
+      if (!await src.exists()) {
+        // write an empty array so the user always gets a file
+        final out = File(destinationPath);
+        await out.writeAsString('[]', flush: true);
+        return out;
+      }
+      return src.copy(destinationPath);
+    } catch (_) {
+      return null;
+    }
+  }
 }

@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/sms_report_log_entry.dart';
 import '../services/sms_report_log_service.dart';
@@ -50,6 +54,33 @@ class _SmsReportLogPageState extends State<SmsReportLogPage> {
     if (ok != true) return;
     await SmsReportLogService.clear();
     await _load();
+  }
+
+  Future<void> _exportHistory() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final downloads = await getDownloadsDirectory();
+    final directory =
+        await getDirectoryPath(initialDirectory: downloads?.path);
+    if (directory == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Export canceled')),
+      );
+      return;
+    }
+    final now = DateTime.now();
+    final two = (int n) => n.toString().padLeft(2, '0');
+    final ts =
+        '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
+    final sep = Platform.pathSeparator;
+    final path =
+        '$directory${directory.endsWith(sep) ? '' : sep}sms_report_log_$ts.json';
+    final file = await SmsReportLogService.exportTo(path);
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        file != null ? 'Exported to ${file.path}' : 'Export failed',
+      ),
+    ));
   }
 
   String _formatTimestamp(DateTime dt) {
@@ -115,13 +146,27 @@ class _SmsReportLogPageState extends State<SmsReportLogPage> {
                     },
                   ),
                 ),
-      floatingActionButton: _entries.isEmpty
-          ? null
-          : FloatingActionButton(
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'sms_log_export',
+            onPressed: _exportHistory,
+            icon: const Icon(Icons.file_download),
+            label: const Text('Export'),
+          ),
+          if (_entries.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            FloatingActionButton(
+              heroTag: 'sms_log_clear',
               onPressed: _confirmClear,
               tooltip: 'Clear history',
               child: const Icon(Icons.delete),
             ),
+          ],
+        ],
+      ),
     );
   }
 }

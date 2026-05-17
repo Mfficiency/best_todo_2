@@ -20,12 +20,18 @@ class SmsReportConfig {
   String template;
   List<SmsRecipient> recipients;
 
+  /// Android SIM subscription id for sending. -1 = system default.
+  /// On dual-SIM devices try 0, 1, or actual subscription ids from
+  /// Android Settings → SIMs if the default fails silently.
+  int subscriptionId;
+
   SmsReportConfig({
     this.enabled = false,
     this.hour = 22,
     this.minute = 0,
     this.template = kDefaultSmsTemplate,
     List<SmsRecipient>? recipients,
+    this.subscriptionId = -1,
   }) : recipients = recipients ?? <SmsRecipient>[];
 
   factory SmsReportConfig.fromJson(Map<String, dynamic> json) {
@@ -41,6 +47,7 @@ class SmsReportConfig {
               .map((e) => SmsRecipient.fromJson(Map<String, dynamic>.from(e)))
               .toList()
           : <SmsRecipient>[],
+      subscriptionId: (json['subscriptionId'] as num?)?.toInt() ?? -1,
     );
   }
 
@@ -50,6 +57,7 @@ class SmsReportConfig {
         'minute': minute,
         'template': template,
         'recipients': recipients.map((r) => r.toJson()).toList(),
+        'subscriptionId': subscriptionId,
       };
 
   SmsReportConfig copy() => SmsReportConfig.fromJson(toJson());

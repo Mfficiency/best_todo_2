@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.64] - 2026-05-17
+- SMS report: configurable SIM subscription id for dual-SIM devices (default -1 = system default)
+- SMS report: export history button on the log page (writes JSON to a chosen folder)
+- SMS report: log subscription id used per run
+
+## [0.1.63] - 2026-05-17
+- SMS report: wait for native SENT/DELIVERED callback (with 20s timeout) instead of trusting `sendSms` return — surfaces silent platform failures
+- SMS report: pre-flight check of `isSmsCapable` and `simState`, logged to history
+
 ## [0.1.62] - 2026-05-17
 - SMS report: only request SMS permission (no longer asks for phone access)
 - SMS report: SMS settings now inline in Settings as their own tab/section

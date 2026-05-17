@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:another_telephony/telephony.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -91,7 +93,8 @@ class SmsReportService {
     final config = await SmsReportConfigService.load();
     await _diag('config loaded: enabled=${config.enabled} '
         'time=${_two(config.hour)}:${_two(config.minute)} '
-        'recipients=${config.recipients.length}');
+        'recipients=${config.recipients.length} '
+        'subscriptionId=${config.subscriptionId}');
 
     if (!config.enabled) {
       await _diag('aborted: report disabled', success: false);
@@ -140,6 +143,22 @@ class SmsReportService {
 
     final telephony = Telephony.instance;
 
+    try {
+      final capable = await telephony.isSmsCapable;
+      final simState = await telephony.simState;
+      await _diag(
+          'device check: smsCapable=$capable simState=$simState');
+      if (capable == false) {
+        await _diag(
+            'aborted: device reports not SMS-capable (no SIM / tablet?)',
+            success: false);
+        return 0;
+      }
+    } catch (e, st) {
+      await _diag('device-check threw (continuing)',
+          success: false, error: '$e\n$st');
+    }
+
     var sent = 0;
     for (final recipient in config.recipients) {
       final phone = recipient.phoneNumber.trim();
@@ -155,14 +174,47 @@ class SmsReportService {
         summary: summary,
       );
 
-      var success = false;
+      await _diag(
+          'sending to $phone (nick="$nick", len=${message.length} chars)');
+
+      final statusCompleter = Completer<String>();
+      final statusEvents = <String>[];
+      Timer? timeoutTimer;
+      timeoutTimer = Timer(const Duration(seconds: 20), () {
+        if (!statusCompleter.isCompleted) {
+          statusCompleter.complete(
+              'TIMEOUT: no SENT callback within 20s '
+              '(received: ${statusEvents.isEmpty ? "none" : statusEvents.join(",")})');
+        }
+      });
+
+      var dispatched = false;
       String? error;
       try {
-        await telephony.sendSms(to: phone, message: message);
-        success = true;
+        await telephony.sendSms(
+          to: phone,
+          message: message,
+          subscriptionId: config.subscriptionId,
+          statusListener: (SendStatus status) {
+            statusEvents.add(status.toString());
+            if (!statusCompleter.isCompleted) {
+              statusCompleter.complete(status.toString());
+            }
+          },
+        );
+        dispatched = true;
       } catch (e, st) {
         error = '$e\n$st';
+        timeoutTimer.cancel();
+        if (!statusCompleter.isCompleted) {
+          statusCompleter.complete('THROWN: $e');
+        }
       }
+
+      final statusResult = await statusCompleter.future;
+      timeoutTimer.cancel();
+      final success = dispatched && !statusResult.startsWith('TIMEOUT') &&
+          !statusResult.startsWith('THROWN');
 
       await SmsReportLogService.append(SmsReportLogEntry(
         sentAt: DateTime.now(),
@@ -171,17 +223,15 @@ class SmsReportService {
         recipientPhone: phone,
         message: message,
         success: success,
-        error: error,
+        error: success ? null : (error ?? statusResult),
         completedCount: summary.completedCount,
         uncompletedCount: summary.uncompletedCount,
       ));
 
-      if (success) {
-        sent++;
-      } else {
-        await _diag('send failed to $phone',
-            success: false, error: error);
-      }
+      await _diag('send result for $phone: dispatched=$dispatched '
+          'status=$statusResult events=$statusEvents');
+
+      if (success) sent++;
     }
 
     await _diag('runDailyReport done: $sent/${config.recipients.length} sent');

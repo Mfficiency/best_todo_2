@@ -109,6 +109,64 @@ class _SettingsPageState extends State<SettingsPage> {
   String _formatHour24(int hour, int minute) =>
       '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
+  Future<void> _pickSmsSubscriptionId() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    final controller =
+        TextEditingController(text: cfg.subscriptionId.toString());
+    String? errorText;
+
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('SIM subscription id'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '-1 = system default. On dual-SIM devices try 0, 1, or '
+                'the subscription id shown in Android Settings → SIMs.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Subscription id',
+                  errorText: errorText,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final v = int.tryParse(controller.text.trim());
+                if (v == null) {
+                  setDialogState(() => errorText = 'Enter an integer');
+                  return;
+                }
+                Navigator.of(context).pop(v);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (picked == null) return;
+    setState(() => cfg.subscriptionId = picked);
+    await _persistSms();
+  }
+
   Future<void> _pickSmsTime() async {
     final cfg = _smsConfig;
     if (cfg == null) return;
@@ -325,6 +383,26 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _jumpToSection(int index) async {
     setState(() => _activeSectionIndex = index);
+
+    // SliverList lays out children lazily, so a section that hasn't been
+    // scrolled into view yet has no RenderObject and ensureVisible would
+    // no-op. Walk the scroll forward in chunks until the target section
+    // is laid out, then ensureVisible does the final alignment.
+    if (_scrollController.hasClients) {
+      var attempts = 0;
+      while (_sectionKeys[index].currentContext == null && attempts < 10) {
+        final position = _scrollController.position;
+        final maxExtent = position.maxScrollExtent;
+        if (_scrollController.offset >= maxExtent - 1) break;
+        await _scrollController.animateTo(
+          maxExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+        attempts++;
+      }
+    }
+
     final sectionContext = _sectionKeys[index].currentContext;
     if (sectionContext == null) return;
     await Scrollable.ensureVisible(
@@ -436,6 +514,14 @@ class _SettingsPageState extends State<SettingsPage> {
           subtitle: Text(_formatHour24(cfg.hour, cfg.minute)),
           trailing: const Icon(Icons.schedule),
           onTap: _pickSmsTime,
+        ),
+        ListTile(
+          title: const Text('SIM subscription id'),
+          subtitle: Text(cfg.subscriptionId == -1
+              ? 'Default (-1). Tap to change for dual-SIM devices.'
+              : 'Sending via subscription id ${cfg.subscriptionId}'),
+          trailing: const Icon(Icons.sim_card),
+          onTap: _pickSmsSubscriptionId,
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
