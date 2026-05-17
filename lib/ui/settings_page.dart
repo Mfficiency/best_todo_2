@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../main.dart';
+import 'sms_report_settings_page.dart';
 import 'subpage_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -471,6 +472,18 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         trailing: const Icon(Icons.edit),
                         onTap: _editNotificationDelay,
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.sms_outlined),
+                        title: const Text('Daily SMS report'),
+                        subtitle: const Text(
+                            'Send a daily text with completed and remaining tasks'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SmsReportSettingsPage(),
+                          ),
+                        ),
                       ),
                     ],
                   ),
