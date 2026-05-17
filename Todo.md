@@ -1,5 +1,6 @@
 ## After MVP
 ### TODO
+- add a setting to enable or disable people you are sending it to, so you dont just have to delete  there number
 - full testing suite, only merge if all test are complete
 - calendar view
 - build on github: have a manual action to build the apk on github so i can work remotely
