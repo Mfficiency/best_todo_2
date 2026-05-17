@@ -9,7 +9,7 @@ import 'sms_recipient.dart';
 ///   {list}         -> bulleted list of uncompleted task titles
 const String kDefaultSmsTemplate =
     '{hello}\n'
-    'Today you completed {completed} tasks and have {uncompleted} left.\n'
+    'Today your friend completed {completed} tasks and has {uncompleted} left.\n'
     'Remaining:\n'
     '{list}';
 
@@ -25,6 +25,15 @@ class SmsReportConfig {
   /// Android Settings → SIMs if the default fails silently.
   int subscriptionId;
 
+  /// If true, only send when today's completion rate is below
+  /// [completionThresholdPercent]. Used for social accountability —
+  /// the friend only gets pinged on under-performing days.
+  bool thresholdEnabled;
+
+  /// Completion-rate cutoff (0..100). Send only when
+  /// completed / (completed + uncompleted) * 100 < this value.
+  int completionThresholdPercent;
+
   SmsReportConfig({
     this.enabled = false,
     this.hour = 22,
@@ -32,6 +41,8 @@ class SmsReportConfig {
     this.template = kDefaultSmsTemplate,
     List<SmsRecipient>? recipients,
     this.subscriptionId = -1,
+    this.thresholdEnabled = false,
+    this.completionThresholdPercent = 50,
   }) : recipients = recipients ?? <SmsRecipient>[];
 
   factory SmsReportConfig.fromJson(Map<String, dynamic> json) {
@@ -48,6 +59,10 @@ class SmsReportConfig {
               .toList()
           : <SmsRecipient>[],
       subscriptionId: (json['subscriptionId'] as num?)?.toInt() ?? -1,
+      thresholdEnabled: json['thresholdEnabled'] as bool? ?? false,
+      completionThresholdPercent:
+          (json['completionThresholdPercent'] as num?)?.toInt().clamp(0, 100) ??
+              50,
     );
   }
 
@@ -58,6 +73,8 @@ class SmsReportConfig {
         'template': template,
         'recipients': recipients.map((r) => r.toJson()).toList(),
         'subscriptionId': subscriptionId,
+        'thresholdEnabled': thresholdEnabled,
+        'completionThresholdPercent': completionThresholdPercent,
       };
 
   SmsReportConfig copy() => SmsReportConfig.fromJson(toJson());

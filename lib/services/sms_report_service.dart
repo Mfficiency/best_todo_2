@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/sms_recipient.dart';
+import '../models/sms_report_config.dart';
 import '../models/sms_report_log_entry.dart';
 import '../models/task.dart';
 import 'sms_report_config_service.dart';
@@ -85,78 +86,101 @@ class SmsReportService {
     ));
   }
 
+  /// True if the report should fire given a summary and the configured
+  /// completion-threshold. Returns the percentage and a human-readable
+  /// reason for skipping (or null if it should send).
+  static ({bool shouldSend, int percent, String? skipReason}) checkThreshold(
+    SmsReportConfig config,
+    SmsReportSummary summary,
+  ) {
+    final total = summary.completedCount + summary.uncompletedCount;
+    final percent = total == 0
+        ? 100
+        : ((summary.completedCount * 100) / total).round();
+    if (!config.thresholdEnabled) {
+      return (shouldSend: true, percent: percent, skipReason: null);
+    }
+    if (total == 0) {
+      return (
+        shouldSend: false,
+        percent: percent,
+        skipReason: 'no tasks today',
+      );
+    }
+    if (percent < config.completionThresholdPercent) {
+      return (shouldSend: true, percent: percent, skipReason: null);
+    }
+    return (
+      shouldSend: false,
+      percent: percent,
+      skipReason:
+          'completion $percent% ≥ threshold ${config.completionThresholdPercent}%',
+    );
+  }
+
   /// Loads config, computes summary, sends SMS to each recipient, logs each.
   /// Returns the number of successful sends.
   static Future<int> runDailyReport() async {
-    await _diag('runDailyReport start');
-
     final config = await SmsReportConfigService.load();
-    await _diag('config loaded: enabled=${config.enabled} '
-        'time=${_two(config.hour)}:${_two(config.minute)} '
-        'recipients=${config.recipients.length} '
-        'subscriptionId=${config.subscriptionId}');
 
     if (!config.enabled) {
-      await _diag('aborted: report disabled', success: false);
+      await _diag('Skipped — report disabled', success: false);
       return 0;
     }
     if (config.recipients.isEmpty) {
-      await _diag('aborted: no recipients configured', success: false);
+      await _diag('Skipped — no recipients configured', success: false);
       return 0;
     }
-
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      await _diag('aborted: not on Android (platform=$defaultTargetPlatform)',
-          success: false);
+      await _diag('Skipped — not on Android', success: false);
       return 0;
     }
 
     SmsReportSummary summary;
     try {
       summary = await computeSummary();
-      await _diag('summary computed: completed=${summary.completedCount} '
-          'uncompleted=${summary.uncompletedCount}');
     } catch (e, st) {
-      await _diag('summary failed', success: false, error: '$e\n$st');
+      await _diag('Skipped — failed to read tasks',
+          success: false, error: '$e\n$st');
+      return 0;
+    }
+
+    final thresholdCheck = checkThreshold(config, summary);
+    if (!thresholdCheck.shouldSend) {
+      await _diag(
+        'Skipped — ${thresholdCheck.skipReason} '
+        '(${summary.completedCount}/${summary.completedCount + summary.uncompletedCount} done)',
+        success: false,
+      );
       return 0;
     }
 
     PermissionStatus permStatus;
     try {
       permStatus = await Permission.sms.status;
-      await _diag('sms permission status (pre-request): $permStatus');
       if (!permStatus.isGranted) {
         permStatus = await Permission.sms.request();
-        await _diag('sms permission status (post-request): $permStatus');
       }
     } catch (e, st) {
-      await _diag('permission check threw',
+      await _diag('Skipped — permission check failed',
           success: false, error: '$e\n$st');
       return 0;
     }
-
     if (!permStatus.isGranted) {
-      await _diag('aborted: sms permission not granted ($permStatus)',
+      await _diag('Skipped — SMS permission not granted ($permStatus)',
           success: false);
       return 0;
     }
 
     final telephony = Telephony.instance;
-
     try {
       final capable = await telephony.isSmsCapable;
-      final simState = await telephony.simState;
-      await _diag(
-          'device check: smsCapable=$capable simState=$simState');
       if (capable == false) {
-        await _diag(
-            'aborted: device reports not SMS-capable (no SIM / tablet?)',
-            success: false);
+        await _diag('Skipped — device not SMS-capable', success: false);
         return 0;
       }
-    } catch (e, st) {
-      await _diag('device-check threw (continuing)',
-          success: false, error: '$e\n$st');
+    } catch (_) {
+      // Non-fatal — fall through and attempt to send.
     }
 
     var sent = 0;
@@ -164,7 +188,7 @@ class SmsReportService {
       final phone = recipient.phoneNumber.trim();
       final nick = recipient.nickname.trim();
       if (phone.isEmpty) {
-        await _diag('skipped recipient "$nick": empty phone number',
+        await _diag('Skipped recipient "$nick" — empty phone number',
             success: false);
         continue;
       }
@@ -174,24 +198,15 @@ class SmsReportService {
         summary: summary,
       );
 
-      // GSM-7 single SMS is 160 chars; non-GSM (any unicode) is 70.
-      // If the message has any non-ASCII char treat the limit as 70.
       final isNonAscii = message.runes.any((r) => r > 127);
-      final singlePartLimit = isNonAscii ? 70 : 160;
-      final isMultipart = message.length > singlePartLimit;
-
-      await _diag('sending to $phone (nick="$nick", '
-          'len=${message.length} chars, '
-          'nonAscii=$isNonAscii, multipart=$isMultipart)');
+      final isMultipart = message.length > (isNonAscii ? 70 : 160);
 
       final statusCompleter = Completer<String>();
       final statusEvents = <String>[];
-      Timer? timeoutTimer;
-      timeoutTimer = Timer(const Duration(seconds: 20), () {
+      final timeoutTimer = Timer(const Duration(seconds: 20), () {
         if (!statusCompleter.isCompleted) {
-          statusCompleter.complete(
-              'TIMEOUT: no SENT callback within 20s '
-              '(received: ${statusEvents.isEmpty ? "none" : statusEvents.join(",")})');
+          statusCompleter.complete('TIMEOUT (received: '
+              '${statusEvents.isEmpty ? "none" : statusEvents.join(",")})');
         }
       });
 
@@ -221,7 +236,8 @@ class SmsReportService {
 
       final statusResult = await statusCompleter.future;
       timeoutTimer.cancel();
-      final success = dispatched && !statusResult.startsWith('TIMEOUT') &&
+      final success = dispatched &&
+          !statusResult.startsWith('TIMEOUT') &&
           !statusResult.startsWith('THROWN');
 
       await SmsReportLogService.append(SmsReportLogEntry(
@@ -236,13 +252,12 @@ class SmsReportService {
         uncompletedCount: summary.uncompletedCount,
       ));
 
-      await _diag('send result for $phone: dispatched=$dispatched '
-          'status=$statusResult events=$statusEvents');
-
       if (success) sent++;
     }
 
-    await _diag('runDailyReport done: $sent/${config.recipients.length} sent');
+    final total = summary.completedCount + summary.uncompletedCount;
+    await _diag('Sent $sent/${config.recipients.length} • '
+        '${summary.completedCount}/$total done (${thresholdCheck.percent}%)');
     return sent;
   }
 

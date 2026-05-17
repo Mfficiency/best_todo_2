@@ -515,6 +515,39 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: const Icon(Icons.schedule),
           onTap: _pickSmsTime,
         ),
+        SwitchListTile(
+          title: const Text('Only send if under threshold'),
+          subtitle: Text(
+            cfg.thresholdEnabled
+                ? 'Send only when percentage of completed tasks is below '
+                    '${cfg.completionThresholdPercent}%'
+                : 'Always send when enabled',
+          ),
+          value: cfg.thresholdEnabled,
+          onChanged: (v) async {
+            setState(() => cfg.thresholdEnabled = v);
+            await _persistSms();
+          },
+        ),
+        if (cfg.thresholdEnabled)
+          ListTile(
+            title: Text(
+              'Completion threshold: ${cfg.completionThresholdPercent}%',
+            ),
+            subtitle: Slider(
+              value: cfg.completionThresholdPercent.toDouble(),
+              min: 0,
+              max: 100,
+              divisions: 20,
+              label: '${cfg.completionThresholdPercent}%',
+              onChanged: (v) {
+                setState(() => cfg.completionThresholdPercent = v.round());
+              },
+              onChangeEnd: (_) async {
+                await _persistSms();
+              },
+            ),
+          ),
         ListTile(
           title: const Text('SIM subscription id'),
           subtitle: Text(cfg.subscriptionId == -1

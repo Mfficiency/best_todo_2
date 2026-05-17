@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.66] - 2026-05-17
+- SMS report: completion-rate threshold — send only on days you fall below a configurable %, for social accountability
+- SMS report: compact, human-readable diagnostic logging (one summary line per run instead of eight)
+
 ## [0.1.65] - 2026-05-17
 - SMS report: auto-enable multipart when message exceeds single-SMS length (160 ASCII / 70 unicode chars) — previously long messages were silently dropped by the carrier
 
