@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.66] - 2026-05-17
+- SMS report: completion-rate threshold — send only on days you fall below a configurable %, for social accountability
+- SMS report: compact, human-readable diagnostic logging (one summary line per run instead of eight)
+
+## [0.1.65] - 2026-05-17
+- SMS report: auto-enable multipart when message exceeds single-SMS length (160 ASCII / 70 unicode chars) — previously long messages were silently dropped by the carrier
+
+## [0.1.64] - 2026-05-17
+- SMS report: configurable SIM subscription id for dual-SIM devices (default -1 = system default)
+- SMS report: export history button on the log page (writes JSON to a chosen folder)
+- SMS report: log subscription id used per run
+
+## [0.1.63] - 2026-05-17
+- SMS report: wait for native SENT/DELIVERED callback (with 20s timeout) instead of trusting `sendSms` return — surfaces silent platform failures
+- SMS report: pre-flight check of `isSmsCapable` and `simState`, logged to history
+
+## [0.1.62] - 2026-05-17
+- SMS report: only request SMS permission (no longer asks for phone access)
+- SMS report: SMS settings now inline in Settings as their own tab/section
+- SMS report: persistent diagnostic log of every run (start, config, permission, summary, per-send errors) to make failures debuggable
+
+## [0.1.61] - 2026-05-17
+- daily SMS report module: sends a scheduled text with today's completed/uncompleted task counts and the remaining list
+- configurable send time, recipient list (nickname + phone), and message template
+- dedicated SMS history page with per-message status and errors
+
 ## [0.1.60] - 2026-05-16
 - cancel a pending swipe action by swiping the opposite direction
 - show orange "Cancel" background while swiping back

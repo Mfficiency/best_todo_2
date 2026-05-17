@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ui/home_page.dart';
@@ -7,6 +8,7 @@ import 'ui/intro_page.dart';
 import 'config.dart';
 import 'services/startup_time_service.dart';
 import 'services/notification_service.dart';
+import 'services/sms_report_scheduler.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
@@ -15,6 +17,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Config.load();
   await NotificationService.initialize();
+  if (!kIsWeb) {
+    await SmsReportScheduler.applyFromConfig();
+  }
   final prefs = await SharedPreferences.getInstance();
   final showIntro =
       Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);

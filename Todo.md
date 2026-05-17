@@ -1,10 +1,14 @@
 ## After MVP
 ### TODO
+- add a setting to enable or disable people you are sending it to, so you dont just have to delete  there number
 - full testing suite, only merge if all test are complete
 - calendar view
 - build on github: have a manual action to build the apk on github so i can work remotely
 - ios mode
-- 
+- receiving sms to send you back the task list, so if my friend sends me : "tasks" it automatically sends back todays tasks
+- send emails
+- send in app to each other
+- add more settings to controll the days of the week on the swiping motion and different icons and the cancel color etc
 
 - Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
 - Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).
