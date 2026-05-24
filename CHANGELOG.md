@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.67] - 2026-05-24
+- Deleted Items: distinguish auto-deleted (done tasks swept on day change) from manually deleted with an "Auto-deleted:" label
+
 ## [0.1.66] - 2026-05-17
 - SMS report: completion-rate threshold — send only on days you fall below a configurable %, for social accountability
 - SMS report: compact, human-readable diagnostic logging (one summary line per run instead of eight)

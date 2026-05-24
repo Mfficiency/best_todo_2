@@ -30,9 +30,10 @@ class DeletedItemsPage extends StatelessWidget {
         itemCount: items.length,
         itemBuilder: (context, index) {
           final task = items[index];
+          final deletedLabel = task.autoDeleted ? 'Auto-deleted' : 'Deleted';
           final deletedText = task.deletedAt != null
-              ? 'Deleted: ${_formatDate(task.deletedAt!)}'
-              : 'Deleted: Unknown date';
+              ? '$deletedLabel: ${_formatDate(task.deletedAt!)}'
+              : '$deletedLabel: Unknown date';
           final subtitle = task.description.isNotEmpty
               ? '${task.description}\n$deletedText'
               : deletedText;

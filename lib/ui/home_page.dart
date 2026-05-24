@@ -127,23 +127,70 @@ class _HomePageState extends State<HomePage>
       for (var i = 0; i < count; i++) {
         final deletedAt =
             now.subtract(Duration(days: dayOffset, minutes: i * 7));
+        // Alternate auto-deleted (done tasks swept at day rollover) and
+        // manually-deleted seeds so dev can exercise both restore paths.
+        final isAuto = (titleIndex % 2) == 0;
         seeded.add(
           Task(
             title: titles[titleIndex % titles.length],
-            description: 'Seeded dev deleted task',
+            description: isAuto
+                ? 'Seeded dev auto-deleted task'
+                : 'Seeded dev manually-deleted task',
             createdAt: deletedAt.subtract(const Duration(days: 3)),
-            completedAt: deletedAt.subtract(const Duration(hours: 1)),
+            completedAt:
+                isAuto ? deletedAt.subtract(const Duration(hours: 1)) : null,
             movedAt: deletedAt.subtract(const Duration(days: 2)),
             rescheduledAt: deletedAt.subtract(const Duration(days: 2)),
             dueDate: deletedAt.subtract(const Duration(days: 1)),
             deletedAt: deletedAt,
-            isDone: true,
+            autoDeleted: isAuto,
+            isDone: isAuto,
           ),
         );
         titleIndex++;
       }
     }
     seeded.sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
+    return seeded;
+  }
+
+  /// Auto-deleted-only seed used in dev mode to backfill existing dev users
+  /// whose persisted deleted list pre-dates the `autoDeleted` flag.
+  List<Task> _buildDevAutoDeletedBackfill(DateTime referenceDate) {
+    final now = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+      12,
+    );
+    const titles = <String>[
+      'Auto-swept morning routine',
+      'Auto-swept inbox triage',
+      'Auto-swept stand-up notes',
+      'Auto-swept gym session',
+      'Auto-swept code review',
+      'Auto-swept journal entry',
+    ];
+    // Spread across different days so the date column varies in the UI.
+    const dayOffsets = <int>[1, 2, 4, 7, 9, 11];
+    final seeded = <Task>[];
+    for (var i = 0; i < titles.length; i++) {
+      final deletedAt = now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
+      seeded.add(
+        Task(
+          title: titles[i],
+          description: 'Seeded dev auto-deleted backfill',
+          createdAt: deletedAt.subtract(const Duration(days: 3)),
+          completedAt: deletedAt.subtract(const Duration(hours: 1)),
+          movedAt: deletedAt.subtract(const Duration(days: 2)),
+          rescheduledAt: deletedAt.subtract(const Duration(days: 2)),
+          dueDate: deletedAt.subtract(const Duration(days: 1)),
+          deletedAt: deletedAt,
+          autoDeleted: true,
+          isDone: true,
+        ),
+      );
+    }
     return seeded;
   }
 
@@ -269,6 +316,24 @@ class _HomePageState extends State<HomePage>
     _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
       _deletedTasks.addAll(loadedDeleted);
+      // Backfill auto-deleted seed items for dev users whose persisted
+      // deleted list pre-dates the autoDeleted flag, so the new restore
+      // path is visible without clearing storage.
+      if (Config.isDev && !_deletedTasks.any((t) => t.autoDeleted)) {
+        _deletedTasks.insertAll(0, _buildDevAutoDeletedBackfill(_currentDate));
+        _deletedTasks.sort((a, b) {
+          final ad = a.deletedAt;
+          final bd = b.deletedAt;
+          if (ad == null && bd == null) return 0;
+          if (ad == null) return 1;
+          if (bd == null) return -1;
+          return bd.compareTo(ad);
+        });
+        if (_deletedTasks.length > 100) {
+          _deletedTasks.removeRange(100, _deletedTasks.length);
+        }
+        _saveDeletedTasks();
+      }
     } else if (Config.isDev) {
       _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
       _saveDeletedTasks();
@@ -460,8 +525,9 @@ class _HomePageState extends State<HomePage>
     _saveDailyStats();
   }
 
-  void _addToDeletedTasks(Task task) {
+  void _addToDeletedTasks(Task task, {bool autoDeleted = false}) {
     task.deletedAt = DateTime.now();
+    task.autoDeleted = autoDeleted;
     _deletedTasks.insert(0, task);
     if (_deletedTasks.length > 100) {
       _deletedTasks.removeLast();
@@ -702,6 +768,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _deletedTasks.remove(task);
       task.deletedAt = null;
+      task.autoDeleted = false;
       task.dueDate = _currentDate;
       _tasks.add(task);
       _refreshRecurringForTask(task);
@@ -776,7 +843,7 @@ class _HomePageState extends State<HomePage>
         final doneTasks = _tasks.where((t) => t.isDone).toList();
         for (final task in doneTasks) {
           _tasks.remove(task);
-          _addToDeletedTasks(task);
+          _addToDeletedTasks(task, autoDeleted: true);
         }
       }
     });
