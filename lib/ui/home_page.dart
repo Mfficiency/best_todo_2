@@ -17,6 +17,7 @@ import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
+import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
@@ -58,6 +59,15 @@ class _HomePageState extends State<HomePage>
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
   Timer? _midnightTimer;
+
+  /// When true, the body renders one long schedule list with day-grouped
+  /// sections; tab taps scroll that list instead of switching panes.
+  bool _scheduleView = false;
+  final ScrollController _scheduleScrollController = ScrollController();
+  final Map<int, GlobalKey> _scheduleTabAnchors = {
+    for (var i = 0; i < 6; i++) i: GlobalKey(),
+  };
+  int _lastTabIndex = 0;
 
   static const int _futureTabIndex = 5;
   static final DateTime _futureDueDate = DateTime(2300, 1, 1);
@@ -194,6 +204,60 @@ class _HomePageState extends State<HomePage>
     return seeded;
   }
 
+  /// Marker used to identify (and avoid duplicating) the dev-seeded future
+  /// tasks across loads.
+  static const String _devFutureTaskMarker = 'Seeded dev future task';
+
+  /// Twenty seeded tasks with deadlines spread from tomorrow through about
+  /// two months out, so dev builds always have data to drive the schedule
+  /// view and the next-week / next-month tabs.
+  List<Task> _buildDevFutureTasksSeed(DateTime referenceDate) {
+    final base = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+      9,
+    );
+    final now = DateTime.now();
+    const entries = <MapEntry<int, String>>[
+      MapEntry(1, 'Review PR for auth refactor'),
+      MapEntry(1, 'Call dentist to reschedule'),
+      MapEntry(2, 'Pay credit card bill'),
+      MapEntry(2, 'Submit weekly timesheet'),
+      MapEntry(3, 'Coffee with Alex'),
+      MapEntry(4, 'Renew gym membership'),
+      MapEntry(6, 'Prep slides for team demo'),
+      MapEntry(7, 'Annual physical at the doctor'),
+      MapEntry(9, 'Book hotel for the conference trip'),
+      MapEntry(12, 'File quarterly compliance report'),
+      MapEntry(14, "Birthday — buy gift for Sam"),
+      MapEntry(18, 'Renew passport'),
+      MapEntry(22, 'Schedule annual roof inspection'),
+      MapEntry(28, 'Draft tax return for accountant'),
+      MapEntry(32, 'Take car in for 60k service'),
+      MapEntry(38, 'Quarterly OKR review with manager'),
+      MapEntry(44, 'Plan vacation itinerary'),
+      MapEntry(50, 'Submit talk proposal for conference'),
+      MapEntry(55, 'Renew domain registrations'),
+      MapEntry(60, 'Start packing for apartment move'),
+    ];
+    final seeded = <Task>[];
+    for (var i = 0; i < entries.length; i++) {
+      final offset = entries[i].key;
+      final title = entries[i].value;
+      seeded.add(
+        Task(
+          title: title,
+          description: _devFutureTaskMarker,
+          createdAt: now,
+          dueDate: base.add(Duration(days: offset)),
+          listRanking: i + 1,
+        ),
+      );
+    }
+    return seeded;
+  }
+
   Map<String, DailyTaskStats> _buildDevDailyStatsSeed(DateTime referenceDate) {
     final seeds = <String, DailyTaskStats>{};
     final dayStart = DateTime(
@@ -310,8 +374,17 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       );
+      if (Config.isDev) {
+        _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
+      }
     } else {
       _tasks.addAll(loaded);
+      // Backfill the spread-out dev seed for existing dev installs so the
+      // schedule view and the next-week / next-month tabs always have data.
+      if (Config.isDev &&
+          !_tasks.any((t) => t.description == _devFutureTaskMarker)) {
+        _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
+      }
     }
     _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
@@ -562,8 +635,14 @@ class _HomePageState extends State<HomePage>
       vsync: this,
       initialIndex: safeInitialTab,
     );
+    _lastTabIndex = _tabController.index;
     _tabController.addListener(() {
       setState(() {});
+      final idx = _tabController.index;
+      if (idx != _lastTabIndex) {
+        _lastTabIndex = idx;
+        if (_scheduleView) _scrollToScheduleAnchor(idx);
+      }
     });
     Config.ensureVersionLoaded().then((_) {
       if (mounted) {
@@ -579,8 +658,36 @@ class _HomePageState extends State<HomePage>
   void dispose() {
     _tabController.dispose();
     _controller.dispose();
+    _scheduleScrollController.dispose();
     _midnightTimer?.cancel();
     super.dispose();
+  }
+
+  /// Map a task to the tab index that would own it in list mode. Used by
+  /// the schedule view so each tile's "move to" menu hides the task's
+  /// current bucket.
+  int _tabIndexForTask(Task task) {
+    final due = task.dueDate;
+    if (due == null) return _futureTabIndex;
+    if (_isFutureBucketDate(due)) return _futureTabIndex;
+    final diff = dateDiffInDays(due, _currentDate);
+    if (diff <= 0) return 0;
+    if (diff == 1) return 1;
+    if (diff == 2) return 2;
+    if (diff < 30) return 3;
+    return 4;
+  }
+
+  void _scrollToScheduleAnchor(int tabIndex) {
+    final key = _scheduleTabAnchors[tabIndex];
+    final ctx = key?.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+      alignment: 0.0,
+    );
   }
 
   void _scheduleMidnightUpdate() {
@@ -1244,30 +1351,86 @@ class _HomePageState extends State<HomePage>
     return list;
   }
 
+  Widget _buildAddTaskRow() {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              decoration: const InputDecoration(labelText: 'Add task'),
+              onSubmitted: _addTask,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () => _addTask(_controller.text),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskTile(Task task, int pageIndex, int indexInTab) {
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    final usesCustomSwipe = isAndroid || kIsWeb;
+    final tile = TaskTile(
+      key: usesCustomSwipe ? ValueKey(task.uid) : null,
+      task: task,
+      onChanged: _saveTasks,
+      onToggle: () {
+        final wasDone = task.isDone;
+        setState(() {
+          task.toggleDone();
+          task.completedAt = task.isDone ? DateTime.now() : null;
+        });
+        _trackTaskDoneState(task, wasDone);
+        _saveTasks();
+      },
+      onDueDateChanged: (oldDueDate, newDueDate) {
+        setState(() {
+          if (task.recurrenceParentUid != null) {
+            task.recurrenceParentUid = null;
+            task.recurrenceInstanceKey = null;
+          }
+          final now = DateTime.now();
+          task.movedAt = now;
+          task.rescheduledAt = now;
+          _trackTaskMove(task, oldDueDate, newDueDate);
+          _refreshRecurringForTask(task);
+        });
+        _saveTasks();
+      },
+      onRecurringChanged: () {
+        setState(() {
+          _refreshRecurringForTask(task);
+        });
+        _saveTasks();
+      },
+      onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
+      onMoveToWeekday: (weekday) =>
+          _moveTaskToWeekday(pageIndex, indexInTab, weekday),
+      onMoveNext: () => _moveTaskToNextPage(pageIndex, indexInTab),
+      onDelete: () => _deleteTask(pageIndex, indexInTab),
+      pageIndex: pageIndex,
+      showSwipeButton: !isAndroid,
+      swipeLeftDelete: Config.swipeLeftDelete,
+    );
+    if (usesCustomSwipe) return tile;
+    return Dismissible(
+      key: ValueKey(task.uid),
+      background: Container(color: Colors.greenAccent.withOpacity(0.5)),
+      onDismissed: (_) => _moveTaskToNextPage(pageIndex, indexInTab),
+      child: tile,
+    );
+  }
+
   Widget _buildTaskList(int pageIndex) {
     final tasks = _tasksForTab(pageIndex);
-    // LogService.add('HomePage._buildTaskList',
-    //     'Building tab $pageIndex with ${tasks.length} tasks');
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  decoration: const InputDecoration(labelText: 'Add task'),
-                  onSubmitted: _addTask,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.add),
-                onPressed: () => _addTask(_controller.text),
-              )
-            ],
-          ),
-        ),
+        _buildAddTaskRow(),
         Expanded(
           child: tasks.isEmpty && pageIndex == 0
               ? const Center(child: Text('No tasks for today'))
@@ -1276,69 +1439,27 @@ class _HomePageState extends State<HomePage>
                   onReorder: (oldIndex, newIndex) =>
                       _reorderTask(pageIndex, oldIndex, newIndex),
                   buildDefaultDragHandles: true,
-                  itemBuilder: (context, index) {
-                    final task = tasks[index];
-                    final isAndroid =
-                        Theme.of(context).platform == TargetPlatform.android;
-                    final usesCustomSwipe = isAndroid || kIsWeb;
-                    final tile = TaskTile(
-                      key: usesCustomSwipe ? ValueKey(task.uid) : null,
-                      task: task,
-                      onChanged: _saveTasks,
-                      onToggle: () {
-                        final wasDone = task.isDone;
-                        setState(() {
-                          task.toggleDone();
-                          task.completedAt =
-                              task.isDone ? DateTime.now() : null;
-                        });
-                        _trackTaskDoneState(task, wasDone);
-                        _saveTasks();
-                      },
-                      onDueDateChanged: (oldDueDate, newDueDate) {
-                        setState(() {
-                          if (task.recurrenceParentUid != null) {
-                            task.recurrenceParentUid = null;
-                            task.recurrenceInstanceKey = null;
-                          }
-                          final now = DateTime.now();
-                          task.movedAt = now;
-                          task.rescheduledAt = now;
-                          _trackTaskMove(task, oldDueDate, newDueDate);
-                          _refreshRecurringForTask(task);
-                        });
-                        _saveTasks();
-                      },
-                      onRecurringChanged: () {
-                        setState(() {
-                          _refreshRecurringForTask(task);
-                        });
-                        _saveTasks();
-                      },
-                      onMove: (dest) => _moveTask(pageIndex, index, dest),
-                      onMoveToWeekday: (weekday) =>
-                          _moveTaskToWeekday(pageIndex, index, weekday),
-                      onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
-                      onDelete: () => _deleteTask(pageIndex, index),
-                      pageIndex: pageIndex,
-                      showSwipeButton: !isAndroid,
-                      swipeLeftDelete: Config.swipeLeftDelete,
-                    );
-                    if (usesCustomSwipe) {
-                      return tile;
-                    }
-                    return Dismissible(
-                      key: ValueKey(task.uid),
-                      background: Container(
-                        color: Colors.greenAccent.withOpacity(0.5),
-                      ),
-                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                      child: tile,
-                    );
-                  },
+                  itemBuilder: (context, index) =>
+                      _buildTaskTile(tasks[index], pageIndex, index),
                 ),
         )
       ],
+    );
+  }
+
+  Widget _buildScheduleBody() {
+    return ScheduleView(
+      tasks: _tasks,
+      currentDate: _currentDate,
+      scrollController: _scheduleScrollController,
+      tabAnchorKeys: _scheduleTabAnchors,
+      addTaskRow: _buildAddTaskRow(),
+      buildTile: (task) {
+        final pageIndex = _tabIndexForTask(task);
+        final tabTasks = _tasksForTab(pageIndex);
+        final indexInTab = tabTasks.indexOf(task);
+        return _buildTaskTile(task, pageIndex, indexInTab);
+      },
     );
   }
 
@@ -1459,6 +1580,24 @@ class _HomePageState extends State<HomePage>
             suffixIcon: Icon(Icons.search),
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(_scheduleView
+                ? Icons.format_list_bulleted
+                : Icons.calendar_month),
+            tooltip: _scheduleView ? 'List view' : 'Schedule view',
+            onPressed: () {
+              setState(() {
+                _scheduleView = !_scheduleView;
+              });
+              if (_scheduleView) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollToScheduleAnchor(_tabController.index);
+                });
+              }
+            },
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(
@@ -1511,10 +1650,12 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: List.generate(Config.tabs.length, _buildTaskList),
-      ),
+      body: _scheduleView
+          ? _buildScheduleBody()
+          : TabBarView(
+              controller: _tabController,
+              children: List.generate(Config.tabs.length, _buildTaskList),
+            ),
     );
   }
 }

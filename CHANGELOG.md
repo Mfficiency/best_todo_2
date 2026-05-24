@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.68] - 2026-05-24
+- schedule view: app bar toggle between the existing tab list and a Google-Calendar-style schedule — one long scrollable list grouped by day, with tabs acting as quick-scroll anchors
+- dev seed: 20 future-dated tasks spread from tomorrow through ~2 months out so the schedule view and the next-week / next-month tabs always have data
+
 ## [0.1.67] - 2026-05-24
 - Deleted Items: distinguish auto-deleted (done tasks swept on day change) from manually deleted with an "Auto-deleted:" label
 
