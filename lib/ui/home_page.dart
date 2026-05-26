@@ -62,7 +62,7 @@ class _HomePageState extends State<HomePage>
 
   /// When true, the body renders one long schedule list with day-grouped
   /// sections; tab taps scroll that list instead of switching panes.
-  bool _scheduleView = false;
+  bool _scheduleView = Config.startInScheduleView;
   final ScrollController _scheduleScrollController = ScrollController();
   final Map<int, GlobalKey> _scheduleTabAnchors = {
     for (var i = 0; i < 6; i++) i: GlobalKey(),
@@ -676,6 +676,48 @@ class _HomePageState extends State<HomePage>
     if (diff == 2) return 2;
     if (diff < 30) return 3;
     return 4;
+  }
+
+  /// Reorder within one day section of the schedule view. Other tasks in
+  /// the same tab keep their relative position; only the slice belonging
+  /// to this section is shuffled.
+  void _reorderTaskInSection(
+    List<Task> sectionTasks,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (sectionTasks.isEmpty) return;
+    final pageIndex = _tabIndexForTask(sectionTasks.first);
+    final fullList = _tasksForTab(pageIndex);
+
+    final sectionSet = Set<Task>.identity()..addAll(sectionTasks);
+    final sectionPositions = <int>[];
+    for (var i = 0; i < fullList.length; i++) {
+      if (sectionSet.contains(fullList[i])) sectionPositions.add(i);
+    }
+    if (sectionPositions.length != sectionTasks.length) return;
+    if (oldIndex < 0 || oldIndex >= sectionTasks.length) return;
+    if (newIndex < 0 || newIndex > sectionTasks.length) return;
+
+    final reordered = List<Task>.from(sectionTasks);
+    if (newIndex > oldIndex) newIndex -= 1;
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+
+    for (var k = 0; k < sectionPositions.length; k++) {
+      fullList[sectionPositions[k]] = reordered[k];
+    }
+
+    setState(() {
+      for (var i = 0; i < fullList.length; i++) {
+        fullList[i].listRanking = i + 1;
+      }
+    });
+    _saveTasks();
+    LogService.add(
+      'HomePage._reorderTaskInSection',
+      'Reordered "${moved.title}" within day section of tab $pageIndex',
+    );
   }
 
   void _scrollToScheduleAnchor(int tabIndex) {
@@ -1460,6 +1502,7 @@ class _HomePageState extends State<HomePage>
         final indexInTab = tabTasks.indexOf(task);
         return _buildTaskTile(task, pageIndex, indexInTab);
       },
+      onReorderSection: _reorderTaskInSection,
     );
   }
 

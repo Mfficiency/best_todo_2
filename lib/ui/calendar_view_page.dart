@@ -28,6 +28,11 @@ class ScheduleView extends StatelessWidget {
   /// Add-task input row (same widget the list mode shows above each tab).
   final Widget addTaskRow;
 
+  /// Called when the user reorders tasks within a day section by long
+  /// press / drag. [sectionTasks] is the rendered order before the move.
+  final void Function(List<Task> sectionTasks, int oldIndex, int newIndex)
+      onReorderSection;
+
   /// Sentinel due date used for the "future / no specific date" bucket.
   static final DateTime futureBucketDate = DateTime(2300, 1, 1);
 
@@ -39,6 +44,7 @@ class ScheduleView extends StatelessWidget {
     required this.tabAnchorKeys,
     required this.buildTile,
     required this.addTaskRow,
+    required this.onReorderSection,
   }) : super(key: key);
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -73,6 +79,17 @@ class ScheduleView extends StatelessWidget {
     'Nov',
     'Dec',
   ];
+
+  Widget _buildReorderableSection(List<Task> sectionTasks) {
+    return ReorderableListView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: true,
+      onReorder: (oldIndex, newIndex) =>
+          onReorderSection(sectionTasks, oldIndex, newIndex),
+      children: [for (final t in sectionTasks) buildTile(t)],
+    );
+  }
 
   String _formatHeader(DateTime date, DateTime today) {
     final d = _dateOnly(date);
@@ -141,9 +158,8 @@ class ScheduleView extends StatelessWidget {
       });
     }
 
-    // Resolve anchor keys: today/tomorrow/day-after attach to their exact
-    // day section; tabs 3/4 attach to the first qualifying day section;
-    // tab 5 attaches to the Someday header (created below).
+    // Direct day-section anchors for today / tomorrow / day-after (always
+    // present because of the materialization above).
     final anchorKeyForKey = <String, GlobalKey>{};
     final todayKey = _dayKey(today);
     final tomorrowKey = _dayKey(today.add(const Duration(days: 1)));
@@ -155,29 +171,21 @@ class ScheduleView extends StatelessWidget {
     if (tabAnchorKeys[2] != null) {
       anchorKeyForKey[dayAfterKey] = tabAnchorKeys[2]!;
     }
-    // First day with diff >= 3 (next week range).
-    if (tabAnchorKeys[3] != null) {
-      for (final k in sortedKeys) {
-        final diff = keyToDate[k]!.difference(today).inDays;
-        if (diff >= 3 && diff < 30 && !anchorKeyForKey.containsKey(k)) {
-          anchorKeyForKey[k] = tabAnchorKeys[3]!;
-          break;
-        }
-      }
-    }
-    // First day with diff >= 30 (next month range).
-    if (tabAnchorKeys[4] != null) {
-      for (final k in sortedKeys) {
-        final diff = keyToDate[k]!.difference(today).inDays;
-        if (diff >= 30 && !anchorKeyForKey.containsKey(k)) {
-          anchorKeyForKey[k] = tabAnchorKeys[4]!;
-          break;
-        }
-      }
+
+    // Partition the remaining sortedKeys into next-week / next-month ranges
+    // so we can wrap them in always-on range headers (which tabs 3 and 4
+    // anchor to, just like tab 5 anchors to Someday).
+    final nextWeekKeys = <String>[];
+    final nextMonthKeys = <String>[];
+    for (final k in sortedKeys) {
+      final diff = keyToDate[k]!.difference(today).inDays;
+      if (diff >= 3 && diff < 30) nextWeekKeys.add(k);
+      if (diff >= 30) nextMonthKeys.add(k);
     }
 
     final children = <Widget>[];
-    for (final key in sortedKeys) {
+
+    void addDaySection(String key) {
       final date = keyToDate[key]!;
       final dayTasks = grouped[key]!;
       children.add(
@@ -190,14 +198,43 @@ class ScheduleView extends StatelessWidget {
       if (dayTasks.isEmpty) {
         children.add(const _EmptyDayPlaceholder());
       } else {
-        for (final t in dayTasks) {
-          children.add(buildTile(t));
-        }
+        children.add(_buildReorderableSection(dayTasks));
       }
     }
 
-    // Someday section. Always render the header so tab 5 has a scroll
-    // anchor; show a placeholder when empty.
+    // Today / Tomorrow / Day after — render the first three keys directly.
+    final immediateKeys = <String>[todayKey, tomorrowKey, dayAfterKey];
+    for (final k in immediateKeys) {
+      addDaySection(k);
+    }
+
+    // Next week range — always render the range header as an anchor for
+    // tab 3, followed by any day sections in the +3..+29 window.
+    children.add(
+      _RangeHeader(key: tabAnchorKeys[3], text: 'Next week'),
+    );
+    if (nextWeekKeys.isEmpty) {
+      children.add(const _EmptyDayPlaceholder());
+    } else {
+      for (final k in nextWeekKeys) {
+        addDaySection(k);
+      }
+    }
+
+    // Next month range — always render the range header as an anchor for
+    // tab 4, followed by any day sections >= 30 days out.
+    children.add(
+      _RangeHeader(key: tabAnchorKeys[4], text: 'Next month'),
+    );
+    if (nextMonthKeys.isEmpty) {
+      children.add(const _EmptyDayPlaceholder());
+    } else {
+      for (final k in nextMonthKeys) {
+        addDaySection(k);
+      }
+    }
+
+    // Someday — always rendered so tab 5 has a reliable anchor.
     children.add(
       _DayHeader(
         key: tabAnchorKeys[5],
@@ -208,9 +245,7 @@ class ScheduleView extends StatelessWidget {
     if (someday.isEmpty) {
       children.add(const _EmptyDayPlaceholder());
     } else {
-      for (final t in someday) {
-        children.add(buildTile(t));
-      }
+      children.add(_buildReorderableSection(someday));
     }
 
     return Column(
@@ -246,6 +281,29 @@ class _DayHeader extends StatelessWidget {
         style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w600,
           color: isToday ? theme.colorScheme.primary : null,
+        ),
+      ),
+    );
+  }
+}
+
+class _RangeHeader extends StatelessWidget {
+  final String text;
+
+  const _RangeHeader({Key? key, required this.text}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      color: theme.colorScheme.primary.withOpacity(0.08),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      child: Text(
+        text,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.primary,
         ),
       ),
     );
