@@ -6,6 +6,7 @@ import '../config.dart';
 import '../models/countdown_timer.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
+import '../utils/date_time_format.dart';
 import 'subpage_app_bar.dart';
 
 class CountdownTimerPage extends StatefulWidget {
@@ -29,6 +30,10 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   Timer? _ticker;
   bool _loading = true;
 
+  /// Bumped each time the inline draft is saved, so the composer's key changes
+  /// and it rebuilds fresh (next name + a new one-week-out date).
+  int _draftSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -48,12 +53,15 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   Future<void> _load() async {
     final loaded = await _storage.loadCountdownTimers();
     final List<CountdownTimerItem> timers;
-    if (loaded == null) {
-      // First run: seed a few example timers in development builds only.
-      timers = Config.isDev ? _devSeedTimers() : <CountdownTimerItem>[];
+    // Seed example timers in dev builds when there's nothing to show. We treat
+    // an empty list the same as a missing file so the demo timers also appear
+    // on platforms where persistence is unavailable (e.g. Flutter web/Chrome,
+    // where loading falls back to an empty list).
+    if (Config.isDev && (loaded == null || loaded.isEmpty)) {
+      timers = _devSeedTimers();
       await _storage.saveCountdownTimers(timers);
     } else {
-      timers = loaded;
+      timers = loaded ?? <CountdownTimerItem>[];
     }
     // Past timers that have the bell on should not retroactively fire.
     final now = DateTime.now();
@@ -104,18 +112,6 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
         );
       }
     }
-  }
-
-  Future<void> _addTimer() async {
-    final result = await _showEditDialog();
-    if (result == null) return;
-    setState(() {
-      _timers.add(result);
-      if (result.notifyOnZero && !result.target.isAfter(DateTime.now())) {
-        _notifySuppressed.add(result.uid);
-      }
-    });
-    await _save();
   }
 
   Future<void> _editTimer(CountdownTimerItem timer) async {
@@ -201,22 +197,20 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   Widget _buildBody(BuildContext context) {
     return ListView.builder(
       padding: const EdgeInsets.all(12),
+      // A persistent draft composer sits at index 0; timers follow it.
       itemCount: _timers.length + 1,
       itemBuilder: (context, index) {
-        if (index == _timers.length) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('New Timer'),
-                onPressed: _addTimer,
-              ),
-            ),
+        if (index == 0) {
+          return _DraftTimerComposer(
+            key: ValueKey('draft-$_draftSeq'),
+            initialName: _nextTimerName(),
+            initialTarget: DateTime.now().add(const Duration(days: 7)),
+            onSave: _saveDraft,
           );
         }
 
-        final timer = _timers[index];
+        final timerIndex = index - 1;
+        final timer = _timers[timerIndex];
         return Dismissible(
           key: ValueKey(timer.uid),
           direction: DismissDirection.endToStart,
@@ -230,11 +224,41 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
             ),
             child: const Icon(Icons.delete, color: Colors.white),
           ),
-          onDismissed: (_) => _deleteTimer(index),
+          onDismissed: (_) => _deleteTimer(timerIndex),
           child: _buildTimerCard(context, timer),
         );
       },
     );
+  }
+
+  /// The next auto-generated draft name: "Timer N", where N is one past the
+  /// highest existing "Timer <number>" label (so it never collides).
+  String _nextTimerName() {
+    final re = RegExp(r'^Timer (\d+)$');
+    var maxN = 0;
+    for (final t in _timers) {
+      final match = re.firstMatch(t.label.trim());
+      if (match != null) {
+        final n = int.tryParse(match.group(1)!) ?? 0;
+        if (n > maxN) maxN = n;
+      }
+    }
+    return 'Timer ${maxN + 1}';
+  }
+
+  /// Commits the inline draft as a new timer and resets the composer (its key
+  /// is bumped via [_draftSeq], so it rebuilds with a fresh name and date).
+  Future<void> _saveDraft(String label, DateTime target) async {
+    final trimmed = label.trim();
+    final item = CountdownTimerItem(
+      label: trimmed.isEmpty ? _nextTimerName() : trimmed,
+      target: target,
+    );
+    setState(() {
+      _timers.add(item);
+      _draftSeq++;
+    });
+    await _save();
   }
 
   Widget _buildTimerCard(BuildContext context, CountdownTimerItem timer) {
@@ -423,15 +447,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     return DateTime(year, month, day, d.hour, d.minute, d.second);
   }
 
-  String _formatTarget(DateTime d) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    final hh = d.hour.toString().padLeft(2, '0');
-    final mm = d.minute.toString().padLeft(2, '0');
-    return '${d.day} ${months[d.month - 1]} ${d.year}, $hh:$mm';
-  }
+  String _formatTarget(DateTime d) => formatTimerDateTime(d);
 }
 
 /// The same duration expressed in several units, all as decimals except
@@ -491,6 +507,137 @@ class _Breakdown {
   });
 }
 
+/// Always-present inline row at the top of the list for quickly creating a
+/// timer: a pre-filled name and a date one week out. Tweak and hit Save.
+class _DraftTimerComposer extends StatefulWidget {
+  final String initialName;
+  final DateTime initialTarget;
+  final void Function(String label, DateTime target) onSave;
+
+  const _DraftTimerComposer({
+    Key? key,
+    required this.initialName,
+    required this.initialTarget,
+    required this.onSave,
+  }) : super(key: key);
+
+  @override
+  State<_DraftTimerComposer> createState() => _DraftTimerComposerState();
+}
+
+class _DraftTimerComposerState extends State<_DraftTimerComposer> {
+  late final TextEditingController _nameController;
+  late DateTime _target;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initialName);
+    _target = widget.initialTarget;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _target,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(DateTime.now().year + 100),
+    );
+    if (date == null || !mounted) return;
+    setState(() {
+      _target = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        _target.hour,
+        _target.minute,
+      );
+    });
+  }
+
+  Future<void> _pickTime() async {
+    final time = await pickTimeOfDay(context, TimeOfDay.fromDateTime(_target));
+    if (time == null || !mounted) return;
+    setState(() {
+      _target = DateTime(
+        _target.year,
+        _target.month,
+        _target.day,
+        time.hour,
+        time.minute,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _nameController,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'New timer',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.event),
+                    label: Text(formatTimerDate(_target)),
+                    onPressed: _pickDate,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.schedule),
+                    label: Text(formatTimerTime(_target)),
+                    onPressed: _pickTime,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () =>
+                      widget.onSave(_nameController.text, _target),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Dialog used to create or edit a single timer (label + date + time).
 class _TimerEditDialog extends StatefulWidget {
   final CountdownTimerItem? existing;
@@ -529,10 +676,7 @@ class _TimerEditDialogState extends State<_TimerEditDialog> {
     );
     if (date == null || !mounted) return;
 
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_target),
-    );
+    final time = await pickTimeOfDay(context, TimeOfDay.fromDateTime(_target));
     if (time == null || !mounted) return;
 
     setState(() {
@@ -546,15 +690,7 @@ class _TimerEditDialogState extends State<_TimerEditDialog> {
     });
   }
 
-  String _formatTarget(DateTime d) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    final hh = d.hour.toString().padLeft(2, '0');
-    final mm = d.minute.toString().padLeft(2, '0');
-    return '${d.day} ${months[d.month - 1]} ${d.year}, $hh:$mm';
-  }
+  String _formatTarget(DateTime d) => formatTimerDateTime(d);
 
   @override
   Widget build(BuildContext context) {

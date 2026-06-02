@@ -25,6 +25,8 @@ void main() {
     Config.enableNotifications = true;
     Config.addNewTasksToTop = true;
     Config.defaultDelaySeconds = 7.5;
+    Config.use24HourFormat = false;
+    Config.dateFormat = 'yyyy-MM-dd';
     await Config.save();
 
     // Reset to defaults
@@ -34,6 +36,8 @@ void main() {
     Config.enableNotifications = false;
     Config.addNewTasksToTop = false;
     Config.defaultDelaySeconds = 5.0;
+    Config.use24HourFormat = true;
+    Config.dateFormat = Config.dateFormats.first;
 
     await Config.load();
 
@@ -43,6 +47,8 @@ void main() {
     expect(Config.enableNotifications, isTrue);
     expect(Config.addNewTasksToTop, isTrue);
     expect(Config.defaultDelaySeconds, 7.5);
+    expect(Config.use24HourFormat, isFalse);
+    expect(Config.dateFormat, 'yyyy-MM-dd');
   });
 }
 

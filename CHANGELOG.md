@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.70] - 2026-06-02
+- Tools menu with a Countdown tool: multiple timers that count down and keep counting up after reaching zero, with per-timer edit, zero-notification toggle, and swipe-to-delete with undo
+- countdown: always-present inline "New timer" draft at the top — pre-filled name (Timer 1, Timer 2, …) and a date one week out, with separate date and time selectors and a Save button
+- countdown: dev demo timers now also appear on web (Chrome), where local persistence is unavailable
+- settings: "24-hour time" toggle (defaults to 24-hour)
+- settings: "Date format" choice (defaults to dd.mm.yyyy)
+
 ## [0.1.69] - 2026-05-26
 - settings: "Start in schedule view" toggle (Tasks section) — launches the app directly into the calendar / schedule view
 - schedule view: long-press to reorder tasks within a day section, matching the list view's drag behavior

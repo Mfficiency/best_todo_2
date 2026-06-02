@@ -186,9 +186,13 @@ class StorageService {
   }
 
   Future<void> saveCountdownTimers(List<CountdownTimerItem> timers) async {
-    final file = await _getCountdownFile();
-    final jsonString = jsonEncode(timers.map((t) => t.toJson()).toList());
-    await file.writeAsString(jsonString, flush: true);
+    // Persistence is unavailable on platforms without a documents directory
+    // (e.g. Flutter web), so swallow failures and keep working in-memory.
+    try {
+      final file = await _getCountdownFile();
+      final jsonString = jsonEncode(timers.map((t) => t.toJson()).toList());
+      await file.writeAsString(jsonString, flush: true);
+    } catch (_) {}
   }
 
   /// Loads saved countdown timers. Returns `null` when no timers file exists
