@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -47,8 +48,9 @@ String formatTimerDate(DateTime d) {
 String formatTimerDateTime(DateTime d) =>
     '${formatTimerDate(d)}, ${formatTimerTime(d)}';
 
-/// Shows a calendar date picker that closes as soon as a day is tapped —
-/// no separate OK/Cancel step. Returns null if dismissed without a selection.
+/// Shows a calendar date picker that closes as soon as a *day* is tapped —
+/// no separate OK/Cancel step. Selecting a year or navigating months does not
+/// close it. Returns null if dismissed without a selection.
 Future<DateTime?> pickDateInstantly(BuildContext context, DateTime initial) {
   final firstDate = DateTime(2000);
   final lastDate = DateTime(DateTime.now().year + 100);
@@ -59,19 +61,58 @@ Future<DateTime?> pickDateInstantly(BuildContext context, DateTime initial) {
 
   return showDialog<DateTime>(
     context: context,
-    builder: (context) => Dialog(
+    builder: (_) => _InstantDatePicker(
+      initial: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+    ),
+  );
+}
+
+class _InstantDatePicker extends StatefulWidget {
+  final DateTime initial;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  const _InstantDatePicker({
+    required this.initial,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  @override
+  State<_InstantDatePicker> createState() => _InstantDatePickerState();
+}
+
+class _InstantDatePickerState extends State<_InstantDatePicker> {
+  // A year selection (or month navigation) fires onDisplayedMonthChanged right
+  // before onDateChanged within the same synchronous turn; a real day tap only
+  // fires onDateChanged. So we suppress closing for the remainder of any turn
+  // in which the displayed month changed.
+  bool _suppressClose = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
       child: SizedBox(
         height: 360,
         child: CalendarDatePicker(
-          initialDate: initialDate,
-          firstDate: firstDate,
-          lastDate: lastDate,
-          onDateChanged: (date) => Navigator.of(context).pop(date),
+          initialDate: widget.initial,
+          firstDate: widget.firstDate,
+          lastDate: widget.lastDate,
+          onDisplayedMonthChanged: (_) {
+            _suppressClose = true;
+            scheduleMicrotask(() => _suppressClose = false);
+          },
+          onDateChanged: (date) {
+            if (_suppressClose) return;
+            Navigator.of(context).pop(date);
+          },
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Shows a quick two-step time picker (tap an hour, then tap a minute) that

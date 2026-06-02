@@ -738,29 +738,40 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
   void _save() => widget.onSave(_nameController.text, _target);
 
   Widget _selectorsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.event),
-            label: Text(formatTimerDate(_target)),
-            onPressed: _pickDate,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.schedule),
-            label: Text(formatTimerTime(_target)),
-            onPressed: _pickTime,
-          ),
-        ),
-        const SizedBox(width: 8),
-        ElevatedButton(
-          onPressed: _save,
-          child: Text(widget.buttonLabel),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Drop the leading icons when the row is too narrow to fit them.
+        final showIcons = constraints.maxWidth >= 330;
+        Widget selector(IconData icon, String label, VoidCallback onPressed) {
+          final text = Text(label, overflow: TextOverflow.ellipsis, maxLines: 1);
+          if (showIcons) {
+            return OutlinedButton.icon(
+              icon: Icon(icon),
+              label: text,
+              onPressed: onPressed,
+            );
+          }
+          return OutlinedButton(onPressed: onPressed, child: text);
+        }
+
+        return Row(
+          children: [
+            Expanded(
+              child: selector(Icons.event, formatTimerDate(_target), _pickDate),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child:
+                  selector(Icons.schedule, formatTimerTime(_target), _pickTime),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _save,
+              child: Text(widget.buttonLabel),
+            ),
+          ],
+        );
+      },
     );
   }
 

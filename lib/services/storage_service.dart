@@ -195,6 +195,25 @@ class StorageService {
     } catch (_) {}
   }
 
+  /// Parses a decoded JSON list of countdown timers (e.g. from an imported
+  /// backup) and persists them, replacing any existing timers. Returns the
+  /// number of timers imported.
+  Future<int> importCountdownTimersFromDecoded(dynamic decoded) async {
+    if (decoded is! List) return 0;
+    final timers = <CountdownTimerItem>[];
+    for (final entry in decoded) {
+      if (entry is Map) {
+        try {
+          timers.add(CountdownTimerItem.fromJson(
+            Map<String, dynamic>.from(entry),
+          ));
+        } catch (_) {}
+      }
+    }
+    await saveCountdownTimers(timers);
+    return timers.length;
+  }
+
   /// Loads saved countdown timers. Returns `null` when no timers file exists
   /// yet, so callers can distinguish a first run from an intentionally empty
   /// list.

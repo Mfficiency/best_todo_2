@@ -1127,6 +1127,7 @@ class _HomePageState extends State<HomePage>
     final sep = Platform.pathSeparator;
     final path =
         '$directory${directory.endsWith(sep) ? '' : sep}besttodo_export_${_timestampForFilename()}.json';
+    final timers = await _storageService.loadCountdownTimers();
     final payload = <String, dynamic>{
       'export_version': 1,
       'exported_at': DateTime.now().toIso8601String(),
@@ -1136,6 +1137,8 @@ class _HomePageState extends State<HomePage>
         deletedTasks: _deletedTasks,
         dailyStatsByDay: _dailyStatsByDay,
       ),
+      'countdown_timers':
+          (timers ?? []).map((t) => t.toJson()).toList(),
     };
     final file = File(path);
     await file.writeAsString(jsonEncode(payload), flush: true);
@@ -1235,6 +1238,11 @@ class _HomePageState extends State<HomePage>
           _saveDailyStats();
         }
       }
+
+      final timersRaw = decoded['countdown_timers'];
+      if (timersRaw != null) {
+        await _storageService.importCountdownTimersFromDecoded(timersRaw);
+      }
       _updateSettings();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -1324,6 +1332,10 @@ class _HomePageState extends State<HomePage>
           _saveTasks();
           _saveDeletedTasks();
           _saveDailyStats();
+        }
+        final timersRaw = decoded['countdown_timers'];
+        if (timersRaw != null) {
+          await _storageService.importCountdownTimersFromDecoded(timersRaw);
         }
         _updateSettings();
         if (!mounted) return;

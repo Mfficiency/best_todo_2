@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.71] - 2026-06-02
+- countdown: timers are now included in the app's full export/import (backup & restore)
+- countdown: the date picker only closes when you tap a day — selecting a year or changing month keeps it open
+- countdown: the date/time selectors drop their icons on narrow screens to avoid crowding
+
 ## [0.1.70] - 2026-06-02
 - Tools menu with a Countdown tool: multiple timers that count down and keep counting up after reaching zero, with per-timer edit, zero-notification toggle, and swipe-to-delete with undo
 - countdown: always-present inline "New timer" draft at the top — pre-filled name (Timer 1, Timer 2, …) and a date one week out, with separate date and time selectors and an Add button
