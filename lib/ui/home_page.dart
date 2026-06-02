@@ -19,6 +19,7 @@ import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
+import 'countdown_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -1610,6 +1611,25 @@ class _HomePageState extends State<HomePage>
                   MaterialPageRoute(builder: (_) => const StartupTimesPage()),
                 );
               },
+            ),
+            ExpansionTile(
+              leading: const Icon(Icons.build),
+              title: const Text('Tools'),
+              childrenPadding: const EdgeInsets.only(left: 16),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.timer),
+                  title: const Text('Countdown'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CountdownTimerPage(),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),
