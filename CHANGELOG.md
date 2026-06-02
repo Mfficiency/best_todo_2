@@ -2,7 +2,9 @@
 
 ## [0.1.70] - 2026-06-02
 - Tools menu with a Countdown tool: multiple timers that count down and keep counting up after reaching zero, with per-timer edit, zero-notification toggle, and swipe-to-delete with undo
-- countdown: always-present inline "New timer" draft at the top — pre-filled name (Timer 1, Timer 2, …) and a date one week out, with separate date and time selectors and a Save button
+- countdown: always-present inline "New timer" draft at the top — pre-filled name (Timer 1, Timer 2, …) and a date one week out, with separate date and time selectors and an Add button
+- countdown: quick pickers — tapping a day (date) or a minute (time) closes the picker instantly, no OK step
+- countdown: expanded breakdown shows 3 decimals
 - countdown: dev demo timers now also appear on web (Chrome), where local persistence is unavailable
 - settings: "24-hour time" toggle (defaults to 24-hour)
 - settings: "Date format" choice (defaults to dd.mm.yyyy)

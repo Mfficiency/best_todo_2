@@ -356,12 +356,12 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
           style: Theme.of(context).textTheme.titleSmall,
         ),
         const SizedBox(height: 8),
-        _detailRow('Years', d.years.toStringAsFixed(1)),
-        _detailRow('Months', d.months.toStringAsFixed(1)),
-        _detailRow('Weeks', d.weeks.toStringAsFixed(1)),
-        _detailRow('Days', d.days.toStringAsFixed(1)),
-        _detailRow('Hours', d.hours.toStringAsFixed(1)),
-        _detailRow('Minutes', d.minutes.toStringAsFixed(1)),
+        _detailRow('Years', d.years.toStringAsFixed(3)),
+        _detailRow('Months', d.months.toStringAsFixed(3)),
+        _detailRow('Weeks', d.weeks.toStringAsFixed(3)),
+        _detailRow('Days', d.days.toStringAsFixed(3)),
+        _detailRow('Hours', d.hours.toStringAsFixed(3)),
+        _detailRow('Minutes', d.minutes.toStringAsFixed(3)),
         _detailRow('Seconds', '${d.seconds}'),
       ],
     );
@@ -627,7 +627,7 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
                 ElevatedButton(
                   onPressed: () =>
                       widget.onSave(_nameController.text, _target),
-                  child: const Text('Save'),
+                  child: const Text('Add'),
                 ),
               ],
             ),
