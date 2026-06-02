@@ -9,6 +9,10 @@ import '../services/storage_service.dart';
 import '../utils/date_time_format.dart';
 import 'subpage_app_bar.dart';
 
+/// How the timer list is ordered. [manual] is the user's drag order; the rest
+/// are sorted views that can each run ascending or descending.
+enum _SortField { manual, name, added, edited, deadline }
+
 class CountdownTimerPage extends StatefulWidget {
   const CountdownTimerPage({Key? key}) : super(key: key);
 
@@ -37,10 +41,20 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   /// uid of the timer currently being edited inline, or null when none.
   String? _editingUid;
 
+  /// Active sort. [_SortField.manual] shows the user's drag order and enables
+  /// long-press reordering; the other fields show a sorted view (no dragging).
+  _SortField _sortField = _SortField.manual;
+  bool _sortAscending = true;
+
+  /// Drives the timer list scroll; used to minimize the composer once scrolled.
+  final ScrollController _listController = ScrollController();
+  bool _composerMinimized = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _listController.addListener(_handleListScroll);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       _checkZeroNotifications();
       if (mounted) setState(() {});
@@ -50,7 +64,16 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _listController.removeListener(_handleListScroll);
+    _listController.dispose();
     super.dispose();
+  }
+
+  void _handleListScroll() {
+    final minimized = _listController.hasClients && _listController.offset > 16;
+    if (minimized != _composerMinimized) {
+      setState(() => _composerMinimized = minimized);
+    }
   }
 
   Future<void> _load() async {
@@ -131,6 +154,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     setState(() {
       if (trimmed.isNotEmpty) timer.label = trimmed;
       timer.target = target;
+      timer.editedAt = DateTime.now();
       // Re-evaluate suppression against the new target.
       _notifySuppressed.remove(timer.uid);
       if (timer.notifyOnZero && !timer.target.isAfter(DateTime.now())) {
@@ -158,7 +182,9 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     _save();
   }
 
-  void _deleteTimer(int index) {
+  void _deleteTimer(CountdownTimerItem timer) {
+    final index = _timers.indexOf(timer);
+    if (index < 0) return;
     final removed = _timers[index];
     setState(() {
       _timers.removeAt(index);
@@ -198,52 +224,163 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   }
 
   Widget _buildBody(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      // A persistent draft composer sits at index 0; timers follow it.
-      itemCount: _timers.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return _DraftTimerComposer(
+    final timers = _displayTimers();
+    final canReorder = _sortField == _SortField.manual;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: _DraftTimerComposer(
             key: ValueKey('draft-$_draftSeq'),
             initialName: _nextTimerName(),
             initialTarget: DateTime.now().add(const Duration(days: 7)),
+            compact: _composerMinimized,
             onSave: _saveDraft,
-          );
-        }
-
-        final timerIndex = index - 1;
-        final timer = _timers[timerIndex];
-
-        if (timer.uid == _editingUid) {
-          return _DraftTimerComposer(
-            key: ValueKey('edit-${timer.uid}'),
-            initialName: timer.label,
-            initialTarget: timer.target,
-            headerLabel: 'Edit timer',
-            buttonLabel: 'Save',
-            onCancel: () => setState(() => _editingUid = null),
-            onSave: (label, target) => _applyEdit(timer, label, target),
-          );
-        }
-
-        return Dismissible(
-          key: ValueKey(timer.uid),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.delete, color: Colors.white),
           ),
-          onDismissed: (_) => _deleteTimer(timerIndex),
-          child: _buildTimerCard(context, timer),
-        );
-      },
+        ),
+        _buildSortControls(context),
+        Expanded(
+          child: ReorderableListView.builder(
+            scrollController: _listController,
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            buildDefaultDragHandles: canReorder,
+            itemCount: timers.length,
+            onReorder: _onReorder,
+            itemBuilder: (context, index) {
+              final timer = timers[index];
+              return _buildTimerRow(context, timer, index);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// One row in the reorderable list: the inline editor when this timer is
+  /// being edited, otherwise a swipe-to-delete card. Keyed by uid so the
+  /// reorderable list can track it.
+  Widget _buildTimerRow(
+    BuildContext context,
+    CountdownTimerItem timer,
+    int index,
+  ) {
+    if (timer.uid == _editingUid) {
+      return _DraftTimerComposer(
+        key: ValueKey(timer.uid),
+        initialName: timer.label,
+        initialTarget: timer.target,
+        headerLabel: 'Edit timer',
+        buttonLabel: 'Save',
+        onCancel: () => setState(() => _editingUid = null),
+        onSave: (label, target) => _applyEdit(timer, label, target),
+      );
+    }
+
+    return Dismissible(
+      key: ValueKey(timer.uid),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (_) => _deleteTimer(timer),
+      child: _buildTimerCard(context, timer),
+    );
+  }
+
+  /// The timers in their current display order: the manual (drag) order, or a
+  /// sorted copy when a sort field is active.
+  List<CountdownTimerItem> _displayTimers() {
+    if (_sortField == _SortField.manual) return _timers;
+    final sorted = [..._timers];
+    int compare(CountdownTimerItem a, CountdownTimerItem b) {
+      switch (_sortField) {
+        case _SortField.name:
+          return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+        case _SortField.added:
+          return a.createdAt.compareTo(b.createdAt);
+        case _SortField.edited:
+          return a.editedAt.compareTo(b.editedAt);
+        case _SortField.deadline:
+          return a.target.compareTo(b.target);
+        case _SortField.manual:
+          return 0;
+      }
+    }
+
+    sorted.sort(compare);
+    if (!_sortAscending) {
+      return sorted.reversed.toList();
+    }
+    return sorted;
+  }
+
+  void _onReorder(int oldIndex, int newIndex) {
+    if (_sortField != _SortField.manual) return;
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final item = _timers.removeAt(oldIndex);
+      _timers.insert(newIndex, item);
+    });
+    _save();
+  }
+
+  Widget _buildSortControls(BuildContext context) {
+    Widget chip(_SortField field, String label) {
+      final active = _sortField == field;
+      final showArrow = active && field != _SortField.manual;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: FilterChip(
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label),
+              if (showArrow)
+                Icon(
+                  _sortAscending
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                  size: 16,
+                ),
+            ],
+          ),
+          selected: active,
+          onSelected: (_) {
+            setState(() {
+              if (field == _SortField.manual) {
+                _sortField = _SortField.manual;
+              } else if (_sortField == field) {
+                _sortAscending = !_sortAscending;
+              } else {
+                _sortField = field;
+                _sortAscending = true;
+              }
+            });
+          },
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          chip(_SortField.name, 'Name'),
+          chip(_SortField.added, 'Added'),
+          chip(_SortField.edited, 'Edited'),
+          chip(_SortField.deadline, 'Deadline'),
+          chip(_SortField.manual, 'Manual'),
+        ],
+      ),
     );
   }
 
@@ -534,6 +671,10 @@ class _DraftTimerComposer extends StatefulWidget {
   final String buttonLabel;
   final VoidCallback? onCancel;
 
+  /// When true, the date/time selectors are collapsed and the action button
+  /// moves up beside the name — a slimmer footprint while scrolling the list.
+  final bool compact;
+
   const _DraftTimerComposer({
     Key? key,
     required this.initialName,
@@ -542,6 +683,7 @@ class _DraftTimerComposer extends StatefulWidget {
     this.headerLabel = 'New timer',
     this.buttonLabel = 'Add',
     this.onCancel,
+    this.compact = false,
   }) : super(key: key);
 
   @override
@@ -593,70 +735,86 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
     });
   }
 
+  void _save() => widget.onSave(_nameController.text, _target);
+
   @override
   Widget build(BuildContext context) {
+    final compact = widget.compact;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _nameController,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      labelText: 'Name',
-                      isDense: true,
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        alignment: Alignment.topCenter,
+        curve: Curves.easeInOut,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _nameController,
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                        isDense: true,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  widget.headerLabel,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                if (widget.onCancel != null)
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    tooltip: 'Cancel',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: widget.onCancel,
+                  const SizedBox(width: 12),
+                  Text(
+                    widget.headerLabel,
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
+                  if (widget.onCancel != null)
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Cancel',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: widget.onCancel,
+                    ),
+                  if (compact) ...[
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _save,
+                      child: Text(widget.buttonLabel),
+                    ),
+                  ],
+                ],
+              ),
+              if (!compact) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.event),
+                        label: Text(formatTimerDate(_target)),
+                        onPressed: _pickDate,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.schedule),
+                        label: Text(formatTimerTime(_target)),
+                        onPressed: _pickTime,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _save,
+                      child: Text(widget.buttonLabel),
+                    ),
+                  ],
+                ),
               ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.event),
-                    label: Text(formatTimerDate(_target)),
-                    onPressed: _pickDate,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.schedule),
-                    label: Text(formatTimerTime(_target)),
-                    onPressed: _pickTime,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () =>
-                      widget.onSave(_nameController.text, _target),
-                  child: Text(widget.buttonLabel),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
