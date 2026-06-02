@@ -104,6 +104,22 @@ class Config {
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
 
+  /// If true, times are displayed and picked in 24-hour notation.
+  static bool use24HourFormat = true;
+
+  /// Available date display formats; the first entry is the default.
+  static const List<String> dateFormats = [
+    'dd.MM.yy',
+    'dd.MM.yyyy',
+    'dd/MM/yyyy',
+    'MM/dd/yyyy',
+    'yyyy-MM-dd',
+    'd MMM yyyy',
+  ];
+
+  /// Date display format, one of [dateFormats]. Defaults to dd.mm.yy.
+  static String dateFormat = dateFormats.first;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -136,6 +152,8 @@ class Config {
       'useIconTabs': useIconTabs,
       'showWidgetProgressLine': showWidgetProgressLine,
       'addNewTasksToTop': addNewTasksToTop,
+      'use24HourFormat': use24HourFormat,
+      'dateFormat': dateFormat,
       'defaultDelaySeconds': defaultDelaySeconds,
       'startInScheduleView': startInScheduleView,
     };
@@ -162,6 +180,11 @@ class Config {
     showWidgetProgressLine =
         data['showWidgetProgressLine'] ?? showWidgetProgressLine;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    use24HourFormat = data['use24HourFormat'] ?? use24HourFormat;
+    final savedDateFormat = data['dateFormat'] as String?;
+    if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {
+      dateFormat = savedDateFormat;
+    }
     defaultDelaySeconds =
         (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;

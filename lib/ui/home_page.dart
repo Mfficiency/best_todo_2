@@ -19,6 +19,7 @@ import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
+import 'countdown_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -1126,6 +1127,7 @@ class _HomePageState extends State<HomePage>
     final sep = Platform.pathSeparator;
     final path =
         '$directory${directory.endsWith(sep) ? '' : sep}besttodo_export_${_timestampForFilename()}.json';
+    final timers = await _storageService.loadCountdownTimers();
     final payload = <String, dynamic>{
       'export_version': 1,
       'exported_at': DateTime.now().toIso8601String(),
@@ -1135,6 +1137,8 @@ class _HomePageState extends State<HomePage>
         deletedTasks: _deletedTasks,
         dailyStatsByDay: _dailyStatsByDay,
       ),
+      'countdown_timers':
+          (timers ?? []).map((t) => t.toJson()).toList(),
     };
     final file = File(path);
     await file.writeAsString(jsonEncode(payload), flush: true);
@@ -1234,6 +1238,11 @@ class _HomePageState extends State<HomePage>
           _saveDailyStats();
         }
       }
+
+      final timersRaw = decoded['countdown_timers'];
+      if (timersRaw != null) {
+        await _storageService.importCountdownTimersFromDecoded(timersRaw);
+      }
       _updateSettings();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -1323,6 +1332,10 @@ class _HomePageState extends State<HomePage>
           _saveTasks();
           _saveDeletedTasks();
           _saveDailyStats();
+        }
+        final timersRaw = decoded['countdown_timers'];
+        if (timersRaw != null) {
+          await _storageService.importCountdownTimersFromDecoded(timersRaw);
         }
         _updateSettings();
         if (!mounted) return;
@@ -1610,6 +1623,25 @@ class _HomePageState extends State<HomePage>
                   MaterialPageRoute(builder: (_) => const StartupTimesPage()),
                 );
               },
+            ),
+            ExpansionTile(
+              leading: const Icon(Icons.build),
+              title: const Text('Tools'),
+              childrenPadding: const EdgeInsets.only(left: 16),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.timer),
+                  title: const Text('Countdown'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CountdownTimerPage(),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),
