@@ -11,7 +11,7 @@
 - countdown: expanded breakdown shows 3 decimals
 - countdown: dev demo timers now also appear on web (Chrome), where local persistence is unavailable
 - settings: "24-hour time" toggle (defaults to 24-hour)
-- settings: "Date format" choice (defaults to dd.mm.yyyy)
+- settings: "Date format" choice (defaults to dd.mm.yy)
 
 ## [0.1.69] - 2026-05-26
 - settings: "Start in schedule view" toggle (Tasks section) — launches the app directly into the calendar / schedule view

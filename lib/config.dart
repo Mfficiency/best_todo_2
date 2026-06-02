@@ -109,6 +109,7 @@ class Config {
 
   /// Available date display formats; the first entry is the default.
   static const List<String> dateFormats = [
+    'dd.MM.yy',
     'dd.MM.yyyy',
     'dd/MM/yyyy',
     'MM/dd/yyyy',
@@ -116,7 +117,7 @@ class Config {
     'd MMM yyyy',
   ];
 
-  /// Date display format, one of [dateFormats]. Defaults to dd.mm.yyyy.
+  /// Date display format, one of [dateFormats]. Defaults to dd.mm.yy.
   static String dateFormat = dateFormats.first;
 
   static const _settingsFileName = 'settings.json';

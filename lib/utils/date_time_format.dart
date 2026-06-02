@@ -25,7 +25,10 @@ String formatTimerDate(DateTime d) {
   final dd = d.day.toString().padLeft(2, '0');
   final mm = d.month.toString().padLeft(2, '0');
   final yyyy = d.year.toString();
+  final yy = (d.year % 100).toString().padLeft(2, '0');
   switch (Config.dateFormat) {
+    case 'dd.MM.yy':
+      return '$dd.$mm.$yy';
     case 'dd/MM/yyyy':
       return '$dd/$mm/$yyyy';
     case 'MM/dd/yyyy':
