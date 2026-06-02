@@ -16,6 +16,7 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'countdown_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -1036,6 +1037,18 @@ class _HomePageState extends State<HomePage>
                 Navigator.pop(context);
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const StartupTimesPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer),
+              title: const Text('Countdown Timer'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const CountdownTimerPage(),
+                  ),
                 );
               },
             ),
