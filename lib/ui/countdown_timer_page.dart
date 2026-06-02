@@ -543,12 +543,7 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
   }
 
   Future<void> _pickDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _target,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(DateTime.now().year + 100),
-    );
+    final date = await pickDateInstantly(context, _target);
     if (date == null || !mounted) return;
     setState(() {
       _target = DateTime(
@@ -668,12 +663,7 @@ class _TimerEditDialogState extends State<_TimerEditDialog> {
   }
 
   Future<void> _pickDateTime() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _target,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(DateTime.now().year + 100),
-    );
+    final date = await pickDateInstantly(context, _target);
     if (date == null || !mounted) return;
 
     final time = await pickTimeOfDay(context, TimeOfDay.fromDateTime(_target));
