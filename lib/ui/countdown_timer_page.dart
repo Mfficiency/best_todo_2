@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -33,6 +33,9 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   /// Bumped each time the inline draft is saved, so the composer's key changes
   /// and it rebuilds fresh (next name + a new one-week-out date).
   int _draftSeq = 0;
+
+  /// uid of the timer currently being edited inline, or null when none.
+  String? _editingUid;
 
   @override
   void initState() {
@@ -114,17 +117,26 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     }
   }
 
-  Future<void> _editTimer(CountdownTimerItem timer) async {
-    final result = await _showEditDialog(existing: timer);
-    if (result == null) return;
+  /// Switches the given timer's row into the inline editor (same UI as adding).
+  void _editTimer(CountdownTimerItem timer) {
+    setState(() => _editingUid = timer.uid);
+  }
+
+  Future<void> _applyEdit(
+    CountdownTimerItem timer,
+    String label,
+    DateTime target,
+  ) async {
+    final trimmed = label.trim();
     setState(() {
-      timer.label = result.label;
-      timer.target = result.target;
+      if (trimmed.isNotEmpty) timer.label = trimmed;
+      timer.target = target;
       // Re-evaluate suppression against the new target.
       _notifySuppressed.remove(timer.uid);
       if (timer.notifyOnZero && !timer.target.isAfter(DateTime.now())) {
         _notifySuppressed.add(timer.uid);
       }
+      _editingUid = null;
     });
     await _save();
   }
@@ -175,15 +187,6 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       );
   }
 
-  Future<CountdownTimerItem?> _showEditDialog({
-    CountdownTimerItem? existing,
-  }) {
-    return showDialog<CountdownTimerItem>(
-      context: context,
-      builder: (_) => _TimerEditDialog(existing: existing),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,6 +214,19 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
 
         final timerIndex = index - 1;
         final timer = _timers[timerIndex];
+
+        if (timer.uid == _editingUid) {
+          return _DraftTimerComposer(
+            key: ValueKey('edit-${timer.uid}'),
+            initialName: timer.label,
+            initialTarget: timer.target,
+            headerLabel: 'Edit timer',
+            buttonLabel: 'Save',
+            onCancel: () => setState(() => _editingUid = null),
+            onSave: (label, target) => _applyEdit(timer, label, target),
+          );
+        }
+
         return Dismissible(
           key: ValueKey(timer.uid),
           direction: DismissDirection.endToStart,
@@ -507,18 +523,25 @@ class _Breakdown {
   });
 }
 
-/// Always-present inline row at the top of the list for quickly creating a
-/// timer: a pre-filled name and a date one week out. Tweak and hit Save.
+/// Inline row for creating or editing a timer: a name plus separate date and
+/// time selectors. Used both for the always-present "add" draft at the top of
+/// the list and, with [onCancel], for editing an existing timer in place.
 class _DraftTimerComposer extends StatefulWidget {
   final String initialName;
   final DateTime initialTarget;
   final void Function(String label, DateTime target) onSave;
+  final String headerLabel;
+  final String buttonLabel;
+  final VoidCallback? onCancel;
 
   const _DraftTimerComposer({
     Key? key,
     required this.initialName,
     required this.initialTarget,
     required this.onSave,
+    this.headerLabel = 'New timer',
+    this.buttonLabel = 'Add',
+    this.onCancel,
   }) : super(key: key);
 
   @override
@@ -595,9 +618,16 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'New timer',
+                  widget.headerLabel,
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
+                if (widget.onCancel != null)
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Cancel',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: widget.onCancel,
+                  ),
               ],
             ),
             const SizedBox(height: 10),
@@ -622,108 +652,13 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
                 ElevatedButton(
                   onPressed: () =>
                       widget.onSave(_nameController.text, _target),
-                  child: const Text('Add'),
+                  child: Text(widget.buttonLabel),
                 ),
               ],
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Dialog used to create or edit a single timer (label + date + time).
-class _TimerEditDialog extends StatefulWidget {
-  final CountdownTimerItem? existing;
-
-  const _TimerEditDialog({this.existing});
-
-  @override
-  State<_TimerEditDialog> createState() => _TimerEditDialogState();
-}
-
-class _TimerEditDialogState extends State<_TimerEditDialog> {
-  late final TextEditingController _labelController;
-  late DateTime _target;
-
-  @override
-  void initState() {
-    super.initState();
-    _labelController =
-        TextEditingController(text: widget.existing?.label ?? '');
-    _target = widget.existing?.target ??
-        DateTime.now().add(const Duration(days: 1));
-  }
-
-  @override
-  void dispose() {
-    _labelController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickDateTime() async {
-    final date = await pickDateInstantly(context, _target);
-    if (date == null || !mounted) return;
-
-    final time = await pickTimeOfDay(context, TimeOfDay.fromDateTime(_target));
-    if (time == null || !mounted) return;
-
-    setState(() {
-      _target = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      );
-    });
-  }
-
-  String _formatTarget(DateTime d) => formatTimerDateTime(d);
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.existing == null ? 'New Timer' : 'Edit Timer'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _labelController,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              hintText: 'e.g. Birthday',
-            ),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.event),
-            label: Text(_formatTarget(_target)),
-            onPressed: _pickDateTime,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final result = CountdownTimerItem(
-              uid: widget.existing?.uid,
-              label: _labelController.text.trim(),
-              target: _target,
-              notifyOnZero: widget.existing?.notifyOnZero ?? false,
-            );
-            Navigator.of(context).pop(result);
-          },
-          child: const Text('Save'),
-        ),
-      ],
     );
   }
 }
