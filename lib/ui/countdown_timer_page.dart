@@ -737,84 +737,84 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
 
   void _save() => widget.onSave(_nameController.text, _target);
 
+  Widget _selectorsRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.event),
+            label: Text(formatTimerDate(_target)),
+            onPressed: _pickDate,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.schedule),
+            label: Text(formatTimerTime(_target)),
+            onPressed: _pickTime,
+          ),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton(
+          onPressed: _save,
+          child: Text(widget.buttonLabel),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final compact = widget.compact;
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
+      margin: EdgeInsets.symmetric(vertical: compact ? 3 : 6),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: AnimatedSize(
         duration: const Duration(milliseconds: 200),
         alignment: Alignment.topCenter,
         curve: Curves.easeInOut,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _nameController,
-                      textInputAction: TextInputAction.done,
-                      decoration: const InputDecoration(
-                        labelText: 'Name',
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    widget.headerLabel,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  if (widget.onCancel != null)
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      tooltip: 'Cancel',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: widget.onCancel,
-                    ),
-                  if (compact) ...[
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _save,
-                      child: Text(widget.buttonLabel),
-                    ),
-                  ],
-                ],
-              ),
-              if (!compact) ...[
-                const SizedBox(height: 10),
-                Row(
+          padding: compact
+              ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
+              : const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          // Minimized: just the date/time selectors and the action button.
+          child: compact
+              ? _selectorsRow()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.event),
-                        label: Text(formatTimerDate(_target)),
-                        onPressed: _pickDate,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _nameController,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Name',
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          widget.headerLabel,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        if (widget.onCancel != null)
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: 'Cancel',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: widget.onCancel,
+                          ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.schedule),
-                        label: Text(formatTimerTime(_target)),
-                        onPressed: _pickTime,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _save,
-                      child: Text(widget.buttonLabel),
-                    ),
+                    const SizedBox(height: 10),
+                    _selectorsRow(),
                   ],
                 ),
-              ],
-            ],
-          ),
         ),
       ),
     );
