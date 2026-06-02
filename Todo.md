@@ -9,6 +9,14 @@
 - send emails
 - send in app to each other
 - add more settings to controll the days of the week on the swiping motion and different icons and the cancel color etc
+- search function should also be able to show when you type a date and it should show items from the dates around it as well, it should prioritize the tiltel but also look in the description
+- have extra function for the countdown timer "when is"
+  - this will show you the closest round numbers, when they fall and the option to send you a reminder
+- add another tool just as a test the "chronize" tool
+  - it list all the tasks from the task list but on a 24hr calendar view and on the right hand side you have 3 sliders, one for the hour, day and month, so you can scroll the list for fine detail, hour roller for going 3 days in one top to bottom scroll, 15 days in a top to bottom scroll and 12 months in a top to bottom scroll.
+- add a sync function with google calendars
+- add clever filter functions to sort and filter all the timers and events
+- add optional week numbers to the date selectors everythere
 
 - Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
 - Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).

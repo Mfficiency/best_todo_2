@@ -54,7 +54,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _useIconTabs = Config.useIconTabs;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
+  bool _use24HourFormat = Config.use24HourFormat;
+  String _dateFormat = Config.dateFormat;
   int _startTabIndex = Config.startTabIndex;
+  bool _startInScheduleView = Config.startInScheduleView;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
   bool _quietHoursEnabled = Config.quietHoursEnabled;
@@ -71,7 +74,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _useIconTabs = Config.useIconTabs;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _addNewTasksToTop = Config.addNewTasksToTop;
+    _use24HourFormat = Config.use24HourFormat;
+    _dateFormat = Config.dateFormat;
     _startTabIndex = Config.startTabIndex;
+    _startInScheduleView = Config.startInScheduleView;
     _defaultDelaySeconds = Config.defaultDelaySeconds;
     _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
     _quietHoursEnabled = Config.quietHoursEnabled;
@@ -796,6 +802,39 @@ class _SettingsPageState extends State<SettingsPage> {
                           widget.onSettingsChanged?.call();
                         },
                       ),
+                      SwitchListTile(
+                        title: const Text('24-hour time'),
+                        subtitle: const Text(
+                            'Turn off for 12-hour AM/PM time'),
+                        value: _use24HourFormat,
+                        onChanged: (val) async {
+                          setState(() => _use24HourFormat = val);
+                          Config.use24HourFormat = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      ListTile(
+                        title: const Text('Date format'),
+                        trailing: DropdownButton<String>(
+                          value: _dateFormat,
+                          items: Config.dateFormats
+                              .map(
+                                (f) => DropdownMenuItem<String>(
+                                  value: f,
+                                  child: Text(f.toLowerCase()),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) async {
+                            if (val == null) return;
+                            setState(() => _dateFormat = val);
+                            Config.dateFormat = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
+                      ),
                     ],
                   ),
                   _buildSection(
@@ -867,6 +906,18 @@ class _SettingsPageState extends State<SettingsPage> {
                             widget.onSettingsChanged?.call();
                           },
                         ),
+                      ),
+                      SwitchListTile(
+                        title: const Text('Start in schedule view'),
+                        subtitle: const Text(
+                            'Open the calendar / schedule view on launch instead of the tab list'),
+                        value: _startInScheduleView,
+                        onChanged: (val) async {
+                          setState(() => _startInScheduleView = val);
+                          Config.startInScheduleView = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
                       ),
                     ],
                   ),

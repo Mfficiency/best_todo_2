@@ -1,3 +1,36 @@
+## 2026-06-02T18:51:47.802086Z | branch: dev | source: ecd3964
+
+- Folder: `docs/screenshots/home/20260602-185146-ecd3964`
+
+### Home
+![2026-06-02T18:51:47.802086Z - dev - home](docs/screenshots/home/20260602-185146-ecd3964/home_page.png)
+
+### Menu Open
+![2026-06-02T18:51:47.802086Z - dev - menu](docs/screenshots/home/20260602-185146-ecd3964/menu_open.png)
+
+### Settings
+![2026-06-02T18:51:47.802086Z - dev - settings](docs/screenshots/home/20260602-185146-ecd3964/settings_page.png)
+
+### Your Stats
+![2026-06-02T18:51:47.802086Z - dev - stats](docs/screenshots/home/20260602-185146-ecd3964/your_stats_page.png)
+
+---
+
+## 2026-05-24T08:09:15.109871Z | branch: dev | source: 083a9f1
+
+- Folder: `docs/screenshots/home/20260524-080914-083a9f1`
+
+### Home
+![2026-05-24T08:09:15.109871Z - dev - home](docs/screenshots/home/20260524-080914-083a9f1/home_page.png)
+
+### Menu Open
+![2026-05-24T08:09:15.109871Z - dev - menu](docs/screenshots/home/20260524-080914-083a9f1/menu_open.png)
+
+### Settings
+![2026-05-24T08:09:15.109871Z - dev - settings](docs/screenshots/home/20260524-080914-083a9f1/settings_page.png)
+
+### Your Stats
+![2026-05-24T08:09:15.109871Z - dev - stats](docs/screenshots/home/20260524-080914-083a9f1/your_stats_page.png)
 ## 2026-05-17T11:36:04.214611Z | branch: staging | source: b3228b1
 
 - Folder: `docs/screenshots/home/20260517-113603-b3228b1`

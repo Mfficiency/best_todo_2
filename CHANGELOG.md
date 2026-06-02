@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.71] - 2026-06-02
+- countdown: timers are now included in the app's full export/import (backup & restore)
+- countdown: the date picker only closes when you tap a day — selecting a year or changing month keeps it open
+- countdown: the date/time selectors drop their icons on narrow screens to avoid crowding
+- countdown: the date picker grid now starts the week on Monday, with the Saturday/Sunday columns tinted grey
+
+## [0.1.70] - 2026-06-02
+- Tools menu with a Countdown tool: multiple timers that count down and keep counting up after reaching zero, with per-timer edit, zero-notification toggle, and swipe-to-delete with undo
+- countdown: always-present inline "New timer" draft at the top — pre-filled name (Timer 1, Timer 2, …) and a date one week out, with separate date and time selectors and an Add button
+- countdown: editing a timer uses the same inline form as adding (edit in place, Save/Cancel)
+- countdown: long-press a timer to drag it to a new spot (manual order, saved)
+- countdown: sort controls — Name, Added, Edited, Deadline (each ascending/descending) plus Manual to return to your drag order
+- countdown: the Add-timer form minimizes as you scroll down the list
+- countdown: quick pickers, no OK step — the date picker closes when you tap a day; the time picker is an analog clock dial that closes once you set the minute (with a "Minutes" button to jump to minutes when the hour is already right)
+- countdown: expanded breakdown shows 3 decimals
+- countdown: dev demo timers now also appear on web (Chrome), where local persistence is unavailable
+- settings: "24-hour time" toggle (defaults to 24-hour)
+- settings: "Date format" choice (defaults to dd.mm.yy)
+
+## [0.1.69] - 2026-05-26
+- settings: "Start in schedule view" toggle (Tasks section) — launches the app directly into the calendar / schedule view
+- schedule view: long-press to reorder tasks within a day section, matching the list view's drag behavior
+- schedule view: Next week / Next month / Future tabs always scroll to a permanent range header, so the buttons work like Tomorrow even when those ranges are empty
+
+## [0.1.68] - 2026-05-24
+- schedule view: app bar toggle between the existing tab list and a Google-Calendar-style schedule — one long scrollable list grouped by day, with tabs acting as quick-scroll anchors
+- dev seed: 20 future-dated tasks spread from tomorrow through ~2 months out so the schedule view and the next-week / next-month tabs always have data
+
+## [0.1.67] - 2026-05-24
+- Deleted Items: distinguish auto-deleted (done tasks swept on day change) from manually deleted with an "Auto-deleted:" label
+
 ## [0.1.66] - 2026-05-17
 - SMS report: completion-rate threshold — send only on days you fall below a configurable %, for social accountability
 - SMS report: compact, human-readable diagnostic logging (one summary line per run instead of eight)

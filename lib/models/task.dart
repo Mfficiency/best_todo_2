@@ -16,6 +16,7 @@ class Task {
   DateTime? rescheduledAt;
   DateTime? dueDate;
   DateTime? deletedAt;
+  bool autoDeleted;
   bool isDone;
   int? listRanking;
   bool isRecurring;
@@ -36,6 +37,7 @@ class Task {
     this.rescheduledAt,
     this.dueDate,
     this.deletedAt,
+    this.autoDeleted = false,
     this.isDone = false,
     this.listRanking,
     this.isRecurring = false,
@@ -74,6 +76,7 @@ class Task {
       deletedAt: json['deletedAt'] != null
           ? DateTime.parse(json['deletedAt'] as String)
           : null,
+      autoDeleted: json['autoDeleted'] as bool? ?? false,
       isDone: json['isDone'] as bool? ?? false,
       listRanking: json['listRanking'] as int?,
       isRecurring: json['isRecurring'] as bool? ?? false,
@@ -98,6 +101,7 @@ class Task {
         'rescheduledAt': rescheduledAt?.toIso8601String(),
         'dueDate': dueDate?.toIso8601String(),
         'deletedAt': deletedAt?.toIso8601String(),
+        'autoDeleted': autoDeleted,
         'isDone': isDone,
         if (listRanking != null) 'listRanking': listRanking,
         'isRecurring': isRecurring,

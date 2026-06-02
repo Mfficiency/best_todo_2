@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../models/countdown_timer.dart';
 import '../models/daily_task_stats.dart';
 import '../models/task.dart';
 
@@ -25,6 +26,7 @@ class StorageService {
   static const _deletedFileName = 'deleted_tasks.json';
   static const _dailyStatsFileName = 'daily_task_stats.json';
   static const _dateFileName = 'last_opened.txt';
+  static const _countdownFileName = 'countdown_timers.json';
   static const _maxDeletedTasks = 100;
   static const int exportVersion = 2;
 
@@ -175,6 +177,59 @@ class StorageService {
       return {for (final item in values) item.dayKey: item};
     } catch (_) {
       return <String, DailyTaskStats>{};
+    }
+  }
+
+  Future<File> _getCountdownFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_countdownFileName');
+  }
+
+  Future<void> saveCountdownTimers(List<CountdownTimerItem> timers) async {
+    // Persistence is unavailable on platforms without a documents directory
+    // (e.g. Flutter web), so swallow failures and keep working in-memory.
+    try {
+      final file = await _getCountdownFile();
+      final jsonString = jsonEncode(timers.map((t) => t.toJson()).toList());
+      await file.writeAsString(jsonString, flush: true);
+    } catch (_) {}
+  }
+
+  /// Parses a decoded JSON list of countdown timers (e.g. from an imported
+  /// backup) and persists them, replacing any existing timers. Returns the
+  /// number of timers imported.
+  Future<int> importCountdownTimersFromDecoded(dynamic decoded) async {
+    if (decoded is! List) return 0;
+    final timers = <CountdownTimerItem>[];
+    for (final entry in decoded) {
+      if (entry is Map) {
+        try {
+          timers.add(CountdownTimerItem.fromJson(
+            Map<String, dynamic>.from(entry),
+          ));
+        } catch (_) {}
+      }
+    }
+    await saveCountdownTimers(timers);
+    return timers.length;
+  }
+
+  /// Loads saved countdown timers. Returns `null` when no timers file exists
+  /// yet, so callers can distinguish a first run from an intentionally empty
+  /// list.
+  Future<List<CountdownTimerItem>?> loadCountdownTimers() async {
+    try {
+      final file = await _getCountdownFile();
+      if (!await file.exists()) {
+        return null;
+      }
+      final contents = await file.readAsString();
+      final List<dynamic> data = jsonDecode(contents);
+      return data
+          .map((e) => CountdownTimerItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return <CountdownTimerItem>[];
     }
   }
 
