@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -91,6 +93,8 @@ class _InstantTimePicker extends StatefulWidget {
 }
 
 class _InstantTimePickerState extends State<_InstantTimePicker> {
+  static const double _dialSize = 220;
+
   late int _hour; // 0-23
   late int _minute; // 0-59
   _TimePickStep _step = _TimePickStep.hour;
@@ -104,128 +108,267 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
     _minute = widget.initial.minute;
   }
 
-  void _selectHour(int hour24) {
-    setState(() {
-      _hour = hour24;
-      _step = _TimePickStep.minute;
-    });
+  /// Advances hour -> minute, or returns the chosen time once a minute is set.
+  void _commitStep() {
+    if (_step == _TimePickStep.hour) {
+      setState(() => _step = _TimePickStep.minute);
+    } else {
+      Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: _minute));
+    }
   }
 
-  void _selectMinute(int minute) {
-    Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: minute));
+  /// Maps a touch point on the dial to an hour or minute value.
+  void _updateFromPosition(Offset p) {
+    const center = Offset(_dialSize / 2, _dialSize / 2);
+    final v = p - center;
+    var ang = math.atan2(v.dy, v.dx) + math.pi / 2; // 0 at top, clockwise
+    if (ang < 0) ang += 2 * math.pi;
+
+    if (_step == _TimePickStep.minute) {
+      final m = (ang / (2 * math.pi) * 60).round() % 60;
+      if (m != _minute) setState(() => _minute = m);
+      return;
+    }
+
+    final pos = (ang / (2 * math.pi) * 12).round() % 12; // 0..11, 0 = top
+    int h;
+    if (_use24) {
+      final inner = v.distance < _dialSize / 2 * 0.66;
+      if (inner) {
+        h = pos == 0 ? 0 : pos + 12; // 00, 13..23
+      } else {
+        h = pos == 0 ? 12 : pos; // 12, 1..11
+      }
+    } else {
+      final h12 = pos == 0 ? 12 : pos;
+      h = (h12 % 12) + (_hour >= 12 ? 12 : 0);
+    }
+    if (h != _hour) setState(() => _hour = h);
   }
 
-  Widget _cell(String label, bool selected, VoidCallback onTap) {
+  String _hourLabel() {
+    if (_use24) return _hour.toString().padLeft(2, '0');
+    return (_hour % 12 == 0 ? 12 : _hour % 12).toString();
+  }
+
+  Widget _headerSegment(String text, bool active, VoidCallback onTap) {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: selected ? scheme.primaryContainer : null,
+          color: active ? scheme.primaryContainer : null,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          label,
+          text,
           style: TextStyle(
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            color: selected ? scheme.onPrimaryContainer : null,
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+            color: active ? scheme.onPrimaryContainer : null,
           ),
         ),
       ),
     );
   }
 
-  Widget _grid(List<Widget> cells) {
-    return GridView.count(
-      crossAxisCount: 6,
-      mainAxisSpacing: 4,
-      crossAxisSpacing: 4,
-      childAspectRatio: 1.4,
-      children: cells,
-    );
-  }
-
-  Widget _buildHourStep() {
-    if (_use24) {
-      return _grid([
-        for (var h = 0; h < 24; h++)
-          _cell(h.toString().padLeft(2, '0'), h == _hour, () => _selectHour(h)),
-      ]);
-    }
+  Widget _amPmToggle() {
     final isPm = _hour >= 12;
-    final currentHour12 = _hour % 12 == 0 ? 12 : _hour % 12;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ChoiceChip(
-                label: const Text('AM'),
-                selected: !isPm,
-                onSelected: (_) => setState(() {
-                  if (isPm) _hour -= 12;
-                }),
-              ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('PM'),
-                selected: isPm,
-                onSelected: (_) => setState(() {
-                  if (!isPm) _hour += 12;
-                }),
-              ),
-            ],
-          ),
+        ChoiceChip(
+          label: const Text('AM'),
+          selected: !isPm,
+          onSelected: (_) => setState(() {
+            if (isPm) _hour -= 12;
+          }),
         ),
-        Expanded(
-          child: _grid([
-            for (var h = 1; h <= 12; h++)
-              _cell(
-                h.toString(),
-                h == currentHour12,
-                () => _selectHour((h % 12) + (isPm ? 12 : 0)),
-              ),
-          ]),
+        const SizedBox(height: 4),
+        ChoiceChip(
+          label: const Text('PM'),
+          selected: isPm,
+          onSelected: (_) => setState(() {
+            if (!isPm) _hour += 12;
+          }),
         ),
       ],
     );
-  }
-
-  Widget _buildMinuteStep() {
-    return _grid([
-      for (var m = 0; m < 60; m++)
-        _cell(m.toString().padLeft(2, '0'), m == _minute, () => _selectMinute(m)),
-    ]);
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hourActive = _step == _TimePickStep.hour;
     return AlertDialog(
-      title: Text(
-        _step == _TimePickStep.hour ? 'Select hour' : 'Select minute',
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      title: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _headerSegment(_hourLabel(), hourActive,
+                () => setState(() => _step = _TimePickStep.hour)),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text(':', style: TextStyle(fontSize: 30)),
+            ),
+            _headerSegment(_minute.toString().padLeft(2, '0'), !hourActive,
+                () => setState(() => _step = _TimePickStep.minute)),
+            if (!_use24) ...[
+              const SizedBox(width: 12),
+              _amPmToggle(),
+            ],
+          ],
+        ),
       ),
       content: SizedBox(
-        width: 320,
-        height: 280,
-        child: _step == _TimePickStep.hour
-            ? _buildHourStep()
-            : _buildMinuteStep(),
+        width: _dialSize,
+        height: _dialSize,
+        child: GestureDetector(
+          onTapDown: (d) => _updateFromPosition(d.localPosition),
+          onTapUp: (d) {
+            _updateFromPosition(d.localPosition);
+            _commitStep();
+          },
+          onPanStart: (d) => _updateFromPosition(d.localPosition),
+          onPanUpdate: (d) => _updateFromPosition(d.localPosition),
+          onPanEnd: (_) => _commitStep(),
+          child: CustomPaint(
+            painter: _ClockPainter(
+              step: _step,
+              hour: _hour,
+              minute: _minute,
+              use24: _use24,
+              scheme: theme.colorScheme,
+              textStyle: theme.textTheme.bodyMedium ?? const TextStyle(),
+            ),
+          ),
+        ),
       ),
       actions: [
-        if (_step == _TimePickStep.minute)
-          TextButton(
-            onPressed: () => setState(() => _step = _TimePickStep.hour),
-            child: const Text('Back'),
-          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
+        if (hourActive)
+          FilledButton(
+            onPressed: () => setState(() => _step = _TimePickStep.minute),
+            child: const Text('Minutes'),
+          ),
       ],
     );
   }
+}
+
+class _ClockPainter extends CustomPainter {
+  final _TimePickStep step;
+  final int hour;
+  final int minute;
+  final bool use24;
+  final ColorScheme scheme;
+  final TextStyle textStyle;
+
+  _ClockPainter({
+    required this.step,
+    required this.hour,
+    required this.minute,
+    required this.use24,
+    required this.scheme,
+    required this.textStyle,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    final outerR = radius - 18;
+    final innerR = radius - 54;
+
+    canvas.drawCircle(
+        center, radius, Paint()..color = scheme.surfaceContainerHighest);
+
+    // Selected hand + knob.
+    final sel = _selectedAngleRadius(radius);
+    final knob = center +
+        Offset(math.sin(sel.angle) * sel.radius,
+            -math.cos(sel.angle) * sel.radius);
+    final accent = Paint()..color = scheme.primary;
+    canvas.drawLine(
+        center, knob, Paint()
+      ..color = scheme.primary
+      ..strokeWidth = 2);
+    canvas.drawCircle(center, 4, accent);
+    canvas.drawCircle(knob, 17, accent);
+
+    if (step == _TimePickStep.minute) {
+      _drawRing(canvas, center, outerR, 12, (i) => (i * 5).toString().padLeft(2, '0'),
+          (i) => minute % 5 == 0 && minute ~/ 5 == i);
+    } else if (use24) {
+      _drawRing(canvas, center, outerR, 12, (i) => (i == 0 ? 12 : i).toString(),
+          (i) {
+        final val = i == 0 ? 12 : i;
+        final outer = !(hour == 0 || hour >= 13);
+        return outer && val == hour;
+      });
+      _drawRing(canvas, center, innerR, 12,
+          (i) => (i == 0 ? '00' : (i + 12).toString()), (i) {
+        final val = i == 0 ? 0 : i + 12;
+        final inner = hour == 0 || hour >= 13;
+        return inner && val == hour;
+      });
+    } else {
+      final curH12 = hour % 12 == 0 ? 12 : hour % 12;
+      _drawRing(canvas, center, outerR, 12, (i) => (i == 0 ? 12 : i).toString(),
+          (i) => (i == 0 ? 12 : i) == curH12);
+    }
+  }
+
+  ({double angle, double radius}) _selectedAngleRadius(double radius) {
+    final outerR = radius - 18;
+    final innerR = radius - 54;
+    if (step == _TimePickStep.minute) {
+      return (angle: minute / 60 * 2 * math.pi, radius: outerR);
+    }
+    if (use24) {
+      final inner = hour == 0 || hour >= 13;
+      final pos = inner ? (hour == 0 ? 0 : hour - 12) : (hour == 12 ? 0 : hour);
+      return (angle: pos / 12 * 2 * math.pi, radius: inner ? innerR : outerR);
+    }
+    final curH12 = hour % 12 == 0 ? 12 : hour % 12;
+    final pos = curH12 == 12 ? 0 : curH12;
+    return (angle: pos / 12 * 2 * math.pi, radius: outerR);
+  }
+
+  void _drawRing(Canvas canvas, Offset center, double r, int count,
+      String Function(int) labelFor, bool Function(int) isSelected) {
+    for (var i = 0; i < count; i++) {
+      final ang = i / count * 2 * math.pi;
+      final pos =
+          center + Offset(math.sin(ang) * r, -math.cos(ang) * r);
+      final selected = isSelected(i);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: labelFor(i),
+          style: textStyle.copyWith(
+            color: selected ? scheme.onPrimary : scheme.onSurface,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, pos - Offset(tp.width / 2, tp.height / 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ClockPainter old) =>
+      old.step != step ||
+      old.hour != hour ||
+      old.minute != minute ||
+      old.use24 != use24 ||
+      old.scheme != scheme;
 }
