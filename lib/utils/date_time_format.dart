@@ -94,6 +94,15 @@ class _InstantDatePickerState extends State<_InstantDatePicker> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final portrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    // Matches CalendarDatePicker's day-grid horizontal padding so the weekend
+    // tint lines up with the columns, and its 52px sub-header height.
+    final gridPadding = (theme.useMaterial3 && portrait) ? 12.0 : 8.0;
+    const subHeaderHeight = 52.0;
+    final weekendColor = theme.colorScheme.onSurface.withValues(alpha: 0.06);
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
       // Override just the first weekday so the grid starts on Monday.
@@ -102,18 +111,44 @@ class _InstantDatePickerState extends State<_InstantDatePicker> {
         delegates: const [_MondayFirstLocalizationsDelegate()],
         child: SizedBox(
           height: 360,
-          child: CalendarDatePicker(
-            initialDate: widget.initial,
-            firstDate: widget.firstDate,
-            lastDate: widget.lastDate,
-            onDisplayedMonthChanged: (_) {
-              _suppressClose = true;
-              scheduleMicrotask(() => _suppressClose = false);
-            },
-            onDateChanged: (date) {
-              if (_suppressClose) return;
-              Navigator.of(context).pop(date);
-            },
+          child: Stack(
+            children: [
+              // Subtle grey behind the last two columns (Sat, Sun) of the grid.
+              Positioned(
+                top: subHeaderHeight,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: gridPadding),
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < 7; i++)
+                        Expanded(
+                          child: i >= 5
+                              ? DecoratedBox(
+                                  decoration: BoxDecoration(color: weekendColor),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              CalendarDatePicker(
+                initialDate: widget.initial,
+                firstDate: widget.firstDate,
+                lastDate: widget.lastDate,
+                onDisplayedMonthChanged: (_) {
+                  _suppressClose = true;
+                  scheduleMicrotask(() => _suppressClose = false);
+                },
+                onDateChanged: (date) {
+                  if (_suppressClose) return;
+                  Navigator.of(context).pop(date);
+                },
+              ),
+            ],
           ),
         ),
       ),
