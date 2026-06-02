@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.57] - 2026-06-02
+- add Tools menu section
+- add Countdown tool with multiple timers
+- timers count up after reaching zero
+- per-timer edit and zero notification toggle
+- swipe to delete a timer with undo
+
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode

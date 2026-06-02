@@ -1041,18 +1041,6 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.timer),
-              title: const Text('Countdown Timer'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const CountdownTimerPage(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.file_download),
               title: const Text('Export Tasks'),
               onTap: () {
@@ -1067,6 +1055,25 @@ class _HomePageState extends State<HomePage>
                 Navigator.pop(context);
                 _importTasks();
               },
+            ),
+            ExpansionTile(
+              leading: const Icon(Icons.build),
+              title: const Text('Tools'),
+              childrenPadding: const EdgeInsets.only(left: 16),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.timer),
+                  title: const Text('Countdown'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CountdownTimerPage(),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),
