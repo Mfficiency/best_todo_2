@@ -114,3 +114,13 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.10.3")
     testImplementation("androidx.test:core:1.5.0")
 }
+
+// home_widget 0.8.1 declares `androidx.glance:glance-appwidget:1.+`, which now
+// resolves to 1.3.0-alpha01 and demands compileSdk 37 + AGP 9.1.0. Pin to the
+// latest stable 1.1.x until we're ready to bump the Android toolchain.
+configurations.all {
+    resolutionStrategy {
+        force("androidx.glance:glance-appwidget:1.1.1")
+        force("androidx.glance:glance:1.1.1")
+    }
+}

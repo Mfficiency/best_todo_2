@@ -55,6 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
   int _startTabIndex = Config.startTabIndex;
+  bool _startInScheduleView = Config.startInScheduleView;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
   bool _quietHoursEnabled = Config.quietHoursEnabled;
@@ -72,6 +73,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _addNewTasksToTop = Config.addNewTasksToTop;
     _startTabIndex = Config.startTabIndex;
+    _startInScheduleView = Config.startInScheduleView;
     _defaultDelaySeconds = Config.defaultDelaySeconds;
     _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
     _quietHoursEnabled = Config.quietHoursEnabled;
@@ -867,6 +869,18 @@ class _SettingsPageState extends State<SettingsPage> {
                             widget.onSettingsChanged?.call();
                           },
                         ),
+                      ),
+                      SwitchListTile(
+                        title: const Text('Start in schedule view'),
+                        subtitle: const Text(
+                            'Open the calendar / schedule view on launch instead of the tab list'),
+                        value: _startInScheduleView,
+                        onChanged: (val) async {
+                          setState(() => _startInScheduleView = val);
+                          Config.startInScheduleView = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
                       ),
                     ],
                   ),

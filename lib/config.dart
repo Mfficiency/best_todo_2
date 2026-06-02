@@ -66,6 +66,10 @@ class Config {
   /// Home tab index shown when the app starts.
   static int startTabIndex = 0;
 
+  /// If true, the home page opens directly in the day-grouped schedule view
+  /// instead of the per-tab list view.
+  static bool startInScheduleView = false;
+
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
   static bool swipeLeftDelete = true;
@@ -133,6 +137,7 @@ class Config {
       'showWidgetProgressLine': showWidgetProgressLine,
       'addNewTasksToTop': addNewTasksToTop,
       'defaultDelaySeconds': defaultDelaySeconds,
+      'startInScheduleView': startInScheduleView,
     };
   }
 
@@ -159,6 +164,7 @@ class Config {
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
     defaultDelaySeconds =
         (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
+    startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
   }
 
   /// Persists the current settings to disk.

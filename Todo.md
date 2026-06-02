@@ -9,6 +9,7 @@
 - send emails
 - send in app to each other
 - add more settings to controll the days of the week on the swiping motion and different icons and the cancel color etc
+- search function should also be able to show when you type a date and it should show items from the dates around it as well, it should prioritize the tiltel but also look in the description
 
 - Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
 - Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).
