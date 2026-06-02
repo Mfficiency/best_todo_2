@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -95,24 +96,56 @@ class _InstantDatePickerState extends State<_InstantDatePicker> {
   Widget build(BuildContext context) {
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
-      child: SizedBox(
-        height: 360,
-        child: CalendarDatePicker(
-          initialDate: widget.initial,
-          firstDate: widget.firstDate,
-          lastDate: widget.lastDate,
-          onDisplayedMonthChanged: (_) {
-            _suppressClose = true;
-            scheduleMicrotask(() => _suppressClose = false);
-          },
-          onDateChanged: (date) {
-            if (_suppressClose) return;
-            Navigator.of(context).pop(date);
-          },
+      // Override just the first weekday so the grid starts on Monday.
+      child: Localizations.override(
+        context: context,
+        delegates: const [_MondayFirstLocalizationsDelegate()],
+        child: SizedBox(
+          height: 360,
+          child: CalendarDatePicker(
+            initialDate: widget.initial,
+            firstDate: widget.firstDate,
+            lastDate: widget.lastDate,
+            onDisplayedMonthChanged: (_) {
+              _suppressClose = true;
+              scheduleMicrotask(() => _suppressClose = false);
+            },
+            onDateChanged: (date) {
+              if (_suppressClose) return;
+              Navigator.of(context).pop(date);
+            },
+          ),
         ),
       ),
     );
   }
+}
+
+/// Default Material localizations with the week starting on Monday.
+class _MondayFirstMaterialLocalizations extends DefaultMaterialLocalizations {
+  const _MondayFirstMaterialLocalizations();
+
+  @override
+  int get firstDayOfWeekIndex => 1; // Monday
+}
+
+/// Supplies [_MondayFirstMaterialLocalizations] so a subtree's calendar grid
+/// starts on Monday, without affecting the rest of the app.
+class _MondayFirstLocalizationsDelegate
+    extends LocalizationsDelegate<MaterialLocalizations> {
+  const _MondayFirstLocalizationsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<MaterialLocalizations> load(Locale locale) =>
+      SynchronousFuture<MaterialLocalizations>(
+        const _MondayFirstMaterialLocalizations(),
+      );
+
+  @override
+  bool shouldReload(_MondayFirstLocalizationsDelegate old) => false;
 }
 
 /// Shows a quick two-step time picker (tap an hour, then tap a minute) that
