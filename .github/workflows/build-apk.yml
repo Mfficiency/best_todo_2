@@ -31,15 +31,31 @@ jobs:
     - name: Get Flutter dependencies
       run: flutter pub get
 
+    - name: Read app version
+      id: appver
+      shell: bash
+      run: echo "version=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
     - name: Build APK
       run: flutter build apk --release
+
+    - name: Stage APK with version in filename
+      id: stage_apk
+      shell: bash
+      run: |
+        ver="${{ steps.appver.outputs.version }}"
+        src="build/app/outputs/flutter-apk/app-release.apk"
+        out="build/app/outputs/flutter-apk/besttodo-${ver}.apk"
+        cp "$src" "$out"
+        echo "apk=$out" >> "$GITHUB_OUTPUT"
 
     - name: Upload APK
       id: upload_apk
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
+        name: besttodo-${{ steps.appver.outputs.version }}
+        path: ${{ steps.stage_apk.outputs.apk }}
+        if-no-files-found: error
         retention-days: 30
 
     - name: Add APK download link to summary

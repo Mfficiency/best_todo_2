@@ -60,6 +60,20 @@ android {
         }
     }
 
+    // Use a committed, fixed debug keystore (standard public debug
+    // credentials) instead of the per-machine/per-CI-run ~/.android
+    // keystore, so every build is signed with the same key and updates
+    // install in place. The release build falls back to this signing
+    // config until a real release keystore (key.properties) is provided.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

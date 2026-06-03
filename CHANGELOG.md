@@ -2,7 +2,9 @@
 
 ## [0.1.72] - 2026-06-03
 - ci: fix the Build APK workflow (upgrade deprecated upload-artifact/setup-java actions, pin Flutter 3.29.2, add manual + dev-branch triggers, surface the APK download link)
+- ci: include the app version in the built APK filename (besttodo-<version>.apk)
 - android: raise minSdk to 23 for androidx.work compatibility
+- android: sign every build with a committed fixed debug keystore so updates install in place instead of failing with a signature mismatch
 
 ## [0.1.71] - 2026-06-02
 - countdown: timers are now included in the app's full export/import (backup & restore)
