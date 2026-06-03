@@ -2,9 +2,10 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,26 +16,53 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Java
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '11'
+        java-version: '17'
 
     - name: Set up Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: 'stable'
+        flutter-version: '3.29.2'
+        channel: 'stable'
         cache: true
 
     - name: Get Flutter dependencies
       run: flutter pub get
 
+    - name: Read app version
+      id: appver
+      shell: bash
+      run: echo "version=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
     - name: Build APK
       run: flutter build apk --release
 
+    - name: Stage APK with version in filename
+      id: stage_apk
+      shell: bash
+      run: |
+        ver="${{ steps.appver.outputs.version }}"
+        src="build/app/outputs/flutter-apk/app-release.apk"
+        out="build/app/outputs/flutter-apk/besttodo-${ver}.apk"
+        cp "$src" "$out"
+        echo "apk=$out" >> "$GITHUB_OUTPUT"
+
     - name: Upload APK
-      uses: actions/upload-artifact@v3
+      id: upload_apk
+      uses: actions/upload-artifact@v4
       with:
-        name: app-release.apk
-        path: build/app/outputs/flutter-apk/app-release.apk
+        name: besttodo-${{ steps.appver.outputs.version }}
+        path: ${{ steps.stage_apk.outputs.apk }}
+        if-no-files-found: error
         retention-days: 30
+
+    - name: Add APK download link to summary
+      if: always()
+      shell: bash
+      run: |
+        if [ -n "${{ steps.upload_apk.outputs.artifact-url }}" ]; then
+          echo "### APK Download" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [Download app-release-apk artifact](${{ steps.upload_apk.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
+        fi

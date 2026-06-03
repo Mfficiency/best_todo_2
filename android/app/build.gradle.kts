@@ -41,7 +41,9 @@ android {
         applicationId = "com.mfficiency.best_todo_2"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // androidx.work (pulled in transitively via glance/home_widget)
+        // requires a minSdk of at least 23.
+        minSdk = maxOf(23, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -55,6 +57,20 @@ android {
                 storeFile = file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
             }
+        }
+    }
+
+    // Use a committed, fixed debug keystore (standard public debug
+    // credentials) instead of the per-machine/per-CI-run ~/.android
+    // keystore, so every build is signed with the same key and updates
+    // install in place. The release build falls back to this signing
+    // config until a real release keystore (key.properties) is provided.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
