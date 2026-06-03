@@ -783,6 +783,9 @@ class _HomePageState extends State<HomePage>
         listTasks[j].listRanking = j + 1;
       }
     }
+    // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
+    // multiple tasks land on the same day so no two share a time.
+    applyDefaultDeadlineTimes(_tasks);
     _storageService.saveTaskList(_tasks);
     _updateHomeWidget();
   }
