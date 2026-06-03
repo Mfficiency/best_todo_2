@@ -25,6 +25,7 @@
 - show in daily stats a different color if you have cleared tasks from a future date.
 
 ### DONE
+- chronize tool (experimental): all tasks on a 24hr calendar view with hour/day/month rollers on the right (hour roller spans 3 days, day roller 15 days, month roller 12 months per top-to-bottom scroll).
 - Notification quiet hours: Suppress notifications in a time range, plus weekday/weekend override.
 - Start page: Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
 - make a "future tab", that you can move away to just have the idea written down.

@@ -16,6 +16,7 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'chronize_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -995,6 +996,18 @@ class _HomePageState extends State<HomePage>
                       deletedItems: _deletedTasks,
                       dailyStatsByDay: _dailyStatsByDay,
                     ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.access_time),
+              title: const Text('Chronize'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChronizePage(tasks: _tasks),
                   ),
                 );
               },
