@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.72] - 2026-06-03
+- ci: fix the Build APK workflow (upgrade deprecated upload-artifact/setup-java actions, pin Flutter 3.29.2, add manual + dev-branch triggers, surface the APK download link)
+- android: raise minSdk to 23 for androidx.work compatibility
+
 ## [0.1.71] - 2026-06-02
 - countdown: timers are now included in the app's full export/import (backup & restore)
 - countdown: the date picker only closes when you tap a day — selecting a year or changing month keeps it open

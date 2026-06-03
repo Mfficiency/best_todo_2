@@ -41,7 +41,9 @@ android {
         applicationId = "com.mfficiency.best_todo_2"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // androidx.work (pulled in transitively via glance/home_widget)
+        // requires a minSdk of at least 23.
+        minSdk = maxOf(23, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
