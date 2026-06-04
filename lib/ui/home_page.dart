@@ -19,6 +19,7 @@ import 'about_page.dart';
 import 'app_logs_page.dart';
 import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
+import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
@@ -1054,6 +1055,9 @@ class _HomePageState extends State<HomePage>
         listTasks[j].listRanking = j + 1;
       }
     }
+    // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
+    // multiple tasks land on the same day so no two share a time.
+    applyDefaultDeadlineTimes(_tasks);
     _storageService.saveTaskList(_tasks);
     _updateHomeWidget();
   }
@@ -1637,6 +1641,18 @@ class _HomePageState extends State<HomePage>
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const CountdownTimerPage(),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('Chronize'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChronizePage(tasks: _tasks),
                       ),
                     );
                   },

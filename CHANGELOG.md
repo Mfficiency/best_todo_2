@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.73] - 2026-06-04
+- chronize calendar tool (experimental)
+- default task deadline time 18:00
+
 ## [0.1.72] - 2026-06-03
 - ci: fix the Build APK workflow (upgrade deprecated upload-artifact/setup-java actions, pin Flutter 3.29.2, add manual + dev-branch triggers, surface the APK download link)
 - ci: include the app version in the built APK filename (besttodo-<version>.apk)
