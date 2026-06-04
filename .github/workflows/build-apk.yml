@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -33,9 +35,30 @@ jobs:
     - name: Build APK
       run: flutter build apk --release
 
-    - name: Upload APK
+    - name: Prepare versioned APK
+      id: apk
+      run: |
+        VERSION=$(grep '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*//')
+        SAFE=${VERSION/+/-}
+        APK="BestToDo-${VERSION}.apk"
+        cp build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/${APK}"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "tag=v${SAFE}" >> "$GITHUB_OUTPUT"
+        echo "apk=$APK" >> "$GITHUB_OUTPUT"
+        echo "apk_path=build/app/outputs/flutter-apk/${APK}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
+        name: BestToDo-${{ steps.apk.outputs.version }}
+        path: ${{ steps.apk.outputs.apk_path }}
         retention-days: 30
+
+    - name: Publish APK to GitHub Release
+      if: github.event_name != 'pull_request'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.apk.outputs.tag }}
+        name: BestToDo ${{ steps.apk.outputs.version }}
+        files: ${{ steps.apk.outputs.apk_path }}
+        fail_on_unmatched_files: true
