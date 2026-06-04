@@ -9,16 +9,20 @@ import 'package:besttodo/ui/chronize_page.dart';
 ///
 /// Perceptual smoothness can't be asserted directly, so these tests pin the
 /// invariants that *produce* it:
-///   * every hour row is identical height with no gaps (so scrolling never
-///     jumps between hours);
+///   * every row is identical height with no gaps (so scrolling never jumps
+///     between rows);
 ///   * the timeline scrolls infinitely in both directions;
 ///   * the timeline and the wheels stay in sync;
 ///   * a month change is animated and its visible motion is bounded to a single
 ///     glide (the "fake smooth" scroll) instead of teleporting the viewport.
+/// Plus basic coverage of the zoom controls and the Today button.
 void main() {
-  const double rowHeight = 64; // _hourRowHeight
-  const double itemExtent = 32; // CupertinoPicker itemExtent
+  const double rowHeight = 64; // _rowHeight
   const double glideDistance = 8 * rowHeight; // _glideDistance
+
+  // Wheels with the hour wheel hidden (the default): day = picker 0, month = 1.
+  const int dayWheel = 0;
+  const int monthWheel = 1;
 
   Future<void> pumpPage(WidgetTester tester) async {
     final now = DateTime.now();
@@ -40,9 +44,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  // The timeline's scroll position. Each hour row contains a (non-scrolling)
-  // task ListView, so there are many Scrollables under the CustomScrollView;
-  // the timeline's own is the outermost, hence first in tree order.
+  // The timeline's scroll position. Each row contains a (non-scrolling) task
+  // ListView, so there are many Scrollables under the CustomScrollView; the
+  // timeline's own is the outermost, hence first in tree order.
   ScrollPosition timeline(WidgetTester tester) {
     return tester
         .state<ScrollableState>(
@@ -56,44 +60,37 @@ void main() {
         .position;
   }
 
-  // Pixel offset of the wheel at [index] (0 = hour, 1 = day, 2 = month).
-  double wheelPixels(WidgetTester tester, int index) {
-    return tester
-        .state<ScrollableState>(
-          find
-              .descendant(
-                of: find.byType(CupertinoPicker).at(index),
-                matching: find.byType(Scrollable),
-              )
-              .first,
-        )
-        .position
-        .pixels;
+  // The selected item of wheel [index]. A CupertinoPicker's wheel is a
+  // _FixedExtentScrollable (a Scrollable subclass that find.byType won't match),
+  // so read its FixedExtentScrollController off the ListWheelScrollView instead.
+  int wheelItem(WidgetTester tester, int index) {
+    final wheels = tester
+        .widgetList<ListWheelScrollView>(find.byType(ListWheelScrollView))
+        .toList();
+    final controller = wheels[index].controller as FixedExtentScrollController;
+    return controller.selectedItem;
   }
 
-  int topItem(WidgetTester tester) => (timeline(tester).pixels / rowHeight).round();
+  int topItem(WidgetTester tester) =>
+      (timeline(tester).pixels / rowHeight).round();
 
-  testWidgets('every hour row is the same height with no gaps between hours',
+  testWidgets('every row is the same height with no gaps between them',
       (tester) async {
     await pumpPage(tester);
 
     final top = topItem(tester);
-    final a = find.byKey(ValueKey('chronize-hour-$top'));
-    final b = find.byKey(ValueKey('chronize-hour-${top + 1}'));
-    final c = find.byKey(ValueKey('chronize-hour-${top + 2}'));
+    final a = find.byKey(ValueKey('chronize-row-$top'));
+    final b = find.byKey(ValueKey('chronize-row-${top + 1}'));
+    final c = find.byKey(ValueKey('chronize-row-${top + 2}'));
 
     expect(a, findsOneWidget);
     expect(b, findsOneWidget);
     expect(c, findsOneWidget);
 
-    // Identical, fixed heights.
     expect(tester.getSize(a).height, rowHeight);
     expect(tester.getSize(b).height, rowHeight);
     expect(tester.getSize(c).height, rowHeight);
 
-    // Consecutive rows are exactly one row apart — no overlaps, no gaps. This
-    // uniform mapping (offset == item * height) is what keeps scrolling from
-    // jumping between hours.
     final ay = tester.getTopLeft(a).dy;
     final by = tester.getTopLeft(b).dy;
     final cy = tester.getTopLeft(c).dy;
@@ -106,74 +103,71 @@ void main() {
     await pumpPage(tester);
     final pos = timeline(tester);
 
-    // Far into the future (~1000 days out).
     pos.jumpTo(pos.pixels + 1000 * 24 * rowHeight);
     await tester.pump();
     final future = topItem(tester);
-    expect(find.byKey(ValueKey('chronize-hour-$future')), findsOneWidget);
+    expect(find.byKey(ValueKey('chronize-row-$future')), findsOneWidget);
 
-    // Far into the past — negative items, before today.
     pos.jumpTo(-1000 * 24 * rowHeight);
     await tester.pump();
     final past = topItem(tester);
     expect(past, lessThan(0));
-    expect(find.byKey(ValueKey('chronize-hour-$past')), findsOneWidget);
+    expect(find.byKey(ValueKey('chronize-row-$past')), findsOneWidget);
 
-    // No overflow/out-of-range exceptions from either extreme.
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('scrolling the timeline keeps the hour wheel in sync',
+  testWidgets('scrolling the timeline keeps the day wheel in sync',
       (tester) async {
     await pumpPage(tester);
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -7 * rowHeight));
-    await tester.pumpAndSettle();
+    // Item 50 == 50 hours after today 00:00 == calendar day 2 (50 ~/ 24).
+    timeline(tester).jumpTo(50 * rowHeight);
+    await tester.pump();
+    await tester.pump();
 
-    // The hour wheel's selected item tracks the hour now at the top.
-    final hourWheelItem = (wheelPixels(tester, 0) / itemExtent).round();
-    expect(hourWheelItem, topItem(tester));
+    expect(topItem(tester), 50);
+    expect(wheelItem(tester, dayWheel), 2);
   });
 
-  testWidgets('spinning the hour wheel scrolls the timeline to match',
+  testWidgets('spinning the day wheel scrolls the timeline to that day',
       (tester) async {
     await pumpPage(tester);
 
-    await tester.drag(
-      find.byType(CupertinoPicker).at(0),
-      const Offset(0, -5 * itemExtent),
-    );
-    await tester.pumpAndSettle();
+    // Low-velocity gesture so the wheel settles on a known item (+3 days).
+    final center = tester.getCenter(find.byType(CupertinoPicker).at(dayWheel));
+    final gesture = await tester.startGesture(center);
+    await gesture.moveBy(const Offset(0, -3 * 32 - 20)); // 3 items + touch slop
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 200)); // fire settle debounce
+    await tester.pumpAndSettle(); // glide
 
-    final hourWheelItem = (wheelPixels(tester, 0) / itemExtent).round();
-    expect(topItem(tester), hourWheelItem);
+    final dayWheelItem = wheelItem(tester, dayWheel);
+    // The day implied by the row at the top matches the day wheel.
+    expect((topItem(tester) / 24).floor(), dayWheelItem);
+    expect(dayWheelItem, greaterThan(0));
   });
 
   testWidgets('a month change glides smoothly instead of teleporting',
       (tester) async {
     await pumpPage(tester);
 
-    // Drag the month wheel just past half an item (plus touch slop) so the
-    // selection advances exactly one month with a single change.
-    final monthCenter = tester.getCenter(find.byType(CupertinoPicker).at(2));
-    final gesture = await tester.startGesture(monthCenter);
-    await gesture.moveBy(const Offset(0, -40));
-    await tester.pump(); // selection crosses -> glide starts
+    final center = tester.getCenter(find.byType(CupertinoPicker).at(monthWheel));
+    final gesture = await tester.startGesture(center);
+    await gesture.moveBy(const Offset(0, -40)); // just past half an item + slop
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 140)); // fire settle -> glide
 
-    // Sample the timeline offset across the glide animation.
     final samples = <double>[];
     for (var i = 0; i < 30; i++) {
       samples.add(timeline(tester).pixels);
       await tester.pump(const Duration(milliseconds: 16));
     }
-    await gesture.up();
     await tester.pumpAndSettle();
-
     final settled = timeline(tester).pixels;
 
-    // The month is hundreds of rows away, but the *visible* motion must never
-    // be more than a single glide from where it lands — i.e. it fakes a smooth
-    // scroll rather than snapping across the whole gap.
     for (final offset in samples) {
       expect(
         (offset - settled).abs(),
@@ -181,15 +175,38 @@ void main() {
         reason: 'timeline jumped more than one glide from its destination',
       );
     }
+    expect(samples.toSet().length, greaterThan(1)); // it animated
+    // It really moved a month (far beyond one glide), so the bound above proves
+    // a faked glide rather than a tiny hop.
+    expect(topItem(tester).abs(), greaterThan(8));
+  });
 
-    // It genuinely animated (more than one distinct frame, and not already at
-    // the destination on the first frame).
-    expect(samples.toSet().length, greaterThan(1));
-    expect((samples.first - settled).abs(), greaterThan(0));
+  testWidgets('zoom controls change the row time unit', (tester) async {
+    await pumpPage(tester);
 
-    // And it actually moved a long way overall (a month, far beyond one glide),
-    // confirming the bounded motion above was a faked glide, not a tiny hop.
-    final start = topItem(tester); // settled top item
-    expect(start.abs(), greaterThan(8)); // well past today's first hours
+    expect(find.text('1 h'), findsOneWidget); // default
+
+    await tester.tap(find.byIcon(Icons.zoom_in));
+    await tester.pumpAndSettle();
+    expect(find.text('30 min'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.zoom_out));
+    await tester.tap(find.byIcon(Icons.zoom_out));
+    await tester.pumpAndSettle();
+    expect(find.text('2 h'), findsOneWidget);
+  });
+
+  testWidgets('the Today button returns the timeline to now', (tester) async {
+    await pumpPage(tester);
+    final start = topItem(tester);
+
+    timeline(tester).jumpTo(timeline(tester).pixels + 500 * rowHeight);
+    await tester.pump();
+    expect(topItem(tester), isNot(start));
+
+    await tester.tap(find.text('Today'));
+    await tester.pumpAndSettle();
+
+    expect(topItem(tester), start);
   });
 }

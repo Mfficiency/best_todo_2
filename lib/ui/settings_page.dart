@@ -58,6 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _dateFormat = Config.dateFormat;
   int _startTabIndex = Config.startTabIndex;
   bool _startInScheduleView = Config.startInScheduleView;
+  bool _chronizeShowHourWheel = Config.chronizeShowHourWheel;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
   bool _quietHoursEnabled = Config.quietHoursEnabled;
@@ -78,6 +79,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _dateFormat = Config.dateFormat;
     _startTabIndex = Config.startTabIndex;
     _startInScheduleView = Config.startInScheduleView;
+    _chronizeShowHourWheel = Config.chronizeShowHourWheel;
     _defaultDelaySeconds = Config.defaultDelaySeconds;
     _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
     _quietHoursEnabled = Config.quietHoursEnabled;
@@ -915,6 +917,18 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (val) async {
                           setState(() => _startInScheduleView = val);
                           Config.startInScheduleView = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Chronize: show hour wheel'),
+                        subtitle: const Text(
+                            'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
+                        value: _chronizeShowHourWheel,
+                        onChanged: (val) async {
+                          setState(() => _chronizeShowHourWheel = val);
+                          Config.chronizeShowHourWheel = val;
                           await Config.save();
                           widget.onSettingsChanged?.call();
                         },
