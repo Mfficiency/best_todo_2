@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.74] - 2026-06-04
+- chronize: the three navigators are now iOS-style scroll wheels (hour / day / month) instead of sliders
+- chronize: wheels scroll infinitely; the day wheel shows real calendar dates and the wheels carry over (hour past midnight bumps the day, day past month-end bumps the month)
+- chronize: the calendar on the left is an infinite, smoothly-scrolling 24h timeline with per-day date markers, kept in sync with the wheels both ways
+- chronize: changing the month fakes a smooth glide on the timeline instead of snapping
+
 ## [0.1.73] - 2026-06-04
 - chronize calendar tool (experimental)
 - default task deadline time 18:00
