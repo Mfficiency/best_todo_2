@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.74] - 2026-06-04
+- maintenance build
+
 ## [0.1.73] - 2026-06-03
 - chronize calendar tool (experimental)
 - default task deadline time 18:00
