@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.76] - 2026-06-05
+- chronize: the left timeline now zooms on a continuous axis — time marks fade in and spread apart as you zoom in (2h → 1h → 30m → 10m → 5m) and fade away when zooming out, with the day marks always visible
+- chronize: tasks are placed on the timeline by their time, cascading when they would overlap, and a live "now" line tracks the clock
+
+## [0.1.75] - 2026-06-04
+- chronize: the left timeline is now zoomable — pinch (or the zoom buttons) from 5-minute marks all the way out to a multi-day overview
+- chronize: a "Today" button jumps the timeline and wheels back to now
+- chronize: the hour wheel is now optional via a setting (Settings → Tasks → "Chronize: show hour wheel"), off by default so the timeline has more room
+- chronize: day/month wheels spin more smoothly (the timeline glide + refresh are deferred until the wheel settles)
+
+## [0.1.74] - 2026-06-04
+- chronize: the three navigators are now iOS-style scroll wheels (hour / day / month) instead of sliders
+- chronize: wheels scroll infinitely; the day wheel shows real calendar dates and the wheels carry over (hour past midnight bumps the day, day past month-end bumps the month)
+- chronize: the calendar on the left is an infinite, smoothly-scrolling 24h timeline with per-day date markers, kept in sync with the wheels both ways
+- chronize: changing the month fakes a smooth glide on the timeline instead of snapping
+
 ## [0.1.73] - 2026-06-04
 - chronize calendar tool (experimental)
 - default task deadline time 18:00

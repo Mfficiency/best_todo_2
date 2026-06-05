@@ -23,7 +23,8 @@
 
 flutter pub get
 flutter run -d chrome
-flutter build apk --release #after installing the android SDK
+flutter build apk --release 
+#after installing the android SDK
 ```
 
 When running the app on Chrome, swipe gestures can be hard to test.
