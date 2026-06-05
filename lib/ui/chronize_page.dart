@@ -515,6 +515,7 @@ class _ChronizePageState extends State<ChronizePage>
     return LayoutBuilder(
       builder: (context, constraints) {
         final height = constraints.maxHeight;
+        final eventNav = _buildEventNav(theme, height);
         return Listener(
           onPointerSignal: _onPointerSignal,
           child: GestureDetector(
@@ -540,6 +541,7 @@ class _ChronizePageState extends State<ChronizePage>
                     ),
                   ),
                   ..._buildTaskChips(theme, height),
+                  if (eventNav != null) eventNav,
                 ],
               ),
             ),
@@ -586,6 +588,136 @@ class _ChronizePageState extends State<ChronizePage>
       );
     }
     return chips;
+  }
+
+  /// Tasks that sit on the timeline: have a due date and aren't the far-future
+  /// "someday" bucket (year >= 2300).
+  Iterable<Task> get _datedTasks => widget.tasks.where((t) {
+        final d = t.dueDate;
+        return d != null && d.year < 2300;
+      });
+
+  /// When no event is within the viewport, builds the two centered navigator
+  /// cards pointing at the nearest past and future events. Returns null when an
+  /// event is in view (so the cards hide) or there are no dated events at all.
+  Widget? _buildEventNav(ThemeData theme, double height) {
+    if (height <= 0 || _pixelsPerMinute <= 0) return null;
+    final topMin = _topMinute;
+    final bottomMin = _topMinute + height / _pixelsPerMinute;
+    final centerMin = (topMin + bottomMin) / 2;
+
+    double? prev; // nearest event above the viewport (in the past)
+    double? next; // nearest event below the viewport (in the future)
+    for (final task in _datedTasks) {
+      final m = _minutesFromBase(task.dueDate!).toDouble();
+      if (m >= topMin && m <= bottomMin) {
+        return null; // an event is visible -> hide the cards
+      } else if (m < topMin) {
+        if (prev == null || m > prev) prev = m;
+      } else {
+        if (next == null || m < next) next = m;
+      }
+    }
+
+    final prevMin = prev;
+    final nextMin = next;
+    if (prevMin == null && nextMin == null) return null;
+
+    final cards = <Widget>[];
+    if (prevMin != null) {
+      cards.add(_eventNavCard(
+        theme,
+        icon: Icons.keyboard_arrow_up,
+        title: 'Previous event',
+        subtitle: '${_formatGap(centerMin - prevMin)} earlier',
+        targetMinute: prevMin,
+        height: height,
+      ));
+    }
+    if (nextMin != null) {
+      if (cards.isNotEmpty) cards.add(const SizedBox(height: 16));
+      cards.add(_eventNavCard(
+        theme,
+        icon: Icons.keyboard_arrow_down,
+        title: 'Next event',
+        subtitle: 'in ${_formatGap(nextMin - centerMin)}',
+        targetMinute: nextMin,
+        height: height,
+      ));
+    }
+
+    return Positioned(
+      left: _TimeAxisPainter.gutterWidth,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: cards,
+        ),
+      ),
+    );
+  }
+
+  /// One navigator card. Tapping it glides the timeline so [targetMinute] is
+  /// centered in the viewport.
+  Widget _eventNavCard(
+    ThemeData theme, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required double targetMinute,
+    required double height,
+  }) {
+    final scheme = theme.colorScheme;
+    return Material(
+      color: scheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(12),
+      elevation: 2,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _animateTo(
+          topMinute: targetMinute - height / (2 * _pixelsPerMinute),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 32, color: scheme.onSecondaryContainer),
+              Text(
+                title,
+                style: theme.textTheme.labelLarge
+                    ?.copyWith(color: scheme.onSecondaryContainer),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSecondaryContainer.withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Formats a positive minute gap as a coarse "3 days" / "5 hours" / "20 min".
+  static String _formatGap(double minutes) {
+    final m = minutes.abs().round();
+    if (m >= 1440) {
+      final days = (m / 1440).round();
+      return days == 1 ? '1 day' : '$days days';
+    }
+    if (m >= 60) {
+      final hours = (m / 60).round();
+      return hours == 1 ? '1 hour' : '$hours hours';
+    }
+    if (m >= 1) return m == 1 ? '1 min' : '$m min';
+    return 'now';
   }
 
   Widget _buildTaskChip(ThemeData theme, Task task) {

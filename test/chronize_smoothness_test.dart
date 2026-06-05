@@ -111,5 +111,44 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('shows prev/next navigator cards when no event is in view',
+        (tester) async {
+      final now = DateTime.now();
+      final tasks = [
+        Task(
+          title: 'past',
+          dueDate: now.subtract(const Duration(days: 30)),
+          listRanking: 1,
+        ),
+        Task(
+          title: 'future',
+          dueDate: now.add(const Duration(days: 30)),
+          listRanking: 2,
+        ),
+      ];
+      await tester.pumpWidget(MaterialApp(home: ChronizePage(tasks: tasks)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Previous event'), findsOneWidget);
+      expect(find.text('Next event'), findsOneWidget);
+    });
+
+    testWidgets('hides navigator cards when an event is in view',
+        (tester) async {
+      final now = DateTime.now();
+      final tasks = [
+        Task(
+          title: 'now',
+          dueDate: DateTime(now.year, now.month, now.day, now.hour),
+          listRanking: 1,
+        ),
+      ];
+      await tester.pumpWidget(MaterialApp(home: ChronizePage(tasks: tasks)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Previous event'), findsNothing);
+      expect(find.text('Next event'), findsNothing);
+    });
   });
 }

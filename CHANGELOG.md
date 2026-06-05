@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.77] - 2026-06-05
+- chronize: when no event is in view, two centered cards point to the nearest past (↑) and future (↓) events, showing how far away each is; tap a card to jump there. They hide as soon as an event scrolls into view
+
 ## [0.1.76] - 2026-06-05
 - chronize: the left timeline now zooms on a continuous axis — time marks fade in and spread apart as you zoom in (2h → 1h → 30m → 10m → 5m) and fade away when zooming out, with the day marks always visible
 - chronize: tasks are placed on the timeline by their time, cascading when they would overlap, and a live "now" line tracks the clock
