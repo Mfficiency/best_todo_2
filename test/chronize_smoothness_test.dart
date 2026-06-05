@@ -30,8 +30,8 @@ void main() {
     });
 
     test('a level is fully shown once its marks are far enough apart', () {
-      // 5-minute marks 40px apart -> fully visible.
-      expect(markLevelOpacity(intervalMinutes: 5, pixelsPerMinute: 8), 1.0);
+      // 5-minute marks 60px apart (>= kMarkFadeFullPx) -> fully visible.
+      expect(markLevelOpacity(intervalMinutes: 5, pixelsPerMinute: 12), 1.0);
     });
 
     test('opacity ramps smoothly through the fade band', () {
