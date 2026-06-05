@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.78] - 2026-06-05
+- chronize: the "Today" button now centers the view on the current time instead of pinning it to the top
+- chronize: flinging the timeline keeps gliding and slows to a stop (momentum scrolling) instead of halting on release
+- chronize: tap an empty spot on the timeline to create a task with that exact deadline (date + time); tap a task to edit its title, deadline and done state, or delete it
+- tasks: a deadline time set on the Chronize timeline is preserved and no longer overwritten by the default 18:00 normalization
+
 ## [0.1.77] - 2026-06-05
 - chronize: when no event is in view, two centered cards point to the nearest past (↑) and future (↓) events, showing how far away each is; tap a card to jump there. They hide as soon as an event scrolls into view
 

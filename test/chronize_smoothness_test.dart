@@ -150,5 +150,39 @@ void main() {
       expect(find.text('Previous event'), findsNothing);
       expect(find.text('Next event'), findsNothing);
     });
+
+    testWidgets('tapping empty timeline opens the new-task dialog',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: ChronizePage(tasks: const [], onCreateTask: (_, __) {}),
+      ));
+      await tester.pumpAndSettle();
+
+      // Tap in the calendar body (left of the wheels, below the header).
+      await tester.tapAt(const Offset(120, 320));
+      await tester.pumpAndSettle();
+
+      expect(find.text('New task'), findsOneWidget);
+    });
+
+    testWidgets('tapping a task opens the edit dialog', (tester) async {
+      final now = DateTime.now();
+      final tasks = [
+        Task(
+          title: 'meeting',
+          dueDate: DateTime(now.year, now.month, now.day, now.hour),
+          listRanking: 1,
+        ),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: ChronizePage(tasks: tasks, onTaskChanged: () {}),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('meeting'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit task'), findsOneWidget);
+    });
   });
 }
