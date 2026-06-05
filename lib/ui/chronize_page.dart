@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -9,13 +9,62 @@ import '../models/task.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
+/// A level's marks start fading in once they are at least [kMarkFadeStartPx]
+/// apart on screen and are fully opaque by [kMarkFadeFullPx]. Because finer
+/// levels sit closer together, they only reach these thresholds at higher zoom,
+/// which is what staggers their appearance as the user zooms in (and, in
+/// reverse, fades them away when zooming out).
+const double kMarkFadeStartPx = 22;
+const double kMarkFadeFullPx = 52;
+
+/// Opacity (0..1) for a level of time marks spaced [intervalMinutes] apart,
+/// shown at a zoom of [pixelsPerMinute] logical pixels per minute.
+///
+/// [alwaysVisible] keeps the coarsest level on screen so the ruler is never
+/// empty when fully zoomed out. Exposed at the library level so the smooth
+/// fade behaviour can be unit tested without a painter.
+double markLevelOpacity({
+  required double intervalMinutes,
+  required double pixelsPerMinute,
+  bool alwaysVisible = false,
+}) {
+  if (alwaysVisible) return 1.0;
+  final spacingPx = intervalMinutes * pixelsPerMinute;
+  return ((spacingPx - kMarkFadeStartPx) / (kMarkFadeFullPx - kMarkFadeStartPx))
+      .clamp(0.0, 1.0);
+}
+
+/// A single granularity level of time marks on the [ChronizePage] ruler.
+///
+/// Coarser levels (a larger [intervalMinutes]) stay visible when zoomed out,
+/// while finer levels only fade in as the user zooms further in. Every
+/// interval is a divisor of all coarser intervals so the marks line up and a
+/// mark shared with a coarser level is drawn only once (at the coarser level).
+class _MarkLevel {
+  const _MarkLevel(this.intervalMinutes, this.tickLength,
+      {this.alwaysVisible = false});
+
+  /// Spacing between marks of this level, in minutes.
+  final int intervalMinutes;
+
+  /// How far the tick line reaches into the gutter (longer for coarser levels).
+  final double tickLength;
+
+  /// The coarsest level stays on screen so the ruler is never empty.
+  final bool alwaysVisible;
+}
+
 /// Experimental "Chronize" tool.
 ///
-/// The left side is an infinite, smoothly-scrolling vertical timeline. Each row
-/// is a fixed height and represents [_unitMinutes] of time; pinching (or the
-/// zoom buttons) changes that unit from 5-minute marks all the way out to a
-/// multi-day overview. On the right, day/month (and optionally hour) scroll
-/// wheels jump the focus to a chosen date.
+/// The left side is an infinite vertical timeline drawn on a *continuous* time
+/// axis: zooming (pinch or the +/- buttons) smoothly scales the axis rather
+/// than snapping between fixed row units. As you zoom in, finer time marks fade
+/// in one granularity at a time — day/2h first, then the hour, half-hour,
+/// 10-minute and 5-minute marks — and the lines spread apart. Zooming out
+/// reverses it, fading the finer marks away until only the coarse marks remain.
+///
+/// On the right, day/month (and optionally hour) scroll wheels jump the focus
+/// to a chosen date; the wheels and the timeline stay in sync.
 class ChronizePage extends StatefulWidget {
   final List<Task> tasks;
 
@@ -28,17 +77,27 @@ class ChronizePage extends StatefulWidget {
 /// Which wheel originated a focus change.
 enum _Wheel { hour, day, month }
 
-class _ChronizePageState extends State<ChronizePage> {
-  static const double _rowHeight = 64;
+class _ChronizePageState extends State<ChronizePage>
+    with SingleTickerProviderStateMixin {
+  /// Mark levels, coarsest to finest. The day level is always visible so the
+  /// ruler never goes blank when fully zoomed out.
+  static const List<_MarkLevel> _levels = [
+    _MarkLevel(1440, 28, alwaysVisible: true), // 1 day
+    _MarkLevel(720, 24), // 12 h
+    _MarkLevel(360, 20), // 6 h
+    _MarkLevel(120, 16), // 2 h
+    _MarkLevel(60, 13), // 1 h
+    _MarkLevel(30, 10), // 30 min
+    _MarkLevel(10, 7), // 10 min
+    _MarkLevel(5, 5), // 5 min
+  ];
 
-  // How far the timeline visibly glides into place; farther targets jump to
-  // within one glide of the destination first so they still read as a smooth
-  // scroll rather than a hard snap.
-  static const double _glideDistance = 8 * _rowHeight;
-
-  // Minutes-per-row zoom levels, finest (5-minute marks) to a wide overview.
-  static const List<int> _zoomUnits = [5, 15, 30, 60, 120, 240, 720, 1440];
-  static const int _defaultZoomIndex = 3; // 60 minutes
+  // Continuous zoom bounds, in logical pixels per minute. At the minimum the
+  // day marks sit ~43px apart (a multi-day overview); at the maximum the
+  // 5-minute marks sit ~60px apart.
+  static const double _minPixelsPerMinute = 0.03;
+  static const double _maxPixelsPerMinute = 12.0;
+  static const double _zoomButtonFactor = 1.6;
 
   static const List<String> _weekdays = [
     'Mon',
@@ -64,25 +123,18 @@ class _ChronizePageState extends State<ChronizePage> {
     'Dec',
   ];
 
-  late final DateTime _base; // start of today; item 0 on every wheel/timeline
+  late final DateTime _base; // start of today; minute 0 of the timeline
 
-  // The infinite vertical timeline. A scroll offset of `item * _rowHeight` puts
-  // row `item` (= item * _unitMinutes from _base) at the top.
-  late final ScrollController _timeline;
-  final Key _timelineCenter = const ValueKey('timeline-center');
+  // The continuous timeline state: how zoomed in we are, and which minute (from
+  // _base; negative = before today) sits at the top edge of the viewport. The
+  // top edge is the "focus" the header and wheels read from.
+  double _pixelsPerMinute = 0.9;
+  double _topMinute = 0;
 
   // Infinite scroll-wheel controllers (item 0 maps to [_base]).
   late final FixedExtentScrollController _hourWheel;
   late final FixedExtentScrollController _dayWheel;
   late final FixedExtentScrollController _monthWheel;
-
-  // The focused moment: the single source of truth the wheels and the timeline
-  // all read from. The focus sits at the top of the timeline viewport.
-  late DateTime _focus;
-
-  // Current zoom: minutes represented by one row.
-  int _zoomIndex = _defaultZoomIndex;
-  int _unitMinutes = _zoomUnits[_defaultZoomIndex];
 
   // Per-wheel suppression: >0 while that wheel is being repositioned
   // programmatically, so its callback is ignored instead of treated as input.
@@ -92,42 +144,51 @@ class _ChronizePageState extends State<ChronizePage> {
     _Wheel.month: 0,
   };
 
-  // True while the timeline is scrolled programmatically (so its listener
-  // ignores that motion); and while a pinch is in progress (so the timeline
-  // doesn't scroll under the two fingers).
-  bool _programmaticScroll = false;
-  bool _pinching = false;
-  int _lastTopItem = 0;
+  // Glide animation shared by the Today button, wheel settle and zoom buttons:
+  // it interpolates _topMinute and/or _pixelsPerMinute toward a target.
+  late final AnimationController _glide;
+  double _glideStartTop = 0;
+  double _glideTargetTop = 0;
+  double _glideStartPpm = 0;
+  double _glideTargetPpm = 0;
 
-  // Debounce so spinning a wheel stays smooth: the heavy work (gliding the
-  // timeline, refreshing the header) runs once, after the wheel settles.
+  // Pinch / drag anchors captured at the start of a scale gesture.
+  double _gestureStartPpm = 0.9;
+  double _gestureStartTop = 0;
+  double _gestureStartFocalY = 0;
+
+  // Debounce so spinning a wheel stays smooth: the glide runs once, after the
+  // wheel settles.
   Timer? _settleTimer;
-
-  // Active pointers, for pinch-to-zoom detection.
-  final Map<int, Offset> _pointers = {};
-  double _pinchStartDistance = 0;
-  int _pinchStartZoom = 0;
+  DateTime? _pendingFocus;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _base = DateTime(now.year, now.month, now.day);
-    _focus = DateTime(now.year, now.month, now.day, now.hour);
-    _lastTopItem = _itemForFocus();
-    _timeline = ScrollController(
-      initialScrollOffset: _lastTopItem * _rowHeight,
-    )..addListener(_onTimelineScroll);
-    _hourWheel = FixedExtentScrollController(initialItem: _hourItemFor(_focus));
-    _dayWheel = FixedExtentScrollController(initialItem: _dayItemFor(_focus));
+    final focus = DateTime(now.year, now.month, now.day, now.hour);
+    _topMinute = _minutesFromBase(focus).toDouble();
+
+    _hourWheel = FixedExtentScrollController(initialItem: _hourItemFor(focus));
+    _dayWheel = FixedExtentScrollController(initialItem: _dayItemFor(focus));
     _monthWheel =
-        FixedExtentScrollController(initialItem: _monthItemFor(_focus));
+        FixedExtentScrollController(initialItem: _monthItemFor(focus));
+
+    _glide = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )
+      ..addListener(_onGlideTick)
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) _syncWheelsToFocus();
+      });
   }
 
   @override
   void dispose() {
     _settleTimer?.cancel();
-    _timeline.dispose();
+    _glide.dispose();
     _hourWheel.dispose();
     _dayWheel.dispose();
     _monthWheel.dispose();
@@ -154,9 +215,8 @@ class _ChronizePageState extends State<ChronizePage> {
     return DateTime(date.year, date.month, date.day, within ~/ 60, within % 60);
   }
 
-  // Timeline (zoom-aware) mapping.
-  int _itemForFocus() => (_minutesFromBase(_focus) / _unitMinutes).round();
-  DateTime _focusForItem(int item) => _momentForMinutes(item * _unitMinutes);
+  // The focused moment is whatever sits at the top edge of the viewport.
+  DateTime get _focus => _momentForMinutes(_topMinute.round());
 
   // Wheel mappings (independent of zoom).
   int _hourItemFor(DateTime f) => _dayItemFor(f) * 24 + f.hour;
@@ -172,39 +232,131 @@ class _ChronizePageState extends State<ChronizePage> {
 
   DateTime _focusForDayItem(int item) {
     final date = _dateForDayItem(item);
-    return DateTime(date.year, date.month, date.day, _focus.hour, _focus.minute);
+    final f = _focus;
+    return DateTime(date.year, date.month, date.day, f.hour, f.minute);
   }
 
   DateTime _focusForMonthItem(int item) {
     final first = DateTime(_base.year, _base.month + item, 1);
     final daysInMonth = DateTime(first.year, first.month + 1, 0).day;
-    final day = _focus.day < daysInMonth ? _focus.day : daysInMonth;
-    return DateTime(first.year, first.month, day, _focus.hour, _focus.minute);
+    final f = _focus;
+    final day = f.day < daysInMonth ? f.day : daysInMonth;
+    return DateTime(first.year, first.month, day, f.hour, f.minute);
   }
 
-  DateTime get _focusDay =>
-      DateTime(_focus.year, _focus.month, _focus.day);
+  DateTime get _focusDay {
+    final f = _focus;
+    return DateTime(f.year, f.month, f.day);
+  }
 
-  // ---- Wheel input (smooth: cheap while spinning, settle once on pause) ----
+  // ---- Glide animation ----
+
+  double _clampZoom(double v) =>
+      v.clamp(_minPixelsPerMinute, _maxPixelsPerMinute);
+
+  void _animateTo({double? topMinute, double? pixelsPerMinute}) {
+    _glideStartTop = _topMinute;
+    _glideTargetTop = topMinute ?? _topMinute;
+    _glideStartPpm = _pixelsPerMinute;
+    _glideTargetPpm = pixelsPerMinute ?? _pixelsPerMinute;
+    if ((_glideTargetTop - _glideStartTop).abs() < 0.01 &&
+        (_glideTargetPpm - _glideStartPpm).abs() < 1e-6) {
+      return;
+    }
+    _glide
+      ..reset()
+      ..forward();
+  }
+
+  void _onGlideTick() {
+    final t = Curves.easeOut.transform(_glide.value);
+    setState(() {
+      _topMinute = _glideStartTop + (_glideTargetTop - _glideStartTop) * t;
+      _pixelsPerMinute =
+          _glideStartPpm + (_glideTargetPpm - _glideStartPpm) * t;
+    });
+  }
+
+  // ---- Direct manipulation (pinch zoom + single-finger pan) ----
+
+  void _onScaleStart(ScaleStartDetails details) {
+    _glide.stop();
+    _gestureStartPpm = _pixelsPerMinute;
+    _gestureStartTop = _topMinute;
+    _gestureStartFocalY = details.localFocalPoint.dy;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    // The minute under the fingers when the gesture began.
+    final anchorMinute = _gestureStartTop + _gestureStartFocalY / _gestureStartPpm;
+    final newPpm = _clampZoom(_gestureStartPpm * details.scale);
+    final focalY = details.localFocalPoint.dy;
+    // Keep that minute under the current focal point: one expression covers
+    // both single-finger panning (scale == 1, focal point moves) and pinch
+    // zoom (scale changes).
+    setState(() {
+      _pixelsPerMinute = newPpm;
+      _topMinute = anchorMinute - focalY / newPpm;
+    });
+    _syncWheelsToFocus();
+  }
+
+  /// Desktop / web: the mouse wheel or trackpad scrolls the timeline.
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    _glide.stop();
+    setState(() {
+      _topMinute += event.scrollDelta.dy / _pixelsPerMinute;
+    });
+    _syncWheelsToFocus();
+  }
+
+  // ---- Zoom controls ----
+
+  bool get _canZoomIn => _pixelsPerMinute < _maxPixelsPerMinute - 1e-6;
+  bool get _canZoomOut => _pixelsPerMinute > _minPixelsPerMinute + 1e-6;
+
+  // Zooming with the buttons keeps the top focus pinned (anchor at y == 0).
+  // Rapid taps compound off the in-flight target rather than the mid-glide
+  // value, so two quick taps move two steps.
+  void _zoomBy(double factor) {
+    final base = _glide.isAnimating ? _glideTargetPpm : _pixelsPerMinute;
+    _animateTo(pixelsPerMinute: _clampZoom(base * factor));
+  }
+
+  void _returnToToday() {
+    final now = DateTime.now();
+    final focus = DateTime(now.year, now.month, now.day, now.hour);
+    _animateTo(topMinute: _minutesFromBase(focus).toDouble());
+  }
+
+  // ---- Wheel <-> timeline sync ----
 
   void _onWheelInput(_Wheel wheel, DateTime next) {
     if (_suppress[wheel]! > 0) return; // programmatic reposition, not input
-    // Cheap: only record the focus while the wheel spins, so the wheel itself
-    // stays perfectly smooth. The timeline glide + refresh run on settle.
-    _focus = next;
+    // Cheap while the wheel spins: just remember the target. The timeline glide
+    // and the carry of the other wheels run once, after it settles.
+    _pendingFocus = next;
     _settleTimer?.cancel();
     _settleTimer = Timer(const Duration(milliseconds: 120), _settleAfterWheel);
   }
 
   void _settleAfterWheel() {
-    if (!mounted) return;
-    // Carry the other wheels, glide the timeline, refresh — all at once, after
-    // spinning has stopped.
-    _syncWheel(_Wheel.hour, _hourWheel, _hourItemFor(_focus), false);
-    _syncWheel(_Wheel.day, _dayWheel, _dayItemFor(_focus), false);
-    _syncWheel(_Wheel.month, _monthWheel, _monthItemFor(_focus), false);
-    _scrollTimelineToFocus();
-    setState(() {});
+    if (!mounted || _pendingFocus == null) return;
+    final target = _pendingFocus!;
+    _pendingFocus = null;
+    _syncWheel(_Wheel.hour, _hourWheel, _hourItemFor(target), false);
+    _syncWheel(_Wheel.day, _dayWheel, _dayItemFor(target), false);
+    _syncWheel(_Wheel.month, _monthWheel, _monthItemFor(target), false);
+    _animateTo(topMinute: _minutesFromBase(target).toDouble());
+  }
+
+  /// Jump every wheel to the current top focus without it counting as input.
+  void _syncWheelsToFocus() {
+    final f = _focus;
+    _syncWheel(_Wheel.hour, _hourWheel, _hourItemFor(f), true);
+    _syncWheel(_Wheel.day, _dayWheel, _dayItemFor(f), true);
+    _syncWheel(_Wheel.month, _monthWheel, _monthItemFor(f), true);
   }
 
   /// Moves wheel [c] to [target] without it counting as user input. Already at
@@ -238,133 +390,7 @@ class _ChronizePageState extends State<ChronizePage> {
     }
   }
 
-  // ---- Timeline scrolling ----
-
-  /// Smoothly scrolls the timeline so the focus is at the top. For far targets
-  /// it fakes the motion: jump to just shy of the target, then glide the rest,
-  /// so it always looks like a smooth scroll instead of a hard snap.
-  void _scrollTimelineToFocus() {
-    if (!_timeline.hasClients) return;
-    final target = _itemForFocus() * _rowHeight;
-    final distance = (target - _timeline.offset).abs();
-    if (distance < 0.5) return;
-    _lastTopItem = _itemForFocus();
-    _programmaticScroll = true;
-    if (distance > _glideDistance) {
-      final dir = target > _timeline.offset ? 1 : -1;
-      _timeline.jumpTo(target - dir * _glideDistance);
-    }
-    _timeline
-        .animateTo(
-          target,
-          duration: const Duration(milliseconds: 320),
-          curve: Curves.easeOut,
-        )
-        .whenComplete(() => _programmaticScroll = false);
-  }
-
-  /// As the user scrolls the timeline, track the wheels live to the row at the
-  /// top. Deliberately no setState: rebuilding the sliver tree mid-fling is what
-  /// makes scrolling stutter. The header refreshes on settle.
-  void _onTimelineScroll() {
-    if (_programmaticScroll || !_timeline.hasClients) return;
-    final topItem = (_timeline.offset / _rowHeight).round();
-    if (topItem == _lastTopItem) return;
-    _lastTopItem = topItem;
-    _focus = _focusForItem(topItem);
-    _syncWheel(_Wheel.hour, _hourWheel, _hourItemFor(_focus), true);
-    _syncWheel(_Wheel.day, _dayWheel, _dayItemFor(_focus), true);
-    _syncWheel(_Wheel.month, _monthWheel, _monthItemFor(_focus), true);
-  }
-
-  /// Once the timeline stops, refresh the header + focus highlight (one rebuild,
-  /// so it never affects scroll smoothness).
-  void _onTimelineSettle() {
-    if (_programmaticScroll || !_timeline.hasClients) return;
-    _lastTopItem = (_timeline.offset / _rowHeight).round();
-    _focus = _focusForItem(_lastTopItem);
-    setState(() {});
-  }
-
-  void _returnToToday() {
-    final now = DateTime.now();
-    _focus = DateTime(now.year, now.month, now.day, now.hour);
-    _syncWheel(_Wheel.hour, _hourWheel, _hourItemFor(_focus), false);
-    _syncWheel(_Wheel.day, _dayWheel, _dayItemFor(_focus), false);
-    _syncWheel(_Wheel.month, _monthWheel, _monthItemFor(_focus), false);
-    _scrollTimelineToFocus();
-    setState(() {});
-  }
-
-  // ---- Zoom ----
-
-  bool get _canZoomIn => _zoomIndex > 0;
-  bool get _canZoomOut => _zoomIndex < _zoomUnits.length - 1;
-
-  void _setZoom(int newIndex) {
-    newIndex = newIndex.clamp(0, _zoomUnits.length - 1);
-    if (newIndex == _zoomIndex) return;
-    setState(() {
-      _zoomIndex = newIndex;
-      _unitMinutes = _zoomUnits[newIndex];
-    });
-    // Keep the focus pinned to the top after the row unit changes.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_timeline.hasClients) return;
-      _programmaticScroll = true;
-      _lastTopItem = _itemForFocus();
-      _timeline.jumpTo(_lastTopItem * _rowHeight);
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _programmaticScroll = false);
-    });
-  }
-
-  void _onPointerDown(PointerDownEvent e) {
-    _pointers[e.pointer] = e.position;
-    if (_pointers.length == 2) {
-      final pts = _pointers.values.toList();
-      _pinchStartDistance = (pts[0] - pts[1]).distance;
-      _pinchStartZoom = _zoomIndex;
-      if (!_pinching) setState(() => _pinching = true);
-    }
-  }
-
-  void _onPointerMove(PointerMoveEvent e) {
-    if (!_pointers.containsKey(e.pointer)) return;
-    _pointers[e.pointer] = e.position;
-    if (_pointers.length != 2 || _pinchStartDistance <= 0) return;
-    final pts = _pointers.values.toList();
-    final scale = (pts[0] - pts[1]).distance / _pinchStartDistance;
-    // Spreading the fingers (scale > 1) zooms in: one level finer per doubling.
-    final steps = (math.log(scale) / math.ln2).round();
-    _setZoom(_pinchStartZoom - steps);
-  }
-
-  void _onPointerEnd(PointerEvent e) {
-    _pointers.remove(e.pointer);
-    if (_pointers.length < 2 && _pinching) {
-      setState(() => _pinching = false);
-    }
-  }
-
   // ---- Task lookups ----
-
-  List<Task> _tasksForItem(int item) {
-    final start = item * _unitMinutes;
-    final end = start + _unitMinutes;
-    final list = widget.tasks.where((task) {
-      final due = task.dueDate;
-      if (due == null) return false;
-      final mins = _minutesFromBase(due);
-      return mins >= start && mins < end;
-    }).toList();
-    list.sort((a, b) {
-      final ra = a.listRanking ?? 1 << 31;
-      final rb = b.listRanking ?? 1 << 31;
-      return ra.compareTo(rb);
-    });
-    return list;
-  }
 
   int get _taskCountForFocusDay {
     final day = _focusDay;
@@ -384,11 +410,23 @@ class _ChronizePageState extends State<ChronizePage> {
     return '$weekday ${f.day} $month ${f.year}';
   }
 
+  /// Label for the finest mark level currently (at least half) visible.
   String _zoomLabel() {
-    final m = _unitMinutes;
-    if (m < 60) return '$m min';
-    if (m < 1440) return '${m ~/ 60} h';
-    return '${m ~/ 1440} d';
+    for (final level in _levels.reversed) {
+      final opacity = markLevelOpacity(
+        intervalMinutes: level.intervalMinutes.toDouble(),
+        pixelsPerMinute: _pixelsPerMinute,
+        alwaysVisible: level.alwaysVisible,
+      );
+      if (opacity >= 0.5) return _intervalLabel(level.intervalMinutes);
+    }
+    return _intervalLabel(_levels.first.intervalMinutes);
+  }
+
+  static String _intervalLabel(int minutes) {
+    if (minutes < 60) return '$minutes min';
+    if (minutes < 1440) return '${minutes ~/ 60} h';
+    return '${minutes ~/ 1440} d';
   }
 
   @override
@@ -442,13 +480,20 @@ class _ChronizePageState extends State<ChronizePage> {
           IconButton(
             icon: const Icon(Icons.zoom_out),
             tooltip: 'Zoom out',
-            onPressed: _canZoomOut ? () => _setZoom(_zoomIndex + 1) : null,
+            onPressed: _canZoomOut ? () => _zoomBy(1 / _zoomButtonFactor) : null,
           ),
-          Text(_zoomLabel(), style: theme.textTheme.labelSmall),
+          SizedBox(
+            width: 44,
+            child: Text(
+              _zoomLabel(),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelSmall,
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.zoom_in),
             tooltip: 'Zoom in',
-            onPressed: _canZoomIn ? () => _setZoom(_zoomIndex - 1) : null,
+            onPressed: _canZoomIn ? () => _zoomBy(_zoomButtonFactor) : null,
           ),
           TextButton.icon(
             onPressed: _returnToToday,
@@ -461,151 +506,112 @@ class _ChronizePageState extends State<ChronizePage> {
   }
 
   Widget _buildCalendar(ThemeData theme) {
-    final focusItem = _itemForFocus();
-    // A CustomScrollView with a centre key scrolls infinitely both ways: the
-    // forward sliver builds item 0, 1, 2, ... and the leading sliver builds
-    // item -1, -2, -3, ... above it. Listener handles pinch-to-zoom while the
-    // scroll view handles single-finger scrolling.
-    return Listener(
-      onPointerDown: _onPointerDown,
-      onPointerMove: _onPointerMove,
-      onPointerUp: _onPointerEnd,
-      onPointerCancel: _onPointerEnd,
-      child: NotificationListener<ScrollEndNotification>(
-        onNotification: (_) {
-          _onTimelineSettle();
-          return false;
-        },
-        child: CustomScrollView(
-          controller: _timeline,
-          center: _timelineCenter,
-          physics: _pinching ? const NeverScrollableScrollPhysics() : null,
-          slivers: [
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _row(theme, -index - 1, focusItem),
+    // Recomputed each build so the "now" line tracks the clock without needing
+    // a periodic timer (it refreshes on any interaction / rebuild).
+    final nowMinute = _minutesFromBase(DateTime.now()).toDouble();
+    // Listener handles mouse-wheel / trackpad scrolling; GestureDetector handles
+    // pinch-to-zoom and single-finger panning. The CustomPaint draws the
+    // continuous ruler; tappable task chips are positioned on top.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight;
+        return Listener(
+          onPointerSignal: _onPointerSignal,
+          child: GestureDetector(
+            onScaleStart: _onScaleStart,
+            onScaleUpdate: (details) => _onScaleUpdate(details),
+            child: ClipRect(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _TimeAxisPainter(
+                        levels: _levels,
+                        pixelsPerMinute: _pixelsPerMinute,
+                        topMinute: _topMinute,
+                        nowMinute: nowMinute,
+                        base: _base,
+                        months: _months,
+                        onSurface: theme.colorScheme.onSurface,
+                        surface: theme.colorScheme.surface,
+                        primary: theme.colorScheme.primary,
+                        nowColor: theme.colorScheme.error,
+                      ),
+                    ),
+                  ),
+                  ..._buildTaskChips(theme, height),
+                ],
               ),
             ),
-            SliverList(
-              key: _timelineCenter,
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _row(theme, index, focusItem),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _row(ThemeData theme, int item, int focusItem) {
-    final tasks = _tasksForItem(item);
-    final mins = item * _unitMinutes;
-    final moment = _momentForMinutes(mins);
-    final isFocus = item == focusItem;
-    final isDayStart = mins % 1440 == 0;
-    final daily = _unitMinutes >= 1440;
-    final dateLabel = '${moment.day} ${_months[moment.month - 1]}';
-    return Container(
-      key: ValueKey('chronize-row-$item'),
-      height: _rowHeight,
-      decoration: BoxDecoration(
-        color: isFocus ? theme.colorScheme.primary.withOpacity(0.08) : null,
-        border: Border(
-          top: BorderSide(
-            color: isDayStart
-                ? theme.colorScheme.primary.withOpacity(0.5)
-                : theme.dividerColor.withOpacity(0.5),
-            width: isDayStart ? 1.5 : 0.5,
-          ),
+  /// Positions the visible task chips on the body by their time, cascading any
+  /// that would overlap so they stay readable.
+  List<Widget> _buildTaskChips(ThemeData theme, double height) {
+    const chipHeight = 22.0;
+    const gap = 2.0;
+    final bodyLeft = _TimeAxisPainter.gutterWidth + 6;
+    final topMin = _topMinute;
+    final bottomMin = _topMinute + height / _pixelsPerMinute;
+
+    final visible = widget.tasks.where((task) {
+      final due = task.dueDate;
+      if (due == null) return false;
+      final m = _minutesFromBase(due).toDouble();
+      return m >= topMin - 60 && m <= bottomMin + 1;
+    }).toList()
+      ..sort((a, b) => _minutesFromBase(a.dueDate!)
+          .compareTo(_minutesFromBase(b.dueDate!)));
+
+    final chips = <Widget>[];
+    double lastBottom = double.negativeInfinity;
+    for (final task in visible) {
+      final m = _minutesFromBase(task.dueDate!).toDouble();
+      var y = (m - _topMinute) * _pixelsPerMinute;
+      if (y < lastBottom + gap) y = lastBottom + gap;
+      lastBottom = y + chipHeight;
+      if (y > height) break;
+      chips.add(
+        Positioned(
+          left: bodyLeft,
+          right: 6,
+          top: y,
+          height: chipHeight,
+          child: _buildTaskChip(theme, task),
         ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 56,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2, right: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    daily
-                        ? dateLabel
-                        : '${moment.hour.toString().padLeft(2, '0')}:'
-                            '${moment.minute.toString().padLeft(2, '0')}',
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      height: 1.0,
-                      fontWeight:
-                          isFocus ? FontWeight.bold : FontWeight.normal,
-                      color: theme.colorScheme.onSurface
-                          .withOpacity(isFocus ? 1 : 0.6),
-                    ),
-                  ),
-                  // Date marker at the start of each day keeps the endless
-                  // timeline legible while scrolling.
-                  if (isDayStart && !daily)
-                    Text(
-                      dateLabel,
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        height: 1.0,
-                        fontSize: 10,
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: ListView(
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  for (final task in tasks) _buildTaskChip(theme, task),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+      );
+    }
+    return chips;
   }
 
   Widget _buildTaskChip(ThemeData theme, Task task) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4, right: 8),
-      child: Material(
-        color: task.isDone
-            ? theme.colorScheme.surfaceVariant
-            : theme.colorScheme.primaryContainer,
+    return Material(
+      color: task.isDone
+          ? theme.colorScheme.surfaceVariant
+          : theme.colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
         borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => TaskDetailPage(task: task),
-              ),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TaskDetailPage(task: task),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Align(
+            alignment: Alignment.centerLeft,
             child: Text(
               task.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              style: theme.textTheme.bodySmall?.copyWith(
                 decoration: task.isDone ? TextDecoration.lineThrough : null,
               ),
             ),
@@ -675,4 +681,163 @@ class _ChronizePageState extends State<ChronizePage> {
       ),
     );
   }
+}
+
+/// Paints the continuous time ruler: the left gutter ticks + time/date labels
+/// and the faint gridlines that extend across the body. Each mark level's
+/// opacity comes from how far apart its marks currently sit, which produces the
+/// smooth fade as the user zooms.
+class _TimeAxisPainter extends CustomPainter {
+  _TimeAxisPainter({
+    required this.levels,
+    required this.pixelsPerMinute,
+    required this.topMinute,
+    required this.nowMinute,
+    required this.base,
+    required this.months,
+    required this.onSurface,
+    required this.surface,
+    required this.primary,
+    required this.nowColor,
+  });
+
+  final List<_MarkLevel> levels;
+  final double pixelsPerMinute;
+  final double topMinute;
+  final double nowMinute;
+  final DateTime base;
+  final List<String> months;
+  final Color onSurface;
+  final Color surface;
+  final Color primary;
+  final Color nowColor;
+
+  /// Width of the left gutter that holds the time / date labels and ticks.
+  static const double gutterWidth = 56;
+
+  /// Labels need a little more breathing room than bare tick lines.
+  static const double _labelMinSpacingPx = 30;
+
+  double _yForMinute(num minute) => (minute - topMinute) * pixelsPerMinute;
+
+  double _levelOpacity(_MarkLevel level) => markLevelOpacity(
+        intervalMinutes: level.intervalMinutes.toDouble(),
+        pixelsPerMinute: pixelsPerMinute,
+        alwaysVisible: level.alwaysVisible,
+      );
+
+  /// True when [minute] is also a mark of any coarser (earlier) level, so it
+  /// shouldn't be drawn twice.
+  bool _coveredByCoarser(int minute, int levelIndex) {
+    for (var i = 0; i < levelIndex; i++) {
+      if (minute % levels[i].intervalMinutes == 0) return true;
+    }
+    return false;
+  }
+
+  String _labelFor(_MarkLevel level, int minute) {
+    if (level.intervalMinutes >= 1440) {
+      final d = base.add(Duration(minutes: minute));
+      return '${d.day} ${months[d.month - 1]}';
+    }
+    final wrapped = ((minute % 1440) + 1440) % 1440;
+    final h = (wrapped ~/ 60).toString().padLeft(2, '0');
+    final m = (wrapped % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = surface);
+
+    // Coarsest to finest so finer ticks/labels render on top of coarser ones.
+    for (var levelIndex = 0; levelIndex < levels.length; levelIndex++) {
+      final level = levels[levelIndex];
+      final opacity = _levelOpacity(level);
+      if (opacity <= 0) continue;
+
+      final interval = level.intervalMinutes;
+      final isDay = interval >= 1440;
+      final tickPaint = Paint()
+        ..color = (isDay ? primary : onSurface).withOpacity(opacity)
+        ..strokeWidth = isDay ? 1.5 : 1;
+      final gridPaint = Paint()
+        ..color = (isDay ? primary : onSurface)
+            .withOpacity(opacity * (isDay ? 0.35 : 0.12))
+        ..strokeWidth = isDay ? 1.2 : 1;
+
+      final showLabel =
+          interval * pixelsPerMinute >= _labelMinSpacingPx && opacity > 0.05;
+      final labelColor = (isDay ? primary : onSurface).withOpacity(opacity);
+
+      // First mark at or after the top of the viewport.
+      final firstMark = (topMinute / interval).ceil() * interval;
+      for (var minute = firstMark;; minute += interval) {
+        final y = _yForMinute(minute);
+        if (y > size.height) break;
+        if (_coveredByCoarser(minute, levelIndex)) continue;
+
+        canvas.drawLine(Offset(gutterWidth, y), Offset(size.width, y), gridPaint);
+        canvas.drawLine(
+          Offset(gutterWidth - level.tickLength, y),
+          Offset(gutterWidth, y),
+          tickPaint,
+        );
+        if (showLabel) {
+          _paintLabel(canvas, _labelFor(level, minute), y, labelColor,
+              bold: isDay);
+        }
+      }
+    }
+
+    // Vertical divider between the gutter and the body.
+    canvas.drawLine(
+      Offset(gutterWidth, 0),
+      Offset(gutterWidth, size.height),
+      Paint()
+        ..color = onSurface.withOpacity(0.25)
+        ..strokeWidth = 1,
+    );
+
+    _paintNowLine(canvas, size);
+  }
+
+  void _paintLabel(Canvas canvas, String text, double y, Color color,
+      {bool bold = false}) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: gutterWidth - 6);
+    painter.paint(canvas, Offset(4, y - painter.height / 2));
+  }
+
+  void _paintNowLine(Canvas canvas, Size size) {
+    final y = _yForMinute(nowMinute);
+    if (y < 0 || y > size.height) return;
+    canvas.drawLine(
+      Offset(gutterWidth, y),
+      Offset(size.width, y),
+      Paint()
+        ..color = nowColor.withOpacity(0.8)
+        ..strokeWidth = 1.5,
+    );
+    canvas.drawCircle(Offset(gutterWidth, y), 3, Paint()..color = nowColor);
+  }
+
+  @override
+  bool shouldRepaint(_TimeAxisPainter old) =>
+      old.pixelsPerMinute != pixelsPerMinute ||
+      old.topMinute != topMinute ||
+      old.nowMinute != nowMinute ||
+      old.onSurface != onSurface ||
+      old.surface != surface ||
+      old.primary != primary ||
+      old.nowColor != nowColor;
 }

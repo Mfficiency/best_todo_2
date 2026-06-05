@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.76] - 2026-06-05
+- chronize: the left timeline now zooms on a continuous axis — time marks fade in and spread apart as you zoom in (2h → 1h → 30m → 10m → 5m) and fade away when zooming out, with the day marks always visible
+- chronize: tasks are placed on the timeline by their time, cascading when they would overlap, and a live "now" line tracks the clock
+
 ## [0.1.75] - 2026-06-04
 - chronize: the left timeline is now zoomable — pinch (or the zoom buttons) from 5-minute marks all the way out to a multi-day overview
 - chronize: a "Today" button jumps the timeline and wheels back to now

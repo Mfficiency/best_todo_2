@@ -1,212 +1,115 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/ui/chronize_page.dart';
 
-/// Smoothness tests for the Chronize timeline.
+/// Tests for the Chronize continuous time ruler.
 ///
-/// Perceptual smoothness can't be asserted directly, so these tests pin the
-/// invariants that *produce* it:
-///   * every row is identical height with no gaps (so scrolling never jumps
-///     between rows);
-///   * the timeline scrolls infinitely in both directions;
-///   * the timeline and the wheels stay in sync;
-///   * a month change is animated and its visible motion is bounded to a single
-///     glide (the "fake smooth" scroll) instead of teleporting the viewport.
-/// Plus basic coverage of the zoom controls and the Today button.
+/// The smooth appearance/disappearance of marks while zooming can't be asserted
+/// perceptually, so these pin the invariant that *produces* it: a mark level's
+/// opacity is a smooth, monotonic function of how far apart its marks sit on
+/// screen, and finer levels only reach full opacity at higher zoom than coarser
+/// ones. Plus basic widget coverage of the zoom controls and Today button.
 void main() {
-  const double rowHeight = 64; // _rowHeight
-  const double glideDistance = 8 * rowHeight; // _glideDistance
-
-  // Wheels with the hour wheel hidden (the default): day = picker 0, month = 1.
-  const int dayWheel = 0;
-  const int monthWheel = 1;
-
-  Future<void> pumpPage(WidgetTester tester) async {
-    final now = DateTime.now();
-    final tasks = [
-      Task(
-        title: 'Today task',
-        dueDate: DateTime(now.year, now.month, now.day, 18),
-        listRanking: 1,
-      ),
-      Task(
-        title: 'Tomorrow task',
-        dueDate: DateTime(now.year, now.month, now.day + 1, 9),
-        listRanking: 2,
-      ),
-    ];
-    await tester.pumpWidget(
-      MaterialApp(home: ChronizePage(tasks: tasks)),
-    );
-    await tester.pumpAndSettle();
-  }
-
-  // The timeline's scroll position. Each row contains a (non-scrolling) task
-  // ListView, so there are many Scrollables under the CustomScrollView; the
-  // timeline's own is the outermost, hence first in tree order.
-  ScrollPosition timeline(WidgetTester tester) {
-    return tester
-        .state<ScrollableState>(
-          find
-              .descendant(
-                of: find.byType(CustomScrollView),
-                matching: find.byType(Scrollable),
-              )
-              .first,
-        )
-        .position;
-  }
-
-  // The selected item of wheel [index]. A CupertinoPicker's wheel is a
-  // _FixedExtentScrollable (a Scrollable subclass that find.byType won't match),
-  // so read its FixedExtentScrollController off the ListWheelScrollView instead.
-  int wheelItem(WidgetTester tester, int index) {
-    final wheels = tester
-        .widgetList<ListWheelScrollView>(find.byType(ListWheelScrollView))
-        .toList();
-    final controller = wheels[index].controller as FixedExtentScrollController;
-    return controller.selectedItem;
-  }
-
-  int topItem(WidgetTester tester) =>
-      (timeline(tester).pixels / rowHeight).round();
-
-  testWidgets('every row is the same height with no gaps between them',
-      (tester) async {
-    await pumpPage(tester);
-
-    final top = topItem(tester);
-    final a = find.byKey(ValueKey('chronize-row-$top'));
-    final b = find.byKey(ValueKey('chronize-row-${top + 1}'));
-    final c = find.byKey(ValueKey('chronize-row-${top + 2}'));
-
-    expect(a, findsOneWidget);
-    expect(b, findsOneWidget);
-    expect(c, findsOneWidget);
-
-    expect(tester.getSize(a).height, rowHeight);
-    expect(tester.getSize(b).height, rowHeight);
-    expect(tester.getSize(c).height, rowHeight);
-
-    final ay = tester.getTopLeft(a).dy;
-    final by = tester.getTopLeft(b).dy;
-    final cy = tester.getTopLeft(c).dy;
-    expect(by - ay, moreOrLessEquals(rowHeight, epsilon: 0.01));
-    expect(cy - by, moreOrLessEquals(rowHeight, epsilon: 0.01));
-  });
-
-  testWidgets('timeline scrolls infinitely into the future and the past',
-      (tester) async {
-    await pumpPage(tester);
-    final pos = timeline(tester);
-
-    pos.jumpTo(pos.pixels + 1000 * 24 * rowHeight);
-    await tester.pump();
-    final future = topItem(tester);
-    expect(find.byKey(ValueKey('chronize-row-$future')), findsOneWidget);
-
-    pos.jumpTo(-1000 * 24 * rowHeight);
-    await tester.pump();
-    final past = topItem(tester);
-    expect(past, lessThan(0));
-    expect(find.byKey(ValueKey('chronize-row-$past')), findsOneWidget);
-
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('scrolling the timeline keeps the day wheel in sync',
-      (tester) async {
-    await pumpPage(tester);
-
-    // Item 50 == 50 hours after today 00:00 == calendar day 2 (50 ~/ 24).
-    timeline(tester).jumpTo(50 * rowHeight);
-    await tester.pump();
-    await tester.pump();
-
-    expect(topItem(tester), 50);
-    expect(wheelItem(tester, dayWheel), 2);
-  });
-
-  testWidgets('spinning the day wheel scrolls the timeline to that day',
-      (tester) async {
-    await pumpPage(tester);
-
-    // Low-velocity gesture so the wheel settles on a known item (+3 days).
-    final center = tester.getCenter(find.byType(CupertinoPicker).at(dayWheel));
-    final gesture = await tester.startGesture(center);
-    await gesture.moveBy(const Offset(0, -3 * 32 - 20)); // 3 items + touch slop
-    await tester.pump(const Duration(milliseconds: 50));
-    await gesture.up();
-    await tester.pump(const Duration(milliseconds: 200)); // fire settle debounce
-    await tester.pumpAndSettle(); // glide
-
-    final dayWheelItem = wheelItem(tester, dayWheel);
-    // The day implied by the row at the top matches the day wheel.
-    expect((topItem(tester) / 24).floor(), dayWheelItem);
-    expect(dayWheelItem, greaterThan(0));
-  });
-
-  testWidgets('a month change glides smoothly instead of teleporting',
-      (tester) async {
-    await pumpPage(tester);
-
-    final center = tester.getCenter(find.byType(CupertinoPicker).at(monthWheel));
-    final gesture = await tester.startGesture(center);
-    await gesture.moveBy(const Offset(0, -40)); // just past half an item + slop
-    await tester.pump(const Duration(milliseconds: 50));
-    await gesture.up();
-    await tester.pump(const Duration(milliseconds: 140)); // fire settle -> glide
-
-    final samples = <double>[];
-    for (var i = 0; i < 30; i++) {
-      samples.add(timeline(tester).pixels);
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-    await tester.pumpAndSettle();
-    final settled = timeline(tester).pixels;
-
-    for (final offset in samples) {
+  group('markLevelOpacity (the smooth fade)', () {
+    test('the coarsest (day) level stays fully visible at any zoom', () {
       expect(
-        (offset - settled).abs(),
-        lessThanOrEqualTo(glideDistance + 1),
-        reason: 'timeline jumped more than one glide from its destination',
+        markLevelOpacity(
+          intervalMinutes: 1440,
+          pixelsPerMinute: 0.001,
+          alwaysVisible: true,
+        ),
+        1.0,
       );
+    });
+
+    test('a level is hidden when its marks are too close together', () {
+      // 5-minute marks at a coarse zoom sit a few pixels apart -> hidden.
+      expect(markLevelOpacity(intervalMinutes: 5, pixelsPerMinute: 0.9), 0.0);
+    });
+
+    test('a level is fully shown once its marks are far enough apart', () {
+      // 5-minute marks 40px apart -> fully visible.
+      expect(markLevelOpacity(intervalMinutes: 5, pixelsPerMinute: 8), 1.0);
+    });
+
+    test('opacity ramps smoothly through the fade band', () {
+      final midSpacing = (kMarkFadeStartPx + kMarkFadeFullPx) / 2;
+      final opacity = markLevelOpacity(
+        intervalMinutes: 30,
+        pixelsPerMinute: midSpacing / 30,
+      );
+      expect(opacity, closeTo(0.5, 1e-9));
+    });
+
+    test('finer marks appear only after coarser marks as zoom increases', () {
+      // At a zoom where the 30-minute marks are partly in, the finer 10- and
+      // 5-minute marks must still be fully hidden.
+      const ppm = 0.9;
+      expect(markLevelOpacity(intervalMinutes: 30, pixelsPerMinute: ppm),
+          greaterThan(0));
+      expect(markLevelOpacity(intervalMinutes: 10, pixelsPerMinute: ppm), 0.0);
+      expect(markLevelOpacity(intervalMinutes: 5, pixelsPerMinute: ppm), 0.0);
+    });
+
+    test('opacity increases monotonically as the user zooms in', () {
+      double previous = -1;
+      for (final ppm in [0.05, 0.3, 0.9, 2.0, 4.0, 8.0]) {
+        final opacity =
+            markLevelOpacity(intervalMinutes: 10, pixelsPerMinute: ppm);
+        expect(opacity, greaterThanOrEqualTo(previous));
+        previous = opacity;
+      }
+    });
+  });
+
+  group('Chronize page widget', () {
+    Future<void> pumpPage(WidgetTester tester) async {
+      final now = DateTime.now();
+      final tasks = [
+        Task(
+          title: 'Today task',
+          dueDate: DateTime(now.year, now.month, now.day, 18),
+          listRanking: 1,
+        ),
+        Task(
+          title: 'Tomorrow task',
+          dueDate: DateTime(now.year, now.month, now.day + 1, 9),
+          listRanking: 2,
+        ),
+      ];
+      await tester.pumpWidget(MaterialApp(home: ChronizePage(tasks: tasks)));
+      await tester.pumpAndSettle();
     }
-    expect(samples.toSet().length, greaterThan(1)); // it animated
-    // It really moved a month (far beyond one glide), so the bound above proves
-    // a faked glide rather than a tiny hop.
-    expect(topItem(tester).abs(), greaterThan(8));
-  });
 
-  testWidgets('zoom controls change the row time unit', (tester) async {
-    await pumpPage(tester);
+    testWidgets('renders the ruler and the scroll wheels', (tester) async {
+      await pumpPage(tester);
+      expect(find.byType(CustomPaint), findsWidgets);
+      expect(find.text('Today'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
 
-    expect(find.text('1 h'), findsOneWidget); // default
+    testWidgets('the zoom buttons change the finest-visible granularity',
+        (tester) async {
+      await pumpPage(tester);
+      expect(find.text('1 h'), findsOneWidget); // default
 
-    await tester.tap(find.byIcon(Icons.zoom_in));
-    await tester.pumpAndSettle();
-    expect(find.text('30 min'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.zoom_in));
+      await tester.pumpAndSettle();
+      expect(find.text('30 min'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.zoom_out));
-    await tester.tap(find.byIcon(Icons.zoom_out));
-    await tester.pumpAndSettle();
-    expect(find.text('2 h'), findsOneWidget);
-  });
+      await tester.tap(find.byIcon(Icons.zoom_out));
+      await tester.tap(find.byIcon(Icons.zoom_out));
+      await tester.pumpAndSettle();
+      expect(find.text('2 h'), findsOneWidget);
+    });
 
-  testWidgets('the Today button returns the timeline to now', (tester) async {
-    await pumpPage(tester);
-    final start = topItem(tester);
-
-    timeline(tester).jumpTo(timeline(tester).pixels + 500 * rowHeight);
-    await tester.pump();
-    expect(topItem(tester), isNot(start));
-
-    await tester.tap(find.text('Today'));
-    await tester.pumpAndSettle();
-
-    expect(topItem(tester), start);
+    testWidgets('the Today button settles without error', (tester) async {
+      await pumpPage(tester);
+      await tester.tap(find.text('Today'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
   });
 }
