@@ -70,6 +70,11 @@ class Config {
   /// instead of the per-tab list view.
   static bool startInScheduleView = false;
 
+  /// If true, the experimental Chronize tool shows the hour scroll wheel on the
+  /// right. Off by default so the timeline gets more room (the hour is set by
+  /// scrolling the timeline itself).
+  static bool chronizeShowHourWheel = false;
+
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
   static bool swipeLeftDelete = true;
@@ -156,6 +161,7 @@ class Config {
       'dateFormat': dateFormat,
       'defaultDelaySeconds': defaultDelaySeconds,
       'startInScheduleView': startInScheduleView,
+      'chronizeShowHourWheel': chronizeShowHourWheel,
     };
   }
 
@@ -188,6 +194,8 @@ class Config {
     defaultDelaySeconds =
         (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
+    chronizeShowHourWheel =
+        data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
   }
 
   /// Persists the current settings to disk.
