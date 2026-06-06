@@ -25,6 +25,7 @@ import 'countdown_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
+import 'projects_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
 import 'usage_data_page.dart';
@@ -1597,6 +1598,23 @@ class _HomePageState extends State<HomePage>
                     ),
                   ),
                 );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.dashboard),
+              title: const Text('Projects'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ProjectsPage(
+                      tasks: _tasks,
+                      onChanged: _saveTasks,
+                    ),
+                  ),
+                ).then((_) {
+                  if (mounted) setState(() {});
+                });
               },
             ),
             ListTile(
