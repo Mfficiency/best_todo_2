@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.57] - 2026-06-06
+- new Projects tool
+- drag tasks onto projects to assign them
+- per-project Kanban board (To-Do / Ongoing / Closed)
+
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode

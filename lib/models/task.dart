@@ -20,6 +20,18 @@ class Task {
   String? recurrenceParentUid;
   String? recurrenceInstanceKey;
 
+  /// Id of the project this task is assigned to, or null if unassigned.
+  String? projectId;
+
+  /// Kanban column for this task within its project: one of
+  /// [kanbanTodo], [kanbanOngoing] or [kanbanClosed].
+  String kanbanStatus;
+
+  /// Kanban column identifiers used by the Projects board.
+  static const String kanbanTodo = 'todo';
+  static const String kanbanOngoing = 'ongoing';
+  static const String kanbanClosed = 'closed';
+
   Task({
     String? uid,
     required this.title,
@@ -35,6 +47,8 @@ class Task {
     this.recurrenceIntervalDays = 1,
     this.recurrenceParentUid,
     this.recurrenceInstanceKey,
+    this.projectId,
+    this.kanbanStatus = kanbanTodo,
   }) : uid = uid ?? Task.newUid();
 
   void toggleDone() {
@@ -63,6 +77,8 @@ class Task {
       recurrenceIntervalDays: json['recurrenceIntervalDays'] as int? ?? 1,
       recurrenceParentUid: json['recurrenceParentUid'] as String?,
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
+      projectId: json['projectId'] as String?,
+      kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
     );
   }
 
@@ -83,5 +99,7 @@ class Task {
           'recurrenceParentUid': recurrenceParentUid,
         if (recurrenceInstanceKey != null)
           'recurrenceInstanceKey': recurrenceInstanceKey,
+        if (projectId != null) 'projectId': projectId,
+        'kanbanStatus': kanbanStatus,
       };
 }
