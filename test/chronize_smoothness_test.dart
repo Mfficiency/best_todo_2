@@ -130,8 +130,11 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: ChronizePage(tasks: tasks)));
       await tester.pumpAndSettle();
 
-      expect(find.text('Previous event'), findsOneWidget);
-      expect(find.text('Next event'), findsOneWidget);
+      // A subtle up/down arrow points at the nearest past/future event, with a
+      // small distance pill ("30 days") and no "earlier/in" wording.
+      expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      expect(find.textContaining('days'), findsWidgets);
     });
 
     testWidgets('hides navigator cards when an event is in view',
@@ -147,8 +150,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: ChronizePage(tasks: tasks)));
       await tester.pumpAndSettle();
 
-      expect(find.text('Previous event'), findsNothing);
-      expect(find.text('Next event'), findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
     });
 
     testWidgets('tapping empty timeline opens the new-task dialog',

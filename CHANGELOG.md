@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.79] - 2026-06-05
+- chronize: the off-screen event hints are subtler — a small lowercase distance pill (e.g. "3 hours") with the direction arrow moved outside the pill (above for earlier, below for later), so the hint is one line tall and the wording no longer says "earlier"/"in"
+
 ## [0.1.78] - 2026-06-05
 - chronize: the "Today" button now centers the view on the current time instead of pinning it to the top
 - chronize: flinging the timeline keeps gliding and slows to a stop (momentum scrolling) instead of halting on release

@@ -687,20 +687,18 @@ class _ChronizePageState extends State<ChronizePage>
     if (prevMin != null) {
       cards.add(_eventNavCard(
         theme,
-        icon: Icons.keyboard_arrow_up,
-        title: 'Previous event',
-        subtitle: '${_formatGap(centerMin - prevMin)} earlier',
+        up: true,
+        label: _formatGap(centerMin - prevMin),
         targetMinute: prevMin,
         height: height,
       ));
     }
     if (nextMin != null) {
-      if (cards.isNotEmpty) cards.add(const SizedBox(height: 16));
+      if (cards.isNotEmpty) cards.add(const SizedBox(height: 20));
       cards.add(_eventNavCard(
         theme,
-        icon: Icons.keyboard_arrow_down,
-        title: 'Next event',
-        subtitle: 'in ${_formatGap(nextMin - centerMin)}',
+        up: false,
+        label: _formatGap(nextMin - centerMin),
         targetMinute: nextMin,
         height: height,
       ));
@@ -720,48 +718,46 @@ class _ChronizePageState extends State<ChronizePage>
     );
   }
 
-  /// One navigator card. Tapping it glides the timeline so [targetMinute] is
-  /// centered in the viewport.
+  /// One subtle navigator hint: a small pill showing just the distance (e.g.
+  /// "3 hours") with the direction arrow sitting *outside* the pill — above for
+  /// an earlier event, below for a later one — so the pill stays one line tall
+  /// and the arrow + position imply the direction. Tapping the pill glides the
+  /// timeline so [targetMinute] is centered.
   Widget _eventNavCard(
     ThemeData theme, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
+    required bool up,
+    required String label,
     required double targetMinute,
     required double height,
   }) {
     final scheme = theme.colorScheme;
-    return Material(
-      color: scheme.secondaryContainer,
-      borderRadius: BorderRadius.circular(12),
-      elevation: 2,
+    final arrow = Icon(
+      up ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+      size: 20,
+      color: scheme.onSurfaceVariant.withOpacity(0.7),
+    );
+    final pill = Material(
+      color: scheme.surfaceVariant.withOpacity(0.85),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         onTap: () => _animateTo(
           topMinute: targetMinute - height / (2 * _pixelsPerMinute),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 32, color: scheme.onSecondaryContainer),
-              Text(
-                title,
-                style: theme.textTheme.labelLarge
-                    ?.copyWith(color: scheme.onSecondaryContainer),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSecondaryContainer.withOpacity(0.8),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
         ),
       ),
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: up ? [arrow, pill] : [pill, arrow],
     );
   }
 
