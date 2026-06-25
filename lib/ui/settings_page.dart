@@ -289,6 +289,75 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// Schedules a real one-shot alarm ~60s out that drives the exact same
+  /// background-isolate path as the daily report, then tells the user to swipe
+  /// the app away so the send happens with the app process not running. This
+  /// is the only way to prove the scheduled SMS works when the app is closed —
+  /// "Send test now" runs in the foreground and can't prove that.
+  Future<void> _runBackgroundSelfTest() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (!cfg.enabled || cfg.recipients.isEmpty) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Enable the report and add at least one recipient first'),
+      ));
+      return;
+    }
+
+    // Persist current settings so the background isolate reads the same config.
+    await _persistSms();
+    final scheduled =
+        await SmsReportScheduler.scheduleTestIn(const Duration(seconds: 60));
+    if (!mounted) return;
+
+    if (!scheduled) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Background test only runs on Android'),
+      ));
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Background send test armed'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'A real alarm will fire in ~60 seconds and send the report from a '
+            'background isolate — exactly like the daily report.\n\n'
+            'To prove it works with the app closed:\n\n'
+            '1. Tap OK, then SWIPE THIS APP AWAY from Recents now.\n'
+            '   (Do NOT use Force stop in App info — Android cancels alarms '
+            'for a force-stopped app, which would falsely fail the test.)\n\n'
+            '2. Wait ~1 minute. The recipient phone receiving the SMS is the '
+            'real proof.\n\n'
+            '3. Reopen the app -> "Sent message history". A "Background '
+            'self-test... isolate is awake" entry proves the alarm woke the '
+            'isolate; a "send" entry shows the result.\n\n'
+            'Note: a send entry may show as failed via a 20s timeout even when '
+            'the SMS actually went out (the status callback does not always '
+            'round-trip in the background). Trust the received text first.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await SmsReportScheduler.cancelTest();
+              if (context.mounted) Navigator.of(context).pop();
+            },
+            child: const Text('Cancel test'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatMmSs(int totalSeconds) {
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
@@ -671,6 +740,14 @@ class _SettingsPageState extends State<SettingsPage> {
           subtitle:
               const Text('Run the report immediately using today\'s tasks'),
           onTap: _sendSmsTestNow,
+        ),
+        ListTile(
+          leading: const Icon(Icons.alarm_on),
+          title: const Text('Test background send (fires in ~1 min)'),
+          subtitle: const Text(
+              'Proves the scheduled send works with the app closed — '
+              'swipe the app away after arming'),
+          onTap: _runBackgroundSelfTest,
         ),
       ],
     );

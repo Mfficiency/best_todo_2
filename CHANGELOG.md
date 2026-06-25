@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.80] - 2026-06-25
+- sms: added "Test background send (fires in ~1 min)" in Settings — it arms a real one-shot alarm that runs the report from a background isolate (the exact same path as the daily report), so you can verify SMS is delivered while the app is swiped away. The previous "Send test now" only runs in the foreground and cannot prove the closed-app path. The test writes a "background self-test: isolate is awake" entry to the message history as proof the alarm fired.
+
 ## [0.1.79] - 2026-06-05
 - chronize: the off-screen event hints are subtler — a small lowercase distance pill (e.g. "3 hours") with the direction arrow moved outside the pill (above for earlier, below for later), so the hint is one line tall and the wording no longer says "earlier"/"in"
 
