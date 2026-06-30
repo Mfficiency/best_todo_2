@@ -1645,6 +1645,16 @@ class _HomePageState extends State<HomePage>
               childrenPadding: const EdgeInsets.only(left: 16),
               children: [
                 ListTile(
+                  leading: const Icon(Icons.alarm),
+                  title: const Text('Alarms'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AlarmsPage()),
+                    );
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.timer),
                   title: const Text('Countdown'),
                   onTap: () {
