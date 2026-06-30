@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.79] - 2026-06-05
+- chronize: the off-screen event hints are subtler — a small lowercase distance pill (e.g. "3 hours") with the direction arrow moved outside the pill (above for earlier, below for later), so the hint is one line tall and the wording no longer says "earlier"/"in"
+
+## [0.1.78] - 2026-06-05
+- chronize: the "Today" button now centers the view on the current time instead of pinning it to the top
+- chronize: flinging the timeline keeps gliding and slows to a stop (momentum scrolling) instead of halting on release
+- chronize: tap an empty spot on the timeline to create a task with that exact deadline (date + time); tap a task to edit its title, deadline and done state, or delete it
+- tasks: a deadline time set on the Chronize timeline is preserved and no longer overwritten by the default 18:00 normalization
+
+## [0.1.77] - 2026-06-05
+- chronize: when no event is in view, two centered cards point to the nearest past (↑) and future (↓) events, showing how far away each is; tap a card to jump there. They hide as soon as an event scrolls into view
+
 ## [0.1.76] - 2026-06-05
 - chronize: the left timeline now zooms on a continuous axis — time marks fade in and spread apart as you zoom in (2h → 1h → 30m → 10m → 5m) and fade away when zooming out, with the day marks always visible
 - chronize: tasks are placed on the timeline by their time, cascading when they would overlap, and a live "now" line tracks the clock
