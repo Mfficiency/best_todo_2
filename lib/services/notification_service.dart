@@ -1,4 +1,5 @@
 import '../config.dart';
+import '../models/alarm.dart';
 import 'notification_service_impl_stub.dart'
     if (dart.library.io) 'notification_service_impl_io.dart'
     if (dart.library.html) 'notification_service_impl_web.dart' as impl;
@@ -61,4 +62,22 @@ class NotificationService {
         shiftedFireAt.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30);
     return impl.showTaskNotification(taskTitle, delaySeconds: effectiveDelay);
   }
+
+  /// Shows an alarm alert immediately. Used by the alarm scheduler when an
+  /// alarm's fire time is reached.
+  static Future<bool> showAlarmNotification(
+    String title,
+    String body, {
+    bool vibrate = true,
+  }) {
+    return impl.showAlarmNotification(title, body, vibrate: vibrate);
+  }
+
+  /// Requests the permissions required to fire exact alarms.
+  static Future<bool> ensureAlarmPermissions() => impl.ensureAlarmPermissions();
+
+  /// Cancels existing scheduled alarms and schedules all enabled ones at their
+  /// exact fire time. Survives app termination and device reboot on Android.
+  static Future<void> scheduleAlarms(List<Alarm> alarms) =>
+      impl.scheduleAlarms(alarms);
 }

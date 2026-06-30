@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.80] - 2026-06-30
+- add alarms tool with full alarm settings
+- home-screen alarms widget with toggle and edit
+- exact alarm scheduling that fires when the app is closed and after reboot
+- alarm snooze and dismiss actions
+
 ## [0.1.76] - 2026-06-05
 - chronize: the left timeline now zooms on a continuous axis — time marks fade in and spread apart as you zoom in (2h → 1h → 30m → 10m → 5m) and fade away when zooming out, with the day marks always visible
 - chronize: tasks are placed on the timeline by their time, cascading when they would overlap, and a live "now" line tracks the clock
@@ -101,7 +107,6 @@
 - prevent screenshot workflow self-trigger loops
 - capture and archive four screenshots per push (home, menu open, settings, your stats)
 - group screenshots in one folder per push and prepend grouped entries to `SCREENSHOT_CHANGELOG.md`
-
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode
