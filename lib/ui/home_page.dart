@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,7 +17,10 @@ import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'app_logs_page.dart';
+import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
+import 'chronize_page.dart';
+import 'countdown_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -56,6 +61,15 @@ class _HomePageState extends State<HomePage>
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
   Timer? _midnightTimer;
+
+  /// When true, the body renders one long schedule list with day-grouped
+  /// sections; tab taps scroll that list instead of switching panes.
+  bool _scheduleView = Config.startInScheduleView;
+  final ScrollController _scheduleScrollController = ScrollController();
+  final Map<int, GlobalKey> _scheduleTabAnchors = {
+    for (var i = 0; i < 6; i++) i: GlobalKey(),
+  };
+  int _lastTabIndex = 0;
 
   static const int _futureTabIndex = 5;
   static final DateTime _futureDueDate = DateTime(2300, 1, 1);
@@ -125,19 +139,124 @@ class _HomePageState extends State<HomePage>
       for (var i = 0; i < count; i++) {
         final deletedAt =
             now.subtract(Duration(days: dayOffset, minutes: i * 7));
+        // Alternate auto-deleted (done tasks swept at day rollover) and
+        // manually-deleted seeds so dev can exercise both restore paths.
+        final isAuto = (titleIndex % 2) == 0;
         seeded.add(
           Task(
             title: titles[titleIndex % titles.length],
-            description: 'Seeded dev deleted task',
+            description: isAuto
+                ? 'Seeded dev auto-deleted task'
+                : 'Seeded dev manually-deleted task',
+            createdAt: deletedAt.subtract(const Duration(days: 3)),
+            completedAt:
+                isAuto ? deletedAt.subtract(const Duration(hours: 1)) : null,
+            movedAt: deletedAt.subtract(const Duration(days: 2)),
+            rescheduledAt: deletedAt.subtract(const Duration(days: 2)),
             dueDate: deletedAt.subtract(const Duration(days: 1)),
             deletedAt: deletedAt,
-            isDone: true,
+            autoDeleted: isAuto,
+            isDone: isAuto,
           ),
         );
         titleIndex++;
       }
     }
     seeded.sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
+    return seeded;
+  }
+
+  /// Auto-deleted-only seed used in dev mode to backfill existing dev users
+  /// whose persisted deleted list pre-dates the `autoDeleted` flag.
+  List<Task> _buildDevAutoDeletedBackfill(DateTime referenceDate) {
+    final now = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+      12,
+    );
+    const titles = <String>[
+      'Auto-swept morning routine',
+      'Auto-swept inbox triage',
+      'Auto-swept stand-up notes',
+      'Auto-swept gym session',
+      'Auto-swept code review',
+      'Auto-swept journal entry',
+    ];
+    // Spread across different days so the date column varies in the UI.
+    const dayOffsets = <int>[1, 2, 4, 7, 9, 11];
+    final seeded = <Task>[];
+    for (var i = 0; i < titles.length; i++) {
+      final deletedAt = now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
+      seeded.add(
+        Task(
+          title: titles[i],
+          description: 'Seeded dev auto-deleted backfill',
+          createdAt: deletedAt.subtract(const Duration(days: 3)),
+          completedAt: deletedAt.subtract(const Duration(hours: 1)),
+          movedAt: deletedAt.subtract(const Duration(days: 2)),
+          rescheduledAt: deletedAt.subtract(const Duration(days: 2)),
+          dueDate: deletedAt.subtract(const Duration(days: 1)),
+          deletedAt: deletedAt,
+          autoDeleted: true,
+          isDone: true,
+        ),
+      );
+    }
+    return seeded;
+  }
+
+  /// Marker used to identify (and avoid duplicating) the dev-seeded future
+  /// tasks across loads.
+  static const String _devFutureTaskMarker = 'Seeded dev future task';
+
+  /// Twenty seeded tasks with deadlines spread from tomorrow through about
+  /// two months out, so dev builds always have data to drive the schedule
+  /// view and the next-week / next-month tabs.
+  List<Task> _buildDevFutureTasksSeed(DateTime referenceDate) {
+    final base = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+      9,
+    );
+    final now = DateTime.now();
+    const entries = <MapEntry<int, String>>[
+      MapEntry(1, 'Review PR for auth refactor'),
+      MapEntry(1, 'Call dentist to reschedule'),
+      MapEntry(2, 'Pay credit card bill'),
+      MapEntry(2, 'Submit weekly timesheet'),
+      MapEntry(3, 'Coffee with Alex'),
+      MapEntry(4, 'Renew gym membership'),
+      MapEntry(6, 'Prep slides for team demo'),
+      MapEntry(7, 'Annual physical at the doctor'),
+      MapEntry(9, 'Book hotel for the conference trip'),
+      MapEntry(12, 'File quarterly compliance report'),
+      MapEntry(14, "Birthday — buy gift for Sam"),
+      MapEntry(18, 'Renew passport'),
+      MapEntry(22, 'Schedule annual roof inspection'),
+      MapEntry(28, 'Draft tax return for accountant'),
+      MapEntry(32, 'Take car in for 60k service'),
+      MapEntry(38, 'Quarterly OKR review with manager'),
+      MapEntry(44, 'Plan vacation itinerary'),
+      MapEntry(50, 'Submit talk proposal for conference'),
+      MapEntry(55, 'Renew domain registrations'),
+      MapEntry(60, 'Start packing for apartment move'),
+    ];
+    final seeded = <Task>[];
+    for (var i = 0; i < entries.length; i++) {
+      final offset = entries[i].key;
+      final title = entries[i].value;
+      seeded.add(
+        Task(
+          title: title,
+          description: _devFutureTaskMarker,
+          createdAt: now,
+          dueDate: base.add(Duration(days: offset)),
+          listRanking: i + 1,
+        ),
+      );
+    }
     return seeded;
   }
 
@@ -242,22 +361,54 @@ class _HomePageState extends State<HomePage>
     final loadedDailyStats = await _storageService.loadDailyTaskStats();
     if (loaded.isEmpty) {
       _tasks.addAll(
-        Config.initialTasks.map((t) => Task(title: t, dueDate: _currentDate)),
+        Config.initialTasks.map((t) => Task(
+              title: t,
+              dueDate: _currentDate,
+              createdAt: DateTime.now(),
+            )),
       );
       _tasks.addAll(
         Config.initialFutureTasks.map(
           (t) => Task(
             title: t,
+            createdAt: DateTime.now(),
             dueDate: _futureDueDate,
           ),
         ),
       );
+      if (Config.isDev) {
+        _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
+      }
     } else {
       _tasks.addAll(loaded);
+      // Backfill the spread-out dev seed for existing dev installs so the
+      // schedule view and the next-week / next-month tabs always have data.
+      if (Config.isDev &&
+          !_tasks.any((t) => t.description == _devFutureTaskMarker)) {
+        _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
+      }
     }
     _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
       _deletedTasks.addAll(loadedDeleted);
+      // Backfill auto-deleted seed items for dev users whose persisted
+      // deleted list pre-dates the autoDeleted flag, so the new restore
+      // path is visible without clearing storage.
+      if (Config.isDev && !_deletedTasks.any((t) => t.autoDeleted)) {
+        _deletedTasks.insertAll(0, _buildDevAutoDeletedBackfill(_currentDate));
+        _deletedTasks.sort((a, b) {
+          final ad = a.deletedAt;
+          final bd = b.deletedAt;
+          if (ad == null && bd == null) return 0;
+          if (ad == null) return 1;
+          if (bd == null) return -1;
+          return bd.compareTo(ad);
+        });
+        if (_deletedTasks.length > 100) {
+          _deletedTasks.removeRange(100, _deletedTasks.length);
+        }
+        _saveDeletedTasks();
+      }
     } else if (Config.isDev) {
       _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
       _saveDeletedTasks();
@@ -345,6 +496,10 @@ class _HomePageState extends State<HomePage>
           description: task.description,
           note: task.note,
           label: task.label,
+          createdAt: task.createdAt,
+          completedAt: task.completedAt,
+          movedAt: task.movedAt,
+          rescheduledAt: task.rescheduledAt,
           dueDate: date,
           recurrenceParentUid: parentUid,
           recurrenceInstanceKey: key,
@@ -445,8 +600,9 @@ class _HomePageState extends State<HomePage>
     _saveDailyStats();
   }
 
-  void _addToDeletedTasks(Task task) {
+  void _addToDeletedTasks(Task task, {bool autoDeleted = false}) {
     task.deletedAt = DateTime.now();
+    task.autoDeleted = autoDeleted;
     _deletedTasks.insert(0, task);
     if (_deletedTasks.length > 100) {
       _deletedTasks.removeLast();
@@ -481,8 +637,14 @@ class _HomePageState extends State<HomePage>
       vsync: this,
       initialIndex: safeInitialTab,
     );
+    _lastTabIndex = _tabController.index;
     _tabController.addListener(() {
       setState(() {});
+      final idx = _tabController.index;
+      if (idx != _lastTabIndex) {
+        _lastTabIndex = idx;
+        if (_scheduleView) _scrollToScheduleAnchor(idx);
+      }
     });
     Config.ensureVersionLoaded().then((_) {
       if (mounted) {
@@ -498,8 +660,78 @@ class _HomePageState extends State<HomePage>
   void dispose() {
     _tabController.dispose();
     _controller.dispose();
+    _scheduleScrollController.dispose();
     _midnightTimer?.cancel();
     super.dispose();
+  }
+
+  /// Map a task to the tab index that would own it in list mode. Used by
+  /// the schedule view so each tile's "move to" menu hides the task's
+  /// current bucket.
+  int _tabIndexForTask(Task task) {
+    final due = task.dueDate;
+    if (due == null) return _futureTabIndex;
+    if (_isFutureBucketDate(due)) return _futureTabIndex;
+    final diff = dateDiffInDays(due, _currentDate);
+    if (diff <= 0) return 0;
+    if (diff == 1) return 1;
+    if (diff == 2) return 2;
+    if (diff < 30) return 3;
+    return 4;
+  }
+
+  /// Reorder within one day section of the schedule view. Other tasks in
+  /// the same tab keep their relative position; only the slice belonging
+  /// to this section is shuffled.
+  void _reorderTaskInSection(
+    List<Task> sectionTasks,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (sectionTasks.isEmpty) return;
+    final pageIndex = _tabIndexForTask(sectionTasks.first);
+    final fullList = _tasksForTab(pageIndex);
+
+    final sectionSet = Set<Task>.identity()..addAll(sectionTasks);
+    final sectionPositions = <int>[];
+    for (var i = 0; i < fullList.length; i++) {
+      if (sectionSet.contains(fullList[i])) sectionPositions.add(i);
+    }
+    if (sectionPositions.length != sectionTasks.length) return;
+    if (oldIndex < 0 || oldIndex >= sectionTasks.length) return;
+    if (newIndex < 0 || newIndex > sectionTasks.length) return;
+
+    final reordered = List<Task>.from(sectionTasks);
+    if (newIndex > oldIndex) newIndex -= 1;
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+
+    for (var k = 0; k < sectionPositions.length; k++) {
+      fullList[sectionPositions[k]] = reordered[k];
+    }
+
+    setState(() {
+      for (var i = 0; i < fullList.length; i++) {
+        fullList[i].listRanking = i + 1;
+      }
+    });
+    _saveTasks();
+    LogService.add(
+      'HomePage._reorderTaskInSection',
+      'Reordered "${moved.title}" within day section of tab $pageIndex',
+    );
+  }
+
+  void _scrollToScheduleAnchor(int tabIndex) {
+    final key = _scheduleTabAnchors[tabIndex];
+    final ctx = key?.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+      alignment: 0.0,
+    );
   }
 
   void _scheduleMidnightUpdate() {
@@ -518,6 +750,7 @@ class _HomePageState extends State<HomePage>
     final tabIndex = _tabController.index;
     final task = Task(
       title: title,
+      createdAt: DateTime.now(),
       dueDate: _dueDateForTab(tabIndex),
       listRanking: _listRankingForNewTask(
         tabIndex,
@@ -531,6 +764,47 @@ class _HomePageState extends State<HomePage>
     _controller.clear();
     _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
+  }
+
+  /// Creates a task from the Chronize timeline at an explicit deadline
+  /// (date + time), preserving the chosen time of day.
+  void _addTaskFromChronize(String title, DateTime dueDate) {
+    if (title.trim().isEmpty) return;
+    final task = Task(
+      title: title.trim(),
+      createdAt: DateTime.now(),
+      dueDate: dueDate,
+      hasExplicitTime: true,
+      listRanking: 1 << 30,
+    );
+    setState(() {
+      _tasks.add(task);
+    });
+    _trackTaskCreated(task);
+    _saveTasks();
+    LogService.add('HomePage._addTaskFromChronize',
+        'Added "$title" due ${dueDate.toIso8601String()}');
+  }
+
+  /// Persists in-place edits made to a task from the Chronize timeline.
+  void _onChronizeTaskChanged() {
+    setState(() {});
+    _saveTasks();
+  }
+
+  /// Deletes a task chosen on the Chronize timeline, moving it to the deleted
+  /// list (consistent with the rest of the app).
+  void _deleteTaskFromChronize(Task task) {
+    final index = _tasks.indexOf(task);
+    if (index < 0) return;
+    setState(() {
+      _tasks.removeAt(index);
+      _tasks.removeWhere((t) => t.recurrenceParentUid == task.uid);
+    });
+    _addToDeletedTasks(task);
+    _saveTasks();
+    _saveDeletedTasks();
+    LogService.add('HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -549,6 +823,9 @@ class _HomePageState extends State<HomePage>
     final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
       _refreshRecurringForTask(task);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
@@ -569,12 +846,48 @@ class _HomePageState extends State<HomePage>
     final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
       _refreshRecurringForTask(task);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
     LogService.add(
         'HomePage._moveTask', 'Moved "${task.title}" to page $destination');
+  }
+
+  DateTime _nextWeekdayDate(int weekday) {
+    final start = _dateOnly(_currentDate);
+    var daysUntil = (weekday - start.weekday) % 7;
+    if (daysUntil == 0) daysUntil = 7;
+    return start.add(Duration(days: daysUntil));
+  }
+
+  void _moveTaskToWeekday(int pageIndex, int index, int weekday) {
+    if (weekday < DateTime.monday || weekday > DateTime.sunday) return;
+    final tasks = _tasksForTab(pageIndex);
+    if (index >= tasks.length) return;
+    final task = tasks[index];
+    if (task.recurrenceParentUid != null) {
+      task.recurrenceParentUid = null;
+      task.recurrenceInstanceKey = null;
+    }
+    final oldDueDate = task.dueDate;
+    final newDueDate = _nextWeekdayDate(weekday);
+    setState(() {
+      task.dueDate = newDueDate;
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
+      _refreshRecurringForTask(task);
+    });
+    _trackTaskMove(task, oldDueDate, newDueDate);
+    _saveTasks();
+    LogService.add(
+      'HomePage._moveTaskToWeekday',
+      'Moved "${task.title}" to ${newDueDate.toIso8601String()}',
+    );
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
@@ -647,6 +960,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _deletedTasks.remove(task);
       task.deletedAt = null;
+      task.autoDeleted = false;
       task.dueDate = _currentDate;
       _tasks.add(task);
       _refreshRecurringForTask(task);
@@ -721,7 +1035,7 @@ class _HomePageState extends State<HomePage>
         final doneTasks = _tasks.where((t) => t.isDone).toList();
         for (final task in doneTasks) {
           _tasks.remove(task);
-          _addToDeletedTasks(task);
+          _addToDeletedTasks(task, autoDeleted: true);
         }
       }
     });
@@ -782,18 +1096,49 @@ class _HomePageState extends State<HomePage>
         listTasks[j].listRanking = j + 1;
       }
     }
+    // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
+    // multiple tasks land on the same day so no two share a time.
+    applyDefaultDeadlineTimes(_tasks);
     _storageService.saveTaskList(_tasks);
     _updateHomeWidget();
   }
 
-  Future<void> _exportTasks() async {
-    final downloadsDir = await getDownloadsDirectory();
+  String _timestampForFilename() {
     final now = DateTime.now();
-    final ts =
-        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-    final directory = await getDirectoryPath(
-      initialDirectory: downloadsDir?.path,
-    );
+    return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+  }
+
+  Future<String?> _pickDirectory() async {
+    final downloadsDir = await getDownloadsDirectory();
+    return getDirectoryPath(initialDirectory: downloadsDir?.path);
+  }
+
+  Future<void> _exportSettingsOnly() async {
+    final directory = await _pickDirectory();
+    if (directory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Export canceled')));
+      return;
+    }
+    final sep = Platform.pathSeparator;
+    final path =
+        '$directory${directory.endsWith(sep) ? '' : sep}settings_${_timestampForFilename()}.json';
+    final file = File(path);
+    final payload = <String, dynamic>{
+      'export_version': 1,
+      'exported_at': DateTime.now().toIso8601String(),
+      'settings': Config.toMap(),
+    };
+    await file.writeAsString(jsonEncode(payload), flush: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Exported to ${file.path}')));
+  }
+
+  Future<void> _exportTasks() async {
+    final ts = _timestampForFilename();
+    final directory = await _pickDirectory();
     if (directory == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -803,7 +1148,12 @@ class _HomePageState extends State<HomePage>
     final sep = Platform.pathSeparator;
     final path =
         '$directory${directory.endsWith(sep) ? '' : sep}tasks_$ts.json';
-    final file = await _storageService.exportTaskList(_tasks, path);
+    final file = await _storageService.exportTaskData(
+      tasks: _tasks,
+      deletedTasks: _deletedTasks,
+      dailyStatsByDay: _dailyStatsByDay,
+      path: path,
+    );
     if (!mounted) return;
     final message =
         file != null ? 'Exported to ${file.path}' : 'Failed to export tasks';
@@ -811,23 +1161,273 @@ class _HomePageState extends State<HomePage>
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _exportEverything() async {
+    final directory = await _pickDirectory();
+    if (directory == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Export canceled')));
+      return;
+    }
+    final sep = Platform.pathSeparator;
+    final path =
+        '$directory${directory.endsWith(sep) ? '' : sep}besttodo_export_${_timestampForFilename()}.json';
+    final timers = await _storageService.loadCountdownTimers();
+    final payload = <String, dynamic>{
+      'export_version': 1,
+      'exported_at': DateTime.now().toIso8601String(),
+      'settings': Config.toMap(),
+      'tasks_bundle': _storageService.buildTaskExportPayload(
+        tasks: _tasks,
+        deletedTasks: _deletedTasks,
+        dailyStatsByDay: _dailyStatsByDay,
+      ),
+      'countdown_timers':
+          (timers ?? []).map((t) => t.toJson()).toList(),
+    };
+    final file = File(path);
+    await file.writeAsString(jsonEncode(payload), flush: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Exported to ${file.path}')));
+  }
+
+  Future<void> _importSettingsOnly() async {
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final picked = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (picked == null) return;
+    try {
+      final decoded = jsonDecode(await File(picked.path).readAsString())
+          as Map<String, dynamic>;
+      final settingsRaw = decoded['settings'];
+      final settings = settingsRaw is Map
+          ? Map<String, dynamic>.from(settingsRaw as Map)
+          : decoded;
+      Config.applyMap(settings);
+      await Config.save();
+      _updateSettings();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Settings imported')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to import settings')));
+    }
+  }
+
   Future<void> _importTasks() async {
     const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file == null) return;
-    final imported = await _storageService.importTaskList(file.path);
-    if (imported.isEmpty) return;
+    final imported = await _storageService.importTaskData(file.path);
+    if (imported.tasks.isEmpty && imported.deletedTasks.isEmpty) return;
     setState(() {
       _tasks
         ..clear()
-        ..addAll(imported);
+        ..addAll(imported.tasks);
+      _deletedTasks
+        ..clear()
+        ..addAll(imported.deletedTasks);
+      _dailyStatsByDay
+        ..clear()
+        ..addAll(imported.dailyStatsByDay);
       _refreshAllRecurringTasks();
     });
     _initializeStatsForCurrentDay();
     _saveTasks();
+    _saveDeletedTasks();
+    _saveDailyStats();
     if (mounted) {
+      final warningSuffix = imported.warnings.isEmpty
+          ? ''
+          : ' (${imported.warnings.join(' | ')})';
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tasks imported$warningSuffix')));
+    }
+  }
+
+  Future<void> _importEverything() async {
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final picked = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (picked == null) return;
+    try {
+      final decoded = jsonDecode(await File(picked.path).readAsString())
+          as Map<String, dynamic>;
+      final settingsRaw = decoded['settings'];
+      if (settingsRaw is Map) {
+        Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+        await Config.save();
+      }
+
+      final tasksBundleRaw = decoded['tasks_bundle'];
+      if (tasksBundleRaw != null) {
+        final imported =
+            _storageService.importTaskDataFromDecoded(tasksBundleRaw);
+        if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+          setState(() {
+            _tasks
+              ..clear()
+              ..addAll(imported.tasks);
+            _deletedTasks
+              ..clear()
+              ..addAll(imported.deletedTasks);
+            _dailyStatsByDay
+              ..clear()
+              ..addAll(imported.dailyStatsByDay);
+            _refreshAllRecurringTasks();
+          });
+          _initializeStatsForCurrentDay();
+          _saveTasks();
+          _saveDeletedTasks();
+          _saveDailyStats();
+        }
+      }
+
+      final timersRaw = decoded['countdown_timers'];
+      if (timersRaw != null) {
+        await _storageService.importCountdownTimersFromDecoded(timersRaw);
+      }
+      _updateSettings();
+      if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Tasks imported')));
+          .showSnackBar(const SnackBar(content: Text('Everything imported')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to import full backup')));
+    }
+  }
+
+  Future<void> _importAutoDetect() async {
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final picked = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (picked == null) return;
+
+    try {
+      final decoded = jsonDecode(await File(picked.path).readAsString());
+      if (decoded is List) {
+        final imported = _storageService.importTaskDataFromDecoded(decoded);
+        if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+          setState(() {
+            _tasks
+              ..clear()
+              ..addAll(imported.tasks);
+            _deletedTasks
+              ..clear()
+              ..addAll(imported.deletedTasks);
+            _dailyStatsByDay
+              ..clear()
+              ..addAll(imported.dailyStatsByDay);
+            _refreshAllRecurringTasks();
+          });
+          _initializeStatsForCurrentDay();
+          _saveTasks();
+          _saveDeletedTasks();
+          _saveDailyStats();
+          if (!mounted) return;
+          final warningSuffix = imported.warnings.isEmpty
+              ? ''
+              : ' (${imported.warnings.join(' | ')})';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Tasks imported$warningSuffix')),
+          );
+        }
+        return;
+      }
+
+      if (decoded is! Map<String, dynamic>) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unsupported import file')),
+        );
+        return;
+      }
+
+      final hasSettings = decoded['settings'] is Map;
+      final hasEverythingBundle = decoded['tasks_bundle'] != null;
+      final hasTasksPayload = decoded.containsKey('tasks') ||
+          decoded.containsKey('deleted_tasks') ||
+          decoded.containsKey('daily_stats') ||
+          decoded.containsKey('task_events') ||
+          decoded.containsKey('export_version');
+
+      if (hasEverythingBundle) {
+        final settingsRaw = decoded['settings'];
+        if (settingsRaw is Map) {
+          Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+          await Config.save();
+        }
+        final imported =
+            _storageService.importTaskDataFromDecoded(decoded['tasks_bundle']);
+        if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+          setState(() {
+            _tasks
+              ..clear()
+              ..addAll(imported.tasks);
+            _deletedTasks
+              ..clear()
+              ..addAll(imported.deletedTasks);
+            _dailyStatsByDay
+              ..clear()
+              ..addAll(imported.dailyStatsByDay);
+            _refreshAllRecurringTasks();
+          });
+          _initializeStatsForCurrentDay();
+          _saveTasks();
+          _saveDeletedTasks();
+          _saveDailyStats();
+        }
+        final timersRaw = decoded['countdown_timers'];
+        if (timersRaw != null) {
+          await _storageService.importCountdownTimersFromDecoded(timersRaw);
+        }
+        _updateSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Everything imported')));
+        return;
+      }
+
+      if (hasSettings && !hasTasksPayload) {
+        Config.applyMap(Map<String, dynamic>.from(decoded['settings'] as Map));
+        await Config.save();
+        _updateSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Settings imported')));
+        return;
+      }
+
+      final imported = _storageService.importTaskDataFromDecoded(decoded);
+      if (imported.tasks.isNotEmpty || imported.deletedTasks.isNotEmpty) {
+        setState(() {
+          _tasks
+            ..clear()
+            ..addAll(imported.tasks);
+          _deletedTasks
+            ..clear()
+            ..addAll(imported.deletedTasks);
+          _dailyStatsByDay
+            ..clear()
+            ..addAll(imported.dailyStatsByDay);
+          _refreshAllRecurringTasks();
+        });
+        _initializeStatsForCurrentDay();
+        _saveTasks();
+        _saveDeletedTasks();
+        _saveDailyStats();
+      }
+      if (!mounted) return;
+      final warningSuffix = imported.warnings.isEmpty
+          ? ''
+          : ' (${imported.warnings.join(' | ')})';
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tasks imported$warningSuffix')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Failed to import file')));
     }
   }
 
@@ -851,30 +1451,86 @@ class _HomePageState extends State<HomePage>
     return list;
   }
 
+  Widget _buildAddTaskRow() {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              decoration: const InputDecoration(labelText: 'Add task'),
+              onSubmitted: _addTask,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () => _addTask(_controller.text),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskTile(Task task, int pageIndex, int indexInTab) {
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    final usesCustomSwipe = isAndroid || kIsWeb;
+    final tile = TaskTile(
+      key: usesCustomSwipe ? ValueKey(task.uid) : null,
+      task: task,
+      onChanged: _saveTasks,
+      onToggle: () {
+        final wasDone = task.isDone;
+        setState(() {
+          task.toggleDone();
+          task.completedAt = task.isDone ? DateTime.now() : null;
+        });
+        _trackTaskDoneState(task, wasDone);
+        _saveTasks();
+      },
+      onDueDateChanged: (oldDueDate, newDueDate) {
+        setState(() {
+          if (task.recurrenceParentUid != null) {
+            task.recurrenceParentUid = null;
+            task.recurrenceInstanceKey = null;
+          }
+          final now = DateTime.now();
+          task.movedAt = now;
+          task.rescheduledAt = now;
+          _trackTaskMove(task, oldDueDate, newDueDate);
+          _refreshRecurringForTask(task);
+        });
+        _saveTasks();
+      },
+      onRecurringChanged: () {
+        setState(() {
+          _refreshRecurringForTask(task);
+        });
+        _saveTasks();
+      },
+      onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
+      onMoveToWeekday: (weekday) =>
+          _moveTaskToWeekday(pageIndex, indexInTab, weekday),
+      onMoveNext: () => _moveTaskToNextPage(pageIndex, indexInTab),
+      onDelete: () => _deleteTask(pageIndex, indexInTab),
+      pageIndex: pageIndex,
+      showSwipeButton: !isAndroid,
+      swipeLeftDelete: Config.swipeLeftDelete,
+    );
+    if (usesCustomSwipe) return tile;
+    return Dismissible(
+      key: ValueKey(task.uid),
+      background: Container(color: Colors.greenAccent.withOpacity(0.5)),
+      onDismissed: (_) => _moveTaskToNextPage(pageIndex, indexInTab),
+      child: tile,
+    );
+  }
+
   Widget _buildTaskList(int pageIndex) {
     final tasks = _tasksForTab(pageIndex);
-    // LogService.add('HomePage._buildTaskList',
-    //     'Building tab $pageIndex with ${tasks.length} tasks');
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  decoration: const InputDecoration(labelText: 'Add task'),
-                  onSubmitted: _addTask,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.add),
-                onPressed: () => _addTask(_controller.text),
-              )
-            ],
-          ),
-        ),
+        _buildAddTaskRow(),
         Expanded(
           child: tasks.isEmpty && pageIndex == 0
               ? const Center(child: Text('No tasks for today'))
@@ -883,59 +1539,28 @@ class _HomePageState extends State<HomePage>
                   onReorder: (oldIndex, newIndex) =>
                       _reorderTask(pageIndex, oldIndex, newIndex),
                   buildDefaultDragHandles: true,
-                  itemBuilder: (context, index) {
-                    final task = tasks[index];
-                    final isAndroid =
-                        Theme.of(context).platform == TargetPlatform.android;
-                    final tile = TaskTile(
-                      key: isAndroid ? ValueKey(task.uid) : null,
-                      task: task,
-                      onChanged: _saveTasks,
-                      onToggle: () {
-                        final wasDone = task.isDone;
-                        setState(task.toggleDone);
-                        _trackTaskDoneState(task, wasDone);
-                        _saveTasks();
-                      },
-                      onDueDateChanged: (oldDueDate, newDueDate) {
-                        setState(() {
-                          if (task.recurrenceParentUid != null) {
-                            task.recurrenceParentUid = null;
-                            task.recurrenceInstanceKey = null;
-                          }
-                          _trackTaskMove(task, oldDueDate, newDueDate);
-                          _refreshRecurringForTask(task);
-                        });
-                        _saveTasks();
-                      },
-                      onRecurringChanged: () {
-                        setState(() {
-                          _refreshRecurringForTask(task);
-                        });
-                        _saveTasks();
-                      },
-                      onMove: (dest) => _moveTask(pageIndex, index, dest),
-                      onMoveNext: () => _moveTaskToNextPage(pageIndex, index),
-                      onDelete: () => _deleteTask(pageIndex, index),
-                      pageIndex: pageIndex,
-                      showSwipeButton: !isAndroid,
-                      swipeLeftDelete: Config.swipeLeftDelete,
-                    );
-                    if (isAndroid) {
-                      return tile;
-                    }
-                    return Dismissible(
-                      key: ValueKey(task.uid),
-                      background: Container(
-                        color: Colors.greenAccent.withOpacity(0.5),
-                      ),
-                      onDismissed: (_) => _moveTaskToNextPage(pageIndex, index),
-                      child: tile,
-                    );
-                  },
+                  itemBuilder: (context, index) =>
+                      _buildTaskTile(tasks[index], pageIndex, index),
                 ),
         )
       ],
+    );
+  }
+
+  Widget _buildScheduleBody() {
+    return ScheduleView(
+      tasks: _tasks,
+      currentDate: _currentDate,
+      scrollController: _scheduleScrollController,
+      tabAnchorKeys: _scheduleTabAnchors,
+      addTaskRow: _buildAddTaskRow(),
+      buildTile: (task) {
+        final pageIndex = _tabIndexForTask(task);
+        final tabTasks = _tasksForTab(pageIndex);
+        final indexInTab = tabTasks.indexOf(task);
+        return _buildTaskTile(task, pageIndex, indexInTab);
+      },
+      onReorderSection: _reorderTaskInSection,
     );
   }
 
@@ -963,6 +1588,10 @@ class _HomePageState extends State<HomePage>
                   MaterialPageRoute(
                     builder: (_) => SettingsPage(
                       onSettingsChanged: _updateSettings,
+                      onExportTasksRequested: _exportTasks,
+                      onExportSettingsRequested: _exportSettingsOnly,
+                      onExportEverythingRequested: _exportEverything,
+                      onImportRequested: _importAutoDetect,
                     ),
                   ),
                 );
@@ -992,6 +1621,7 @@ class _HomePageState extends State<HomePage>
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => YourStatsPage(
+                      tasks: _tasks,
                       deletedItems: _deletedTasks,
                       dailyStatsByDay: _dailyStatsByDay,
                     ),
@@ -1039,21 +1669,41 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.file_download),
-              title: const Text('Export Tasks'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportTasks();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.file_upload),
-              title: const Text('Import Tasks'),
-              onTap: () {
-                Navigator.pop(context);
-                _importTasks();
-              },
+            ExpansionTile(
+              leading: const Icon(Icons.build),
+              title: const Text('Tools'),
+              childrenPadding: const EdgeInsets.only(left: 16),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.timer),
+                  title: const Text('Countdown'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CountdownTimerPage(),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('Chronize'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChronizePage(
+                        tasks: _tasks,
+                        onCreateTask: _addTaskFromChronize,
+                        onTaskChanged: _onChronizeTaskChanged,
+                        onDeleteTask: _deleteTaskFromChronize,
+                      ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -1067,6 +1717,24 @@ class _HomePageState extends State<HomePage>
             suffixIcon: Icon(Icons.search),
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(_scheduleView
+                ? Icons.format_list_bulleted
+                : Icons.calendar_month),
+            tooltip: _scheduleView ? 'List view' : 'Schedule view',
+            onPressed: () {
+              setState(() {
+                _scheduleView = !_scheduleView;
+              });
+              if (_scheduleView) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollToScheduleAnchor(_tabController.index);
+                });
+              }
+            },
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),
           child: Column(
@@ -1119,10 +1787,12 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: List.generate(Config.tabs.length, _buildTaskList),
-      ),
+      body: _scheduleView
+          ? _buildScheduleBody()
+          : TabBarView(
+              controller: _tabController,
+              children: List.generate(Config.tabs.length, _buildTaskList),
+            ),
     );
   }
 }

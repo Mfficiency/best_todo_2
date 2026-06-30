@@ -1,11 +1,28 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../main.dart';
+import '../models/sms_recipient.dart';
+import '../models/sms_report_config.dart';
+import '../services/sms_report_config_service.dart';
+import '../services/sms_report_scheduler.dart';
+import '../services/sms_report_service.dart';
+import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
-  const SettingsPage({Key? key, this.onSettingsChanged}) : super(key: key);
+  final Future<void> Function()? onExportTasksRequested;
+  final Future<void> Function()? onExportSettingsRequested;
+  final Future<void> Function()? onExportEverythingRequested;
+  final Future<void> Function()? onImportRequested;
+  const SettingsPage({
+    Key? key,
+    this.onSettingsChanged,
+    this.onExportTasksRequested,
+    this.onExportSettingsRequested,
+    this.onExportEverythingRequested,
+    this.onImportRequested,
+  }) : super(key: key);
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -15,7 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    4,
+    6,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -23,6 +40,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'Tasks',
     'Widget',
     'Notifications',
+    'SMS report',
+    'Export',
   ];
   int _activeSectionIndex = 0;
   static const double _tabsHeaderHeight = 60;
@@ -35,21 +54,239 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _useIconTabs = Config.useIconTabs;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
+  bool _use24HourFormat = Config.use24HourFormat;
+  String _dateFormat = Config.dateFormat;
   int _startTabIndex = Config.startTabIndex;
+  bool _startInScheduleView = Config.startInScheduleView;
+  bool _chronizeShowHourWheel = Config.chronizeShowHourWheel;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
   int _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
   bool _quietHoursEnabled = Config.quietHoursEnabled;
   int _quietHoursStartMinutes = Config.quietHoursStartMinutes;
   int _quietHoursEndMinutes = Config.quietHoursEndMinutes;
 
+  SmsReportConfig? _smsConfig;
+  final TextEditingController _smsTemplateController = TextEditingController();
+
+  void _syncLocalStateFromConfig() {
+    _notifications = Config.enableNotifications;
+    _swipeLeftDelete = Config.swipeLeftDelete;
+    _darkMode = Config.darkMode;
+    _useIconTabs = Config.useIconTabs;
+    _showWidgetProgressLine = Config.showWidgetProgressLine;
+    _addNewTasksToTop = Config.addNewTasksToTop;
+    _use24HourFormat = Config.use24HourFormat;
+    _dateFormat = Config.dateFormat;
+    _startTabIndex = Config.startTabIndex;
+    _startInScheduleView = Config.startInScheduleView;
+    _chronizeShowHourWheel = Config.chronizeShowHourWheel;
+    _defaultDelaySeconds = Config.defaultDelaySeconds;
+    _defaultNotificationDelaySeconds = Config.defaultNotificationDelaySeconds;
+    _quietHoursEnabled = Config.quietHoursEnabled;
+    _quietHoursStartMinutes = Config.quietHoursStartMinutes;
+    _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_updateActiveSectionFromScroll);
+    _loadSmsConfig();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _updateActiveSectionFromScroll();
     });
+  }
+
+  Future<void> _loadSmsConfig() async {
+    final cfg = await SmsReportConfigService.load();
+    if (!mounted) return;
+    setState(() {
+      _smsConfig = cfg;
+      _smsTemplateController.text = cfg.template;
+    });
+  }
+
+  Future<void> _persistSms() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    await SmsReportConfigService.save(cfg);
+    await SmsReportScheduler.applyFromConfig();
+  }
+
+  String _formatHour24(int hour, int minute) =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+  Future<void> _pickSmsSubscriptionId() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    final controller =
+        TextEditingController(text: cfg.subscriptionId.toString());
+    String? errorText;
+
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('SIM subscription id'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '-1 = system default. On dual-SIM devices try 0, 1, or '
+                'the subscription id shown in Android Settings → SIMs.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Subscription id',
+                  errorText: errorText,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final v = int.tryParse(controller.text.trim());
+                if (v == null) {
+                  setDialogState(() => errorText = 'Enter an integer');
+                  return;
+                }
+                Navigator.of(context).pop(v);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (picked == null) return;
+    setState(() => cfg.subscriptionId = picked);
+    await _persistSms();
+  }
+
+  Future<void> _pickSmsTime() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: cfg.hour, minute: cfg.minute),
+    );
+    if (picked == null) return;
+    setState(() {
+      cfg.hour = picked.hour;
+      cfg.minute = picked.minute;
+    });
+    await _persistSms();
+  }
+
+  Future<void> _editSmsRecipient({SmsRecipient? existing, int? index}) async {
+    final nicknameController =
+        TextEditingController(text: existing?.nickname ?? '');
+    final phoneController =
+        TextEditingController(text: existing?.phoneNumber ?? '');
+
+    final result = await showDialog<SmsRecipient>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(existing == null ? 'Add recipient' : 'Edit recipient'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nicknameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Nickname'),
+            ),
+            TextField(
+              controller: phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Phone number',
+                hintText: '+1234567890',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final phone = phoneController.text.trim();
+              if (phone.isEmpty) return;
+              Navigator.of(context).pop(SmsRecipient(
+                nickname: nicknameController.text.trim(),
+                phoneNumber: phone,
+              ));
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() {
+      if (index == null) {
+        cfg.recipients.add(result);
+      } else {
+        cfg.recipients[index] = result;
+      }
+    });
+    await _persistSms();
+  }
+
+  Future<void> _removeSmsRecipient(int index) async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() => cfg.recipients.removeAt(index));
+    await _persistSms();
+  }
+
+  Future<void> _saveSmsTemplate() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    cfg.template = _smsTemplateController.text;
+    await _persistSms();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Template saved')),
+    );
+  }
+
+  Future<void> _resetSmsTemplate() async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() {
+      cfg.template = kDefaultSmsTemplate;
+      _smsTemplateController.text = kDefaultSmsTemplate;
+    });
+    await _persistSms();
+  }
+
+  Future<void> _sendSmsTestNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('Sending...')));
+    final sent = await SmsReportService.runDailyReport();
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('Sent to $sent recipient(s)')),
+    );
   }
 
   String _formatMmSs(int totalSeconds) {
@@ -154,6 +391,26 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _jumpToSection(int index) async {
     setState(() => _activeSectionIndex = index);
+
+    // SliverList lays out children lazily, so a section that hasn't been
+    // scrolled into view yet has no RenderObject and ensureVisible would
+    // no-op. Walk the scroll forward in chunks until the target section
+    // is laid out, then ensureVisible does the final alignment.
+    if (_scrollController.hasClients) {
+      var attempts = 0;
+      while (_sectionKeys[index].currentContext == null && attempts < 10) {
+        final position = _scrollController.position;
+        final maxExtent = position.maxScrollExtent;
+        if (_scrollController.offset >= maxExtent - 1) break;
+        await _scrollController.animateTo(
+          maxExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+        attempts++;
+      }
+    }
+
     final sectionContext = _sectionKeys[index].currentContext;
     if (sectionContext == null) return;
     await Scrollable.ensureVisible(
@@ -232,10 +489,252 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildSmsReportSection() {
+    final cfg = _smsConfig;
+    if (cfg == null) {
+      return _buildSection(
+        index: 4,
+        title: 'SMS report',
+        children: const [
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: LinearProgressIndicator(),
+          ),
+        ],
+      );
+    }
+    return _buildSection(
+      index: 4,
+      title: 'SMS report',
+      children: [
+        SwitchListTile(
+          title: const Text('Enable daily SMS report'),
+          subtitle: const Text(
+              'Sends an SMS each day at the chosen time to all recipients'),
+          value: cfg.enabled,
+          onChanged: (v) async {
+            setState(() => cfg.enabled = v);
+            await _persistSms();
+          },
+        ),
+        ListTile(
+          title: const Text('Send time'),
+          subtitle: Text(_formatHour24(cfg.hour, cfg.minute)),
+          trailing: const Icon(Icons.schedule),
+          onTap: _pickSmsTime,
+        ),
+        SwitchListTile(
+          title: const Text('Only send if under threshold'),
+          subtitle: Text(
+            cfg.thresholdEnabled
+                ? 'Send only when percentage of completed tasks is below '
+                    '${cfg.completionThresholdPercent}%'
+                : 'Always send when enabled',
+          ),
+          value: cfg.thresholdEnabled,
+          onChanged: (v) async {
+            setState(() => cfg.thresholdEnabled = v);
+            await _persistSms();
+          },
+        ),
+        if (cfg.thresholdEnabled)
+          ListTile(
+            title: Text(
+              'Completion threshold: ${cfg.completionThresholdPercent}%',
+            ),
+            subtitle: Slider(
+              value: cfg.completionThresholdPercent.toDouble(),
+              min: 0,
+              max: 100,
+              divisions: 20,
+              label: '${cfg.completionThresholdPercent}%',
+              onChanged: (v) {
+                setState(() => cfg.completionThresholdPercent = v.round());
+              },
+              onChangeEnd: (_) async {
+                await _persistSms();
+              },
+            ),
+          ),
+        ListTile(
+          title: const Text('SIM subscription id'),
+          subtitle: Text(cfg.subscriptionId == -1
+              ? 'Default (-1). Tap to change for dual-SIM devices.'
+              : 'Sending via subscription id ${cfg.subscriptionId}'),
+          trailing: const Icon(Icons.sim_card),
+          onTap: _pickSmsSubscriptionId,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                'Recipients',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Add recipient',
+                icon: const Icon(Icons.add),
+                onPressed: () => _editSmsRecipient(),
+              ),
+            ],
+          ),
+        ),
+        if (cfg.recipients.isEmpty)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text('No recipients yet'),
+          )
+        else
+          ...List<Widget>.generate(cfg.recipients.length, (i) {
+            final r = cfg.recipients[i];
+            final label = r.nickname.isEmpty ? '(no nickname)' : r.nickname;
+            return ListTile(
+              title: Text(label),
+              subtitle: Text(r.phoneNumber),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () =>
+                        _editSmsRecipient(existing: r, index: i),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _removeSmsRecipient(i),
+                  ),
+                ],
+              ),
+            );
+          }),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Text(
+            'Message template',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Tokens: {hello} {nickname} {completed} {uncompleted} {date} {list}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _smsTemplateController,
+            maxLines: 8,
+            minLines: 4,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _saveSmsTemplate,
+                icon: const Icon(Icons.save),
+                label: const Text('Save template'),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: _resetSmsTemplate,
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.history),
+          title: const Text('Sent message history'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const SmsReportLogPage(),
+            ),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.send),
+          title: const Text('Send test now'),
+          subtitle:
+              const Text('Run the report immediately using today\'s tasks'),
+          onTap: _sendSmsTestNow,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExportSection() {
+    return _buildSection(
+      index: 5,
+      title: 'Export',
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FilledButton.icon(
+                onPressed: widget.onExportTasksRequested,
+                icon: const Icon(Icons.task_alt),
+                label: const Text('Export Tasks'),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: widget.onExportSettingsRequested,
+                icon: const Icon(Icons.tune),
+                label: const Text('Export Settings'),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: widget.onExportEverythingRequested,
+                icon: const Icon(Icons.file_download),
+                label: const Text('Export Everything'),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Import',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: widget.onImportRequested == null
+                    ? null
+                    : () async {
+                        await widget.onImportRequested!();
+                        if (!mounted) return;
+                        setState(_syncLocalStateFromConfig);
+                      },
+                icon: const Icon(Icons.file_upload),
+                label: const Text('Import'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _scrollController.removeListener(_updateActiveSectionFromScroll);
     _scrollController.dispose();
+    _smsTemplateController.dispose();
     super.dispose();
   }
 
@@ -304,6 +803,39 @@ class _SettingsPageState extends State<SettingsPage> {
                           await Config.save();
                           widget.onSettingsChanged?.call();
                         },
+                      ),
+                      SwitchListTile(
+                        title: const Text('24-hour time'),
+                        subtitle: const Text(
+                            'Turn off for 12-hour AM/PM time'),
+                        value: _use24HourFormat,
+                        onChanged: (val) async {
+                          setState(() => _use24HourFormat = val);
+                          Config.use24HourFormat = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      ListTile(
+                        title: const Text('Date format'),
+                        trailing: DropdownButton<String>(
+                          value: _dateFormat,
+                          items: Config.dateFormats
+                              .map(
+                                (f) => DropdownMenuItem<String>(
+                                  value: f,
+                                  child: Text(f.toLowerCase()),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) async {
+                            if (val == null) return;
+                            setState(() => _dateFormat = val);
+                            Config.dateFormat = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -377,6 +909,30 @@ class _SettingsPageState extends State<SettingsPage> {
                           },
                         ),
                       ),
+                      SwitchListTile(
+                        title: const Text('Start in schedule view'),
+                        subtitle: const Text(
+                            'Open the calendar / schedule view on launch instead of the tab list'),
+                        value: _startInScheduleView,
+                        onChanged: (val) async {
+                          setState(() => _startInScheduleView = val);
+                          Config.startInScheduleView = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Chronize: show hour wheel'),
+                        subtitle: const Text(
+                            'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
+                        value: _chronizeShowHourWheel,
+                        onChanged: (val) async {
+                          setState(() => _chronizeShowHourWheel = val);
+                          Config.chronizeShowHourWheel = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
                     ],
                   ),
                   _buildSection(
@@ -448,6 +1004,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
+                  _buildSmsReportSection(),
+                  _buildExportSection(),
                 ],
               ),
             ),

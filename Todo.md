@@ -1,8 +1,22 @@
 ## After MVP
 ### TODO
+- add a setting to enable or disable people you are sending it to, so you dont just have to delete  there number
 - full testing suite, only merge if all test are complete
-- ios mode
 - calendar view
+- build on github: have a manual action to build the apk on github so i can work remotely
+- ios mode
+- receiving sms to send you back the task list, so if my friend sends me : "tasks" it automatically sends back todays tasks
+- send emails
+- send in app to each other
+- add more settings to controll the days of the week on the swiping motion and different icons and the cancel color etc
+- search function should also be able to show when you type a date and it should show items from the dates around it as well, it should prioritize the tiltel but also look in the description
+- have extra function for the countdown timer "when is"
+  - this will show you the closest round numbers, when they fall and the option to send you a reminder
+- add another tool just as a test the "chronize" tool
+  - it list all the tasks from the task list but on a 24hr calendar view and on the right hand side you have 3 sliders, one for the hour, day and month, so you can scroll the list for fine detail, hour roller for going 3 days in one top to bottom scroll, 15 days in a top to bottom scroll and 12 months in a top to bottom scroll.
+- add a sync function with google calendars
+- add clever filter functions to sort and filter all the timers and events
+- add optional week numbers to the date selectors everythere
 
 - Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
 - Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).
@@ -23,8 +37,11 @@
 - settings for green progress bar to be green when 3 or less tasks are left, orange when 4 tasks are left and red when 5 or more tasks are left. to change the colors and the thresholds.
 - Make icons even bigger?
 - show in daily stats a different color if you have cleared tasks from a future date.
+- add a demo mode that you can toggle, like an interactive walktrough
+- add a language selection somewhere.
 
 ### DONE
+- cancel swipe, when you swiped one way you can cancel the action by swiping the other way
 - Notification quiet hours: Suppress notifications in a time range, plus weekday/weekend override.
 - Start page: Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
 - make a "future tab", that you can move away to just have the idea written down.

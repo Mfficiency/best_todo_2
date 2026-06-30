@@ -66,6 +66,15 @@ class Config {
   /// Home tab index shown when the app starts.
   static int startTabIndex = 0;
 
+  /// If true, the home page opens directly in the day-grouped schedule view
+  /// instead of the per-tab list view.
+  static bool startInScheduleView = false;
+
+  /// If true, the experimental Chronize tool shows the hour scroll wheel on the
+  /// right. Off by default so the timeline gets more room (the hour is set by
+  /// scrolling the timeline itself).
+  static bool chronizeShowHourWheel = false;
+
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
   static bool swipeLeftDelete = true;
@@ -100,6 +109,22 @@ class Config {
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
 
+  /// If true, times are displayed and picked in 24-hour notation.
+  static bool use24HourFormat = true;
+
+  /// Available date display formats; the first entry is the default.
+  static const List<String> dateFormats = [
+    'dd.MM.yy',
+    'dd.MM.yyyy',
+    'dd/MM/yyyy',
+    'MM/dd/yyyy',
+    'yyyy-MM-dd',
+    'd MMM yyyy',
+  ];
+
+  /// Date display format, one of [dateFormats]. Defaults to dd.mm.yy.
+  static String dateFormat = dateFormats.first;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -114,53 +139,70 @@ class Config {
       if (await file.exists()) {
         final data =
             jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-        swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
-        darkMode = data['darkMode'] ?? darkMode;
-        enableNotifications =
-            data['enableNotifications'] ?? enableNotifications;
-        defaultNotificationDelaySeconds =
-            (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
-                defaultNotificationDelaySeconds;
-        startTabIndex = (data['startTabIndex'] as num?)
-                ?.round()
-                .clamp(0, tabs.length - 1) ??
-            startTabIndex;
-        quietHoursEnabled = data['quietHoursEnabled'] ?? quietHoursEnabled;
-        quietHoursStartMinutes =
-            (data['quietHoursStartMinutes'] as num?)?.round().clamp(0, 1439) ??
-                quietHoursStartMinutes;
-        quietHoursEndMinutes =
-            (data['quietHoursEndMinutes'] as num?)?.round().clamp(0, 1439) ??
-                quietHoursEndMinutes;
-        useIconTabs = data['useIconTabs'] ?? useIconTabs;
-        showWidgetProgressLine =
-            data['showWidgetProgressLine'] ?? showWidgetProgressLine;
-        addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
-        defaultDelaySeconds =
-            (data['defaultDelaySeconds'] as num?)?.toDouble() ??
-                defaultDelaySeconds;
+        applyMap(data);
       }
     } catch (_) {}
+  }
+
+  static Map<String, dynamic> toMap() {
+    return {
+      'swipeLeftDelete': swipeLeftDelete,
+      'darkMode': darkMode,
+      'enableNotifications': enableNotifications,
+      'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
+      'startTabIndex': startTabIndex,
+      'quietHoursEnabled': quietHoursEnabled,
+      'quietHoursStartMinutes': quietHoursStartMinutes,
+      'quietHoursEndMinutes': quietHoursEndMinutes,
+      'useIconTabs': useIconTabs,
+      'showWidgetProgressLine': showWidgetProgressLine,
+      'addNewTasksToTop': addNewTasksToTop,
+      'use24HourFormat': use24HourFormat,
+      'dateFormat': dateFormat,
+      'defaultDelaySeconds': defaultDelaySeconds,
+      'startInScheduleView': startInScheduleView,
+      'chronizeShowHourWheel': chronizeShowHourWheel,
+    };
+  }
+
+  static void applyMap(Map<String, dynamic> data) {
+    swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
+    darkMode = data['darkMode'] ?? darkMode;
+    enableNotifications = data['enableNotifications'] ?? enableNotifications;
+    defaultNotificationDelaySeconds =
+        (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
+            defaultNotificationDelaySeconds;
+    startTabIndex =
+        (data['startTabIndex'] as num?)?.round().clamp(0, tabs.length - 1) ??
+            startTabIndex;
+    quietHoursEnabled = data['quietHoursEnabled'] ?? quietHoursEnabled;
+    quietHoursStartMinutes =
+        (data['quietHoursStartMinutes'] as num?)?.round().clamp(0, 1439) ??
+            quietHoursStartMinutes;
+    quietHoursEndMinutes =
+        (data['quietHoursEndMinutes'] as num?)?.round().clamp(0, 1439) ??
+            quietHoursEndMinutes;
+    useIconTabs = data['useIconTabs'] ?? useIconTabs;
+    showWidgetProgressLine =
+        data['showWidgetProgressLine'] ?? showWidgetProgressLine;
+    addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    use24HourFormat = data['use24HourFormat'] ?? use24HourFormat;
+    final savedDateFormat = data['dateFormat'] as String?;
+    if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {
+      dateFormat = savedDateFormat;
+    }
+    defaultDelaySeconds =
+        (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
+    startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
+    chronizeShowHourWheel =
+        data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
   }
 
   /// Persists the current settings to disk.
   static Future<void> save() async {
     try {
       final file = await _getSettingsFile();
-      final data = {
-        'swipeLeftDelete': swipeLeftDelete,
-        'darkMode': darkMode,
-        'enableNotifications': enableNotifications,
-        'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
-        'startTabIndex': startTabIndex,
-        'quietHoursEnabled': quietHoursEnabled,
-        'quietHoursStartMinutes': quietHoursStartMinutes,
-        'quietHoursEndMinutes': quietHoursEndMinutes,
-        'useIconTabs': useIconTabs,
-        'showWidgetProgressLine': showWidgetProgressLine,
-        'addNewTasksToTop': addNewTasksToTop,
-        'defaultDelaySeconds': defaultDelaySeconds,
-      };
+      final data = toMap();
       await file.writeAsString(jsonEncode(data), flush: true);
     } catch (_) {}
   }

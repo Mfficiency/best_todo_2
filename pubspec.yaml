@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.1.56+26
+version: 0.1.79+49
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -23,6 +23,9 @@ dependencies:
   fl_chart: ^0.63.0
   package_info_plus: ^8.0.2
   flutter_local_notifications: ^17.2.4
+  android_alarm_manager_plus: ^4.0.4
+  another_telephony: ^0.4.1
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

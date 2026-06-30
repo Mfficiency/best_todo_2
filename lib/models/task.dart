@@ -10,9 +10,18 @@ class Task {
   String description;
   String note;
   String label;
+  DateTime? createdAt;
+  DateTime? completedAt;
+  DateTime? movedAt;
+  DateTime? rescheduledAt;
   DateTime? dueDate;
   DateTime? deletedAt;
+  bool autoDeleted;
   bool isDone;
+  /// When true, [dueDate]'s time-of-day was set deliberately (e.g. placed on the
+  /// Chronize timeline) and must not be overwritten by the default 18:00
+  /// deadline normalization.
+  bool hasExplicitTime;
   int? listRanking;
   bool isRecurring;
   DateTime? recurrenceEndDate;
@@ -26,9 +35,15 @@ class Task {
     this.description = '',
     this.note = '',
     this.label = '',
+    this.createdAt,
+    this.completedAt,
+    this.movedAt,
+    this.rescheduledAt,
     this.dueDate,
     this.deletedAt,
+    this.autoDeleted = false,
     this.isDone = false,
+    this.hasExplicitTime = false,
     this.listRanking,
     this.isRecurring = false,
     this.recurrenceEndDate,
@@ -48,13 +63,27 @@ class Task {
       description: json['description'] as String? ?? '',
       note: json['note'] as String? ?? '',
       label: json['label'] as String? ?? '',
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      completedAt: json['completedAt'] != null
+          ? DateTime.parse(json['completedAt'] as String)
+          : null,
+      movedAt: json['movedAt'] != null
+          ? DateTime.parse(json['movedAt'] as String)
+          : null,
+      rescheduledAt: json['rescheduledAt'] != null
+          ? DateTime.parse(json['rescheduledAt'] as String)
+          : null,
       dueDate: json['dueDate'] != null
           ? DateTime.parse(json['dueDate'] as String)
           : null,
       deletedAt: json['deletedAt'] != null
           ? DateTime.parse(json['deletedAt'] as String)
           : null,
+      autoDeleted: json['autoDeleted'] as bool? ?? false,
       isDone: json['isDone'] as bool? ?? false,
+      hasExplicitTime: json['hasExplicitTime'] as bool? ?? false,
       listRanking: json['listRanking'] as int?,
       isRecurring: json['isRecurring'] as bool? ?? false,
       recurrenceEndDate: json['recurrenceEndDate'] != null
@@ -72,9 +101,15 @@ class Task {
         'description': description,
         'note': note,
         'label': label,
+        'createdAt': createdAt?.toIso8601String(),
+        'completedAt': completedAt?.toIso8601String(),
+        'movedAt': movedAt?.toIso8601String(),
+        'rescheduledAt': rescheduledAt?.toIso8601String(),
         'dueDate': dueDate?.toIso8601String(),
         'deletedAt': deletedAt?.toIso8601String(),
+        'autoDeleted': autoDeleted,
         'isDone': isDone,
+        'hasExplicitTime': hasExplicitTime,
         if (listRanking != null) 'listRanking': listRanking,
         'isRecurring': isRecurring,
         'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),

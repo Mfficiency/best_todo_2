@@ -20,7 +20,7 @@ val hasReleaseKeystore = listOf("keyAlias", "keyPassword", "storeFile", "storePa
 android {
     namespace = "com.mfficiency.best_todo_2"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -41,7 +41,9 @@ android {
         applicationId = "com.mfficiency.best_todo_2"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // androidx.work (pulled in transitively via glance/home_widget)
+        // requires a minSdk of at least 23.
+        minSdk = maxOf(23, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -55,6 +57,20 @@ android {
                 storeFile = file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
             }
+        }
+    }
+
+    // Use a committed, fixed debug keystore (standard public debug
+    // credentials) instead of the per-machine/per-CI-run ~/.android
+    // keystore, so every build is signed with the same key and updates
+    // install in place. The release build falls back to this signing
+    // config until a real release keystore (key.properties) is provided.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
@@ -77,7 +93,7 @@ flutter {
 afterEvaluate {
     val createVersionedReleaseApk = tasks.register("createVersionedReleaseApk") {
         doLast {
-            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.48+18 -> 48)
+            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.57+27 -> 57)
             val suffix = (flutter.versionName ?: "0.0.0")
                 .substringBefore("+")
                 .substringAfterLast(".")
@@ -113,4 +129,14 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.10.3")
     testImplementation("androidx.test:core:1.5.0")
+}
+
+// home_widget 0.8.1 declares `androidx.glance:glance-appwidget:1.+`, which now
+// resolves to 1.3.0-alpha01 and demands compileSdk 37 + AGP 9.1.0. Pin to the
+// latest stable 1.1.x until we're ready to bump the Android toolchain.
+configurations.all {
+    resolutionStrategy {
+        force("androidx.glance:glance-appwidget:1.1.1")
+        force("androidx.glance:glance:1.1.1")
+    }
 }

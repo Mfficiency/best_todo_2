@@ -1,5 +1,119 @@
 # Changelog
 
+## [0.1.79] - 2026-06-05
+- chronize: the off-screen event hints are subtler — a small lowercase distance pill (e.g. "3 hours") with the direction arrow moved outside the pill (above for earlier, below for later), so the hint is one line tall and the wording no longer says "earlier"/"in"
+
+## [0.1.78] - 2026-06-05
+- chronize: the "Today" button now centers the view on the current time instead of pinning it to the top
+- chronize: flinging the timeline keeps gliding and slows to a stop (momentum scrolling) instead of halting on release
+- chronize: tap an empty spot on the timeline to create a task with that exact deadline (date + time); tap a task to edit its title, deadline and done state, or delete it
+- tasks: a deadline time set on the Chronize timeline is preserved and no longer overwritten by the default 18:00 normalization
+
+## [0.1.77] - 2026-06-05
+- chronize: when no event is in view, two centered cards point to the nearest past (↑) and future (↓) events, showing how far away each is; tap a card to jump there. They hide as soon as an event scrolls into view
+
+## [0.1.76] - 2026-06-05
+- chronize: the left timeline now zooms on a continuous axis — time marks fade in and spread apart as you zoom in (2h → 1h → 30m → 10m → 5m) and fade away when zooming out, with the day marks always visible
+- chronize: tasks are placed on the timeline by their time, cascading when they would overlap, and a live "now" line tracks the clock
+
+## [0.1.75] - 2026-06-04
+- chronize: the left timeline is now zoomable — pinch (or the zoom buttons) from 5-minute marks all the way out to a multi-day overview
+- chronize: a "Today" button jumps the timeline and wheels back to now
+- chronize: the hour wheel is now optional via a setting (Settings → Tasks → "Chronize: show hour wheel"), off by default so the timeline has more room
+- chronize: day/month wheels spin more smoothly (the timeline glide + refresh are deferred until the wheel settles)
+
+## [0.1.74] - 2026-06-04
+- chronize: the three navigators are now iOS-style scroll wheels (hour / day / month) instead of sliders
+- chronize: wheels scroll infinitely; the day wheel shows real calendar dates and the wheels carry over (hour past midnight bumps the day, day past month-end bumps the month)
+- chronize: the calendar on the left is an infinite, smoothly-scrolling 24h timeline with per-day date markers, kept in sync with the wheels both ways
+- chronize: changing the month fakes a smooth glide on the timeline instead of snapping
+
+## [0.1.73] - 2026-06-04
+- chronize calendar tool (experimental)
+- default task deadline time 18:00
+
+## [0.1.72] - 2026-06-03
+- ci: fix the Build APK workflow (upgrade deprecated upload-artifact/setup-java actions, pin Flutter 3.29.2, add manual + dev-branch triggers, surface the APK download link)
+- ci: include the app version in the built APK filename (besttodo-<version>.apk)
+- android: raise minSdk to 23 for androidx.work compatibility
+- android: sign every build with a committed fixed debug keystore so updates install in place instead of failing with a signature mismatch
+
+## [0.1.71] - 2026-06-02
+- countdown: timers are now included in the app's full export/import (backup & restore)
+- countdown: the date picker only closes when you tap a day — selecting a year or changing month keeps it open
+- countdown: the date/time selectors drop their icons on narrow screens to avoid crowding
+- countdown: the date picker grid now starts the week on Monday, with the Saturday/Sunday columns tinted grey
+
+## [0.1.70] - 2026-06-02
+- Tools menu with a Countdown tool: multiple timers that count down and keep counting up after reaching zero, with per-timer edit, zero-notification toggle, and swipe-to-delete with undo
+- countdown: always-present inline "New timer" draft at the top — pre-filled name (Timer 1, Timer 2, …) and a date one week out, with separate date and time selectors and an Add button
+- countdown: editing a timer uses the same inline form as adding (edit in place, Save/Cancel)
+- countdown: long-press a timer to drag it to a new spot (manual order, saved)
+- countdown: sort controls — Name, Added, Edited, Deadline (each ascending/descending) plus Manual to return to your drag order
+- countdown: the Add-timer form minimizes as you scroll down the list
+- countdown: quick pickers, no OK step — the date picker closes when you tap a day; the time picker is an analog clock dial that closes once you set the minute (with a "Minutes" button to jump to minutes when the hour is already right)
+- countdown: expanded breakdown shows 3 decimals
+- countdown: dev demo timers now also appear on web (Chrome), where local persistence is unavailable
+- settings: "24-hour time" toggle (defaults to 24-hour)
+- settings: "Date format" choice (defaults to dd.mm.yy)
+
+## [0.1.69] - 2026-05-26
+- settings: "Start in schedule view" toggle (Tasks section) — launches the app directly into the calendar / schedule view
+- schedule view: long-press to reorder tasks within a day section, matching the list view's drag behavior
+- schedule view: Next week / Next month / Future tabs always scroll to a permanent range header, so the buttons work like Tomorrow even when those ranges are empty
+
+## [0.1.68] - 2026-05-24
+- schedule view: app bar toggle between the existing tab list and a Google-Calendar-style schedule — one long scrollable list grouped by day, with tabs acting as quick-scroll anchors
+- dev seed: 20 future-dated tasks spread from tomorrow through ~2 months out so the schedule view and the next-week / next-month tabs always have data
+
+## [0.1.67] - 2026-05-24
+- Deleted Items: distinguish auto-deleted (done tasks swept on day change) from manually deleted with an "Auto-deleted:" label
+
+## [0.1.66] - 2026-05-17
+- SMS report: completion-rate threshold — send only on days you fall below a configurable %, for social accountability
+- SMS report: compact, human-readable diagnostic logging (one summary line per run instead of eight)
+
+## [0.1.65] - 2026-05-17
+- SMS report: auto-enable multipart when message exceeds single-SMS length (160 ASCII / 70 unicode chars) — previously long messages were silently dropped by the carrier
+
+## [0.1.64] - 2026-05-17
+- SMS report: configurable SIM subscription id for dual-SIM devices (default -1 = system default)
+- SMS report: export history button on the log page (writes JSON to a chosen folder)
+- SMS report: log subscription id used per run
+
+## [0.1.63] - 2026-05-17
+- SMS report: wait for native SENT/DELIVERED callback (with 20s timeout) instead of trusting `sendSms` return — surfaces silent platform failures
+- SMS report: pre-flight check of `isSmsCapable` and `simState`, logged to history
+
+## [0.1.62] - 2026-05-17
+- SMS report: only request SMS permission (no longer asks for phone access)
+- SMS report: SMS settings now inline in Settings as their own tab/section
+- SMS report: persistent diagnostic log of every run (start, config, permission, summary, per-send errors) to make failures debuggable
+
+## [0.1.61] - 2026-05-17
+- daily SMS report module: sends a scheduled text with today's completed/uncompleted task counts and the remaining list
+- configurable send time, recipient list (nickname + phone), and message template
+- dedicated SMS history page with per-message status and errors
+
+## [0.1.60] - 2026-05-16
+- cancel a pending swipe action by swiping the opposite direction
+- show orange "Cancel" background while swiping back
+
+## [0.1.59] - 2026-05-10
+- swipe both ways
+
+## [0.1.58] - 2026-05-03
+- export optimisation
+- exporting tasks and settings now possible
+- exporting and importing now moved to settings
+
+## [0.1.57] - 2026-05-03
+- added time of day heatmap to stats
+- automate screenshot changelog updates on push to `dev`, `staging`, and `main`
+- prevent screenshot workflow self-trigger loops
+- capture and archive four screenshots per push (home, menu open, settings, your stats)
+- group screenshots in one folder per push and prepend grouped entries to `SCREENSHOT_CHANGELOG.md`
+
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode
