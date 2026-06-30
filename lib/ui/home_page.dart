@@ -766,6 +766,47 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._addTask', 'Added task: $title');
   }
 
+  /// Creates a task from the Chronize timeline at an explicit deadline
+  /// (date + time), preserving the chosen time of day.
+  void _addTaskFromChronize(String title, DateTime dueDate) {
+    if (title.trim().isEmpty) return;
+    final task = Task(
+      title: title.trim(),
+      createdAt: DateTime.now(),
+      dueDate: dueDate,
+      hasExplicitTime: true,
+      listRanking: 1 << 30,
+    );
+    setState(() {
+      _tasks.add(task);
+    });
+    _trackTaskCreated(task);
+    _saveTasks();
+    LogService.add('HomePage._addTaskFromChronize',
+        'Added "$title" due ${dueDate.toIso8601String()}');
+  }
+
+  /// Persists in-place edits made to a task from the Chronize timeline.
+  void _onChronizeTaskChanged() {
+    setState(() {});
+    _saveTasks();
+  }
+
+  /// Deletes a task chosen on the Chronize timeline, moving it to the deleted
+  /// list (consistent with the rest of the app).
+  void _deleteTaskFromChronize(Task task) {
+    final index = _tasks.indexOf(task);
+    if (index < 0) return;
+    setState(() {
+      _tasks.removeAt(index);
+      _tasks.removeWhere((t) => t.recurrenceParentUid == task.uid);
+    });
+    _addToDeletedTasks(task);
+    _saveTasks();
+    _saveDeletedTasks();
+    LogService.add('HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
+  }
+
   void _moveTaskToNextPage(int pageIndex, int index) {
     final tasks = _tasksForTab(pageIndex);
     int destination = pageIndex + 1;
@@ -1652,7 +1693,12 @@ class _HomePageState extends State<HomePage>
                     Navigator.pop(context);
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => ChronizePage(tasks: _tasks),
+                        builder: (_) => ChronizePage(
+                        tasks: _tasks,
+                        onCreateTask: _addTaskFromChronize,
+                        onTaskChanged: _onChronizeTaskChanged,
+                        onDeleteTask: _deleteTaskFromChronize,
+                      ),
                       ),
                     );
                   },
