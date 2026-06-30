@@ -40,6 +40,13 @@
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
+        <!-- Receiver that AlarmManager's PendingIntent targets when a scheduled
+             alarm fires. It hands off to AlarmService to run the Dart callback.
+             Without it, alarms fire in the OS but are never delivered to the app,
+             so the daily SMS report never runs. -->
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
+            android:exported="false" />
         <receiver
             android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"
             android:exported="false">
