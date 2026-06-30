@@ -218,6 +218,8 @@ Future<void> _scheduleOne(Alarm alarm) async {
         when,
         details,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
         payload: payload,
       );
@@ -233,6 +235,8 @@ Future<void> _scheduleOne(Alarm alarm) async {
       when,
       details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       payload: payload,
     );
   }
@@ -291,6 +295,8 @@ Future<void> _processAction(NotificationResponse response) async {
         snoozeEnabled: data['snoozeEnabled'] as bool? ?? true,
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       payload: payload,
     );
   } catch (_) {}
