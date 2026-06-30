@@ -16,6 +16,7 @@ import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
+import 'alarms_page.dart';
 import 'app_logs_page.dart';
 import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
@@ -1633,6 +1634,16 @@ class _HomePageState extends State<HomePage>
               title: const Text('Tools'),
               childrenPadding: const EdgeInsets.only(left: 16),
               children: [
+                ListTile(
+                  leading: const Icon(Icons.alarm),
+                  title: const Text('Alarms'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AlarmsPage()),
+                    );
+                  },
+                ),
                 ListTile(
                   leading: const Icon(Icons.timer),
                   title: const Text('Countdown'),
