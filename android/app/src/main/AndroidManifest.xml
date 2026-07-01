@@ -5,6 +5,17 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- "set an alarm" — lets the app hand alarms to the system alarm clock. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Lets the app ask to be exempted from battery optimization / Doze.
+         This is the main reason a scheduled alarm silently never fires on
+         aggressive OEMs (Samsung "Sleeping apps", etc.) — without the
+         exemption the OS deep-sleeps the app and drops the alarm. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- "run foreground service" / "control vibration" — capabilities the
+         background alarm delivery path uses when it wakes the app. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application
         android:label="BestToDo"
         android:name="${applicationName}"

@@ -514,6 +514,12 @@ class _SettingsPageState extends State<SettingsPage> {
           value: cfg.enabled,
           onChanged: (v) async {
             setState(() => cfg.enabled = v);
+            // Ask for exact-alarm + battery-optimization exemption up front,
+            // otherwise the daily alarm silently never fires on OEMs that
+            // deep-sleep background apps (Samsung "Sleeping apps", Doze).
+            if (v) {
+              await SmsReportScheduler.ensureBackgroundPermissions();
+            }
             await _persistSms();
           },
         ),

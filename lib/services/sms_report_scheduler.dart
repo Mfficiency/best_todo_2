@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../models/sms_report_config.dart';
 import 'sms_report_config_service.dart';
@@ -45,6 +46,38 @@ class SmsReportScheduler {
       return;
     }
     await schedule(config);
+  }
+
+  /// Requests the runtime permissions the background alarm needs to fire
+  /// reliably. Call this when the user enables the report (needs a UI
+  /// context so the system dialogs can appear):
+  ///   • [Permission.scheduleExactAlarm] — Android 12+ gates exact alarms
+  ///     behind a user grant; without it AndroidAlarmManager falls back to
+  ///     inexact timing (or nothing).
+  ///   • [Permission.ignoreBatteryOptimizations] — the big one: OEM Doze /
+  ///     "Sleeping apps" (Samsung One UI, etc.) deep-sleep background apps
+  ///     and silently drop their alarms unless the app is whitelisted.
+  ///   • [Permission.notification] — so any user-facing report notice can
+  ///     be shown.
+  /// Each request is best-effort; a denial is logged by the caller's flow,
+  /// not thrown.
+  static Future<void> ensureBackgroundPermissions() async {
+    if (!_isAndroidNative) return;
+    try {
+      if (!await Permission.scheduleExactAlarm.isGranted) {
+        await Permission.scheduleExactAlarm.request();
+      }
+    } catch (_) {}
+    try {
+      if (!await Permission.ignoreBatteryOptimizations.isGranted) {
+        await Permission.ignoreBatteryOptimizations.request();
+      }
+    } catch (_) {}
+    try {
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
+    } catch (_) {}
   }
 
   static Future<void> schedule(SmsReportConfig config) async {
