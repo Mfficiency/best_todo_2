@@ -411,7 +411,7 @@ class StorageService {
       if (value is! List) return <Task>[];
       return value
           .whereType<Map>()
-          .map((e) => Task.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) => Task.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     }
 
@@ -420,7 +420,7 @@ class StorageService {
       if (value is! List) return <String, DailyTaskStats>{};
       final stats = value
           .whereType<Map>()
-          .map((e) => DailyTaskStats.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) => DailyTaskStats.fromJson(Map<String, dynamic>.from(e)))
           .where((s) => s.dayKey.isNotEmpty)
           .toList();
       return {for (final item in stats) item.dayKey: item};

@@ -458,7 +458,7 @@ class _ChronizePageState extends State<ChronizePage>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-      color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
       child: Row(
         children: [
           Expanded(
@@ -591,7 +591,7 @@ class _ChronizePageState extends State<ChronizePage>
   Widget _buildTaskChip(ThemeData theme, Task task) {
     return Material(
       color: task.isDone
-          ? theme.colorScheme.surfaceVariant
+          ? theme.colorScheme.surfaceContainerHighest
           : theme.colorScheme.primaryContainer,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(

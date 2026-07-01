@@ -1161,7 +1161,7 @@ class _HomePageState extends State<HomePage>
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
       final settings = settingsRaw is Map
-          ? Map<String, dynamic>.from(settingsRaw as Map)
+          ? Map<String, dynamic>.from(settingsRaw)
           : decoded;
       Config.applyMap(settings);
       await Config.save();
@@ -1216,7 +1216,7 @@ class _HomePageState extends State<HomePage>
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
       if (settingsRaw is Map) {
-        Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+        Config.applyMap(Map<String, dynamic>.from(settingsRaw));
         await Config.save();
       }
 
@@ -1315,7 +1315,7 @@ class _HomePageState extends State<HomePage>
       if (hasEverythingBundle) {
         final settingsRaw = decoded['settings'];
         if (settingsRaw is Map) {
-          Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+          Config.applyMap(Map<String, dynamic>.from(settingsRaw));
           await Config.save();
         }
         final imported =

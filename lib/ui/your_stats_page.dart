@@ -106,7 +106,7 @@ class _YourStatsPageState extends State<YourStatsPage>
 
   List<Color> _legendColors(BuildContext context) {
     return [
-      Theme.of(context).colorScheme.surfaceVariant,
+      Theme.of(context).colorScheme.surfaceContainerHighest,
       Colors.blue.shade300,
       Colors.blue.shade500,
       Colors.blue.shade700,
@@ -615,7 +615,7 @@ class _YourStatsPageState extends State<YourStatsPage>
   Color _activityCellColor(int count, int maxCount, BuildContext context) {
     final base = Theme.of(context).colorScheme.primary;
     if (count <= 0 || maxCount <= 0) {
-      return Theme.of(context).colorScheme.surfaceVariant;
+      return Theme.of(context).colorScheme.surfaceContainerHighest;
     }
     final t = count / maxCount;
     return Color.lerp(base.withOpacity(0.18), base.withOpacity(0.92), t.clamp(0.0, 1.0))!;
