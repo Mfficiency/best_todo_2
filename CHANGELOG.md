@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.82] - 2026-07-02
+- sms report: the daily alarm now fires reliably while the app is closed — switched from a repeating alarm (which Android treats as inexact and defers indefinitely in Doze/deep sleep) to an exact one-shot alarm (`setExactAndAllowWhileIdle`) that re-arms itself for the next day each time it fires; the chain is also restored on every app launch and survives reboots
+- sms report: enabling the report now also asks for SMS permission up front — the background isolate has no UI, so the permission dialog can never be shown when the alarm fires
+- sms report: every background alarm fire writes an "Alarm fired" entry to the SMS report log, so you can verify firing even when the send is skipped
+
+## [0.1.81] - 2026-07-01
+- sms report: the daily alarm now requests the permissions it needs to actually fire in the background — exact-alarm scheduling and, crucially, exemption from battery optimization / Doze (Samsung "Sleeping apps" and similar OEM power savers silently drop background alarms unless the app is whitelisted). Enabling the report now prompts for these. Also declared the matching manifest permissions (SET_ALARM, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, FOREGROUND_SERVICE, VIBRATE)
+
+## [0.1.80] - 2026-06-30
+- sms report: fixed the scheduled daily report never firing — the Android manifest was missing the `AlarmBroadcastReceiver` that AndroidAlarmManager's alarm targets, so the alarm fired in the OS but was never delivered to the app and the background callback never ran (the in-app "Send test now" button still worked because it bypasses the alarm)
+
 ## [0.1.79] - 2026-06-05
 - chronize: the off-screen event hints are subtler — a small lowercase distance pill (e.g. "3 hours") with the direction arrow moved outside the pill (above for earlier, below for later), so the hint is one line tall and the wording no longer says "earlier"/"in"
 
