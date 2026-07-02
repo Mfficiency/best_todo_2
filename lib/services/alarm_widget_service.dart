@@ -20,7 +20,7 @@ class AlarmWidgetService {
   static const String hostOpen = 'open';
 
   static Future<void> _ready() async {
-    await HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
+    await HomeWidget.setAppGroupId(appGroupId).catchError((_) => false);
   }
 
   /// Pushes the current alarm list to the widget and asks it to redraw.

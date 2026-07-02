@@ -65,12 +65,15 @@ class AlarmService {
       await _storage.saveAlarms(alarms.value);
     }
     await AlarmWidgetService.sync(alarms.value);
-    AlarmNotificationService.rescheduleAll(alarms.value);
+    // Awaited so callers running in short-lived background isolates don't get
+    // torn down before the OS schedule is updated.
+    await AlarmNotificationService.rescheduleAll(alarms.value);
   }
 
   /// Toggles an alarm directly against storage. Safe to call from a background
   /// isolate (the widget interactivity callback) where [instance] state may not
-  /// be populated. Returns after persisting and re-syncing the widget.
+  /// be populated. Returns after persisting, re-syncing the widget and
+  /// re-syncing the OS alarm schedule.
   static Future<void> toggleInStorage(String uid) async {
     final storage = AlarmStorageService();
     final alarms = await storage.loadAlarms();
@@ -82,7 +85,11 @@ class AlarmService {
     // Keep the in-memory list aligned if it has been loaded in this isolate.
     if (instance._loaded) {
       instance.alarms.value = alarms;
-      AlarmNotificationService.rescheduleAll(alarms);
     }
+    // ALWAYS re-sync the OS schedule — this often runs in the widget's
+    // background isolate where the app never loaded. Skipping it there would
+    // mean an alarm toggled ON from the widget never rings, and one toggled
+    // OFF still fires.
+    await AlarmNotificationService.rescheduleAll(alarms);
   }
 }

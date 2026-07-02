@@ -1,3 +1,5 @@
+import 'dart:ui' show DartPluginRegistrant;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
@@ -22,6 +24,11 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 /// tapped. Runs in its own isolate, so it works directly against storage.
 @pragma('vm:entry-point')
 Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
+  // This isolate starts without the app's plugin registrations; without these
+  // two calls path_provider / flutter_local_notifications method channels are
+  // dead here and the toggle silently does nothing.
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
   if (uri == null) return;
   if (uri.host == AlarmWidgetService.hostToggle) {
     final id = uri.queryParameters['id'];

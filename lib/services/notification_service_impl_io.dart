@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
+import 'dart:ui' show DartPluginRegistrant;
 
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -108,6 +111,9 @@ Future<bool> _ensurePermission() async {
 
 /// Requests both the notification permission and the Android "alarms &
 /// reminders" (exact alarm) permission so alarms can fire at the exact time.
+/// Also asks for exemption from battery optimization: aggressive OEM power
+/// savers (Samsung "Sleeping apps" & co.) deep-sleep the app and can delay or
+/// drop even exact alarms unless the app is whitelisted.
 Future<bool> ensureAlarmPermissions() async {
   final granted = await _ensurePermission();
   if (Platform.isAndroid) {
@@ -115,6 +121,11 @@ Future<bool> ensureAlarmPermissions() async {
         AndroidFlutterLocalNotificationsPlugin>();
     try {
       await androidPlugin?.requestExactAlarmsPermission();
+    } catch (_) {}
+    try {
+      if (!await Permission.ignoreBatteryOptimizations.isGranted) {
+        await Permission.ignoreBatteryOptimizations.request();
+      }
     } catch (_) {}
   }
   return granted;
@@ -192,8 +203,14 @@ tz.TZDateTime _nextInstanceOfWeekday(int hour, int minute, int weekday) {
   final now = tz.TZDateTime.now(tz.local);
   var scheduled =
       tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+  // Step by rebuilding the wall-clock time instead of add(Duration(days: 1)):
+  // adding 24h across a DST change shifts the local hour, so the alarm would
+  // fire an hour early/late in the week of the transition.
+  var offset = 0;
   while (scheduled.weekday != weekday || !scheduled.isAfter(now)) {
-    scheduled = scheduled.add(const Duration(days: 1));
+    offset++;
+    scheduled = tz.TZDateTime(
+        tz.local, now.year, now.month, now.day + offset, hour, minute);
   }
   return scheduled;
 }
@@ -243,12 +260,28 @@ Future<void> _scheduleOne(Alarm alarm) async {
 }
 
 /// Cancels every previously scheduled alarm and re-schedules all enabled ones.
-/// Tasks are shown immediately (never scheduled), so cancelling all pending
-/// notifications only clears alarms.
+/// Tasks are shown immediately (never scheduled), so pending notifications
+/// are all alarm-related.
+///
+/// Cancels individually rather than with `cancelAll()`: a blanket cancel runs
+/// on every app open / alarm edit and would silently kill a pending SNOOZE.
+/// The snooze slot (base id + 0) is kept for enabled alarms that don't
+/// schedule anything there themselves — repeating alarms (they use +1..+7)
+/// and one-off alarms whose original time already passed.
 Future<void> scheduleAlarms(List<Alarm> alarms) async {
   if (!Platform.isAndroid && !Platform.isIOS) return;
   await initialize();
-  await _plugin.cancelAll();
+  final preserve = <int>{
+    for (final a in alarms)
+      if (a.enabled && (a.isRepeating || a.nextOccurrence() == null))
+        _baseId(a.uid),
+  };
+  final pending = await _plugin.pendingNotificationRequests();
+  for (final p in pending) {
+    if (!preserve.contains(p.id)) {
+      await _plugin.cancel(p.id);
+    }
+  }
   for (final alarm in alarms) {
     try {
       await _scheduleOne(alarm);
@@ -266,6 +299,11 @@ void _onNotificationResponse(NotificationResponse response) {
 
 @pragma('vm:entry-point')
 void _onBackgroundNotificationResponse(NotificationResponse response) {
+  // Runs in a dedicated isolate with no plugin registrations; without these
+  // the timezone lookup and re-scheduling inside _processAction can't reach
+  // the platform and Snooze does nothing when the app is closed.
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
   _processAction(response);
 }
 
