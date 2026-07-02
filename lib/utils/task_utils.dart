@@ -39,11 +39,17 @@ void applyDefaultDeadlineTimes(List<Task> tasks) {
       if (ra != rb) return ra.compareTo(rb);
       return a.uid.compareTo(b.uid);
     });
-    for (var i = 0; i < dayTasks.length; i++) {
-      final task = dayTasks[i];
+    // Tasks with an explicitly chosen time (e.g. placed on the Chronize
+    // timeline) keep their time; only the remaining tasks get the 18:00, 18:01…
+    // default slots, assigned in listRanking order.
+    var slot = 0;
+    for (final task in dayTasks) {
+      if (task.hasExplicitTime) continue;
       final due = task.dueDate!;
       // Cap at 23:59 so the time never spills into the next calendar day.
-      final minutes = (defaultDeadlineMinutesOfDay + i).clamp(0, 24 * 60 - 1);
+      final minutes =
+          (defaultDeadlineMinutesOfDay + slot).clamp(0, 24 * 60 - 1);
+      slot++;
       final hour = minutes ~/ 60;
       final minute = minutes % 60;
       final updated = DateTime(due.year, due.month, due.day, hour, minute);

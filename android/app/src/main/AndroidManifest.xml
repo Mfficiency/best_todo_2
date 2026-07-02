@@ -5,8 +5,19 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Full-screen alarm UI over the lock screen when an alarm rings. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- "set an alarm" — lets the app hand alarms to the system alarm clock. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Lets the app ask to be exempted from battery optimization / Doze.
+         This is the main reason a scheduled alarm silently never fires on
+         aggressive OEMs (Samsung "Sleeping apps", etc.) — without the
+         exemption the OS deep-sleeps the app and drops the alarm. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- "run foreground service" / "control vibration" — capabilities the
+         background alarm delivery path uses when it wakes the app. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application
         android:label="BestToDo"
         android:name="${applicationName}"
@@ -41,6 +52,13 @@
         <service
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
             android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <!-- Receiver that AlarmManager's PendingIntent targets when a scheduled
+             alarm fires. It hands off to AlarmService to run the Dart callback.
+             Without it, alarms fire in the OS but are never delivered to the app,
+             so the daily SMS report never runs. -->
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
             android:exported="false" />
         <receiver
             android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"

@@ -111,5 +111,81 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('shows prev/next navigator cards when no event is in view',
+        (tester) async {
+      final now = DateTime.now();
+      final tasks = [
+        Task(
+          title: 'past',
+          dueDate: now.subtract(const Duration(days: 30)),
+          listRanking: 1,
+        ),
+        Task(
+          title: 'future',
+          dueDate: now.add(const Duration(days: 30)),
+          listRanking: 2,
+        ),
+      ];
+      await tester.pumpWidget(MaterialApp(home: ChronizePage(tasks: tasks)));
+      await tester.pumpAndSettle();
+
+      // A subtle up/down arrow points at the nearest past/future event, with a
+      // small distance pill ("30 days") and no "earlier/in" wording.
+      expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      expect(find.textContaining('days'), findsWidgets);
+    });
+
+    testWidgets('hides navigator cards when an event is in view',
+        (tester) async {
+      final now = DateTime.now();
+      final tasks = [
+        Task(
+          title: 'now',
+          dueDate: DateTime(now.year, now.month, now.day, now.hour),
+          listRanking: 1,
+        ),
+      ];
+      await tester.pumpWidget(MaterialApp(home: ChronizePage(tasks: tasks)));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+    });
+
+    testWidgets('tapping empty timeline opens the new-task dialog',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: ChronizePage(tasks: const [], onCreateTask: (_, __) {}),
+      ));
+      await tester.pumpAndSettle();
+
+      // Tap in the calendar body (left of the wheels, below the header).
+      await tester.tapAt(const Offset(120, 320));
+      await tester.pumpAndSettle();
+
+      expect(find.text('New task'), findsOneWidget);
+    });
+
+    testWidgets('tapping a task opens the edit dialog', (tester) async {
+      final now = DateTime.now();
+      final tasks = [
+        Task(
+          title: 'meeting',
+          dueDate: DateTime(now.year, now.month, now.day, now.hour),
+          listRanking: 1,
+        ),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: ChronizePage(tasks: tasks, onTaskChanged: () {}),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('meeting'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit task'), findsOneWidget);
+    });
   });
 }

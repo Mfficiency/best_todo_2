@@ -18,6 +18,10 @@ class Task {
   DateTime? deletedAt;
   bool autoDeleted;
   bool isDone;
+  /// When true, [dueDate]'s time-of-day was set deliberately (e.g. placed on the
+  /// Chronize timeline) and must not be overwritten by the default 18:00
+  /// deadline normalization.
+  bool hasExplicitTime;
   int? listRanking;
   bool isRecurring;
   DateTime? recurrenceEndDate;
@@ -39,6 +43,7 @@ class Task {
     this.deletedAt,
     this.autoDeleted = false,
     this.isDone = false,
+    this.hasExplicitTime = false,
     this.listRanking,
     this.isRecurring = false,
     this.recurrenceEndDate,
@@ -78,6 +83,7 @@ class Task {
           : null,
       autoDeleted: json['autoDeleted'] as bool? ?? false,
       isDone: json['isDone'] as bool? ?? false,
+      hasExplicitTime: json['hasExplicitTime'] as bool? ?? false,
       listRanking: json['listRanking'] as int?,
       isRecurring: json['isRecurring'] as bool? ?? false,
       recurrenceEndDate: json['recurrenceEndDate'] != null
@@ -103,6 +109,7 @@ class Task {
         'deletedAt': deletedAt?.toIso8601String(),
         'autoDeleted': autoDeleted,
         'isDone': isDone,
+        'hasExplicitTime': hasExplicitTime,
         if (listRanking != null) 'listRanking': listRanking,
         'isRecurring': isRecurring,
         'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),

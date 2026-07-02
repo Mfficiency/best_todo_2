@@ -23,7 +23,7 @@
 
 flutter pub get
 flutter run -d chrome
-flutter build apk --release 
+flutter build apk --release
 #after installing the android SDK
 ```
 

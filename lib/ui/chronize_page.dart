@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../config.dart';
 import '../models/task.dart';
 import 'subpage_app_bar.dart';
-import 'task_detail_page.dart';
 
 /// A level's marks start fading in once they are at least [kMarkFadeStartPx]
 /// apart on screen and are fully opaque by [kMarkFadeFullPx]. Because finer
@@ -68,7 +68,22 @@ class _MarkLevel {
 class ChronizePage extends StatefulWidget {
   final List<Task> tasks;
 
-  const ChronizePage({Key? key, required this.tasks}) : super(key: key);
+  /// Create a task at the given deadline (date + time), tapped on the timeline.
+  final void Function(String title, DateTime dueDate)? onCreateTask;
+
+  /// Called after a task is edited in place so the host can persist the change.
+  final VoidCallback? onTaskChanged;
+
+  /// Delete a task chosen on the timeline.
+  final void Function(Task task)? onDeleteTask;
+
+  const ChronizePage({
+    Key? key,
+    required this.tasks,
+    this.onCreateTask,
+    this.onTaskChanged,
+    this.onDeleteTask,
+  }) : super(key: key);
 
   @override
   State<ChronizePage> createState() => _ChronizePageState();
@@ -78,7 +93,7 @@ class ChronizePage extends StatefulWidget {
 enum _Wheel { hour, day, month }
 
 class _ChronizePageState extends State<ChronizePage>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// Mark levels, coarsest to finest. The day level is always visible so the
   /// ruler never goes blank when fully zoomed out.
   static const List<_MarkLevel> _levels = [
@@ -152,10 +167,18 @@ class _ChronizePageState extends State<ChronizePage>
   double _glideStartPpm = 0;
   double _glideTargetPpm = 0;
 
+  // Momentum (fling) after a pan: an unbounded controller driven by a friction
+  // simulation so the timeline keeps gliding and slows to a stop on release.
+  late final AnimationController _fling;
+  double _flingPpm = 1;
+
   // Pinch / drag anchors captured at the start of a scale gesture.
   double _gestureStartPpm = 0.9;
   double _gestureStartTop = 0;
   double _gestureStartFocalY = 0;
+
+  // Last measured viewport height, used to center the focus (e.g. "Today").
+  double _viewportHeight = 0;
 
   // Debounce so spinning a wheel stays smooth: the glide runs once, after the
   // wheel settles.
@@ -183,12 +206,16 @@ class _ChronizePageState extends State<ChronizePage>
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed) _syncWheelsToFocus();
       });
+
+    _fling = AnimationController.unbounded(vsync: this)
+      ..addListener(_onFlingTick);
   }
 
   @override
   void dispose() {
     _settleTimer?.cancel();
     _glide.dispose();
+    _fling.dispose();
     _hourWheel.dispose();
     _dayWheel.dispose();
     _monthWheel.dispose();
@@ -255,6 +282,7 @@ class _ChronizePageState extends State<ChronizePage>
       v.clamp(_minPixelsPerMinute, _maxPixelsPerMinute);
 
   void _animateTo({double? topMinute, double? pixelsPerMinute}) {
+    _fling.stop();
     _glideStartTop = _topMinute;
     _glideTargetTop = topMinute ?? _topMinute;
     _glideStartPpm = _pixelsPerMinute;
@@ -277,10 +305,18 @@ class _ChronizePageState extends State<ChronizePage>
     });
   }
 
+  // Friction-driven momentum: drive _topMinute from the unbounded controller
+  // (position is in pixel space, so the deceleration feel is zoom-independent).
+  void _onFlingTick() {
+    setState(() => _topMinute = _fling.value / _flingPpm);
+    _syncWheelsToFocus();
+  }
+
   // ---- Direct manipulation (pinch zoom + single-finger pan) ----
 
   void _onScaleStart(ScaleStartDetails details) {
     _glide.stop();
+    _fling.stop();
     _gestureStartPpm = _pixelsPerMinute;
     _gestureStartTop = _topMinute;
     _gestureStartFocalY = details.localFocalPoint.dy;
@@ -301,10 +337,27 @@ class _ChronizePageState extends State<ChronizePage>
     _syncWheelsToFocus();
   }
 
+  /// On release, keep gliding with friction so the timeline slows to a stop
+  /// instead of halting instantly.
+  void _onScaleEnd(ScaleEndDetails details) {
+    final velocity = details.velocity.pixelsPerSecond.dy;
+    if (velocity.abs() < 50) return; // ignore tiny residual motion
+    _flingPpm = _pixelsPerMinute;
+    // Work in pixel space: position = topMinute * ppm, which moves opposite to
+    // the finger's vertical velocity.
+    final simulation = FrictionSimulation(
+      0.135,
+      _topMinute * _flingPpm,
+      -velocity,
+    );
+    _fling.animateWith(simulation);
+  }
+
   /// Desktop / web: the mouse wheel or trackpad scrolls the timeline.
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
     _glide.stop();
+    _fling.stop();
     setState(() {
       _topMinute += event.scrollDelta.dy / _pixelsPerMinute;
     });
@@ -325,9 +378,13 @@ class _ChronizePageState extends State<ChronizePage>
   }
 
   void _returnToToday() {
-    final now = DateTime.now();
-    final focus = DateTime(now.year, now.month, now.day, now.hour);
-    _animateTo(topMinute: _minutesFromBase(focus).toDouble());
+    final nowMinute = _minutesFromBase(DateTime.now()).toDouble();
+    // Center the current time in the viewport (rather than pinning it to the
+    // top edge) so "Today" lands on the actual current hour.
+    final target = _viewportHeight > 0
+        ? nowMinute - _viewportHeight / (2 * _pixelsPerMinute)
+        : nowMinute;
+    _animateTo(topMinute: target);
   }
 
   // ---- Wheel <-> timeline sync ----
@@ -515,11 +572,15 @@ class _ChronizePageState extends State<ChronizePage>
     return LayoutBuilder(
       builder: (context, constraints) {
         final height = constraints.maxHeight;
+        _viewportHeight = height;
+        final eventNav = _buildEventNav(theme, height);
         return Listener(
           onPointerSignal: _onPointerSignal,
           child: GestureDetector(
             onScaleStart: _onScaleStart,
             onScaleUpdate: (details) => _onScaleUpdate(details),
+            onScaleEnd: _onScaleEnd,
+            onTapUp: _onBackgroundTapUp,
             child: ClipRect(
               child: Stack(
                 children: [
@@ -540,6 +601,7 @@ class _ChronizePageState extends State<ChronizePage>
                     ),
                   ),
                   ..._buildTaskChips(theme, height),
+                  if (eventNav != null) eventNav,
                 ],
               ),
             ),
@@ -588,6 +650,173 @@ class _ChronizePageState extends State<ChronizePage>
     return chips;
   }
 
+  /// Tasks that sit on the timeline: have a due date and aren't the far-future
+  /// "someday" bucket (year >= 2300).
+  Iterable<Task> get _datedTasks => widget.tasks.where((t) {
+        final d = t.dueDate;
+        return d != null && d.year < 2300;
+      });
+
+  /// When no event is within the viewport, builds the two centered navigator
+  /// cards pointing at the nearest past and future events. Returns null when an
+  /// event is in view (so the cards hide) or there are no dated events at all.
+  Widget? _buildEventNav(ThemeData theme, double height) {
+    if (height <= 0 || _pixelsPerMinute <= 0) return null;
+    final topMin = _topMinute;
+    final bottomMin = _topMinute + height / _pixelsPerMinute;
+    final centerMin = (topMin + bottomMin) / 2;
+
+    double? prev; // nearest event above the viewport (in the past)
+    double? next; // nearest event below the viewport (in the future)
+    for (final task in _datedTasks) {
+      final m = _minutesFromBase(task.dueDate!).toDouble();
+      if (m >= topMin && m <= bottomMin) {
+        return null; // an event is visible -> hide the cards
+      } else if (m < topMin) {
+        if (prev == null || m > prev) prev = m;
+      } else {
+        if (next == null || m < next) next = m;
+      }
+    }
+
+    final prevMin = prev;
+    final nextMin = next;
+    if (prevMin == null && nextMin == null) return null;
+
+    final cards = <Widget>[];
+    if (prevMin != null) {
+      cards.add(_eventNavCard(
+        theme,
+        up: true,
+        label: _formatGap(centerMin - prevMin),
+        targetMinute: prevMin,
+        height: height,
+      ));
+    }
+    if (nextMin != null) {
+      if (cards.isNotEmpty) cards.add(const SizedBox(height: 20));
+      cards.add(_eventNavCard(
+        theme,
+        up: false,
+        label: _formatGap(nextMin - centerMin),
+        targetMinute: nextMin,
+        height: height,
+      ));
+    }
+
+    return Positioned(
+      left: _TimeAxisPainter.gutterWidth,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: cards,
+        ),
+      ),
+    );
+  }
+
+  /// One subtle navigator hint: a small pill showing just the distance (e.g.
+  /// "3 hours") with the direction arrow sitting *outside* the pill — above for
+  /// an earlier event, below for a later one — so the pill stays one line tall
+  /// and the arrow + position imply the direction. Tapping the pill glides the
+  /// timeline so [targetMinute] is centered.
+  Widget _eventNavCard(
+    ThemeData theme, {
+    required bool up,
+    required String label,
+    required double targetMinute,
+    required double height,
+  }) {
+    final scheme = theme.colorScheme;
+    final arrow = Icon(
+      up ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+      size: 20,
+      color: scheme.onSurfaceVariant.withOpacity(0.7),
+    );
+    final pill = Material(
+      color: scheme.surfaceVariant.withOpacity(0.85),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _animateTo(
+          topMinute: targetMinute - height / (2 * _pixelsPerMinute),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: up ? [arrow, pill] : [pill, arrow],
+    );
+  }
+
+  /// Formats a positive minute gap as a coarse "3 days" / "5 hours" / "20 min".
+  static String _formatGap(double minutes) {
+    final m = minutes.abs().round();
+    if (m >= 1440) {
+      final days = (m / 1440).round();
+      return days == 1 ? '1 day' : '$days days';
+    }
+    if (m >= 60) {
+      final hours = (m / 60).round();
+      return hours == 1 ? '1 hour' : '$hours hours';
+    }
+    if (m >= 1) return m == 1 ? '1 min' : '$m min';
+    return 'now';
+  }
+
+  /// Tapping empty timeline space opens the create-task dialog with the
+  /// deadline set to the tapped position (rounded to 5 minutes).
+  void _onBackgroundTapUp(TapUpDetails details) {
+    if (widget.onCreateTask == null) return;
+    final minute = _topMinute + details.localPosition.dy / _pixelsPerMinute;
+    final rounded = (minute / 5).round() * 5;
+    _openTaskEditor(initialDue: _momentForMinutes(rounded));
+  }
+
+  /// Shows the shared create/edit dialog. With [task] it edits in place; with
+  /// [initialDue] it creates a new task at that deadline.
+  Future<void> _openTaskEditor({Task? task, DateTime? initialDue}) async {
+    final result = await showDialog<_TaskDialogResult>(
+      context: context,
+      builder: (_) => _TaskEditDialog(
+        isEdit: task != null,
+        initialTitle: task?.title ?? '',
+        initialDue: task?.dueDate ?? initialDue ?? DateTime.now(),
+        initialDone: task?.isDone ?? false,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    if (task == null) {
+      if (result.action == _TaskDialogAction.save &&
+          result.title.trim().isNotEmpty) {
+        widget.onCreateTask?.call(result.title.trim(), result.due);
+      }
+    } else if (result.action == _TaskDialogAction.delete) {
+      widget.onDeleteTask?.call(task);
+    } else {
+      final title = result.title.trim();
+      if (title.isNotEmpty) task.title = title;
+      task.dueDate = result.due;
+      task.hasExplicitTime = true;
+      task.isDone = result.isDone;
+      widget.onTaskChanged?.call();
+    }
+    if (mounted) setState(() {});
+  }
+
   Widget _buildTaskChip(ThemeData theme, Task task) {
     return Material(
       color: task.isDone
@@ -596,13 +825,7 @@ class _ChronizePageState extends State<ChronizePage>
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         borderRadius: BorderRadius.circular(6),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => TaskDetailPage(task: task),
-            ),
-          );
-        },
+        onTap: () => _openTaskEditor(task: task),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           child: Align(
@@ -840,4 +1063,170 @@ class _TimeAxisPainter extends CustomPainter {
       old.surface != surface ||
       old.primary != primary ||
       old.nowColor != nowColor;
+}
+
+/// What the user chose in the create/edit task dialog.
+enum _TaskDialogAction { save, delete }
+
+class _TaskDialogResult {
+  const _TaskDialogResult(
+    this.action, {
+    this.title = '',
+    required this.due,
+    this.isDone = false,
+  });
+
+  final _TaskDialogAction action;
+  final String title;
+  final DateTime due;
+  final bool isDone;
+}
+
+/// Shared dialog to create a task (with a preset deadline) or edit an existing
+/// one. Lets the user set the title, the deadline date and time, and (when
+/// editing) the done state, plus delete.
+class _TaskEditDialog extends StatefulWidget {
+  const _TaskEditDialog({
+    required this.isEdit,
+    required this.initialTitle,
+    required this.initialDue,
+    required this.initialDone,
+  });
+
+  final bool isEdit;
+  final String initialTitle;
+  final DateTime initialDue;
+  final bool initialDone;
+
+  @override
+  State<_TaskEditDialog> createState() => _TaskEditDialogState();
+}
+
+class _TaskEditDialogState extends State<_TaskEditDialog> {
+  late final TextEditingController _titleController;
+  late DateTime _due;
+  late bool _done;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.initialTitle);
+    _due = widget.initialDue;
+    _done = widget.initialDone;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _due,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() => _due =
+          DateTime(picked.year, picked.month, picked.day, _due.hour, _due.minute));
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_due),
+    );
+    if (picked != null) {
+      setState(() => _due = DateTime(
+          _due.year, _due.month, _due.day, picked.hour, picked.minute));
+    }
+  }
+
+  String get _dateLabel {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${_due.year}-${two(_due.month)}-${two(_due.day)}';
+  }
+
+  String get _timeLabel {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(_due.hour)}:${two(_due.minute)}';
+  }
+
+  void _save() {
+    Navigator.of(context).pop(
+      _TaskDialogResult(
+        _TaskDialogAction.save,
+        title: _titleController.text,
+        due: _due,
+        isDone: _done,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: Text(widget.isEdit ? 'Edit task' : 'New task'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _titleController,
+            autofocus: !widget.isEdit,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: 'Title'),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.event, size: 18),
+                  label: Text(_dateLabel),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _pickTime,
+                icon: const Icon(Icons.schedule, size: 18),
+                label: Text(_timeLabel),
+              ),
+            ],
+          ),
+          if (widget.isEdit)
+            CheckboxListTile(
+              value: _done,
+              onChanged: (v) => setState(() => _done = v ?? false),
+              title: const Text('Done'),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+        ],
+      ),
+      actions: [
+        if (widget.isEdit)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(
+              _TaskDialogResult(_TaskDialogAction.delete, due: _due),
+            ),
+            child: Text(
+              'Delete',
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
+    );
+  }
 }
