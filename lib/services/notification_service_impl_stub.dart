@@ -1,3 +1,5 @@
+import '../models/alarm.dart';
+
 Future<void> initialize() async {}
 
 Future<bool> showTaskNotification(
@@ -6,3 +8,15 @@ Future<bool> showTaskNotification(
 }) async {
   return false;
 }
+
+Future<bool> showAlarmNotification(
+  String title,
+  String body, {
+  bool vibrate = true,
+}) async {
+  return false;
+}
+
+Future<bool> ensureAlarmPermissions() async => false;
+
+Future<void> scheduleAlarms(List<Alarm> alarms) async {}

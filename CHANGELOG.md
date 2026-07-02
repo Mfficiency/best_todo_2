@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.83] - 2026-07-02
+- alarms tool: full alarm clock with per-alarm settings (Tools → Alarms)
+- home-screen alarms widget with toggle and edit
+- exact alarm scheduling that fires when the app is closed and after reboot — alarms are scheduled with the OS, so they also ring in flight mode / offline
+- alarm snooze and dismiss actions
+- scheduled notifications interpret times as absolute (fixed timezone drift)
+- alarms: toggling an alarm from the home-screen widget while the app is closed now actually schedules/cancels the OS alarm (before, the toggle only changed the stored state, so an alarm enabled from the widget never rang and a disabled one still fired)
+- alarms: snooze now works when the app is closed (the notification-action isolate couldn't reach the platform plugins), and a pending snooze is no longer silently cancelled when the app is opened or another alarm is edited
+- alarms: the alarm permission prompt also asks for battery-optimization exemption so OEM power savers (Samsung "Sleeping apps") can't delay or drop alarms
+- alarms: repeating alarms scheduled across a DST change no longer fire an hour off
+
 ## [0.1.82] - 2026-07-02
 - sms report: the daily alarm now fires reliably while the app is closed — switched from a repeating alarm (which Android treats as inexact and defers indefinitely in Doze/deep sleep) to an exact one-shot alarm (`setExactAndAllowWhileIdle`) that re-arms itself for the next day each time it fires; the chain is also restored on every app launch and survives reboots
 - sms report: enabling the report now also asks for SMS permission up front — the background isolate has no UI, so the permission dialog can never be shown when the alarm fires
@@ -124,7 +135,6 @@
 - prevent screenshot workflow self-trigger loops
 - capture and archive four screenshots per push (home, menu open, settings, your stats)
 - group screenshots in one folder per push and prepend grouped entries to `SCREENSHOT_CHANGELOG.md`
-
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode
