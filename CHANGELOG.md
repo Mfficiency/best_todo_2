@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.81] - 2026-07-01
+- scheduled notifications now interpret times as absolute (fixed timezone drift)
+
 ## [0.1.80] - 2026-06-30
 - add alarms tool with full alarm settings
 - home-screen alarms widget with toggle and edit
