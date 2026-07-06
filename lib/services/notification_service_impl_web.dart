@@ -49,4 +49,9 @@ Future<bool> showAlarmNotification(
 
 Future<bool> ensureAlarmPermissions() async => _ensurePermission();
 
-Future<void> scheduleAlarms(List<Alarm> alarms) async {}
+Future<void> scheduleAlarms(List<Alarm> alarms,
+    {String trigger = 'alarms changed'}) async {}
+
+Future<void> scheduleTestAlarm({int delaySeconds = 60}) async {}
+
+Future<void> runAlarmDiagnostics({String trigger = 'manual'}) async {}

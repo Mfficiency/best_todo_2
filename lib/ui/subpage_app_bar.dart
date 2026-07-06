@@ -6,6 +6,7 @@ AppBar buildSubpageAppBar(
   BuildContext context, {
   required String title,
   PreferredSizeWidget? bottom,
+  List<Widget>? actions,
 }) {
   return AppBar(
     automaticallyImplyLeading: false,
@@ -30,6 +31,7 @@ AppBar buildSubpageAppBar(
       ],
     ),
     title: Text(title),
+    actions: actions,
     bottom: bottom,
   );
 }

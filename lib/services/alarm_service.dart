@@ -22,16 +22,16 @@ class AlarmService {
   /// Loads alarms from disk (only once) and syncs the widget + schedule.
   Future<void> load() async {
     if (_loaded) return;
-    await reload(persist: false);
+    await reload(persist: false, trigger: 'app start');
     _loaded = true;
   }
 
   /// Re-reads alarms from disk, optionally persisting afterwards. Used after a
   /// background widget toggle modified the stored data.
-  Future<void> reload({bool persist = true}) async {
+  Future<void> reload({bool persist = true, String? trigger}) async {
     alarms.value = await _storage.loadAlarms();
     _loaded = true;
-    await _afterChange(persist: persist);
+    await _afterChange(persist: persist, trigger: trigger ?? 'reload');
   }
 
   Future<void> upsert(Alarm alarm) async {
@@ -43,12 +43,12 @@ class AlarmService {
       next.add(alarm);
     }
     alarms.value = next;
-    await _afterChange();
+    await _afterChange(trigger: 'alarm saved');
   }
 
   Future<void> delete(String uid) async {
     alarms.value = alarms.value.where((a) => a.uid != uid).toList();
-    await _afterChange();
+    await _afterChange(trigger: 'alarm deleted');
   }
 
   Future<void> setEnabled(String uid, bool value) async {
@@ -57,17 +57,19 @@ class AlarmService {
     if (idx < 0) return;
     next[idx].enabled = value;
     alarms.value = next;
-    await _afterChange();
+    await _afterChange(
+        trigger: 'alarm toggled ${value ? 'ON' : 'OFF'} in app');
   }
 
-  Future<void> _afterChange({bool persist = true}) async {
+  Future<void> _afterChange({bool persist = true, String? trigger}) async {
     if (persist) {
       await _storage.saveAlarms(alarms.value);
     }
     await AlarmWidgetService.sync(alarms.value);
     // Awaited so callers running in short-lived background isolates don't get
     // torn down before the OS schedule is updated.
-    await AlarmNotificationService.rescheduleAll(alarms.value);
+    await AlarmNotificationService.rescheduleAll(alarms.value,
+        trigger: trigger);
   }
 
   /// Toggles an alarm directly against storage. Safe to call from a background
@@ -90,6 +92,7 @@ class AlarmService {
     // background isolate where the app never loaded. Skipping it there would
     // mean an alarm toggled ON from the widget never rings, and one toggled
     // OFF still fires.
-    await AlarmNotificationService.rescheduleAll(alarms);
+    await AlarmNotificationService.rescheduleAll(alarms,
+        trigger: 'home-screen widget toggle');
   }
 }

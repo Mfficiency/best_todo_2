@@ -78,6 +78,18 @@ class NotificationService {
 
   /// Cancels existing scheduled alarms and schedules all enabled ones at their
   /// exact fire time. Survives app termination and device reboot on Android.
-  static Future<void> scheduleAlarms(List<Alarm> alarms) =>
-      impl.scheduleAlarms(alarms);
+  /// [trigger] is written to the alarm log so the file shows WHY a reschedule
+  /// ran (app start, alarm saved, widget toggle, ...).
+  static Future<void> scheduleAlarms(List<Alarm> alarms, {String? trigger}) =>
+      impl.scheduleAlarms(alarms, trigger: trigger ?? 'alarms changed');
+
+  /// Schedules a one-off test alarm ~1 minute out through the full pipeline
+  /// (method ladder + OS verify + watchdog) so the user can exercise the whole
+  /// chain and read the outcome in the alarm log.
+  static Future<void> scheduleTestAlarm({int delaySeconds = 60}) =>
+      impl.scheduleTestAlarm(delaySeconds: delaySeconds);
+
+  /// Writes a full device/permission/schedule snapshot to the alarm log.
+  static Future<void> runAlarmDiagnostics({String trigger = 'manual'}) =>
+      impl.runAlarmDiagnostics(trigger: trigger);
 }

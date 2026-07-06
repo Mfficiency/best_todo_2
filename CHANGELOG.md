@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.84] - 2026-07-06
+- alarms: foolproof delivery — every alarm is now scheduled through an escalation ladder (setAlarmClock → setExactAndAllowWhileIdle → inexact last resort; each attempt logged) and additionally guarded by an independent watchdog that wakes ~90 s after the fire time, checks whether the alarm actually rang (notification on screen or already tapped/snoozed/dismissed) and rings it itself if the primary path was silently dropped
+- alarms: persistent human-readable log file (`alarm_log.txt`, viewable in-app via Alarms → log icon) records every step with [OK]/[FAIL]/[WARN] and a fix hint: permission checks and requests, each scheduling method tried, OS read-back verification of pending schedules, watchdog arming, delivery verdicts, and user actions (tap/snooze/dismiss) — when an alarm doesn't ring, the file says which step failed and why
+- alarms: startup diagnostics snapshot logged on every launch — device/OEM, Android version, notification + alarm-channel state, exact-alarm permission, battery-optimization exemption, per-OEM power-saver hints (Samsung sleeping apps, Xiaomi autostart, …), configured alarms vs. what the OS reports as scheduled
+- alarms: "Test alarm (1 min)" and "Run diagnostics" buttons on the log page exercise the full pipeline on demand
+- alarms: alarm sound/vibration now loops until the notification is acted on (insistent flag) instead of playing once
+- alarms: snooze fires are also covered by the watchdog and logged
+
 ## [0.1.83] - 2026-07-02
 - alarms tool: full alarm clock with per-alarm settings (Tools → Alarms)
 - home-screen alarms widget with toggle and edit
