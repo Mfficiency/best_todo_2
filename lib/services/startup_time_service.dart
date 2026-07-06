@@ -5,9 +5,29 @@ import 'package:path_provider/path_provider.dart';
 
 import 'log_service.dart';
 
+/// One recorded app launch: when it happened and how long startup took.
+class StartupRecord {
+  final DateTime at;
+  final int ms;
+
+  const StartupRecord({required this.at, required this.ms});
+
+  factory StartupRecord.fromJson(Map<String, dynamic> json) => StartupRecord(
+        at: DateTime.tryParse(json['at'] as String? ?? '') ?? DateTime.now(),
+        ms: (json['ms'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'at': at.toIso8601String(),
+        'ms': ms,
+      };
+}
+
 /// Records and persists application startup durations.
 class StartupTimeService {
   static const _fileName = 'startup_times.json';
+  static const _historyFileName = 'startup_history.json';
+  static const _maxHistoryEntries = 5000;
   static final Stopwatch _stopwatch = Stopwatch();
 
   /// Start measuring the startup time.
@@ -30,10 +50,16 @@ class StartupTimeService {
       times.removeRange(0, times.length - 100);
     }
     await _saveTimes(times);
+    await _appendHistory(StartupRecord(at: DateTime.now(), ms: ms));
   }
 
   /// Retrieve the persisted list of startup times in milliseconds.
   static Future<List<int>> getStartupTimes() => _loadTimes();
+
+  /// Timestamped app-open history (each launch with date/time and startup
+  /// duration), oldest first. Kept far longer than [getStartupTimes] so
+  /// usage exports can show app opens per day over time.
+  static Future<List<StartupRecord>> getStartupHistory() => _loadHistory();
 
   static Future<File> _getFile() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -55,6 +81,40 @@ class StartupTimeService {
     try {
       final file = await _getFile();
       await file.writeAsString(jsonEncode(times), flush: true);
+    } catch (_) {}
+  }
+
+  static Future<File> _getHistoryFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_historyFileName');
+  }
+
+  static Future<List<StartupRecord>> _loadHistory() async {
+    try {
+      final file = await _getHistoryFile();
+      if (!await file.exists()) return <StartupRecord>[];
+      final data = jsonDecode(await file.readAsString()) as List<dynamic>;
+      return data
+          .whereType<Map>()
+          .map((e) => StartupRecord.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      return <StartupRecord>[];
+    }
+  }
+
+  static Future<void> _appendHistory(StartupRecord record) async {
+    try {
+      final history = await _loadHistory();
+      history.add(record);
+      if (history.length > _maxHistoryEntries) {
+        history.removeRange(0, history.length - _maxHistoryEntries);
+      }
+      final file = await _getHistoryFile();
+      await file.writeAsString(
+        jsonEncode(history.map((e) => e.toJson()).toList()),
+        flush: true,
+      );
     } catch (_) {}
   }
 }
