@@ -13,6 +13,7 @@ class AlarmNotificationService {
 
   /// Cancels any previously scheduled alarms and schedules every enabled alarm
   /// in [alarms] at its next (and, for repeating alarms, recurring) fire time.
-  static Future<void> rescheduleAll(List<Alarm> alarms) =>
-      NotificationService.scheduleAlarms(alarms);
+  /// [trigger] is recorded in the alarm log as the reason for the run.
+  static Future<void> rescheduleAll(List<Alarm> alarms, {String? trigger}) =>
+      NotificationService.scheduleAlarms(alarms, trigger: trigger);
 }

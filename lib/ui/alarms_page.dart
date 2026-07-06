@@ -5,6 +5,7 @@ import '../services/alarm_notification_service.dart';
 import '../services/alarm_service.dart';
 import '../services/log_service.dart';
 import 'alarm_edit_page.dart';
+import 'alarm_log_page.dart';
 import 'subpage_app_bar.dart';
 
 /// Lists every alarm with a quick on/off toggle and access to the editor.
@@ -75,7 +76,19 @@ class _AlarmsPageState extends State<AlarmsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Alarms'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Alarms',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long),
+            tooltip: 'Alarm reliability log',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AlarmLogPage()),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditor(null),
         tooltip: 'Add alarm',

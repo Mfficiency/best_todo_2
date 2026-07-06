@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -47,6 +48,10 @@ Future<void> main() async {
     await SmsReportScheduler.applyFromConfig();
   }
   await AlarmService.instance.load();
+  // Snapshot the device/permission state into the alarm log on every launch,
+  // so a missed alarm can be diagnosed from the file after the fact. Fire and
+  // forget: must not delay first frame.
+  unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'));
   try {
     await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
     await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
