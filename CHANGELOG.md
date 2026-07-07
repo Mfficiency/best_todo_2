@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.87] - 2026-07-07
+- startup times page facelift: summary card (typical/last/fastest/slowest launch, human-readable ms/s), themed chart that scales to the data instead of clipping launches over 1.5 s, date labels and tap-for-details tooltips, shaded band marking starts over 1 s
+- startup times: a "What this means" section below the chart explains what is measured and draws conclusions from the data — typical-startup verdict, faster/slower trend, share of slow starts, outlier spikes, and whether the first launch of the day is a slower cold start
+- startup times: uses the timestamped launch history (up to 5000 launches) when available, falling back to the legacy duration list
+
 ## [0.1.86] - 2026-07-07
 - usage data tool (Tools → Usage Data): export everything the app has ever recorded as detailed CSV files — a Digital-Wellbeing-style data dump reaching as far back as the data on the device goes. Datasets: a unified event timeline across all sources (every task created/moved/rescheduled/completed/deleted/restored, alarm pipeline steps, SMS report attempts, app opens, countdown timers), per-day usage summary (first/last activity, active span, app opens, task counts, start-of-day completion rate), per-hour activity histogram, full task history with derived metrics (hours to complete, completed on time), raw daily task stats, parsed alarm pipeline log, alarm setup snapshot, SMS report log, app opens, legacy startup durations, countdown timers, plus an export manifest stating how far back the data reaches
 - usage data: each dataset can be included/excluded before export; files are written as `.csv` (RFC 4180) into a timestamped `besttodo_usage_<timestamp>` folder in a directory you pick
