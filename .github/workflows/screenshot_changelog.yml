@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'SCREENSHOT_CHANGELOG.md'
       - 'docs/screenshots/home/**'
+      - 'docs/ci/**'
 
 permissions:
   contents: write
@@ -33,7 +34,26 @@ jobs:
         run: flutter pub get
 
       - name: Capture home page screenshot
-        run: flutter test integration_test/home_page_screenshot_test.dart -d windows
+        shell: pwsh
+        run: |
+          flutter test integration_test/home_page_screenshot_test.dart -d windows *>&1 | Tee-Object -FilePath capture_output.log
+          exit $LASTEXITCODE
+
+      # The capture broke silently for weeks because job logs need auth to
+      # read. On failure, commit the test output into the repo so it can be
+      # inspected (and fixed) without GitHub credentials.
+      - name: Publish capture failure log
+        if: failure()
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          New-Item -ItemType Directory -Force docs/ci | Out-Null
+          Copy-Item capture_output.log docs/ci/screenshot_capture_failure.log -Force
+          git add docs/ci/screenshot_capture_failure.log
+          git commit -m "ci: record screenshot capture failure log [skip-screenshot-changelog]"
+          git pull --rebase origin ${{ github.ref_name }}
+          git push
 
       - name: Save screenshot in repo
         id: screenshot_meta
