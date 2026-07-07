@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/project.dart';
 import '../models/task.dart';
+import '../services/project_service.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
@@ -25,6 +26,8 @@ class ProjectBoardPage extends StatefulWidget {
 }
 
 class _ProjectBoardPageState extends State<ProjectBoardPage> {
+  late Project _project = widget.project;
+
   static const _columns = <_KanbanColumn>[
     _KanbanColumn(
       status: Task.kanbanTodo,
@@ -68,19 +71,100 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
     widget.onChanged();
   }
 
+  Future<void> _editProject() async {
+    final nameController = TextEditingController(text: _project.name);
+    final descriptionController =
+        TextEditingController(text: _project.description);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit project'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            TextField(
+              controller: descriptionController,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(labelText: 'Description'),
+              keyboardType: TextInputType.multiline,
+              maxLines: null,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true) {
+      final name = nameController.text.trim();
+      final updated = _project.copyWith(
+        name: name.isEmpty ? _project.name : name,
+        description: descriptionController.text.trim(),
+      );
+      await ProjectService.instance.upsert(updated);
+      if (mounted) setState(() => _project = updated);
+    }
+    nameController.dispose();
+    descriptionController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: widget.project.name),
-      body: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final column in _columns)
-              Expanded(child: _buildColumn(column)),
-          ],
-        ),
+      appBar: buildSubpageAppBar(
+        context,
+        title: _project.name,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Edit project',
+            onPressed: _editProject,
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (_project.description.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _project.description,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(context).hintColor),
+                ),
+              ),
+            ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final column in _columns)
+                    Expanded(child: _buildColumn(column)),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

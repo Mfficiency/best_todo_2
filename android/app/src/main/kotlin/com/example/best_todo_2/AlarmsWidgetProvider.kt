@@ -46,14 +46,20 @@ class AlarmsWidgetProvider : HomeWidgetProvider() {
 
             val count = widgetData.getInt("alarm_count", 0)
 
-            // Header + add button open the alarms list / new alarm screen.
+            // Tapping anywhere on the widget that has no more specific action
+            // (background, header, empty state, "+N more") opens the alarms
+            // list. Rows and toggles set their own intents below and win over
+            // the container's.
             val openIntent = HomeWidgetLaunchIntent.getActivity(
                 context,
                 MainActivity::class.java,
                 Uri.parse("besttodoalarm://open")
             )
+            views.setOnClickPendingIntent(R.id.alarms_widget_container, openIntent)
             views.setOnClickPendingIntent(R.id.alarms_widget_header, openIntent)
             views.setOnClickPendingIntent(R.id.alarms_widget_add, openIntent)
+            views.setOnClickPendingIntent(R.id.alarms_widget_empty, openIntent)
+            views.setOnClickPendingIntent(R.id.alarms_widget_more, openIntent)
 
             views.setViewVisibility(
                 R.id.alarms_widget_empty,
@@ -88,12 +94,14 @@ class AlarmsWidgetProvider : HomeWidgetProvider() {
                     )
                     views.setOnClickPendingIntent(toggleViews[i], toggleIntent)
 
-                    // Tapping the row opens the editor for this alarm.
+                    // Tapping the row (anywhere except the toggle) opens the
+                    // editor for this alarm.
                     val editIntent = HomeWidgetLaunchIntent.getActivity(
                         context,
                         MainActivity::class.java,
                         Uri.parse("besttodoalarm://edit?id=$id")
                     )
+                    views.setOnClickPendingIntent(rowContainers[i], editIntent)
                     views.setOnClickPendingIntent(timeViews[i], editIntent)
                     views.setOnClickPendingIntent(nameViews[i], editIntent)
                     views.setOnClickPendingIntent(subViews[i], editIntent)

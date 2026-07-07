@@ -737,7 +737,7 @@ class _ChronizePageState extends State<ChronizePage>
       color: scheme.onSurfaceVariant.withOpacity(0.7),
     );
     final pill = Material(
-      color: scheme.surfaceVariant.withOpacity(0.85),
+      color: scheme.surfaceContainerHighest.withOpacity(0.85),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),

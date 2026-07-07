@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/project.dart';
 import '../models/task.dart';
+import '../services/project_service.dart';
 import 'project_board_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -23,7 +24,15 @@ class ProjectsPage extends StatefulWidget {
 }
 
 class _ProjectsPageState extends State<ProjectsPage> {
-  final List<Project> _projects = Project.placeholders;
+  final ProjectService _service = ProjectService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _service.load().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   List<Task> get _activeTasks =>
       widget.tasks.where((t) => t.deletedAt == null).toList();
@@ -31,13 +40,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
   int _taskCountForProject(Project project) =>
       widget.tasks.where((t) => t.deletedAt == null && t.projectId == project.id).length;
 
-  Project? _projectById(String? id) {
-    if (id == null) return null;
-    for (final project in _projects) {
-      if (project.id == id) return project;
-    }
-    return null;
-  }
+  Project? _projectById(String? id) => _service.byId(id);
 
   void _assignTaskToProject(Task task, Project project) {
     setState(() {
@@ -169,11 +172,14 @@ class _ProjectsPageState extends State<ProjectsPage> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              children: [
-                for (final project in _projects)
-                  Expanded(child: _buildProjectCard(project)),
-              ],
+            child: ValueListenableBuilder<List<Project>>(
+              valueListenable: _service.projects,
+              builder: (context, projects, _) => Row(
+                children: [
+                  for (final project in projects)
+                    Expanded(child: _buildProjectCard(project)),
+                ],
+              ),
             ),
           ),
         ),
@@ -219,6 +225,17 @@ class _ProjectsPageState extends State<ProjectsPage> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
+                  if (project.description.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      project.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.black54),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Text(
                     '$count task${count == 1 ? '' : 's'}',

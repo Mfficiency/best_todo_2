@@ -3,9 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:async';
 
+import '../models/project.dart';
 import '../models/task.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
+import '../services/project_service.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -199,6 +201,40 @@ class _TaskTileState extends State<TaskTile>
     super.dispose();
   }
 
+  /// Small "Project 1" / "To-Do" tags shown under the title of a task that is
+  /// assigned to a project. Listens to the project list so renaming a project
+  /// updates the tags everywhere.
+  Widget _buildProjectTags() {
+    Widget tag(String text) {
+      final scheme = Theme.of(context).colorScheme;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: scheme.secondaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(fontSize: 11, color: scheme.onSecondaryContainer),
+        ),
+      );
+    }
+
+    return ValueListenableBuilder<List<Project>>(
+      valueListenable: ProjectService.instance.projects,
+      builder: (context, _, __) => Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Wrap(
+          spacing: 4,
+          children: [
+            tag(ProjectService.instance.nameOf(widget.task.projectId)),
+            tag(ProjectService.stageLabel(widget.task.kanbanStatus)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
@@ -249,6 +285,7 @@ class _TaskTileState extends State<TaskTile>
           decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
         ),
       ),
+      subtitle: widget.task.projectId == null ? null : _buildProjectTags(),
       trailing: trailing,
     );
 

@@ -12,6 +12,7 @@ import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/task.dart';
 import '../services/log_service.dart';
+import '../services/project_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
@@ -63,6 +64,11 @@ class _HomePageState extends State<HomePage>
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+
+  /// Current search query; when non-empty every tab (and the schedule view)
+  /// only shows tasks matching it.
+  String _searchQuery = '';
   Timer? _midnightTimer;
 
   /// When true, the body renders one long schedule list with day-grouped
@@ -655,6 +661,9 @@ class _HomePageState extends State<HomePage>
       }
     });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
+    // Project names are shown as tags on task tiles, so load them here and
+    // not only when the Projects tool is opened.
+    ProjectService.instance.load();
     _loadTasks();
     _scheduleMidnightUpdate();
   }
@@ -663,6 +672,7 @@ class _HomePageState extends State<HomePage>
   void dispose() {
     _tabController.dispose();
     _controller.dispose();
+    _searchController.dispose();
     _scheduleScrollController.dispose();
     _midnightTimer?.cancel();
     super.dispose();
@@ -1435,8 +1445,22 @@ class _HomePageState extends State<HomePage>
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
+  /// True when [task] matches the search [query] (case-insensitive substring
+  /// over title, description, note, label and project name).
+  bool _matchesSearch(Task task, String query) {
+    bool has(String s) => s.toLowerCase().contains(query);
+    return has(task.title) ||
+        has(task.description) ||
+        has(task.note) ||
+        has(task.label) ||
+        (task.projectId != null &&
+            has(ProjectService.instance.nameOf(task.projectId)));
+  }
+
   List<Task> _tasksForTab(int pageIndex) {
+    final query = _searchQuery.trim().toLowerCase();
     final list = _tasks.where((task) {
+      if (query.isNotEmpty && !_matchesSearch(task, query)) return false;
       if (task.dueDate == null) return false;
       // Compare dates without considering the time of day so that tasks due
       // tomorrow don't appear in today's list simply because they are less
@@ -1601,23 +1625,6 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.dashboard),
-              title: const Text('Projects'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ProjectsPage(
-                      tasks: _tasks,
-                      onChanged: _saveTasks,
-                    ),
-                  ),
-                ).then((_) {
-                  if (mounted) setState(() {});
-                });
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.delete),
               title: const Text('Deleted Items'),
               onTap: () {
@@ -1717,6 +1724,23 @@ class _HomePageState extends State<HomePage>
                   },
                 ),
                 ListTile(
+                  leading: const Icon(Icons.dashboard),
+                  title: const Text('Projects'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ProjectsPage(
+                          tasks: _tasks,
+                          onChanged: _saveTasks,
+                        ),
+                      ),
+                    ).then((_) {
+                      if (mounted) setState(() {});
+                    });
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.access_time),
                   title: const Text('Chronize'),
                   onTap: () {
@@ -1755,13 +1779,23 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: const TextField(
-          enabled: false,
+        title: TextField(
+          controller: _searchController,
           decoration: InputDecoration(
-            hintText: 'search soon available',
+            hintText: 'Search tasks',
             border: InputBorder.none,
-            suffixIcon: Icon(Icons.search),
+            suffixIcon: _searchQuery.isEmpty
+                ? const Icon(Icons.search)
+                : IconButton(
+                    icon: const Icon(Icons.clear),
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  ),
           ),
+          onChanged: (value) => setState(() => _searchQuery = value),
         ),
         actions: [
           IconButton(
