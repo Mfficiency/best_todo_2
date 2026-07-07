@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:besttodo/main.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,5 +94,50 @@ void main() {
     await tester.tap(find.text('Your Stats'));
     await tester.pumpAndSettle();
     await capture('your_stats_page');
+    await popCurrentPage();
+
+    // Search: type a query into the app-bar search field and capture the
+    // filtered home list ("Get milk" is one of the seeded initial tasks).
+    final searchField = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.hintText == 'Search tasks',
+    );
+    await tester.enterText(searchField, 'milk');
+    await tester.pumpAndSettle();
+    await capture('search_active');
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+
+    // Projects tool (Tools → Projects): assign a task by long-press drag so
+    // the screenshot shows the tag chips and the project task count.
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tools'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Projects'));
+    await tester.tap(find.text('Projects'));
+    await tester.pumpAndSettle();
+
+    final drag = await tester
+        .startGesture(tester.getCenter(find.text('Get milk').first));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+    await drag.moveTo(tester.getCenter(find.text('Project 1')));
+    await tester.pump();
+    await drag.up();
+    await tester.pumpAndSettle();
+    await capture('projects_page');
+
+    // Per-project Kanban board with the assigned card. Target the project
+    // card's InkWell — after the assignment "Project 1" also appears as a
+    // chip on the task row and in the snackbar.
+    await tester.tap(find.widgetWithText(InkWell, 'Project 1').first);
+    await tester.pumpAndSettle();
+    await capture('project_board_page');
+
+    // Project edit dialog (name + description).
+    await tester.tap(find.byTooltip('Edit project'));
+    await tester.pumpAndSettle();
+    await capture('project_edit_dialog');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
   });
 }

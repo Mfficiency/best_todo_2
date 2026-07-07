@@ -702,6 +702,8 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
+    // See _reorderTask: reordering is disabled while searching.
+    if (_searchQuery.trim().isNotEmpty) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
     final fullList = _tasksForTab(pageIndex);
 
@@ -1581,8 +1583,12 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildScheduleBody() {
+    final query = _searchQuery.trim().toLowerCase();
+    final visibleTasks = query.isEmpty
+        ? _tasks
+        : _tasks.where((t) => _matchesSearch(t, query)).toList();
     return ScheduleView(
-      tasks: _tasks,
+      tasks: visibleTasks,
       currentDate: _currentDate,
       scrollController: _scheduleScrollController,
       tabAnchorKeys: _scheduleTabAnchors,

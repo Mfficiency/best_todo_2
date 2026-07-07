@@ -48,10 +48,9 @@ jobs:
           $targetFolderPath = Join-Path $targetDir $folderName
           New-Item -ItemType Directory -Path $targetFolderPath -Force | Out-Null
 
-          Copy-Item "build/e2e_screenshots/home_page.png" (Join-Path $targetFolderPath "home_page.png") -Force
-          Copy-Item "build/e2e_screenshots/menu_open.png" (Join-Path $targetFolderPath "menu_open.png") -Force
-          Copy-Item "build/e2e_screenshots/settings_page.png" (Join-Path $targetFolderPath "settings_page.png") -Force
-          Copy-Item "build/e2e_screenshots/your_stats_page.png" (Join-Path $targetFolderPath "your_stats_page.png") -Force
+          # Copy every captured page so newly added screenshots are archived
+          # without editing this workflow.
+          Copy-Item "build/e2e_screenshots/*.png" $targetFolderPath -Force
 
           "screenshot_folder=$targetDir/$folderName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 

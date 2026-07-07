@@ -203,7 +203,16 @@ on change/focus loss.
 section is a `ReorderableListView`; "Someday" holds the 2300-sentinel tasks.
 
 **Drawer:** Settings, Deleted Items, Your Stats, About, Changelog, App Logs, Startup Times,
-Tools ▸ (Alarms, Countdown, Chronize, Usage Data).
+Tools ▸ (Alarms, Countdown, Projects, Chronize, Usage Data).
+
+**Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
+non-empty query narrows every tab and the schedule view to tasks whose title,
+description, note, label or assigned project name contains it (case-insensitive
+substring); a clear (×) suffix button resets it. Index-based handlers (move/delete)
+recompute the same filtered list so they act on the right task, but reorder is a no-op
+while searching and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
+(`_tasksForTab(i, applySearch: false)`) — otherwise a save during search would scramble
+hidden tasks' order.
 
 **Home widget updates** after every save and at a self-rescheduling midnight timer: writes
 the "due today or overdue" list text (or "Well done! No more tasks for today!"), a progress
@@ -366,9 +375,11 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
   at midnight.
 - **Alarm widget** (`AlarmsWidgetProvider.kt`): up to 4 alarms (time/name/sub + ON/OFF),
-  "+N more", empty state. URI scheme `besttodoalarm://` — `open` (header/+ → app),
-  `edit?id=` (row → editor), and `toggle?id=` as a **background broadcast** that does not
-  open the app: HomeWidgetBackgroundReceiver → Dart `alarmWidgetBackgroundCallback` →
+  "+N more", empty state. URI scheme `besttodoalarm://` — `open` (root container +
+  header/+ + empty state + "+N more" → alarms list; since 0.1.90 the container-level
+  intent makes ANY tap on the widget that lacks a more specific action open straight to
+  the alarms page), `edit?id=` (whole row incl. its container → editor), and `toggle?id=`
+  as a **background broadcast** that does not open the app: HomeWidgetBackgroundReceiver → Dart `alarmWidgetBackgroundCallback` →
   binding+registrant init → `AlarmService.toggleInStorage` → full awaited reschedule. This
   chain is what makes a widget toggle actually schedule/cancel the OS alarm with the app
   closed.
@@ -466,20 +477,35 @@ hours_to_complete / completed_on_time), daily_task_stats (raw id sets), alarm_pi
 (parsed alarm_log.txt), alarms snapshot, sms_report_log, app_opens (timestamped since
 0.1.85), startup_times (legacy), countdown_timers.
 
-### 10.5 Projects (Kanban, 0.1.89)
-Drawer → Projects (`lib/ui/projects_page.dart`). Split view: top pane (flex 3) lists all
-non-deleted tasks; bottom pane (flex 2) shows three hardcoded placeholder projects
-(`Project.placeholders` in `lib/models/project.dart` — `{id, name}` only, "Project 1–3",
-no persistence of projects themselves yet). Long-press-drag a task onto a project card to
-assign it (sets `task.projectId`, resets `kanbanStatus` to todo, snackbar confirms;
-assignment persists via the task's own JSON through the `onChanged` → `_saveTasks`
-callback). Assigned tasks show the project name as a chip in the top pane. Tapping a
-project card opens `ProjectBoardPage`: three equal-width Kanban columns — To-Do (blue
+### 10.5 Projects (Kanban, 0.1.89–0.1.90)
+Tools → Projects (`lib/ui/projects_page.dart`; moved from a top-level drawer entry into
+the Tools group in 0.1.90). Split view: top pane (flex 3) lists all non-deleted tasks;
+bottom pane (flex 2) shows the projects. **Projects persist** via `ProjectService`
+(singleton, `ValueNotifier<List<Project>>`, `projects.json` in app documents dir, seeded
+with `Project.placeholders` "Project 1–3" on first run; corrupt/missing file keeps the
+in-memory seeds). `Project = {id, name, description}` (immutable, `copyWith`); ids are
+stable — tasks reference `projectId`, so renames propagate everywhere. Long-press-drag a
+task onto a project card to assign it (sets `task.projectId`, resets `kanbanStatus` to
+todo, snackbar confirms; assignment persists via the task's own JSON through `onChanged`
+→ `_saveTasks`). Cards show name, one-line description (if any) and live task count.
+
+**Tags on task tiles (0.1.90):** an assigned task shows two small
+`secondaryContainer`-tinted pills under its title on every home tile — the project name
+and the stage ("Project 1", "To-Do"); rendered via `ValueListenableBuilder` on
+`ProjectService.projects` so renames update live; stage names via
+`ProjectService.stageLabel`. Unknown project ids fall back to the raw id.
+`ProjectService.load()` runs in HomePage initState so names resolve without opening the
+tool.
+
+**Board** (`ProjectBoardPage`): three equal-width Kanban columns — To-Do (blue
 0xFF90CAF9), Ongoing (orange 0xFFFFCC80), Closed (green 0xFFA5D6A7) — each a `DragTarget`
 with count in the header; long-press-drag cards between columns to change `kanbanStatus`,
-tap a card for `TaskDetailPage`, the × on a card unassigns it (clears `projectId`).
-Written pre-0.1.58, merged at 0.1.89; uses deprecated `onWillAccept`/`onAccept` and
-hardcoded `Colors.black45`-style hints (not fully theme-aware).
+tap a card for `TaskDetailPage`, the × on a card unassigns it (clears `projectId`, resets
+stage). **Edit (0.1.90):** pencil action in the app bar opens a name+description dialog;
+Save upserts through `ProjectService` (empty name keeps the old one, description may be
+cleared); the app-bar title and a hint-colored description line under it update in place.
+Original board written pre-0.1.58, merged at 0.1.89; still uses deprecated
+`onWillAccept`/`onAccept` and some hardcoded `Colors.black45`-style hints.
 
 ### 10.6 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
@@ -505,10 +531,13 @@ replayable, skipped in dev.
   - `flutter_test.yml` (main/staging/dev): `flutter test --coverage`, parses results into a
     PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
-    integration test capturing 4 screenshots (home, menu, settings, stats) into
+    integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
+    search-active, projects page, project board, project edit dialog) into
     `docs/screenshots/home/<timestamp>-<sha>/` and prepends to `SCREENSHOT_CHANGELOG.md`.
-    Loop protection: paths-ignore on its own outputs, skips actor `github-actions[bot]`,
-    and its commit message carries `[skip-screenshot-changelog]`.
+    The workflow copies every `build/e2e_screenshots/*.png` and the changelog tool emits
+    one section per PNG found, so new captures need no CI edits. Loop protection:
+    paths-ignore on its own outputs, skips actor `github-actions[bot]`, and its commit
+    message carries `[skip-screenshot-changelog]`.
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
   `staging` → `main`. Releases are built from dev after a version bump.
 
@@ -519,10 +548,18 @@ manifest), chronize mark-fade invariants + interaction smoke tests, startup-time
 (history/legacy/empty states, chart maxY not clipping outliers), countdown model, export/
 import round-trip + legacy import, storage rollover, config persistence, alarm model +
 storage round-trip, 18:00 deadline normalization, done-task ordering, reorder ranking,
-dev date-advance sweep, home filtering, tile description editing, intro smoke. Integration
-tests: screenshot walk-through + task-creation screenshots (Windows desktop, needs
-Developer Mode for plugin symlinks). Not covered: ScheduleView, stats/usage page widget
-rendering, most alarm/SMS runtime paths (verified on hardware + via alarm_log instead).
+dev date-advance sweep, home filtering, tile description editing, intro smoke. Projects &
+search (0.1.90): project model + `ProjectService` persistence (seed/rename/reload/corrupt
+file), projects page (drag-assign, renamed-projects-from-disk), board page (column
+grouping, drag between columns, unassign, edit dialog save/cancel/empty-name), task-tile
+project/stage tags (incl. live rename + unknown-id fallback), home search (title/
+description/label/project-name matching, case-insensitivity, clear button, empty state),
+drawer placement of Projects under Tools, alarm-editor top save action. Widget tests that
+touch persistence use a `_FakePathProvider` + temp dir. Integration tests: screenshot
+walk-through + task-creation screenshots (Windows desktop, needs Developer Mode for
+plugin symlinks). Not covered: ScheduleView, stats/usage page widget rendering, the
+Kotlin widget PendingIntent wiring (verified on hardware), most alarm/SMS runtime paths
+(verified on hardware + via alarm_log instead).
 
 ## 13. Invariants & quirks a rebuilder must preserve
 
@@ -652,7 +689,7 @@ Four rounds of "it works when the app is open but not when it's closed":
   startup non-blocking on plugin init (black-screen-at-open) — which is why the alarm
   diagnostics snapshot is fire-and-forget in `main()`.
 
-### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.89, current)
+### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.90, current)
 **0.1.86 — Usage Data tool**: export the app's entire recorded history as detailed CSVs
 (unified event timeline, daily/hourly rollups, task history with derived metrics, alarm
 pipeline log, SMS log, app opens, timers + manifest); app opens now recorded with
@@ -666,7 +703,16 @@ fix**: `AlarmRingPage` (§5.2) and the R8/ProGuard keep rules that un-broke sche
 release builds. **0.1.89 — Projects tool (§10.5)**: written back in June on a parallel
 branch (claimed 0.1.57), cherry-picked into dev during a branch cleanup; also added a Save
 action to the top app bar of the alarm editor. Second time a parallel branch's version
-claim had to be re-resolved at merge (after 0.1.85).
+claim had to be re-resolved at merge (after 0.1.85). **0.1.90 — Projects grow up +
+search**: Projects moved under Tools; projects persist (`ProjectService`,
+`projects.json`) with an edit dialog for name/description on the board; assigned tasks
+show project + stage tags on every home tile; the app-bar search placeholder became a
+working live filter (title/description/note/label/project name, all tabs + schedule
+view, reorder disabled and ranking renumbering kept unfiltered while searching); any tap
+on the alarms home-screen widget now opens the alarms page (container-level
+PendingIntent); screenshot CI generalized to archive every captured PNG. First feature
+batch to ship with per-feature widget tests, CLAUDE.md (AI working guide) and expanded
+screenshot coverage in the same commit.
 
 ### Recurring themes (read this before adding features)
 1. **Everything background on Android will silently fail at least once.** Manifest
