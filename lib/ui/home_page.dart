@@ -27,6 +27,7 @@ import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
+import 'usage_data_page.dart';
 import 'your_stats_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -1710,6 +1711,22 @@ class _HomePageState extends State<HomePage>
                         onTaskChanged: _onChronizeTaskChanged,
                         onDeleteTask: _deleteTaskFromChronize,
                       ),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.query_stats),
+                  title: const Text('Usage Data'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => UsageDataPage(
+                          tasks: _tasks,
+                          deletedTasks: _deletedTasks,
+                          dailyStatsByDay: _dailyStatsByDay,
+                        ),
                       ),
                     );
                   },
