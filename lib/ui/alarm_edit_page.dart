@@ -127,6 +127,13 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
       appBar: buildSubpageAppBar(
         context,
         title: _isNew ? 'New Alarm' : 'Edit Alarm',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Save',
+            onPressed: _save,
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

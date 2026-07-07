@@ -4,6 +4,7 @@
 - new Projects tool
 - drag tasks onto projects to assign them
 - per-project Kanban board (To-Do / Ongoing / Closed)
+- alarms: Save action in the top app bar of the alarm editor (in addition to the button at the end of the form)
 
 ## [0.1.88] - 2026-07-07
 - alarms: full-screen alarm screen — a ringing alarm now opens a clock-app-style full-screen page (live clock, alarm name, big Snooze / Stop buttons, themed with the alarm's color) instead of only a notification banner. It shows over the lock screen with the screen turned on (via the notification's full-screen intent) and also opens when the ringing notification is tapped; Stop/Snooze on it keep the OS schedules, the snooze slot and the delivery watchdog consistent
