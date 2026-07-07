@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.91] - 2026-07-07
+- tests: the test suite is split into siloed per-area suites (`test/core`, `test/alarms`, `test/projects`, `test/home`, `test/tools`) so a change only needs to run the suites it can affect; core (task model, persistence, bucketing, smoke tests) is always run, `flutter test` still runs everything and CI is unchanged — see `test/README.md` for the file→suite map
+
 ## [0.1.90] - 2026-07-07
 - projects: name and description are editable (pencil icon on the project board) and persist across restarts (`projects.json`); renames update everywhere a project is shown
 - projects: moved into the Tools menu (Tools → Projects)
