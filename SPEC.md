@@ -111,6 +111,8 @@ Uuid-v4 `uid`; JSON keys equal field names. Fields: `title`, `description`, `not
 `listRanking` (int?, omitted from JSON when null, renumbered 1-based per tab on every save),
 recurrence: `isRecurring`, `recurrenceEndDate`, `recurrenceIntervalDays` (≥1; UI offers
 1/2/7), `recurrenceParentUid` + `recurrenceInstanceKey` (`yyyy-MM-dd`) on generated children.
+Projects (0.1.89): `projectId` (String?, omitted from JSON when null) + `kanbanStatus`
+(`'todo'`/`'ongoing'`/`'closed'`, constants on `Task`, defaults `'todo'`).
 `fromJson` is tolerant: missing keys get defaults.
 
 `DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
@@ -464,7 +466,22 @@ hours_to_complete / completed_on_time), daily_task_stats (raw id sets), alarm_pi
 (parsed alarm_log.txt), alarms snapshot, sms_report_log, app_opens (timestamped since
 0.1.85), startup_times (legacy), countdown_timers.
 
-### 10.5 The rest
+### 10.5 Projects (Kanban, 0.1.89)
+Drawer → Projects (`lib/ui/projects_page.dart`). Split view: top pane (flex 3) lists all
+non-deleted tasks; bottom pane (flex 2) shows three hardcoded placeholder projects
+(`Project.placeholders` in `lib/models/project.dart` — `{id, name}` only, "Project 1–3",
+no persistence of projects themselves yet). Long-press-drag a task onto a project card to
+assign it (sets `task.projectId`, resets `kanbanStatus` to todo, snackbar confirms;
+assignment persists via the task's own JSON through the `onChanged` → `_saveTasks`
+callback). Assigned tasks show the project name as a chip in the top pane. Tapping a
+project card opens `ProjectBoardPage`: three equal-width Kanban columns — To-Do (blue
+0xFF90CAF9), Ongoing (orange 0xFFFFCC80), Closed (green 0xFFA5D6A7) — each a `DragTarget`
+with count in the header; long-press-drag cards between columns to change `kanbanStatus`,
+tap a card for `TaskDetailPage`, the × on a card unassigns it (clears `projectId`).
+Written pre-0.1.58, merged at 0.1.89; uses deprecated `onWillAccept`/`onAccept` and
+hardcoded `Colors.black45`-style hints (not fully theme-aware).
+
+### 10.6 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
@@ -635,7 +652,7 @@ Four rounds of "it works when the app is open but not when it's closed":
   startup non-blocking on plugin init (black-screen-at-open) — which is why the alarm
   diagnostics snapshot is fire-and-forget in `main()`.
 
-### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.87, current)
+### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.89, current)
 **0.1.86 — Usage Data tool**: export the app's entire recorded history as detailed CSVs
 (unified event timeline, daily/hourly rollups, task history with derived metrics, alarm
 pipeline log, SMS log, app opens, timers + manifest); app opens now recorded with
@@ -644,7 +661,12 @@ branches (release-build bump on dev vs the usage-data branch); resolved at merge
 the usage-data feature to 0.1.86. **0.1.87 — Startup Times facelift**: the bare clipped
 line chart became summary stats + a data-scaled themed chart + an auto-generated
 "What this means" analysis (typical verdict, trend, slow-start share, outliers, cold-start
-pattern), with widget tests.
+pattern), with widget tests. **0.1.88 — full-screen alarm ring UI + release scheduling
+fix**: `AlarmRingPage` (§5.2) and the R8/ProGuard keep rules that un-broke scheduling in
+release builds. **0.1.89 — Projects tool (§10.5)**: written back in June on a parallel
+branch (claimed 0.1.57), cherry-picked into dev during a branch cleanup; also added a Save
+action to the top app bar of the alarm editor. Second time a parallel branch's version
+claim had to be re-resolved at merge (after 0.1.85).
 
 ### Recurring themes (read this before adding features)
 1. **Everything background on Android will silently fail at least once.** Manifest
