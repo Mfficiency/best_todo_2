@@ -119,11 +119,10 @@ void main() {
     await tester.tap(find.text('Save'));
     // The save path awaits a real projects.json write (started in the fake
     // zone) before calling setState; each I/O hop needs a real-event-loop
-    // slice plus a pump. Poll the SERVICE state (the closing dialog's text
-    // field would satisfy a find.text check prematurely).
-    for (var i = 0;
-        i < 300 && ProjectService.instance.nameOf('project_1') != 'Household';
-        i++) {
+    // slice plus a pump. A fixed number of rounds is required — polling
+    // in-memory state exits too early (the notifier updates before the file
+    // write finishes), and find.text would match the closing dialog's field.
+    for (var i = 0; i < 60; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();
@@ -164,11 +163,7 @@ void main() {
     await tester.enterText(
         find.widgetWithText(TextField, 'Description'), 'Still described');
     await tester.tap(find.text('Save'));
-    for (var i = 0;
-        i < 300 &&
-            ProjectService.instance.byId('project_1')!.description !=
-                'Still described';
-        i++) {
+    for (var i = 0; i < 60; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();

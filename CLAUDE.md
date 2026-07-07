@@ -47,6 +47,23 @@ file is the short operational guide.
   `MaterialApp(home: ...)` for widgets, `_FakePathProvider extends
   PathProviderPlatform` + temp dir for anything touching persistence.
   `ProjectService.instance.resetForTest()` between tests.
+- **Real file I/O hangs inside `testWidgets` on the local Flutter install**
+  (fake-async zone never services dart:io completions; CI's Flutter does, so
+  CI can be green while the same test hangs locally at the 10-min timeout):
+  - Create temp dirs / pre-save files in `setUp` (outside the fake zone) or
+    wrap in `await tester.runAsync(() => ...)`.
+  - I/O started inside the widget (initState loads, save-on-tap): a single
+    runAsync delay only advances ~one I/O hop. Loop rounds of
+    `runAsync(delay 5ms)` + `pump()` — condition-driven for loads (until a
+    marker widget appears), FIXED count (~60) after taps whose handler awaits
+    a write before setState (in-memory state updates before the write ends,
+    so polling exits too early). See home_search_test / project_board_page_test.
+  - Always run with `--timeout 60s` locally so hangs fail fast.
+- `find.byType` matches exact runtimeType: `FilledButton.icon(...)` builds a
+  private subtype, so find its label text instead.
+- Never dispose `TextEditingController`s right after `showDialog` returns —
+  the exit animation still builds the fields; give the dialog its own
+  StatefulWidget owning the controllers (see `_ProjectEditDialog`).
 - `Config.isDev` is true in debug/tests → dev seed data appears when storage
   is empty; widget tests that need deterministic lists should pre-save tasks
   via `StorageService` first.
