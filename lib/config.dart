@@ -66,6 +66,34 @@ class Config {
   /// Home tab index shown when the app starts.
   static int startTabIndex = 0;
 
+  /// Pages selectable as the app's default start page: the task list plus
+  /// every tool. The keys are stored in settings, so keep them stable.
+  static const List<String> startToolOptions = [
+    'tasks',
+    'alarms',
+    'countdown',
+    'projects',
+    'chronize',
+    'usage_data',
+    'productivity_stats',
+  ];
+
+  /// Human-readable labels for [startToolOptions], index-aligned.
+  static const List<String> startToolLabels = [
+    'Task list',
+    'Alarms',
+    'Countdown',
+    'Projects',
+    'Chronize',
+    'Usage Data',
+    'Productivity Stats',
+  ];
+
+  /// Which page opens when the app starts: 'tasks' (the regular task list,
+  /// default) or one of the tools in [startToolOptions]. Tools open on top of
+  /// the task list, so backing out always lands on the tasks.
+  static String startTool = 'tasks';
+
   /// If true, the home page opens directly in the day-grouped schedule view
   /// instead of the per-tab list view.
   static bool startInScheduleView = false;
@@ -162,6 +190,7 @@ class Config {
       'defaultDelaySeconds': defaultDelaySeconds,
       'startInScheduleView': startInScheduleView,
       'chronizeShowHourWheel': chronizeShowHourWheel,
+      'startTool': startTool,
     };
   }
 
@@ -196,6 +225,10 @@ class Config {
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
+    final savedStartTool = data['startTool'] as String?;
+    if (savedStartTool != null && startToolOptions.contains(savedStartTool)) {
+      startTool = savedStartTool;
+    }
   }
 
   /// Persists the current settings to disk.

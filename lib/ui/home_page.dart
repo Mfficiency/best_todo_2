@@ -664,8 +664,68 @@ class _HomePageState extends State<HomePage>
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
-    _loadTasks();
+    // Some tools (Chronize, Productivity Stats, ...) render the task data, so
+    // the configured start tool is only opened once loading finished.
+    _loadTasks().then((_) => _maybeOpenStartTool());
     _scheduleMidnightUpdate();
+  }
+
+  /// The page for a tool key from [Config.startToolOptions]; null for
+  /// 'tasks' (the home page itself) and unknown keys.
+  Widget? _buildToolPage(String tool) {
+    switch (tool) {
+      case 'alarms':
+        return const AlarmsPage();
+      case 'countdown':
+        return const CountdownTimerPage();
+      case 'projects':
+        return ProjectsPage(tasks: _tasks, onChanged: _saveTasks);
+      case 'chronize':
+        return ChronizePage(
+          tasks: _tasks,
+          onCreateTask: _addTaskFromChronize,
+          onTaskChanged: _onChronizeTaskChanged,
+          onDeleteTask: _deleteTaskFromChronize,
+        );
+      case 'usage_data':
+        return UsageDataPage(
+          tasks: _tasks,
+          deletedTasks: _deletedTasks,
+          dailyStatsByDay: _dailyStatsByDay,
+        );
+      case 'productivity_stats':
+        return YourStatsPage(
+          tasks: _tasks,
+          deletedItems: _deletedTasks,
+          dailyStatsByDay: _dailyStatsByDay,
+        );
+    }
+    return null;
+  }
+
+  /// Pushes the given tool's page. Used by the Tools drawer section and by
+  /// the "Default start page" setting on launch.
+  void _openTool(String tool) {
+    final page = _buildToolPage(tool);
+    if (page == null) return;
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => page))
+        .then((_) {
+      // Tools like Projects mutate tasks in place; refresh the lists when
+      // coming back.
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// Opens the tool configured as the default start page (if any) on top of
+  /// the task list, so backing out of it lands on the tasks as usual.
+  void _maybeOpenStartTool() {
+    if (Config.startTool == 'tasks') return;
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _openTool(Config.startTool);
+    });
   }
 
   @override
@@ -1647,22 +1707,6 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.insights),
-              title: const Text('Your Stats'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => YourStatsPage(
-                      tasks: _tasks,
-                      deletedItems: _deletedTasks,
-                      dailyStatsByDay: _dailyStatsByDay,
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.info),
               title: const Text('About'),
               onTap: () {
@@ -1712,9 +1756,7 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Alarms'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AlarmsPage()),
-                    );
+                    _openTool('alarms');
                   },
                 ),
                 ListTile(
@@ -1722,11 +1764,7 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Countdown'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CountdownTimerPage(),
-                      ),
-                    );
+                    _openTool('countdown');
                   },
                 ),
                 ListTile(
@@ -1734,16 +1772,7 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Projects'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProjectsPage(
-                          tasks: _tasks,
-                          onChanged: _saveTasks,
-                        ),
-                      ),
-                    ).then((_) {
-                      if (mounted) setState(() {});
-                    });
+                    _openTool('projects');
                   },
                 ),
                 ListTile(
@@ -1751,16 +1780,15 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Chronize'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChronizePage(
-                        tasks: _tasks,
-                        onCreateTask: _addTaskFromChronize,
-                        onTaskChanged: _onChronizeTaskChanged,
-                        onDeleteTask: _deleteTaskFromChronize,
-                      ),
-                      ),
-                    );
+                    _openTool('chronize');
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.insights),
+                  title: const Text('Productivity Stats'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openTool('productivity_stats');
                   },
                 ),
                 ListTile(
@@ -1768,15 +1796,7 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Usage Data'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => UsageDataPage(
-                          tasks: _tasks,
-                          deletedTasks: _deletedTasks,
-                          dailyStatsByDay: _dailyStatsByDay,
-                        ),
-                      ),
-                    );
+                    _openTool('usage_data');
                   },
                 ),
               ],

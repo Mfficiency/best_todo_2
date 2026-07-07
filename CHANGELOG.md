@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.91] - 2026-07-07
+- Stats renamed to Productivity Stats and moved into the Tools section of the menu
+- Settings: choose the default start page — the task list or any tool (Alarms, Countdown, Projects, Chronize, Usage Data, Productivity Stats); the chosen tool opens on launch, back returns to the task list
+- alarms: per-alarm volume is now real — every alarm rings its melody at its own volume as a fraction of the device maximum, independent of the phone's current media/ringer/alarm volume (the alarm stream is pinned to max during the ring and restored afterwards)
+- alarms: new "Override Do Not Disturb" switch per alarm — when on, the alarm always plays at its configured volume, even while the phone is silenced or in Do Not Disturb
+- alarms: Preview button next to the melody picker — plays the selected melody at the configured alarm volume (live-updates while changing melody or volume) so sound and loudness can be checked before saving
+- alarms: while the full-screen ring page plays the alarm's own melody, the notification moves to a silent channel (actions and vibration stay) so the default alarm sound no longer plays on top; if melody playback cannot start, the notification sound keeps ringing as before
+
 ## [0.1.90] - 2026-07-07
 - Editable project name/description + persistence (ProjectService)
 - Move Projects drawer entry into Tools section

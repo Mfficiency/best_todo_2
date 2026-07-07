@@ -32,7 +32,7 @@ void main(List<String> args) {
     ..writeln(
         '![$now - $safeBranch - settings]($screenshotFolder/settings_page.png)')
     ..writeln()
-    ..writeln('### Your Stats')
+    ..writeln('### Productivity Stats')
     ..writeln(
         '![$now - $safeBranch - stats]($screenshotFolder/your_stats_page.png)')
     ..writeln()

@@ -40,6 +40,9 @@ Future<bool> showAlarmNotification(
   String body, {
   bool vibrate = true,
   String? uid,
+  String? melody,
+  double? volume,
+  bool overrideDnd = false,
 }) async {
   final hasPermission = await _ensurePermission();
   if (!hasPermission) return false;
@@ -47,6 +50,8 @@ Future<bool> showAlarmNotification(
   html.Notification(safeTitle, body: body.isEmpty ? null : body);
   return true;
 }
+
+Future<void> silenceAlarmNotification(Map<String, dynamic> payload) async {}
 
 Future<bool> ensureAlarmPermissions() async => _ensurePermission();
 

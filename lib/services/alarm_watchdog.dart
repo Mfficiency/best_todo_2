@@ -116,6 +116,9 @@ class AlarmWatchdog {
         vibrate: alarm.vibrate,
         notifIds: alarmNotificationIds(alarm.uid),
         fireAt: next,
+        melody: alarm.melody,
+        volume: alarm.volume,
+        overrideDnd: alarm.overrideDnd,
       );
       if (entry != null) registry['${alarmWatchdogId(alarm.uid)}'] = entry;
     }
@@ -131,6 +134,9 @@ class AlarmWatchdog {
     required String body,
     required bool vibrate,
     required DateTime fireAt,
+    String? melody,
+    double? volume,
+    bool overrideDnd = false,
   }) async {
     if (!await _ensureManager()) return;
     final prefs = await _prefs();
@@ -148,6 +154,9 @@ class AlarmWatchdog {
       notifIds: notifIds,
       fireAt: fireAt,
       label: 'snooze of ',
+      melody: melody,
+      volume: volume,
+      overrideDnd: overrideDnd,
     );
     if (entry != null) {
       registry['$id'] = entry;
@@ -184,6 +193,9 @@ class AlarmWatchdog {
     required List<int> notifIds,
     required DateTime fireAt,
     String label = '',
+    String? melody,
+    double? volume,
+    bool overrideDnd = false,
   }) async {
     final checkAt = fireAt.add(grace);
     try {
@@ -209,6 +221,9 @@ class AlarmWatchdog {
           'vibrate': vibrate,
           'notifIds': notifIds,
           'fireAt': fireAt.toIso8601String(),
+          if (melody != null) 'melody': melody,
+          if (volume != null) 'volume': volume,
+          'overrideDnd': overrideDnd,
         };
       }
       await AlarmLog.fail(
@@ -342,6 +357,9 @@ class AlarmWatchdog {
           body,
           vibrate: vibrate,
           uid: uid,
+          melody: entry['melody'] as String?,
+          volume: (entry['volume'] as num?)?.toDouble(),
+          overrideDnd: entry['overrideDnd'] as bool? ?? false,
         );
         if (shown) {
           await AlarmLog.ok('BACKUP', '"$title": backup ring posted');
@@ -378,6 +396,9 @@ class AlarmWatchdog {
         vibrate: alarm.vibrate,
         notifIds: alarmNotificationIds(uid),
         fireAt: next,
+        melody: alarm.melody,
+        volume: alarm.volume,
+        overrideDnd: alarm.overrideDnd,
       );
       if (newEntry != null) {
         final reg = _readRegistry(await _prefs());
