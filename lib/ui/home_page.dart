@@ -904,6 +904,9 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
+    // Reordering a search-filtered list would renumber only the visible
+    // subset and scramble the hidden tasks' order, so it is disabled.
+    if (_searchQuery.trim().isNotEmpty) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -1104,7 +1107,7 @@ class _HomePageState extends State<HomePage>
 
   void _saveTasks() {
     for (var i = 0; i < Config.tabs.length; i++) {
-      final listTasks = _tasksForTab(i);
+      final listTasks = _tasksForTab(i, applySearch: false);
       for (var j = 0; j < listTasks.length; j++) {
         listTasks[j].listRanking = j + 1;
       }
@@ -1457,8 +1460,11 @@ class _HomePageState extends State<HomePage>
             has(ProjectService.instance.nameOf(task.projectId)));
   }
 
-  List<Task> _tasksForTab(int pageIndex) {
-    final query = _searchQuery.trim().toLowerCase();
+  /// Tasks shown on [pageIndex]. While a search query is active the list is
+  /// narrowed to matching tasks; pass [applySearch] false for logic that must
+  /// see the full tab (e.g. renumbering [Task.listRanking] on save).
+  List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
+    final query = applySearch ? _searchQuery.trim().toLowerCase() : '';
     final list = _tasks.where((task) {
       if (query.isNotEmpty && !_matchesSearch(task, query)) return false;
       if (task.dueDate == null) return false;

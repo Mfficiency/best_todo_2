@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.90] - 2026-07-07
+- Editable project name/description + persistence (ProjectService)
+- Move Projects drawer entry into Tools section
+- Alarms widget: background tap opens alarms list
+- Project name + stage chips on task tiles
+- Basic task search in home app bar
+
+
 ## [0.1.89] - 2026-07-07
 - new Projects tool
 - drag tasks onto projects to assign them
