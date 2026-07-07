@@ -61,8 +61,13 @@ void main() {
 
     await tester.enterText(
         find.widgetWithText(TextField, 'Name'), 'Evening walk');
-    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    // The form is a lazy ListView — scroll until the bottom button builds.
+    // Find by text: the top-bar Save is icon-only, so the only "Save" text on
+    // the page is the bottom button's label (FilledButton.icon builds a
+    // private FilledButton subtype that find.byType would miss).
+    await tester.scrollUntilVisible(find.text('Save'), 100,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
     expect(result, isA<Alarm>());

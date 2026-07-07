@@ -28,9 +28,16 @@ void main() {
     await tester.runAsync(() => StorageService()
         .saveTaskList([Task(title: 'Alpha', dueDate: DateTime.now())]));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 100)));
+    // Iterate real-event-loop slices until HomePage's file loads finish (see
+    // home_search_test.dart for why a single delay is not enough).
+    final marker = find.text('Alpha');
+    for (var i = 0; i < 300 && marker.evaluate().isEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
+    expect(marker, findsOneWidget, reason: 'HomePage never loaded the tasks');
 
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
@@ -43,8 +50,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Projects'), findsOneWidget);
 
-    // Scroll the expanded entry into view if needed and open it.
-    await tester.ensureVisible(find.text('Projects'));
+    // Scroll the drawer (not the body list) until the entry is tappable.
+    final drawerScrollable =
+        find.ancestor(of: find.text('Tools'), matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.text('Projects'), 50,
+        scrollable: drawerScrollable.first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Projects'));
     await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)));
