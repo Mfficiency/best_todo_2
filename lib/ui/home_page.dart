@@ -16,6 +16,7 @@ import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
+import 'alarms_page.dart';
 import 'app_logs_page.dart';
 import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
@@ -26,6 +27,7 @@ import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
+import 'usage_data_page.dart';
 import 'your_stats_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -1201,7 +1203,7 @@ class _HomePageState extends State<HomePage>
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
       final settings = settingsRaw is Map
-          ? Map<String, dynamic>.from(settingsRaw as Map)
+          ? Map<String, dynamic>.from(settingsRaw)
           : decoded;
       Config.applyMap(settings);
       await Config.save();
@@ -1256,7 +1258,7 @@ class _HomePageState extends State<HomePage>
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
       if (settingsRaw is Map) {
-        Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+        Config.applyMap(Map<String, dynamic>.from(settingsRaw));
         await Config.save();
       }
 
@@ -1355,7 +1357,7 @@ class _HomePageState extends State<HomePage>
       if (hasEverythingBundle) {
         final settingsRaw = decoded['settings'];
         if (settingsRaw is Map) {
-          Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+          Config.applyMap(Map<String, dynamic>.from(settingsRaw));
           await Config.save();
         }
         final imported =
@@ -1675,6 +1677,16 @@ class _HomePageState extends State<HomePage>
               childrenPadding: const EdgeInsets.only(left: 16),
               children: [
                 ListTile(
+                  leading: const Icon(Icons.alarm),
+                  title: const Text('Alarms'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AlarmsPage()),
+                    );
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.timer),
                   title: const Text('Countdown'),
                   onTap: () {
@@ -1699,6 +1711,22 @@ class _HomePageState extends State<HomePage>
                         onTaskChanged: _onChronizeTaskChanged,
                         onDeleteTask: _deleteTaskFromChronize,
                       ),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.query_stats),
+                  title: const Text('Usage Data'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => UsageDataPage(
+                          tasks: _tasks,
+                          deletedTasks: _deletedTasks,
+                          dailyStatsByDay: _dailyStatsByDay,
+                        ),
                       ),
                     );
                   },

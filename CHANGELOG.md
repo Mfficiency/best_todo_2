@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.1.88] - 2026-07-07
+- alarms: full-screen alarm screen — a ringing alarm now opens a clock-app-style full-screen page (live clock, alarm name, big Snooze / Stop buttons, themed with the alarm's color) instead of only a notification banner. It shows over the lock screen with the screen turned on (via the notification's full-screen intent) and also opens when the ringing notification is tapped; Stop/Snooze on it keep the OS schedules, the snooze slot and the delivery watchdog consistent
+- alarms: FIXED release builds silently failing to schedule anything — R8/ProGuard stripped Gson's generic type info inside flutter_local_notifications, so every schedule call died with "Missing type parameter." (all three ladder methods REJECTED in the alarm log) and only the ~90 s-late watchdog backup ever rang; added keep rules (`android/app/proguard-rules.pro`) so the primary exact-alarm path works in release builds again
+- alarms: the watchdog backup ring now carries the alarm payload too, so it also opens the full-screen alarm screen and can be stopped from it
+- alarms: permission flow and diagnostics now check the Android 14+ "full screen intents" special access — revoked access is reported in the alarm log with the exact settings path, and the permission flow opens the system toggle
+- alarms: stopping/snoozing on the ring screen is acknowledged to the delivery watchdog (no double-ring) and logged as ACTION lines in the alarm log
+
+## [0.1.87] - 2026-07-07
+- startup times page facelift: summary card (typical/last/fastest/slowest launch, human-readable ms/s), themed chart that scales to the data instead of clipping launches over 1.5 s, date labels and tap-for-details tooltips, shaded band marking starts over 1 s
+- startup times: a "What this means" section below the chart explains what is measured and draws conclusions from the data — typical-startup verdict, faster/slower trend, share of slow starts, outlier spikes, and whether the first launch of the day is a slower cold start
+- startup times: uses the timestamped launch history (up to 5000 launches) when available, falling back to the legacy duration list
+
+## [0.1.86] - 2026-07-07
+- usage data tool (Tools → Usage Data): export everything the app has ever recorded as detailed CSV files — a Digital-Wellbeing-style data dump reaching as far back as the data on the device goes. Datasets: a unified event timeline across all sources (every task created/moved/rescheduled/completed/deleted/restored, alarm pipeline steps, SMS report attempts, app opens, countdown timers), per-day usage summary (first/last activity, active span, app opens, task counts, start-of-day completion rate), per-hour activity histogram, full task history with derived metrics (hours to complete, completed on time), raw daily task stats, parsed alarm pipeline log, alarm setup snapshot, SMS report log, app opens, legacy startup durations, countdown timers, plus an export manifest stating how far back the data reaches
+- usage data: each dataset can be included/excluded before export; files are written as `.csv` (RFC 4180) into a timestamped `besttodo_usage_<timestamp>` folder in a directory you pick
+- app opens are now recorded with a timestamp on every launch (`startup_history.json`, capped at 5000 entries) so future usage exports show opens per day — previously only the duration of the last 100 startups was kept
+
+## [0.1.85] - 2026-07-06
+- release build (no functional changes since 0.1.84)
+
+## [0.1.84] - 2026-07-06
+- alarms: foolproof delivery — every alarm is now scheduled through an escalation ladder (setAlarmClock → setExactAndAllowWhileIdle → inexact last resort; each attempt logged) and additionally guarded by an independent watchdog that wakes ~90 s after the fire time, checks whether the alarm actually rang (notification on screen or already tapped/snoozed/dismissed) and rings it itself if the primary path was silently dropped
+- alarms: persistent human-readable log file (`alarm_log.txt`, viewable in-app via Alarms → log icon) records every step with [OK]/[FAIL]/[WARN] and a fix hint: permission checks and requests, each scheduling method tried, OS read-back verification of pending schedules, watchdog arming, delivery verdicts, and user actions (tap/snooze/dismiss) — when an alarm doesn't ring, the file says which step failed and why
+- alarms: startup diagnostics snapshot logged on every launch — device/OEM, Android version, notification + alarm-channel state, exact-alarm permission, battery-optimization exemption, per-OEM power-saver hints (Samsung sleeping apps, Xiaomi autostart, …), configured alarms vs. what the OS reports as scheduled
+- alarms: "Test alarm (1 min)" and "Run diagnostics" buttons on the log page exercise the full pipeline on demand
+- alarms: alarm sound/vibration now loops until the notification is acted on (insistent flag) instead of playing once
+- alarms: snooze fires are also covered by the watchdog and logged
+
+## [0.1.83] - 2026-07-02
+- alarms tool: full alarm clock with per-alarm settings (Tools → Alarms)
+- home-screen alarms widget with toggle and edit
+- exact alarm scheduling that fires when the app is closed and after reboot — alarms are scheduled with the OS, so they also ring in flight mode / offline
+- alarm snooze and dismiss actions
+- scheduled notifications interpret times as absolute (fixed timezone drift)
+- alarms: toggling an alarm from the home-screen widget while the app is closed now actually schedules/cancels the OS alarm (before, the toggle only changed the stored state, so an alarm enabled from the widget never rang and a disabled one still fired)
+- alarms: snooze now works when the app is closed (the notification-action isolate couldn't reach the platform plugins), and a pending snooze is no longer silently cancelled when the app is opened or another alarm is edited
+- alarms: the alarm permission prompt also asks for battery-optimization exemption so OEM power savers (Samsung "Sleeping apps") can't delay or drop alarms
+- alarms: repeating alarms scheduled across a DST change no longer fire an hour off
+
+## [0.1.82] - 2026-07-02
+- sms report: the daily alarm now fires reliably while the app is closed — switched from a repeating alarm (which Android treats as inexact and defers indefinitely in Doze/deep sleep) to an exact one-shot alarm (`setExactAndAllowWhileIdle`) that re-arms itself for the next day each time it fires; the chain is also restored on every app launch and survives reboots
+- sms report: enabling the report now also asks for SMS permission up front — the background isolate has no UI, so the permission dialog can never be shown when the alarm fires
+- sms report: every background alarm fire writes an "Alarm fired" entry to the SMS report log, so you can verify firing even when the send is skipped
+
+## [0.1.81] - 2026-07-01
+- sms report: the daily alarm now requests the permissions it needs to actually fire in the background — exact-alarm scheduling and, crucially, exemption from battery optimization / Doze (Samsung "Sleeping apps" and similar OEM power savers silently drop background alarms unless the app is whitelisted). Enabling the report now prompts for these. Also declared the matching manifest permissions (SET_ALARM, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, FOREGROUND_SERVICE, VIBRATE)
+
+## [0.1.80] - 2026-06-30
+- sms report: fixed the scheduled daily report never firing — the Android manifest was missing the `AlarmBroadcastReceiver` that AndroidAlarmManager's alarm targets, so the alarm fired in the OS but was never delivered to the app and the background callback never ran (the in-app "Send test now" button still worked because it bypasses the alarm)
+
 ## [0.1.79] - 2026-06-05
 - chronize: the off-screen event hints are subtler — a small lowercase distance pill (e.g. "3 hours") with the direction arrow moved outside the pill (above for earlier, below for later), so the hint is one line tall and the wording no longer says "earlier"/"in"
 
@@ -113,7 +163,6 @@
 - prevent screenshot workflow self-trigger loops
 - capture and archive four screenshots per push (home, menu open, settings, your stats)
 - group screenshots in one folder per push and prepend grouped entries to `SCREENSHOT_CHANGELOG.md`
-
 ## [0.1.56] - 2026-02-27
 - extra default task future
 - skipping default screens in dev mode
