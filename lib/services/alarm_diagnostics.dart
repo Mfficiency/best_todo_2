@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/alarm.dart';
+import 'alarm_fullscreen.dart';
 import 'alarm_log_service.dart';
 import 'alarm_storage_service.dart';
 
@@ -62,14 +63,7 @@ class AlarmDiagnostics {
     await _checkBatteryOptimization();
     await _oemHints(manufacturer);
 
-    if (sdk >= 34) {
-      await AlarmLog.info(
-          'ENV',
-          'Android 14+: full-screen alarm UI over the lock screen needs '
-          '"Manage full screen intents" — if the alarm only shows a silent '
-          'banner while locked, check system Settings → Apps → BestToDo → '
-          'Manage full screen intents');
-    }
+    await _checkFullScreenIntent(sdk);
     await AlarmLog.info(
         'ENV',
         'note: force-stopping the app (Settings → Apps → Force stop, and on '
@@ -148,6 +142,38 @@ class AlarmDiagnostics {
       }
     } catch (e) {
       await AlarmLog.warn('PERM', 'could not check exact-alarm permission: $e');
+    }
+  }
+
+  /// Ringing alarms present a full-screen ring UI over the lock screen via a
+  /// full-screen intent; Android 14+ can revoke that special access, in which
+  /// case the alarm degrades to a (still audible) notification banner.
+  static Future<void> _checkFullScreenIntent(int sdk) async {
+    try {
+      final can = await AlarmFullScreen.canUseFullScreenIntent();
+      if (can == true) {
+        await AlarmLog.ok(
+            'PERM',
+            'full-screen intent: allowed — a ringing alarm shows the '
+            'full-screen alarm screen, also over the lock screen');
+        return;
+      }
+      if (can == false) {
+        await AlarmLog.fail(
+            'PERM',
+            'full-screen intent: REVOKED — while locked, alarms only show a '
+            'banner instead of the full-screen alarm screen. Fix: system '
+            'Settings → Apps → BestToDo → Manage full screen intents → allow');
+        return;
+      }
+    } catch (_) {}
+    if (sdk >= 34) {
+      await AlarmLog.info(
+          'ENV',
+          'Android 14+: full-screen alarm UI over the lock screen needs '
+          '"Manage full screen intents" — if the alarm only shows a silent '
+          'banner while locked, check system Settings → Apps → BestToDo → '
+          'Manage full screen intents');
     }
   }
 

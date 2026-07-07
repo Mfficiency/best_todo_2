@@ -341,6 +341,7 @@ class AlarmWatchdog {
           title,
           body,
           vibrate: vibrate,
+          uid: uid,
         );
         if (shown) {
           await AlarmLog.ok('BACKUP', '"$title": backup ring posted');

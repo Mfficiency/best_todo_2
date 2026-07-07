@@ -82,6 +82,13 @@ android {
             if (hasReleaseKeystore) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            // Keep rules for Gson/flutter_local_notifications — without them
+            // R8 strips generic signatures and every alarm schedule call
+            // fails at runtime with "Missing type parameter." (release only).
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

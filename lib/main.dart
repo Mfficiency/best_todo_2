@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'ui/alarm_ring_page.dart';
 import 'ui/alarms_page.dart';
 import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
@@ -78,10 +79,19 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late bool _showIntro = widget.showIntro;
+  bool _alarmRingOpen = false;
 
   @override
   void initState() {
     super.initState();
+    // Full-screen alarm UI: when a ringing alarm opens the app (tap on the
+    // notification, or its full-screen intent firing over the lock screen),
+    // present the ring page. Covers both a warm app (callback) and a cold
+    // start (launch details).
+    NotificationService.setOnAlarmRing(_showAlarmRing);
+    NotificationService.getAlarmLaunchPayload().then((payload) {
+      if (payload != null) _showAlarmRing(payload);
+    }).catchError((_) {});
     // Handle taps coming from the alarms home-screen widget. Guarded so that
     // environments without the platform channel (e.g. widget tests) stay quiet.
     try {
@@ -93,6 +103,30 @@ class _MyAppState extends State<MyApp> {
         onError: (_) {},
       );
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    NotificationService.setOnAlarmRing(null);
+    super.dispose();
+  }
+
+  void _showAlarmRing(Map<String, dynamic> payload) {
+    // Wait for the first frame so the navigator exists on a cold start. The
+    // explicit scheduleFrame makes sure the callback also runs when no frame
+    // happens to be pending (warm launch from the background).
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = appNavigatorKey.currentState;
+      if (navigator == null || _alarmRingOpen) return;
+      _alarmRingOpen = true;
+      navigator
+          .push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => AlarmRingPage(payload: payload),
+          ))
+          .whenComplete(() => _alarmRingOpen = false);
+    });
   }
 
   Future<void> _handleWidgetClick(Uri? uri) async {

@@ -13,9 +13,18 @@ Future<bool> showAlarmNotification(
   String title,
   String body, {
   bool vibrate = true,
+  String? uid,
 }) async {
   return false;
 }
+
+void Function(Map<String, dynamic> payload)? onAlarmRing;
+
+Future<Map<String, dynamic>?> getAlarmLaunchPayload() async => null;
+
+Future<void> dismissAlarmFromRing(Map<String, dynamic> payload) async {}
+
+Future<void> snoozeAlarmFromRing(Map<String, dynamic> payload) async {}
 
 Future<bool> ensureAlarmPermissions() async => false;
 

@@ -153,6 +153,62 @@ make sure all the things work all the time even in flight mode or whatever."
 
 ---
 
+## Question 6 (2026-07-07) — full-screen ring UI + release-build scheduling fix
+
+**User asked:** "From dev, fix the alarm so that when it rings it's not just a
+notification, it's a full screen thing like a Google or Samsung clock alarm."
+Plus: merge back to dev and staging, bump version, update docs.
+
+- Branch `claude/fullscreen-alarm-ui-56myqr` (rebased onto dev), version
+  **0.1.88+58**.
+- **Found on the way (critical):** the user's pasted alarm log (v0.1.85+55,
+  Samsung SM-S911B / Android 16) showed EVERY schedule call rejected with
+  `PlatformException(... Missing type parameter.)` — the classic R8-full-mode ×
+  Gson bug: release builds had NO proguard keep rules, so R8 stripped the
+  generic signatures flutter_local_notifications' Gson persistence needs.
+  Release alarms only ever rang via the ~90 s-late watchdog. **Fix:** new
+  `android/app/proguard-rules.pro` (keep `Signature`, `TypeToken` subclasses,
+  gson + `com.dexterous.**`) wired into the release buildType in
+  `build.gradle.kts`. Debug builds never showed the bug (no minification).
+- **Full-screen ring UI** (`lib/ui/alarm_ring_page.dart`): dark
+  gradient page themed with the alarm color, pulsing icon, live HH:mm clock,
+  big Snooze pill (hidden when snooze disabled) + round Stop button; back
+  blocked (PopScope). Sound still comes from the insistent notification;
+  Stop/Snooze cancel it.
+- **Plumbing:** notification payload now also carries `color`.
+  `MainActivity.kt` (the real one under `com/example/best_todo_2/`) sets
+  `setShowWhenLocked/setTurnScreenOn` when the launch intent is
+  `SELECT_NOTIFICATION` with an alarm payload (uid marker), and hosts
+  MethodChannel `besttodo/alarm_ring` (`canUseFullScreenIntent`,
+  `clearLockScreenFlags` — called from the ring page's dispose so the todo
+  list never stays over the keyguard). Cold start →
+  `getAlarmLaunchPayload()` (launch details); warm →
+  `onDidReceiveNotificationResponse` → `onAlarmRing` handler registered in
+  `_MyAppState`, push guarded against double-open.
+- **Ring-page actions:** Stop = `recordAck('ring_dismiss')` → cancel the
+  alarm's ACTIVE notification ids (NB `plugin.cancel` also kills same-id
+  pending schedules, e.g. auto-rearmed weekly repeats) → full reschedule from
+  storage. Snooze = ack → cancel actives → reschedule → THEN schedule the
+  snooze into base+0 (ordering so the reschedule can't clear it) → snooze
+  watchdog. Shared helper `_scheduleSnoozeFromData` now backs both the
+  notification action and the ring page.
+- **Watchdog backup ring** now passes `uid` into `showAlarmNotification`,
+  which posts under the alarm's own base id WITH payload → backup rings get
+  the same full-screen treatment and are stoppable from the page.
+- **Android 14+ FSI special access:** checked in `ensureAlarmPermissions`
+  (opens the system toggle via `requestFullScreenIntentPermission()` when
+  revoked) and in diagnostics (`_checkFullScreenIntent` — OK/FAIL/hint).
+- **Tests:** `test/alarm_ring_page_test.dart` (render, snooze hidden,
+  fallback name, Stop/Dismiss handlers + pop). NOTE: the ring page has an
+  endless pulse animation — use fixed `pump()`s, `pumpAndSettle` never
+  settles. `flutter analyze` clean for touched files; full suite green except
+  `startup_times_page_test.dart` hangs (pre-existing on clean dev in this
+  sandbox, unrelated).
+- Docs: CHANGELOG 0.1.88, SPEC.md §5.2 "Full-screen ring UI" + §9
+  (proguard + MainActivity), this file.
+
+---
+
 ## Commit map (newest first)
 
 | Commit | Branch | What |
