@@ -106,7 +106,7 @@ void main() {
   });
 
   testWidgets('edit dialog saves name and description', (tester) async {
-    await ProjectService.instance.load();
+    await tester.runAsync(() => ProjectService.instance.load());
     await pumpBoard(tester, []);
 
     await tester.tap(find.byTooltip('Edit project'));
@@ -117,6 +117,10 @@ void main() {
     await tester.enterText(
         find.widgetWithText(TextField, 'Description'), 'Chores and repairs');
     await tester.tap(find.text('Save'));
+    // The save path awaits a real projects.json write before calling
+    // setState; let that I/O finish on the real event loop.
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
 
     // App bar title and the description banner update in place.
@@ -129,7 +133,7 @@ void main() {
   });
 
   testWidgets('cancelling the edit dialog changes nothing', (tester) async {
-    await ProjectService.instance.load();
+    await tester.runAsync(() => ProjectService.instance.load());
     await pumpBoard(tester, []);
 
     await tester.tap(find.byTooltip('Edit project'));
@@ -144,7 +148,7 @@ void main() {
   });
 
   testWidgets('an empty name keeps the previous project name', (tester) async {
-    await ProjectService.instance.load();
+    await tester.runAsync(() => ProjectService.instance.load());
     await pumpBoard(tester, []);
 
     await tester.tap(find.byTooltip('Edit project'));
@@ -153,6 +157,8 @@ void main() {
     await tester.enterText(
         find.widgetWithText(TextField, 'Description'), 'Still described');
     await tester.tap(find.text('Save'));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
 
     expect(find.text('Project 1'), findsOneWidget);

@@ -25,9 +25,11 @@ void main() {
 
   testWidgets('Projects lives under Tools in the drawer and opens the page',
       (tester) async {
-    await StorageService()
-        .saveTaskList([Task(title: 'Alpha', dueDate: DateTime.now())]);
+    await tester.runAsync(() => StorageService()
+        .saveTaskList([Task(title: 'Alpha', dueDate: DateTime.now())]));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Open navigation menu'));
@@ -44,6 +46,8 @@ void main() {
     // Scroll the expanded entry into view if needed and open it.
     await tester.ensureVisible(find.text('Projects'));
     await tester.tap(find.text('Projects'));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
 
     expect(find.text('All Tasks'), findsOneWidget);

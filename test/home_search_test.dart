@@ -28,8 +28,12 @@ void main() {
   });
 
   Future<void> pumpHome(WidgetTester tester, List<Task> tasks) async {
-    await StorageService().saveTaskList(tasks);
+    // All real file I/O (pre-saving tasks, HomePage's initState loads) must
+    // run on the real event loop via runAsync, not the fake-async test zone.
+    await tester.runAsync(() => StorageService().saveTaskList(tasks));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
   }
 

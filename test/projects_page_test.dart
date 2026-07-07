@@ -88,6 +88,9 @@ void main() {
     expect(changed, 1);
     expect(find.text('Added "Alpha" to Project 1'), findsOneWidget);
     expect(find.text('1 task'), findsOneWidget);
+
+    // Drain the snackbar's auto-dismiss timer so the test ends clean.
+    await tester.pumpAndSettle(const Duration(seconds: 3));
   });
 
   testWidgets('an assigned task shows its project as a chip in the task pane',
@@ -107,6 +110,9 @@ void main() {
               {'id': 'project_2', 'name': 'Work'},
               {'id': 'project_3', 'name': 'Project 3'},
             ])));
+    // Load deterministically before pumping; the page's own initState load is
+    // then a no-op (load only reads once per session).
+    await tester.runAsync(() => ProjectService.instance.load());
 
     await pumpPage(tester, [Task(title: 'Alpha')]);
 

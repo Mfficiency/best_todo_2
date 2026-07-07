@@ -72,54 +72,14 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
   }
 
   Future<void> _editProject() async {
-    final nameController = TextEditingController(text: _project.name);
-    final descriptionController =
-        TextEditingController(text: _project.description);
-    final saved = await showDialog<bool>(
+    final updated = await showDialog<Project>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit project'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              autofocus: true,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            TextField(
-              controller: descriptionController,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Description'),
-              keyboardType: TextInputType.multiline,
-              maxLines: null,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (_) => _ProjectEditDialog(project: _project),
     );
-    if (saved == true) {
-      final name = nameController.text.trim();
-      final updated = _project.copyWith(
-        name: name.isEmpty ? _project.name : name,
-        description: descriptionController.text.trim(),
-      );
+    if (updated != null) {
       await ProjectService.instance.upsert(updated);
       if (mounted) setState(() => _project = updated);
     }
-    nameController.dispose();
-    descriptionController.dispose();
   }
 
   @override
@@ -289,4 +249,73 @@ class _KanbanColumn {
     required this.title,
     required this.color,
   });
+}
+
+/// Name + description editor for a [Project]. Owns its text controllers (so
+/// they outlive the dialog's exit animation) and pops with the edited copy on
+/// Save, or null on Cancel. An emptied name keeps the previous one.
+class _ProjectEditDialog extends StatefulWidget {
+  final Project project;
+
+  const _ProjectEditDialog({required this.project});
+
+  @override
+  State<_ProjectEditDialog> createState() => _ProjectEditDialogState();
+}
+
+class _ProjectEditDialogState extends State<_ProjectEditDialog> {
+  late final TextEditingController _nameController =
+      TextEditingController(text: widget.project.name);
+  late final TextEditingController _descriptionController =
+      TextEditingController(text: widget.project.description);
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    Navigator.of(context).pop(widget.project.copyWith(
+      name: name.isEmpty ? widget.project.name : name,
+      description: _descriptionController.text.trim(),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit project'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameController,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Name'),
+          ),
+          TextField(
+            controller: _descriptionController,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Description'),
+            keyboardType: TextInputType.multiline,
+            maxLines: null,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
