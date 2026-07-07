@@ -7,7 +7,8 @@
 > project took and why). `CHANGELOG.md` remains the authoritative per-version record;
 > `.claude/notes/alarm-work-spec.md` holds the deep-dive on the alarm reliability sessions.
 >
-> Accurate as of version **0.1.87+57** (2026-07-07), commit history through `094d681`.
+> Accurate as of version **0.1.88+58** (2026-07-07), commit history through the 0.1.88
+> full-screen alarm work.
 
 ---
 
@@ -276,6 +277,29 @@ Android channel settings are immutable), Importance.max, `audioAttributesUsage: 
 `now + snoozeMinutes` into the `base+0` slot through the same ladder and gets its own
 watchdog cover.
 
+**Full-screen ring UI (0.1.88):** a ringing alarm presents `AlarmRingPage`
+(`lib/ui/alarm_ring_page.dart`) — a clock-app-style full-screen page (live clock, alarm
+name/description, pulsing icon, big Snooze / round Stop button, dark gradient themed with
+the alarm's `color`; back is blocked, the alarm must be answered). Delivery paths into it:
+(a) the notification's full-screen intent fires while the device is locked/screen-off —
+`MainActivity` detects the `SELECT_NOTIFICATION` intent whose `payload` extra contains an
+alarm `uid` and sets `setShowWhenLocked/setTurnScreenOn` (cleared again via the
+`besttodo/alarm_ring` MethodChannel when the page closes, so the rest of the app never
+sits over the keyguard); cold start then reads `getNotificationAppLaunchDetails()`
+(`getAlarmLaunchPayload`), a warm app gets the response via `onDidReceiveNotificationResponse`
+→ the `onAlarmRing` handler registered by `_MyAppState`, which pushes the page (guarded
+against double-push). (b) tapping the ringing notification — same wiring. The sound keeps
+coming from the insistent notification while the page shows. Page **Stop**: `recordAck` →
+cancel the alarm's active notifications (`plugin.cancel` also kills same-id pending
+schedules, e.g. the auto-rearmed next weekly fire) → full reschedule from storage.
+**Snooze**: ack → cancel actives → reschedule → snooze scheduled last (so the reschedule
+can't clear the `base+0` slot) → snooze watchdog. The watchdog backup ring passes the
+alarm `uid` into `showAlarmNotification`, which then posts under the alarm's own `base`
+id with the full payload — so the backup ring gets the identical full-screen treatment.
+The Android 14+ "full screen intents" special access is checked in `ensureAlarmPermissions`
+(opens the system toggle when revoked) and in diagnostics via
+`NotificationManager.canUseFullScreenIntent` over the `besttodo/alarm_ring` channel.
+
 **Reboot/update:** boot receivers (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, quickboot) for
 both plugins + `rescheduleOnReboot` + full reschedule on every app launch. Force-stop
 drops all OS alarms until next launch — platform rule, documented, unfixable.
@@ -293,8 +317,10 @@ icon) with FAIL/WARN/OK colorization.
 Startup diagnostics ("alarm doctor", also on-demand): device/OEM/SDK, notification +
 channel state, exact-alarm permission, battery-optimization exemption, per-OEM power-saver
 hints (samsung/xiaomi/huawei/honor/oppo/vivo/oneplus/meizu/asus each get the specific
-setting to change), configured alarms vs what the OS reports pending. "Test alarm (1 min)"
-exercises the full ladder+watchdog with fixed test ids.
+setting to change), full-screen-intent access (Android 14+ can revoke it → the alarm
+degrades to a banner while locked; logged with the settings path), configured alarms vs
+what the OS reports pending. "Test alarm (1 min)" exercises the full ladder+watchdog with
+fixed test ids.
 
 ## 6. Notifications (platform split)
 
@@ -369,6 +395,18 @@ otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, pa
 `android`) — deliberate, so every build (CI or local) is signed identically and updates
 install in place instead of failing with a signature mismatch. A Gradle task renames the
 release APK to `app-release_<patch>.apk`.
+
+**ProGuard/R8 (`android/app/proguard-rules.pro`, wired in the release build type):** keep
+rules for Gson generic signatures/`TypeToken` and `com.dexterous.flutterlocalnotifications.**`.
+Without them R8 full mode strips the generic type info Gson needs, and **every** schedule
+call in a release build throws `RuntimeException: Missing type parameter.` — the 0.1.85–87
+releases could not hand a single alarm to the OS (only the watchdog backup rang, ~90 s
+late). Do not remove.
+
+**MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
+`FlutterActivity`: it sets show-when-locked/turn-screen-on when launched by an alarm's
+full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
+(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI".
 
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors

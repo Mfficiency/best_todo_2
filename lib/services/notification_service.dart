@@ -63,15 +63,37 @@ class NotificationService {
     return impl.showTaskNotification(taskTitle, delaySeconds: effectiveDelay);
   }
 
-  /// Shows an alarm alert immediately. Used by the alarm scheduler when an
-  /// alarm's fire time is reached.
+  /// Shows an alarm alert immediately. Used by the watchdog backup path when
+  /// an alarm's fire time was missed. With [uid] the notification carries the
+  /// alarm payload so the full-screen ring UI can open for it.
   static Future<bool> showAlarmNotification(
     String title,
     String body, {
     bool vibrate = true,
+    String? uid,
   }) {
-    return impl.showAlarmNotification(title, body, vibrate: vibrate);
+    return impl.showAlarmNotification(title, body, vibrate: vibrate, uid: uid);
   }
+
+  /// Registers the handler invoked (on the main isolate) with the alarm
+  /// payload when a ringing alarm should present the full-screen ring UI.
+  static void setOnAlarmRing(
+      void Function(Map<String, dynamic> payload)? handler) {
+    impl.onAlarmRing = handler;
+  }
+
+  /// Payload of the alarm notification that launched the app (tap or
+  /// full-screen intent over the lock screen); null on a normal start.
+  static Future<Map<String, dynamic>?> getAlarmLaunchPayload() =>
+      impl.getAlarmLaunchPayload();
+
+  /// Stops a ringing alarm from the full-screen ring page.
+  static Future<void> dismissAlarmFromRing(Map<String, dynamic> payload) =>
+      impl.dismissAlarmFromRing(payload);
+
+  /// Snoozes a ringing alarm from the full-screen ring page.
+  static Future<void> snoozeAlarmFromRing(Map<String, dynamic> payload) =>
+      impl.snoozeAlarmFromRing(payload);
 
   /// Requests the permissions required to fire exact alarms.
   static Future<bool> ensureAlarmPermissions() => impl.ensureAlarmPermissions();

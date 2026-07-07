@@ -12,8 +12,10 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../models/alarm.dart';
 import 'alarm_diagnostics.dart';
+import 'alarm_fullscreen.dart';
 import 'alarm_ids.dart';
 import 'alarm_log_service.dart';
+import 'alarm_storage_service.dart';
 import 'alarm_watchdog.dart';
 
 final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
@@ -206,6 +208,35 @@ Future<bool> ensureAlarmPermissions() async {
     await AlarmLog.warn('PERM', 'battery-optimization request threw: $e');
   }
 
+  // Android 14+ can revoke the full-screen-intent special access that lets a
+  // ringing alarm cover the lock screen. When it is revoked, send the user to
+  // the system toggle for it (an alarm still rings without it, but only as a
+  // banner).
+  try {
+    final before = await AlarmFullScreen.canUseFullScreenIntent();
+    if (before == false) {
+      await AlarmLog.warn(
+          'PERM',
+          'full-screen intent: revoked — opening the system setting so the '
+          'full-screen alarm screen can show over the lock screen');
+      await androidPlugin?.requestFullScreenIntentPermission();
+      final after = await AlarmFullScreen.canUseFullScreenIntent();
+      if (after == true) {
+        await AlarmLog.ok('PERM', 'full-screen intent: granted just now');
+      } else {
+        await AlarmLog.warn(
+            'PERM',
+            'full-screen intent: still revoked — while locked, alarms show a '
+            'banner instead of the full-screen alarm screen. Fix: system '
+            'Settings → Apps → BestToDo → Manage full screen intents');
+      }
+    } else if (before == true) {
+      await AlarmLog.ok('PERM', 'full-screen intent: allowed');
+    }
+  } catch (e) {
+    await AlarmLog.warn('PERM', 'full-screen-intent check threw: $e');
+  }
+
   return granted;
 }
 
@@ -275,7 +306,48 @@ String _payloadFor(Alarm alarm) => jsonEncode({
       'snoozeEnabled': alarm.snoozeEnabled,
       'snoozeMinutes': alarm.snoozeDurationMinutes,
       'snoozeId': alarmNotificationBaseId(alarm.uid),
+      'color': alarm.color,
     });
+
+/// Parses a notification payload and returns it when it belongs to an alarm
+/// (identified by a non-empty uid); null for anything else.
+Map<String, dynamic>? _decodeAlarmPayload(String? payload) {
+  if (payload == null || payload.isEmpty) return null;
+  try {
+    final data = jsonDecode(payload);
+    if (data is Map<String, dynamic> &&
+        (data['uid'] as String? ?? '').isNotEmpty) {
+      return data;
+    }
+  } catch (_) {}
+  return null;
+}
+
+/// Invoked on the main isolate with the alarm payload when a ringing alarm
+/// should present the full-screen ring UI: the app was opened by tapping the
+/// alarm notification, or its full-screen intent fired while the app was
+/// alive. Registered by the app shell; null in background isolates.
+void Function(Map<String, dynamic> payload)? onAlarmRing;
+
+/// Payload of the alarm notification that launched the app (tap or
+/// full-screen intent over the lock screen), or null when the app was started
+/// normally. Used on cold start to open the full-screen ring UI immediately.
+Future<Map<String, dynamic>?> getAlarmLaunchPayload() async {
+  await initialize();
+  try {
+    final details = await _plugin.getNotificationAppLaunchDetails();
+    if (details?.didNotificationLaunchApp != true) return null;
+    final response = details!.notificationResponse;
+    // Action buttons (snooze/dismiss) already handled the alarm — only a
+    // plain open of the notification should ring the full-screen UI.
+    if (response == null || response.actionId != null) return null;
+    return _decodeAlarmPayload(response.payload);
+  } catch (e) {
+    await AlarmLog.warn(
+        'FIRE', 'could not read notification launch details: $e');
+    return null;
+  }
+}
 
 tz.TZDateTime _nextInstanceOfWeekday(int hour, int minute, int weekday) {
   final now = tz.TZDateTime.now(tz.local);
@@ -601,15 +673,33 @@ Future<void> _processAction(NotificationResponse response) async {
     return;
   }
   if (response.actionId == null) {
-    await AlarmLog.ok('ACTION', '"$name": notification tapped (app opened)');
+    await AlarmLog.ok(
+        'ACTION', '"$name": notification opened — showing full-screen alarm UI');
+    // Ring UI can only be shown from the main isolate; in the background
+    // isolate the handler is null and the notification stays interactive.
+    final ring = _decodeAlarmPayload(payload);
+    if (ring != null) onAlarmRing?.call(ring);
     return;
   }
   if (response.actionId != _snoozeAction) return;
 
+  await _scheduleSnoozeFromData(data, payload, how: 'notification action');
+}
+
+/// Schedules the snoozed re-fire for an alarm payload and arms the snooze
+/// watchdog. Shared by the notification's Snooze action and the full-screen
+/// ring page's Snooze button.
+Future<void> _scheduleSnoozeFromData(
+  Map<String, dynamic> data,
+  String payload, {
+  required String how,
+}) async {
+  final uid = data['uid'] as String? ?? '';
+  final name = data['name'] as String? ?? 'Alarm';
   final minutes = (data['snoozeMinutes'] as int?) ?? 9;
   final snoozeId = (data['snoozeId'] as int?) ?? 0;
   final when = tz.TZDateTime.now(tz.local).add(Duration(minutes: minutes));
-  await AlarmLog.ok('ACTION', '"$name": snoozed for $minutes min');
+  await AlarmLog.ok('ACTION', '"$name": snoozed for $minutes min ($how)');
   final method = await _zonedScheduleLayered(
     id: snoozeId,
     title: name,
@@ -634,6 +724,72 @@ Future<void> _processAction(NotificationResponse response) async {
 }
 
 // ---------------------------------------------------------------------------
+// Full-screen ring page actions
+// ---------------------------------------------------------------------------
+
+/// Cancels the alarm's notifications that are currently on screen (stops the
+/// insistent sound/vibration). `cancel` also removes any pending schedule
+/// with the same id (e.g. the auto-rearmed next weekly fire), so callers must
+/// re-register schedules from storage afterwards.
+Future<void> _cancelActiveAlarmNotifications(String uid) async {
+  final ids = uid == kTestAlarmUid
+      ? <int>{kTestAlarmNotificationId}
+      : alarmNotificationIds(uid).toSet();
+  try {
+    final active = await _plugin.getActiveNotifications();
+    for (final n in active) {
+      final id = n.id;
+      if (id != null && ids.contains(id)) {
+        await _plugin.cancel(id);
+      }
+    }
+  } catch (e) {
+    await AlarmLog.warn(
+        'ACTION', 'could not clear the ringing notification: $e');
+  }
+}
+
+Future<void> _rescheduleFromStorage(String trigger) async {
+  try {
+    final alarms = await AlarmStorageService().loadAlarms();
+    await scheduleAlarms(alarms, trigger: trigger);
+  } catch (e) {
+    await AlarmLog.warn('SCHEDULE', 'reschedule after ring action failed: $e');
+  }
+}
+
+/// Stop button on the full-screen ring page: acknowledges delivery (so the
+/// watchdog doesn't re-ring), silences the notification and restores the OS
+/// schedules that cancelling may have removed.
+Future<void> dismissAlarmFromRing(Map<String, dynamic> data) async {
+  await initialize();
+  final uid = data['uid'] as String? ?? '';
+  final name = data['name'] as String? ?? 'Alarm';
+  if (uid.isNotEmpty) await AlarmWatchdog.recordAck(uid, 'ring_dismiss');
+  await AlarmLog.ok(
+      'ACTION', '"$name": stopped on the full-screen alarm screen');
+  await _cancelActiveAlarmNotifications(uid);
+  if (uid != kTestAlarmUid) {
+    await _rescheduleFromStorage('alarm stopped on ring screen');
+  }
+}
+
+/// Snooze button on the full-screen ring page. Restores the regular
+/// schedules first and registers the snooze last, so the reschedule cannot
+/// clear the snooze slot.
+Future<void> snoozeAlarmFromRing(Map<String, dynamic> data) async {
+  await initialize();
+  final uid = data['uid'] as String? ?? '';
+  if (uid.isNotEmpty) await AlarmWatchdog.recordAck(uid, 'ring_snooze');
+  await _cancelActiveAlarmNotifications(uid);
+  if (uid != kTestAlarmUid) {
+    await _rescheduleFromStorage('alarm snoozed on ring screen');
+  }
+  await _scheduleSnoozeFromData(data, jsonEncode(data),
+      how: 'full-screen alarm screen');
+}
+
+// ---------------------------------------------------------------------------
 // Immediate notifications (tasks + manual alarm preview + watchdog backup)
 // ---------------------------------------------------------------------------
 
@@ -641,17 +797,38 @@ Future<bool> showAlarmNotification(
   String title,
   String body, {
   bool vibrate = true,
+  String? uid,
 }) async {
   final hasPermission = await _ensurePermission();
   if (!hasPermission) return false;
 
   final safeTitle = title.trim().isEmpty ? 'Alarm' : title.trim();
-  final id = DateTime.now().millisecondsSinceEpoch % 2147483647;
+  // With a uid (watchdog backup ring) use the alarm's own notification slot
+  // and attach the alarm payload, so the full-screen ring UI opens for it and
+  // its Stop button can find and silence this notification.
+  final baseId = uid == null
+      ? null
+      : (uid == kTestAlarmUid
+          ? kTestAlarmNotificationId
+          : alarmNotificationBaseId(uid));
+  final id = baseId ?? DateTime.now().millisecondsSinceEpoch % 2147483647;
+  final payload = uid == null
+      ? null
+      : jsonEncode({
+          'uid': uid,
+          'name': safeTitle,
+          'body': body,
+          'vibrate': vibrate,
+          'snoozeEnabled': false,
+          'snoozeMinutes': 9,
+          'snoozeId': baseId,
+        });
   await _plugin.show(
     id,
     safeTitle,
     body.isEmpty ? null : body,
     _alarmDetails(vibrate: vibrate, snoozeEnabled: false),
+    payload: payload,
   );
   return true;
 }

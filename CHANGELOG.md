@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.88] - 2026-07-07
+- alarms: full-screen alarm screen — a ringing alarm now opens a clock-app-style full-screen page (live clock, alarm name, big Snooze / Stop buttons, themed with the alarm's color) instead of only a notification banner. It shows over the lock screen with the screen turned on (via the notification's full-screen intent) and also opens when the ringing notification is tapped; Stop/Snooze on it keep the OS schedules, the snooze slot and the delivery watchdog consistent
+- alarms: FIXED release builds silently failing to schedule anything — R8/ProGuard stripped Gson's generic type info inside flutter_local_notifications, so every schedule call died with "Missing type parameter." (all three ladder methods REJECTED in the alarm log) and only the ~90 s-late watchdog backup ever rang; added keep rules (`android/app/proguard-rules.pro`) so the primary exact-alarm path works in release builds again
+- alarms: the watchdog backup ring now carries the alarm payload too, so it also opens the full-screen alarm screen and can be stopped from it
+- alarms: permission flow and diagnostics now check the Android 14+ "full screen intents" special access — revoked access is reported in the alarm log with the exact settings path, and the permission flow opens the system toggle
+- alarms: stopping/snoozing on the ring screen is acknowledged to the delivery watchdog (no double-ring) and logged as ACTION lines in the alarm log
+
 ## [0.1.87] - 2026-07-07
 - startup times page facelift: summary card (typical/last/fastest/slowest launch, human-readable ms/s), themed chart that scales to the data instead of clipping launches over 1.5 s, date labels and tap-for-details tooltips, shaded band marking starts over 1 s
 - startup times: a "What this means" section below the chart explains what is measured and draws conclusions from the data — typical-startup verdict, faster/slower trend, share of slow starts, outlier spikes, and whether the first launch of the day is a slower cold start

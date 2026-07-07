@@ -39,6 +39,7 @@ Future<bool> showAlarmNotification(
   String title,
   String body, {
   bool vibrate = true,
+  String? uid,
 }) async {
   final hasPermission = await _ensurePermission();
   if (!hasPermission) return false;
@@ -55,3 +56,11 @@ Future<void> scheduleAlarms(List<Alarm> alarms,
 Future<void> scheduleTestAlarm({int delaySeconds = 60}) async {}
 
 Future<void> runAlarmDiagnostics({String trigger = 'manual'}) async {}
+
+void Function(Map<String, dynamic> payload)? onAlarmRing;
+
+Future<Map<String, dynamic>?> getAlarmLaunchPayload() async => null;
+
+Future<void> dismissAlarmFromRing(Map<String, dynamic> payload) async {}
+
+Future<void> snoozeAlarmFromRing(Map<String, dynamic> payload) async {}
