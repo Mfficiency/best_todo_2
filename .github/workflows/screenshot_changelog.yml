@@ -24,7 +24,10 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          # 3.22's Windows build requires the VS 2019 CMake generator, which
+          # windows-latest no longer ships (broke silently in June 2026).
+          # Keep in sync with flutter_test.yml.
+          flutter-version: '3.29.2'
           channel: 'stable'
 
       - name: Enable Windows desktop
@@ -89,6 +92,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # A green run supersedes any published failure log.
+          if (Test-Path docs/ci/screenshot_capture_failure.txt) {
+            git rm -f docs/ci/screenshot_capture_failure.txt
+          }
           git add SCREENSHOT_CHANGELOG.md docs/screenshots/home
 
           if (git diff --cached --quiet) {
