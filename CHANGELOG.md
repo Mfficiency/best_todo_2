@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.95] - 2026-07-08
+- wishlist export for all or individual items, plus quick low/medium/high priority labels
+
 ## [0.1.94] - 2026-07-08
 - new Wishlist tool for title/description/label wish items, available from Tools and as a default start page
 

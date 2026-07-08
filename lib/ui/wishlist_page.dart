@@ -232,7 +232,8 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 
   Future<void> _deleteItem(Task item) async {
-    setState(() => _items.removeWhere((candidate) => candidate.uid == item.uid));
+    setState(
+        () => _items.removeWhere((candidate) => candidate.uid == item.uid));
     await _save();
   }
 
@@ -272,7 +273,8 @@ class _WishlistPageState extends State<WishlistPage> {
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
                   itemCount: _items.length,
-                  itemBuilder: (context, index) => _buildItemCard(_items[index]),
+                  itemBuilder: (context, index) =>
+                      _buildItemCard(_items[index]),
                 ),
     );
   }
@@ -307,7 +309,7 @@ class _WishlistPageState extends State<WishlistPage> {
           ],
         ),
         onTap: () => _editItem(item),
-        trailing: Wrap(
+        trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
