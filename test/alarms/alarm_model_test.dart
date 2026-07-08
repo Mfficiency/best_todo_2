@@ -23,6 +23,7 @@ void main() {
       volume: 0.5,
       melody: 'Radar',
       vibrate: false,
+      overrideDnd: true,
       hour: 6,
       minute: 30,
       date: date,
@@ -42,6 +43,7 @@ void main() {
     expect(decoded.volume, 0.5);
     expect(decoded.melody, 'Radar');
     expect(decoded.vibrate, isFalse);
+    expect(decoded.overrideDnd, isTrue);
     expect(decoded.hour, 6);
     expect(decoded.minute, 30);
     expect(decoded.date, date);
@@ -52,6 +54,13 @@ void main() {
     expect(decoded.snoozeDurationMinutes, 5);
     expect(decoded.snoozeMaxCount, 2);
     expect(decoded.enabled, isFalse);
+  });
+
+  test('overrideDnd defaults to off, also for stored alarms without it', () {
+    expect(Alarm(name: 'plain').overrideDnd, isFalse);
+    // Alarms saved by builds that pre-date the field.
+    final legacy = Alarm(name: 'legacy').toJson()..remove('overrideDnd');
+    expect(Alarm.fromJson(legacy).overrideDnd, isFalse);
   });
 
   test('scheduleLabel summarizes repeat days', () {

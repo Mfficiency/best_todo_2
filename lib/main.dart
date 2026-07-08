@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
 import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -92,17 +93,21 @@ class _MyAppState extends State<MyApp> {
     NotificationService.getAlarmLaunchPayload().then((payload) {
       if (payload != null) _showAlarmRing(payload);
     }).catchError((_) {});
-    // Handle taps coming from the alarms home-screen widget. Guarded so that
-    // environments without the platform channel (e.g. widget tests) stay quiet.
-    try {
-      HomeWidget.initiallyLaunchedFromHomeWidget()
-          .then(_handleWidgetClick)
-          .catchError((_) {});
-      HomeWidget.widgetClicked.listen(
-        _handleWidgetClick,
-        onError: (_) {},
-      );
-    } catch (_) {}
+    // Handle taps coming from the alarms home-screen widget. The widget is
+    // Android-only; elsewhere the plugin's event channel has no implementation
+    // and its activation failure is reported through FlutterError — bypassing
+    // the stream's onError — which fails desktop/CI test runs.
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        HomeWidget.initiallyLaunchedFromHomeWidget()
+            .then(_handleWidgetClick)
+            .catchError((_) {});
+        HomeWidget.widgetClicked.listen(
+          _handleWidgetClick,
+          onError: (_) {},
+        );
+      } catch (_) {}
+    }
   }
 
   @override

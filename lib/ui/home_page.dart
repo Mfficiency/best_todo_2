@@ -12,6 +12,7 @@ import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/task.dart';
 import '../services/log_service.dart';
+import '../services/project_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
@@ -25,6 +26,7 @@ import 'countdown_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
+import 'projects_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
 import 'usage_data_page.dart';
@@ -62,11 +64,21 @@ class _HomePageState extends State<HomePage>
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+
+  /// Current search query; when non-empty every tab (and the schedule view)
+  /// only shows tasks matching it.
+  String _searchQuery = '';
   Timer? _midnightTimer;
 
   /// When true, the body renders one long schedule list with day-grouped
   /// sections; tab taps scroll that list instead of switching panes.
   bool _scheduleView = Config.startInScheduleView;
+
+  /// Day section currently scrolled to the top of the schedule view (the
+  /// highlighted one). New tasks added while the schedule view is open are
+  /// due on this day.
+  DateTime? _scheduleActiveDate;
   final ScrollController _scheduleScrollController = ScrollController();
   final Map<int, GlobalKey> _scheduleTabAnchors = {
     for (var i = 0; i < 6; i++) i: GlobalKey(),
@@ -654,26 +666,86 @@ class _HomePageState extends State<HomePage>
       }
     });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
-    _loadTasks();
+    // Project names are shown as tags on task tiles, so load them here and
+    // not only when the Projects tool is opened.
+    ProjectService.instance.load();
+    // Some tools (Chronize, Productivity Stats, ...) render the task data, so
+    // the configured start tool is only opened once loading finished.
+    _loadTasks().then((_) => _maybeOpenStartTool());
     _scheduleMidnightUpdate();
+  }
+
+  /// The page for a tool key from [Config.startToolOptions]; null for
+  /// 'tasks' (the home page itself) and unknown keys.
+  Widget? _buildToolPage(String tool) {
+    switch (tool) {
+      case 'alarms':
+        return const AlarmsPage();
+      case 'countdown':
+        return const CountdownTimerPage();
+      case 'projects':
+        return ProjectsPage(tasks: _tasks, onChanged: _saveTasks);
+      case 'chronize':
+        return ChronizePage(
+          tasks: _tasks,
+          onCreateTask: _addTaskFromChronize,
+          onTaskChanged: _onChronizeTaskChanged,
+          onDeleteTask: _deleteTaskFromChronize,
+        );
+      case 'usage_data':
+        return UsageDataPage(
+          tasks: _tasks,
+          deletedTasks: _deletedTasks,
+          dailyStatsByDay: _dailyStatsByDay,
+        );
+      case 'productivity_stats':
+        return YourStatsPage(
+          tasks: _tasks,
+          deletedItems: _deletedTasks,
+          dailyStatsByDay: _dailyStatsByDay,
+        );
+    }
+    return null;
+  }
+
+  /// Pushes the given tool's page. Used by the Tools drawer section and by
+  /// the "Default start page" setting on launch.
+  void _openTool(String tool) {
+    final page = _buildToolPage(tool);
+    if (page == null) return;
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => page))
+        .then((_) {
+      // Tools like Projects mutate tasks in place; refresh the lists when
+      // coming back.
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// Opens the tool configured as the default start page (if any) on top of
+  /// the task list, so backing out of it lands on the tasks as usual.
+  void _maybeOpenStartTool() {
+    if (Config.startTool == 'tasks') return;
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _openTool(Config.startTool);
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _controller.dispose();
+    _searchController.dispose();
     _scheduleScrollController.dispose();
     _midnightTimer?.cancel();
     super.dispose();
   }
 
-  /// Map a task to the tab index that would own it in list mode. Used by
-  /// the schedule view so each tile's "move to" menu hides the task's
-  /// current bucket.
-  int _tabIndexForTask(Task task) {
-    final due = task.dueDate;
-    if (due == null) return _futureTabIndex;
-    if (_isFutureBucketDate(due)) return _futureTabIndex;
+  /// Map a due date to the tab index that would own it in list mode.
+  int _tabIndexForDueDate(DateTime? due) {
+    if (due == null || _isFutureBucketDate(due)) return _futureTabIndex;
     final diff = dateDiffInDays(due, _currentDate);
     if (diff <= 0) return 0;
     if (diff == 1) return 1;
@@ -681,6 +753,11 @@ class _HomePageState extends State<HomePage>
     if (diff < 30) return 3;
     return 4;
   }
+
+  /// Map a task to the tab index that would own it in list mode. Used by
+  /// the schedule view so each tile's "move to" menu hides the task's
+  /// current bucket.
+  int _tabIndexForTask(Task task) => _tabIndexForDueDate(task.dueDate);
 
   /// Reorder within one day section of the schedule view. Other tasks in
   /// the same tab keep their relative position; only the slice belonging
@@ -691,6 +768,8 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
+    // See _reorderTask: reordering is disabled while searching.
+    if (_searchQuery.trim().isNotEmpty) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
     final fullList = _tasksForTab(pageIndex);
 
@@ -749,13 +828,18 @@ class _HomePageState extends State<HomePage>
 
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
-    final tabIndex = _tabController.index;
+    // In schedule view new tasks land on the highlighted (active) day; in
+    // list mode they go to the current tab's bucket.
+    final dueDate = _scheduleView && _scheduleActiveDate != null
+        ? _scheduleActiveDate!
+        : _dueDateForTab(_tabController.index);
+    final rankingTabIndex = _tabIndexForDueDate(dueDate);
     final task = Task(
       title: title,
       createdAt: DateTime.now(),
-      dueDate: _dueDateForTab(tabIndex),
+      dueDate: dueDate,
       listRanking: _listRankingForNewTask(
-        tabIndex,
+        rankingTabIndex,
         addToTop: Config.addNewTasksToTop,
       ),
     );
@@ -893,6 +977,9 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
+    // Reordering a search-filtered list would renumber only the visible
+    // subset and scramble the hidden tasks' order, so it is disabled.
+    if (_searchQuery.trim().isNotEmpty) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -1093,7 +1180,7 @@ class _HomePageState extends State<HomePage>
 
   void _saveTasks() {
     for (var i = 0; i < Config.tabs.length; i++) {
-      final listTasks = _tasksForTab(i);
+      final listTasks = _tasksForTab(i, applySearch: false);
       for (var j = 0; j < listTasks.length; j++) {
         listTasks[j].listRanking = j + 1;
       }
@@ -1434,8 +1521,25 @@ class _HomePageState extends State<HomePage>
   }
 
   /// Returns the list of tasks that should appear on the given tab index.
-  List<Task> _tasksForTab(int pageIndex) {
+  /// True when [task] matches the search [query] (case-insensitive substring
+  /// over title, description, note, label and project name).
+  bool _matchesSearch(Task task, String query) {
+    bool has(String s) => s.toLowerCase().contains(query);
+    return has(task.title) ||
+        has(task.description) ||
+        has(task.note) ||
+        has(task.label) ||
+        (task.projectId != null &&
+            has(ProjectService.instance.nameOf(task.projectId)));
+  }
+
+  /// Tasks shown on [pageIndex]. While a search query is active the list is
+  /// narrowed to matching tasks; pass [applySearch] false for logic that must
+  /// see the full tab (e.g. renumbering [Task.listRanking] on save).
+  List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
+    final query = applySearch ? _searchQuery.trim().toLowerCase() : '';
     final list = _tasks.where((task) {
+      if (query.isNotEmpty && !_matchesSearch(task, query)) return false;
       if (task.dueDate == null) return false;
       // Compare dates without considering the time of day so that tasks due
       // tomorrow don't appear in today's list simply because they are less
@@ -1453,7 +1557,25 @@ class _HomePageState extends State<HomePage>
     return list;
   }
 
+  /// Short label for the schedule view's active day shown in the add-task
+  /// field, e.g. "Today", "Tomorrow", "Aug 1" or "Someday".
+  String _scheduleDayLabel(DateTime date) {
+    if (_isFutureBucketDate(date)) return 'Someday';
+    final diff = dateDiffInDays(date, _currentDate);
+    if (diff <= 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}';
+  }
+
   Widget _buildAddTaskRow() {
+    final activeDate = _scheduleView ? _scheduleActiveDate : null;
+    final label = activeDate == null
+        ? 'Add task'
+        : 'Add task · ${_scheduleDayLabel(activeDate)}';
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
@@ -1461,7 +1583,7 @@ class _HomePageState extends State<HomePage>
           Expanded(
             child: TextField(
               controller: _controller,
-              decoration: const InputDecoration(labelText: 'Add task'),
+              decoration: InputDecoration(labelText: label),
               onSubmitted: _addTask,
             ),
           ),
@@ -1550,12 +1672,20 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildScheduleBody() {
+    final query = _searchQuery.trim().toLowerCase();
+    final visibleTasks = query.isEmpty
+        ? _tasks
+        : _tasks.where((t) => _matchesSearch(t, query)).toList();
     return ScheduleView(
-      tasks: _tasks,
+      tasks: visibleTasks,
       currentDate: _currentDate,
       scrollController: _scheduleScrollController,
       tabAnchorKeys: _scheduleTabAnchors,
       addTaskRow: _buildAddTaskRow(),
+      onActiveDateChanged: (date) {
+        if (_scheduleActiveDate == date) return;
+        setState(() => _scheduleActiveDate = date);
+      },
       buildTile: (task) {
         final pageIndex = _tabIndexForTask(task);
         final tabTasks = _tasksForTab(pageIndex);
@@ -1616,22 +1746,6 @@ class _HomePageState extends State<HomePage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.insights),
-              title: const Text('Your Stats'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => YourStatsPage(
-                      tasks: _tasks,
-                      deletedItems: _deletedTasks,
-                      dailyStatsByDay: _dailyStatsByDay,
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.info),
               title: const Text('About'),
               onTap: () {
@@ -1681,9 +1795,7 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Alarms'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AlarmsPage()),
-                    );
+                    _openTool('alarms');
                   },
                 ),
                 ListTile(
@@ -1691,11 +1803,15 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Countdown'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CountdownTimerPage(),
-                      ),
-                    );
+                    _openTool('countdown');
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.dashboard),
+                  title: const Text('Projects'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openTool('projects');
                   },
                 ),
                 ListTile(
@@ -1703,16 +1819,15 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Chronize'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChronizePage(
-                        tasks: _tasks,
-                        onCreateTask: _addTaskFromChronize,
-                        onTaskChanged: _onChronizeTaskChanged,
-                        onDeleteTask: _deleteTaskFromChronize,
-                      ),
-                      ),
-                    );
+                    _openTool('chronize');
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.insights),
+                  title: const Text('Productivity Stats'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openTool('productivity_stats');
                   },
                 ),
                 ListTile(
@@ -1720,15 +1835,7 @@ class _HomePageState extends State<HomePage>
                   title: const Text('Usage Data'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => UsageDataPage(
-                          tasks: _tasks,
-                          deletedTasks: _deletedTasks,
-                          dailyStatsByDay: _dailyStatsByDay,
-                        ),
-                      ),
-                    );
+                    _openTool('usage_data');
                   },
                 ),
               ],
@@ -1737,13 +1844,23 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
-        title: const TextField(
-          enabled: false,
+        title: TextField(
+          controller: _searchController,
           decoration: InputDecoration(
-            hintText: 'search soon available',
+            hintText: 'Search tasks',
             border: InputBorder.none,
-            suffixIcon: Icon(Icons.search),
+            suffixIcon: _searchQuery.isEmpty
+                ? const Icon(Icons.search)
+                : IconButton(
+                    icon: const Icon(Icons.clear),
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  ),
           ),
+          onChanged: (value) => setState(() => _searchQuery = value),
         ),
         actions: [
           IconButton(

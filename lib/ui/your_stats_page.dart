@@ -780,7 +780,7 @@ class _YourStatsPageState extends State<YourStatsPage>
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
-        title: 'Your Stats',
+        title: 'Productivity Stats',
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 52 : 0),
           child: Column(

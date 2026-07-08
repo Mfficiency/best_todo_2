@@ -78,5 +78,32 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/alarm_audio",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                // Plays a built-in melody at an absolute loudness (fraction of
+                // the device maximum), independent of the current volume
+                // settings. Used by the full-screen ring page and the melody
+                // Preview button in the alarm editor.
+                "play" -> {
+                    val melody = call.argument<String>("melody") ?: "Classic"
+                    val volume = call.argument<Double>("volume") ?: 0.8
+                    val overrideDnd =
+                        call.argument<Boolean>("overrideDnd") ?: false
+                    val loop = call.argument<Boolean>("loop") ?: true
+                    val started = AlarmSoundPlayer.start(
+                        applicationContext, melody, volume, overrideDnd, loop
+                    )
+                    result.success(started)
+                }
+                "stop" -> {
+                    AlarmSoundPlayer.stop(applicationContext)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 }

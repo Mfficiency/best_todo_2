@@ -27,6 +27,7 @@ void main() {
     Config.defaultDelaySeconds = 7.5;
     Config.use24HourFormat = false;
     Config.dateFormat = 'yyyy-MM-dd';
+    Config.startTool = 'productivity_stats';
     await Config.save();
 
     // Reset to defaults
@@ -38,6 +39,7 @@ void main() {
     Config.defaultDelaySeconds = 5.0;
     Config.use24HourFormat = true;
     Config.dateFormat = Config.dateFormats.first;
+    Config.startTool = 'tasks';
 
     await Config.load();
 
@@ -49,6 +51,19 @@ void main() {
     expect(Config.defaultDelaySeconds, 7.5);
     expect(Config.use24HourFormat, isFalse);
     expect(Config.dateFormat, 'yyyy-MM-dd');
+    expect(Config.startTool, 'productivity_stats');
+  });
+
+  test('unknown startTool values are ignored on load', () {
+    Config.startTool = 'tasks';
+    Config.applyMap({'startTool': 'does_not_exist'});
+    expect(Config.startTool, 'tasks');
+
+    Config.applyMap({'startTool': 'chronize'});
+    expect(Config.startTool, 'chronize');
+
+    // Restore the default so other tests see a clean config.
+    Config.startTool = 'tasks';
   });
 }
 

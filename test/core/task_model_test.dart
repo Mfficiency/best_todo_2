@@ -40,4 +40,17 @@ void main() {
     expect(decoded.recurrenceParentUid, 'parent');
     expect(decoded.recurrenceInstanceKey, '2026-02-23');
   });
+
+  test('project fields default and serialize', () {
+    final task = Task(title: 'Plain');
+    expect(task.projectId, isNull);
+    expect(task.kanbanStatus, Task.kanbanTodo);
+
+    task.projectId = 'project_1';
+    task.kanbanStatus = Task.kanbanOngoing;
+
+    final decoded = Task.fromJson(task.toJson());
+    expect(decoded.projectId, 'project_1');
+    expect(decoded.kanbanStatus, Task.kanbanOngoing);
+  });
 }

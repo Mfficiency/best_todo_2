@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/alarm.dart';
+import '../services/alarm_sound.dart';
 import 'subpage_app_bar.dart';
 
 /// Full screen editor for creating or editing an [Alarm].
@@ -25,6 +26,9 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
 
+  /// Whether the melody preview is currently playing.
+  bool _previewing = false;
+
   static const List<String> _weekdayNames = [
     'Mon',
     'Tue',
@@ -46,9 +50,54 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
 
   @override
   void dispose() {
+    // Leaving the editor in any way (save, delete, back) ends the preview.
+    AlarmSound.stop();
     _nameController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  /// Starts/stops the melody preview: the selected melody, played exactly the
+  /// way the alarm will ring — at the configured alarm volume, independent of
+  /// the phone's current volume settings — so both the sound and the loudness
+  /// can be checked before saving.
+  ///
+  /// The platform call is intentionally not awaited for the button state: on
+  /// hosts without the audio channel the reply may never arrive, and the UI
+  /// must not hang on it. When the call reports it could not start, the state
+  /// is rolled back and a hint is shown.
+  void _togglePreview() {
+    if (_previewing) {
+      AlarmSound.stop();
+      setState(() => _previewing = false);
+      return;
+    }
+    setState(() => _previewing = true);
+    AlarmSound.play(
+      melody: _draft.melody,
+      volume: _draft.volume,
+      // The user explicitly asked to hear it, so play even under DND.
+      overrideDnd: true,
+      loop: true,
+    ).then((started) {
+      if (started || !mounted || !_previewing) return;
+      setState(() => _previewing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Melody preview is only available on Android')),
+      );
+    });
+  }
+
+  /// While the preview is playing, apply melody/volume changes to it live.
+  void _refreshPreview() {
+    if (!_previewing) return;
+    AlarmSound.play(
+      melody: _draft.melody,
+      volume: _draft.volume,
+      overrideDnd: true,
+      loop: true,
+    );
   }
 
   Future<void> _pickTime() async {
@@ -127,6 +176,13 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
       appBar: buildSubpageAppBar(
         context,
         title: _isNew ? 'New Alarm' : 'Edit Alarm',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Save',
+            onPressed: _save,
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -229,8 +285,19 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
                     for (final melody in kAlarmMelodies)
                       DropdownMenuItem(value: melody, child: Text(melody)),
                   ],
-                  onChanged: (v) =>
-                      setState(() => _draft.melody = v ?? _draft.melody),
+                  onChanged: (v) {
+                    setState(() => _draft.melody = v ?? _draft.melody);
+                    _refreshPreview();
+                  },
+                ),
+                IconButton(
+                  icon: Icon(
+                    _previewing
+                        ? Icons.stop_circle_outlined
+                        : Icons.play_circle_outlined,
+                  ),
+                  tooltip: _previewing ? 'Stop preview' : 'Preview',
+                  onPressed: _togglePreview,
                 ),
               ],
             ),
@@ -243,6 +310,7 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
                 child: Slider(
                   value: _draft.volume.clamp(0.0, 1.0),
                   onChanged: (v) => setState(() => _draft.volume = v),
+                  onChangeEnd: (_) => _refreshPreview(),
                 ),
               ),
               SizedBox(
@@ -252,12 +320,30 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
               ),
             ],
           ),
+          Padding(
+            padding: const EdgeInsets.only(left: 40, bottom: 8),
+            child: Text(
+              'The alarm rings at this loudness, independent of the '
+              'phone\'s current volume',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             secondary: const Icon(Icons.vibration),
             title: const Text('Vibrate'),
             value: _draft.vibrate,
             onChanged: (v) => setState(() => _draft.vibrate = v),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.do_not_disturb_on),
+            title: const Text('Override Do Not Disturb'),
+            subtitle: const Text(
+                'Always ring at the volume set above, even when the phone '
+                'is silenced or in Do Not Disturb'),
+            value: _draft.overrideDnd,
+            onChanged: (v) => setState(() => _draft.overrideDnd = v),
           ),
           const Divider(),
 

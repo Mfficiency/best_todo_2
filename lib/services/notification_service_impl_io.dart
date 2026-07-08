@@ -25,6 +25,13 @@ const String _channelDescription = 'Manual task notifications';
 const String _alarmChannelId = 'alarm_notifications_v2';
 const String _alarmChannelName = 'Alarms';
 const String _alarmChannelDescription = 'Alarm alerts';
+// Sound-less variant used while the app itself plays the alarm's melody (at
+// the alarm's own volume): the notification stays on screen with its actions
+// and keeps vibrating, but no longer plays the channel's default sound on top.
+const String _alarmSilentChannelId = 'alarm_notifications_silent_v1';
+const String _alarmSilentChannelName = 'Alarms (silent, in-app sound)';
+const String _alarmSilentChannelDescription =
+    'Alarm alerts whose sound is played by the app at the alarm\'s own volume';
 
 const String _snoozeAction = 'alarm_snooze';
 const String _dismissAction = 'alarm_dismiss';
@@ -89,6 +96,17 @@ Future<void> initialize() async {
           description: _alarmChannelDescription,
           importance: Importance.max,
           playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
+      );
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _alarmSilentChannelId,
+          _alarmSilentChannelName,
+          description: _alarmSilentChannelDescription,
+          importance: Importance.max,
+          playSound: false,
           enableVibration: true,
           audioAttributesUsage: AudioAttributesUsage.alarm,
         ),
@@ -247,6 +265,7 @@ Future<bool> ensureAlarmPermissions() async {
 AndroidNotificationDetails _androidAlarmDetails({
   required bool vibrate,
   required bool snoozeEnabled,
+  bool silent = false,
 }) {
   final actions = <AndroidNotificationAction>[
     if (snoozeEnabled)
@@ -263,15 +282,16 @@ AndroidNotificationDetails _androidAlarmDetails({
   ];
 
   return AndroidNotificationDetails(
-    _alarmChannelId,
-    _alarmChannelName,
-    channelDescription: _alarmChannelDescription,
+    silent ? _alarmSilentChannelId : _alarmChannelId,
+    silent ? _alarmSilentChannelName : _alarmChannelName,
+    channelDescription:
+        silent ? _alarmSilentChannelDescription : _alarmChannelDescription,
     importance: Importance.max,
     priority: Priority.max,
     category: AndroidNotificationCategory.alarm,
     fullScreenIntent: true,
     enableVibration: vibrate,
-    playSound: true,
+    playSound: !silent,
     ongoing: true,
     autoCancel: false,
     audioAttributesUsage: AudioAttributesUsage.alarm,
@@ -286,9 +306,11 @@ AndroidNotificationDetails _androidAlarmDetails({
 NotificationDetails _alarmDetails({
   required bool vibrate,
   required bool snoozeEnabled,
+  bool silent = false,
 }) {
   return NotificationDetails(
-    android: _androidAlarmDetails(vibrate: vibrate, snoozeEnabled: snoozeEnabled),
+    android: _androidAlarmDetails(
+        vibrate: vibrate, snoozeEnabled: snoozeEnabled, silent: silent),
     iOS: const DarwinNotificationDetails(
       presentAlert: true,
       presentSound: true,
@@ -307,6 +329,9 @@ String _payloadFor(Alarm alarm) => jsonEncode({
       'snoozeMinutes': alarm.snoozeDurationMinutes,
       'snoozeId': alarmNotificationBaseId(alarm.uid),
       'color': alarm.color,
+      'melody': alarm.melody,
+      'volume': alarm.volume,
+      'overrideDnd': alarm.overrideDnd,
     });
 
 /// Parses a notification payload and returns it when it belongs to an alarm
@@ -719,6 +744,9 @@ Future<void> _scheduleSnoozeFromData(
       body: data['body'] as String? ?? '',
       vibrate: data['vibrate'] as bool? ?? true,
       fireAt: when,
+      melody: data['melody'] as String?,
+      volume: (data['volume'] as num?)?.toDouble(),
+      overrideDnd: data['overrideDnd'] as bool? ?? false,
     );
   }
 }
@@ -798,6 +826,9 @@ Future<bool> showAlarmNotification(
   String body, {
   bool vibrate = true,
   String? uid,
+  String? melody,
+  double? volume,
+  bool overrideDnd = false,
 }) async {
   final hasPermission = await _ensurePermission();
   if (!hasPermission) return false;
@@ -822,6 +853,9 @@ Future<bool> showAlarmNotification(
           'snoozeEnabled': false,
           'snoozeMinutes': 9,
           'snoozeId': baseId,
+          if (melody != null) 'melody': melody,
+          if (volume != null) 'volume': volume,
+          'overrideDnd': overrideDnd,
         });
   await _plugin.show(
     id,
@@ -831,6 +865,53 @@ Future<bool> showAlarmNotification(
     payload: payload,
   );
   return true;
+}
+
+/// Moves a ringing alarm's notification onto the sound-less channel: the
+/// notification (with its Snooze/Dismiss actions and looping vibration) stays
+/// on screen, but the channel's default alarm sound stops. Called by the
+/// full-screen ring page once it has started playing the alarm's own melody
+/// at the alarm's own volume, so the two sounds don't stack.
+Future<void> silenceAlarmNotification(Map<String, dynamic> data) async {
+  if (!Platform.isAndroid) return;
+  await initialize();
+  final uid = data['uid'] as String? ?? '';
+  if (uid.isEmpty) return;
+  final ids = uid == kTestAlarmUid
+      ? <int>{kTestAlarmNotificationId}
+      : alarmNotificationIds(uid).toSet();
+  try {
+    final active = await _plugin.getActiveNotifications();
+    var replaced = false;
+    for (final n in active) {
+      final id = n.id;
+      if (id == null || !ids.contains(id)) continue;
+      await _plugin.cancel(id);
+      if (replaced) continue;
+      replaced = true;
+      final body = data['body'] as String? ?? '';
+      await _plugin.show(
+        id,
+        data['name'] as String? ?? 'Alarm',
+        body.isEmpty ? null : body,
+        _alarmDetails(
+          vibrate: data['vibrate'] as bool? ?? true,
+          snoozeEnabled: data['snoozeEnabled'] as bool? ?? false,
+          silent: true,
+        ),
+        payload: jsonEncode(data),
+      );
+    }
+    if (replaced) {
+      await AlarmLog.info(
+          'ACTION',
+          '"${data['name'] ?? 'Alarm'}": notification sound handed over to '
+          'in-app melody playback');
+    }
+  } catch (e) {
+    await AlarmLog.warn(
+        'ACTION', 'could not silence the ringing notification: $e');
+  }
 }
 
 Future<void> _showNow(String taskTitle) async {

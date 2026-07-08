@@ -48,6 +48,10 @@ class Alarm {
   /// Whether the device should vibrate when the alarm fires.
   bool vibrate;
 
+  /// When true the alarm rings at [volume] even while the phone is in
+  /// Do Not Disturb / silent mode or the alarm stream is turned down.
+  bool overrideDnd;
+
   /// Hour of day (0-23) the alarm fires.
   int hour;
 
@@ -85,6 +89,7 @@ class Alarm {
     this.volume = 0.8,
     this.melody = 'Classic',
     this.vibrate = true,
+    this.overrideDnd = false,
     this.hour = 8,
     this.minute = 0,
     this.date,
@@ -159,6 +164,7 @@ class Alarm {
       volume: (json['volume'] as num?)?.toDouble() ?? 0.8,
       melody: json['melody'] as String? ?? 'Classic',
       vibrate: json['vibrate'] as bool? ?? true,
+      overrideDnd: json['overrideDnd'] as bool? ?? false,
       hour: json['hour'] as int? ?? 8,
       minute: json['minute'] as int? ?? 0,
       date: json['date'] != null
@@ -184,6 +190,7 @@ class Alarm {
         'volume': volume,
         'melody': melody,
         'vibrate': vibrate,
+        'overrideDnd': overrideDnd,
         'hour': hour,
         'minute': minute,
         'date': date?.toIso8601String(),

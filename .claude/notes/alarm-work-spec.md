@@ -198,7 +198,7 @@ Plus: merge back to dev and staging, bump version, update docs.
 - **Android 14+ FSI special access:** checked in `ensureAlarmPermissions`
   (opens the system toggle via `requestFullScreenIntentPermission()` when
   revoked) and in diagnostics (`_checkFullScreenIntent` — OK/FAIL/hint).
-- **Tests:** `test/alarm_ring_page_test.dart` (render, snooze hidden,
+- **Tests:** `test/alarms/alarm_ring_page_test.dart` (render, snooze hidden,
   fallback name, Stop/Dismiss handlers + pop). NOTE: the ring page has an
   endless pulse animation — use fixed `pump()`s, `pumpAndSettle` never
   settles. `flutter analyze` clean for touched files; full suite green except

@@ -1,0 +1,47 @@
+# Test suites
+
+The test suite is split into siloed sub-suites so you only run what a change
+can affect. **`test/core/` must always pass** — run it for every change. The
+other suites are per-feature silos: run the ones whose area you touched.
+`flutter test` (no path) still runs everything and is what CI uses.
+
+## Suites
+
+| Suite | Command | Covers |
+|---|---|---|
+| `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
+| `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip, alarm editor (top save), alarm ring page |
+| `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
+| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing |
+| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model, chronize page |
+
+## Which suites to run
+
+Pick suites by what you touched, always including core:
+
+- `lib/models/task.dart`, `lib/services/storage_service.dart`, `lib/utils/`,
+  `lib/config.dart`, `lib/main.dart` → **core** (plus any suite whose UI
+  consumes what you changed — when in doubt, run everything)
+- `lib/models/alarm.dart`, `lib/services/alarm_*`, `lib/ui/alarm*` → core + **alarms**
+- `lib/models/project.dart`, `lib/services/project_service.dart`,
+  `lib/ui/projects_page.dart`, `lib/ui/project_board_page.dart` → core + **projects**
+- `lib/ui/home_page.dart`, `lib/ui/task_tile.dart` → core + **home**
+  (+ **projects** for `task_tile.dart`, which renders project tags)
+- `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,
+  export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,
+  `lib/models/countdown_timer.dart` → core + **tools**
+
+Multiple suites can be passed in one invocation:
+`flutter test test/core test/alarms`.
+
+Cross-cutting changes (theme, navigation, dependency upgrades, anything in
+`pubspec.yaml`) → run the full suite: `flutter test`.
+
+## Adding tests
+
+Put new tests in the suite matching the feature area; create a new
+`test/<area>/` directory when a new feature area doesn't fit an existing silo.
+Keep core limited to functionality the whole app depends on (task model,
+persistence, bucketing) plus app-boot/build smoke tests. Test conventions
+(fake path provider, `ProjectService.instance.resetForTest()`, etc.) are in
+`CLAUDE.md`.

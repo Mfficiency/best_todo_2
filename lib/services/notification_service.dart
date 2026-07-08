@@ -65,15 +65,35 @@ class NotificationService {
 
   /// Shows an alarm alert immediately. Used by the watchdog backup path when
   /// an alarm's fire time was missed. With [uid] the notification carries the
-  /// alarm payload so the full-screen ring UI can open for it.
+  /// alarm payload so the full-screen ring UI can open for it. [melody],
+  /// [volume] and [overrideDnd] ride along in the payload so the ring UI can
+  /// play the alarm's own sound at its own loudness.
   static Future<bool> showAlarmNotification(
     String title,
     String body, {
     bool vibrate = true,
     String? uid,
+    String? melody,
+    double? volume,
+    bool overrideDnd = false,
   }) {
-    return impl.showAlarmNotification(title, body, vibrate: vibrate, uid: uid);
+    return impl.showAlarmNotification(
+      title,
+      body,
+      vibrate: vibrate,
+      uid: uid,
+      melody: melody,
+      volume: volume,
+      overrideDnd: overrideDnd,
+    );
   }
+
+  /// Moves a ringing alarm's notification onto a sound-less channel (keeping
+  /// its actions and vibration) once the full-screen ring UI has taken over
+  /// sound playback, so the channel's default sound and the alarm's melody
+  /// don't play on top of each other.
+  static Future<void> silenceAlarmNotification(Map<String, dynamic> payload) =>
+      impl.silenceAlarmNotification(payload);
 
   /// Registers the handler invoked (on the main isolate) with the alarm
   /// payload when a ringing alarm should present the full-screen ring UI.

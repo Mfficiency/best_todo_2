@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.1.93] - 2026-07-08
+- Stats renamed to Productivity Stats and moved into the Tools section of the menu
+- Settings: choose the default start page — the task list or any tool (Alarms, Countdown, Projects, Chronize, Usage Data, Productivity Stats); the chosen tool opens on launch, back returns to the task list
+- alarms: per-alarm volume is now real — every alarm rings its melody at its own volume as a fraction of the device maximum, independent of the phone's current media/ringer/alarm volume (the alarm stream is pinned to max during the ring and restored afterwards)
+- alarms: new "Override Do Not Disturb" switch per alarm — when on, the alarm always plays at its configured volume, even while the phone is silenced or in Do Not Disturb
+- alarms: Preview button next to the melody picker — plays the selected melody at the configured alarm volume (live-updates while changing melody or volume) so sound and loudness can be checked before saving
+- alarms: while the full-screen ring page plays the alarm's own melody, the notification moves to a silent channel (actions and vibration stay) so the default alarm sound no longer plays on top; if melody playback cannot start, the notification sound keeps ringing as before
+
+## [0.1.92] - 2026-07-08
+- tests: the test suite is split into siloed per-area suites (`test/core`, `test/alarms`, `test/projects`, `test/home`, `test/tools`) so a change only needs to run the suites it can affect; core (task model, persistence, bucketing, smoke tests) is always run, `flutter test` still runs everything and CI is unchanged — see `test/README.md` for the file→suite map
+
+## [0.1.91] - 2026-07-08
+- schedule view: the day scrolled to the top of the list is now highlighted as the active day
+- schedule view: new tasks typed into the add-task field land on the highlighted day (e.g. scroll to Aug 1, type, hit + — the task is due Aug 1); the field's label shows the target day ("Add task · Aug 1")
+- schedule view: a back-to-top arrow appears while scrolled down and jumps back to today
+- schedule view: the list can now scroll far enough that even the last section (Someday) can reach the top and be targeted
+
+## [0.1.90] - 2026-07-07
+- projects: name and description are editable (pencil icon on the project board) and persist across restarts (`projects.json`); renames update everywhere a project is shown
+- projects: moved into the Tools menu (Tools → Projects)
+- projects: tasks assigned to a project show the project name and Kanban stage as small tags on the task tile itself (e.g. "Project 1", "To-Do"), updating live when the task moves between columns or the project is renamed
+- search: the search field in the top bar works — typing filters every tab and the schedule view by title, description, note, label and project name (case-insensitive), with a clear (×) button; reordering is disabled while a search is active so hidden tasks keep their order
+- alarms widget: tapping anywhere on the widget now opens the alarms page directly (background, header and empty state included); tapping a row opens that alarm's editor and the ON/OFF toggle still works without opening the app
+- tests: per-feature widget/unit tests for all of the above (project persistence, drag-assign, board columns, edit dialog, tile tags, search behaviors, drawer placement, alarm-editor top save)
+- docs: added CLAUDE.md (AI working guide); SPEC.md updated for all new behavior
+- screenshots: the CI screenshot walk-through now also captures search-in-action, the Projects page, the Kanban board and the project edit dialog, and archives every captured page automatically
+
+## [0.1.89] - 2026-07-07
+- new Projects tool
+- drag tasks onto projects to assign them
+- per-project Kanban board (To-Do / Ongoing / Closed)
+- alarms: Save action in the top app bar of the alarm editor (in addition to the button at the end of the form)
+
 ## [0.1.88] - 2026-07-07
 - alarms: full-screen alarm screen — a ringing alarm now opens a clock-app-style full-screen page (live clock, alarm name, big Snooze / Stop buttons, themed with the alarm's color) instead of only a notification banner. It shows over the lock screen with the screen turned on (via the notification's full-screen intent) and also opens when the ringing notification is tapped; Stop/Snooze on it keep the OS schedules, the snooze slot and the delivery watchdog consistent
 - alarms: FIXED release builds silently failing to schedule anything — R8/ProGuard stripped Gson's generic type info inside flutter_local_notifications, so every schedule call died with "Missing type parameter." (all three ladder methods REJECTED in the alarm log) and only the ~90 s-late watchdog backup ever rang; added keep rules (`android/app/proguard-rules.pro`) so the primary exact-alarm path works in release builds again

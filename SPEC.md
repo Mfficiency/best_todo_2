@@ -111,6 +111,8 @@ Uuid-v4 `uid`; JSON keys equal field names. Fields: `title`, `description`, `not
 `listRanking` (int?, omitted from JSON when null, renumbered 1-based per tab on every save),
 recurrence: `isRecurring`, `recurrenceEndDate`, `recurrenceIntervalDays` (≥1; UI offers
 1/2/7), `recurrenceParentUid` + `recurrenceInstanceKey` (`yyyy-MM-dd`) on generated children.
+Projects (0.1.89): `projectId` (String?, omitted from JSON when null) + `kanbanStatus`
+(`'todo'`/`'ongoing'`/`'closed'`, constants on `Task`, defaults `'todo'`).
 `fromJson` is tolerant: missing keys get defaults.
 
 `DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
@@ -200,8 +202,32 @@ on change/focus loss.
 (`ScheduleView`); tabs become scroll anchors; overdue rolls up under Today; each day
 section is a `ReorderableListView`; "Someday" holds the 2300-sentinel tasks.
 
-**Drawer:** Settings, Deleted Items, Your Stats, About, Changelog, App Logs, Startup Times,
-Tools ▸ (Alarms, Countdown, Chronize, Usage Data).
+**Schedule view active day (0.1.91):** each top-level list child is one whole day
+section (header + rows) so scroll tracking can measure it: the bottom-most section whose
+top edge sits at/above 12 px below the list top is the "active" day — its header is
+highlighted (primaryContainer + 3 px primary left border, `ValueKey('active-day-header')`)
+and `onActiveDateChanged` reports its date to the home page, which shows it in the
+add-task label ("Add task · Aug 1") and uses it as the new task's `dueDate` (instead of
+the current tab's bucket) while the schedule view is open. Empty "Next week"/"Next month"
+range sections target today +7/+30; Someday targets the 2300 sentinel; when a range has
+days its header is grouped into the first day's section. Bottom padding is
+`max(32, viewport − 56)` so even the last section can reach the top and be targeted. A
+small back-to-top FAB (tooltip "Back to top") appears past 300 px scroll and animates to
+offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback per
+build; sections scrolled out of view are unmounted, which is fine because the section
+spanning the top is always attached.
+
+**Drawer:** Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
+Tools ▸ (Alarms, Countdown, Projects, Chronize, Productivity Stats, Usage Data).
+
+**Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
+non-empty query narrows every tab and the schedule view to tasks whose title,
+description, note, label or assigned project name contains it (case-insensitive
+substring); a clear (×) suffix button resets it. Index-based handlers (move/delete)
+recompute the same filtered list so they act on the right task, but reorder is a no-op
+while searching and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
+(`_tasksForTab(i, applySearch: false)`) — otherwise a save during search would scramble
+hidden tasks' order.
 
 **Home widget updates** after every save and at a self-rescheduling midnight timer: writes
 the "due today or overdue" list text (or "Well done! No more tasks for today!"), a progress
@@ -214,7 +240,10 @@ tasks, 20 deleted tasks, and 14 days of stats (marker strings prevent re-seeding
 
 Appearance: dark mode, icon tabs, 24-hour time (default on), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, swipe-left-delete, default delay 0–10 s slider,
-start tab, start in schedule view, Chronize hour wheel. Widget: progress line. Notifications:
+start tab, default start page (`startTool`: the task list or any tool — Alarms, Countdown,
+Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
+list after loading, so back lands on the tasks), start in schedule view, Chronize hour
+wheel. Widget: progress line. Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
 prod 300 s). SMS report: see §7. Export/Import buttons. `Config.applyMap` is defensive
@@ -231,10 +260,16 @@ hardware — see Part II §"The reliability arc" and `.claude/notes/alarm-work-s
 ### 5.1 Model & ids
 
 `Alarm`: uid, name, description, hour/minute, optional one-off `date`, `isRepeating` +
-`repeatDays` (Mon=1..Sun=7), `vibrate`, `color`, snooze (enabled, duration min, default 9),
-`enabled`. (`volume`, `melody`, `snoozeMaxCount` are stored but **not implemented** — known
-deferred work.) `nextOccurrence()` is the scheduling brain; a one-off *without* a date
-re-arms for tomorrow after firing (no delivered-callback exists to auto-disable it).
+`repeatDays` (Mon=1..Sun=7), `vibrate`, `overrideDnd` (default off), `color`, snooze
+(enabled, duration min, default 9), `enabled`, `melody` + `volume` (0–1, fraction of the
+device maximum). Melody/volume are played by the ring UI through the native
+`besttodo/alarm_audio` channel (`AlarmSoundPlayer.kt`): synthesized melodies on the ALARM
+stream, stream pinned to max during playback (previous level restored on stop) with the
+alarm's volume applied as track gain — so loudness is independent of the phone's current
+volume; `overrideDnd` additionally plays through Do Not Disturb. (`snoozeMaxCount` is
+stored but **not implemented** — known deferred work.) `nextOccurrence()` is the
+scheduling brain; a one-off *without* a date re-arms for tomorrow after firing (no
+delivered-callback exists to auto-disable it).
 
 Deterministic id scheme so every path can find an alarm's notifications:
 `base = (uid.hashCode & 0x1FFFFFF) * 8`; `base+0` one-off/snooze slot, `base+1..7` weekday
@@ -275,7 +310,10 @@ Android channel settings are immutable), Importance.max, `audioAttributesUsage: 
 (alarm volume stream), `fullScreenIntent`, `ongoing`, insistent flag (`additionalFlags:
 [4]`) so it loops until acted on. Actions: Snooze (if enabled) + Dismiss. Snooze schedules
 `now + snoozeMinutes` into the `base+0` slot through the same ladder and gets its own
-watchdog cover.
+watchdog cover. When the ring UI starts the alarm's own melody it hands the notification
+over to the sound-less channel `alarm_notifications_silent_v1` (same actions/vibration, no
+channel sound) so the default sound and the melody don't stack; if melody playback can't
+start, the loud channel keeps ringing as the reliability baseline.
 
 **Full-screen ring UI (0.1.88):** a ringing alarm presents `AlarmRingPage`
 (`lib/ui/alarm_ring_page.dart`) — a clock-app-style full-screen page (live clock, alarm
@@ -364,9 +402,11 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
   at midnight.
 - **Alarm widget** (`AlarmsWidgetProvider.kt`): up to 4 alarms (time/name/sub + ON/OFF),
-  "+N more", empty state. URI scheme `besttodoalarm://` — `open` (header/+ → app),
-  `edit?id=` (row → editor), and `toggle?id=` as a **background broadcast** that does not
-  open the app: HomeWidgetBackgroundReceiver → Dart `alarmWidgetBackgroundCallback` →
+  "+N more", empty state. URI scheme `besttodoalarm://` — `open` (root container +
+  header/+ + empty state + "+N more" → alarms list; since 0.1.90 the container-level
+  intent makes ANY tap on the widget that lacks a more specific action open straight to
+  the alarms page), `edit?id=` (whole row incl. its container → editor), and `toggle?id=`
+  as a **background broadcast** that does not open the app: HomeWidgetBackgroundReceiver → Dart `alarmWidgetBackgroundCallback` →
   binding+registrant init → `AlarmService.toggleInStorage` → full awaited reschedule. This
   chain is what makes a widget toggle actually schedule/cancel the OS alarm with the app
   closed.
@@ -441,7 +481,7 @@ decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timer
 (orange). Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session).
 
-### 10.3 Your Stats
+### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
 Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
 (title says "Completed" — historical mislabel; buckets 0/1/2/3/4+ in blue shades, tap for
 snackbar, auto-scrolls to newest); (b) 365 daily stacked bars from `DailyTaskStats` —
@@ -464,7 +504,37 @@ hours_to_complete / completed_on_time), daily_task_stats (raw id sets), alarm_pi
 (parsed alarm_log.txt), alarms snapshot, sms_report_log, app_opens (timestamped since
 0.1.85), startup_times (legacy), countdown_timers.
 
-### 10.5 The rest
+### 10.5 Projects (Kanban, 0.1.89–0.1.90)
+Tools → Projects (`lib/ui/projects_page.dart`; moved from a top-level drawer entry into
+the Tools group in 0.1.90). Split view: top pane (flex 3) lists all non-deleted tasks;
+bottom pane (flex 2) shows the projects. **Projects persist** via `ProjectService`
+(singleton, `ValueNotifier<List<Project>>`, `projects.json` in app documents dir, seeded
+with `Project.placeholders` "Project 1–3" on first run; corrupt/missing file keeps the
+in-memory seeds). `Project = {id, name, description}` (immutable, `copyWith`); ids are
+stable — tasks reference `projectId`, so renames propagate everywhere. Long-press-drag a
+task onto a project card to assign it (sets `task.projectId`, resets `kanbanStatus` to
+todo, snackbar confirms; assignment persists via the task's own JSON through `onChanged`
+→ `_saveTasks`). Cards show name, one-line description (if any) and live task count.
+
+**Tags on task tiles (0.1.90):** an assigned task shows two small
+`secondaryContainer`-tinted pills under its title on every home tile — the project name
+and the stage ("Project 1", "To-Do"); rendered via `ValueListenableBuilder` on
+`ProjectService.projects` so renames update live; stage names via
+`ProjectService.stageLabel`. Unknown project ids fall back to the raw id.
+`ProjectService.load()` runs in HomePage initState so names resolve without opening the
+tool.
+
+**Board** (`ProjectBoardPage`): three equal-width Kanban columns — To-Do (blue
+0xFF90CAF9), Ongoing (orange 0xFFFFCC80), Closed (green 0xFFA5D6A7) — each a `DragTarget`
+with count in the header; long-press-drag cards between columns to change `kanbanStatus`,
+tap a card for `TaskDetailPage`, the × on a card unassigns it (clears `projectId`, resets
+stage). **Edit (0.1.90):** pencil action in the app bar opens a name+description dialog;
+Save upserts through `ProjectService` (empty name keeps the old one, description may be
+cleared); the app-bar title and a hint-colored description line under it update in place.
+Original board written pre-0.1.58, merged at 0.1.89; still uses deprecated
+`onWillAccept`/`onAccept` and some hardcoded `Colors.black45`-style hints.
+
+### 10.6 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
@@ -480,7 +550,7 @@ replayable, skipped in dev.
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z+build> ["changelog entry"]`
   updates pubspec and prepends a dated CHANGELOG section (idempotent). Build number strictly
   increases per distributed build.
-- **tool/build.sh:** smoke-test gate (`test/build_smoke_test.dart`) → `flutter build $@` →
+- **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`app-release-<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual): builds release APK, uploads artifact
@@ -488,24 +558,52 @@ replayable, skipped in dev.
   - `flutter_test.yml` (main/staging/dev): `flutter test --coverage`, parses results into a
     PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
-    integration test capturing 4 screenshots (home, menu, settings, stats) into
+    integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
+    search-active, projects page, project board, project edit dialog) into
     `docs/screenshots/home/<timestamp>-<sha>/` and prepends to `SCREENSHOT_CHANGELOG.md`.
-    Loop protection: paths-ignore on its own outputs, skips actor `github-actions[bot]`,
-    and its commit message carries `[skip-screenshot-changelog]`.
+    The workflow copies every `build/e2e_screenshots/*.png` and the changelog tool emits
+    one section per PNG found, so new captures need no CI edits. Loop protection:
+    paths-ignore on its own outputs, skips actor `github-actions[bot]`, and its commit
+    message carries `[skip-screenshot-changelog]`.
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
   `staging` → `main`. Releases are built from dev after a version bump.
 
 ## 12. Testing
+
+Tests are organized into siloed suites under `test/` so a change only needs the
+suites it can affect (see `test/README.md` for the file→suite map): `core/`
+(task model, storage/config persistence, tab bucketing, ordering/reorder,
+deadline normalization, app-boot + build-gate smoke tests — always run),
+`alarms/` (alarm model/storage, editor, ring page), `projects/` (model,
+service, projects page, board, tile tags), `home/` (search, drawer, tile
+description editing), `tools/` (export/import + analytics, usage data,
+startup-times page, countdown model, chronize). Plain `flutter test` still
+runs the full suite and is what CI uses; `tool/build.sh` gates builds on
+`test/core/build_smoke_test.dart`.
 
 Unit/widget tests cover: usage-data CSV building (escaping, event derivation, rollups,
 manifest), chronize mark-fade invariants + interaction smoke tests, startup-times page
 (history/legacy/empty states, chart maxY not clipping outliers), countdown model, export/
 import round-trip + legacy import, storage rollover, config persistence, alarm model +
 storage round-trip, 18:00 deadline normalization, done-task ordering, reorder ranking,
-dev date-advance sweep, home filtering, tile description editing, intro smoke. Integration
-tests: screenshot walk-through + task-creation screenshots (Windows desktop, needs
-Developer Mode for plugin symlinks). Not covered: ScheduleView, stats/usage page widget
-rendering, most alarm/SMS runtime paths (verified on hardware + via alarm_log instead).
+dev date-advance sweep, home filtering, tile description editing, intro smoke. Projects &
+search (0.1.90): project model + `ProjectService` persistence (seed/rename/reload/corrupt
+file), projects page (drag-assign, renamed-projects-from-disk), board page (column
+grouping, drag between columns, unassign, edit dialog save/cancel/empty-name), task-tile
+project/stage tags (incl. live rename + unknown-id fallback), home search (title/
+description/label/project-name matching, case-insensitivity, clear button, empty state),
+drawer placement of Projects under Tools, alarm-editor top save action, schedule-view
+active-day tracking (highlight follows scroll, back-to-top arrow, add-to-highlighted-day
+end to end). Widget tests that
+touch persistence use a `_FakePathProvider` + temp dir. Caveat: real file I/O awaited
+inside `testWidgets` hangs until the 10-min per-test timeout (the fake-async zone never
+services dart:io completions — locally and on CI) — such tests wrap I/O in
+`tester.runAsync` and pump real-event-loop slices in rounds; see CLAUDE.md for the exact
+patterns. The unmitigated pattern kept `flutter_test.yml` red from 0.1.87 until 0.1.90. Integration tests: screenshot
+walk-through + task-creation screenshots (Windows desktop, needs Developer Mode for
+plugin symlinks). Not covered: stats/usage page widget rendering, the
+Kotlin widget PendingIntent wiring (verified on hardware), most alarm/SMS runtime paths
+(verified on hardware + via alarm_log instead).
 
 ## 13. Invariants & quirks a rebuilder must preserve
 
@@ -522,7 +620,8 @@ rendering, most alarm/SMS runtime paths (verified on hardware + via alarm_log in
 11. Permissions that need dialogs are requested in the foreground only.
 12. Alarm channel changes require a new channel id (hence `_v2`).
 13. Kotlin folder/package mismatch is intentional; keep the committed debug keystore.
-14. `melody`/`volume`/`snoozeMaxCount` are stored-but-unused; keep serializing them.
+14. `snoozeMaxCount` is stored-but-unused; keep serializing it. (`melody`/`volume` are
+    implemented since 0.1.91 via the native `besttodo/alarm_audio` channel.)
 15. Stats heatmap counts deletions but is titled "Completed" — fix knowingly or keep.
 
 ---
@@ -635,7 +734,7 @@ Four rounds of "it works when the app is open but not when it's closed":
   startup non-blocking on plugin init (black-screen-at-open) — which is why the alarm
   diagnostics snapshot is fire-and-forget in `main()`.
 
-### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.87, current)
+### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.91, current)
 **0.1.86 — Usage Data tool**: export the app's entire recorded history as detailed CSVs
 (unified event timeline, daily/hourly rollups, task history with derived metrics, alarm
 pipeline log, SMS log, app opens, timers + manifest); app opens now recorded with
@@ -644,7 +743,25 @@ branches (release-build bump on dev vs the usage-data branch); resolved at merge
 the usage-data feature to 0.1.86. **0.1.87 — Startup Times facelift**: the bare clipped
 line chart became summary stats + a data-scaled themed chart + an auto-generated
 "What this means" analysis (typical verdict, trend, slow-start share, outliers, cold-start
-pattern), with widget tests.
+pattern), with widget tests. **0.1.88 — full-screen alarm ring UI + release scheduling
+fix**: `AlarmRingPage` (§5.2) and the R8/ProGuard keep rules that un-broke scheduling in
+release builds. **0.1.89 — Projects tool (§10.5)**: written back in June on a parallel
+branch (claimed 0.1.57), cherry-picked into dev during a branch cleanup; also added a Save
+action to the top app bar of the alarm editor. Second time a parallel branch's version
+claim had to be re-resolved at merge (after 0.1.85). **0.1.90 — Projects grow up +
+search**: Projects moved under Tools; projects persist (`ProjectService`,
+`projects.json`) with an edit dialog for name/description on the board; assigned tasks
+show project + stage tags on every home tile; the app-bar search placeholder became a
+working live filter (title/description/note/label/project name, all tabs + schedule
+view, reorder disabled and ranking renumbering kept unfiltered while searching); any tap
+on the alarms home-screen widget now opens the alarms page (container-level
+PendingIntent); screenshot CI generalized to archive every captured PNG. First feature
+batch to ship with per-feature widget tests, CLAUDE.md (AI working guide) and expanded
+screenshot coverage in the same commit. **0.1.91 — schedule view active day**: the day
+section scrolled to the top of the schedule list is highlighted and becomes the target
+of the add-task row (label shows "Add task · <day>", new tasks get that day's due date);
+back-to-top arrow; generous bottom padding so the last sections can reach the top (§ Home
+page, "Schedule view active day").
 
 ### Recurring themes (read this before adding features)
 1. **Everything background on Android will silently fail at least once.** Manifest
