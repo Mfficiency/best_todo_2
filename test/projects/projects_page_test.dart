@@ -102,6 +102,26 @@ void main() {
     expect(find.text('Project 2'), findsNWidgets(2));
   });
 
+  testWidgets('tapping a project card opens its board when a task chip shares the name',
+      (tester) async {
+    final task = Task(title: 'Alpha', projectId: 'project_1');
+    await pumpPage(tester, [task]);
+
+    // The assigned task's row shows a "Project 1" chip inside the ListTile's
+    // own InkWell, so widgetWithText(InkWell, ...) is ambiguous here; the
+    // card must be targeted through its DragTarget (as the screenshot
+    // integration test does).
+    expect(find.widgetWithText(InkWell, 'Project 1'), findsAtLeastNWidgets(2));
+
+    await tester.tap(find.descendant(
+      of: find.byType(DragTarget<Task>),
+      matching: find.text('Project 1'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Edit project'), findsOneWidget);
+  });
+
   testWidgets('renamed projects load from disk and show on the cards',
       (tester) async {
     await tester.runAsync(

@@ -202,6 +202,21 @@ on change/focus loss.
 (`ScheduleView`); tabs become scroll anchors; overdue rolls up under Today; each day
 section is a `ReorderableListView`; "Someday" holds the 2300-sentinel tasks.
 
+**Schedule view active day (0.1.91):** each top-level list child is one whole day
+section (header + rows) so scroll tracking can measure it: the bottom-most section whose
+top edge sits at/above 12 px below the list top is the "active" day — its header is
+highlighted (primaryContainer + 3 px primary left border, `ValueKey('active-day-header')`)
+and `onActiveDateChanged` reports its date to the home page, which shows it in the
+add-task label ("Add task · Aug 1") and uses it as the new task's `dueDate` (instead of
+the current tab's bucket) while the schedule view is open. Empty "Next week"/"Next month"
+range sections target today +7/+30; Someday targets the 2300 sentinel; when a range has
+days its header is grouped into the first day's section. Bottom padding is
+`max(32, viewport − 56)` so even the last section can reach the top and be targeted. A
+small back-to-top FAB (tooltip "Back to top") appears past 300 px scroll and animates to
+offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback per
+build; sections scrolled out of view are unmounted, which is fine because the section
+spanning the top is always attached.
+
 **Drawer:** Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
 Tools ▸ (Alarms, Countdown, Projects, Chronize, Productivity Stats, Usage Data).
 
@@ -535,7 +550,7 @@ replayable, skipped in dev.
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z+build> ["changelog entry"]`
   updates pubspec and prepends a dated CHANGELOG section (idempotent). Build number strictly
   increases per distributed build.
-- **tool/build.sh:** smoke-test gate (`test/build_smoke_test.dart`) → `flutter build $@` →
+- **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`app-release-<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual): builds release APK, uploads artifact
@@ -555,6 +570,17 @@ replayable, skipped in dev.
 
 ## 12. Testing
 
+Tests are organized into siloed suites under `test/` so a change only needs the
+suites it can affect (see `test/README.md` for the file→suite map): `core/`
+(task model, storage/config persistence, tab bucketing, ordering/reorder,
+deadline normalization, app-boot + build-gate smoke tests — always run),
+`alarms/` (alarm model/storage, editor, ring page), `projects/` (model,
+service, projects page, board, tile tags), `home/` (search, drawer, tile
+description editing), `tools/` (export/import + analytics, usage data,
+startup-times page, countdown model, chronize). Plain `flutter test` still
+runs the full suite and is what CI uses; `tool/build.sh` gates builds on
+`test/core/build_smoke_test.dart`.
+
 Unit/widget tests cover: usage-data CSV building (escaping, event derivation, rollups,
 manifest), chronize mark-fade invariants + interaction smoke tests, startup-times page
 (history/legacy/empty states, chart maxY not clipping outliers), countdown model, export/
@@ -566,14 +592,16 @@ file), projects page (drag-assign, renamed-projects-from-disk), board page (colu
 grouping, drag between columns, unassign, edit dialog save/cancel/empty-name), task-tile
 project/stage tags (incl. live rename + unknown-id fallback), home search (title/
 description/label/project-name matching, case-insensitivity, clear button, empty state),
-drawer placement of Projects under Tools, alarm-editor top save action. Widget tests that
+drawer placement of Projects under Tools, alarm-editor top save action, schedule-view
+active-day tracking (highlight follows scroll, back-to-top arrow, add-to-highlighted-day
+end to end). Widget tests that
 touch persistence use a `_FakePathProvider` + temp dir. Caveat: real file I/O awaited
 inside `testWidgets` hangs until the 10-min per-test timeout (the fake-async zone never
 services dart:io completions — locally and on CI) — such tests wrap I/O in
 `tester.runAsync` and pump real-event-loop slices in rounds; see CLAUDE.md for the exact
 patterns. The unmitigated pattern kept `flutter_test.yml` red from 0.1.87 until 0.1.90. Integration tests: screenshot
 walk-through + task-creation screenshots (Windows desktop, needs Developer Mode for
-plugin symlinks). Not covered: ScheduleView, stats/usage page widget rendering, the
+plugin symlinks). Not covered: stats/usage page widget rendering, the
 Kotlin widget PendingIntent wiring (verified on hardware), most alarm/SMS runtime paths
 (verified on hardware + via alarm_log instead).
 
@@ -706,7 +734,7 @@ Four rounds of "it works when the app is open but not when it's closed":
   startup non-blocking on plugin init (black-screen-at-open) — which is why the alarm
   diagnostics snapshot is fire-and-forget in `main()`.
 
-### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.90, current)
+### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.91, current)
 **0.1.86 — Usage Data tool**: export the app's entire recorded history as detailed CSVs
 (unified event timeline, daily/hourly rollups, task history with derived metrics, alarm
 pipeline log, SMS log, app opens, timers + manifest); app opens now recorded with
@@ -729,7 +757,11 @@ view, reorder disabled and ranking renumbering kept unfiltered while searching);
 on the alarms home-screen widget now opens the alarms page (container-level
 PendingIntent); screenshot CI generalized to archive every captured PNG. First feature
 batch to ship with per-feature widget tests, CLAUDE.md (AI working guide) and expanded
-screenshot coverage in the same commit.
+screenshot coverage in the same commit. **0.1.91 — schedule view active day**: the day
+section scrolled to the top of the schedule list is highlighted and becomes the target
+of the add-task row (label shows "Add task · <day>", new tasks get that day's due date);
+back-to-top arrow; generous bottom padding so the last sections can reach the top (§ Home
+page, "Schedule view active day").
 
 ### Recurring themes (read this before adding features)
 1. **Everything background on Android will silently fail at least once.** Manifest

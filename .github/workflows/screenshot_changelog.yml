@@ -7,6 +7,7 @@ on:
       - 'SCREENSHOT_CHANGELOG.md'
       - 'docs/screenshots/home/**'
       - 'docs/ci/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,7 +15,10 @@ permissions:
 jobs:
   screenshot-changelog:
     if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip-screenshot-changelog]')
-    runs-on: windows-latest
+    # windows-latest moved to an image with Visual Studio 2026 (June 2026).
+    # Flutter <3.35 only knows the VS 2022 CMake generator (VS 18 falls back
+    # to the VS 2019 generator, which fails), so pin the VS 2022 image.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4
