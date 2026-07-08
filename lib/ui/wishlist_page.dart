@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/task.dart';
 import '../services/storage_service.dart';
@@ -6,8 +11,8 @@ import 'subpage_app_bar.dart';
 
 /// Tools → Wishlist: a separate task-shaped list for ideas and future wants.
 ///
-/// Wishlist items intentionally show only the title, description, and labels.
-/// Priority is represented by labels/tags instead of a dedicated priority UI.
+/// Wishlist items intentionally show only the title, description, labels, and
+/// quick priority tags.
 class WishlistPage extends StatefulWidget {
   const WishlistPage({Key? key}) : super(key: key);
 
@@ -36,6 +41,95 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 
   Future<void> _save() => _storage.saveWishlist(_items);
+
+  static const List<String> _priorityLabels = <String>[
+    'priority-low',
+    'priority-medium',
+    'priority-high',
+  ];
+
+  String _timestampForFilename() {
+    final now = DateTime.now();
+    final two = (int n) => n.toString().padLeft(2, '0');
+    return '${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  }
+
+  Future<String?> _pickExportPath(String filename) async {
+    final downloads = await getDownloadsDirectory();
+    final directory = await getDirectoryPath(initialDirectory: downloads?.path);
+    if (directory == null) return null;
+    final sep = Platform.pathSeparator;
+    return '$directory${directory.endsWith(sep) ? '' : sep}$filename';
+  }
+
+  Map<String, dynamic> _exportPayload(List<Task> items) => <String, dynamic>{
+        'export_version': 1,
+        'exported_at': DateTime.now().toIso8601String(),
+        'wishlist_items': items.map((item) => item.toJson()).toList(),
+      };
+
+  Future<void> _exportItems(List<Task> items, String filename) async {
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No wishlist items to export')),
+      );
+      return;
+    }
+
+    final path = await _pickExportPath(filename);
+    if (!mounted) return;
+    if (path == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export canceled')),
+      );
+      return;
+    }
+
+    try {
+      final file = File(path);
+      await file.writeAsString(jsonEncode(_exportPayload(items)), flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exported to ${file.path}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to export wishlist')),
+      );
+    }
+  }
+
+  Future<void> _exportAllItems() async {
+    await _exportItems(_items, 'wishlist_${_timestampForFilename()}.json');
+  }
+
+  Future<void> _exportItem(Task item) async {
+    final safeTitle = item.title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    final filenameBase = safeTitle.isEmpty ? 'wishlist_item' : safeTitle;
+    await _exportItems(
+      <Task>[item],
+      '${filenameBase}_${_timestampForFilename()}.json',
+    );
+  }
+
+  List<String> _labelsFromText(String text) => text
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .toList();
+
+  String _labelTextWithPriority(String text, String priorityLabel) {
+    final labels = _labelsFromText(text)
+        .where((label) => !_priorityLabels.contains(label.toLowerCase()))
+        .toList();
+    labels.insert(0, priorityLabel);
+    return labels.join(', ');
+  }
 
   Future<void> _editItem([Task? item]) async {
     final titleController = TextEditingController(text: item?.title ?? '');
@@ -68,6 +162,30 @@ class _WishlistPageState extends State<WishlistPage> {
                   labelText: 'Labels / tags',
                   hintText: 'priority-high, gift, someday',
                 ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Quick priority',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final priority in _priorityLabels)
+                    OutlinedButton(
+                      onPressed: () {
+                        labelController.text = _labelTextWithPriority(
+                          labelController.text,
+                          priority,
+                        );
+                      },
+                      child: Text(priority.replaceFirst('priority-', '')),
+                    ),
+                ],
               ),
             ],
           ),
@@ -104,7 +222,9 @@ class _WishlistPageState extends State<WishlistPage> {
       if (item == null) {
         _items.insert(0, result);
       } else {
-        final index = _items.indexWhere((candidate) => candidate.uid == item.uid);
+        final index = _items.indexWhere(
+          (candidate) => candidate.uid == item.uid,
+        );
         if (index >= 0) _items[index] = result;
       }
     });
@@ -116,16 +236,22 @@ class _WishlistPageState extends State<WishlistPage> {
     await _save();
   }
 
-  List<String> _labelsFor(Task item) => item.label
-      .split(RegExp(r'[,\s]+'))
-      .map((label) => label.trim())
-      .where((label) => label.isNotEmpty)
-      .toList();
+  List<String> _labelsFor(Task item) => _labelsFromText(item.label);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Wishlist'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Wishlist',
+        actions: [
+          IconButton(
+            tooltip: 'Export wishlist',
+            onPressed: _items.isEmpty ? null : _exportAllItems,
+            icon: const Icon(Icons.download_outlined),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         tooltip: 'Add wishlist item',
         onPressed: () => _editItem(),
@@ -181,10 +307,20 @@ class _WishlistPageState extends State<WishlistPage> {
           ],
         ),
         onTap: () => _editItem(item),
-        trailing: IconButton(
-          tooltip: 'Delete wishlist item',
-          icon: const Icon(Icons.delete_outline),
-          onPressed: () => _deleteItem(item),
+        trailing: Wrap(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: 'Export wishlist item',
+              icon: const Icon(Icons.ios_share_outlined),
+              onPressed: () => _exportItem(item),
+            ),
+            IconButton(
+              tooltip: 'Delete wishlist item',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _deleteItem(item),
+            ),
+          ],
         ),
       ),
     );
