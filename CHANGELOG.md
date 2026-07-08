@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.91] - 2026-07-07
+- projects: dragging tasks onto projects (and cards between Kanban columns) now works with a plain mouse drag on desktop and in a desktop browser (e.g. Chrome on a laptop) — no long-press needed; touch devices keep the long-press drag so scrolling still works, and the hint text on the Projects page matches the input mode
+- dev builds: the Projects tool comes prepopulated — nine of the dev-seeded future tasks are spread across the three seed projects, one per Kanban column each, so the project cards and boards have data to drag around right away (also on desktop/web); manual assignments are never reshuffled
+
 ## [0.1.90] - 2026-07-07
 - projects: name and description are editable (pencil icon on the project board) and persist across restarts (`projects.json`); renames update everywhere a project is shown
 - projects: moved into the Tools menu (Tools → Projects)

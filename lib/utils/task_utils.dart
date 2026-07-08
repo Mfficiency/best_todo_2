@@ -1,3 +1,4 @@
+import '../models/project.dart';
 import '../models/task.dart';
 
 /// Default deadline time of day for tasks, expressed in minutes since
@@ -13,6 +14,29 @@ void sortTasks(List<Task> list) {
     return (a.listRanking ?? 1 << 31)
         .compareTo(b.listRanking ?? 1 << 31);
   });
+}
+
+/// Dev-only seed helper: spreads [seedTasks] across [projects] — one task per
+/// Kanban column (To-Do/Ongoing/Closed) in each project — so the Projects
+/// tool opens with populated cards and boards in dev builds. Assignment goes
+/// round-robin over the projects, filling every project's To-Do column
+/// first, then Ongoing, then Closed; tasks beyond `projects × 3` are left
+/// untouched. No-op when either list is empty or when any seed task already
+/// carries a project, so manual (re)assignments survive reloads.
+void assignDevProjectSeed(List<Task> seedTasks, List<Project> projects) {
+  if (seedTasks.isEmpty || projects.isEmpty) return;
+  if (seedTasks.any((t) => t.projectId != null)) return;
+  const stages = <String>[
+    Task.kanbanTodo,
+    Task.kanbanOngoing,
+    Task.kanbanClosed,
+  ];
+  final slots = projects.length * stages.length;
+  final limit = seedTasks.length < slots ? seedTasks.length : slots;
+  for (var i = 0; i < limit; i++) {
+    seedTasks[i].projectId = projects[i % projects.length].id;
+    seedTasks[i].kanbanStatus = stages[(i ~/ projects.length) % stages.length];
+  }
 }
 
 /// Ensures every task's deadline time defaults to 18:00. When several tasks

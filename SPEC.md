@@ -219,7 +219,11 @@ the "due today or overdue" list text (or "Well done! No more tasks for today!"),
 percent, and a color (green all done / orange exactly 4 left / red ≥5 left).
 
 **First-run seeds:** 3 today-tasks + 1 future task; dev builds additionally seed 20 future
-tasks, 20 deleted tasks, and 14 days of stats (marker strings prevent re-seeding).
+tasks, 20 deleted tasks, and 14 days of stats (marker strings prevent re-seeding). Dev
+builds also spread 9 of the seeded future tasks across the three seed projects (one task
+per Kanban column in each project) so the Projects tool opens populated — including on
+desktop/web where storage may not persist; skipped as soon as any seeded task carries a
+`projectId`, so manual (re)assignments survive reloads.
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
 
@@ -484,10 +488,15 @@ bottom pane (flex 2) shows the projects. **Projects persist** via `ProjectServic
 (singleton, `ValueNotifier<List<Project>>`, `projects.json` in app documents dir, seeded
 with `Project.placeholders` "Project 1–3" on first run; corrupt/missing file keeps the
 in-memory seeds). `Project = {id, name, description}` (immutable, `copyWith`); ids are
-stable — tasks reference `projectId`, so renames propagate everywhere. Long-press-drag a
+stable — tasks reference `projectId`, so renames propagate everywhere. Drag a
 task onto a project card to assign it (sets `task.projectId`, resets `kanbanStatus` to
 todo, snackbar confirms; assignment persists via the task's own JSON through `onChanged`
 → `_saveTasks`). Cards show name, one-line description (if any) and live task count.
+Drag sources are `AdaptiveDraggable` (`lib/ui/adaptive_draggable.dart`): long-press-drag
+on touch platforms (Android/iOS incl. mobile web, so drags don't fight list scrolling),
+immediate mouse drag on desktop and desktop web (e.g. Chrome on a laptop; decided via
+`defaultTargetPlatform`, which reflects the underlying OS on web). The hint text above
+the task pane adapts to the input mode.
 
 **Tags on task tiles (0.1.90):** an assigned task shows two small
 `secondaryContainer`-tinted pills under its title on every home tile — the project name
@@ -499,7 +508,8 @@ tool.
 
 **Board** (`ProjectBoardPage`): three equal-width Kanban columns — To-Do (blue
 0xFF90CAF9), Ongoing (orange 0xFFFFCC80), Closed (green 0xFFA5D6A7) — each a `DragTarget`
-with count in the header; long-press-drag cards between columns to change `kanbanStatus`,
+with count in the header; drag cards between columns (same `AdaptiveDraggable`
+long-press-on-touch / immediate-on-mouse behavior) to change `kanbanStatus`,
 tap a card for `TaskDetailPage`, the × on a card unassigns it (clears `projectId`, resets
 stage). **Edit (0.1.90):** pencil action in the app bar opens a name+description dialog;
 Save upserts through `ProjectService` (empty name keeps the old one, description may be
@@ -550,8 +560,10 @@ import round-trip + legacy import, storage rollover, config persistence, alarm m
 storage round-trip, 18:00 deadline normalization, done-task ordering, reorder ranking,
 dev date-advance sweep, home filtering, tile description editing, intro smoke. Projects &
 search (0.1.90): project model + `ProjectService` persistence (seed/rename/reload/corrupt
-file), projects page (drag-assign, renamed-projects-from-disk), board page (column
-grouping, drag between columns, unassign, edit dialog save/cancel/empty-name), task-tile
+file), projects page (drag-assign incl. desktop mouse drag, renamed-projects-from-disk,
+platform-dependent hint), board page (column grouping, drag between columns incl. desktop
+mouse drag, unassign, edit dialog save/cancel/empty-name), dev project seed (spread across
+projects/columns, no reshuffle of existing assignments), task-tile
 project/stage tags (incl. live rename + unknown-id fallback), home search (title/
 description/label/project-name matching, case-insensitivity, clear button, empty state),
 drawer placement of Projects under Tools, alarm-editor top save action. Widget tests that

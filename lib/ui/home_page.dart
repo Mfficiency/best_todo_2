@@ -269,6 +269,21 @@ class _HomePageState extends State<HomePage>
     return seeded;
   }
 
+  /// Spreads the dev-seeded future tasks across the seed projects (one task
+  /// per Kanban column in each project) so dev builds — including desktop
+  /// and web, where the Projects tool is exercised with a mouse — open with
+  /// populated project cards and boards. Only runs while none of the seeded
+  /// tasks carries a project yet, so manual (re)assignments survive reloads.
+  void _applyDevProjectSeed() {
+    assignDevProjectSeed(
+      _tasks
+          .where((t) =>
+              t.deletedAt == null && t.description == _devFutureTaskMarker)
+          .toList(),
+      ProjectService.instance.list,
+    );
+  }
+
   Map<String, DailyTaskStats> _buildDevDailyStatsSeed(DateTime referenceDate) {
     final seeds = <String, DailyTaskStats>{};
     final dayStart = DateTime(
@@ -396,6 +411,11 @@ class _HomePageState extends State<HomePage>
           !_tasks.any((t) => t.description == _devFutureTaskMarker)) {
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
+    }
+    // Prepopulate the Projects tool in dev builds so the cards/boards have
+    // data to drag around right away.
+    if (Config.isDev) {
+      _applyDevProjectSeed();
     }
     _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {

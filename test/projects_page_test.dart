@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -91,6 +92,42 @@ void main() {
 
     // Drain the snackbar's auto-dismiss timer so the test ends clean.
     await tester.pumpAndSettle(const Duration(seconds: 3));
+  });
+
+  testWidgets(
+      'on desktop a plain mouse drag (no long-press) assigns the task',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    final task = Task(title: 'Alpha');
+    var changed = 0;
+    await pumpPage(tester, [task], onChanged: () => changed++);
+
+    // Mouse users get the immediate Draggable and the shorter hint.
+    expect(find.text('Drag a task onto a project below.'), findsOneWidget);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Alpha')),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    await gesture.moveTo(tester.getCenter(find.text('Project 1')));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(task.projectId, 'project_1');
+    expect(changed, 1);
+
+    // Drain the snackbar's auto-dismiss timer so the test ends clean.
+    await tester.pumpAndSettle(const Duration(seconds: 3));
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('touch platforms keep the long-press hint', (tester) async {
+    await pumpPage(tester, [Task(title: 'Alpha')]);
+
+    expect(find.text('Long-press a task and drag it onto a project below.'),
+        findsOneWidget);
   });
 
   testWidgets('an assigned task shows its project as a chip in the task pane',
