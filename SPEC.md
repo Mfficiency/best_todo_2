@@ -217,8 +217,8 @@ offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback
 build; sections scrolled out of view are unmounted, which is fine because the section
 spanning the top is always attached.
 
-**Drawer:** Settings, Deleted Items, Your Stats, About, Changelog, App Logs, Startup Times,
-Tools ▸ (Alarms, Countdown, Projects, Chronize, Usage Data).
+**Drawer:** Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
+Tools ▸ (Alarms, Countdown, Projects, Chronize, Productivity Stats, Usage Data).
 
 **Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
 non-empty query narrows every tab and the schedule view to tasks whose title,
@@ -240,7 +240,10 @@ tasks, 20 deleted tasks, and 14 days of stats (marker strings prevent re-seeding
 
 Appearance: dark mode, icon tabs, 24-hour time (default on), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, swipe-left-delete, default delay 0–10 s slider,
-start tab, start in schedule view, Chronize hour wheel. Widget: progress line. Notifications:
+start tab, default start page (`startTool`: the task list or any tool — Alarms, Countdown,
+Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
+list after loading, so back lands on the tasks), start in schedule view, Chronize hour
+wheel. Widget: progress line. Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
 prod 300 s). SMS report: see §7. Export/Import buttons. `Config.applyMap` is defensive
@@ -257,10 +260,16 @@ hardware — see Part II §"The reliability arc" and `.claude/notes/alarm-work-s
 ### 5.1 Model & ids
 
 `Alarm`: uid, name, description, hour/minute, optional one-off `date`, `isRepeating` +
-`repeatDays` (Mon=1..Sun=7), `vibrate`, `color`, snooze (enabled, duration min, default 9),
-`enabled`. (`volume`, `melody`, `snoozeMaxCount` are stored but **not implemented** — known
-deferred work.) `nextOccurrence()` is the scheduling brain; a one-off *without* a date
-re-arms for tomorrow after firing (no delivered-callback exists to auto-disable it).
+`repeatDays` (Mon=1..Sun=7), `vibrate`, `overrideDnd` (default off), `color`, snooze
+(enabled, duration min, default 9), `enabled`, `melody` + `volume` (0–1, fraction of the
+device maximum). Melody/volume are played by the ring UI through the native
+`besttodo/alarm_audio` channel (`AlarmSoundPlayer.kt`): synthesized melodies on the ALARM
+stream, stream pinned to max during playback (previous level restored on stop) with the
+alarm's volume applied as track gain — so loudness is independent of the phone's current
+volume; `overrideDnd` additionally plays through Do Not Disturb. (`snoozeMaxCount` is
+stored but **not implemented** — known deferred work.) `nextOccurrence()` is the
+scheduling brain; a one-off *without* a date re-arms for tomorrow after firing (no
+delivered-callback exists to auto-disable it).
 
 Deterministic id scheme so every path can find an alarm's notifications:
 `base = (uid.hashCode & 0x1FFFFFF) * 8`; `base+0` one-off/snooze slot, `base+1..7` weekday
@@ -301,7 +310,10 @@ Android channel settings are immutable), Importance.max, `audioAttributesUsage: 
 (alarm volume stream), `fullScreenIntent`, `ongoing`, insistent flag (`additionalFlags:
 [4]`) so it loops until acted on. Actions: Snooze (if enabled) + Dismiss. Snooze schedules
 `now + snoozeMinutes` into the `base+0` slot through the same ladder and gets its own
-watchdog cover.
+watchdog cover. When the ring UI starts the alarm's own melody it hands the notification
+over to the sound-less channel `alarm_notifications_silent_v1` (same actions/vibration, no
+channel sound) so the default sound and the melody don't stack; if melody playback can't
+start, the loud channel keeps ringing as the reliability baseline.
 
 **Full-screen ring UI (0.1.88):** a ringing alarm presents `AlarmRingPage`
 (`lib/ui/alarm_ring_page.dart`) — a clock-app-style full-screen page (live clock, alarm
@@ -469,7 +481,7 @@ decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timer
 (orange). Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session).
 
-### 10.3 Your Stats
+### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
 Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
 (title says "Completed" — historical mislabel; buckets 0/1/2/3/4+ in blue shades, tap for
 snackbar, auto-scrolls to newest); (b) 365 daily stacked bars from `DailyTaskStats` —
@@ -608,7 +620,8 @@ Kotlin widget PendingIntent wiring (verified on hardware), most alarm/SMS runtim
 11. Permissions that need dialogs are requested in the foreground only.
 12. Alarm channel changes require a new channel id (hence `_v2`).
 13. Kotlin folder/package mismatch is intentional; keep the committed debug keystore.
-14. `melody`/`volume`/`snoozeMaxCount` are stored-but-unused; keep serializing them.
+14. `snoozeMaxCount` is stored-but-unused; keep serializing it. (`melody`/`volume` are
+    implemented since 0.1.91 via the native `besttodo/alarm_audio` channel.)
 15. Stats heatmap counts deletions but is titled "Completed" — fix knowingly or keep.
 
 ---

@@ -14,9 +14,14 @@ Future<bool> showAlarmNotification(
   String body, {
   bool vibrate = true,
   String? uid,
+  String? melody,
+  double? volume,
+  bool overrideDnd = false,
 }) async {
   return false;
 }
+
+Future<void> silenceAlarmNotification(Map<String, dynamic> payload) async {}
 
 void Function(Map<String, dynamic> payload)? onAlarmRing;
 

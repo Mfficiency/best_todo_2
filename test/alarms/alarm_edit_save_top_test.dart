@@ -67,6 +67,11 @@ void main() {
     // private FilledButton subtype that find.byType would miss).
     await tester.scrollUntilVisible(find.text('Save'), 100,
         scrollable: find.byType(Scrollable).first);
+    // scrollUntilVisible stops as soon as the button BUILDS, which (in a lazy
+    // ListView with cache extent) can still be off-screen — a tap there would
+    // silently miss. Make sure it is actually on screen first.
+    await tester.ensureVisible(find.text('Save'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 

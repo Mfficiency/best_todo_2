@@ -91,7 +91,18 @@ void main() {
     await popCurrentPage();
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Your Stats'));
+    // Productivity Stats lives in the collapsible Tools section now.
+    await tester.tap(find.text('Tools'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Productivity Stats'),
+      80,
+      scrollable: find.descendant(
+        of: find.byType(Drawer),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(find.text('Productivity Stats'));
     await tester.pumpAndSettle();
     await capture('your_stats_page');
     await popCurrentPage();

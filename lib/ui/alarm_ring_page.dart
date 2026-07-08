@@ -3,14 +3,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/alarm_fullscreen.dart';
+import '../services/alarm_sound.dart';
 import '../services/notification_service.dart';
 
 /// Full-screen alarm screen shown while an alarm is ringing — the same idea
 /// as the Google/Samsung clock apps: it covers the whole screen (over the
 /// lock screen when launched by the alarm's full-screen intent), shows a live
-/// clock and the alarm's name, and offers big Snooze / Stop actions. The
-/// sound and vibration come from the insistent alarm notification, so they
-/// keep going until one of the actions here (or on the notification) is used.
+/// clock and the alarm's name, and offers big Snooze / Stop actions.
+///
+/// Sound: when the payload carries the alarm's melody/volume, this page plays
+/// that melody at the alarm's own volume — independent of the phone's volume
+/// settings, and (with the alarm's Override Do Not Disturb switch) through
+/// DND — and hands the notification over to a silent channel so the default
+/// channel sound doesn't stack on top. Vibration keeps coming from the
+/// insistent notification. When the melody can't be played (old payloads,
+/// non-Android), the insistent notification's default sound keeps ringing as
+/// before.
 class AlarmRingPage extends StatefulWidget {
   /// Decoded alarm notification payload (uid, name, body, snooze settings,
   /// color) — the same JSON the notification actions receive.
@@ -65,12 +73,36 @@ class _AlarmRingPageState extends State<AlarmRingPage>
       lowerBound: 0.9,
       upperBound: 1.1,
     )..repeat(reverse: true);
+    _startMelody();
+  }
+
+  /// Plays the alarm's own melody at the alarm's own volume and, once that
+  /// audibly runs, moves the notification onto the silent channel so the
+  /// default channel sound stops. No-op for payloads without a melody (posted
+  /// by older builds) — those keep the notification's default sound.
+  Future<void> _startMelody() async {
+    final melody = widget.payload['melody'] as String?;
+    if (melody == null || melody.isEmpty) return;
+    final volume = (widget.payload['volume'] as num?)?.toDouble() ?? 0.8;
+    final overrideDnd = widget.payload['overrideDnd'] as bool? ?? false;
+    final started = await AlarmSound.play(
+      melody: melody,
+      volume: volume,
+      overrideDnd: overrideDnd,
+      loop: true,
+    );
+    if (started) {
+      await NotificationService.silenceAlarmNotification(widget.payload);
+    }
   }
 
   @override
   void dispose() {
     _clockTimer.cancel();
     _pulse.dispose();
+    // Safety net: the actions already stop the melody, but the page can also
+    // go away without one (e.g. the whole route stack is torn down).
+    AlarmSound.stop();
     // The activity may be showing over the lock screen because the alarm's
     // full-screen intent launched it; drop that as soon as the ring UI goes
     // away so the rest of the app stays behind the keyguard.
@@ -82,6 +114,9 @@ class _AlarmRingPageState extends State<AlarmRingPage>
       Future<void> Function(Map<String, dynamic> payload) action) async {
     if (_busy) return;
     setState(() => _busy = true);
+    // Fire-and-forget: stopping the melody must not delay (or, in tests with
+    // no platform channel host, block) the dismiss/snooze action itself.
+    AlarmSound.stop();
     try {
       await action(widget.payload);
     } catch (_) {}
