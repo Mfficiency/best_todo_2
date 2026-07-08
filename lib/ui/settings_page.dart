@@ -57,6 +57,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _use24HourFormat = Config.use24HourFormat;
   String _dateFormat = Config.dateFormat;
   int _startTabIndex = Config.startTabIndex;
+  String _startTool = Config.startTool;
   bool _startInScheduleView = Config.startInScheduleView;
   bool _chronizeShowHourWheel = Config.chronizeShowHourWheel;
   double _defaultDelaySeconds = Config.defaultDelaySeconds;
@@ -78,6 +79,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _use24HourFormat = Config.use24HourFormat;
     _dateFormat = Config.dateFormat;
     _startTabIndex = Config.startTabIndex;
+    _startTool = Config.startTool;
     _startInScheduleView = Config.startInScheduleView;
     _chronizeShowHourWheel = Config.chronizeShowHourWheel;
     _defaultDelaySeconds = Config.defaultDelaySeconds;
@@ -514,6 +516,12 @@ class _SettingsPageState extends State<SettingsPage> {
           value: cfg.enabled,
           onChanged: (v) async {
             setState(() => cfg.enabled = v);
+            // Ask for exact-alarm + battery-optimization exemption up front,
+            // otherwise the daily alarm silently never fires on OEMs that
+            // deep-sleep background apps (Samsung "Sleeping apps", Doze).
+            if (v) {
+              await SmsReportScheduler.ensureBackgroundPermissions();
+            }
             await _persistSms();
           },
         ),
@@ -904,6 +912,31 @@ class _SettingsPageState extends State<SettingsPage> {
                             if (val == null) return;
                             setState(() => _startTabIndex = val);
                             Config.startTabIndex = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
+                      ),
+                      ListTile(
+                        title: const Text('Default start page'),
+                        subtitle: const Text(
+                            'Open the task list or one of the tools when '
+                            'launching the app'),
+                        trailing: DropdownButton<String>(
+                          value: Config.startToolOptions.contains(_startTool)
+                              ? _startTool
+                              : Config.startToolOptions.first,
+                          items: List.generate(
+                            Config.startToolOptions.length,
+                            (index) => DropdownMenuItem<String>(
+                              value: Config.startToolOptions[index],
+                              child: Text(Config.startToolLabels[index]),
+                            ),
+                          ),
+                          onChanged: (val) async {
+                            if (val == null) return;
+                            setState(() => _startTool = val);
+                            Config.startTool = val;
                             await Config.save();
                             widget.onSettingsChanged?.call();
                           },

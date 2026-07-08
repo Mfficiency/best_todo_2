@@ -2,6 +2,10 @@
 
 📝 Swipe-first, ultra-fast to-do app built with Flutter. Tasks default to today. Move with gestures. Notes, labels, and smart rescheduling.
 
+> **Rebuilding or onboarding?** [SPEC.md](SPEC.md) is the complete rebuild specification:
+> every feature, data format, platform mechanism, and the full development history with the
+> reasoning behind each step. Written so a human or AI can rebuild the app from zero.
+
 ## Fundamentals
 1. less than 1 second cold startup
 2. it must not be possible in less clicks/steps

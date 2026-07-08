@@ -515,7 +515,7 @@ class _ChronizePageState extends State<ChronizePage>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-      color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
       child: Row(
         children: [
           Expanded(
@@ -737,7 +737,7 @@ class _ChronizePageState extends State<ChronizePage>
       color: scheme.onSurfaceVariant.withOpacity(0.7),
     );
     final pill = Material(
-      color: scheme.surfaceVariant.withOpacity(0.85),
+      color: scheme.surfaceContainerHighest.withOpacity(0.85),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -820,7 +820,7 @@ class _ChronizePageState extends State<ChronizePage>
   Widget _buildTaskChip(ThemeData theme, Task task) {
     return Material(
       color: task.isDone
-          ? theme.colorScheme.surfaceVariant
+          ? theme.colorScheme.surfaceContainerHighest
           : theme.colorScheme.primaryContainer,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
