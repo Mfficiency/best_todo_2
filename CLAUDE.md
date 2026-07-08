@@ -7,7 +7,11 @@ file is the short operational guide.
 ## Commands
 
 - Analyze: `flutter analyze --no-pub` (pre-existing infos/warnings exist; add none)
-- Tests: `flutter test` (unit + widget tests in `test/`)
+- Tests: `flutter test` runs everything (CI does this). Locally, run only the
+  suites your change touches — `test/core/` always, plus the matching silo:
+  `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
+  `home` or `tools`. See `test/README.md` for the file→suite map. Cross-cutting
+  changes (theme, navigation, pubspec) → full `flutter test`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
@@ -43,6 +47,10 @@ file is the short operational guide.
 
 ## Conventions
 
+- Tests live in per-area suites (`test/core|alarms|projects|home|tools/`);
+  add new tests to the suite matching the feature, new directory for a new
+  feature area. Core is reserved for task model/persistence/bucketing + smoke
+  tests.
 - Tests mirror existing style: plain `test()` for logic, `testWidgets` with
   `MaterialApp(home: ...)` for widgets, `_FakePathProvider extends
   PathProviderPlatform` + temp dir for anything touching persistence.

@@ -538,7 +538,7 @@ replayable, skipped in dev.
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z+build> ["changelog entry"]`
   updates pubspec and prepends a dated CHANGELOG section (idempotent). Build number strictly
   increases per distributed build.
-- **tool/build.sh:** smoke-test gate (`test/build_smoke_test.dart`) → `flutter build $@` →
+- **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`app-release-<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual): builds release APK, uploads artifact
@@ -557,6 +557,17 @@ replayable, skipped in dev.
   `staging` → `main`. Releases are built from dev after a version bump.
 
 ## 12. Testing
+
+Tests are organized into siloed suites under `test/` so a change only needs the
+suites it can affect (see `test/README.md` for the file→suite map): `core/`
+(task model, storage/config persistence, tab bucketing, ordering/reorder,
+deadline normalization, app-boot + build-gate smoke tests — always run),
+`alarms/` (alarm model/storage, editor, ring page), `projects/` (model,
+service, projects page, board, tile tags), `home/` (search, drawer, tile
+description editing), `tools/` (export/import + analytics, usage data,
+startup-times page, countdown model, chronize). Plain `flutter test` still
+runs the full suite and is what CI uses; `tool/build.sh` gates builds on
+`test/core/build_smoke_test.dart`.
 
 Unit/widget tests cover: usage-data CSV building (escaping, event derivation, rollups,
 manifest), chronize mark-fade invariants + interaction smoke tests, startup-times page
