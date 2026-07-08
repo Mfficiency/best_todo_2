@@ -200,7 +200,13 @@ on change/focus loss.
 
 **Schedule view:** app-bar toggle swaps the tabbed lists for one long day-grouped list
 (`ScheduleView`); tabs become scroll anchors; overdue rolls up under Today; each day
-section is a `ReorderableListView`; "Someday" holds the 2300-sentinel tasks.
+section is a `ReorderableListView`; "Someday" holds the 2300-sentinel tasks. The section
+whose header is scrolled to the top of the viewport is the *active* section: its header is
+highlighted and new tasks are added to that day (the add field's label names the target;
+`ScheduleSectionInfo` is reported to the home page via `onActiveSectionChanged`). Range
+headers target the same dates as their tabs (+7 / +30); scrolling to the very bottom
+targets Someday. A floating arrow button (appears past 300 px of scroll) jumps back to
+the top.
 
 **Drawer:** Settings, Deleted Items, Your Stats, About, Changelog, App Logs, Startup Times,
 Tools ▸ (Alarms, Countdown, Chronize, Usage Data).

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.91] - 2026-07-07
+- schedule view: the day section scrolled to the top is now highlighted, and new tasks (Enter or the + button) are added to that highlighted day instead of the selected tab — e.g. scroll to Aug 1 and the add field targets Aug 1 (the field's label shows the target day)
+- schedule view: scrolling to the very bottom targets Someday; the "Next week" / "Next month" range headers target the same dates as their tabs
+- schedule view: a floating arrow button appears after scrolling down that jumps back to the top of the list
+
 ## [0.1.90] - 2026-07-07
 - Editable project name/description + persistence (ProjectService)
 - Move Projects drawer entry into Tools section

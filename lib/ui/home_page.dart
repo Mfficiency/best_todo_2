@@ -19,7 +19,7 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'alarms_page.dart';
 import 'app_logs_page.dart';
-import 'calendar_view_page.dart' show ScheduleView;
+import 'calendar_view_page.dart' show ScheduleSectionInfo, ScheduleView;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
@@ -79,6 +79,11 @@ class _HomePageState extends State<HomePage>
     for (var i = 0; i < 6; i++) i: GlobalKey(),
   };
   int _lastTabIndex = 0;
+
+  /// Section of the schedule view currently scrolled to the top. While the
+  /// schedule view is active, new tasks are added to this section's day
+  /// (the highlighted header) instead of the selected tab's date.
+  ScheduleSectionInfo? _scheduleActiveSection;
 
   static const int _futureTabIndex = 5;
   static final DateTime _futureDueDate = DateTime(2300, 1, 1);
@@ -678,12 +683,8 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
-  /// Map a task to the tab index that would own it in list mode. Used by
-  /// the schedule view so each tile's "move to" menu hides the task's
-  /// current bucket.
-  int _tabIndexForTask(Task task) {
-    final due = task.dueDate;
-    if (due == null) return _futureTabIndex;
+  /// Map a due date to the tab index that would own it in list mode.
+  int _tabIndexForDate(DateTime due) {
     if (_isFutureBucketDate(due)) return _futureTabIndex;
     final diff = dateDiffInDays(due, _currentDate);
     if (diff <= 0) return 0;
@@ -691,6 +692,15 @@ class _HomePageState extends State<HomePage>
     if (diff == 2) return 2;
     if (diff < 30) return 3;
     return 4;
+  }
+
+  /// Map a task to the tab index that would own it in list mode. Used by
+  /// the schedule view so each tile's "move to" menu hides the task's
+  /// current bucket.
+  int _tabIndexForTask(Task task) {
+    final due = task.dueDate;
+    if (due == null) return _futureTabIndex;
+    return _tabIndexForDate(due);
   }
 
   /// Reorder within one day section of the schedule view. Other tasks in
@@ -760,13 +770,20 @@ class _HomePageState extends State<HomePage>
 
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
-    final tabIndex = _tabController.index;
+    // In schedule view new tasks go to the highlighted (scrolled-to) day
+    // section; in list mode they go to the selected tab's date.
+    final activeSection = _scheduleView ? _scheduleActiveSection : null;
+    final dueDate =
+        activeSection?.date ?? _dueDateForTab(_tabController.index);
+    final rankingTab = activeSection != null
+        ? _tabIndexForDate(activeSection.date)
+        : _tabController.index;
     final task = Task(
       title: title,
       createdAt: DateTime.now(),
-      dueDate: _dueDateForTab(tabIndex),
+      dueDate: dueDate,
       listRanking: _listRankingForNewTask(
-        tabIndex,
+        rankingTab,
         addToTop: Config.addNewTasksToTop,
       ),
     );
@@ -1485,6 +1502,10 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildAddTaskRow() {
+    // In schedule view, show which day the new task will land on (the
+    // highlighted section the user scrolled to).
+    final target = _scheduleView ? _scheduleActiveSection : null;
+    final label = target == null ? 'Add task' : 'Add task · ${target.label}';
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
@@ -1492,7 +1513,7 @@ class _HomePageState extends State<HomePage>
           Expanded(
             child: TextField(
               controller: _controller,
-              decoration: const InputDecoration(labelText: 'Add task'),
+              decoration: InputDecoration(labelText: label),
               onSubmitted: _addTask,
             ),
           ),
@@ -1580,12 +1601,22 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  void _onScheduleActiveSectionChanged(ScheduleSectionInfo section) {
+    if (_scheduleActiveSection?.key == section.key &&
+        _scheduleActiveSection?.date == section.date) {
+      return;
+    }
+    setState(() => _scheduleActiveSection = section);
+  }
+
   Widget _buildScheduleBody() {
     return ScheduleView(
       tasks: _tasks,
       currentDate: _currentDate,
       scrollController: _scheduleScrollController,
       tabAnchorKeys: _scheduleTabAnchors,
+      onActiveSectionChanged: _onScheduleActiveSectionChanged,
+      highlightedSectionKey: _scheduleActiveSection?.key,
       addTaskRow: _buildAddTaskRow(),
       buildTile: (task) {
         final pageIndex = _tabIndexForTask(task);
@@ -1812,6 +1843,7 @@ class _HomePageState extends State<HomePage>
             onPressed: () {
               setState(() {
                 _scheduleView = !_scheduleView;
+                if (!_scheduleView) _scheduleActiveSection = null;
               });
               if (_scheduleView) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {

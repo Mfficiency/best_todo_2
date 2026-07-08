@@ -1,6 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../models/task.dart';
+
+/// Identifies the schedule section currently "active" (scrolled to the top
+/// of the schedule view). The home page uses [date] as the due date for
+/// tasks added while this section is highlighted and [label] to hint the
+/// target day in the add-task field.
+class ScheduleSectionInfo {
+  /// Stable key for the section ('yyyy-mm-dd' for day sections,
+  /// 'range-next-week' / 'range-next-month' / 'someday' otherwise).
+  final String key;
+
+  /// Short human-readable name ("Today", "Fri, Aug 1", "Someday", ...).
+  final String label;
+
+  /// Due date a task added while this section is active should get.
+  final DateTime date;
+
+  const ScheduleSectionInfo({
+    required this.key,
+    required this.label,
+    required this.date,
+  });
+}
+
+class _SectionAnchor {
+  final ScheduleSectionInfo info;
+  final GlobalKey key;
+
+  const _SectionAnchor({required this.info, required this.key});
+}
 
 /// Schedule-style body for the home page. Renders one long scrollable list
 /// where tasks are grouped under per-day headers. The tab bar above
@@ -10,7 +41,7 @@ import '../models/task.dart';
 /// Tile construction is delegated back to the home page via [buildTile]
 /// so swipe / move / delete / toggle behavior stays identical to the
 /// list-mode tabs.
-class ScheduleView extends StatelessWidget {
+class ScheduleView extends StatefulWidget {
   final List<Task> tasks;
   final DateTime currentDate;
   final ScrollController scrollController;
@@ -33,6 +64,14 @@ class ScheduleView extends StatelessWidget {
   final void Function(List<Task> sectionTasks, int oldIndex, int newIndex)
       onReorderSection;
 
+  /// Fired whenever scrolling moves a different section header to the top
+  /// of the viewport. The home page stores this and routes new tasks to it.
+  final ValueChanged<ScheduleSectionInfo>? onActiveSectionChanged;
+
+  /// Key of the section the home page currently treats as the add-task
+  /// target; the matching header is rendered highlighted.
+  final String? highlightedSectionKey;
+
   /// Sentinel due date used for the "future / no specific date" bucket.
   static final DateTime futureBucketDate = DateTime(2300, 1, 1);
 
@@ -45,7 +84,31 @@ class ScheduleView extends StatelessWidget {
     required this.buildTile,
     required this.addTaskRow,
     required this.onReorderSection,
+    this.onActiveSectionChanged,
+    this.highlightedSectionKey,
   }) : super(key: key);
+
+  @override
+  State<ScheduleView> createState() => _ScheduleViewState();
+}
+
+class _ScheduleViewState extends State<ScheduleView> {
+  /// Header keys for day sections that are not one of the six tab anchors.
+  /// Kept across builds so scroll tracking survives rebuilds.
+  final Map<String, GlobalKey> _extraSectionKeys = {};
+
+  /// Section anchors in rendered order, rebuilt on every build.
+  List<_SectionAnchor> _anchors = const [];
+
+  ScheduleSectionInfo? _lastNotified;
+  bool _showBackToTop = false;
+
+  /// Header tops within this many pixels below the viewport top still count
+  /// as the active section.
+  static const double _activationSlopPx = 16;
+
+  /// Scroll offset past which the back-to-top arrow appears.
+  static const double _backToTopThresholdPx = 300;
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
   bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
@@ -80,14 +143,122 @@ class ScheduleView extends StatelessWidget {
     'Dec',
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    widget.scrollController.addListener(_handleScroll);
+  }
+
+  @override
+  void didUpdateWidget(ScheduleView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController.removeListener(_handleScroll);
+      widget.scrollController.addListener(_handleScroll);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController.removeListener(_handleScroll);
+    super.dispose();
+  }
+
+  /// Determines which section header currently sits at (or just above) the
+  /// top of the scroll viewport, toggles the back-to-top arrow, and notifies
+  /// the home page when the active section changes.
+  void _handleScroll() {
+    if (!mounted) return;
+    // Scroll corrections can notify listeners mid-layout, where setState
+    // (here and in the home page) is illegal — re-run after the frame.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _handleScroll());
+      return;
+    }
+    final controller = widget.scrollController;
+    if (!controller.hasClients) return;
+    final pixels = controller.position.pixels;
+
+    final showBackToTop = pixels > _backToTopThresholdPx;
+    if (showBackToTop != _showBackToTop) {
+      setState(() => _showBackToTop = showBackToTop);
+    }
+
+    if (_anchors.isEmpty) return;
+
+    // At the very bottom the last sections' headers may never reach the
+    // viewport top (the tail is shorter than the viewport), so treat the
+    // final section as active there — otherwise "Someday" could be
+    // impossible to target.
+    final maxExtent = controller.position.maxScrollExtent;
+    if (maxExtent > 0 && pixels >= maxExtent - 8) {
+      _notifyActive(_anchors.last);
+      return;
+    }
+
+    // Among headers that are currently built, pick the lowest one whose top
+    // is at or above the viewport top. Headers scrolled far off-screen get
+    // unmounted, so also track the first built header below the top: the
+    // section owning the viewport is then the anchor just before it in
+    // rendered order (whose info stays valid even when its header widget is
+    // unmounted).
+    _SectionAnchor? active;
+    var activeOffset = double.negativeInfinity;
+    var firstBelowIndex = -1;
+    var firstBelowOffset = double.infinity;
+    for (var i = 0; i < _anchors.length; i++) {
+      final ctx = _anchors[i].key.currentContext;
+      if (ctx == null) continue;
+      final renderObject = ctx.findRenderObject();
+      if (renderObject == null || !renderObject.attached) continue;
+      final viewport = RenderAbstractViewport.maybeOf(renderObject);
+      if (viewport == null) continue;
+      final reveal = viewport.getOffsetToReveal(renderObject, 0.0).offset;
+      if (reveal <= pixels + _activationSlopPx) {
+        if (reveal > activeOffset) {
+          activeOffset = reveal;
+          active = _anchors[i];
+        }
+      } else if (reveal < firstBelowOffset) {
+        firstBelowOffset = reveal;
+        firstBelowIndex = i;
+      }
+    }
+    if (active == null && firstBelowIndex >= 0) {
+      active = _anchors[firstBelowIndex > 0 ? firstBelowIndex - 1 : 0];
+    }
+    if (active == null) return;
+    _notifyActive(active);
+  }
+
+  void _notifyActive(_SectionAnchor active) {
+    // Compare date as well as key: range sections keep their key when the
+    // current date changes but their target date moves with it.
+    if (active.info.key != _lastNotified?.key ||
+        active.info.date != _lastNotified?.date) {
+      _lastNotified = active.info;
+      widget.onActiveSectionChanged?.call(active.info);
+    }
+  }
+
+  void _scrollToTop() {
+    if (!widget.scrollController.hasClients) return;
+    widget.scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   Widget _buildReorderableSection(List<Task> sectionTasks) {
     return ReorderableListView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: true,
       onReorder: (oldIndex, newIndex) =>
-          onReorderSection(sectionTasks, oldIndex, newIndex),
-      children: [for (final t in sectionTasks) buildTile(t)],
+          widget.onReorderSection(sectionTasks, oldIndex, newIndex),
+      children: [for (final t in sectionTasks) widget.buildTile(t)],
     );
   }
 
@@ -104,16 +275,30 @@ class ScheduleView extends StatelessWidget {
     return base;
   }
 
+  /// Short name used in the add-task hint ("Today", "Fri, Aug 1", ...).
+  String _shortLabel(DateTime date, DateTime today) {
+    final d = _dateOnly(date);
+    final t = _dateOnly(today);
+    final diff = d.difference(t).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
+    if (diff == 2) return 'Day after tomorrow';
+    final base =
+        '${_weekdayNames[d.weekday - 1]}, ${_monthNames[d.month - 1]} ${d.day}';
+    if (d.year != t.year) return '$base, ${d.year}';
+    return base;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final today = _dateOnly(currentDate);
+    final today = _dateOnly(widget.currentDate);
 
     // Split tasks into dated vs future-bucket / undated.
     final dated = <Task>[];
     final someday = <Task>[];
-    for (final t in tasks) {
+    for (final t in widget.tasks) {
       final due = t.dueDate;
-      if (due == null || _isSameDay(due, futureBucketDate)) {
+      if (due == null || _isSameDay(due, ScheduleView.futureBucketDate)) {
         someday.add(t);
       } else {
         dated.add(t);
@@ -164,12 +349,14 @@ class ScheduleView extends StatelessWidget {
     final todayKey = _dayKey(today);
     final tomorrowKey = _dayKey(today.add(const Duration(days: 1)));
     final dayAfterKey = _dayKey(today.add(const Duration(days: 2)));
-    if (tabAnchorKeys[0] != null) anchorKeyForKey[todayKey] = tabAnchorKeys[0]!;
-    if (tabAnchorKeys[1] != null) {
-      anchorKeyForKey[tomorrowKey] = tabAnchorKeys[1]!;
+    if (widget.tabAnchorKeys[0] != null) {
+      anchorKeyForKey[todayKey] = widget.tabAnchorKeys[0]!;
     }
-    if (tabAnchorKeys[2] != null) {
-      anchorKeyForKey[dayAfterKey] = tabAnchorKeys[2]!;
+    if (widget.tabAnchorKeys[1] != null) {
+      anchorKeyForKey[tomorrowKey] = widget.tabAnchorKeys[1]!;
+    }
+    if (widget.tabAnchorKeys[2] != null) {
+      anchorKeyForKey[dayAfterKey] = widget.tabAnchorKeys[2]!;
     }
 
     // Partition the remaining sortedKeys into next-week / next-month ranges
@@ -184,15 +371,33 @@ class ScheduleView extends StatelessWidget {
     }
 
     final children = <Widget>[];
+    final anchors = <_SectionAnchor>[];
+
+    GlobalKey headerKeyFor(String sectionKey, GlobalKey? preferred) {
+      if (preferred != null) return preferred;
+      return _extraSectionKeys.putIfAbsent(sectionKey, () => GlobalKey());
+    }
 
     void addDaySection(String key) {
       final date = keyToDate[key]!;
       final dayTasks = grouped[key]!;
+      final headerKey = headerKeyFor(key, anchorKeyForKey[key]);
+      anchors.add(
+        _SectionAnchor(
+          info: ScheduleSectionInfo(
+            key: key,
+            label: _shortLabel(date, today),
+            date: date,
+          ),
+          key: headerKey,
+        ),
+      );
       children.add(
         _DayHeader(
-          key: anchorKeyForKey[key],
+          key: headerKey,
           text: _formatHeader(date, today),
           isToday: _isSameDay(date, today),
+          highlighted: widget.highlightedSectionKey == key,
         ),
       );
       if (dayTasks.isEmpty) {
@@ -202,6 +407,28 @@ class ScheduleView extends StatelessWidget {
       }
     }
 
+    void addRangeSection({
+      required String sectionKey,
+      required String label,
+      required DateTime date,
+      required GlobalKey? tabAnchorKey,
+    }) {
+      final headerKey = headerKeyFor(sectionKey, tabAnchorKey);
+      anchors.add(
+        _SectionAnchor(
+          info: ScheduleSectionInfo(key: sectionKey, label: label, date: date),
+          key: headerKey,
+        ),
+      );
+      children.add(
+        _RangeHeader(
+          key: headerKey,
+          text: label,
+          highlighted: widget.highlightedSectionKey == sectionKey,
+        ),
+      );
+    }
+
     // Today / Tomorrow / Day after — render the first three keys directly.
     final immediateKeys = <String>[todayKey, tomorrowKey, dayAfterKey];
     for (final k in immediateKeys) {
@@ -209,9 +436,14 @@ class ScheduleView extends StatelessWidget {
     }
 
     // Next week range — always render the range header as an anchor for
-    // tab 3, followed by any day sections in the +3..+29 window.
-    children.add(
-      _RangeHeader(key: tabAnchorKeys[3], text: 'Next week'),
+    // tab 3, followed by any day sections in the +3..+29 window. Tasks added
+    // while the bare range header is active get the same due date as the
+    // next-week tab in list mode.
+    addRangeSection(
+      sectionKey: 'range-next-week',
+      label: 'Next week',
+      date: widget.currentDate.add(const Duration(days: 7)),
+      tabAnchorKey: widget.tabAnchorKeys[3],
     );
     if (nextWeekKeys.isEmpty) {
       children.add(const _EmptyDayPlaceholder());
@@ -223,8 +455,11 @@ class ScheduleView extends StatelessWidget {
 
     // Next month range — always render the range header as an anchor for
     // tab 4, followed by any day sections >= 30 days out.
-    children.add(
-      _RangeHeader(key: tabAnchorKeys[4], text: 'Next month'),
+    addRangeSection(
+      sectionKey: 'range-next-month',
+      label: 'Next month',
+      date: widget.currentDate.add(const Duration(days: 30)),
+      tabAnchorKey: widget.tabAnchorKeys[4],
     );
     if (nextMonthKeys.isEmpty) {
       children.add(const _EmptyDayPlaceholder());
@@ -235,11 +470,25 @@ class ScheduleView extends StatelessWidget {
     }
 
     // Someday — always rendered so tab 5 has a reliable anchor.
+    const somedayKey = 'someday';
+    final somedayHeaderKey =
+        headerKeyFor(somedayKey, widget.tabAnchorKeys[5]);
+    anchors.add(
+      _SectionAnchor(
+        info: ScheduleSectionInfo(
+          key: somedayKey,
+          label: 'Someday',
+          date: ScheduleView.futureBucketDate,
+        ),
+        key: somedayHeaderKey,
+      ),
+    );
     children.add(
       _DayHeader(
-        key: tabAnchorKeys[5],
+        key: somedayHeaderKey,
         text: 'Someday',
         isToday: false,
+        highlighted: widget.highlightedSectionKey == somedayKey,
       ),
     );
     if (someday.isEmpty) {
@@ -248,14 +497,43 @@ class ScheduleView extends StatelessWidget {
       children.add(_buildReorderableSection(someday));
     }
 
+    _anchors = anchors;
+    // Re-evaluate the active section once this frame is laid out, so the
+    // highlight is correct right after entering the view or after tasks
+    // shift the section layout.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _handleScroll();
+    });
+
     return Column(
       children: [
-        addTaskRow,
+        widget.addTaskRow,
         Expanded(
-          child: ListView(
-            controller: scrollController,
-            padding: const EdgeInsets.only(bottom: 32),
-            children: children,
+          child: Stack(
+            children: [
+              ListView(
+                controller: widget.scrollController,
+                padding: const EdgeInsets.only(bottom: 32),
+                children: children,
+              ),
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: IgnorePointer(
+                  ignoring: !_showBackToTop,
+                  child: AnimatedOpacity(
+                    opacity: _showBackToTop ? 1 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: FloatingActionButton.small(
+                      heroTag: 'scheduleBackToTop',
+                      tooltip: 'Back to top',
+                      onPressed: _scrollToTop,
+                      child: const Icon(Icons.arrow_upward),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -266,21 +544,35 @@ class ScheduleView extends StatelessWidget {
 class _DayHeader extends StatelessWidget {
   final String text;
   final bool isToday;
+  final bool highlighted;
 
-  const _DayHeader({Key? key, required this.text, required this.isToday})
-      : super(key: key);
+  const _DayHeader({
+    Key? key,
+    required this.text,
+    required this.isToday,
+    this.highlighted = false,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? theme.colorScheme.primary.withOpacity(0.16)
+            : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+        border: highlighted
+            ? Border(
+                left: BorderSide(color: theme.colorScheme.primary, width: 3),
+              )
+            : null,
+      ),
+      padding: EdgeInsets.fromLTRB(highlighted ? 13 : 16, 10, 16, 10),
       child: Text(
         text,
         style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w600,
-          color: isToday ? theme.colorScheme.primary : null,
+          color: (isToday || highlighted) ? theme.colorScheme.primary : null,
         ),
       ),
     );
@@ -289,16 +581,29 @@ class _DayHeader extends StatelessWidget {
 
 class _RangeHeader extends StatelessWidget {
   final String text;
+  final bool highlighted;
 
-  const _RangeHeader({Key? key, required this.text}) : super(key: key);
+  const _RangeHeader({
+    Key? key,
+    required this.text,
+    this.highlighted = false,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
       width: double.infinity,
-      color: theme.colorScheme.primary.withOpacity(0.08),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary
+            .withOpacity(highlighted ? 0.18 : 0.08),
+        border: highlighted
+            ? Border(
+                left: BorderSide(color: theme.colorScheme.primary, width: 3),
+              )
+            : null,
+      ),
+      padding: EdgeInsets.fromLTRB(highlighted ? 13 : 16, 14, 16, 6),
       child: Text(
         text,
         style: theme.textTheme.titleMedium?.copyWith(
