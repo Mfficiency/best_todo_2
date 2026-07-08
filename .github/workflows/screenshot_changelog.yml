@@ -49,8 +49,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           New-Item -ItemType Directory -Force docs/ci | Out-Null
-          Copy-Item capture_output.log docs/ci/screenshot_capture_failure.log -Force
-          git add docs/ci/screenshot_capture_failure.log
+          # .txt, not .log — the repo gitignores *.log, which made git add a
+          # silent no-op the first time around. -f as belt and braces.
+          Copy-Item capture_output.log docs/ci/screenshot_capture_failure.txt -Force
+          git add -f docs/ci/screenshot_capture_failure.txt
           git commit -m "ci: record screenshot capture failure log [skip-screenshot-changelog]"
           git pull --rebase origin ${{ github.ref_name }}
           git push
