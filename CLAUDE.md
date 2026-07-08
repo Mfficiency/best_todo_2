@@ -47,9 +47,9 @@ file is the short operational guide.
   `MaterialApp(home: ...)` for widgets, `_FakePathProvider extends
   PathProviderPlatform` + temp dir for anything touching persistence.
   `ProjectService.instance.resetForTest()` between tests.
-- **Real file I/O hangs inside `testWidgets` on the local Flutter install**
-  (fake-async zone never services dart:io completions; CI's Flutter does, so
-  CI can be green while the same test hangs locally at the 10-min timeout):
+- **Real file I/O hangs inside `testWidgets`** (the fake-async zone never
+  services dart:io completions — locally AND on CI; the unmitigated pattern in
+  startup_times_page_test kept `flutter_test.yml` red from 0.1.87 until fixed):
   - Create temp dirs / pre-save files in `setUp` (outside the fake zone) or
     wrap in `await tester.runAsync(() => ...)`.
   - I/O started inside the widget (initState loads, save-on-tap): a single

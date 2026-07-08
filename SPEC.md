@@ -555,10 +555,11 @@ grouping, drag between columns, unassign, edit dialog save/cancel/empty-name), t
 project/stage tags (incl. live rename + unknown-id fallback), home search (title/
 description/label/project-name matching, case-insensitivity, clear button, empty state),
 drawer placement of Projects under Tools, alarm-editor top save action. Widget tests that
-touch persistence use a `_FakePathProvider` + temp dir. Caveat: on some local Flutter
-installs real file I/O awaited inside `testWidgets` hangs (fake-async zone never services
-dart:io completions; CI's Flutter does) — such tests wrap I/O in `tester.runAsync` and
-pump real-event-loop slices in rounds; see CLAUDE.md for the exact patterns. Integration tests: screenshot
+touch persistence use a `_FakePathProvider` + temp dir. Caveat: real file I/O awaited
+inside `testWidgets` hangs until the 10-min per-test timeout (the fake-async zone never
+services dart:io completions — locally and on CI) — such tests wrap I/O in
+`tester.runAsync` and pump real-event-loop slices in rounds; see CLAUDE.md for the exact
+patterns. The unmitigated pattern kept `flutter_test.yml` red from 0.1.87 until 0.1.90. Integration tests: screenshot
 walk-through + task-creation screenshots (Windows desktop, needs Developer Mode for
 plugin symlinks). Not covered: ScheduleView, stats/usage page widget rendering, the
 Kotlin widget PendingIntent wiring (verified on hardware), most alarm/SMS runtime paths
