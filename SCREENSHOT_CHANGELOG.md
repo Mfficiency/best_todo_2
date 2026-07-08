@@ -1,3 +1,33 @@
+## 2026-07-08T08:11:27.323064Z | branch: dev | source: 7deed23
+
+- Folder: `docs/screenshots/home/20260708-081125-7deed23`
+
+### Home Page
+![2026-07-08T08:11:27.323064Z - dev - home_page](docs/screenshots/home/20260708-081125-7deed23/home_page.png)
+
+### Menu Open
+![2026-07-08T08:11:27.323064Z - dev - menu_open](docs/screenshots/home/20260708-081125-7deed23/menu_open.png)
+
+### Project Board Page
+![2026-07-08T08:11:27.323064Z - dev - project_board_page](docs/screenshots/home/20260708-081125-7deed23/project_board_page.png)
+
+### Project Edit Dialog
+![2026-07-08T08:11:27.323064Z - dev - project_edit_dialog](docs/screenshots/home/20260708-081125-7deed23/project_edit_dialog.png)
+
+### Projects Page
+![2026-07-08T08:11:27.323064Z - dev - projects_page](docs/screenshots/home/20260708-081125-7deed23/projects_page.png)
+
+### Search Active
+![2026-07-08T08:11:27.323064Z - dev - search_active](docs/screenshots/home/20260708-081125-7deed23/search_active.png)
+
+### Settings Page
+![2026-07-08T08:11:27.323064Z - dev - settings_page](docs/screenshots/home/20260708-081125-7deed23/settings_page.png)
+
+### Your Stats Page
+![2026-07-08T08:11:27.323064Z - dev - your_stats_page](docs/screenshots/home/20260708-081125-7deed23/your_stats_page.png)
+
+---
+
 ## 2026-07-08T05:25:10.951927Z | branch: dev | source: f655fee
 
 - Folder: `docs/screenshots/home/20260708-052510-f655fee`
