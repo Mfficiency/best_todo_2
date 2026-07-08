@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.91] - 2026-07-07
+## [0.1.91] - 2026-07-08
 - Stats renamed to Productivity Stats and moved into the Tools section of the menu
 - Settings: choose the default start page — the task list or any tool (Alarms, Countdown, Projects, Chronize, Usage Data, Productivity Stats); the chosen tool opens on launch, back returns to the task list
 - alarms: per-alarm volume is now real — every alarm rings its melody at its own volume as a fraction of the device maximum, independent of the phone's current media/ringer/alarm volume (the alarm stream is pinned to max during the ring and restored afterwards)
@@ -9,12 +9,14 @@
 - alarms: while the full-screen ring page plays the alarm's own melody, the notification moves to a silent channel (actions and vibration stay) so the default alarm sound no longer plays on top; if melody playback cannot start, the notification sound keeps ringing as before
 
 ## [0.1.90] - 2026-07-07
-- Editable project name/description + persistence (ProjectService)
-- Move Projects drawer entry into Tools section
-- Alarms widget: background tap opens alarms list
-- Project name + stage chips on task tiles
-- Basic task search in home app bar
-
+- projects: name and description are editable (pencil icon on the project board) and persist across restarts (`projects.json`); renames update everywhere a project is shown
+- projects: moved into the Tools menu (Tools → Projects)
+- projects: tasks assigned to a project show the project name and Kanban stage as small tags on the task tile itself (e.g. "Project 1", "To-Do"), updating live when the task moves between columns or the project is renamed
+- search: the search field in the top bar works — typing filters every tab and the schedule view by title, description, note, label and project name (case-insensitive), with a clear (×) button; reordering is disabled while a search is active so hidden tasks keep their order
+- alarms widget: tapping anywhere on the widget now opens the alarms page directly (background, header and empty state included); tapping a row opens that alarm's editor and the ON/OFF toggle still works without opening the app
+- tests: per-feature widget/unit tests for all of the above (project persistence, drag-assign, board columns, edit dialog, tile tags, search behaviors, drawer placement, alarm-editor top save)
+- docs: added CLAUDE.md (AI working guide); SPEC.md updated for all new behavior
+- screenshots: the CI screenshot walk-through now also captures search-in-action, the Projects page, the Kanban board and the project edit dialog, and archives every captured page automatically
 
 ## [0.1.89] - 2026-07-07
 - new Projects tool

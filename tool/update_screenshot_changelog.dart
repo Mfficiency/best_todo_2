@@ -17,25 +17,45 @@ void main(List<String> args) {
       : sourceSha.substring(0, sourceSha.length < 7 ? sourceSha.length : 7);
   final safeBranch = (branch == null || branch.isEmpty) ? 'unknown' : branch;
 
+  // One section per PNG in the folder so newly captured pages are picked up
+  // without touching this tool. Falls back to the historical four names when
+  // the folder cannot be listed (e.g. dry runs outside the repo).
+  var names = <String>[
+    'home_page',
+    'menu_open',
+    'settings_page',
+    'your_stats_page',
+  ];
+  final dir = Directory(screenshotFolder);
+  if (dir.existsSync()) {
+    final found = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.toLowerCase().endsWith('.png'))
+        .map((f) => f.uri.pathSegments.last.replaceAll('.png', ''))
+        .toList()
+      ..sort();
+    if (found.isNotEmpty) names = found;
+  }
+
+  String titleOf(String name) => name
+      .split('_')
+      .where((w) => w.isNotEmpty)
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+
   final entry = StringBuffer()
     ..writeln('## $now | branch: $safeBranch | source: $shortSha')
     ..writeln()
     ..writeln('- Folder: `$screenshotFolder`')
-    ..writeln()
-    ..writeln('### Home')
-    ..writeln('![$now - $safeBranch - home]($screenshotFolder/home_page.png)')
-    ..writeln()
-    ..writeln('### Menu Open')
-    ..writeln('![$now - $safeBranch - menu]($screenshotFolder/menu_open.png)')
-    ..writeln()
-    ..writeln('### Settings')
-    ..writeln(
-        '![$now - $safeBranch - settings]($screenshotFolder/settings_page.png)')
-    ..writeln()
-    ..writeln('### Productivity Stats')
-    ..writeln(
-        '![$now - $safeBranch - stats]($screenshotFolder/your_stats_page.png)')
-    ..writeln()
+    ..writeln();
+  for (final name in names) {
+    entry
+      ..writeln('### ${titleOf(name)}')
+      ..writeln('![$now - $safeBranch - $name]($screenshotFolder/$name.png)')
+      ..writeln();
+  }
+  entry
     ..writeln('---')
     ..writeln();
 
