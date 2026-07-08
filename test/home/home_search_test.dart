@@ -32,9 +32,17 @@ void main() {
     // run on the real event loop via runAsync, not the fake-async test zone.
     await tester.runAsync(() => StorageService().saveTaskList(tasks));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 100)));
+    // HomePage._loadTasks is a long chain of real file operations started in
+    // the fake-async zone; each hop needs a real-event-loop slice followed by
+    // a pump, so iterate until the first task renders.
+    final marker = find.text(tasks.first.title);
+    for (var i = 0; i < 300 && marker.evaluate().isEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
+    expect(marker, findsOneWidget, reason: 'HomePage never loaded the tasks');
   }
 
   List<Task> todayTasks() {

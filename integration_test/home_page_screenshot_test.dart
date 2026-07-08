@@ -127,9 +127,12 @@ void main() {
     await capture('projects_page');
 
     // Per-project Kanban board with the assigned card. Target the project
-    // card's InkWell — after the assignment "Project 1" also appears as a
-    // chip on the task row and in the snackbar.
-    await tester.tap(find.widgetWithText(InkWell, 'Project 1').first);
+    // card via its DragTarget — after the assignment "Project 1" also appears
+    // as a chip on the task row, whose ListTile owns an InkWell of its own.
+    await tester.tap(find.descendant(
+      of: find.byType(DragTarget<Task>),
+      matching: find.text('Project 1'),
+    ));
     await tester.pumpAndSettle();
     await capture('project_board_page');
 

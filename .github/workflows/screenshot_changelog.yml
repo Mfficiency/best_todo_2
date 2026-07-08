@@ -6,6 +6,8 @@ on:
     paths-ignore:
       - 'SCREENSHOT_CHANGELOG.md'
       - 'docs/screenshots/home/**'
+      - 'docs/ci/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,7 +15,10 @@ permissions:
 jobs:
   screenshot-changelog:
     if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip-screenshot-changelog]')
-    runs-on: windows-latest
+    # windows-latest moved to an image with Visual Studio 2026 (June 2026).
+    # Flutter <3.35 only knows the VS 2022 CMake generator (VS 18 falls back
+    # to the VS 2019 generator, which fails), so pin the VS 2022 image.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +28,10 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          # 3.22's Windows build requires the VS 2019 CMake generator, which
+          # windows-latest no longer ships (broke silently in June 2026).
+          # Keep in sync with flutter_test.yml.
+          flutter-version: '3.29.2'
           channel: 'stable'
 
       - name: Enable Windows desktop
@@ -33,7 +41,28 @@ jobs:
         run: flutter pub get
 
       - name: Capture home page screenshot
-        run: flutter test integration_test/home_page_screenshot_test.dart -d windows
+        shell: pwsh
+        run: |
+          flutter test integration_test/home_page_screenshot_test.dart -d windows *>&1 | Tee-Object -FilePath capture_output.log
+          exit $LASTEXITCODE
+
+      # The capture broke silently for weeks because job logs need auth to
+      # read. On failure, commit the test output into the repo so it can be
+      # inspected (and fixed) without GitHub credentials.
+      - name: Publish capture failure log
+        if: failure()
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          New-Item -ItemType Directory -Force docs/ci | Out-Null
+          # .txt, not .log — the repo gitignores *.log, which made git add a
+          # silent no-op the first time around. -f as belt and braces.
+          Copy-Item capture_output.log docs/ci/screenshot_capture_failure.txt -Force
+          git add -f docs/ci/screenshot_capture_failure.txt
+          git commit -m "ci: record screenshot capture failure log [skip-screenshot-changelog]"
+          git pull --rebase origin ${{ github.ref_name }}
+          git push
 
       - name: Save screenshot in repo
         id: screenshot_meta
@@ -67,6 +96,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # A green run supersedes any published failure log.
+          if (Test-Path docs/ci/screenshot_capture_failure.txt) {
+            git rm -f docs/ci/screenshot_capture_failure.txt
+          }
           git add SCREENSHOT_CHANGELOG.md docs/screenshots/home
 
           if (git diff --cached --quiet) {

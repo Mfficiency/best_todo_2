@@ -1,7 +1,10 @@
 # Changelog
 
-## [0.1.91] - 2026-07-07
-- tests: the test suite is split into siloed per-area suites (`test/core`, `test/alarms`, `test/projects`, `test/home`, `test/tools`) so a change only needs to run the suites it can affect; core (task model, persistence, bucketing, smoke tests) is always run, `flutter test` still runs everything and CI is unchanged — see `test/README.md` for the file→suite map
+## [0.1.91] - 2026-07-08
+- schedule view: the day scrolled to the top of the list is now highlighted as the active day
+- schedule view: new tasks typed into the add-task field land on the highlighted day (e.g. scroll to Aug 1, type, hit + — the task is due Aug 1); the field's label shows the target day ("Add task · Aug 1")
+- schedule view: a back-to-top arrow appears while scrolled down and jumps back to today
+- schedule view: the list can now scroll far enough that even the last section (Someday) can reach the top and be targeted
 
 ## [0.1.90] - 2026-07-07
 - projects: name and description are editable (pencil icon on the project board) and persist across restarts (`projects.json`); renames update everywhere a project is shown

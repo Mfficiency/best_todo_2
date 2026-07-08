@@ -117,10 +117,16 @@ void main() {
     await tester.enterText(
         find.widgetWithText(TextField, 'Description'), 'Chores and repairs');
     await tester.tap(find.text('Save'));
-    // The save path awaits a real projects.json write before calling
-    // setState; let that I/O finish on the real event loop.
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    // The save path awaits a real projects.json write (started in the fake
+    // zone) before calling setState; each I/O hop needs a real-event-loop
+    // slice plus a pump. A fixed number of rounds is required — polling
+    // in-memory state exits too early (the notifier updates before the file
+    // write finishes), and find.text would match the closing dialog's field.
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
 
     // App bar title and the description banner update in place.
@@ -157,8 +163,11 @@ void main() {
     await tester.enterText(
         find.widgetWithText(TextField, 'Description'), 'Still described');
     await tester.tap(find.text('Save'));
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
 
     expect(find.text('Project 1'), findsOneWidget);
