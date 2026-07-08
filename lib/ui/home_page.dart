@@ -74,6 +74,11 @@ class _HomePageState extends State<HomePage>
   /// When true, the body renders one long schedule list with day-grouped
   /// sections; tab taps scroll that list instead of switching panes.
   bool _scheduleView = Config.startInScheduleView;
+
+  /// Day section currently scrolled to the top of the schedule view (the
+  /// highlighted one). New tasks added while the schedule view is open are
+  /// due on this day.
+  DateTime? _scheduleActiveDate;
   final ScrollController _scheduleScrollController = ScrollController();
   final Map<int, GlobalKey> _scheduleTabAnchors = {
     for (var i = 0; i < 6; i++) i: GlobalKey(),
@@ -678,13 +683,9 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
-  /// Map a task to the tab index that would own it in list mode. Used by
-  /// the schedule view so each tile's "move to" menu hides the task's
-  /// current bucket.
-  int _tabIndexForTask(Task task) {
-    final due = task.dueDate;
-    if (due == null) return _futureTabIndex;
-    if (_isFutureBucketDate(due)) return _futureTabIndex;
+  /// Map a due date to the tab index that would own it in list mode.
+  int _tabIndexForDueDate(DateTime? due) {
+    if (due == null || _isFutureBucketDate(due)) return _futureTabIndex;
     final diff = dateDiffInDays(due, _currentDate);
     if (diff <= 0) return 0;
     if (diff == 1) return 1;
@@ -692,6 +693,11 @@ class _HomePageState extends State<HomePage>
     if (diff < 30) return 3;
     return 4;
   }
+
+  /// Map a task to the tab index that would own it in list mode. Used by
+  /// the schedule view so each tile's "move to" menu hides the task's
+  /// current bucket.
+  int _tabIndexForTask(Task task) => _tabIndexForDueDate(task.dueDate);
 
   /// Reorder within one day section of the schedule view. Other tasks in
   /// the same tab keep their relative position; only the slice belonging
@@ -762,13 +768,18 @@ class _HomePageState extends State<HomePage>
 
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
-    final tabIndex = _tabController.index;
+    // In schedule view new tasks land on the highlighted (active) day; in
+    // list mode they go to the current tab's bucket.
+    final dueDate = _scheduleView && _scheduleActiveDate != null
+        ? _scheduleActiveDate!
+        : _dueDateForTab(_tabController.index);
+    final rankingTabIndex = _tabIndexForDueDate(dueDate);
     final task = Task(
       title: title,
       createdAt: DateTime.now(),
-      dueDate: _dueDateForTab(tabIndex),
+      dueDate: dueDate,
       listRanking: _listRankingForNewTask(
-        tabIndex,
+        rankingTabIndex,
         addToTop: Config.addNewTasksToTop,
       ),
     );
@@ -1486,7 +1497,25 @@ class _HomePageState extends State<HomePage>
     return list;
   }
 
+  /// Short label for the schedule view's active day shown in the add-task
+  /// field, e.g. "Today", "Tomorrow", "Aug 1" or "Someday".
+  String _scheduleDayLabel(DateTime date) {
+    if (_isFutureBucketDate(date)) return 'Someday';
+    final diff = dateDiffInDays(date, _currentDate);
+    if (diff <= 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}';
+  }
+
   Widget _buildAddTaskRow() {
+    final activeDate = _scheduleView ? _scheduleActiveDate : null;
+    final label = activeDate == null
+        ? 'Add task'
+        : 'Add task · ${_scheduleDayLabel(activeDate)}';
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
@@ -1494,7 +1523,7 @@ class _HomePageState extends State<HomePage>
           Expanded(
             child: TextField(
               controller: _controller,
-              decoration: const InputDecoration(labelText: 'Add task'),
+              decoration: InputDecoration(labelText: label),
               onSubmitted: _addTask,
             ),
           ),
@@ -1593,6 +1622,10 @@ class _HomePageState extends State<HomePage>
       scrollController: _scheduleScrollController,
       tabAnchorKeys: _scheduleTabAnchors,
       addTaskRow: _buildAddTaskRow(),
+      onActiveDateChanged: (date) {
+        if (_scheduleActiveDate == date) return;
+        setState(() => _scheduleActiveDate = date);
+      },
       buildTile: (task) {
         final pageIndex = _tabIndexForTask(task);
         final tabTasks = _tasksForTab(pageIndex);
