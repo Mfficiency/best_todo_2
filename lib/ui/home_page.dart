@@ -30,6 +30,7 @@ import 'projects_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
 import 'usage_data_page.dart';
+import 'wishlist_page.dart';
 import 'your_stats_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -683,6 +684,8 @@ class _HomePageState extends State<HomePage>
         return const AlarmsPage();
       case 'countdown':
         return const CountdownTimerPage();
+      case 'wishlist':
+        return const WishlistPage();
       case 'projects':
         return ProjectsPage(tasks: _tasks, onChanged: _saveTasks);
       case 'chronize':
@@ -1804,6 +1807,14 @@ class _HomePageState extends State<HomePage>
                   onTap: () {
                     Navigator.pop(context);
                     _openTool('countdown');
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.favorite_border),
+                  title: const Text('Wishlist'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openTool('wishlist');
                   },
                 ),
                 ListTile(
