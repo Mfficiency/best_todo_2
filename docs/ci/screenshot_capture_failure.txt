@@ -1,31 +1,48 @@
 
-Building Windows application...                                 
-CMake Error at CMakeLists.txt:3 (project):
-  Generator
+Building Windows application...                                    72.5s
+√ Built build\windows\x64\runner\Debug\BestToDo.exe
+::group::❌ capture home page screenshot (failed)
+ALARMLOG [WARN] FIRE | could not read notification launch details: LateInitializationError: Field '_instance@972271368' has not been initialized.
+══╡ EXCEPTION CAUGHT BY SERVICES LIBRARY ╞══════════════════════════════════════════════════════════
+The following MissingPluginException was thrown while activating platform stream on channel
+home_widget/updates:
+MissingPluginException(No implementation found for method listen on channel home_widget/updates)
 
-    Visual Studio 16 2019
+When the exception was thrown, this was the stack:
+#0      MethodChannel._invokeMethod (package:flutter/src/services/platform_channel.dart:368:7)
+<asynchronous suspension>
+#1      EventChannel.receiveBroadcastStream.<anonymous closure> (package:flutter/src/services/platform_channel.dart:715:11)
+<asynchronous suspension>
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with widget matching predicate: []" (used in a call to "tap()") could
+not find any matching widgets.
 
-  could not find any instance of Visual Studio.
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2009:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1861:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1041:7)
+#3      main.<anonymous closure> (file:///D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart:137:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:193:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1064:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
 
+The test description was:
+  capture home page screenshot
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following message was thrown:
+Multiple exceptions (2) were detected during the running of the current test, and at least one was
+unexpected.
+════════════════════════════════════════════════════════════════════════════════════════════════════
+Test failed. See exception logs above.
+The test description was: capture home page screenshot
 
-
-Building Windows application...                                    791ms
-::group::❌ loading D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart (failed)
-Failed to load "D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart": Unable to generate build files
-package:flutter_tools/src/base/common.dart 34:3                    throwToolExit
-package:flutter_tools/src/windows/build_windows.dart 205:5         _runCmakeGeneration
-===== asynchronous gap ===========================
-package:flutter_tools/src/windows/build_windows.dart 104:5         buildWindows
-===== asynchronous gap ===========================
-package:flutter_tools/src/windows/windows_device.dart 65:5         WindowsDevice.buildForDevice
-===== asynchronous gap ===========================
-package:flutter_tools/src/desktop_device.dart 108:7                DesktopDevice.startApp
-===== asynchronous gap ===========================
-package:flutter_tools/src/test/integration_test_device.dart 57:39  IntegrationTestTestDevice.start
-===== asynchronous gap ===========================
-package:flutter_tools/src/test/flutter_platform.dart 682:51        FlutterPlatform._startTest.<fn>
-===== asynchronous gap ===========================
-package:flutter_tools/src/base/async_guard.dart 109:26             asyncGuard.<fn>
 ::endgroup::
 
 ::error::0 tests passed, 1 failed.
