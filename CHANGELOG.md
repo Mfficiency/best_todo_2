@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.94] - 2026-07-08
+- new Wishlist tool for title/description/label wish items, available from Tools and as a default start page
+
 ## [0.1.93] - 2026-07-08
 - Stats renamed to Productivity Stats and moved into the Tools section of the menu
 - Settings: choose the default start page — the task list or any tool (Alarms, Countdown, Projects, Chronize, Usage Data, Productivity Stats); the chosen tool opens on launch, back returns to the task list
