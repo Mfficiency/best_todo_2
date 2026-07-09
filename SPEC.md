@@ -246,12 +246,15 @@ hidden tasks' order.
 task timer", immediately right of the search field) picks a random open (not done) task
 from the Today tab — ignoring any active search — and pushes `DiceTimerPage`
 (`lib/ui/dice_timer_page.dart`). The page shows the rolled task above a rotary egg-timer
-dial (`DiceTimerDial`, one full turn = 60 min, whole-minute snapping): winding uses raw
-pointer events (a `Listener`, NOT a pan recognizer — an ancestor scrollable would win
-mostly-vertical drags in the gesture arena), with `dialAngle`/`dialAngleDelta` keeping the
-rotation continuous across 12 o'clock. Releasing the dial starts the countdown (a 1 s
-decrementing ticker, deliberately not wall-clock-anchored so tests can fake-pump it) and
-shows the remaining time plus the wall-clock end time ("Ends at 14:32"). Grabbing the dial
+dial (`DiceTimerDial`, one full turn = 60 min, whole-minute snapping) opened pre-wound to a
+20-minute default (`_defaultDuration`) — turn back for less time, on past 20 for more:
+winding uses raw pointer events (a `Listener`, NOT a pan recognizer — an ancestor scrollable
+would win mostly-vertical drags in the gesture arena), with `dialAngle`/`dialAngleDelta`
+keeping the rotation continuous across 12 o'clock. Releasing the dial starts the countdown
+(a 1 s decrementing ticker, deliberately not wall-clock-anchored so tests can fake-pump it)
+and shows the remaining time, the percentage of the started duration still left
+(`_percentLeft`, relative to `_total`), and the wall-clock end time ("Ends at 14:32").
+Grabbing the dial
 mid-countdown (or mid-ring) pauses/silences and rounds up to whole minutes for rewinding.
 At zero it plays the 'Classic' alarm melody (loop, 0.8 volume) + a task notification
 (both best-effort; injectable via `onRingAlert` for tests) and offers: **Done** (marks the

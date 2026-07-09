@@ -34,10 +34,11 @@ double dialAngleDelta(double from, double to) {
 /// ringing at zero.
 enum DiceTimerPhase { setting, running, ringing }
 
-/// Egg-timer page for a randomly rolled task: wind the rotary dial to the
-/// wanted duration, let go and the countdown starts (showing the wall-clock
-/// end time). At zero an alarm rings and the task can be confirmed done,
-/// postponed to tomorrow, or given some extra time.
+/// Egg-timer page for a randomly rolled task: the rotary dial opens pre-wound
+/// to 20 minutes — turn it back for less time (or on past 20 for more), let go
+/// and the countdown starts (showing the wall-clock end time and the
+/// percentage of time left). At zero an alarm rings and the task can be
+/// confirmed done, postponed to tomorrow, or given some extra time.
 class DiceTimerPage extends StatefulWidget {
   /// The task the dice landed on.
   final Task task;
@@ -68,11 +69,18 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
   /// One full turn of the dial, like a kitchen egg timer.
   static const int _maxMinutes = 60;
 
+  /// Where the dial sits when the page opens; turn back for less time.
+  static const Duration _defaultDuration = Duration(minutes: 20);
+
   DiceTimerPhase _phase = DiceTimerPhase.setting;
 
   /// Time on the dial: the wound-up duration while setting, ticking down
   /// once a second while running.
-  Duration _remaining = Duration.zero;
+  Duration _remaining = _defaultDuration;
+
+  /// The duration the running countdown started from, so the center can show
+  /// the percentage of time left as it ticks down.
+  Duration _total = _defaultDuration;
 
   /// Wall-clock moment the countdown hits zero; shown under the dial.
   DateTime? _endAt;
@@ -105,6 +113,7 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     _ticker?.cancel();
     setState(() {
       _phase = DiceTimerPhase.running;
+      _total = _remaining;
       _endAt = DateTime.now().add(_remaining);
     });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
@@ -183,6 +192,13 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     return h > 0 ? '$h:${_two(m)}:${_two(s)}' : '$m:${_two(s)}';
   }
 
+  /// Whole-percent of the started duration still left on the countdown.
+  int _percentLeft() {
+    final total = _total.inSeconds;
+    if (total <= 0) return 0;
+    return (_remaining.inSeconds / total * 100).clamp(0, 100).round();
+  }
+
   Widget _dialCenter(BuildContext context) {
     final theme = Theme.of(context);
     switch (_phase) {
@@ -200,10 +216,21 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
               ?.copyWith(fontWeight: FontWeight.bold),
         );
       case DiceTimerPhase.running:
-        return Text(
-          _formatRemaining(_remaining),
-          style: theme.textTheme.headlineMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _formatRemaining(_remaining),
+              style: theme.textTheme.headlineMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${_percentLeft()}% left',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(color: theme.colorScheme.primary),
+            ),
+          ],
         );
       case DiceTimerPhase.ringing:
         return Text(
@@ -222,7 +249,7 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     switch (_phase) {
       case DiceTimerPhase.setting:
         return Text(
-          'Wind the dial, then let go to start the countdown.',
+          'Turn the dial back for less time, then let go to start.',
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium,
         );

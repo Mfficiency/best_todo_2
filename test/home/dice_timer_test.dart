@@ -78,17 +78,18 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    /// Winds the dial exactly a quarter turn (3 o'clock → 6 o'clock, 15 min)
-    /// and lets go, which starts the countdown.
-    Future<void> windQuarterTurn(WidgetTester tester) async {
+    /// Turns the dial back a quarter turn from the default 20 minutes
+    /// (3 o'clock → 12 o'clock, −15 min → 5 min) and lets go, which starts the
+    /// countdown.
+    Future<void> windBackToFive(WidgetTester tester) async {
       final center = tester.getCenter(find.byType(DiceTimerDial));
       final gesture = await tester.startGesture(center + const Offset(100, 0));
       await tester.pump();
-      await gesture.moveTo(center + const Offset(70.7, 70.7));
+      await gesture.moveTo(center + const Offset(70.7, -70.7));
       await tester.pump();
-      await gesture.moveTo(center + const Offset(0, 100));
+      await gesture.moveTo(center + const Offset(0, -100));
       await tester.pump();
-      expect(find.text('15 min'), findsOneWidget);
+      expect(find.text('5 min'), findsOneWidget);
       await gesture.up();
       await tester.pump();
     }
@@ -108,16 +109,18 @@ void main() {
       );
 
       expect(find.text('Wash the dog'), findsOneWidget);
-      expect(find.text('Turn me'), findsOneWidget);
+      // The dial opens pre-wound to the 20-minute default.
+      expect(find.text('20 min'), findsOneWidget);
 
-      await windQuarterTurn(tester);
+      await windBackToFive(tester);
 
-      // Countdown running: remaining time plus the wall-clock end time.
-      expect(find.text('15:00'), findsOneWidget);
+      // Countdown running: remaining time, percentage left, and end time.
+      expect(find.text('5:00'), findsOneWidget);
+      expect(find.text('100% left'), findsOneWidget);
       expect(find.textContaining('Ends at'), findsOneWidget);
       expect(find.text('Done'), findsNothing);
 
-      await tester.pump(const Duration(minutes: 15, seconds: 1));
+      await tester.pump(const Duration(minutes: 5, seconds: 1));
 
       expect(rang, 1);
       expect(find.text("Time's up!"), findsOneWidget);
@@ -146,8 +149,8 @@ void main() {
         onRingAlert: (_) async => rang++,
       );
 
-      await windQuarterTurn(tester);
-      await tester.pump(const Duration(minutes: 15, seconds: 1));
+      await windBackToFive(tester);
+      await tester.pump(const Duration(minutes: 5, seconds: 1));
       expect(rang, 1);
 
       await tester.ensureVisible(find.text('+5 min'));
@@ -200,7 +203,7 @@ void main() {
 
       expect(find.byType(DiceTimerPage), findsOneWidget);
       expect(find.text('Feed the zebra'), findsOneWidget);
-      expect(find.text('Turn me'), findsOneWidget);
+      expect(find.text('20 min'), findsOneWidget);
     });
 
     testWidgets('shows a message when today has no open tasks',

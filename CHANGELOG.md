@@ -1,7 +1,7 @@
 # Changelog
 
 ## [0.1.97] - 2026-07-09
-- New dice button in the app bar (right of the search field): rolls one of today's open tasks at random and opens a rotary egg-timer for it — wind the dial to the wanted minutes and the countdown starts the moment you let go, showing the time left and the wall-clock end time
+- New dice button in the app bar (right of the search field): rolls one of today's open tasks at random and opens a rotary egg-timer for it — the dial opens pre-wound to 20 minutes, so turn it back for less time, and the countdown starts the moment you let go, showing the time left, the percentage of time remaining, and the wall-clock end time
 - Dice timer: at zero an alarm rings and the task can be confirmed Done, postponed to tomorrow, or given extra time (+1 / +5 / +10 min); grabbing the dial mid-countdown pauses and rewinds it
 
 ## [0.1.96] - 2026-07-09
