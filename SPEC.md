@@ -242,6 +242,24 @@ while searching and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
 (`_tasksForTab(i, applySearch: false)`) — otherwise a save during search would scramble
 hidden tasks' order.
 
+**Dice timer (0.1.94):** a dice app-bar action (`Icons.casino`, tooltip "Roll a random
+task timer", immediately right of the search field) picks a random open (not done) task
+from the Today tab — ignoring any active search — and pushes `DiceTimerPage`
+(`lib/ui/dice_timer_page.dart`). The page shows the rolled task above a rotary egg-timer
+dial (`DiceTimerDial`, one full turn = 60 min, whole-minute snapping): winding uses raw
+pointer events (a `Listener`, NOT a pan recognizer — an ancestor scrollable would win
+mostly-vertical drags in the gesture arena), with `dialAngle`/`dialAngleDelta` keeping the
+rotation continuous across 12 o'clock. Releasing the dial starts the countdown (a 1 s
+decrementing ticker, deliberately not wall-clock-anchored so tests can fake-pump it) and
+shows the remaining time plus the wall-clock end time ("Ends at 14:32"). Grabbing the dial
+mid-countdown (or mid-ring) pauses/silences and rounds up to whole minutes for rewinding.
+At zero it plays the 'Classic' alarm melody (loop, 0.8 volume) + a task notification
+(both best-effort; injectable via `onRingAlert` for tests) and offers: **Done** (marks the
+task done via the home page callback), **Postpone to tomorrow** (same semantics as moving
+to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** (stops the ring
+and restarts the countdown with that much time). With no open Today tasks the dice shows a
+"No open tasks for today" snackbar instead.
+
 **Home widget updates** after every save and at a self-rescheduling midnight timer: writes
 the "due today or overdue" list text (or "Well done! No more tasks for today!"), a progress
 percent, and a color (green all done / orange exactly 4 left / red ≥5 left).
