@@ -3,7 +3,8 @@
 ## [0.1.97] - 2026-07-09
 - New dice button in the app bar (right of the search field): rolls one of today's open tasks at random and opens a rotary egg-timer for it — the dial opens pre-wound to 20 minutes, so turn it back for less time, and the countdown starts the moment you let go, showing the time left, the percentage of time remaining, and the wall-clock end time
 - Dice timer keeps running when you leave the page: the dice button shows a dot and returns you to the running timer instead of rolling a new one
-- Dice timer: while it counts down you can finish it early with Done, or Pause and later Resume; at zero an alarm rings and the task can be confirmed Done, postponed to tomorrow, or given extra time (+1 / +5 / +10 min); grabbing the dial mid-countdown pauses and rewinds it
+- Dice timer: Done is available from the moment it opens (finish the task without starting a countdown), and while it counts down you can finish early with Done, Pause and later Resume, or Lock touch — a full-screen lock that ignores every tap (and the back button) until you press Unlock, so a pocket bump or an incoming call can't disturb the timer
+- Dice timer: at zero an alarm rings and the task can be confirmed Done, postponed to tomorrow, or given extra time (+1 / +5 / +10 min); grabbing the dial mid-countdown pauses and rewinds it
 
 ## [0.1.96] - 2026-07-09
 - release builds now embed the CI test results: if a test failed on GitHub while the APK still built, the menu (hamburger) icon shows a red dot and a new Test Results page in the menu lists the current build's failing tests

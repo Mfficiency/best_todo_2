@@ -263,10 +263,14 @@ that `configure()`s the controller in `initState` (a no-op that keeps a still-ru
 task, so re-entering reattaches — `configure` must not `notifyListeners`, it runs during
 build) and rebuilds off `addListener`. The app-bar dice icon shows a `Badge` and switches its
 tooltip to "Return to the running task timer" while a timer `isActive` (running/paused/
-ringing); tapping it then reopens the existing timer instead of re-rolling. While **running**
-the page offers **Done** (finish early — marks the task done and clears the timer) and
-**Pause** (freezes the time left → **paused** phase, whose center reads "Paused" and which
-offers **Resume**/**Done**). At zero the controller plays the 'Classic' alarm melody (loop,
+ringing); tapping it then reopens the existing timer instead of re-rolling. **Done** (finish
+early — marks the task done and clears the timer) and **Lock touch** are available from the
+very start (even before a countdown begins); while **running** the page adds **Pause**
+(freezes the time left → **paused** phase, whose center reads "Paused" and which offers
+**Resume**/**Done**). **Lock touch** flips a page-local `_locked` flag that lays a full-screen
+scrim (`AbsorbPointer` over the whole `Scaffold` + a `PopScope(canPop: !_locked)` to swallow
+the system back) with only an **Unlock** button live — so a pocket bump or an incoming call
+can't disturb the timer. At zero the controller plays the 'Classic' alarm melody (loop,
 0.8 volume) + a task notification (both best-effort; injectable via
 `DiceTimerController.onRingAlert` for tests) — this fires even if the page was left, though a
 mid-ring page exit silences the melody while keeping the expired state — and offers: **Done**

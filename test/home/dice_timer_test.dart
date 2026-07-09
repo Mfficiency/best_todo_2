@@ -233,6 +233,62 @@ void main() {
       expect(find.byType(DiceTimerPage), findsNothing);
       expect(DiceTimerController.instance.isActive, isFalse);
     });
+
+    testWidgets('Done is available before the countdown is even started',
+        (tester) async {
+      var done = false;
+      await pumpDicePage(
+        tester,
+        task: Task(title: 'Empty the bin'),
+        onDone: () => done = true,
+        onRingAlert: (_) async {},
+      );
+
+      // Still on the pre-wound dial, no countdown yet.
+      expect(find.text('20 min'), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Done'));
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(done, isTrue);
+      expect(find.byType(DiceTimerPage), findsNothing);
+    });
+
+    testWidgets('Lock touch blocks the screen until Unlock', (tester) async {
+      var done = false;
+      await pumpDicePage(
+        tester,
+        task: Task(title: 'Vacuum'),
+        onDone: () => done = true,
+        onRingAlert: (_) async {},
+      );
+
+      await tester.ensureVisible(find.text('Lock touch'));
+      await tester.tap(find.text('Lock touch'));
+      await tester.pump();
+
+      expect(find.text('Screen locked'), findsOneWidget);
+      expect(find.text('Unlock'), findsOneWidget);
+
+      // The Done button underneath is absorbed — tapping it does nothing.
+      await tester.tap(find.text('Done'), warnIfMissed: false);
+      await tester.pump();
+      expect(done, isFalse);
+      expect(find.byType(DiceTimerPage), findsOneWidget);
+
+      await tester.tap(find.text('Unlock'));
+      await tester.pump();
+      expect(find.text('Screen locked'), findsNothing);
+
+      // Controls respond again once unlocked.
+      await tester.ensureVisible(find.text('Done'));
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      expect(done, isTrue);
+      expect(find.byType(DiceTimerPage), findsNothing);
+    });
   });
 
   group('home page dice icon', () {

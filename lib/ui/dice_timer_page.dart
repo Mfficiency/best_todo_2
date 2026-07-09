@@ -252,6 +252,11 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
 
   DiceTimerController get _controller => DiceTimerController.instance;
 
+  /// While true a full-screen scrim swallows every touch (and the system back)
+  /// so the timer can't be nudged — e.g. pocketed, or during an incoming call —
+  /// leaving only the Unlock button live.
+  bool _locked = false;
+
   @override
   void initState() {
     super.initState();
@@ -389,28 +394,48 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     }
   }
 
-  /// Buttons under the dial; nothing while still winding. Running offers an
-  /// early Done and a Pause; paused offers Resume and Done; the ring offers
-  /// the finish/postpone/extend actions.
+  Widget _doneButton({bool filled = true}) {
+    final onPressed = () => _finish(widget.onTaskDone);
+    const icon = Icon(Icons.check);
+    const label = Text('Done');
+    return filled
+        ? FilledButton.icon(icon: icon, label: label, onPressed: onPressed)
+        : OutlinedButton.icon(icon: icon, label: label, onPressed: onPressed);
+  }
+
+  Widget _lockButton() => OutlinedButton.icon(
+        icon: const Icon(Icons.lock_outline),
+        label: const Text('Lock touch'),
+        onPressed: () => setState(() => _locked = true),
+      );
+
+  /// Buttons under the dial. Done and Lock touch are available from the start
+  /// (even before the countdown begins); running adds Pause, paused adds
+  /// Resume, and the ring swaps in the finish/postpone/extend actions.
   Widget _actions() {
     switch (_controller.phase) {
       case DiceTimerPhase.setting:
-        return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _doneButton(),
+            const SizedBox(height: 12),
+            _lockButton(),
+          ],
+        );
       case DiceTimerPhase.running:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            FilledButton.icon(
-              icon: const Icon(Icons.check),
-              label: const Text('Done'),
-              onPressed: () => _finish(widget.onTaskDone),
-            ),
+            _doneButton(),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               icon: const Icon(Icons.pause),
               label: const Text('Pause'),
               onPressed: _controller.pause,
             ),
+            const SizedBox(height: 12),
+            _lockButton(),
           ],
         );
       case DiceTimerPhase.paused:
@@ -423,16 +448,55 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
               onPressed: _controller.resume,
             ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.check),
-              label: const Text('Done'),
-              onPressed: () => _finish(widget.onTaskDone),
-            ),
+            _doneButton(filled: false),
+            const SizedBox(height: 12),
+            _lockButton(),
           ],
         );
       case DiceTimerPhase.ringing:
         return _ringActions();
     }
+  }
+
+  /// Full-screen scrim shown while [_locked]: absorbs everything below and
+  /// offers only Unlock, so a stray touch (pocket, incoming call) can't disturb
+  /// the timer.
+  Widget _lockOverlay(BuildContext context) {
+    final theme = Theme.of(context);
+    final live = _controller.phase == DiceTimerPhase.running ||
+        _controller.phase == DiceTimerPhase.paused;
+    return Material(
+      color: Colors.black.withAlpha(200),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock, size: 48, color: Colors.white),
+            const SizedBox(height: 12),
+            const Text(
+              'Screen locked',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+            if (live) ...[
+              const SizedBox(height: 8),
+              Text(
+                _formatRemaining(_controller.remaining),
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+            const SizedBox(height: 28),
+            FilledButton.icon(
+              icon: const Icon(Icons.lock_open),
+              label: const Text('Unlock'),
+              onPressed: () => setState(() => _locked = false),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _ringActions() {
@@ -473,7 +537,7 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
+    final page = Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Dice timer'),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -509,13 +573,23 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
               ),
               const SizedBox(height: 24),
               _statusLine(context),
-              if (_controller.phase != DiceTimerPhase.setting) ...[
-                const SizedBox(height: 24),
-                _actions(),
-              ],
+              const SizedBox(height: 24),
+              _actions(),
             ],
           ),
         ),
+      ),
+    );
+
+    // Locking blocks the system back button too, so the timer can only be
+    // reached through Unlock.
+    return PopScope(
+      canPop: !_locked,
+      child: Stack(
+        children: [
+          AbsorbPointer(absorbing: _locked, child: page),
+          if (_locked) Positioned.fill(child: _lockOverlay(context)),
+        ],
       ),
     );
   }
