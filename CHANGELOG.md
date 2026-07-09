@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.94] - 2026-07-09
+- New dice button in the app bar (right of the search field): rolls one of today's open tasks at random and opens a rotary egg-timer for it — wind the dial to the wanted minutes and the countdown starts the moment you let go, showing the time left and the wall-clock end time
+- Dice timer: at zero an alarm rings and the task can be confirmed Done, postponed to tomorrow, or given extra time (+1 / +5 / +10 min); grabbing the dial mid-countdown pauses and rewinds it
+
 ## [0.1.93] - 2026-07-08
 - Stats renamed to Productivity Stats and moved into the Tools section of the menu
 - Settings: choose the default start page — the task list or any tool (Alarms, Countdown, Projects, Chronize, Usage Data, Productivity Stats); the chosen tool opens on launch, back returns to the task list

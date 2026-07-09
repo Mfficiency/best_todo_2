@@ -12,7 +12,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip, alarm editor (top save), alarm ring page |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
-| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing |
+| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, dice random-task timer |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model, chronize page |
 
 ## Which suites to run
@@ -25,7 +25,8 @@ Pick suites by what you touched, always including core:
 - `lib/models/alarm.dart`, `lib/services/alarm_*`, `lib/ui/alarm*` → core + **alarms**
 - `lib/models/project.dart`, `lib/services/project_service.dart`,
   `lib/ui/projects_page.dart`, `lib/ui/project_board_page.dart` → core + **projects**
-- `lib/ui/home_page.dart`, `lib/ui/task_tile.dart` → core + **home**
+- `lib/ui/home_page.dart`, `lib/ui/task_tile.dart`, `lib/ui/dice_timer_page.dart`
+  → core + **home**
   (+ **projects** for `task_tile.dart`, which renders project tags)
 - `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,
   export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,

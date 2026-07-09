@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show Random;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
@@ -23,6 +24,7 @@ import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
+import 'dice_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -65,6 +67,9 @@ class _HomePageState extends State<HomePage>
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
+
+  /// Picks which of today's tasks the dice timer lands on.
+  final Random _diceRandom = Random();
 
   /// Current search query; when non-empty every tab (and the schedule view)
   /// only shows tasks matching it.
@@ -1107,6 +1112,71 @@ class _HomePageState extends State<HomePage>
       );
   }
 
+  /// Rolls the dice: picks a random open task from today's tab and opens the
+  /// rotary egg-timer page for it.
+  void _rollRandomTaskTimer() {
+    final candidates =
+        _tasksForTab(0, applySearch: false).where((t) => !t.isDone).toList();
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('No open tasks for today')),
+        );
+      return;
+    }
+    final task = candidates[_diceRandom.nextInt(candidates.length)];
+    LogService.add(
+        'HomePage._rollRandomTaskTimer', 'Dice picked "${task.title}"');
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => DiceTimerPage(
+              task: task,
+              onTaskDone: () => _completeTaskFromDice(task),
+              onTaskPostponed: () => _postponeTaskFromDice(task),
+            ),
+          ),
+        )
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// The dice timer rang and the user confirmed the task is done.
+  void _completeTaskFromDice(Task task) {
+    if (task.isDone) return;
+    setState(() {
+      task.isDone = true;
+      task.completedAt = DateTime.now();
+    });
+    _trackTaskDoneState(task, false);
+    _saveTasks();
+    LogService.add(
+        'HomePage._completeTaskFromDice', 'Completed "${task.title}"');
+  }
+
+  /// The dice timer rang and the user postponed the task to tomorrow.
+  void _postponeTaskFromDice(Task task) {
+    if (task.recurrenceParentUid != null) {
+      task.recurrenceParentUid = null;
+      task.recurrenceInstanceKey = null;
+    }
+    final oldDueDate = task.dueDate;
+    final newDueDate = _dueDateForTab(1);
+    setState(() {
+      task.dueDate = newDueDate;
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
+      _refreshRecurringForTask(task);
+    });
+    _trackTaskMove(task, oldDueDate, newDueDate);
+    _saveTasks();
+    LogService.add('HomePage._postponeTaskFromDice',
+        'Postponed "${task.title}" to tomorrow');
+  }
+
   void _updateSettings() {
     setState(() {});
     _updateHomeWidget();
@@ -1863,6 +1933,11 @@ class _HomePageState extends State<HomePage>
           onChanged: (value) => setState(() => _searchQuery = value),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.casino),
+            tooltip: 'Roll a random task timer',
+            onPressed: _rollRandomTaskTimer,
+          ),
           IconButton(
             icon: Icon(_scheduleView
                 ? Icons.format_list_bulleted
