@@ -218,20 +218,31 @@ build; sections scrolled out of view are unmounted, which is fine because the se
 spanning the top is always attached.
 
 **Drawer:** Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
-Test Results, Tools ▸ (Alarms, Countdown, Projects, Chronize, Productivity Stats,
-Usage Data).
+Tools ▸ (Alarms, Countdown, Wishlist, Projects, Chronize, Productivity Stats,
+Usage Data, Test Results).
 
-**CI test report (0.1.96):** release builds bundle the CI test run's results as
-`assets/test_report.json` (committed placeholder: `{"available": false}` so local/dev
-builds carry no data; the asset is registered in pubspec). `TestReportService` (singleton,
-`setReportForTest`/`resetForTest`) parses it into `models/test_report.dart` (tolerant
-fromJson; also owns `fromMachineJsonLines`, the `flutter test --machine` parser used by
-`tool/generate_test_report.dart`). When the bundled report has failures the home app bar
-uses a custom hamburger `leading` (same default "Open navigation menu" tooltip, opens the
-drawer via `Scaffold.of`) overlaid with a 9 px red dot (`Key('test-failure-dot')`), the
-drawer's Test Results icon carries the same dot, and `TestResultsPage` shows a summary
-card (passed/failed/skipped/total, commit + branch + run time) plus one ExpansionTile per
-failed test with its error + stack trace.
+**CI test report (0.1.96, moved to Tools + online in 0.1.99):** CI runs the tests and
+serializes the run into `assets/test_report.json` via `tool/generate_test_report.dart`
+(`--commit/--branch/--version`), which the APK bundles; the committed placeholder is
+`{"available": false}` so local/dev builds carry no bundled data (asset registered in
+pubspec). On push, `build-apk.yml` also commits that JSON to `docs/ci/test_report.json`
+so the app can fetch the latest results over the network (`build-apk` push trigger
+`paths-ignore`s `docs/ci/**` to avoid a self-triggering loop). `models/test_report.dart`
+(tolerant fromJson; also owns `fromMachineJsonLines`, the `flutter test --machine` parser)
+carries `appVersion` (`x.y.z+build` from pubspec at CI time). `TestReportService`
+(singleton; `load` = bundled asset, `loadOnline` = `HttpClient` GET of the dev
+`docs/ci/test_report.json` with all failures swallowed to an unavailable report,
+`loadForDisplay` = online-primary/bundled-fallback; `setReportForTest`/
+`setOnlineReportForTest`/`refreshOnline`/`resetForTest`). The red failure dot still uses
+the **bundled** report (`hasFailures`, loaded offline at startup): the home app bar's
+custom hamburger `leading` (default "Open navigation menu" tooltip, opens the drawer via
+`Scaffold.of`) and the Tools ▸ Test Results entry both carry a 9 px red dot
+(`Key('test-failure-dot')`). `TestResultsPage` (a Tools page, `test_results` start-tool
+key) is a StatefulWidget with an app-bar refresh action: a version card (running version
+vs tested version, match/mismatch note, online-vs-offline source), a summary card
+(passed/failed/skipped/total, commit + branch + run time), and one ExpansionTile per
+failed test with its error + stack trace. `Config.resetVersionForTest()` clears the
+memoized version future so widget tests reload it per async zone.
 
 **Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
 non-empty query narrows every tab and the schedule view to tasks whose title,
@@ -622,13 +633,16 @@ replayable, skipped in dev.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`app-release-<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
-  - `build-apk.yml` (push/PR main+dev, manual): runs `flutter test --machine`
-    **non-blocking** (a failing test run does not stop the build) and embeds the parsed
-    results into the APK as `assets/test_report.json` via
-    `dart run tool/generate_test_report.dart --input … --commit … --branch …`, then
-    builds the release APK, uploads artifact `besttodo-<version>` (30-day retention),
-    adds download link to the job summary. The app surfaces the embedded report as a red
-    dot on the drawer icon + the Test Results page (see §4.3).
+  - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
+    `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
+    failing test run does not stop the build) and embeds the parsed results into the APK
+    as `assets/test_report.json` via `dart run tool/generate_test_report.dart --input …
+    --commit … --branch … --version …`. On push events it also commits that JSON to
+    `docs/ci/test_report.json` (`[skip-screenshot-changelog]`) so the app can pull the
+    latest results online. Then builds the release APK, uploads artifact
+    `besttodo-<version>` (30-day retention), adds a download link to the job summary. The
+    app surfaces the bundled report as a red dot on the drawer icon and shows the
+    online-primary/bundled-fallback report on the Tools ▸ Test Results page (see §4.3).
   - `flutter_test.yml` (main/staging/dev): `flutter test --coverage`, parses results into a
     PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.99] - 2026-07-09
+- Test Results moved into the Tools menu; it now pulls the latest CI test results from the dev build online (the report bundled in your APK is used as an offline fallback) and clearly shows the app version you are running versus the version the tests were run against.
+
 ## [0.1.98] - 2026-07-09
 - projects: dragging tasks onto projects (and cards between Kanban columns) now works with a plain mouse drag on desktop and in a desktop browser (e.g. Chrome on a laptop) — no long-press needed; touch devices keep the long-press drag so scrolling still works, and the hint text on the Projects page matches the input mode
 - dev builds: the Projects tool comes prepopulated — nine of the dev-seeded future tasks are spread across the three seed projects, one per Kanban column each, so the project cards and boards have data to drag around right away (also on desktop/web); manual assignments are never reshuffled

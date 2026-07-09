@@ -39,6 +39,15 @@ class Config {
     } catch (_) {}
   }
 
+  /// Clears the memoized version future so each widget test loads it fresh in
+  /// its own async zone (a future completed in a prior test's zone never fires
+  /// its continuation when awaited in the next test).
+  static void resetVersionForTest() {
+    _versionLoadFuture = null;
+    _appVersion = 'unknown';
+    _buildNumber = '';
+  }
+
   static const List<String> initialTasks = [
     'Get milk',
     'Go to the car shop to get my carburator fixed',

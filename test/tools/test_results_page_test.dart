@@ -1,3 +1,4 @@
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/test_report.dart';
 import 'package:besttodo/services/test_report_service.dart';
 import 'package:besttodo/ui/test_results_page.dart';
@@ -21,7 +22,9 @@ void main() {
 
   setUp(() {
     // Deterministic "current" version so the version card's match/mismatch
-    // logic is testable. Config reads it lazily via PackageInfo.
+    // logic is testable. Config reads it lazily via PackageInfo; reset its
+    // memoized future so each test reloads it in its own async zone.
+    Config.resetVersionForTest();
     PackageInfo.setMockInitialValues(
       appName: 'BestToDo',
       packageName: 'com.example.besttodo',
