@@ -62,6 +62,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('All Tasks'), findsOneWidget);
-    expect(find.text('Project 1'), findsOneWidget);
+    // At least the project card; dev-seeded tasks may show it as a chip too.
+    expect(find.text('Project 1'), findsWidgets);
   });
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.98] - 2026-07-09
+- projects: dragging tasks onto projects (and cards between Kanban columns) now works with a plain mouse drag on desktop and in a desktop browser (e.g. Chrome on a laptop) — no long-press needed; touch devices keep the long-press drag so scrolling still works, and the hint text on the Projects page matches the input mode
+- dev builds: the Projects tool comes prepopulated — nine of the dev-seeded future tasks are spread across the three seed projects, one per Kanban column each, so the project cards and boards have data to drag around right away (also on desktop/web); manual assignments are never reshuffled
+
 ## [0.1.97] - 2026-07-09
 - New dice button in the app bar (right of the search field): rolls one of today's open tasks at random and opens a rotary egg-timer for it — the dial opens pre-wound to 20 minutes, so turn it back for less time, and the countdown starts the moment you let go, showing the time left, the percentage of time remaining, and the wall-clock end time
 - Dice timer keeps running when you leave the page: the dice button shows a dot and returns you to the running timer instead of rolling a new one

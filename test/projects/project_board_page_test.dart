@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,6 +86,28 @@ void main() {
     expect(changed, 1);
     expect(find.text('To-Do (0)'), findsOneWidget);
     expect(find.text('Ongoing (1)'), findsOneWidget);
+  });
+
+  testWidgets('on desktop a plain mouse drag moves a card between columns',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    final task = Task(title: 'Plan', projectId: 'project_1');
+    var changed = 0;
+    await pumpBoard(tester, [task], onChanged: () => changed++);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Plan')),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    await gesture.moveTo(tester.getCenter(find.text('Ongoing (0)')));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(task.kanbanStatus, Task.kanbanOngoing);
+    expect(changed, 1);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('the close button removes a task from the project',

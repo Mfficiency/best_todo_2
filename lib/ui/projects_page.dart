@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../models/task.dart';
 import '../services/project_service.dart';
+import 'adaptive_draggable.dart';
 import 'project_board_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -98,11 +99,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(
-            'Long-press a task and drag it onto a project below.',
-            style: TextStyle(fontSize: 12, color: Colors.black54),
+            AdaptiveDraggable.isTouchPlatform
+                ? 'Long-press a task and drag it onto a project below.'
+                : 'Drag a task onto a project below.',
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
         ),
         Expanded(
@@ -138,7 +141,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
       ),
     );
 
-    return LongPressDraggable<Task>(
+    return AdaptiveDraggable<Task>(
       data: task,
       feedback: Material(
         elevation: 4,

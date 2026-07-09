@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../models/task.dart';
 import '../services/project_service.dart';
+import 'adaptive_draggable.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
@@ -217,7 +218,7 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
       ),
     );
 
-    return LongPressDraggable<Task>(
+    return AdaptiveDraggable<Task>(
       data: task,
       feedback: Material(
         elevation: 4,
