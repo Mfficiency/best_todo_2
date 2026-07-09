@@ -6,6 +6,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 void main() {
+  // The page loads its report through a FutureBuilder. pumpAndSettle can hang
+  // between tests on a scheduled frame the harness carries over, so round-pump
+  // with runAsync until the version card (always shown once loaded) appears.
+  Future<void> pumpPage(WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
+    final loaded = find.byType(Card);
+    for (var i = 0; i < 60 && loaded.evaluate().isEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+  }
+
   setUp(() {
     // Deterministic "current" version so the version card's match/mismatch
     // logic is testable. Config reads it lazily via PackageInfo.
@@ -19,7 +32,8 @@ void main() {
     TestReportService.instance.resetForTest();
     // Default: no online report, so tests exercise the bundled fallback unless
     // they opt into an online report explicitly. Keeps the network out of tests.
-    TestReportService.instance.setOnlineReportForTest(TestReport(available: false));
+    TestReportService.instance
+        .setOnlineReportForTest(TestReport(available: false));
   });
 
   tearDown(() {
@@ -42,8 +56,7 @@ void main() {
       ],
     ));
 
-    await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
-    await tester.pumpAndSettle();
+    await pumpPage(tester);
 
     expect(find.text('Bundled with this build (offline)'), findsOneWidget);
     expect(find.text('2 tests failed'), findsOneWidget);
@@ -57,7 +70,9 @@ void main() {
 
     // Expanding a failure reveals its error output.
     await tester.tap(find.text('first broken test'));
-    await tester.pumpAndSettle();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
     expect(find.text('Expected X'), findsOneWidget);
   });
 
@@ -75,8 +90,7 @@ void main() {
       passed: 43,
     ));
 
-    await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
-    await tester.pumpAndSettle();
+    await pumpPage(tester);
 
     expect(find.text('Latest online run · dev'), findsOneWidget);
     expect(find.text('All tests passed'), findsOneWidget);
@@ -95,8 +109,7 @@ void main() {
       passed: 43,
     ));
 
-    await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
-    await tester.pumpAndSettle();
+    await pumpPage(tester);
 
     expect(find.text('You are running'), findsOneWidget);
     expect(find.text('9.9.9+99'), findsOneWidget); // current
@@ -114,8 +127,7 @@ void main() {
       passed: 43,
     ));
 
-    await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
-    await tester.pumpAndSettle();
+    await pumpPage(tester);
 
     expect(
       find.text('These results are for the version you are running.'),
@@ -130,8 +142,7 @@ void main() {
       passed: 43,
     ));
 
-    await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
-    await tester.pumpAndSettle();
+    await pumpPage(tester);
 
     expect(find.text('All tests passed'), findsOneWidget);
     expect(find.text('Failed tests'), findsNothing);
@@ -141,8 +152,7 @@ void main() {
       (tester) async {
     TestReportService.instance.setReportForTest(TestReport(available: false));
 
-    await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
-    await tester.pumpAndSettle();
+    await pumpPage(tester);
 
     expect(find.textContaining('no report was bundled'), findsOneWidget);
   });

@@ -72,47 +72,44 @@ class _TestResultsPageState extends State<TestResultsPage> {
             return const Center(child: CircularProgressIndicator());
           }
           final report = data.displayed.report;
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                _VersionCard(
-                  currentVersion: data.currentVersion,
-                  report: report,
-                  online: data.displayed.online,
-                ),
-                if (!report.available)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 24, 4, 4),
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              _VersionCard(
+                currentVersion: data.currentVersion,
+                report: report,
+                online: data.displayed.online,
+              ),
+              if (!report.available)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 24, 4, 4),
+                  child: Text(
+                    "Couldn't reach the latest online test report, and no "
+                    'report was bundled with this build.\n\n'
+                    'CI publishes results for each build; local and dev '
+                    'builds carry no bundled report, and the online report '
+                    'needs a network connection.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else ...[
+                const SizedBox(height: 12),
+                _SummaryCard(report: report),
+                if (report.failures.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
                     child: Text(
-                      "Couldn't reach the latest online test report, and no "
-                      'report was bundled with this build.\n\n'
-                      'CI publishes results for each build; local and dev '
-                      'builds carry no bundled report, and the online report '
-                      'needs a network connection.',
-                      textAlign: TextAlign.center,
+                      'Failed tests',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
-                  )
-                else ...[
-                  const SizedBox(height: 12),
-                  _SummaryCard(report: report),
-                  if (report.failures.isNotEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
-                      child: Text(
-                        'Failed tests',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    ...report.failures.map((f) => _FailureTile(failure: f)),
-                  ],
+                  ),
+                  ...report.failures.map((f) => _FailureTile(failure: f)),
                 ],
               ],
-            ),
+            ],
           );
         },
       ),

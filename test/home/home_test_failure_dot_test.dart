@@ -77,7 +77,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(dot, findsWidgets);
     await tester.tap(find.text('Test Results'));
-    await tester.pumpAndSettle();
+    // The page loads through a FutureBuilder; pump fixed frames rather than
+    // pumpAndSettle (see test_results_page_test.dart).
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
 
     expect(find.text('1 test failed'), findsOneWidget);
     expect(find.text('broken test'), findsOneWidget);
