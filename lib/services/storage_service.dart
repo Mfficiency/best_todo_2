@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/countdown_timer.dart';
 import '../models/daily_task_stats.dart';
 import '../models/task.dart';
+import 'wishlist_migration.dart';
 
 class TaskImportBundle {
   final List<Task> tasks;
@@ -28,6 +29,12 @@ class StorageService {
   static const _dateFileName = 'last_opened.txt';
   static const _countdownFileName = 'countdown_timers.json';
   static const _wishlistFileName = 'wishlist.json';
+
+  /// Marker written after the one-time Todo.md → wishlist import so it never
+  /// re-adds items the user has since deleted. Public so tests can pre-create
+  /// it to opt out of the import.
+  static const String wishlistImportFlagFileName =
+      'wishlist_todo_import_v1.txt';
   static const _maxDeletedTasks = 100;
   static const int exportVersion = 2;
 
@@ -166,20 +173,60 @@ class StorageService {
   }
 
   Future<List<Task>> loadWishlist() async {
+    List<Task> items;
     try {
       final file = await _getWishlistFile();
-      if (!await file.exists()) {
-        return <Task>[];
+      if (await file.exists()) {
+        final contents = await file.readAsString();
+        final List<dynamic> data = jsonDecode(contents);
+        items = data
+            .map((e) => Task.fromJson(e as Map<String, dynamic>))
+            .toList();
+        _ensureUniqueIds(items);
+      } else {
+        items = <Task>[];
       }
-      final contents = await file.readAsString();
-      final List<dynamic> data = jsonDecode(contents);
-      final items = data
-          .map((e) => Task.fromJson(e as Map<String, dynamic>))
-          .toList();
-      _ensureUniqueIds(items);
-      return items;
     } catch (_) {
+      // An existing wishlist that fails to load must never be overwritten by
+      // the legacy import below, so bail out without touching the file.
       return <Task>[];
+    }
+    await _maybeImportLegacyTodoItems(items);
+    return items;
+  }
+
+  /// One-time merge of the historical Todo.md backlog into the wishlist
+  /// (labelled [legacyTodoImportLabel]). Existing items are never modified or
+  /// removed; entries whose normalized title is already present are skipped.
+  /// Guarded by [wishlistImportFlagFileName] so user deletions stick.
+  Future<void> _maybeImportLegacyTodoItems(List<Task> items) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final flag = File('${dir.path}/$wishlistImportFlagFileName');
+      if (await flag.exists()) return;
+
+      final existingTitles =
+          items.map((t) => normalizeWishlistTitle(t.title)).toSet();
+      final added = <Task>[];
+      for (final legacy in legacyTodoWishlistItems) {
+        if (!existingTitles.add(normalizeWishlistTitle(legacy.title))) {
+          continue;
+        }
+        added.add(Task(
+          title: legacy.title,
+          description: legacy.description,
+          label: legacyTodoImportLabel,
+          createdAt: DateTime.now(),
+        ));
+      }
+      if (added.isNotEmpty) {
+        items.addAll(added);
+        await saveWishlist(items);
+      }
+      await flag.writeAsString(DateTime.now().toIso8601String(), flush: true);
+    } catch (_) {
+      // No documents dir (web/tests) or write failure: keep working with the
+      // in-memory list; the import will be retried on a later load.
     }
   }
 

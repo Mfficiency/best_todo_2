@@ -12,8 +12,8 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip, alarm editor (top save), alarm ring page |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
-| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer |
-| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model, chronize page, CI test report model/parser + Test Results page |
+| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, wishlist items on the Future tab |
+| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model, chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration |
 
 ## Which suites to run
 
@@ -32,6 +32,7 @@ Pick suites by what you touched, always including core:
   export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,
   `lib/models/countdown_timer.dart`, `lib/models/test_report.dart`,
   `lib/services/test_report_service.dart`, `lib/ui/test_results_page.dart`,
+  `lib/services/wishlist_migration.dart`, `lib/ui/wishlist_page.dart`,
   `tool/generate_test_report.dart` → core + **tools**
 
 Multiple suites can be passed in one invocation:
