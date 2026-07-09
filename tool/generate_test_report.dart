@@ -11,12 +11,13 @@ import 'package:besttodo/models/test_report.dart';
 ///   flutter test --machine > machine.jsonl || true
 ///   dart run tool/generate_test_report.dart \
 ///     --input machine.jsonl --output assets/test_report.json \
-///     --commit <sha> --branch <branch>
+///     --commit <sha> --branch <branch> --version <x.y.z+build>
 void main(List<String> args) {
   String input = '';
   String output = 'assets/test_report.json';
   String commit = '';
   String branch = '';
+  String version = '';
 
   for (var i = 0; i + 1 < args.length; i += 2) {
     final value = args[i + 1];
@@ -32,6 +33,9 @@ void main(List<String> args) {
         break;
       case '--branch':
         branch = value;
+        break;
+      case '--version':
+        version = value;
         break;
       default:
         stderr.writeln('Unknown option: ${args[i]}');
@@ -50,6 +54,7 @@ void main(List<String> args) {
     File(input).readAsLinesSync(),
     commit: commit,
     branch: branch,
+    appVersion: version,
     generatedAt: DateTime.now().toUtc(),
   );
 

@@ -713,6 +713,8 @@ class _HomePageState extends State<HomePage>
           deletedTasks: _deletedTasks,
           dailyStatsByDay: _dailyStatsByDay,
         );
+      case 'test_results':
+        return const TestResultsPage();
       case 'productivity_stats':
         return YourStatsPage(
           tasks: _tasks,
@@ -1898,18 +1900,6 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
-            ListTile(
-              leading: TestReportService.instance.hasFailures
-                  ? _iconWithFailureDot(Icons.fact_check)
-                  : const Icon(Icons.fact_check),
-              title: const Text('Test Results'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const TestResultsPage()),
-                );
-              },
-            ),
             ExpansionTile(
               leading: const Icon(Icons.build),
               title: const Text('Tools'),
@@ -1969,6 +1959,16 @@ class _HomePageState extends State<HomePage>
                   onTap: () {
                     Navigator.pop(context);
                     _openTool('usage_data');
+                  },
+                ),
+                ListTile(
+                  leading: TestReportService.instance.hasFailures
+                      ? _iconWithFailureDot(Icons.fact_check)
+                      : const Icon(Icons.fact_check),
+                  title: const Text('Test Results'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openTool('test_results');
                   },
                 ),
               ],

@@ -77,6 +77,7 @@ class Config {
     'chronize',
     'usage_data',
     'productivity_stats',
+    'test_results',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -89,6 +90,7 @@ class Config {
     'Chronize',
     'Usage Data',
     'Productivity Stats',
+    'Test Results',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,

@@ -24,6 +24,10 @@ void main() {
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
     ProjectService.instance.resetForTest();
     TestReportService.instance.resetForTest();
+    // The Test Results page pulls online; keep the network out of tests so it
+    // falls back to the bundled report set per test.
+    TestReportService.instance
+        .setOnlineReportForTest(TestReport(available: false));
   });
 
   tearDown(() {
@@ -48,7 +52,7 @@ void main() {
 
   testWidgets(
       'hamburger icon carries a red dot when the bundled test report has '
-      'failures, and Test Results opens from the drawer', (tester) async {
+      'failures, and Test Results opens from the Tools section', (tester) async {
     TestReportService.instance.setReportForTest(TestReport(
       available: true,
       passed: 42,
@@ -64,7 +68,13 @@ void main() {
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
 
-    // Drawer entry shows the dot too (app bar + drawer icon).
+    // Test Results now lives under the Tools expander; open it, then the
+    // entry (with its own failure dot) appears.
+    await tester.tap(find.text('Tools'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Test Results'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     expect(dot, findsWidgets);
     await tester.tap(find.text('Test Results'));
     await tester.pumpAndSettle();

@@ -21,6 +21,7 @@ void main() {
         generatedAt: DateTime.utc(2026, 7, 9, 12, 30),
         commit: 'abc123def',
         branch: 'dev',
+        appVersion: '0.1.97+67',
         passed: 41,
         failed: 2,
         skipped: 1,
@@ -34,6 +35,7 @@ void main() {
       expect(restored.generatedAt, DateTime.utc(2026, 7, 9, 12, 30));
       expect(restored.commit, 'abc123def');
       expect(restored.branch, 'dev');
+      expect(restored.appVersion, '0.1.97+67');
       expect(restored.passed, 41);
       expect(restored.failed, 2);
       expect(restored.skipped, 1);
@@ -76,6 +78,7 @@ void main() {
         sampleRun(),
         commit: 'deadbeef1',
         branch: 'dev',
+        appVersion: '0.1.97+67',
         generatedAt: DateTime.utc(2026, 7, 9),
       );
       expect(report.available, isTrue);
@@ -85,6 +88,7 @@ void main() {
       expect(report.hasFailures, isTrue);
       expect(report.commit, 'deadbeef1');
       expect(report.branch, 'dev');
+      expect(report.appVersion, '0.1.97+67');
       expect(report.failures, hasLength(1));
       expect(report.failures.first.name, 'bucketing puts tasks in Today');
       expect(report.failures.first.error, contains('Expected: <1>'));

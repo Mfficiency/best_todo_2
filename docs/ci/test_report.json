@@ -1,0 +1,11 @@
+{
+  "available": false,
+  "generatedAt": null,
+  "commit": "",
+  "branch": "dev",
+  "appVersion": "",
+  "passed": 0,
+  "failed": 0,
+  "skipped": 0,
+  "failures": []
+}

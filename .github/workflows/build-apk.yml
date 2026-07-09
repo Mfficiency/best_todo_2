@@ -3,9 +3,17 @@ name: Build APK
 on:
   push:
     branches: [ main, dev ]
+    # The publish step below commits docs/ci/test_report.json back to the
+    # branch; ignore it here so that bot commit doesn't re-trigger the build
+    # in an endless loop (the report's timestamp changes every run).
+    paths-ignore:
+      - 'docs/ci/**'
   pull_request:
     branches: [ main, dev ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -51,7 +59,29 @@ jobs:
           --input test_machine_output.jsonl \
           --output assets/test_report.json \
           --commit "${GITHUB_SHA:0:9}" \
-          --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" \
+          --version "${{ steps.appver.outputs.version }}"
+
+    # Publish the same report the APK bundles to a committed path the app can
+    # fetch over the network (see TestReportService.onlineReportUrl), so an
+    # installed build can show the latest CI results even when it's older than
+    # HEAD. Push events only — PR builds can't (and shouldn't) push.
+    - name: Publish test report for the app to pull online
+      if: github.event_name == 'push'
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        mkdir -p docs/ci
+        cp assets/test_report.json docs/ci/test_report.json
+        git add docs/ci/test_report.json
+        if git diff --cached --quiet; then
+          echo "No test report change to publish."
+          exit 0
+        fi
+        git commit -m "ci: publish test report [skip-screenshot-changelog]"
+        git pull --rebase origin "${GITHUB_REF_NAME}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"
 
     - name: Build APK
       run: flutter build apk --release

@@ -30,6 +30,10 @@ class TestReport {
   DateTime? generatedAt;
   String commit;
   String branch;
+
+  /// App version (`x.y.z+build`) the tests were run against, taken from
+  /// `pubspec.yaml` at CI time. Empty for the placeholder / older reports.
+  String appVersion;
   int passed;
   int failed;
   int skipped;
@@ -40,6 +44,7 @@ class TestReport {
     this.generatedAt,
     this.commit = '',
     this.branch = '',
+    this.appVersion = '',
     this.passed = 0,
     this.failed = 0,
     this.skipped = 0,
@@ -55,6 +60,7 @@ class TestReport {
         'generatedAt': generatedAt?.toIso8601String(),
         'commit': commit,
         'branch': branch,
+        'appVersion': appVersion,
         'passed': passed,
         'failed': failed,
         'skipped': skipped,
@@ -67,6 +73,7 @@ class TestReport {
       generatedAt: DateTime.tryParse(json['generatedAt'] as String? ?? ''),
       commit: json['commit'] as String? ?? '',
       branch: json['branch'] as String? ?? '',
+      appVersion: json['appVersion'] as String? ?? '',
       passed: (json['passed'] as num?)?.round() ?? 0,
       failed: (json['failed'] as num?)?.round() ?? 0,
       skipped: (json['skipped'] as num?)?.round() ?? 0,
@@ -85,6 +92,7 @@ class TestReport {
     Iterable<String> lines, {
     String commit = '',
     String branch = '',
+    String appVersion = '',
     DateTime? generatedAt,
   }) {
     final namesById = <int, String>{};
@@ -141,6 +149,7 @@ class TestReport {
       generatedAt: generatedAt,
       commit: commit,
       branch: branch,
+      appVersion: appVersion,
       passed: passed,
       failed: failed,
       skipped: skipped,
