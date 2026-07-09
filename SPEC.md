@@ -614,7 +614,34 @@ cleared); the app-bar title and a hint-colored description line under it update 
 Original board written pre-0.1.58, merged at 0.1.89; still uses deprecated
 `onWillAccept`/`onAccept` and some hardcoded `Colors.black45`-style hints.
 
-### 10.6 The rest
+### 10.6 Wishlist (0.1.94–0.1.95, Future-tab mirror + Todo.md import 0.1.100)
+Tools → Wishlist (`lib/ui/wishlist_page.dart`): a separate task-shaped list for ideas,
+persisted as `wishlist.json` (list of `Task` JSON; only title/description/label are
+used). Add/edit dialog (title, description, labels/tags text field with quick
+`priority-low/medium/high` buttons that replace any existing priority label), per-item
+and export-all JSON export (`{export_version: 1, exported_at, wishlist_items: [...]}`),
+delete per item. Labels are split on commas/whitespace and rendered as chips.
+
+**Future-tab mirror (0.1.100):** HomePage loads the wishlist in `_loadTasks` (and
+reloads after returning from any tool) into `_wishlistItems`, which is kept strictly
+separate from `_tasks` so wish items can never leak into `tasks.json`, the schedule
+view, stats or reordering. The Future tab renders them after the real future tasks as
+read-only cards tagged with a "wish" chip (plus the item's own label chips); the home
+search filters them like tasks; tapping one opens the Wishlist tool.
+`_reorderTask`'s range guards make drags that start on or cross into the wish region
+no-ops.
+
+**One-time Todo.md import (0.1.100):** `lib/services/wishlist_migration.dart` bakes in
+the still-open ideas from the repo's historical `Todo.md` ("After MVP → TODO" + "Later"
+sections, verbatim; 63 items, DONE sections excluded).
+`StorageService.loadWishlist()` merges them once into the wishlist, each labelled
+`old`, deduplicating against existing items by normalized title (lowercased,
+whitespace-collapsed) and never modifying or removing existing entries. The run is
+guarded by a `wishlist_todo_import_v1.txt` flag file so later deletions of imported
+items stick, and the import is skipped entirely (no flag, no write) when an existing
+`wishlist.json` fails to parse, so a corrupt-but-recoverable file is never overwritten.
+
+### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap

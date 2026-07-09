@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.100] - 2026-07-09
+- Wishlist items now also show up at the bottom of the Future tab, tagged "wish" — read-only there, tap one to open the Wishlist tool; the home search filters them like tasks, and they stay out of your real task list
+- One-time import: the still-open ideas from the old Todo.md backlog are added to your wishlist tagged "old"; items you already have (same title) are skipped, nothing existing is changed or removed, and re-deleting an imported item sticks
+
 ## [0.1.99] - 2026-07-09
 - Test Results moved into the Tools menu; it now pulls the latest CI test results from the dev build online (the report bundled in your APK is used as an offline fallback) and clearly shows the app version you are running versus the version the tests were run against.
 
