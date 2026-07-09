@@ -1,0 +1,36 @@
+
+Building Windows application...                                    76.1s
+√ Built build\windows\x64\runner\Debug\BestToDo.exe
+::group::❌ capture home page screenshot (failed)
+ALARMLOG [WARN] FIRE | could not read notification launch details: LateInitializationError: Field '_instance@972271368' has not been initialized.
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 2 widgets with text "Project 1": [
+  Text("Project 1", inherit: true, size: 11.0, dependencies: [DefaultSelectionStyle,
+DefaultTextStyle, MediaQuery]),
+  Text("Project 1", inherit: true, weight: 700, textAlign: center, dependencies:
+[DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" (used in a call to "getCenter()") ambiguously found multiple matching widgets. The "getCenter()"
+method needs a single target.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2014:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1861:12)
+#2      main.<anonymous closure> (file:///D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart:134:30)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:193:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1064:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  capture home page screenshot
+════════════════════════════════════════════════════════════════════════════════════════════════════
+Test failed. See exception logs above.
+The test description was: capture home page screenshot
+
+::endgroup::
+
+::error::0 tests passed, 1 failed.
