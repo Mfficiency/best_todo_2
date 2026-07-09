@@ -14,6 +14,7 @@ import '../models/task.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/storage_service.dart';
+import '../services/test_report_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
@@ -29,6 +30,7 @@ import 'deleted_items_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
 import 'task_tile.dart';
+import 'test_results_page.dart';
 import 'usage_data_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
@@ -667,6 +669,11 @@ class _HomePageState extends State<HomePage>
       }
     });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
+    // CI embeds its test results as a bundled asset; builds whose test run
+    // had failures get a red dot on the drawer icon (see TestResultsPage).
+    TestReportService.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
@@ -1699,6 +1706,30 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// An icon overlaid with a small red dot, used on the drawer/hamburger
+  /// icon and the Test Results entry when this build's CI test run failed.
+  Widget _iconWithFailureDot(IconData icon) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon),
+        Positioned(
+          right: -2,
+          top: -2,
+          child: Container(
+            key: const Key('test-failure-dot'),
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.error,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1788,6 +1819,18 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
+            ListTile(
+              leading: TestReportService.instance.hasFailures
+                  ? _iconWithFailureDot(Icons.fact_check)
+                  : const Icon(Icons.fact_check),
+              title: const Text('Test Results'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const TestResultsPage()),
+                );
+              },
+            ),
             ExpansionTile(
               leading: const Icon(Icons.build),
               title: const Text('Tools'),
@@ -1855,6 +1898,15 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       appBar: AppBar(
+        leading: Builder(
+          builder: (context) => IconButton(
+            tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
+            icon: TestReportService.instance.hasFailures
+                ? _iconWithFailureDot(Icons.menu)
+                : const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: TextField(
           controller: _searchController,
           decoration: InputDecoration(

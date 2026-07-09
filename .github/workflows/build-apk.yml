@@ -36,6 +36,23 @@ jobs:
       shell: bash
       run: echo "version=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
 
+    # Run the tests and embed their results into the APK as
+    # assets/test_report.json. A failing test run does NOT block the build —
+    # the app shows a red dot on the drawer icon and lists the failures on
+    # its Test Results page instead.
+    - name: Run tests and embed report into build
+      shell: bash
+      run: |
+        set +e
+        flutter test --machine > test_machine_output.jsonl 2>/dev/null
+        echo "flutter test exit code: $?"
+        set -e
+        dart run tool/generate_test_report.dart \
+          --input test_machine_output.jsonl \
+          --output assets/test_report.json \
+          --commit "${GITHUB_SHA:0:9}" \
+          --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+
     - name: Build APK
       run: flutter build apk --release
 

@@ -48,6 +48,46 @@ class _SettingsPageState extends State<SettingsPage> {
   static const double _sectionActivationOffset = 56;
   double _lastScrollOffset = 0;
 
+  // Search over the settings entries themselves (independent from the task
+  // search on the home page). Matching titles are listed and tapping one
+  // jumps to its section.
+  bool _searchActive = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  /// Every visible setting, so the search can find it. Section indexes match
+  /// [_sectionTitles]; keywords add synonyms users may type instead.
+  static const List<_SettingsSearchEntry> _searchEntries = [
+    _SettingsSearchEntry('Dark mode', 0, 'theme light appearance color'),
+    _SettingsSearchEntry('Use tab icons', 0, 'tabs labels home'),
+    _SettingsSearchEntry('24-hour time', 0, 'clock am pm 12-hour format'),
+    _SettingsSearchEntry('Date format', 0, 'display day month year'),
+    _SettingsSearchEntry('Add new tasks at top', 1, 'bottom order insert'),
+    _SettingsSearchEntry('Swipe left to delete', 1, 'gesture direction move'),
+    _SettingsSearchEntry('Default delay', 1, 'undo seconds snackbar'),
+    _SettingsSearchEntry('Start page', 1, 'tab launch open today'),
+    _SettingsSearchEntry('Default start page', 1, 'tool launch open tasks'),
+    _SettingsSearchEntry('Start in schedule view', 1, 'calendar launch'),
+    _SettingsSearchEntry('Chronize: show hour wheel', 1, 'timeline scroll'),
+    _SettingsSearchEntry('Widget progress line', 2, 'home screen completion'),
+    _SettingsSearchEntry('Enable notifications', 3, 'push reminders'),
+    _SettingsSearchEntry('Quiet hours', 3, 'silence night do not disturb'),
+    _SettingsSearchEntry('Default notification delay', 3, 'bell reminder'),
+    _SettingsSearchEntry(
+        'Enable daily SMS report', 4, 'text message snitch daily'),
+    _SettingsSearchEntry('Send time', 4, 'sms schedule daily'),
+    _SettingsSearchEntry('Only send if under threshold', 4, 'sms completion'),
+    _SettingsSearchEntry('SIM subscription id', 4, 'sms dual sim'),
+    _SettingsSearchEntry('Recipients', 4, 'sms phone number contact'),
+    _SettingsSearchEntry('Message template', 4, 'sms tokens text'),
+    _SettingsSearchEntry('Sent message history', 4, 'sms log'),
+    _SettingsSearchEntry('Send test now', 4, 'sms report'),
+    _SettingsSearchEntry('Export Tasks', 5, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 5, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 5, 'backup save json'),
+    _SettingsSearchEntry('Import', 5, 'restore backup load json'),
+  ];
+
   bool _notifications = Config.enableNotifications;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
@@ -738,18 +778,108 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  List<_SettingsSearchEntry> get _searchResults {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    return _searchEntries
+        .where((e) =>
+            e.title.toLowerCase().contains(q) ||
+            e.keywords.contains(q) ||
+            _sectionTitles[e.sectionIndex].toLowerCase().contains(q))
+        .toList();
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _searchActive = false;
+      _searchController.clear();
+      _searchQuery = '';
+    });
+  }
+
+  void _openSearchResult(_SettingsSearchEntry entry) {
+    _closeSearch();
+    // The sections were replaced by the results list, so let them rebuild
+    // before jumping (their contexts don't exist during this frame).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _jumpToSection(entry.sectionIndex);
+    });
+  }
+
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      autofocus: true,
+      decoration: InputDecoration(
+        hintText: 'Search settings',
+        border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.clear),
+                tooltip: 'Clear search',
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              ),
+      ),
+      onChanged: (value) => setState(() => _searchQuery = value),
+    );
+  }
+
+  List<Widget> _buildSearchResultTiles() {
+    final results = _searchResults;
+    if (results.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: Text('No settings match your search')),
+        ),
+      ];
+    }
+    return results
+        .map<Widget>((e) => ListTile(
+              title: Text(e.title),
+              subtitle: Text(_sectionTitles[e.sectionIndex]),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openSearchResult(e),
+            ))
+        .toList();
+  }
+
   @override
   void dispose() {
     _scrollController.removeListener(_updateActiveSectionFromScroll);
     _scrollController.dispose();
     _smsTemplateController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final showSearchResults = _searchActive && _searchQuery.trim().isNotEmpty;
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Settings'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Settings',
+        actions: [
+          _searchActive
+              ? IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close search',
+                  onPressed: _closeSearch,
+                )
+              : IconButton(
+                  icon: const Icon(Icons.search),
+                  tooltip: 'Search settings',
+                  onPressed: () => setState(() => _searchActive = true),
+                ),
+        ],
+      ),
       body: CustomScrollView(
         controller: _scrollController,
         slivers: [
@@ -761,22 +891,24 @@ class _SettingsPageState extends State<SettingsPage> {
                 key: _tabsHeaderKey,
                 color: Theme.of(context).scaffoldBackgroundColor,
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children:
-                        List<Widget>.generate(_sectionTitles.length, (index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(_sectionTitles[index]),
-                          selected: _activeSectionIndex == index,
-                          onSelected: (_) => _jumpToSection(index),
+                child: _searchActive
+                    ? _buildSearchField()
+                    : SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: List<Widget>.generate(
+                              _sectionTitles.length, (index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(_sectionTitles[index]),
+                                selected: _activeSectionIndex == index,
+                                onSelected: (_) => _jumpToSection(index),
+                              ),
+                            );
+                          }),
                         ),
-                      );
-                    }),
-                  ),
-                ),
+                      ),
               ),
             ),
           ),
@@ -784,7 +916,9 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
             sliver: SliverList(
               delegate: SliverChildListDelegate(
-                [
+                showSearchResults
+                    ? _buildSearchResultTiles()
+                    : [
                   _buildSection(
                     index: 0,
                     title: 'Appearance',
@@ -1047,6 +1181,17 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
+}
+
+/// A searchable settings entry: the tile's title, the index of the section
+/// (into `_sectionTitles`) it lives in, and extra match keywords.
+class _SettingsSearchEntry {
+  final String title;
+  final int sectionIndex;
+  final String keywords;
+
+  const _SettingsSearchEntry(this.title, this.sectionIndex,
+      [this.keywords = '']);
 }
 
 class _SettingsTabsHeaderDelegate extends SliverPersistentHeaderDelegate {

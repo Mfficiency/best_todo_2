@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.1.95+65
+version: 0.1.96+66
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -40,3 +40,4 @@ flutter:
   assets:
     - CHANGELOG.md
     - assets/icons/
+    - assets/test_report.json

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.96] - 2026-07-09
+- release builds now embed the CI test results: if a test failed on GitHub while the APK still built, the menu (hamburger) icon shows a red dot and a new Test Results page in the menu lists the current build's failing tests
+- Settings: search your settings — a magnifier in the Settings title bar filters all settings by name or keyword and jumps to the matching section (separate from the task search on the home screen)
+
 ## [0.1.95] - 2026-07-08
 - wishlist export for all or individual items, plus quick low/medium/high priority labels
 
