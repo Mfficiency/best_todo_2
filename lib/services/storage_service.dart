@@ -27,6 +27,7 @@ class StorageService {
   static const _dailyStatsFileName = 'daily_task_stats.json';
   static const _dateFileName = 'last_opened.txt';
   static const _countdownFileName = 'countdown_timers.json';
+  static const _wishlistFileName = 'wishlist.json';
   static const _maxDeletedTasks = 100;
   static const int exportVersion = 2;
 
@@ -58,6 +59,11 @@ class StorageService {
   Future<File> _getDailyStatsFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_dailyStatsFileName');
+  }
+
+  Future<File> _getWishlistFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_wishlistFileName');
   }
 
   void _trimDeletedTasks(List<Task> tasks) {
@@ -148,6 +154,30 @@ class StorageService {
         await saveTaskList(tasks);
       }
       return tasks;
+    } catch (_) {
+      return <Task>[];
+    }
+  }
+
+  Future<void> saveWishlist(List<Task> items) async {
+    final file = await _getWishlistFile();
+    final jsonString = jsonEncode(items.map((t) => t.toJson()).toList());
+    await file.writeAsString(jsonString, flush: true);
+  }
+
+  Future<List<Task>> loadWishlist() async {
+    try {
+      final file = await _getWishlistFile();
+      if (!await file.exists()) {
+        return <Task>[];
+      }
+      final contents = await file.readAsString();
+      final List<dynamic> data = jsonDecode(contents);
+      final items = data
+          .map((e) => Task.fromJson(e as Map<String, dynamic>))
+          .toList();
+      _ensureUniqueIds(items);
+      return items;
     } catch (_) {
       return <Task>[];
     }

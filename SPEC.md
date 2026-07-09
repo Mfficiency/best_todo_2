@@ -218,7 +218,20 @@ build; sections scrolled out of view are unmounted, which is fine because the se
 spanning the top is always attached.
 
 **Drawer:** Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
-Tools ▸ (Alarms, Countdown, Projects, Chronize, Productivity Stats, Usage Data).
+Test Results, Tools ▸ (Alarms, Countdown, Projects, Chronize, Productivity Stats,
+Usage Data).
+
+**CI test report (0.1.96):** release builds bundle the CI test run's results as
+`assets/test_report.json` (committed placeholder: `{"available": false}` so local/dev
+builds carry no data; the asset is registered in pubspec). `TestReportService` (singleton,
+`setReportForTest`/`resetForTest`) parses it into `models/test_report.dart` (tolerant
+fromJson; also owns `fromMachineJsonLines`, the `flutter test --machine` parser used by
+`tool/generate_test_report.dart`). When the bundled report has failures the home app bar
+uses a custom hamburger `leading` (same default "Open navigation menu" tooltip, opens the
+drawer via `Scaffold.of`) overlaid with a 9 px red dot (`Key('test-failure-dot')`), the
+drawer's Test Results icon carries the same dot, and `TestResultsPage` shows a summary
+card (passed/failed/skipped/total, commit + branch + run time) plus one ExpansionTile per
+failed test with its error + stack trace.
 
 **Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
 non-empty query narrows every tab and the schedule view to tasks whose title,
@@ -249,6 +262,15 @@ applied to task notifications only, never alarms), default notification delay (d
 prod 300 s). SMS report: see §7. Export/Import buttons. `Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
+
+**Settings search (0.1.96, independent from the home task search):** a magnifier action in
+the Settings app bar toggles search mode — the pinned section-chip header becomes an
+autofocused text field ("Search settings", clear × suffix, close action in the app bar).
+A static registry (`_SettingsSearchEntry`: title, section index, extra keywords) lists
+every setting; a non-empty query replaces the sections with matching entries (case-
+insensitive substring over title, keywords, or section name; section shown as subtitle).
+Tapping a result closes search and `_jumpToSection`s to its section (deferred one frame so
+the sections re-mount first). New settings must be added to the registry.
 
 ## 5. Alarm subsystem (the reliability showpiece)
 
@@ -553,8 +575,13 @@ replayable, skipped in dev.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`app-release-<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
-  - `build-apk.yml` (push/PR main+dev, manual): builds release APK, uploads artifact
-    `besttodo-<version>` (30-day retention), adds download link to the job summary.
+  - `build-apk.yml` (push/PR main+dev, manual): runs `flutter test --machine`
+    **non-blocking** (a failing test run does not stop the build) and embeds the parsed
+    results into the APK as `assets/test_report.json` via
+    `dart run tool/generate_test_report.dart --input … --commit … --branch …`, then
+    builds the release APK, uploads artifact `besttodo-<version>` (30-day retention),
+    adds download link to the job summary. The app surfaces the embedded report as a red
+    dot on the drawer icon + the Test Results page (see §4.3).
   - `flutter_test.yml` (main/staging/dev): `flutter test --coverage`, parses results into a
     PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
@@ -594,7 +621,12 @@ project/stage tags (incl. live rename + unknown-id fallback), home search (title
 description/label/project-name matching, case-insensitivity, clear button, empty state),
 drawer placement of Projects under Tools, alarm-editor top save action, schedule-view
 active-day tracking (highlight follows scroll, back-to-top arrow, add-to-highlighted-day
-end to end). Widget tests that
+end to end). CI test report & settings search (0.1.96): `TestReport` tolerant fromJson /
+toJson round-trip and the `--machine` output parser (hidden/skipped handling, error
+capture, garbage tolerance), Test Results page states (failures + expandable errors, all
+green, no bundled report), home red dot on the hamburger + drawer entry navigation (and
+its absence when green/unavailable), settings search (toggle, title + keyword matching,
+section subtitle, no-match message, jump-to-section, close restoring chips). Widget tests that
 touch persistence use a `_FakePathProvider` + temp dir. Caveat: real file I/O awaited
 inside `testWidgets` hangs until the 10-min per-test timeout (the fake-async zone never
 services dart:io completions — locally and on CI) — such tests wrap I/O in
