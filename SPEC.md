@@ -242,26 +242,38 @@ while searching and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
 (`_tasksForTab(i, applySearch: false)`) — otherwise a save during search would scramble
 hidden tasks' order.
 
-**Dice timer (0.1.94):** a dice app-bar action (`Icons.casino`, tooltip "Roll a random
-task timer", immediately right of the search field) picks a random open (not done) task
-from the Today tab — ignoring any active search — and pushes `DiceTimerPage`
-(`lib/ui/dice_timer_page.dart`). The page shows the rolled task above a rotary egg-timer
-dial (`DiceTimerDial`, one full turn = 60 min, whole-minute snapping) opened pre-wound to a
-20-minute default (`_defaultDuration`) — turn back for less time, on past 20 for more:
-winding uses raw pointer events (a `Listener`, NOT a pan recognizer — an ancestor scrollable
-would win mostly-vertical drags in the gesture arena), with `dialAngle`/`dialAngleDelta`
-keeping the rotation continuous across 12 o'clock. Releasing the dial starts the countdown
-(a 1 s decrementing ticker, deliberately not wall-clock-anchored so tests can fake-pump it)
-and shows the remaining time, the percentage of the started duration still left
-(`_percentLeft`, relative to `_total`), and the wall-clock end time ("Ends at 14:32").
-Grabbing the dial
-mid-countdown (or mid-ring) pauses/silences and rounds up to whole minutes for rewinding.
-At zero it plays the 'Classic' alarm melody (loop, 0.8 volume) + a task notification
-(both best-effort; injectable via `onRingAlert` for tests) and offers: **Done** (marks the
-task done via the home page callback), **Postpone to tomorrow** (same semantics as moving
-to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** (stops the ring
-and restarts the countdown with that much time). With no open Today tasks the dice shows a
-"No open tasks for today" snackbar instead.
+**Dice timer (0.1.94):** a dice app-bar action (`Icons.casino`, immediately right of the
+search field) picks a random open (not done) task from the Today tab — ignoring any active
+search — and pushes `DiceTimerPage` (`lib/ui/dice_timer_page.dart`). The page shows the
+rolled task above a rotary egg-timer dial (`DiceTimerDial`, one full turn = 60 min,
+whole-minute snapping) opened pre-wound to a 20-minute default — turn back for less time, on
+past 20 for more: winding uses raw pointer events (a `Listener`, NOT a pan recognizer — an
+ancestor scrollable would win mostly-vertical drags in the gesture arena), with
+`dialAngle`/`dialAngleDelta` keeping the rotation continuous across 12 o'clock. Releasing the
+dial starts the countdown (a 1 s decrementing ticker, deliberately not wall-clock-anchored so
+tests can fake-pump it) and shows the remaining time, the percentage of the started duration
+still left (`DiceTimerController.percentLeft`, relative to `_total`), and the wall-clock end
+time ("Ends at 14:32"). Grabbing the dial mid-countdown (or mid-ring) pauses/silences and
+rounds up to whole minutes for rewinding.
+
+The live timer lives in **`DiceTimerController`** — a singleton `ChangeNotifier` that owns the
+ticker and state (task/phase/remaining/total/endAt), NOT the page's `State`. So leaving the
+page (back button, other navigation) keeps the countdown running; the page is a thin view
+that `configure()`s the controller in `initState` (a no-op that keeps a still-running same
+task, so re-entering reattaches — `configure` must not `notifyListeners`, it runs during
+build) and rebuilds off `addListener`. The app-bar dice icon shows a `Badge` and switches its
+tooltip to "Return to the running task timer" while a timer `isActive` (running/paused/
+ringing); tapping it then reopens the existing timer instead of re-rolling. While **running**
+the page offers **Done** (finish early — marks the task done and clears the timer) and
+**Pause** (freezes the time left → **paused** phase, whose center reads "Paused" and which
+offers **Resume**/**Done**). At zero the controller plays the 'Classic' alarm melody (loop,
+0.8 volume) + a task notification (both best-effort; injectable via
+`DiceTimerController.onRingAlert` for tests) — this fires even if the page was left, though a
+mid-ring page exit silences the melody while keeping the expired state — and offers: **Done**
+(marks the task done via the home page callback), **Postpone to tomorrow** (same semantics as
+moving to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** (stops the
+ring and restarts the countdown with that much time). With no open Today tasks (and no timer
+already running) the dice shows a "No open tasks for today" snackbar instead.
 
 **Home widget updates** after every save and at a self-rescheduling midnight timer: writes
 the "due today or overdue" list text (or "Well done! No more tasks for today!"), a progress

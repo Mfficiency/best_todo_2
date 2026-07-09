@@ -23,7 +23,24 @@ void main() {
     final tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
     ProjectService.instance.resetForTest();
+    DiceTimerController.instance.resetForTest();
   });
+
+  /// Turns the dial back a quarter turn from the default 20 minutes
+  /// (3 o'clock → 12 o'clock, −15 min → 5 min) and lets go, which starts the
+  /// countdown.
+  Future<void> windBackToFive(WidgetTester tester) async {
+    final center = tester.getCenter(find.byType(DiceTimerDial));
+    final gesture = await tester.startGesture(center + const Offset(100, 0));
+    await tester.pump();
+    await gesture.moveTo(center + const Offset(70.7, -70.7));
+    await tester.pump();
+    await gesture.moveTo(center + const Offset(0, -100));
+    await tester.pump();
+    expect(find.text('5 min'), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
+  }
 
   group('dial math', () {
     test('dialAngle measures clockwise from 12 o\'clock', () {
@@ -78,22 +95,6 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    /// Turns the dial back a quarter turn from the default 20 minutes
-    /// (3 o'clock → 12 o'clock, −15 min → 5 min) and lets go, which starts the
-    /// countdown.
-    Future<void> windBackToFive(WidgetTester tester) async {
-      final center = tester.getCenter(find.byType(DiceTimerDial));
-      final gesture = await tester.startGesture(center + const Offset(100, 0));
-      await tester.pump();
-      await gesture.moveTo(center + const Offset(70.7, -70.7));
-      await tester.pump();
-      await gesture.moveTo(center + const Offset(0, -100));
-      await tester.pump();
-      expect(find.text('5 min'), findsOneWidget);
-      await gesture.up();
-      await tester.pump();
-    }
-
     testWidgets(
         'winding and releasing starts the countdown; at zero the ring '
         'actions appear and Done reports the task', (tester) async {
@@ -114,11 +115,13 @@ void main() {
 
       await windBackToFive(tester);
 
-      // Countdown running: remaining time, percentage left, and end time.
+      // Countdown running: remaining time, percentage left, end time, and the
+      // early Done / Pause controls.
       expect(find.text('5:00'), findsOneWidget);
       expect(find.text('100% left'), findsOneWidget);
       expect(find.textContaining('Ends at'), findsOneWidget);
-      expect(find.text('Done'), findsNothing);
+      expect(find.text('Pause'), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
 
       await tester.pump(const Duration(minutes: 5, seconds: 1));
 
@@ -157,10 +160,12 @@ void main() {
       await tester.tap(find.text('+5 min'));
       await tester.pump();
 
-      // Running again for another 5 minutes; ring actions are gone.
+      // Running again for another 5 minutes; the ring's Postpone/extend
+      // actions are gone, replaced by the running Done/Pause controls.
       expect(find.text('5:00'), findsOneWidget);
       expect(find.textContaining('Ends at'), findsOneWidget);
-      expect(find.text('Done'), findsNothing);
+      expect(find.text('Postpone to tomorrow'), findsNothing);
+      expect(find.text('Pause'), findsOneWidget);
 
       await tester.pump(const Duration(minutes: 5, seconds: 1));
       expect(rang, 2);
@@ -172,6 +177,61 @@ void main() {
       expect(postponed, isTrue);
       expect(done, isFalse);
       expect(find.byType(DiceTimerPage), findsNothing);
+    });
+
+    testWidgets('Pause freezes the countdown and Resume continues it',
+        (tester) async {
+      await pumpDicePage(
+        tester,
+        task: Task(title: 'Iron shirts'),
+        onRingAlert: (_) async {},
+      );
+
+      await windBackToFive(tester);
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.text('4:30'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Pause'));
+      await tester.tap(find.text('Pause'));
+      await tester.pump();
+      expect(find.text('Paused'), findsOneWidget);
+      expect(find.text('Resume'), findsOneWidget);
+
+      // Time stays put while paused.
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.text('4:30'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Resume'));
+      await tester.tap(find.text('Resume'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.text('4:00'), findsOneWidget);
+
+      // Stop the still-running ticker before the test ends.
+      DiceTimerController.instance.clear();
+      await tester.pump();
+    });
+
+    testWidgets('Done stops the timer early and reports the task',
+        (tester) async {
+      var done = false;
+      await pumpDicePage(
+        tester,
+        task: Task(title: 'Sweep the porch'),
+        onDone: () => done = true,
+        onRingAlert: (_) async {},
+      );
+
+      await windBackToFive(tester);
+      await tester.pump(const Duration(seconds: 30));
+
+      // Done is available mid-countdown, not only at the ring.
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(done, isTrue);
+      expect(find.byType(DiceTimerPage), findsNothing);
+      expect(DiceTimerController.instance.isActive, isFalse);
     });
   });
 
@@ -219,6 +279,37 @@ void main() {
 
       expect(find.text('No open tasks for today'), findsOneWidget);
       expect(find.byType(DiceTimerPage), findsNothing);
+    });
+
+    testWidgets('a running timer survives leaving and is reopened by the dice',
+        (tester) async {
+      await pumpHome(
+        tester,
+        [Task(title: 'Knit a scarf', dueDate: DateTime.now())],
+      );
+
+      await tester.tap(find.byTooltip('Roll a random task timer'));
+      await tester.pumpAndSettle();
+      await windBackToFive(tester);
+      expect(find.text('5:00'), findsOneWidget);
+
+      // Back to the home page — the timer keeps running in the controller.
+      await tester.tap(find.byTooltip('Back to Home'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DiceTimerPage), findsNothing);
+      expect(DiceTimerController.instance.isActive, isTrue);
+
+      // The dice now offers to return to the running timer, and does.
+      await tester.tap(find.byTooltip('Return to the running task timer'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DiceTimerPage), findsOneWidget);
+      expect(find.text('Knit a scarf'), findsOneWidget);
+      expect(find.text('Pause'), findsOneWidget);
+      expect(find.text('20 min'), findsNothing);
+
+      // Stop the still-running ticker before the test ends.
+      DiceTimerController.instance.clear();
+      await tester.pump();
     });
   });
 }

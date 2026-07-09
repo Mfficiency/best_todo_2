@@ -1123,21 +1123,30 @@ class _HomePageState extends State<HomePage>
   }
 
   /// Rolls the dice: picks a random open task from today's tab and opens the
-  /// rotary egg-timer page for it.
+  /// rotary egg-timer page for it. If a timer is already running, returns to it
+  /// instead of rolling a new one.
   void _rollRandomTaskTimer() {
-    final candidates =
-        _tasksForTab(0, applySearch: false).where((t) => !t.isDone).toList();
-    if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('No open tasks for today')),
-        );
-      return;
+    final controller = DiceTimerController.instance;
+    final Task task;
+    if (controller.isActive && controller.task != null) {
+      task = controller.task!;
+      LogService.add('HomePage._rollRandomTaskTimer',
+          'Returned to running timer for "${task.title}"');
+    } else {
+      final candidates =
+          _tasksForTab(0, applySearch: false).where((t) => !t.isDone).toList();
+      if (candidates.isEmpty) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('No open tasks for today')),
+          );
+        return;
+      }
+      task = candidates[_diceRandom.nextInt(candidates.length)];
+      LogService.add(
+          'HomePage._rollRandomTaskTimer', 'Dice picked "${task.title}"');
     }
-    final task = candidates[_diceRandom.nextInt(candidates.length)];
-    LogService.add(
-        'HomePage._rollRandomTaskTimer', 'Dice picked "${task.title}"');
     Navigator.of(context)
         .push(
           MaterialPageRoute(
@@ -1996,10 +2005,23 @@ class _HomePageState extends State<HomePage>
           onChanged: (value) => setState(() => _searchQuery = value),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.casino),
-            tooltip: 'Roll a random task timer',
-            onPressed: _rollRandomTaskTimer,
+          ListenableBuilder(
+            listenable: DiceTimerController.instance,
+            builder: (context, _) {
+              final active = DiceTimerController.instance.isActive;
+              return IconButton(
+                icon: active
+                    ? const Badge(
+                        smallSize: 9,
+                        child: Icon(Icons.casino),
+                      )
+                    : const Icon(Icons.casino),
+                tooltip: active
+                    ? 'Return to the running task timer'
+                    : 'Roll a random task timer',
+                onPressed: _rollRandomTaskTimer,
+              );
+            },
           ),
           IconButton(
             icon: Icon(_scheduleView

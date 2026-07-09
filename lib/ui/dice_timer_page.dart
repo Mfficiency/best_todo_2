@@ -30,9 +30,190 @@ double dialAngleDelta(double from, double to) {
   return delta;
 }
 
-/// The dice timer's three states: winding the dial, counting down, and
+/// The dice timer's states: winding the dial, counting down, paused, and
 /// ringing at zero.
-enum DiceTimerPhase { setting, running, ringing }
+enum DiceTimerPhase { setting, running, paused, ringing }
+
+/// Holds the dice timer's live state so it survives leaving and re-entering
+/// [DiceTimerPage]: the ticker runs here, in a singleton, not in the page's
+/// [State]. The page is a thin view that listens for changes and forwards the
+/// user's dial and button input, so navigating away leaves the countdown
+/// running and reopening reattaches to it.
+class DiceTimerController extends ChangeNotifier {
+  DiceTimerController._();
+
+  /// Shared instance driving whichever [DiceTimerPage] is (or was) open.
+  static final DiceTimerController instance = DiceTimerController._();
+
+  /// Where the dial sits when a fresh timer opens; turn back for less time.
+  static const Duration defaultDuration = Duration(minutes: 20);
+
+  Task? _task;
+  DiceTimerPhase _phase = DiceTimerPhase.setting;
+  Duration _remaining = defaultDuration;
+  Duration _total = defaultDuration;
+  DateTime? _endAt;
+  Timer? _ticker;
+
+  /// Overridable ring side-effect (for tests); defaults to playing the alarm
+  /// melody and posting a notification.
+  Future<void> Function(Task task)? onRingAlert;
+
+  Task? get task => _task;
+  DiceTimerPhase get phase => _phase;
+  Duration get remaining => _remaining;
+  DateTime? get endAt => _endAt;
+
+  /// True once a countdown has begun (running, paused or ringing) — i.e. there
+  /// is a live timer to return to, versus an untouched dial.
+  bool get isActive => _task != null && _phase != DiceTimerPhase.setting;
+
+  /// Whole-percent of the started duration still left on the countdown.
+  int get percentLeft {
+    final total = _total.inSeconds;
+    if (total <= 0) return 0;
+    return (_remaining.inSeconds / total * 100).clamp(0, 100).round();
+  }
+
+  /// Points the dial at [task] at the default duration. Re-configuring the
+  /// same already-running task is a no-op, so reopening the page keeps the
+  /// countdown going; configuring a different task discards the old timer.
+  ///
+  /// Called from the page's `initState` (i.e. during a build), so it must not
+  /// `notifyListeners` — the page rebuilds itself right after and no listener
+  /// observes an `isActive` change here (a fresh timer stays in `setting`).
+  void configure(Task task) {
+    if (isActive && identical(_task, task)) return;
+    _ticker?.cancel();
+    _ticker = null;
+    _task = task;
+    _phase = DiceTimerPhase.setting;
+    _remaining = defaultDuration;
+    _total = defaultDuration;
+    _endAt = null;
+  }
+
+  /// Live dial adjustment while setting.
+  void setRemaining(Duration value) {
+    _remaining = value;
+    notifyListeners();
+  }
+
+  /// Grabbing the dial pauses a running countdown (and silences a ring) so it
+  /// can be rewound; whole-minute snapping mirrors the dial's numbers.
+  void grabDial() {
+    _ticker?.cancel();
+    _ticker = null;
+    if (_phase == DiceTimerPhase.ringing) AlarmSound.stop();
+    if (_phase != DiceTimerPhase.setting) {
+      _phase = DiceTimerPhase.setting;
+      _endAt = null;
+      _remaining = Duration(minutes: (_remaining.inSeconds / 60).ceil());
+      notifyListeners();
+    }
+  }
+
+  /// Releasing the dial starts the countdown from the wound-up duration.
+  void releaseDial() {
+    if (_remaining > Duration.zero) _run(resetTotal: true);
+  }
+
+  /// Pause a running countdown, freezing the time left.
+  void pause() {
+    if (_phase != DiceTimerPhase.running) return;
+    _ticker?.cancel();
+    _ticker = null;
+    _phase = DiceTimerPhase.paused;
+    _endAt = null;
+    notifyListeners();
+    LogService.add('DiceTimerController.pause', 'Paused "${_task?.title}"');
+  }
+
+  /// Resume from a pause, keeping the original total so the percentage carries
+  /// on where it left off.
+  void resume() {
+    if (_phase != DiceTimerPhase.paused) return;
+    _run(resetTotal: false);
+  }
+
+  /// Stop the ring and give the countdown [extra] more time.
+  void addTime(Duration extra) {
+    AlarmSound.stop();
+    _remaining += extra;
+    _run(resetTotal: true);
+  }
+
+  void _run({required bool resetTotal}) {
+    if (_remaining <= Duration.zero) return;
+    _ticker?.cancel();
+    _phase = DiceTimerPhase.running;
+    if (resetTotal) _total = _remaining;
+    _endAt = DateTime.now().add(_remaining);
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    notifyListeners();
+    LogService.add('DiceTimerController._run',
+        'Running ${_remaining.inSeconds}s for "${_task?.title}"');
+  }
+
+  void _tick() {
+    _remaining -= const Duration(seconds: 1);
+    if (_remaining <= Duration.zero) {
+      _remaining = Duration.zero;
+      _ring();
+    }
+    notifyListeners();
+  }
+
+  /// Reached zero: stop ticking and start the alert. Not awaited — ringing
+  /// must never block the UI, and both default alert paths swallow errors.
+  void _ring() {
+    _ticker?.cancel();
+    _ticker = null;
+    _phase = DiceTimerPhase.ringing;
+    (onRingAlert ?? _defaultRingAlert)(_task!);
+    LogService.add(
+        'DiceTimerController._ring', 'Timer hit zero for "${_task?.title}"');
+  }
+
+  /// Dismiss the timer entirely (Done / postponed / abandoned): stop the
+  /// ticker and melody and forget the task.
+  void clear() {
+    _ticker?.cancel();
+    _ticker = null;
+    AlarmSound.stop();
+    _task = null;
+    _phase = DiceTimerPhase.setting;
+    _remaining = defaultDuration;
+    _total = defaultDuration;
+    _endAt = null;
+    notifyListeners();
+  }
+
+  /// Reset to a pristine state between tests (no notification, no melody).
+  @visibleForTesting
+  void resetForTest() {
+    _ticker?.cancel();
+    _ticker = null;
+    onRingAlert = null;
+    _task = null;
+    _phase = DiceTimerPhase.setting;
+    _remaining = defaultDuration;
+    _total = defaultDuration;
+    _endAt = null;
+  }
+
+  static Future<void> _defaultRingAlert(Task task) async {
+    await AlarmSound.play(melody: 'Classic', volume: 0.8, loop: true);
+    try {
+      await NotificationService.showTaskNotification(
+        'Time is up: ${task.title}',
+        delaySeconds: 0,
+      );
+    } catch (_) {
+      // Notifications are best-effort (no plugin host on desktop/tests).
+    }
+  }
+}
 
 /// Egg-timer page for a randomly rolled task: the rotary dial opens pre-wound
 /// to 20 minutes — turn it back for less time (or on past 20 for more), let go
@@ -69,115 +250,36 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
   /// One full turn of the dial, like a kitchen egg timer.
   static const int _maxMinutes = 60;
 
-  /// Where the dial sits when the page opens; turn back for less time.
-  static const Duration _defaultDuration = Duration(minutes: 20);
+  DiceTimerController get _controller => DiceTimerController.instance;
 
-  DiceTimerPhase _phase = DiceTimerPhase.setting;
-
-  /// Time on the dial: the wound-up duration while setting, ticking down
-  /// once a second while running.
-  Duration _remaining = _defaultDuration;
-
-  /// The duration the running countdown started from, so the center can show
-  /// the percentage of time left as it ticks down.
-  Duration _total = _defaultDuration;
-
-  /// Wall-clock moment the countdown hits zero; shown under the dial.
-  DateTime? _endAt;
-
-  Timer? _ticker;
+  @override
+  void initState() {
+    super.initState();
+    if (widget.onRingAlert != null) {
+      _controller.onRingAlert = widget.onRingAlert;
+    }
+    _controller.configure(widget.task);
+    _controller.addListener(_onControllerChanged);
+  }
 
   @override
   void dispose() {
-    _ticker?.cancel();
-    // Safety net: leaving the page any other way than the ring actions must
-    // not keep the melody playing.
-    AlarmSound.stop();
+    _controller.removeListener(_onControllerChanged);
+    // Leaving the page keeps a running or paused timer alive so it can be
+    // reopened later; only a mid-ring exit silences the melody (the expired
+    // state is kept, so returning still shows the finish actions).
+    if (_controller.phase == DiceTimerPhase.ringing) AlarmSound.stop();
     super.dispose();
   }
 
-  static Future<void> _defaultRingAlert(Task task) async {
-    await AlarmSound.play(melody: 'Classic', volume: 0.8, loop: true);
-    try {
-      await NotificationService.showTaskNotification(
-        'Time is up: ${task.title}',
-        delaySeconds: 0,
-      );
-    } catch (_) {
-      // Notifications are best-effort (no plugin host on desktop/tests).
-    }
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
   }
 
-  void _startCountdown() {
-    if (_remaining <= Duration.zero) return;
-    _ticker?.cancel();
-    setState(() {
-      _phase = DiceTimerPhase.running;
-      _total = _remaining;
-      _endAt = DateTime.now().add(_remaining);
-    });
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
-    LogService.add(
-      'DiceTimerPage._startCountdown',
-      'Started ${_remaining.inSeconds}s for "${widget.task.title}"',
-    );
-  }
-
-  void _tick() {
-    if (!mounted) return;
-    setState(() {
-      _remaining -= const Duration(seconds: 1);
-      if (_remaining <= Duration.zero) {
-        _remaining = Duration.zero;
-        _ring();
-      }
-    });
-  }
-
-  /// Reached zero: stop ticking and start the alert. Not awaited — ringing
-  /// must never block the UI, and both default alert paths swallow errors.
-  void _ring() {
-    _ticker?.cancel();
-    _ticker = null;
-    _phase = DiceTimerPhase.ringing;
-    (widget.onRingAlert ?? _defaultRingAlert)(widget.task);
-    LogService.add(
-        'DiceTimerPage._ring', 'Timer hit zero for "${widget.task.title}"');
-  }
-
-  /// Grabbing the dial pauses a running countdown (and silences a ring) so it
-  /// can be rewound; releasing starts it again.
-  void _onDialDragStart() {
-    _ticker?.cancel();
-    _ticker = null;
-    if (_phase == DiceTimerPhase.ringing) AlarmSound.stop();
-    if (_phase != DiceTimerPhase.setting) {
-      setState(() {
-        _phase = DiceTimerPhase.setting;
-        _endAt = null;
-        // Whole minutes while winding, like the numbers on an egg timer.
-        _remaining = Duration(minutes: (_remaining.inSeconds / 60).ceil());
-      });
-    }
-  }
-
-  void _onDialChanged(Duration value) {
-    setState(() => _remaining = value);
-  }
-
-  void _onDialDragEnd() {
-    if (_remaining > Duration.zero) _startCountdown();
-  }
-
-  void _addTime(Duration extra) {
-    AlarmSound.stop();
-    setState(() => _remaining += extra);
-    _startCountdown();
-  }
-
+  /// Dismiss the timer (via a Done/Postpone action) and return to the caller.
   void _finish(VoidCallback callback) {
-    AlarmSound.stop();
     callback();
+    _controller.clear();
     Navigator.of(context).pop();
   }
 
@@ -192,18 +294,11 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     return h > 0 ? '$h:${_two(m)}:${_two(s)}' : '$m:${_two(s)}';
   }
 
-  /// Whole-percent of the started duration still left on the countdown.
-  int _percentLeft() {
-    final total = _total.inSeconds;
-    if (total <= 0) return 0;
-    return (_remaining.inSeconds / total * 100).clamp(0, 100).round();
-  }
-
   Widget _dialCenter(BuildContext context) {
     final theme = Theme.of(context);
-    switch (_phase) {
+    switch (_controller.phase) {
       case DiceTimerPhase.setting:
-        if (_remaining == Duration.zero) {
+        if (_controller.remaining == Duration.zero) {
           return Text(
             'Turn me',
             textAlign: TextAlign.center,
@@ -211,7 +306,7 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
           );
         }
         return Text(
-          '${_remaining.inMinutes} min',
+          '${_controller.remaining.inMinutes} min',
           style: theme.textTheme.headlineMedium
               ?.copyWith(fontWeight: FontWeight.bold),
         );
@@ -220,15 +315,32 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _formatRemaining(_remaining),
+              _formatRemaining(_controller.remaining),
               style: theme.textTheme.headlineMedium
                   ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
-              '${_percentLeft()}% left',
+              '${_controller.percentLeft}% left',
               style: theme.textTheme.titleMedium
                   ?.copyWith(color: theme.colorScheme.primary),
+            ),
+          ],
+        );
+      case DiceTimerPhase.paused:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _formatRemaining(_controller.remaining),
+              style: theme.textTheme.headlineMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Paused',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         );
@@ -246,7 +358,7 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
 
   Widget _statusLine(BuildContext context) {
     final theme = Theme.of(context);
-    switch (_phase) {
+    switch (_controller.phase) {
       case DiceTimerPhase.setting:
         return Text(
           'Turn the dial back for less time, then let go to start.',
@@ -255,12 +367,18 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
         );
       case DiceTimerPhase.running:
         return Text(
-          'Ends at ${_formatClock(_endAt!)}',
+          'Ends at ${_formatClock(_controller.endAt!)}',
           textAlign: TextAlign.center,
           style: theme.textTheme.titleMedium?.copyWith(
             color: theme.colorScheme.primary,
             fontWeight: FontWeight.w600,
           ),
+        );
+      case DiceTimerPhase.paused:
+        return Text(
+          'Paused — resume when you are ready.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium,
         );
       case DiceTimerPhase.ringing:
         return Text(
@@ -271,9 +389,55 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     }
   }
 
+  /// Buttons under the dial; nothing while still winding. Running offers an
+  /// early Done and a Pause; paused offers Resume and Done; the ring offers
+  /// the finish/postpone/extend actions.
+  Widget _actions() {
+    switch (_controller.phase) {
+      case DiceTimerPhase.setting:
+        return const SizedBox.shrink();
+      case DiceTimerPhase.running:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.check),
+              label: const Text('Done'),
+              onPressed: () => _finish(widget.onTaskDone),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.pause),
+              label: const Text('Pause'),
+              onPressed: _controller.pause,
+            ),
+          ],
+        );
+      case DiceTimerPhase.paused:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Resume'),
+              onPressed: _controller.resume,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.check),
+              label: const Text('Done'),
+              onPressed: () => _finish(widget.onTaskDone),
+            ),
+          ],
+        );
+      case DiceTimerPhase.ringing:
+        return _ringActions();
+    }
+  }
+
   Widget _ringActions() {
     Widget addButton(int minutes) => OutlinedButton(
-          onPressed: () => _addTime(Duration(minutes: minutes)),
+          onPressed: () => _controller.addTime(Duration(minutes: minutes)),
           child: Text('+$minutes min'),
         );
 
@@ -335,19 +499,19 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
               SizedBox.square(
                 dimension: 280,
                 child: DiceTimerDial(
-                  value: _remaining,
+                  value: _controller.remaining,
                   maxMinutes: _maxMinutes,
-                  onDragStart: _onDialDragStart,
-                  onChanged: _onDialChanged,
-                  onDragEnd: _onDialDragEnd,
+                  onDragStart: _controller.grabDial,
+                  onChanged: _controller.setRemaining,
+                  onDragEnd: _controller.releaseDial,
                   center: _dialCenter(context),
                 ),
               ),
               const SizedBox(height: 24),
               _statusLine(context),
-              if (_phase == DiceTimerPhase.ringing) ...[
+              if (_controller.phase != DiceTimerPhase.setting) ...[
                 const SizedBox(height: 24),
-                _ringActions(),
+                _actions(),
               ],
             ],
           ),
