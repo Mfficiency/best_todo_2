@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.101] - 2026-07-10
+- Wishlist rebuilt as a filtered view of your one task list: wish items now live with your tasks (old wishlist entries are moved over automatically), show up as normal editable tasks on the Future tab tagged "wish", and the Wishlist page looks like a to-do list — checkboxes, no due dates, and the same swipe gestures as home, except swiping right raises an item's priority (hold for one step up, or tap high/medium/low) and sorts it up the list, while swiping left moves it to the deleted list with Undo
+
 ## [0.1.100] - 2026-07-09
 - Wishlist items now also show up at the bottom of the Future tab, tagged "wish" — read-only there, tap one to open the Wishlist tool; the home search filters them like tasks, and they stay out of your real task list
 - One-time import: the still-open ideas from the old Todo.md backlog are added to your wishlist tagged "old"; items you already have (same title) are skipped, nothing existing is changed or removed, and re-deleting an imported item sticks

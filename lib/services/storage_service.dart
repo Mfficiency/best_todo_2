@@ -137,15 +137,15 @@ class StorageService {
     try {
       final isNewDay = await _isNewDay();
       final file = await _getLocalFile();
-      if (!await file.exists()) {
-        return <Task>[];
+      var tasks = <Task>[];
+      if (await file.exists()) {
+        final contents = await file.readAsString();
+        final List<dynamic> data = jsonDecode(contents);
+        tasks = data
+            .map((e) => Task.fromJson(e as Map<String, dynamic>))
+            .toList();
+        _ensureUniqueIds(tasks);
       }
-      final contents = await file.readAsString();
-      final List<dynamic> data = jsonDecode(contents);
-      final tasks = data
-          .map((e) => Task.fromJson(e as Map<String, dynamic>))
-          .toList();
-      _ensureUniqueIds(tasks);
       if (isNewDay) {
         final doneTasks = tasks.where((t) => t.isDone).toList();
         if (doneTasks.isNotEmpty) {
@@ -160,10 +160,30 @@ class StorageService {
         tasks.removeWhere((t) => t.isDone);
         await saveTaskList(tasks);
       }
+      await _migrateWishlistIntoTasks(tasks);
       return tasks;
     } catch (_) {
       return <Task>[];
     }
+  }
+
+  /// Wishlist items live in the one task list (flagged [Task.isWish]) so the
+  /// Wishlist tool is a pre-filtered view like a project. Merge any legacy
+  /// wishlist.json content — including the one-time Todo.md import that
+  /// [loadWishlist] performs — into [tasks] and empty the legacy file so
+  /// nothing is merged twice. An unreadable wishlist.json is left untouched
+  /// ([loadWishlist] returns an empty list for it), keeping this a no-op.
+  Future<void> _migrateWishlistIntoTasks(List<Task> tasks) async {
+    final wishItems = await loadWishlist();
+    if (wishItems.isEmpty) return;
+    final ids = tasks.map((t) => t.uid).toSet();
+    for (final item in wishItems) {
+      item.isWish = true;
+      item.dueDate = null;
+      if (ids.add(item.uid)) tasks.add(item);
+    }
+    await saveWishlist(<Task>[]);
+    await saveTaskList(tasks);
   }
 
   Future<void> saveWishlist(List<Task> items) async {

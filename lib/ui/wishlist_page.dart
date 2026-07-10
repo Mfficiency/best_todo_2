@@ -1,18 +1,69 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../config.dart';
 import '../models/task.dart';
 import '../services/storage_service.dart';
 import 'subpage_app_bar.dart';
 
-/// Tools → Wishlist: a separate task-shaped list for ideas and future wants.
-///
-/// Wishlist items intentionally show only the title, description, labels, and
-/// quick priority tags.
+/// Priority labels a wishlist item can carry inside [Task.label], ordered
+/// from lowest to highest.
+const List<String> wishPriorityLabels = <String>[
+  'priority-low',
+  'priority-medium',
+  'priority-high',
+];
+
+/// 0 for no priority label, 1..3 for low..high.
+int wishPriorityRank(Task task) {
+  final labels = task.label
+      .toLowerCase()
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .toSet();
+  for (var i = wishPriorityLabels.length - 1; i >= 0; i--) {
+    if (labels.contains(wishPriorityLabels[i])) return i + 1;
+  }
+  return 0;
+}
+
+/// Rewrites [task]'s label so [priorityLabel] is its only priority label;
+/// all other labels are kept.
+void setWishPriority(Task task, String priorityLabel) {
+  final labels = task.label
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .where((label) => !wishPriorityLabels.contains(label.toLowerCase()))
+      .toList();
+  labels.insert(0, priorityLabel);
+  task.label = labels.join(', ');
+}
+
+/// Raises [task]'s priority one step: none → low → medium → high (capped).
+void bumpWishPriority(Task task) {
+  final rank = wishPriorityRank(task);
+  final next = rank >= wishPriorityLabels.length
+      ? wishPriorityLabels.length - 1
+      : rank;
+  setWishPriority(task, wishPriorityLabels[next]);
+}
+
+/// Tools → Wishlist: a pre-filtered view over the one task list — like
+/// opening a project — showing only tasks flagged [Task.isWish]. The full
+/// item overview (the home page) shows the same tasks with all their
+/// properties and tags; here they render as plain to-do tiles with no due
+/// dates. Swiping works like the home list, except the options swipe raises
+/// the item's priority (default: one step up, with High/Medium/Low
+/// shortcuts) instead of rescheduling it, and the delete swipe moves the
+/// item to the deleted list.
 class WishlistPage extends StatefulWidget {
   const WishlistPage({Key? key}) : super(key: key);
 
@@ -22,7 +73,10 @@ class WishlistPage extends StatefulWidget {
 
 class _WishlistPageState extends State<WishlistPage> {
   final StorageService _storage = StorageService();
-  List<Task> _items = <Task>[];
+
+  /// The full task list; the page shows and mutates only the isWish subset
+  /// but always persists the whole list.
+  List<Task> _tasks = <Task>[];
   bool _loading = true;
 
   @override
@@ -32,21 +86,32 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 
   Future<void> _load() async {
-    final items = await _storage.loadWishlist();
+    // Also merges legacy wishlist.json items into the task list.
+    final tasks = await _storage.loadTaskList();
     if (!mounted) return;
     setState(() {
-      _items = items;
+      _tasks = tasks;
       _loading = false;
     });
   }
 
-  Future<void> _save() => _storage.saveWishlist(_items);
+  Future<void> _save() => _storage.saveTaskList(_tasks);
 
-  static const List<String> _priorityLabels = <String>[
-    'priority-low',
-    'priority-medium',
-    'priority-high',
-  ];
+  /// Wishlist items sorted like a to-do list: open items before done ones,
+  /// higher priority first, otherwise keeping their list order.
+  List<Task> _wishes() {
+    final wishes = _tasks.where((task) => task.isWish).toList();
+    final order = <String, int>{
+      for (var i = 0; i < wishes.length; i++) wishes[i].uid: i,
+    };
+    wishes.sort((a, b) {
+      if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+      final byPriority = wishPriorityRank(b) - wishPriorityRank(a);
+      if (byPriority != 0) return byPriority;
+      return order[a.uid]!.compareTo(order[b.uid]!);
+    });
+    return wishes;
+  }
 
   String _timestampForFilename() {
     final now = DateTime.now();
@@ -102,7 +167,7 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 
   Future<void> _exportAllItems() async {
-    await _exportItems(_items, 'wishlist_${_timestampForFilename()}.json');
+    await _exportItems(_wishes(), 'wishlist_${_timestampForFilename()}.json');
   }
 
   Future<void> _exportItem(Task item) async {
@@ -125,122 +190,104 @@ class _WishlistPageState extends State<WishlistPage> {
 
   String _labelTextWithPriority(String text, String priorityLabel) {
     final labels = _labelsFromText(text)
-        .where((label) => !_priorityLabels.contains(label.toLowerCase()))
+        .where((label) => !wishPriorityLabels.contains(label.toLowerCase()))
         .toList();
     labels.insert(0, priorityLabel);
     return labels.join(', ');
   }
 
   Future<void> _editItem([Task? item]) async {
-    final titleController = TextEditingController(text: item?.title ?? '');
-    final descriptionController =
-        TextEditingController(text: item?.description ?? '');
-    final labelController = TextEditingController(text: item?.label ?? '');
-
-    final result = await showDialog<Task>(
+    final result = await showDialog<_WishEditResult>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(item == null ? 'Add wishlist item' : 'Edit wishlist item'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Title'),
-                textInputAction: TextInputAction.next,
-              ),
-              TextField(
-                controller: descriptionController,
-                decoration: const InputDecoration(labelText: 'Description'),
-                maxLines: 3,
-              ),
-              TextField(
-                controller: labelController,
-                decoration: const InputDecoration(
-                  labelText: 'Labels / tags',
-                  hintText: 'priority-high, gift, someday',
-                ),
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Quick priority',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final priority in _priorityLabels)
-                    OutlinedButton(
-                      onPressed: () {
-                        labelController.text = _labelTextWithPriority(
-                          labelController.text,
-                          priority,
-                        );
-                      },
-                      child: Text(priority.replaceFirst('priority-', '')),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final title = titleController.text.trim();
-              if (title.isEmpty) return;
-              Navigator.of(context).pop(Task(
-                uid: item?.uid,
-                title: title,
-                description: descriptionController.text.trim(),
-                label: labelController.text.trim(),
-                createdAt: item?.createdAt ?? DateTime.now(),
-              ));
-            },
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (context) => _WishEditDialog(
+        item: item,
+        labelTextWithPriority: _labelTextWithPriority,
       ),
     );
-
-    titleController.dispose();
-    descriptionController.dispose();
-    labelController.dispose();
 
     if (result == null) return;
     setState(() {
       if (item == null) {
-        _items.insert(0, result);
-      } else {
-        final index = _items.indexWhere(
-          (candidate) => candidate.uid == item.uid,
+        _tasks.insert(
+          0,
+          Task(
+            title: result.title,
+            description: result.description,
+            label: result.label,
+            createdAt: DateTime.now(),
+            isWish: true,
+          ),
         );
-        if (index >= 0) _items[index] = result;
+      } else {
+        item
+          ..title = result.title
+          ..description = result.description
+          ..label = result.label;
       }
     });
     await _save();
   }
 
-  Future<void> _deleteItem(Task item) async {
-    setState(
-        () => _items.removeWhere((candidate) => candidate.uid == item.uid));
-    await _save();
+  void _toggleDone(Task item) {
+    setState(() {
+      item.toggleDone();
+      item.completedAt = item.isDone ? DateTime.now() : null;
+    });
+    _save();
   }
 
-  List<String> _labelsFor(Task item) => _labelsFromText(item.label);
+  void _setPriority(Task item, String priorityLabel) {
+    setState(() => setWishPriority(item, priorityLabel));
+    _save();
+  }
+
+  void _bumpPriority(Task item) {
+    setState(() => bumpWishPriority(item));
+    _save();
+  }
+
+  /// Moves [item] to the deleted list, with the same undo window as deleting
+  /// a task on the home page.
+  void _deleteItem(Task item) {
+    final originalIndex = _tasks.indexOf(item);
+    if (originalIndex < 0) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() => _tasks.removeAt(originalIndex));
+    _save();
+
+    late Timer timer;
+    timer = Timer(Config.delayDuration, () async {
+      item.deletedAt = DateTime.now();
+      final deleted = await _storage.loadDeletedTaskList();
+      deleted.insert(0, item);
+      await _storage.saveDeletedTaskList(deleted);
+      messenger.hideCurrentSnackBar();
+    });
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${item.title}"'),
+          duration: Config.delayDuration,
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
+              setState(() => _tasks.insert(originalIndex, item));
+              _save();
+            },
+          ),
+        ),
+      );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final wishes = _wishes();
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
@@ -248,7 +295,7 @@ class _WishlistPageState extends State<WishlistPage> {
         actions: [
           IconButton(
             tooltip: 'Export wishlist',
-            onPressed: _items.isEmpty ? null : _exportAllItems,
+            onPressed: wishes.isEmpty ? null : _exportAllItems,
             icon: const Icon(Icons.download_outlined),
           ),
         ],
@@ -260,71 +307,476 @@ class _WishlistPageState extends State<WishlistPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
+          : wishes.isEmpty
               ? const Center(
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'No wishlist items yet. Add ideas here and use labels/tags for priority.',
+                      'No wishlist items yet. Add ideas here; swipe to '
+                      'prioritize or delete them.',
                       textAlign: TextAlign.center,
                     ),
                   ),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  itemCount: _items.length,
-                  itemBuilder: (context, index) =>
-                      _buildItemCard(_items[index]),
+                  itemCount: wishes.length,
+                  itemBuilder: (context, index) {
+                    final item = wishes[index];
+                    return _WishTile(
+                      key: ValueKey(item.uid),
+                      item: item,
+                      onToggle: () => _toggleDone(item),
+                      onEdit: () => _editItem(item),
+                      onExport: () => _exportItem(item),
+                      onDelete: () => _deleteItem(item),
+                      onBumpPriority: () => _bumpPriority(item),
+                      onSetPriority: (label) => _setPriority(item, label),
+                    );
+                  },
                 ),
     );
   }
+}
 
-  Widget _buildItemCard(Task item) {
-    final labels = _labelsFor(item);
-    return Card(
-      child: ListTile(
-        title: Text(item.title),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (item.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(item.description),
-            ],
-            if (labels.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  for (final label in labels)
-                    Chip(
-                      label: Text(label),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-        onTap: () => _editItem(item),
-        trailing: Row(
+class _WishEditResult {
+  final String title;
+  final String description;
+  final String label;
+
+  const _WishEditResult(this.title, this.description, this.label);
+}
+
+/// Add/edit dialog owning its text controllers, so the dialog's exit
+/// animation never builds fields with disposed controllers.
+class _WishEditDialog extends StatefulWidget {
+  final Task? item;
+  final String Function(String text, String priorityLabel)
+      labelTextWithPriority;
+
+  const _WishEditDialog({
+    required this.item,
+    required this.labelTextWithPriority,
+  });
+
+  @override
+  State<_WishEditDialog> createState() => _WishEditDialogState();
+}
+
+class _WishEditDialogState extends State<_WishEditDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _labelController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.item?.title ?? '');
+    _descriptionController =
+        TextEditingController(text: widget.item?.description ?? '');
+    _labelController = TextEditingController(text: widget.item?.label ?? '');
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _labelController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+          widget.item == null ? 'Add wishlist item' : 'Edit wishlist item'),
+      content: SingleChildScrollView(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              tooltip: 'Export wishlist item',
-              icon: const Icon(Icons.ios_share_outlined),
-              onPressed: () => _exportItem(item),
+            TextField(
+              controller: _titleController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Title'),
+              textInputAction: TextInputAction.next,
             ),
-            IconButton(
-              tooltip: 'Delete wishlist item',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => _deleteItem(item),
+            TextField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(labelText: 'Description'),
+              maxLines: 3,
+            ),
+            TextField(
+              controller: _labelController,
+              decoration: const InputDecoration(
+                labelText: 'Labels / tags',
+                hintText: 'priority-high, gift, someday',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Quick priority',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final priority in wishPriorityLabels)
+                  OutlinedButton(
+                    onPressed: () {
+                      _labelController.text = widget.labelTextWithPriority(
+                        _labelController.text,
+                        priority,
+                      );
+                    },
+                    child: Text(priority.replaceFirst('priority-', '')),
+                  ),
+              ],
             ),
           ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final title = _titleController.text.trim();
+            if (title.isEmpty) return;
+            Navigator.of(context).pop(_WishEditResult(
+              title,
+              _descriptionController.text.trim(),
+              _labelController.text.trim(),
+            ));
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
+  }
+}
+
+/// A wishlist item rendered like a home-page task tile (checkbox, title,
+/// labels — never a due date) with the wishlist swipe actions: swiping
+/// toward the options side opens priority shortcuts and raises the priority
+/// one step when the countdown runs out; swiping toward the delete side
+/// moves the item to the deleted list. Directions follow
+/// [Config.swipeLeftDelete] like the home list.
+class _WishTile extends StatefulWidget {
+  final Task item;
+  final VoidCallback onToggle;
+  final VoidCallback onEdit;
+  final VoidCallback onExport;
+  final VoidCallback onDelete;
+  final VoidCallback onBumpPriority;
+  final void Function(String priorityLabel) onSetPriority;
+
+  const _WishTile({
+    Key? key,
+    required this.item,
+    required this.onToggle,
+    required this.onEdit,
+    required this.onExport,
+    required this.onDelete,
+    required this.onBumpPriority,
+    required this.onSetPriority,
+  }) : super(key: key);
+
+  @override
+  State<_WishTile> createState() => _WishTileState();
+}
+
+class _WishTileState extends State<_WishTile>
+    with SingleTickerProviderStateMixin {
+  bool _optionsOpen = false;
+  bool _isEmulator = false;
+  Timer? _timer;
+  late final AnimationController _progressController;
+  double _dragOffset = 0;
+  bool _dragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressController = AnimationController(
+      vsync: this,
+      duration: Config.delayDuration,
+    );
+    _checkEmulator();
+  }
+
+  Future<void> _checkEmulator() async {
+    final plugin = DeviceInfoPlugin();
+    var isEmulator = true;
+    try {
+      if (kIsWeb) {
+        isEmulator = true;
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidInfo = await plugin.androidInfo;
+        isEmulator = !androidInfo.isPhysicalDevice;
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final iosInfo = await plugin.iosInfo;
+        isEmulator = !iosInfo.isPhysicalDevice;
+      }
+    } catch (_) {
+      isEmulator = true;
+    }
+    if (mounted) setState(() => _isEmulator = isEmulator);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _progressController.dispose();
+    super.dispose();
+  }
+
+  void _startPriorityOptions() {
+    setState(() => _optionsOpen = true);
+    _timer?.cancel();
+    _progressController.reset();
+    _progressController.forward();
+    _timer = Timer(Config.delayDuration, () {
+      if (!mounted || !_optionsOpen) return;
+      _progressController.stop();
+      setState(() => _optionsOpen = false);
+      widget.onBumpPriority();
+    });
+  }
+
+  void _closeOptions() {
+    _timer?.cancel();
+    _progressController.stop();
+    if (mounted) setState(() => _optionsOpen = false);
+  }
+
+  void _selectPriority(String label) {
+    _closeOptions();
+    widget.onSetPriority(label);
+  }
+
+  List<String> _labels() => widget.item.label
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final labels = _labels();
+
+    final listTile = ListTile(
+      contentPadding: isAndroid
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 16.0),
+      minLeadingWidth: isAndroid ? 0 : null,
+      leading: Checkbox(
+        value: widget.item.isDone,
+        onChanged: (_) => widget.onToggle(),
+      ),
+      title: Text(
+        widget.item.title,
+        style: TextStyle(
+          decoration: widget.item.isDone ? TextDecoration.lineThrough : null,
+        ),
+      ),
+      subtitle: widget.item.description.isEmpty && labels.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.item.description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(widget.item.description),
+                ],
+                if (labels.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final label in labels)
+                        Chip(
+                          label: Text(label),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+      onTap: widget.onEdit,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isEmulator) ...[
+            IconButton(
+              icon: const Icon(Icons.swipe),
+              tooltip: 'Prioritize',
+              onPressed: _startPriorityOptions,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete),
+              tooltip: 'Delete wishlist item',
+              onPressed: widget.onDelete,
+            ),
+          ],
+          IconButton(
+            tooltip: 'Export wishlist item',
+            icon: const Icon(Icons.ios_share_outlined),
+            onPressed: widget.onExport,
+          ),
+        ],
+      ),
+    );
+
+    final stackTile = Stack(
+      children: [
+        listTile,
+        if (_optionsOpen)
+          Positioned.fill(
+            child: Container(
+              color: Theme.of(context).cardColor.withValues(alpha: 0.9),
+              alignment: Alignment.centerRight,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final priority in wishPriorityLabels.reversed)
+                        TextButton(
+                          onPressed: () => _selectPriority(priority),
+                          child:
+                              Text(priority.replaceFirst('priority-', '')),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 60,
+                    child: AnimatedBuilder(
+                      animation: _progressController,
+                      builder: (context, child) {
+                        return LinearProgressIndicator(
+                            value: _progressController.value);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+
+    final slide = AnimatedSlide(
+      offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
+      duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
+      child: stackTile,
+    );
+
+    Widget? background;
+    if (_dragOffset != 0) {
+      final isCancelDrag = _optionsOpen &&
+          (Config.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0);
+      final dragToDelete =
+          Config.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
+      if (isCancelDrag) {
+        final alignment =
+            _dragOffset < 0 ? Alignment.centerRight : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.orange.withValues(alpha: 0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      } else if (dragToDelete) {
+        final alignment = Config.swipeLeftDelete
+            ? Alignment.centerRight
+            : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.red.withValues(alpha: 0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Icon(Icons.delete, color: Colors.white),
+          ),
+        );
+      } else {
+        final alignment = Config.swipeLeftDelete
+            ? Alignment.centerLeft
+            : Alignment.centerRight;
+        background = Positioned.fill(
+          child: Container(
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Icon(Icons.keyboard_double_arrow_up,
+                color: Theme.of(context).colorScheme.primary),
+          ),
+        );
+      }
+    }
+
+    Widget content = Stack(
+      children: [
+        if (background != null) background,
+        slide,
+      ],
+    );
+
+    if (isAndroid || kIsWeb) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) {
+          setState(() => _dragging = true);
+        },
+        onHorizontalDragUpdate: (details) {
+          setState(() => _dragOffset += details.delta.dx);
+        },
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          const threshold = 100;
+          final swipedRight = _dragOffset > threshold || velocity > 500;
+          final swipedLeft = _dragOffset < -threshold || velocity < -500;
+          final optionsSwipe =
+              Config.swipeLeftDelete ? swipedRight : swipedLeft;
+          final deleteSwipe = Config.swipeLeftDelete ? swipedLeft : swipedRight;
+          if (_optionsOpen) {
+            // Swiping back toward the delete side cancels the pending
+            // priority change, mirroring the home list's cancel gesture.
+            if (deleteSwipe) _closeOptions();
+          } else if (optionsSwipe) {
+            _startPriorityOptions();
+          } else if (deleteSwipe) {
+            widget.onDelete();
+          }
+          setState(() {
+            _dragging = false;
+            _dragOffset = 0;
+          });
+        },
+        child: content,
+      );
+    }
+
+    return Card(child: content);
   }
 }

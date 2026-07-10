@@ -29,6 +29,11 @@ class Task {
   String? recurrenceParentUid;
   String? recurrenceInstanceKey;
 
+  /// When true this task belongs to the wishlist: it shows up in the
+  /// Wishlist tool (a pre-filtered view over the one task list, like a
+  /// project) and, lacking a due date, buckets into the Future tab.
+  bool isWish;
+
   /// Id of the project this task is assigned to, or null if unassigned.
   String? projectId;
 
@@ -62,6 +67,7 @@ class Task {
     this.recurrenceIntervalDays = 1,
     this.recurrenceParentUid,
     this.recurrenceInstanceKey,
+    this.isWish = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
   }) : uid = uid ?? Task.newUid();
@@ -106,6 +112,7 @@ class Task {
       recurrenceIntervalDays: json['recurrenceIntervalDays'] as int? ?? 1,
       recurrenceParentUid: json['recurrenceParentUid'] as String?,
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
+      isWish: json['isWish'] as bool? ?? false,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
     );
@@ -134,6 +141,7 @@ class Task {
           'recurrenceParentUid': recurrenceParentUid,
         if (recurrenceInstanceKey != null)
           'recurrenceInstanceKey': recurrenceInstanceKey,
+        'isWish': isWish,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,
       };

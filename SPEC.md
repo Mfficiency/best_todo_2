@@ -113,6 +113,8 @@ recurrence: `isRecurring`, `recurrenceEndDate`, `recurrenceIntervalDays` (≥1; 
 1/2/7), `recurrenceParentUid` + `recurrenceInstanceKey` (`yyyy-MM-dd`) on generated children.
 Projects (0.1.89): `projectId` (String?, omitted from JSON when null) + `kanbanStatus`
 (`'todo'`/`'ongoing'`/`'closed'`, constants on `Task`, defaults `'todo'`).
+Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist item
+(see §10.6); wish tasks are undated and undated tasks bucket into the Future tab.
 `fromJson` is tolerant: missing keys get defaults.
 
 `DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
@@ -125,7 +127,8 @@ rollups.
 | File | Content | Cap |
 |---|---|---|
 | `settings.json` | Config map | — |
-| `tasks.json` | active tasks (incl. recurrence children) | — |
+| `tasks.json` | active tasks (incl. recurrence children and `isWish` wishlist items) | — |
+| `wishlist.json` | legacy wishlist store; drained into `tasks.json` on load since 0.1.101 | — |
 | `deleted_tasks.json` | deleted list | **100**, trimmed on save+load |
 | `daily_task_stats.json` | one record per day | — |
 | `last_opened.txt` | ISO timestamp for day-rollover detection | 1 value |
@@ -614,22 +617,50 @@ cleared); the app-bar title and a hint-colored description line under it update 
 Original board written pre-0.1.58, merged at 0.1.89; still uses deprecated
 `onWillAccept`/`onAccept` and some hardcoded `Colors.black45`-style hints.
 
-### 10.6 Wishlist (0.1.94–0.1.95, Future-tab mirror + Todo.md import 0.1.100)
-Tools → Wishlist (`lib/ui/wishlist_page.dart`): a separate task-shaped list for ideas,
-persisted as `wishlist.json` (list of `Task` JSON; only title/description/label are
-used). Add/edit dialog (title, description, labels/tags text field with quick
-`priority-low/medium/high` buttons that replace any existing priority label), per-item
-and export-all JSON export (`{export_version: 1, exported_at, wishlist_items: [...]}`),
-delete per item. Labels are split on commas/whitespace and rendered as chips.
+### 10.6 Wishlist (0.1.94–0.1.95, Todo.md import 0.1.100, unified into the task list 0.1.101)
+Tools → Wishlist (`lib/ui/wishlist_page.dart`): a pre-filtered view over the ONE task
+list — exactly like opening a project — showing only tasks flagged `Task.isWish`
+(JSON key `isWish`, default false). Wish tasks live in `tasks.json` alongside
+everything else; they are undated (`dueDate == null`), which alone buckets them into
+the Future tab (`_tasksForTab` sends null-due tasks to the future bucket), where they
+render as full, editable task tiles whose `TaskTile` subtitle shows the description, a
+small "wish" tag and the task's own labels as tags. The schedule view groups undated
+tasks under "Someday". The home search matches them like any task. So: the item
+overview (home) shows all items with all properties/tags; the Wishlist shows only wish
+items and never anything date-related.
 
-**Future-tab mirror (0.1.100):** HomePage loads the wishlist in `_loadTasks` (and
-reloads after returning from any tool) into `_wishlistItems`, which is kept strictly
-separate from `_tasks` so wish items can never leak into `tasks.json`, the schedule
-view, stats or reordering. The Future tab renders them after the real future tasks as
-read-only cards tagged with a "wish" chip (plus the item's own label chips); the home
-search filters them like tasks; tapping one opens the Wishlist tool.
-`_reorderTask`'s range guards make drags that start on or cross into the wish region
-no-ops.
+The page loads via `StorageService.loadTaskList()`, keeps the full list in memory,
+mutates only the wish subset and always saves the whole list; HomePage reloads
+`_tasks` from disk when returning from the Wishlist tool. Wishes are sorted open
+items first, then by priority label (`priority-high` > `priority-medium` >
+`priority-low` > none, stable within a group). Tiles look like home task tiles
+(checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
+archived by the normal new-day rollover). Tap opens the add/edit dialog (title,
+description, labels/tags with quick priority buttons — a `_WishEditDialog`
+StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
+recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
+exported_at, wishlist_items: [...]}`) remain.
+
+**Swipes (0.1.101):** same gesture mechanics as `TaskTile` (drag with AnimatedSlide,
+100 px/500 velocity thresholds, directions honor `Config.swipeLeftDelete`, GestureDetector
+on Android/web, emulator/desktop fallback buttons: swipe icon = prioritize, trash =
+delete), but the options swipe changes PRIORITY instead of rescheduling: it opens a
+high/medium/low shortcut row with the `Config.delayDuration` countdown bar; letting it
+run out raises the priority one step (none→low→medium→high, capped; helpers
+`wishPriorityRank`/`setWishPriority`/`bumpWishPriority` rewrite the priority label in
+`Task.label`, keeping other labels). Swiping back toward the delete side cancels, as on
+the home list. The delete swipe removes the item immediately and shows the home-style
+undo snackbar; when the undo window expires the task gets `deletedAt` and moves to
+`deleted_tasks.json`. Restoring a wish from Deleted Items keeps `dueDate` null (other
+restores get today) so it lands back in the wishlist, not Today.
+
+**Legacy `wishlist.json` migration (0.1.101):** `loadTaskList()` calls
+`_migrateWishlistIntoTasks`: any items still in `wishlist.json` (a pre-0.1.101 store)
+are flagged `isWish`, stripped of any due date, appended to the task list (dedup by
+uid), persisted, and the legacy file is emptied so nothing merges twice. An unreadable
+`wishlist.json` makes `loadWishlist()` return an empty list, so the migration is a
+no-op and the corrupt file is left untouched. The migration also runs when
+`tasks.json` doesn't exist yet.
 
 **One-time Todo.md import (0.1.100):** `lib/services/wishlist_migration.dart` bakes in
 the still-open ideas from the repo's historical `Todo.md` ("After MVP → TODO" + "Later"
@@ -640,6 +671,8 @@ whitespace-collapsed) and never modifying or removing existing entries. The run 
 guarded by a `wishlist_todo_import_v1.txt` flag file so later deletions of imported
 items stick, and the import is skipped entirely (no flag, no write) when an existing
 `wishlist.json` fails to parse, so a corrupt-but-recoverable file is never overwritten.
+Since 0.1.101 this import feeds the task list via the wishlist migration above (fresh
+installs get the backlog as wish tasks on first `loadTaskList`).
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
