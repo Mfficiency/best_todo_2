@@ -75,8 +75,9 @@ void main() {
       initialTabIndex: 5,
     );
 
-    // Real future tasks and wishlist items render side by side; the wish
-    // tile carries a "wish" chip plus its own labels.
+    // Wishlist items are regular tasks in the one task list (merged from the
+    // legacy wishlist.json); undated, they bucket into the Future tab and
+    // render as full task tiles with a "wish" tag plus their own labels.
     expect(find.text('Buy a telescope'), findsOneWidget);
     expect(find.text('For stargazing weekends'), findsOneWidget);
     expect(find.text('wish'), findsOneWidget);

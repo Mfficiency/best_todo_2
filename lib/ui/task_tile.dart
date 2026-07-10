@@ -201,34 +201,57 @@ class _TaskTileState extends State<TaskTile>
     super.dispose();
   }
 
-  /// Small "Project 1" / "To-Do" tags shown under the title of a task that is
-  /// assigned to a project. Listens to the project list so renaming a project
-  /// updates the tags everywhere.
-  Widget _buildProjectTags() {
-    Widget tag(String text) {
-      final scheme = Theme.of(context).colorScheme;
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-        decoration: BoxDecoration(
-          color: scheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(fontSize: 11, color: scheme.onSecondaryContainer),
-        ),
-      );
-    }
+  Widget _tag(String text) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, color: scheme.onSecondaryContainer),
+      ),
+    );
+  }
 
+  /// Small tags shown under the title: "Project 1" / "To-Do" for a task
+  /// assigned to a project (listens to the project list so renames update
+  /// everywhere), plus "wish" and the task's own labels for wishlist items —
+  /// so the main list shows every property a wish carries. Returns null when
+  /// there is nothing to show.
+  Widget? _buildSubtitle() {
+    final task = widget.task;
+    if (task.projectId == null && !task.isWish) return null;
+    final labels = task.label
+        .split(RegExp(r'[,\s]+'))
+        .map((label) => label.trim())
+        .where((label) => label.isNotEmpty)
+        .toList();
     return ValueListenableBuilder<List<Project>>(
       valueListenable: ProjectService.instance.projects,
       builder: (context, _, __) => Padding(
         padding: const EdgeInsets.only(top: 2),
-        child: Wrap(
-          spacing: 4,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            tag(ProjectService.instance.nameOf(widget.task.projectId)),
-            tag(ProjectService.stageLabel(widget.task.kanbanStatus)),
+            if (task.isWish && task.description.isNotEmpty)
+              Text(task.description),
+            Wrap(
+              spacing: 4,
+              runSpacing: 2,
+              children: [
+                if (task.projectId != null) ...[
+                  _tag(ProjectService.instance.nameOf(task.projectId)),
+                  _tag(ProjectService.stageLabel(task.kanbanStatus)),
+                ],
+                if (task.isWish) ...[
+                  _tag('wish'),
+                  for (final label in labels) _tag(label),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -285,7 +308,7 @@ class _TaskTileState extends State<TaskTile>
           decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
         ),
       ),
-      subtitle: widget.task.projectId == null ? null : _buildProjectTags(),
+      subtitle: _buildSubtitle(),
       trailing: trailing,
     );
 

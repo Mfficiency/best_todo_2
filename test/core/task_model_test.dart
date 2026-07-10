@@ -53,4 +53,14 @@ void main() {
     expect(decoded.projectId, 'project_1');
     expect(decoded.kanbanStatus, Task.kanbanOngoing);
   });
+
+  test('isWish defaults to false and serializes', () {
+    final task = Task(title: 'Plain');
+    expect(task.isWish, isFalse);
+    expect(Task.fromJson(<String, dynamic>{'title': 'legacy'}).isWish,
+        isFalse);
+
+    task.isWish = true;
+    expect(Task.fromJson(task.toJson()).isWish, isTrue);
+  });
 }

@@ -57,10 +57,6 @@ class _HomePageState extends State<HomePage>
   final List<Task> _tasks = [];
   final List<Task> _deletedTasks = [];
 
-  /// Wishlist items (wishlist.json) mirrored at the bottom of the Future tab
-  /// as read-only tiles tagged "wish". They are never part of [_tasks], so
-  /// they cannot leak into tasks.json or the schedule/reorder logic.
-  final List<Task> _wishlistItems = [];
   final Map<String, DailyTaskStats> _dailyStatsByDay = {};
   final StorageService _storageService = StorageService();
 
@@ -398,14 +394,11 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _loadTasks() async {
+    // loadTaskList also merges legacy wishlist.json items (and the one-time
+    // Todo.md import) into the task list as isWish tasks.
     final loaded = await _storageService.loadTaskList();
     final loadedDeleted = await _storageService.loadDeletedTaskList();
     final loadedDailyStats = await _storageService.loadDailyTaskStats();
-    // Also runs the one-time Todo.md → wishlist import on first load.
-    final loadedWishlist = await _storageService.loadWishlist();
-    _wishlistItems
-      ..clear()
-      ..addAll(loadedWishlist);
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(
@@ -766,19 +759,20 @@ class _HomePageState extends State<HomePage>
       // Tools like Projects mutate tasks in place; refresh the lists when
       // coming back.
       if (mounted) setState(() {});
-      // The Wishlist tool persists straight to wishlist.json, so the Future
-      // tab's wish tiles are reloaded from disk.
-      _reloadWishlist();
+      // The Wishlist tool loads and saves the task list on its own, so this
+      // page's in-memory copy is refreshed from disk when coming back.
+      if (tool == 'wishlist') _reloadTasksFromStorage();
     });
   }
 
-  Future<void> _reloadWishlist() async {
-    final items = await _storageService.loadWishlist();
+  Future<void> _reloadTasksFromStorage() async {
+    final loaded = await _storageService.loadTaskList();
     if (!mounted) return;
     setState(() {
-      _wishlistItems
+      _tasks
         ..clear()
-        ..addAll(items);
+        ..addAll(loaded);
+      _refreshAllRecurringTasks();
     });
   }
 
@@ -1110,7 +1104,9 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.remove(task);
       task.deletedAt = null;
       task.autoDeleted = false;
-      task.dueDate = _currentDate;
+      // Wishlist items stay undated so they return to the wishlist/Future
+      // bucket instead of today's list.
+      if (!task.isWish) task.dueDate = _currentDate;
       _tasks.add(task);
       _refreshRecurringForTask(task);
     });
@@ -1674,7 +1670,8 @@ class _HomePageState extends State<HomePage>
     final query = applySearch ? _searchQuery.trim().toLowerCase() : '';
     final list = _tasks.where((task) {
       if (query.isNotEmpty && !_matchesSearch(task, query)) return false;
-      if (task.dueDate == null) return false;
+      // Undated tasks (e.g. wishlist items) belong to the Future bucket.
+      if (task.dueDate == null) return pageIndex == _futureTabIndex;
       // Compare dates without considering the time of day so that tasks due
       // tomorrow don't appear in today's list simply because they are less
       // than 24 hours away.
@@ -1788,23 +1785,8 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// Wishlist items shown on the Future tab, narrowed by the active search
-  /// query like regular tasks.
-  List<Task> _visibleWishlistItems() {
-    final query = _searchQuery.trim().toLowerCase();
-    if (query.isEmpty) return _wishlistItems;
-    return _wishlistItems
-        .where((item) => _matchesSearch(item, query))
-        .toList();
-  }
-
   Widget _buildTaskList(int pageIndex) {
     final tasks = _tasksForTab(pageIndex);
-    // Wish tiles render after the real tasks; _reorderTask ignores drags that
-    // start in or end past the task range, so they stay pinned at the bottom.
-    final wishes = pageIndex == _futureTabIndex
-        ? _visibleWishlistItems()
-        : const <Task>[];
     return Column(
       children: [
         _buildAddTaskRow(),
@@ -1812,61 +1794,15 @@ class _HomePageState extends State<HomePage>
           child: tasks.isEmpty && pageIndex == 0
               ? const Center(child: Text('No tasks for today'))
               : ReorderableListView.builder(
-                  itemCount: tasks.length + wishes.length,
+                  itemCount: tasks.length,
                   onReorder: (oldIndex, newIndex) =>
                       _reorderTask(pageIndex, oldIndex, newIndex),
                   buildDefaultDragHandles: true,
-                  itemBuilder: (context, index) => index < tasks.length
-                      ? _buildTaskTile(tasks[index], pageIndex, index)
-                      : _buildWishTile(wishes[index - tasks.length]),
+                  itemBuilder: (context, index) =>
+                      _buildTaskTile(tasks[index], pageIndex, index),
                 ),
         )
       ],
-    );
-  }
-
-  /// Read-only tile for a wishlist item on the Future tab. Tagged "wish";
-  /// tapping opens the Wishlist tool, where the item can be edited.
-  Widget _buildWishTile(Task item) {
-    final labels = item.label
-        .split(RegExp(r'[,\s]+'))
-        .map((label) => label.trim())
-        .where((label) => label.isNotEmpty)
-        .toList();
-    return Card(
-      key: ValueKey('wish-${item.uid}'),
-      child: ListTile(
-        leading: const Icon(Icons.card_giftcard_outlined),
-        title: Text(item.title),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (item.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(item.description),
-            ],
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                const Chip(
-                  label: Text('wish'),
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                for (final label in labels)
-                  Chip(
-                    label: Text(label),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-              ],
-            ),
-          ],
-        ),
-        onTap: () => _openTool('wishlist'),
-      ),
     );
   }
 

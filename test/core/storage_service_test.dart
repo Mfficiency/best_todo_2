@@ -15,9 +15,16 @@ class _FakePathProvider extends PathProviderPlatform {
 }
 
 void main() {
+  /// Opts out of the one-time Todo.md → wishlist import that loadTaskList
+  /// runs (via the wishlist merge) on first load.
+  Future<void> writeImportFlag(Directory dir) => File(
+          '${dir.path}/${StorageService.wishlistImportFlagFileName}')
+      .writeAsString('done');
+
   test('loadTaskList removes completed tasks on new day', () async {
     final tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    await writeImportFlag(tempDir);
 
     final service = StorageService();
     final tasks = [
@@ -37,6 +44,50 @@ void main() {
     final deleted = await service.loadDeletedTaskList();
     expect(deleted.length, 1);
     expect(deleted.first.title, 'done');
+  });
+
+  test('loadTaskList merges wishlist.json items into the task list', () async {
+    final tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    await writeImportFlag(tempDir);
+
+    final service = StorageService();
+    await service.saveTaskList([Task(title: 'real task')]);
+    await service.saveWishlist([
+      Task(title: 'telescope', label: 'gift', dueDate: DateTime(2300, 1, 1)),
+    ]);
+
+    final loaded = await service.loadTaskList();
+    expect(loaded.length, 2);
+    final wish = loaded.singleWhere((t) => t.title == 'telescope');
+    expect(wish.isWish, isTrue);
+    // Wishes are undated; they bucket into the Future tab from that alone.
+    expect(wish.dueDate, isNull);
+    expect(wish.label, 'gift');
+    expect(loaded.singleWhere((t) => t.title == 'real task').isWish, isFalse);
+
+    // The merge is persisted and the legacy file emptied, so a second load
+    // does not duplicate anything.
+    final wishlistFile = File('${tempDir.path}/wishlist.json');
+    expect(jsonDecode(await wishlistFile.readAsString()), isEmpty);
+    final again = await service.loadTaskList();
+    expect(again.length, 2);
+    expect(again.where((t) => t.isWish).length, 1);
+  });
+
+  test('loadTaskList picks up wishlist items even without a tasks file',
+      () async {
+    final tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    await writeImportFlag(tempDir);
+
+    final service = StorageService();
+    await service.saveWishlist([Task(title: 'only a wish')]);
+
+    final loaded = await service.loadTaskList();
+    expect(loaded.length, 1);
+    expect(loaded.single.title, 'only a wish');
+    expect(loaded.single.isWish, isTrue);
   });
 
   test('importTaskList assigns unique ids when missing or duplicated', () async {
