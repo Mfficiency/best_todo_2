@@ -303,7 +303,12 @@ desktop/web where storage may not persist; skipped as soon as any seeded task ca
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
 
-Appearance: dark mode, icon tabs, 24-hour time (default on), date format (6 choices,
+Appearance: dark mode, minimalist mode (0.1.101, default off: swaps both themes for a
+monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pure greys
+only, transparent `surfaceTint`, no ink splashes, selected chips underlined via a
+`WidgetStateTextStyle` label instead of a colour fill; the orange/red/green swipe
+backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with dark
+mode), icon tabs, 24-hour time (default on), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, swipe-left-delete, default delay 0–10 s slider,
 start tab, default start page (`startTool`: the task list or any tool — Alarms, Countdown,
 Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task

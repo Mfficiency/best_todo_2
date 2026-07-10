@@ -20,6 +20,7 @@ void main() {
 
     // Set and save custom values
     Config.darkMode = true;
+    Config.minimalistMode = true;
     Config.swipeLeftDelete = false;
     Config.useIconTabs = true;
     Config.enableNotifications = true;
@@ -32,6 +33,7 @@ void main() {
 
     // Reset to defaults
     Config.darkMode = false;
+    Config.minimalistMode = false;
     Config.swipeLeftDelete = true;
     Config.useIconTabs = false;
     Config.enableNotifications = false;
@@ -44,6 +46,7 @@ void main() {
     await Config.load();
 
     expect(Config.darkMode, isTrue);
+    expect(Config.minimalistMode, isTrue);
     expect(Config.swipeLeftDelete, isFalse);
     expect(Config.useIconTabs, isTrue);
     expect(Config.enableNotifications, isTrue);

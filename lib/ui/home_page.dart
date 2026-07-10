@@ -1778,7 +1778,11 @@ class _HomePageState extends State<HomePage>
     if (usesCustomSwipe) return tile;
     return Dismissible(
       key: ValueKey(task.uid),
-      background: Container(color: Colors.greenAccent.withOpacity(0.5)),
+      background: Container(
+        color: Config.minimalistMode
+            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)
+            : Colors.greenAccent.withOpacity(0.5),
+      ),
       onDismissed: (_) => _moveTaskToNextPage(pageIndex, indexInTab),
       child: tile,
     );
@@ -1927,7 +1931,10 @@ class _HomePageState extends State<HomePage>
               color: Theme.of(context).colorScheme.primary,
               child: Text(
                 'BestToDo v${Config.version}',
-                style: const TextStyle(color: Colors.white, fontSize: 18),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  fontSize: 18,
+                ),
               ),
             ),
             ListTile(

@@ -59,6 +59,8 @@ class _SettingsPageState extends State<SettingsPage> {
   /// [_sectionTitles]; keywords add synonyms users may type instead.
   static const List<_SettingsSearchEntry> _searchEntries = [
     _SettingsSearchEntry('Dark mode', 0, 'theme light appearance color'),
+    _SettingsSearchEntry('Minimalist mode', 0,
+        'theme monochrome serene calm plain simple no colours colors underline'),
     _SettingsSearchEntry('Use tab icons', 0, 'tabs labels home'),
     _SettingsSearchEntry('24-hour time', 0, 'clock am pm 12-hour format'),
     _SettingsSearchEntry('Date format', 0, 'display day month year'),
@@ -91,6 +93,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _notifications = Config.enableNotifications;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
+  bool _minimalistMode = Config.minimalistMode;
   bool _useIconTabs = Config.useIconTabs;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
@@ -113,6 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _notifications = Config.enableNotifications;
     _swipeLeftDelete = Config.swipeLeftDelete;
     _darkMode = Config.darkMode;
+    _minimalistMode = Config.minimalistMode;
     _useIconTabs = Config.useIconTabs;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _addNewTasksToTop = Config.addNewTasksToTop;
@@ -436,17 +440,22 @@ class _SettingsPageState extends State<SettingsPage> {
 
     // SliverList lays out children lazily, so a section that hasn't been
     // scrolled into view yet has no RenderObject and ensureVisible would
-    // no-op. Walk the scroll forward in chunks until the target section
-    // is laid out, then ensureVisible does the final alignment.
+    // no-op. Walk the scroll forward one viewport at a time until the target
+    // section is laid out, then ensureVisible does the final alignment.
+    // Jumping straight to maxScrollExtent overshoots: a mid-list section can
+    // fall outside the sliver cache again once the view sits at the bottom,
+    // leaving its context null and the jump stuck at the last section.
     if (_scrollController.hasClients) {
       var attempts = 0;
-      while (_sectionKeys[index].currentContext == null && attempts < 10) {
+      while (_sectionKeys[index].currentContext == null && attempts < 20) {
         final position = _scrollController.position;
         final maxExtent = position.maxScrollExtent;
         if (_scrollController.offset >= maxExtent - 1) break;
+        final target =
+            (position.pixels + position.viewportDimension).clamp(0.0, maxExtent);
         await _scrollController.animateTo(
-          maxExtent,
-          duration: const Duration(milliseconds: 200),
+          target,
+          duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
         );
         attempts++;
@@ -929,6 +938,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (val) async {
                           setState(() => _darkMode = val);
                           Config.darkMode = val;
+                          await Config.save();
+                          MyApp.of(context)?.updateTheme();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Minimalist mode'),
+                        subtitle: const Text(
+                            'Calm monochrome look: no colours, underlines '
+                            'instead of highlights'),
+                        value: _minimalistMode,
+                        onChanged: (val) async {
+                          setState(() => _minimalistMode = val);
+                          Config.minimalistMode = val;
                           await Config.save();
                           MyApp.of(context)?.updateTheme();
                           widget.onSettingsChanged?.call();

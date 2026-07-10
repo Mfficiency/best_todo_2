@@ -526,6 +526,11 @@ class _TaskTileState extends State<TaskTile>
 
     Widget? background;
     if (_dragOffset != 0) {
+      // Minimalist mode swaps the orange/red swipe backdrops for neutral ink.
+      final scheme = Theme.of(context).colorScheme;
+      final swipeForeground =
+          Config.minimalistMode ? scheme.surface : Colors.white;
+      final neutralBackdrop = scheme.onSurface.withValues(alpha: 0.45);
       final originalWasRight = _optionMode != null &&
           widget.swipeLeftDelete == (_optionMode == _SwipeOptionMode.move);
       final isCancelDrag = _optionMode != null &&
@@ -538,13 +543,15 @@ class _TaskTileState extends State<TaskTile>
             _dragOffset < 0 ? Alignment.centerRight : Alignment.centerLeft;
         background = Positioned.fill(
           child: Container(
-            color: Colors.orange.withOpacity(0.5),
+            color: Config.minimalistMode
+                ? neutralBackdrop
+                : Colors.orange.withOpacity(0.5),
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(
-                color: Colors.white,
+                color: swipeForeground,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -556,10 +563,12 @@ class _TaskTileState extends State<TaskTile>
             : Alignment.centerLeft;
         background = Positioned.fill(
           child: Container(
-            color: Colors.red.withOpacity(0.5),
+            color: Config.minimalistMode
+                ? neutralBackdrop
+                : Colors.red.withOpacity(0.5),
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Icon(Icons.delete, color: Colors.white),
+            child: Icon(Icons.delete, color: swipeForeground),
           ),
         );
       } else {

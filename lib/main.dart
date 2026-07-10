@@ -21,6 +21,70 @@ import 'services/sms_report_scheduler.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
+/// Monochrome ink-on-paper theme used when minimalist mode is on: pure greys
+/// only (no hue anywhere), flat surfaces, no ink splashes, and selection shown
+/// with an underline instead of a filled highlight.
+ThemeData buildMinimalistTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  final paper = dark ? const Color(0xFF141414) : const Color(0xFFFAFAFA);
+  final ink = dark ? const Color(0xFFE3E3E3) : const Color(0xFF1F1F1F);
+  final faintInk = dark ? const Color(0xFFA3A3A3) : const Color(0xFF616161);
+  final mist = dark ? const Color(0xFF262626) : const Color(0xFFEEEEEE);
+  final line = dark ? const Color(0xFF3A3A3A) : const Color(0xFFDBDBDB);
+
+  final scheme = ColorScheme(
+    brightness: brightness,
+    primary: ink,
+    onPrimary: paper,
+    primaryContainer: mist,
+    onPrimaryContainer: ink,
+    secondary: faintInk,
+    onSecondary: paper,
+    secondaryContainer: mist,
+    onSecondaryContainer: ink,
+    tertiary: faintInk,
+    onTertiary: paper,
+    error: ink,
+    onError: paper,
+    surface: paper,
+    onSurface: ink,
+    onSurfaceVariant: faintInk,
+    surfaceContainerHighest: mist,
+    outline: faintInk,
+    outlineVariant: line,
+    inverseSurface: ink,
+    onInverseSurface: paper,
+    inversePrimary: paper,
+    surfaceTint: Colors.transparent,
+  );
+
+  return ThemeData(
+    colorScheme: scheme,
+    useMaterial3: true,
+    scaffoldBackgroundColor: paper,
+    splashFactory: NoSplash.splashFactory,
+    dividerTheme: DividerThemeData(color: line),
+    // Selected chips (e.g. the settings section chips) keep their quiet
+    // outline and underline their label instead of filling with colour.
+    chipTheme: ChipThemeData(
+      selectedColor: Colors.transparent,
+      showCheckmark: false,
+      side: BorderSide(color: line),
+      labelStyle: WidgetStateTextStyle.resolveWith(
+        (states) => TextStyle(
+          color: ink,
+          decoration: states.contains(WidgetState.selected)
+              ? TextDecoration.underline
+              : TextDecoration.none,
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w600
+              : FontWeight.normal,
+        ),
+      ),
+    ),
+  );
+}
+
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Background entry point invoked by the home-screen widget when a toggle is
@@ -202,18 +266,22 @@ class _MyAppState extends State<MyApp> {
           child: child ?? const SizedBox.shrink(),
         );
       },
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
-            .copyWith(primary: _seedColor),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _seedColor,
-          brightness: Brightness.dark,
-        ).copyWith(primary: _seedColor),
-        useMaterial3: true,
-      ),
+      theme: Config.minimalistMode
+          ? buildMinimalistTheme(Brightness.light)
+          : ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
+                  .copyWith(primary: _seedColor),
+              useMaterial3: true,
+            ),
+      darkTheme: Config.minimalistMode
+          ? buildMinimalistTheme(Brightness.dark)
+          : ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: _seedColor,
+                brightness: Brightness.dark,
+              ).copyWith(primary: _seedColor),
+              useMaterial3: true,
+            ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
       home: _showIntro ? IntroPage(onFinished: _finishIntro) : _initialPage(),
     );

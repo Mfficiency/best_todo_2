@@ -123,6 +123,11 @@ class Config {
   /// If true, the app uses a dark color scheme.
   static bool darkMode = false;
 
+  /// If true, the app uses the minimalist look: a monochrome ink-on-paper
+  /// theme with no accent colours, flat surfaces and underlines instead of
+  /// filled highlights. Combines with [darkMode] for a dark monochrome look.
+  static bool minimalistMode = false;
+
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
@@ -189,6 +194,7 @@ class Config {
     return {
       'swipeLeftDelete': swipeLeftDelete,
       'darkMode': darkMode,
+      'minimalistMode': minimalistMode,
       'enableNotifications': enableNotifications,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
       'startTabIndex': startTabIndex,
@@ -210,6 +216,7 @@ class Config {
   static void applyMap(Map<String, dynamic> data) {
     swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
     darkMode = data['darkMode'] ?? darkMode;
+    minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     defaultNotificationDelaySeconds =
         (data['defaultNotificationDelaySeconds'] as num?)?.round() ??

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.101] - 2026-07-10
+- New minimalist mode in Settings → Appearance: a calm, monochrome ink-on-paper look with no accent colours, flat surfaces, and underlined (instead of highlighted) selections; works in both light and dark mode
+
 ## [0.1.100] - 2026-07-09
 - Wishlist items now also show up at the bottom of the Future tab, tagged "wish" — read-only there, tap one to open the Wishlist tool; the home search filters them like tasks, and they stay out of your real task list
 - One-time import: the still-open ideas from the old Todo.md backlog are added to your wishlist tagged "old"; items you already have (same title) are skipped, nothing existing is changed or removed, and re-deleting an imported item sticks
