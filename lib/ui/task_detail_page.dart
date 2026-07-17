@@ -104,7 +104,10 @@ class TaskReminderSection extends StatelessWidget {
               onPressed: () {
                 final reminder = ReminderSyncService.buildReminder(task);
                 if (reminder != null) {
-                  AlarmService.instance.upsert(reminder);
+                  // The in-memory list updates immediately; persistence /
+                  // OS scheduling may be unavailable (web) — swallowed like
+                  // all storage in this app.
+                  AlarmService.instance.upsert(reminder).catchError((_) {});
                 }
               },
             ),
@@ -124,7 +127,9 @@ class TaskReminderSection extends StatelessWidget {
               IconButton(
                 tooltip: 'Remove reminder',
                 icon: const Icon(Icons.delete_outline),
-                onPressed: () => AlarmService.instance.delete(reminder.uid),
+                onPressed: () => AlarmService.instance
+                    .delete(reminder.uid)
+                    .catchError((_) {}),
               ),
             ],
           ),

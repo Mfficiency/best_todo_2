@@ -13,9 +13,11 @@ import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
+import '../services/alarm_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
+import '../services/reminder_sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/test_report_service.dart';
 import '../utils/date_utils.dart';
@@ -308,6 +310,29 @@ class _HomePageState extends State<HomePage>
     ));
   }
 
+  /// Dev-only: attaches a reminder to the seeded range task ("Deep work
+  /// block", 15 min before its end) so the item-linked reminder row on the
+  /// task-detail page and the linked alarm in the Alarms tool are testable
+  /// right away. In-memory only — a real save persists it like any alarm.
+  void _seedDevLinkedReminder() {
+    Task? found;
+    for (final task in _tasks) {
+      if (task.deletedAt == null &&
+          task.duration != null &&
+          task.duration! > Duration.zero) {
+        found = task;
+        break;
+      }
+    }
+    final target = found;
+    if (target == null) return;
+    final service = AlarmService.instance;
+    if (service.list.any((a) => a.itemUid == target.uid)) return;
+    final reminder = ReminderSyncService.buildReminder(target);
+    if (reminder == null) return;
+    service.alarms.value = [...service.list, reminder];
+  }
+
   /// Dev-only: writes a small ready-made history for the first project-board
   /// task so the History timeline on the task-detail page has data on a
   /// fresh install — including in Chrome, where the journal lives in memory
@@ -531,6 +556,7 @@ class _HomePageState extends State<HomePage>
       if (loaded.isEmpty) {
         _seedDevRangeTask();
         _seedDevItemHistory();
+        _seedDevLinkedReminder();
       }
     }
     _refreshAllRecurringTasks();
