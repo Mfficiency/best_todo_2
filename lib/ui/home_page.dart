@@ -911,15 +911,11 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _reloadTasksFromStorage() async {
-<<<<<<< HEAD
-    final loaded = await _repository.loadItems();
-=======
     // On the web nothing can have been persisted by the tool we're returning
     // from (no documents dir), so reloading would only wipe the in-memory
     // dev seeds. Keep the current list there.
     if (kIsWeb) return;
-    final loaded = await _storageService.loadTaskList();
->>>>>>> claude/migration-6-views
+    final loaded = await _repository.loadItems();
     if (!mounted) return;
     setState(() {
       _tasks
