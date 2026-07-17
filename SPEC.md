@@ -138,6 +138,8 @@ rollups.
 | `alarms.json` | alarm list | — |
 | `sms_report_config.json` / `sms_report_log.json` | SMS config / log | log 500 |
 | `alarm_log.txt` | human-readable alarm pipeline log | ~400 KB → trim to 250 KB |
+| `item_events.jsonl` | append-only item history journal (one JSON event per line) | ~1 MB → keep newest 4000 |
+| `item_event_meta.json` | per-item last sequence number (`{uid: seq}`) | — |
 
 **Day rollover:** on load, if the calendar date changed since `last_opened.txt`, every
 `isDone` task gets `completedAt`/`deletedAt` backfilled, moves to the top of the deleted
@@ -153,6 +155,22 @@ folder with timestamped names. Tasks bundle is `export_version: 2` with `tasks`,
 Everything use `export_version: 1` (two version namespaces — intentional). Import
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
+
+### 4.2b Item history journal (0.1.103)
+
+`ItemEventJournal` (`lib/services/item_event_journal.dart`) records every change to a
+task as an immutable `ItemEvent` (`lib/models/item_event.dart`: eventId, itemId, per-item
+`seq` = version number, at, type, field-level `patch` [{field, from, to}], `seeded` flag)
+in append-only `item_events.jsonl`. `StorageService.saveTaskList` diffs the new list
+against the last persisted snapshot (static baseline set on load/save; first contact only
+snapshots, so test pre-saves stay silent) and enqueues the events on a fire-and-forget
+write chain — **saves and startup are not slowed; the journal is never read at startup,
+only on demand** (task-detail History section, export). Types: created / edited / labeled /
+scheduled / statusChanged / projectChanged / wishChanged / recurrenceChanged / deleted /
+restored. `listRanking` and the lifecycle timestamps are deliberately untracked (noise).
+A reappearing uid whose seq index (`item_event_meta.json`) is non-zero logs `restored`,
+not `created`. Self-compacts past ~1 MB to the newest 4000 events. Task exports carry the
+journal as `item_events` next to the derived `task_events`.
 
 ### 4.3 Home page UX
 

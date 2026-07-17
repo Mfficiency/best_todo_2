@@ -5,7 +5,9 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/countdown_timer.dart';
 import '../models/daily_task_stats.dart';
+import '../models/item_event.dart';
 import '../models/task.dart';
+import 'item_event_journal.dart';
 import 'wishlist_migration.dart';
 
 class TaskImportBundle {
@@ -37,6 +39,17 @@ class StorageService {
       'wishlist_todo_import_v1.txt';
   static const _maxDeletedTasks = 100;
   static const int exportVersion = 2;
+
+  /// Last persisted state of the task list (`uid → task JSON`), shared across
+  /// instances so every save can be diffed into the item-history journal.
+  /// Null until the first load/save of a session; the first contact only
+  /// snapshots (no events), so pre-seeding storage in tests stays silent.
+  static Map<String, Map<String, dynamic>>? _journalBaseline;
+
+  static Map<String, Map<String, dynamic>> _snapshotOf(List<Task> tasks) =>
+      {for (final t in tasks) t.uid: t.toJson()};
+
+  static void resetJournalBaselineForTest() => _journalBaseline = null;
 
   void _ensureUniqueIds(List<Task> tasks) {
     final ids = <String>{};
@@ -102,6 +115,15 @@ class StorageService {
   }
 
   Future<void> saveTaskList(List<Task> tasks) async {
+    // Journal the change before writing: diff against the last persisted
+    // state and hand the result to the journal's background write chain —
+    // recordDiff returns immediately, so saves are as fast as before.
+    final snapshot = _snapshotOf(tasks);
+    final baseline = _journalBaseline;
+    _journalBaseline = snapshot;
+    if (baseline != null) {
+      ItemEventJournal.instance.recordDiff(before: baseline, after: snapshot);
+    }
     final file = await _getLocalFile();
     final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
     await file.writeAsString(jsonString, flush: true);
@@ -146,6 +168,9 @@ class StorageService {
             .toList();
         _ensureUniqueIds(tasks);
       }
+      // Baseline for the journal is the state as it was on disk, set before
+      // the rollover sweep below so swept tasks produce `deleted` events.
+      _journalBaseline = _snapshotOf(tasks);
       if (isNewDay) {
         final doneTasks = tasks.where((t) => t.isDone).toList();
         if (doneTasks.isNotEmpty) {
@@ -352,11 +377,18 @@ class StorageService {
     required String path,
   }) async {
     try {
+      // The journal is the exact record; the derived task_events below stay
+      // for consumers of the old shape.
+      var itemEvents = const <ItemEvent>[];
+      try {
+        itemEvents = await ItemEventJournal.instance.allEvents();
+      } catch (_) {}
       final file = File(path);
       final jsonString = jsonEncode(buildTaskExportPayload(
         tasks: tasks,
         deletedTasks: deletedTasks,
         dailyStatsByDay: dailyStatsByDay,
+        itemEvents: itemEvents,
       ));
       await file.writeAsString(jsonString, flush: true);
       return file;
@@ -369,6 +401,7 @@ class StorageService {
     required List<Task> tasks,
     required List<Task> deletedTasks,
     required Map<String, DailyTaskStats> dailyStatsByDay,
+    List<ItemEvent> itemEvents = const <ItemEvent>[],
   }) {
     final allTasks = <Task>[...tasks, ...deletedTasks];
     final labels = allTasks.map((t) => t.label.trim()).where((v) => v.isNotEmpty).toSet().toList()..sort();
@@ -385,6 +418,7 @@ class StorageService {
       'deleted_tasks': deletedTasks.map((t) => t.toJson()).toList(),
       'daily_stats': dailyStatsByDay.values.map((s) => s.toJson()).toList(),
       'task_events': _deriveTaskEvents(allTasks),
+      'item_events': itemEvents.map((e) => e.toJson()).toList(),
       'labels': labels,
       'projects': projects,
     };

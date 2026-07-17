@@ -9,7 +9,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 
 | Suite | Command | Covers |
 |---|---|---|
-| `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
+| `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, item-history journal (`ItemEventJournal` diff + persistence), config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip, alarm editor (top save), alarm ring page |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
 | `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, wishlist items on the Future tab |
