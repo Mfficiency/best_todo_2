@@ -16,6 +16,7 @@ import 'config.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
+import 'services/pre_update_backup.dart';
 import 'services/startup_time_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
@@ -135,6 +136,10 @@ Future<void> main() async {
     // single file-exists check.
     unawaited(Future<void>.delayed(const Duration(seconds: 3))
         .then((_) => ItemHistorySeeder.runOnce()));
+    // Record which app version wrote the current data files, so future
+    // migrations can take version-specific precautions. Same deferral.
+    unawaited(Future<void>.delayed(const Duration(seconds: 3))
+        .then((_) => PreUpdateBackup.recordCurrentVersion()));
   });
 }
 

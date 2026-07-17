@@ -187,6 +187,33 @@ Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the f
 frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
 appended after any live events but describe an older past.
 
+### 4.2f Upgrade safety (0.1.110)
+
+No update path may lose data. Three layers (`lib/services/safe_file.dart`,
+`lib/services/pre_update_backup.dart`):
+
+1. **Atomic saves with rotation** — `SafeFile.writeString` writes `<file>.tmp` (flushed),
+   rotates the previous content to `<file>.bak`, then renames over. Applied to
+   `tasks.json`, `deleted_tasks.json`, `daily_task_stats.json`, `countdown_timers.json`
+   and `alarms.json`. A crash mid-save can no longer leave a half-written file.
+2. **Corruption recovery** — loads go through `SafeFile.readWithRecovery`: an
+   unparseable main file is quarantined as `<file>.corrupt-<timestamp>` (so a later save
+   can never destroy the only copy — the pre-0.1.110 failure mode) and the `.bak` is
+   used instead. `wishlist.json` is deliberately excluded (its migration contract is
+   "unreadable file left untouched"); `loadCountdownTimers` keeps its null-vs-[] first-run
+   semantics by also checking the `.bak` for existence.
+3. **Pre-update snapshot** — `PreUpdateBackup.ensure()` runs before the first *write* of
+   a session (static bool → flag file `pre_update_backup_v1.txt` → once per install):
+   copies every data file (see `backedUpFiles`) verbatim into `pre_update_backup/`.
+   Never on the startup path. The wishlist drain saves the merged list BEFORE emptying
+   `wishlist.json` so the snapshot captures the original (re-merge on crash is deduped
+   by uid). Logged to App Logs. `last_run_version.txt` records the running version
+   (deferred from `main.dart`) for future version-specific migrations.
+
+Covered by `test/core/upgrade_safety_test.dart` (payload matrix from the no-uid era
+through projects/wishlist to schema v2, corruption drills, snapshot invariants) and
+`test/alarms/alarm_storage_recovery_test.dart`.
+
 ### 4.2e Repository seam (0.1.109)
 
 `ItemRepository` (`lib/services/item_repository.dart`, singleton) is the one interface
