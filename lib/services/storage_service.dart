@@ -9,6 +9,7 @@ import '../models/item_event.dart';
 import '../models/task.dart';
 import 'item_event_journal.dart';
 import 'label_service.dart';
+import 'reminder_sync_service.dart';
 import 'wishlist_migration.dart';
 
 class TaskImportBundle {
@@ -130,6 +131,9 @@ class StorageService {
     // are known, so saves stay as fast as before.
     LabelService.instance
         .registerFromLabelStrings(tasks.map((t) => t.label));
+    // Item-linked reminders follow their task (reschedule/complete/delete).
+    // Free when no linked alarm exists in memory.
+    ReminderSyncService.syncAfterSave(tasks);
     final file = await _getLocalFile();
     final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
     await file.writeAsString(jsonString, flush: true);

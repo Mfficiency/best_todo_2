@@ -61,6 +61,12 @@ class AlarmService {
         trigger: 'alarm toggled ${value ? 'ON' : 'OFF'} in app');
   }
 
+  /// Persists and re-syncs after an external bulk edit of [alarms]`.value`
+  /// (used by the reminder sync, which rewrites linked alarms from their
+  /// task's schedule).
+  Future<void> commitExternalChange({String? trigger}) =>
+      _afterChange(trigger: trigger ?? 'external change');
+
   Future<void> _afterChange({bool persist = true, String? trigger}) async {
     if (persist) {
       await _storage.saveAlarms(alarms.value);

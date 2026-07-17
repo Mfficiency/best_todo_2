@@ -402,6 +402,16 @@ Deterministic id scheme so every path can find an alarm's notifications:
 slots, `base + 0x10000000` watchdog id; fixed test-alarm ids at `0x20000000/1`. All within
 signed 32-bit; spaces cannot collide.
 
+**Item-linked reminders (0.1.107):** `Alarm` additionally carries `itemUid?` +
+`triggerAnchor` (`start`/`end`) + `triggerOffsetMinutes` (negative = before; serialized
+only when linked, so standalone alarm JSON is byte-identical to before). A linked alarm
+is an ordinary one-off whose `date`/`hour`/`minute` are rewritten from its task by
+`ReminderSyncService` (fire-and-forget from `saveTaskList`; free when no linked alarm is
+in memory): reschedule → follows (and re-enables), complete/undated → disabled (never
+deleted, so reopening revives it), task gone → removed, rename → name follows. Created
+via the one-tap "Remind me 15 min before due" on the task-detail page (hidden for
+undated tasks). **The scheduling pipeline below the model is untouched.**
+
 `AlarmService` is a singleton `ValueNotifier` store; every mutation persists →
 syncs the widget → **awaits** `rescheduleAll` (so short-lived isolates don't die mid-work).
 `toggleInStorage(uid)` is the static isolate-safe path used by widget toggles: load from

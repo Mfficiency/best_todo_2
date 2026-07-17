@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import '../models/alarm.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
+import '../services/alarm_service.dart';
 import '../services/item_event_journal.dart';
+import '../services/reminder_sync_service.dart';
 import 'subpage_app_bar.dart';
 
 class TaskDetailPage extends StatelessWidget {
@@ -37,9 +40,71 @@ class TaskDetailPage extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           Text('Completed: ${task.isDone ? 'Yes' : 'No'}'),
+          TaskReminderSection(task: task),
           TaskHistorySection(taskUid: task.uid),
         ],
       ),
+    );
+  }
+}
+
+/// One-tap reminder attached to this task. Creating uses the default "15
+/// minutes before due"; the reminder then follows the task automatically
+/// (reschedules move it, completing disables it, deleting removes it — see
+/// `ReminderSyncService`), so this one tap is the entire interaction.
+class TaskReminderSection extends StatelessWidget {
+  final Task task;
+  const TaskReminderSection({Key? key, required this.task}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    // Nothing to anchor a reminder to without a scheduled time.
+    if (task.endAt == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<List<Alarm>>(
+      valueListenable: AlarmService.instance.alarms,
+      builder: (context, alarms, _) {
+        Alarm? linked;
+        for (final alarm in alarms) {
+          if (alarm.itemUid == task.uid) {
+            linked = alarm;
+            break;
+          }
+        }
+        if (linked == null) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.alarm_add),
+              label: const Text('Remind me 15 min before due'),
+              onPressed: () {
+                final reminder = ReminderSyncService.buildReminder(task);
+                if (reminder != null) {
+                  AlarmService.instance.upsert(reminder);
+                }
+              },
+            ),
+          );
+        }
+        final reminder = linked;
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Row(
+            children: [
+              const Icon(Icons.alarm_on),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                    'Reminder ${reminder.scheduleLabel} ${reminder.timeLabel}'),
+              ),
+              IconButton(
+                tooltip: 'Remove reminder',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => AlarmService.instance.delete(reminder.uid),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

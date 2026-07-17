@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.107] - 2026-07-17
+- Alarms can now belong to a task: open a task's details and tap "Remind me 15 min before due" — one tap, done. The reminder then takes care of itself: rescheduling the task moves it, completing the task silences it, deleting the task removes it, and renaming the task renames it. Reminders ring through the same battle-tested alarm pipeline as regular alarms (escalation ladder, verification, watchdog); regular alarms are completely unaffected
+
 ## [0.1.106] - 2026-07-17
 - Tasks can now carry a real time range (start and end) instead of only a single due moment — groundwork for showing durations on the timeline and calendar. Existing tasks upgrade automatically the first time they are read (deadline = start and end at the same moment); files are written with a version stamp plus the old due-date field, so older app versions and old backups keep working both ways. No visible change and no effect on speed yet
 
