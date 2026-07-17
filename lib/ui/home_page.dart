@@ -907,6 +907,10 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _reloadTasksFromStorage() async {
+    // On the web nothing can have been persisted by the tool we're returning
+    // from (no documents dir), so reloading would only wipe the in-memory
+    // dev seeds. Keep the current list there.
+    if (kIsWeb) return;
     final loaded = await _storageService.loadTaskList();
     if (!mounted) return;
     setState(() {

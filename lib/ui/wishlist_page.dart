@@ -89,6 +89,18 @@ class _WishlistPageState extends State<WishlistPage> {
   Future<void> _load() async {
     // Also merges legacy wishlist.json items into the task list.
     final tasks = await _storage.loadTaskList();
+    // Platforms without storage (web) load an empty list; dev builds seed
+    // the same wish item the home page seeds so the tool is testable in
+    // Chrome. On devices with data the list is never empty here.
+    if (tasks.isEmpty && Config.isDev) {
+      tasks.add(Task(
+        title: 'Learn to sail',
+        description: 'Dev seed: a wishlist item',
+        label: 'priority-medium',
+        createdAt: DateTime.now(),
+        isWish: true,
+      ));
+    }
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
