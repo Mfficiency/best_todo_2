@@ -181,10 +181,18 @@ class ItemEventJournal {
     }
   }
 
-  /// The journal entries for one item, oldest first.
+  /// The journal entries for one item, oldest first by timestamp. Sorted by
+  /// `at` (then seq) rather than file order because seeded history is
+  /// appended after any live events but describes an older past.
   Future<List<ItemEvent>> eventsForItem(String itemId) async {
     final events = await allEvents();
-    return events.where((e) => e.itemId == itemId).toList();
+    final filtered = events.where((e) => e.itemId == itemId).toList();
+    filtered.sort((a, b) {
+      final byTime = a.at.compareTo(b.at);
+      if (byTime != 0) return byTime;
+      return a.seq.compareTo(b.seq);
+    });
+    return filtered;
   }
 
   /// Completes when every append enqueued so far has been flushed. Reads use

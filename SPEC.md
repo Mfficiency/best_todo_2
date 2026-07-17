@@ -172,6 +172,15 @@ A reappearing uid whose seq index (`item_event_meta.json`) is non-zero logs `res
 not `created`. Self-compacts past ~1 MB to the newest 4000 events. Task exports carry the
 journal as `item_events` next to the derived `task_events`.
 
+**History seeding (0.1.104):** `ItemHistorySeeder.runOnce()` backfills the journal once
+per install from pre-journal data — task lifecycle timestamps (created/moved/rescheduled/
+completed/deleted + the restore heuristic), the deleted list, and `DailyTaskStats` id sets
+(at day-noon, only for uids still present somewhere, never duplicating timestamp-covered
+events). All seed events carry `seeded: true` ("(reconstructed)" in the timeline UI).
+Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the first
+frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
+appended after any live events but describe an older past.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next

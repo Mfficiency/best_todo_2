@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.104] - 2026-07-17
+- Task history timelines now reach back before the journal existed: on first launch after updating, the app reconstructs each task's past (created, rescheduled, completed, deleted, restored) from its stored timestamps, the deleted list and the daily stats — marked "(reconstructed)" in the timeline. The backfill runs once, a few seconds after startup, so launching stays as fast as before
+
 ## [0.1.103] - 2026-07-17
 - Every change to a task — edits, rescheduling, completing, project moves, label changes, deletes and restores — is now recorded in an on-device history journal; open a task's details (e.g. from a project board) to see its timeline. Recording happens in the background after each save and the journal is only read on demand, so app startup and list interactions are exactly as fast as before
 - Exports now include the exact recorded history (`item_events`) alongside the reconstructed `task_events`

@@ -15,6 +15,7 @@ import 'ui/intro_page.dart';
 import 'config.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
+import 'services/item_history_seeder.dart';
 import 'services/startup_time_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
@@ -128,6 +129,12 @@ Future<void> main() async {
   runApp(MyApp(showIntro: showIntro));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
+    // One-time backfill of the item-history journal from pre-journal data.
+    // Deliberately a few seconds after the first frame so it never competes
+    // with startup or the home page's initial load; once seeded it is a
+    // single file-exists check.
+    unawaited(Future<void>.delayed(const Duration(seconds: 3))
+        .then((_) => ItemHistorySeeder.runOnce()));
   });
 }
 
