@@ -2,6 +2,7 @@
 
 ## [0.1.109] - 2026-07-17
 - Internal: all pages now access tasks, the deleted list, daily stats and item history through one repository interface, completing the item-model migration. A written decision record (docs/architecture/storage-decision.md) documents why storage stays on fast JSON files for now — startup speed is the top priority — and exactly what would trigger a move to a database later. No visible change
+- How to test (dev build, `flutter run -d chrome`; behavior-preserving seam — testing = a regression sweep over everything the repository now carries): (1) tasks — add a task, check one off, swipe-delay one; the list updates and (on the Deleted Items page) the deleted list follows. (2) history — a board card's details still show its (dev-seeded) History timeline, now read through the repository. (3) the earlier walkthroughs (0.1.103–0.1.108 below) all still pass unchanged on this build — they are the acceptance test for the seam. Delegation itself is unit-tested in `test/core/item_repository_test.dart`; the storage trade-off rationale is in docs/architecture/storage-decision.md
 
 ## [0.1.108] - 2026-07-17
 - Internal: every view of your items — home tabs, wishlist, project boards and cards — now runs through one shared query layer over the single task list, instead of each page filtering on its own. No visible change; behavior and speed are identical, and future custom filters/saved views become straightforward
