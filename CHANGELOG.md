@@ -3,6 +3,7 @@
 ## [0.1.103] - 2026-07-17
 - Every change to a task — edits, rescheduling, completing, project moves, label changes, deletes and restores — is now recorded in an on-device history journal; open a task's details (e.g. from a project board) to see its timeline. Recording happens in the background after each save and the journal is only read on demand, so app startup and list interactions are exactly as fast as before
 - Exports now include the exact recorded history (`item_events`) alongside the reconstructed `task_events`
+- How to test (dev build, `flutter run -d chrome`): a fresh dev start pre-seeds a ready-made history on the first project-board task — open Tools → Projects → tap a project's board button → tap the first card → the details page shows a History section ("Created", "Rescheduled to …", "Edited description"). Then verify live recording: back on the home list, rename any task, check one off, or swipe-delay it, and reopen its details from the board — each action appears as a new History line. On Chrome the journal lives in memory for the session (no files on web); on Android/desktop it persists in `item_events.jsonl`
 
 ## [0.1.102] - 2026-07-10
 - New minimalist mode in Settings → Appearance: a calm, monochrome ink-on-paper look with no accent colours, flat surfaces, and underlined (instead of highlighted) selections; works in both light and dark mode
