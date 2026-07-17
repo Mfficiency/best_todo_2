@@ -494,14 +494,19 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 (5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
 
 ### 10.2 Countdown timers (Tools → Countdown)
-`CountdownTimerItem{uid,label,target,notifyOnZero,createdAt,editedAt}` in
-`countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,createdAt,editedAt}`
+in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
 target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
 show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows the same duration as
 decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
 (orange). Notify-on-zero fires a notification once (suppressed for already-past timers so
-they never retro-fire; suppression is per-session).
+they never retro-fire; suppression is per-session). Notify-at-round-numbers (# icon,
+per-timer, 0.1.97) fires whenever the remaining time crosses a power-of-ten second count
+(1e9 → 1e3; `CountdownTimerItem.roundMilestones`/`crossedRoundMilestone`): the page
+tracks last-seen remaining seconds per timer (`_roundSeen`, per-session), the first
+observation only baselines (no retro-fire on load/toggle/edit), and a jump across
+several milestones (backgrounded app) fires only the smallest one crossed.
 
 ### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
 Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts

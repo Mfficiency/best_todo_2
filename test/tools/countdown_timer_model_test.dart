@@ -11,6 +11,7 @@ void main() {
       label: 'Launch',
       target: DateTime(2026, 6, 1, 12, 0),
       notifyOnZero: true,
+      notifyRoundNumbers: true,
       createdAt: created,
       editedAt: edited,
     );
@@ -20,6 +21,7 @@ void main() {
     expect(restored.uid, 'abc');
     expect(restored.label, 'Launch');
     expect(restored.notifyOnZero, isTrue);
+    expect(restored.notifyRoundNumbers, isTrue);
     expect(restored.createdAt, created);
     expect(restored.editedAt, edited);
     expect(restored.target, DateTime(2026, 6, 1, 12, 0));
@@ -45,5 +47,96 @@ void main() {
     // Missing timestamps fall back to a sensible non-null default.
     expect(item.createdAt, isNotNull);
     expect(item.editedAt, isNotNull);
+    // Missing round-number flag defaults to off.
+    expect(item.notifyRoundNumbers, isFalse);
+  });
+
+  group('crossedRoundMilestone', () {
+    test('reports a milestone once the remaining time falls to or below it',
+        () {
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 100001,
+          currentSeconds: 99999,
+        ),
+        100000,
+      );
+      // Landing exactly on the milestone counts as crossing it.
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 100001,
+          currentSeconds: 100000,
+        ),
+        100000,
+      );
+    });
+
+    test('reports nothing without a crossing', () {
+      // Still above the milestone.
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 100002,
+          currentSeconds: 100001,
+        ),
+        isNull,
+      );
+      // Already at the milestone before — no re-fire while sitting below it.
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 100000,
+          currentSeconds: 99999,
+        ),
+        isNull,
+      );
+      // Between milestones the whole time.
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 5000,
+          currentSeconds: 4000,
+        ),
+        isNull,
+      );
+    });
+
+    test('reports only the most recent milestone after a large jump', () {
+      // e.g. the app was backgrounded from 2,000,000 s out until 9,000 s out:
+      // 1,000,000 / 100,000 / 10,000 were all passed; only the latest fires.
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 2000000,
+          currentSeconds: 9000,
+        ),
+        10000,
+      );
+    });
+
+    test('reports nothing for a timer at or past zero', () {
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 1500,
+          currentSeconds: 0,
+        ),
+        isNull,
+      );
+      expect(
+        CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: 1500,
+          currentSeconds: -10,
+        ),
+        isNull,
+      );
+    });
+
+    test('milestones are the descending powers of ten from 1e9 to 1e3', () {
+      expect(CountdownTimerItem.roundMilestones, [
+        1000000000,
+        100000000,
+        10000000,
+        1000000,
+        100000,
+        10000,
+        1000,
+      ]);
+    });
   });
 }

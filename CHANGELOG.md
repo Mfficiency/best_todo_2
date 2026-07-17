@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.97] - 2026-07-17
+- Countdown: new per-timer round-number bell (# icon next to the zero bell) — get a notification whenever the remaining time crosses a round number of seconds: 1,000,000,000 down to 1,000 in powers of ten (100,000 seconds is about 1.2 days before the event)
+
 ## [0.1.96] - 2026-07-09
 - release builds now embed the CI test results: if a test failed on GitHub while the APK still built, the menu (hamburger) icon shows a red dot and a new Test Results page in the menu lists the current build's failing tests
 - Settings: search your settings — a magnifier in the Settings title bar filters all settings by name or keyword and jumps to the matching section (separate from the task search on the home screen)

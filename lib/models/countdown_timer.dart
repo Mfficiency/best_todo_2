@@ -13,6 +13,10 @@ class CountdownTimerItem {
   /// When true, a notification fires once when the timer reaches zero.
   bool notifyOnZero;
 
+  /// When true, a notification fires each time the remaining time crosses a
+  /// round number of seconds (one of [roundMilestones]).
+  bool notifyRoundNumbers;
+
   /// When the timer was first created and last edited — used for sorting.
   DateTime createdAt;
   DateTime editedAt;
@@ -22,6 +26,7 @@ class CountdownTimerItem {
     required this.label,
     required this.target,
     this.notifyOnZero = false,
+    this.notifyRoundNumbers = false,
     DateTime? createdAt,
     DateTime? editedAt,
   })  : uid = uid ?? CountdownTimerItem.newUid(),
@@ -40,9 +45,43 @@ class CountdownTimerItem {
       label: json['label'] as String? ?? '',
       target: DateTime.parse(json['target'] as String),
       notifyOnZero: json['notifyOnZero'] as bool? ?? false,
+      notifyRoundNumbers: json['notifyRoundNumbers'] as bool? ?? false,
       createdAt: created,
       editedAt: edited,
     );
+  }
+
+  /// Remaining-seconds milestones the round-number bell notifies at, largest
+  /// first: powers of ten from 1,000,000,000 down to 1,000 seconds
+  /// (100,000 s ≈ 1.2 days out; zero itself is the notify-on-zero bell's job).
+  static const List<int> roundMilestones = [
+    1000000000,
+    100000000,
+    10000000,
+    1000000,
+    100000,
+    10000,
+    1000,
+  ];
+
+  /// The milestone most recently crossed while the remaining time fell from
+  /// [previousSeconds] to [currentSeconds], or null when none was crossed.
+  /// A crossing means the remaining time was strictly above the milestone
+  /// before and is at or below it now; when several were crossed at once
+  /// (e.g. after the app was backgrounded) only the smallest — the most
+  /// recent — is reported. A timer at or past zero reports nothing.
+  static int? crossedRoundMilestone({
+    required int previousSeconds,
+    required int currentSeconds,
+  }) {
+    if (currentSeconds <= 0) return null;
+    int? crossed;
+    for (final milestone in roundMilestones) {
+      if (previousSeconds > milestone && currentSeconds <= milestone) {
+        crossed = milestone;
+      }
+    }
+    return crossed;
   }
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +89,7 @@ class CountdownTimerItem {
         'label': label,
         'target': target.toIso8601String(),
         'notifyOnZero': notifyOnZero,
+        'notifyRoundNumbers': notifyRoundNumbers,
         'createdAt': createdAt.toIso8601String(),
         'editedAt': editedAt.toIso8601String(),
       };
