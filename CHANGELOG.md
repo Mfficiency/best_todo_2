@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.106] - 2026-07-17
+- Tasks can now carry a real time range (start and end) instead of only a single due moment — groundwork for showing durations on the timeline and calendar. Existing tasks upgrade automatically the first time they are read (deadline = start and end at the same moment); files are written with a version stamp plus the old due-date field, so older app versions and old backups keep working both ways. No visible change and no effect on speed yet
+
 ## [0.1.105] - 2026-07-17
 - Labels are now tracked as first-class entries (in labels.json) with a kind — regular tag, wishlist priority, or app marker — and room for a colour, laying the groundwork for coloured tags and label filtering. Nothing changes in how you type or see labels: the registry fills itself in the background from the labels you already use, with no effect on startup or save speed
 

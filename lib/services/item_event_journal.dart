@@ -37,6 +37,8 @@ class ItemEventJournal {
     'note': ItemEvent.typeEdited,
     'label': ItemEvent.typeLabeled,
     'dueDate': ItemEvent.typeScheduled,
+    'startAt': ItemEvent.typeScheduled,
+    'endAt': ItemEvent.typeScheduled,
     'hasExplicitTime': ItemEvent.typeScheduled,
     'isDone': ItemEvent.typeStatusChanged,
     'projectId': ItemEvent.typeProjectChanged,

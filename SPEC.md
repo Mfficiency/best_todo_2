@@ -105,7 +105,13 @@ telephony silently no-op.
 ### 4.1 Task model (`lib/models/task.dart`)
 
 Uuid-v4 `uid`; JSON keys equal field names. Fields: `title`, `description`, `note`, `label`
-(single string), `createdAt`, `completedAt`, `movedAt`, `rescheduledAt`, `dueDate`,
+(single string), `createdAt`, `completedAt`, `movedAt`, `rescheduledAt`,
+`startAt`/`endAt` (schema v2, 0.1.106 — the scheduled interval; deadline-style tasks have
+`startAt == endAt`; `dueDate` is now a compat getter (= `endAt`) / setter (collapses the
+interval to a deadline) and is still written to JSON as a mirror so downgrades/old imports
+work; records carry `schemaVersion` (current 2), v1 records upgrade on read via
+`fromJson`'s `dueDate` fallback; derived getters `allDay` (= `!hasExplicitTime`) and
+`duration`),
 `deletedAt`, `autoDeleted` (swept at rollover vs manual delete), `isDone`,
 `hasExplicitTime` (protects a deliberately chosen time from the 18:00 normalization),
 `listRanking` (int?, omitted from JSON when null, renumbered 1-based per tab on every save),
