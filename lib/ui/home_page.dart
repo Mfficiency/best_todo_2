@@ -311,6 +311,19 @@ class _HomePageState extends State<HomePage>
     ));
   }
 
+  /// Dev-only: one wishlist item, so the Wishlist tool and the wish rows on
+  /// the Future tab have data on platforms where the one-time Todo.md import
+  /// cannot run (the browser has no files to import from).
+  void _seedDevWishItem() {
+    _tasks.add(Task(
+      title: 'Learn to sail',
+      description: 'Dev seed: a wishlist item',
+      label: 'priority-medium',
+      createdAt: DateTime.now(),
+      isWish: true,
+    ));
+  }
+
   /// Dev-only: attaches a reminder to the seeded range task ("Deep work
   /// block", 15 min before its end) so the item-linked reminder row on the
   /// task-detail page and the linked alarm in the Alarms tool are testable
@@ -556,6 +569,7 @@ class _HomePageState extends State<HomePage>
       // be tested immediately: Tools → Projects → open a board → tap a card.
       if (loaded.isEmpty) {
         _seedDevRangeTask();
+        _seedDevWishItem();
         _seedDevItemHistory();
         _seedDevLinkedReminder();
       }
