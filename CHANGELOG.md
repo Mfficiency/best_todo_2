@@ -2,6 +2,7 @@
 
 ## [0.1.104] - 2026-07-17
 - Task history timelines now reach back before the journal existed: on first launch after updating, the app reconstructs each task's past (created, rescheduled, completed, deleted, restored) from its stored timestamps, the deleted list and the daily stats — marked "(reconstructed)" in the timeline. The backfill runs once, a few seconds after startup, so launching stays as fast as before
+- How to test (dev build, `flutter run -d chrome`): open Tools → Projects → a project board → tap the second card — its History shows entries suffixed "(reconstructed)" dated weeks back (dev-seeded, since the browser has no stored pre-journal data to backfill from), interleaved correctly before any live entries you create by editing the task. The real backfill (timestamps + deleted list + daily stats → seeded events, guarded by `item_events_seed_v1.txt`, run 3 s after launch) is exercised by `test/core/item_history_seeder_test.dart` and on an Android/desktop install with existing data
 
 ## [0.1.103] - 2026-07-17
 - Every change to a task — edits, rescheduling, completing, project moves, label changes, deletes and restores — is now recorded in an on-device history journal; open a task's details (e.g. from a project board) to see its timeline. Recording happens in the background after each save and the journal is only read on demand, so app startup and list interactions are exactly as fast as before

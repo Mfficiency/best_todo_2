@@ -296,14 +296,41 @@ class _HomePageState extends State<HomePage>
   /// for the session. Uses the journal's normal append path.
   void _seedDevItemHistory() {
     Task? sample;
+    Task? second;
     for (final task in _tasks) {
       if (task.projectId != null && task.deletedAt == null) {
-        sample = task;
-        break;
+        if (sample == null) {
+          sample = task;
+        } else {
+          second = task;
+          break;
+        }
       }
     }
     if (sample == null) return;
     final now = DateTime.now();
+    // The second board task gets pre-journal, seeded events so the
+    // "(reconstructed)" rendering of the history backfill is visible in dev
+    // without waiting for the real once-per-install seeder.
+    if (second != null) {
+      ItemEventJournal.instance.recordEvents([
+        ItemEvent(
+          itemId: second.uid,
+          seq: 0,
+          at: now.subtract(const Duration(days: 30)),
+          type: ItemEvent.typeCreated,
+          patch: [FieldChange('title', null, second.title)],
+          seeded: true,
+        ),
+        ItemEvent(
+          itemId: second.uid,
+          seq: 0,
+          at: now.subtract(const Duration(days: 14)),
+          type: ItemEvent.typeScheduled,
+          seeded: true,
+        ),
+      ]);
+    }
     ItemEventJournal.instance.recordEvents([
       ItemEvent(
         itemId: sample.uid,
