@@ -32,9 +32,10 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   final Set<String> _notifySuppressed = {};
 
   /// Last observed remaining whole seconds per timer with the round-number
-  /// bell on. The first observation only records a baseline (so switching the
-  /// bell on or opening the page never retro-fires for milestones already
-  /// passed); crossings are detected against it on later ticks. Not persisted.
+  /// bell on — negative once the timer is past (counting up). The first
+  /// observation only records a baseline (so switching the bell on or opening
+  /// the page never retro-fires for milestones already passed); crossings are
+  /// detected against it on later ticks. Not persisted.
   final Map<String, int> _roundSeen = {};
 
   Timer? _ticker;
@@ -155,22 +156,30 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
         _roundSeen.remove(t.uid);
         continue;
       }
+      // Positive while counting down, negative once past (counting up).
       final remaining = t.target.difference(now).inSeconds;
-      if (remaining <= 0) {
-        _roundSeen.remove(t.uid);
-        continue;
-      }
       final previous = _roundSeen[t.uid];
       _roundSeen[t.uid] = remaining;
       if (previous == null) continue;
-      final milestone = CountdownTimerItem.crossedRoundMilestone(
-        previousSeconds: previous,
-        currentSeconds: remaining,
-      );
+      final int? milestone;
+      final String suffix;
+      if (remaining > 0) {
+        milestone = CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: previous,
+          currentSeconds: remaining,
+        );
+        suffix = 'seconds to go';
+      } else {
+        milestone = CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: -previous,
+          currentSeconds: -remaining,
+        );
+        suffix = 'seconds since';
+      }
       if (milestone != null) {
         final name = t.label.trim().isEmpty ? 'Countdown' : t.label.trim();
         NotificationService.showTaskNotification(
-          '$name — ${_formatThousands(milestone)} seconds to go',
+          '$name — ${_formatThousands(milestone)} $suffix',
           delaySeconds: 0,
         );
       }

@@ -127,6 +127,65 @@ void main() {
       );
     });
 
+    test('count-up: reports a milestone once the elapsed time reaches it', () {
+      expect(
+        CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: 99999,
+          currentSeconds: 100001,
+        ),
+        100000,
+      );
+      // Landing exactly on the milestone counts as crossing it.
+      expect(
+        CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: 99999,
+          currentSeconds: 100000,
+        ),
+        100000,
+      );
+    });
+
+    test('count-up: reports nothing without a crossing', () {
+      // Still below the milestone.
+      expect(
+        CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: 99998,
+          currentSeconds: 99999,
+        ),
+        isNull,
+      );
+      // Already at the milestone before — no re-fire while sitting above it.
+      expect(
+        CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: 100000,
+          currentSeconds: 100001,
+        ),
+        isNull,
+      );
+      // Just crossed zero — nothing until 1,000 s elapsed.
+      expect(
+        CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: -5,
+          currentSeconds: 3,
+        ),
+        isNull,
+      );
+    });
+
+    test('count-up: reports only the most recent milestone after a large jump',
+        () {
+      // e.g. the app was closed from 9,000 s elapsed until 2,000,000 s
+      // elapsed: 10,000 / 100,000 / 1,000,000 were all passed; only the
+      // latest (largest) fires.
+      expect(
+        CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: 9000,
+          currentSeconds: 2000000,
+        ),
+        1000000,
+      );
+    });
+
     test('milestones are the descending powers of ten from 1e9 to 1e3', () {
       expect(CountdownTimerItem.roundMilestones, [
         1000000000,

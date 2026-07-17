@@ -51,9 +51,11 @@ class CountdownTimerItem {
     );
   }
 
-  /// Remaining-seconds milestones the round-number bell notifies at, largest
+  /// Second-count milestones the round-number bell notifies at, largest
   /// first: powers of ten from 1,000,000,000 down to 1,000 seconds
-  /// (100,000 s ≈ 1.2 days out; zero itself is the notify-on-zero bell's job).
+  /// (100,000 s ≈ 1.2 days). Applied to the remaining time while counting
+  /// down and to the elapsed time while counting up; zero itself is the
+  /// notify-on-zero bell's job.
   static const List<int> roundMilestones = [
     1000000000,
     100000000,
@@ -82,6 +84,24 @@ class CountdownTimerItem {
       }
     }
     return crossed;
+  }
+
+  /// Count-up counterpart of [crossedRoundMilestone]: the milestone most
+  /// recently crossed while the elapsed time rose from [previousSeconds] to
+  /// [currentSeconds], or null when none was crossed. A crossing means the
+  /// elapsed time was strictly below the milestone before and is at or above
+  /// it now; when several were crossed at once only the largest — the most
+  /// recent — is reported.
+  static int? crossedRoundMilestoneUp({
+    required int previousSeconds,
+    required int currentSeconds,
+  }) {
+    for (final milestone in roundMilestones) {
+      if (previousSeconds < milestone && currentSeconds >= milestone) {
+        return milestone;
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic> toJson() => {

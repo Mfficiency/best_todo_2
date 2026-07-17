@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.99] - 2026-07-17
+- Countdown: the round-number bell now also works for past timers counting up — get a notification when the elapsed time crosses a round number of seconds (e.g. 1,000,000,000 seconds since your birthday, about 31.7 years)
+
 ## [0.1.98] - 2026-07-17
 - Countdown: timers can now be set in the past — the date picker goes back to 1900, so you can track how long since your birthday or any other past event (past timers count up, and the expanded card shows the total in days, weeks, months and years)
 

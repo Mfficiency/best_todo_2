@@ -503,11 +503,14 @@ decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timer
 (orange); the instant date picker ranges 1900 → now+100y (0.1.98) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session). Notify-at-round-numbers (# icon,
-per-timer, 0.1.97) fires whenever the remaining time crosses a power-of-ten second count
-(1e9 → 1e3; `CountdownTimerItem.roundMilestones`/`crossedRoundMilestone`): the page
-tracks last-seen remaining seconds per timer (`_roundSeen`, per-session), the first
-observation only baselines (no retro-fire on load/toggle/edit), and a jump across
-several milestones (backgrounded app) fires only the smallest one crossed.
+per-timer, 0.1.97) fires whenever the remaining time — or, for past timers, the elapsed
+time (0.1.99) — crosses a power-of-ten second count (1e9 → 1e3;
+`CountdownTimerItem.roundMilestones` / `crossedRoundMilestone` /
+`crossedRoundMilestoneUp`): the page tracks last-seen signed remaining seconds per timer
+(`_roundSeen`, negative once past; per-session), the first observation only baselines
+(no retro-fire on load/toggle/edit), and a jump across several milestones (backgrounded
+app) fires only the most recent one crossed (smallest counting down, largest counting
+up).
 
 ### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
 Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
