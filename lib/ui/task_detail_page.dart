@@ -1,15 +1,32 @@
 import 'package:flutter/material.dart';
 import '../models/alarm.dart';
 import '../models/item_event.dart';
+import '../models/label.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
 import '../services/item_event_journal.dart';
+import '../services/label_service.dart';
 import '../services/reminder_sync_service.dart';
+import '../utils/label_utils.dart';
 import 'subpage_app_bar.dart';
 
 class TaskDetailPage extends StatelessWidget {
   final Task task;
   const TaskDetailPage({Key? key, required this.task}) : super(key: key);
+
+  static String _clockLabel(DateTime at) {
+    final local = at.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  static String _durationLabel(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    if (hours == 0) return '${minutes}m';
+    return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}m';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,11 +49,19 @@ class TaskDetailPage extends StatelessWidget {
           ],
           if (task.label.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('Label: ${task.label}'),
+            TaskLabelLine(label: task.label),
           ],
           if (task.dueDate != null) ...[
             const SizedBox(height: 8),
             Text('Due: ${task.dueDate!.toLocal().toString().split(' ')[0]}'),
+          ],
+          // A real interval (start != end) shows its range and length;
+          // deadline-style tasks (start == end) keep just the Due line.
+          if (task.duration != null && task.duration! > Duration.zero) ...[
+            const SizedBox(height: 8),
+            Text('Start: ${_clockLabel(task.startAt!)}'),
+            Text('End: ${_clockLabel(task.endAt!)}'),
+            Text('Duration: ${_durationLabel(task.duration!)}'),
           ],
           const SizedBox(height: 8),
           Text('Completed: ${task.isDone ? 'Yes' : 'No'}'),
@@ -104,6 +129,33 @@ class TaskReminderSection extends StatelessWidget {
             ],
           ),
         );
+      },
+    );
+  }
+}
+
+/// The task's label tokens annotated with their registry kind, e.g.
+/// "Label: urgent (tag) · priority-high (priority)". Ensures the tokens are
+/// registered (idempotent, background) and live-updates with the registry;
+/// until it answers, the kind falls back to the same pure classification the
+/// registry itself uses.
+class TaskLabelLine extends StatelessWidget {
+  final String label;
+  const TaskLabelLine({Key? key, required this.label}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = splitLabelTokens(label);
+    LabelService.instance.registerTokens(tokens);
+    return ValueListenableBuilder<List<Label>>(
+      valueListenable: LabelService.instance.labels,
+      builder: (context, _, __) {
+        final parts = tokens.map((token) {
+          final kind =
+              LabelService.instance.byName(token)?.kind ?? labelKindFor(token);
+          return '$token ($kind)';
+        }).join(' · ');
+        return Text('Label: $parts');
       },
     );
   }

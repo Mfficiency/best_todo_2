@@ -52,6 +52,13 @@ class ItemEventJournal {
   Future<void> _chain = Future.value();
   Map<String, int>? _seqByItem;
 
+  /// Events appended this session, kept in memory as well as on disk. On
+  /// platforms without a documents directory (Flutter web — e.g. testing in
+  /// Chrome — and widget tests) the file writes silently fail, and this list
+  /// is what makes history still work for the session. On disk-backed
+  /// platforms [allEvents] dedupes against the file by eventId.
+  final List<ItemEvent> _sessionEvents = <ItemEvent>[];
+
   /// Computes the events that turn [before] into [after] (both `uid → task
   /// JSON` snapshots). Pure and synchronous for testability; sequence numbers
   /// are assigned through [nextSeq] (which should record the increment).
@@ -137,6 +144,7 @@ class ItemEventJournal {
           at: at,
         );
         if (events.isEmpty) return;
+        _sessionEvents.addAll(events);
         await _appendEvents(events);
         await _saveSeqIndex(seqs);
       } catch (_) {}
@@ -155,6 +163,7 @@ class ItemEventJournal {
           event.seq = (seqs[event.itemId] ?? 0) + 1;
           seqs[event.itemId] = event.seq;
         }
+        _sessionEvents.addAll(events);
         await _appendEvents(events);
         await _saveSeqIndex(seqs);
       } catch (_) {}
@@ -162,25 +171,31 @@ class ItemEventJournal {
   }
 
   /// All events currently in the journal, oldest first. Unparseable lines
-  /// (e.g. a torn write at the end of the file) are skipped.
+  /// (e.g. a torn write at the end of the file) are skipped. Session events
+  /// that never reached the file (no documents dir — Flutter web) are merged
+  /// in at the end, deduped by eventId.
   Future<List<ItemEvent>> allEvents() async {
     await pendingWrites;
+    final events = <ItemEvent>[];
     try {
       final file = await _journalFile();
-      if (!await file.exists()) return <ItemEvent>[];
-      final lines = await file.readAsLines();
-      final events = <ItemEvent>[];
-      for (final line in lines) {
-        if (line.trim().isEmpty) continue;
-        try {
-          events.add(
-              ItemEvent.fromJson(jsonDecode(line) as Map<String, dynamic>));
-        } catch (_) {}
+      if (await file.exists()) {
+        for (final line in await file.readAsLines()) {
+          if (line.trim().isEmpty) continue;
+          try {
+            events.add(
+                ItemEvent.fromJson(jsonDecode(line) as Map<String, dynamic>));
+          } catch (_) {}
+        }
       }
-      return events;
-    } catch (_) {
-      return <ItemEvent>[];
+    } catch (_) {}
+    if (_sessionEvents.isNotEmpty) {
+      final known = events.map((e) => e.eventId).toSet();
+      for (final event in _sessionEvents) {
+        if (known.add(event.eventId)) events.add(event);
+      }
     }
+    return events;
   }
 
   /// The journal entries for one item, oldest first by timestamp. Sorted by
@@ -206,6 +221,7 @@ class ItemEventJournal {
   void resetForTest() {
     _chain = Future.value();
     _seqByItem = null;
+    _sessionEvents.clear();
   }
 
   Future<File> _journalFile() async {

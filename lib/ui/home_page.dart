@@ -11,7 +11,9 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/daily_task_stats.dart';
+import '../models/item_event.dart';
 import '../models/task.dart';
+import '../services/item_event_journal.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/storage_service.dart';
@@ -288,6 +290,97 @@ class _HomePageState extends State<HomePage>
   /// and web, where the Projects tool is exercised with a mouse — open with
   /// populated project cards and boards. Only runs while none of the seeded
   /// tasks carries a project yet, so manual (re)assignments survive reloads.
+  /// Dev-only: one task with a real time range (the schema-v2 interval) on
+  /// today's tab and the first project's board, so start/end/duration can be
+  /// inspected on its detail page without hand-editing JSON.
+  void _seedDevRangeTask() {
+    final day = _currentDate;
+    _tasks.add(Task(
+      title: 'Deep work block',
+      description: 'Dev seed: a task with a real time range',
+      createdAt: DateTime.now(),
+      startAt: DateTime(day.year, day.month, day.day, 9),
+      endAt: DateTime(day.year, day.month, day.day, 10, 30),
+      hasExplicitTime: true,
+      projectId: ProjectService.instance.list.isNotEmpty
+          ? ProjectService.instance.list.first.id
+          : null,
+    ));
+  }
+
+  /// Dev-only: writes a small ready-made history for the first project-board
+  /// task so the History timeline on the task-detail page has data on a
+  /// fresh install — including in Chrome, where the journal lives in memory
+  /// for the session. Uses the journal's normal append path.
+  void _seedDevItemHistory() {
+    Task? sample;
+    Task? second;
+    for (final task in _tasks) {
+      if (task.projectId != null && task.deletedAt == null) {
+        if (sample == null) {
+          sample = task;
+        } else {
+          second = task;
+          break;
+        }
+      }
+    }
+    if (sample == null) return;
+    // Give the sample board tasks one label of every kind, so the structured
+    // label registry fills itself on the first save and the kinds are
+    // inspectable on the task-detail page (and as tags on the home tiles).
+    if (sample.label.isEmpty) sample.label = 'urgent, priority-high';
+    if (second != null && second.label.isEmpty) second.label = 'gift, old';
+    final now = DateTime.now();
+    // The second board task gets pre-journal, seeded events so the
+    // "(reconstructed)" rendering of the history backfill is visible in dev
+    // without waiting for the real once-per-install seeder.
+    if (second != null) {
+      ItemEventJournal.instance.recordEvents([
+        ItemEvent(
+          itemId: second.uid,
+          seq: 0,
+          at: now.subtract(const Duration(days: 30)),
+          type: ItemEvent.typeCreated,
+          patch: [FieldChange('title', null, second.title)],
+          seeded: true,
+        ),
+        ItemEvent(
+          itemId: second.uid,
+          seq: 0,
+          at: now.subtract(const Duration(days: 14)),
+          type: ItemEvent.typeScheduled,
+          seeded: true,
+        ),
+      ]);
+    }
+    ItemEventJournal.instance.recordEvents([
+      ItemEvent(
+        itemId: sample.uid,
+        seq: 0,
+        at: now.subtract(const Duration(days: 2)),
+        type: ItemEvent.typeCreated,
+        patch: [FieldChange('title', null, sample.title)],
+      ),
+      ItemEvent(
+        itemId: sample.uid,
+        seq: 0,
+        at: now.subtract(const Duration(days: 1)),
+        type: ItemEvent.typeScheduled,
+        patch: [
+          FieldChange('dueDate', null, sample.dueDate?.toIso8601String()),
+        ],
+      ),
+      ItemEvent(
+        itemId: sample.uid,
+        seq: 0,
+        at: now.subtract(const Duration(hours: 3)),
+        type: ItemEvent.typeEdited,
+        patch: [FieldChange('description', null, sample.description)],
+      ),
+    ]);
+  }
+
   void _applyDevProjectSeed() {
     assignDevProjectSeed(
       _tasks
@@ -432,6 +525,13 @@ class _HomePageState extends State<HomePage>
     // data to drag around right away.
     if (Config.isDev) {
       _applyDevProjectSeed();
+      // Fresh dev installs (and every web run, where nothing persists) also
+      // get a visible item history, so the task-detail History timeline can
+      // be tested immediately: Tools → Projects → open a board → tap a card.
+      if (loaded.isEmpty) {
+        _seedDevRangeTask();
+        _seedDevItemHistory();
+      }
     }
     _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
