@@ -308,6 +308,11 @@ class _HomePageState extends State<HomePage>
       }
     }
     if (sample == null) return;
+    // Give the sample board tasks one label of every kind, so the structured
+    // label registry fills itself on the first save and the kinds are
+    // inspectable on the task-detail page (and as tags on the home tiles).
+    if (sample.label.isEmpty) sample.label = 'urgent, priority-high';
+    if (second != null && second.label.isEmpty) second.label = 'gift, old';
     final now = DateTime.now();
     // The second board task gets pre-journal, seeded events so the
     // "(reconstructed)" rendering of the history backfill is visible in dev

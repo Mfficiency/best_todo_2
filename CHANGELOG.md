@@ -2,6 +2,8 @@
 
 ## [0.1.105] - 2026-07-17
 - Labels are now tracked as first-class entries (in labels.json) with a kind — regular tag, wishlist priority, or app marker — and room for a colour, laying the groundwork for coloured tags and label filtering. Nothing changes in how you type or see labels: the registry fills itself in the background from the labels you already use, with no effect on startup or save speed
+- Task details now annotate each label with its registry kind, e.g. "urgent (tag) · priority-high (priority)"
+- How to test (dev build, `flutter run -d chrome`): a fresh dev start labels the first board task "urgent, priority-high" and the second "gift, old" — the labels show as tags on their home tiles (Future tab), and Tools → Projects → board → tap a card shows the kind annotations: urgent (tag), priority-high (priority), gift (tag), old (system). Add your own label to any task (pencil on its tile) and reopen its details — the new token is registered and annotated the same way
 
 ## [0.1.104] - 2026-07-17
 - Task history timelines now reach back before the journal existed: on first launch after updating, the app reconstructs each task's past (created, rescheduled, completed, deleted, restored) from its stored timestamps, the deleted list and the daily stats — marked "(reconstructed)" in the timeline. The backfill runs once, a few seconds after startup, so launching stays as fast as before
