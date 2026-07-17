@@ -83,7 +83,7 @@ class Alarm {
   bool enabled;
 
   /// Uid of the task this alarm is a reminder for, or null for a standalone
-  /// clock alarm (every alarm that existed before 0.1.107). Linked alarms are
+  /// clock alarm (every alarm that existed before 0.1.108). Linked alarms are
   /// kept in sync by `ReminderSyncService`: their [date]/[hour]/[minute] are
   /// rewritten from the task's schedule whenever the task list is saved, so
   /// the scheduling pipeline below this model stays completely unchanged.
@@ -226,7 +226,7 @@ class Alarm {
         'snoozeMaxCount': snoozeMaxCount,
         'enabled': enabled,
         // Reminder link — omitted for standalone alarms so their JSON stays
-        // byte-identical to pre-0.1.107 records.
+        // byte-identical to pre-0.1.108 records.
         if (itemUid != null) 'itemUid': itemUid,
         if (itemUid != null) 'triggerAnchor': triggerAnchor,
         if (itemUid != null) 'triggerOffsetMinutes': triggerOffsetMinutes,
