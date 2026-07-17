@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BestToDo · Item model — optimized / future-proof</title>
+<style>
+  :root {
+    --bg: #f6f8fb;
+    --card: #ffffff;
+    --ink: #1c2733;
+    --muted: #5b6b7b;
+    --line: #d7e0ea;
+    --edge: #8fa3b8;
+
+    --core: #005fdd;
+    --core-soft: #e3edfd;
+    --time: #00897b;
+    --time-soft: #dff3f0;
+    --project: #8e24aa;
+    --project-soft: #f5e6fa;
+    --alarm: #e5533a;
+    --alarm-soft: #fdeae6;
+    --history: #b07a10;
+    --history-soft: #fdf3dd;
+    --view: #2e7d32;
+    --view-soft: #e5f3e6;
+    --sync: #4859c0;
+    --sync-soft: #e7eafb;
+    --standalone: #78909c;
+    --good-bg: #e9f6ec;
+    --good-edge: #47a45c;
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161d;
+      --card: #1a232e;
+      --ink: #e4ecf4;
+      --muted: #9db0c2;
+      --line: #2c3a49;
+      --edge: #566d84;
+      --core: #5b9bff;
+      --core-soft: #17304f;
+      --time: #37c0ae;
+      --time-soft: #123330;
+      --project: #ce6de8;
+      --project-soft: #351a3d;
+      --alarm: #ff7a5c;
+      --alarm-soft: #3d1e17;
+      --history: #e0b048;
+      --history-soft: #362a10;
+      --view: #6ecf74;
+      --view-soft: #16301a;
+      --sync: #8b9bf0;
+      --sync-soft: #1d2347;
+      --standalone: #90a4ae;
+      --good-bg: #14301c;
+      --good-edge: #3d8b50;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  header.doc { margin-bottom: 28px; }
+  .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--core); font-weight: 700; }
+  h1 { margin: 6px 0 6px; font-size: 30px; line-height: 1.2; }
+  .sub { color: var(--muted); max-width: 76ch; }
+  .doc-switch { display: inline-flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .doc-switch a {
+    text-decoration: none; font-weight: 600; font-size: 13px;
+    padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--card);
+  }
+  .doc-switch a.active { background: var(--core); border-color: var(--core); color: #fff; }
+  .doc-switch a:not(.active):hover { border-color: var(--core); color: var(--core); }
+
+  h2 { font-size: 21px; margin: 48px 0 6px; padding-top: 8px; display: flex; align-items: center; gap: 10px; }
+  h2 .dot { width: 12px; height: 12px; border-radius: 4px; flex: 0 0 auto; }
+  h2 + p.lead { margin-top: 0; color: var(--muted); max-width: 82ch; }
+  h3 { font-size: 16px; margin: 26px 0 8px; }
+
+  .principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin: 18px 0; }
+  .principle {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 15px;
+  }
+  .principle b { display: block; font-size: 14px; margin-bottom: 3px; }
+  .principle span { font-size: 13px; color: var(--muted); }
+  .principle .num {
+    display: inline-flex; width: 22px; height: 22px; border-radius: 7px; align-items: center; justify-content: center;
+    background: var(--core-soft); color: var(--core); font-weight: 700; font-size: 12px; margin-bottom: 6px;
+  }
+
+  .diagram {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 10px; overflow-x: auto;
+  }
+  .diagram svg { min-width: 980px; width: 100%; height: auto; display: block; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; fill: var(--ink); }
+  svg .t-title { font-size: 15px; font-weight: 700; }
+  svg .t-sub   { font-size: 10.5px; fill: var(--muted); }
+  svg .t-field { font-size: 11px; }
+  svg .t-field tspan.k { font-weight: 600; }
+  svg .t-edge  { font-size: 10.5px; fill: var(--muted); }
+  svg .t-group { font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  svg .edge { stroke: var(--edge); stroke-width: 1.6; fill: none; }
+  svg .edge.dashed { stroke-dasharray: 5 5; }
+  svg .box { fill: var(--card); stroke-width: 1.5; rx: 10; }
+  svg .groupbox { fill: none; stroke-width: 1.3; stroke-dasharray: 6 5; rx: 12; opacity: .85; }
+  svg .chip { stroke-width: 1.2; rx: 7; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 18px 0 8px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+  table {
+    width: 100%; border-collapse: collapse; background: var(--card);
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    font-size: 13.5px; margin: 14px 0;
+  }
+  table.scroll { display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); background: color-mix(in srgb, var(--card) 60%, var(--bg)); }
+  tr:last-child td { border-bottom: none; }
+  td code, p code, li code {
+    font: 12.5px/1.4 "Cascadia Code", Consolas, Menlo, monospace;
+    background: color-mix(in srgb, var(--core-soft) 55%, transparent);
+    padding: 1px 5px; border-radius: 5px;
+  }
+  .group-row td { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; padding: 6px 12px; }
+  .g-core td { color: var(--core); background: var(--core-soft); }
+  .g-time td { color: var(--time); background: var(--time-soft); }
+  .g-hist td { color: var(--history); background: var(--history-soft); }
+  .g-proj td { color: var(--project); background: var(--project-soft); }
+  .g-alarm td { color: var(--alarm); background: var(--alarm-soft); }
+  .g-sync td { color: var(--sync); background: var(--sync-soft); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--edge); border-radius: 12px; padding: 14px 16px; }
+  .card h4 { margin: 0 0 4px; font-size: 15px; }
+  .card .file { font: 11.5px/1.4 Consolas, Menlo, monospace; color: var(--muted); }
+  .card p { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); }
+  .card ul { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; }
+  .card li { margin: 3px 0; }
+  .card.c-core { border-left-color: var(--core); }
+  .card.c-time { border-left-color: var(--time); }
+  .card.c-proj { border-left-color: var(--project); }
+  .card.c-alarm { border-left-color: var(--alarm); }
+  .card.c-hist { border-left-color: var(--history); }
+  .card.c-view { border-left-color: var(--view); }
+  .card.c-sync { border-left-color: var(--sync); }
+
+  .callout {
+    border: 1px solid var(--good-edge); background: var(--good-bg);
+    border-radius: 12px; padding: 14px 18px; margin: 18px 0;
+  }
+  .callout h4 { margin: 0 0 6px; font-size: 14px; }
+  .callout p, .callout li { font-size: 13.5px; }
+  .callout ul { margin: 6px 0 0; padding-left: 18px; }
+
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 9px; vertical-align: 1px; }
+  .pill.n1 { background: var(--core-soft); color: var(--core); }
+  .pill.nN { background: var(--time-soft); color: var(--time); }
+  .pill.log { background: var(--history-soft); color: var(--history); }
+
+  pre.snippet {
+    background: color-mix(in srgb, var(--card) 70%, var(--bg));
+    border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+    font: 12.5px/1.55 "Cascadia Code", Consolas, Menlo, monospace;
+    overflow-x: auto; color: var(--ink);
+  }
+  pre.snippet .c { color: var(--muted); }
+  pre.snippet .k { color: var(--core); font-weight: 600; }
+
+  ol.mig { counter-reset: step; list-style: none; padding-left: 0; margin: 16px 0; }
+  ol.mig li {
+    position: relative; padding: 10px 14px 10px 52px; margin: 8px 0;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; font-size: 13.5px;
+  }
+  ol.mig li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 14px; top: 12px;
+    width: 26px; height: 26px; border-radius: 9px;
+    background: var(--core-soft); color: var(--core); font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ol.mig b { display: block; margin-bottom: 2px; }
+  ol.mig span { color: var(--muted); }
+
+  footer { margin-top: 60px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">BestToDo · Architecture proposal</div>
+  <h1>How everything relates to an item — <em>optimized &amp; future-proof</em></h1>
+  <p class="sub">
+    Same product, rebuilt around one idea: an <strong>Item</strong> is a small stable core plus
+    <strong>attachable property components</strong> — schedule, reminders, project membership,
+    labels, recurrence, subtasks — with every change recorded in an <strong>append-only event
+    journal</strong>. What today is a flag, a convention or a missing link becomes an explicit,
+    typed attachment. Views stay exactly what they already are: queries over one store.
+  </p>
+  <nav class="doc-switch">
+    <a href="item-model-current.html">← Current model</a>
+    <a class="active" href="item-model-future.html">Optimized / future-proof model</a>
+  </nav>
+</header>
+
+<h2><span class="dot" style="background:var(--core)"></span>Design principles</h2>
+<div class="principles">
+  <div class="principle"><span class="num">1</span><b>Small core, optional components</b>
+    <span>An item is identity + content. Everything else (time, alarms, project, recurrence…) is a 0..1 or 0..N attachment — “some items have alarm properties” becomes literal structure.</span></div>
+  <div class="principle"><span class="num">2</span><b>Time is a range</b>
+    <span><code>start</code> + <code>end</code> (+ allDay, timezone) replace the single <code>dueDate</code>. A deadline is just a schedule where <code>start == end</code>.</span></div>
+  <div class="principle"><span class="num">3</span><b>Event-sourced history</b>
+    <span>Every mutation is an immutable <code>ItemEvent</code>. Timestamps, stats, undo, deleted-items and sync are all <em>derived</em> from the journal instead of stored ad-hoc.</span></div>
+  <div class="principle"><span class="num">4</span><b>Views are queries</b>
+    <span>Wishlist, tabs, boards, timeline, widgets: saved filters over the one store. No membership booleans baked into the item.</span></div>
+  <div class="principle"><span class="num">5</span><b>Schema is versioned</b>
+    <span><code>schemaVersion</code> on every record + ordered migrations replace “tolerant fromJson defaults” as the evolution strategy.</span></div>
+  <div class="principle"><span class="num">6</span><b>Keep what works</b>
+    <span>The alarm reliability ladder (escalation, watchdog, read-back, log) is untouched — it just gains an <code>itemId</code> so items and wake-ups finally know each other.</span></div>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--core)"></i> Item core</span>
+  <span><i style="background:var(--time)"></i> Scheduling components</span>
+  <span><i style="background:var(--project)"></i> Organization</span>
+  <span><i style="background:var(--alarm)"></i> Reminders / alarms</span>
+  <span><i style="background:var(--history)"></i> Event journal &amp; derived data</span>
+  <span><i style="background:var(--view)"></i> Views</span>
+  <span><i style="background:var(--sync)"></i> Sync (enabled by the journal)</span>
+</div>
+
+<div class="diagram">
+<svg viewBox="0 0 1240 980" role="img" aria-label="Relationship map of the proposed Item model">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--edge)"/>
+    </marker>
+  </defs>
+
+  <!-- edges -->
+  <!-- Schedule -> Item -->
+  <path class="edge" d="M345 165 L455 275" marker-end="url(#arr)"/>
+  <text class="t-edge" x="352" y="205" transform="rotate(45 352 205)">0..1 per item</text>
+  <!-- Recurrence -> Schedule -->
+  <path class="edge" d="M200 330 L200 226" marker-end="url(#arr)"/>
+  <text class="t-edge" x="208" y="285">expands the schedule</text>
+  <!-- Recurrence -> Item (occurrences) -->
+  <path class="edge dashed" d="M345 390 L455 390" marker-end="url(#arr)"/>
+  <text class="t-edge" x="352" y="382">virtual occurrences</text>
+  <!-- ProjectLink -> Item -->
+  <path class="edge" d="M345 545 L455 480" marker-end="url(#arr)"/>
+  <text class="t-edge" x="356" y="504" transform="rotate(-30 356 504)">0..N links</text>
+  <!-- ProjectLink -> Project -->
+  <path class="edge" d="M200 600 L200 668" marker-end="url(#arr)"/>
+  <text class="t-edge" x="208" y="640">N → 1</text>
+  <!-- Labels -> Item -->
+  <path class="edge" d="M345 760 L470 560" marker-end="url(#arr)"/>
+  <text class="t-edge" x="345" y="672" transform="rotate(-58 345 672)">0..N via item_labels</text>
+  <!-- Reminder -> Item -->
+  <path class="edge" d="M880 260 L795 320" marker-end="url(#arr)"/>
+  <text class="t-edge" x="806" y="288" transform="rotate(-35 806 288)">0..N per item</text>
+  <!-- Reminder -> alarm machinery -->
+  <path class="edge" d="M1040 330 L1040 392" marker-end="url(#arr)"/>
+  <text class="t-edge" x="1048" y="366">fires through</text>
+  <!-- Subtasks self loop -->
+  <path class="edge" d="M560 268 C 540 195, 730 195, 710 268" marker-end="url(#arr)"/>
+  <text class="t-edge" x="635" y="218" text-anchor="middle">parentId — subtasks / checklist (self 0..N)</text>
+  <!-- Item -> journal -->
+  <path class="edge" d="M625 585 L625 655" marker-end="url(#arr)"/>
+  <text class="t-edge" x="634" y="625">every mutation appends an event</text>
+  <!-- journal -> derived -->
+  <path class="edge" d="M625 800 L625 845" marker-end="url(#arr)"/>
+  <text class="t-edge" x="634" y="828">replay / reduce</text>
+  <!-- journal -> sync -->
+  <path class="edge dashed" d="M905 730 L965 730" marker-end="url(#arr)"/>
+  <!-- Item -> views -->
+  <path class="edge" d="M795 470 L878 520" marker-end="url(#arr)"/>
+  <text class="t-edge" x="800" y="502" transform="rotate(31 800 502)">queries</text>
+
+  <!-- ===== Item core ===== -->
+  <rect class="box" x="455" y="265" width="340" height="320" rx="12" stroke="var(--core)"/>
+  <rect x="455" y="265" width="340" height="44" rx="12" fill="var(--core-soft)"/>
+  <rect x="455" y="297" width="340" height="12" fill="var(--core-soft)"/>
+  <text class="t-title" x="472" y="285" fill="var(--core)">Item — stable core</text>
+  <text class="t-sub" x="472" y="301">items table / store · schemaVersion on every record</text>
+  <text class="t-field" x="472" y="327"><tspan class="k">id</tspan> UUID v4 (unchanged)</text>
+  <text class="t-field" x="472" y="347"><tspan class="k">title</tspan> · <tspan class="k">description</tspan> · <tspan class="k">note</tspan></text>
+  <text class="t-field" x="472" y="367"><tspan class="k">status</tspan> open | done | dropped  (+<tspan class="k">doneAt</tspan> derived)</text>
+  <text class="t-field" x="472" y="387"><tspan class="k">parentId?</tspan> — subtask of another item</text>
+  <text class="t-field" x="472" y="407"><tspan class="k">rank</tspan> — fractional/lexo ordering (no renumber pass)</text>
+  <text class="t-field" x="472" y="427"><tspan class="k">createdAt</tspan> · <tspan class="k">updatedAt</tspan> (per-field in journal)</text>
+  <text class="t-field" x="472" y="447"><tspan class="k">deletedAt?</tspan> — soft-delete tombstone, no copy-out</text>
+  <text class="t-field" x="472" y="467"><tspan class="k">schemaVersion</tspan> — int, migrations run in order</text>
+  <text class="t-field" x="472" y="497" fill="var(--muted)">gone: isWish, label string, kanbanStatus,</text>
+  <text class="t-field" x="472" y="515" fill="var(--muted)">movedAt/rescheduledAt slots, autoDeleted,</text>
+  <text class="t-field" x="472" y="533" fill="var(--muted)">isDone bool, listRanking renumbering —</text>
+  <text class="t-field" x="472" y="551" fill="var(--muted)">all replaced by components, labels or the journal</text>
+
+  <!-- ===== Schedule ===== -->
+  <rect class="box" x="65" y="95" width="280" height="132" rx="12" stroke="var(--time)"/>
+  <rect x="65" y="95" width="280" height="40" rx="12" fill="var(--time-soft)"/>
+  <rect x="65" y="123" width="280" height="12" fill="var(--time-soft)"/>
+  <text class="t-title" x="82" y="113" fill="var(--time)">Schedule</text>
+  <text class="t-sub" x="82" y="127">component · 0..1 per item</text>
+  <text class="t-field" x="82" y="152"><tspan class="k">start</tspan> · <tspan class="k">end</tspan> — a real interval (UTC + tz)</text>
+  <text class="t-field" x="82" y="170"><tspan class="k">allDay</tspan> — replaces the 18:00 convention</text>
+  <text class="t-field" x="82" y="188"><tspan class="k">timezone</tspan> — DST-safe by design</text>
+  <text class="t-field" x="82" y="206">deadline = start == end · undated = no component</text>
+
+  <!-- ===== Recurrence ===== -->
+  <rect class="box" x="65" y="330" width="280" height="120" rx="12" stroke="var(--time)"/>
+  <rect x="65" y="330" width="280" height="40" rx="12" fill="var(--time-soft)"/>
+  <rect x="65" y="358" width="280" height="12" fill="var(--time-soft)"/>
+  <text class="t-title" x="82" y="348" fill="var(--time)">Recurrence</text>
+  <text class="t-sub" x="82" y="362">component · 0..1 · RFC 5545 subset</text>
+  <text class="t-field" x="82" y="387"><tspan class="k">rrule</tspan> (“FREQ=WEEKLY;BYDAY=TU”) · <tspan class="k">until</tspan></text>
+  <text class="t-field" x="82" y="405"><tspan class="k">exdates[]</tspan> · occurrences stay virtual until</text>
+  <text class="t-field" x="82" y="423">touched → then materialize as child items</text>
+
+  <!-- ===== ProjectLink + Project ===== -->
+  <rect class="box" x="65" y="500" width="280" height="100" rx="12" stroke="var(--project)"/>
+  <rect x="65" y="500" width="280" height="40" rx="12" fill="var(--project-soft)"/>
+  <rect x="65" y="528" width="280" height="12" fill="var(--project-soft)"/>
+  <text class="t-title" x="82" y="518" fill="var(--project)">ProjectLink</text>
+  <text class="t-sub" x="82" y="532">join row · 0..N per item (many-to-many ready)</text>
+  <text class="t-field" x="82" y="557"><tspan class="k">itemId</tspan> · <tspan class="k">projectId</tspan> · <tspan class="k">stage</tspan> todo|ongoing|closed</text>
+  <text class="t-field" x="82" y="575"><tspan class="k">rank</tspan> — per-column ordering on the board</text>
+
+  <rect class="box" x="65" y="668" width="280" height="96" rx="12" stroke="var(--project)"/>
+  <rect x="65" y="668" width="280" height="40" rx="12" fill="var(--project-soft)"/>
+  <rect x="65" y="696" width="280" height="12" fill="var(--project-soft)"/>
+  <text class="t-title" x="82" y="686" fill="var(--project)">Project</text>
+  <text class="t-sub" x="82" y="700">id, name, description + color, icon, archived,</text>
+  <text class="t-field" x="82" y="725">custom stages[] (default todo/ongoing/closed)</text>
+  <text class="t-field" x="82" y="743">Wishlist = a system project/saved view, not a flag</text>
+
+  <!-- ===== Labels ===== -->
+  <rect class="box" x="65" y="800" width="280" height="104" rx="12" stroke="var(--project)"/>
+  <rect x="65" y="800" width="280" height="40" rx="12" fill="var(--project-soft)"/>
+  <rect x="65" y="828" width="280" height="12" fill="var(--project-soft)"/>
+  <text class="t-title" x="82" y="818" fill="var(--project)">Label</text>
+  <text class="t-sub" x="82" y="832">first-class entity · item_labels join · 0..N per item</text>
+  <text class="t-field" x="82" y="857"><tspan class="k">id</tspan> · <tspan class="k">name</tspan> · <tspan class="k">color</tspan> · <tspan class="k">kind</tspan> tag | priority | system</text>
+  <text class="t-field" x="82" y="875">priority = one label of kind priority (high/med/low)</text>
+  <text class="t-field" x="82" y="893">replaces the overloaded single label string</text>
+
+  <!-- ===== Reminder ===== -->
+  <rect class="box" x="880" y="95" width="330" height="140" rx="12" stroke="var(--alarm)"/>
+  <rect x="880" y="95" width="330" height="40" rx="12" fill="var(--alarm-soft)"/>
+  <rect x="880" y="123" width="330" height="12" fill="var(--alarm-soft)"/>
+  <text class="t-title" x="897" y="113" fill="var(--alarm)">Reminder — “alarm attached to an item”</text>
+  <text class="t-sub" x="897" y="127">component · 0..N per item</text>
+  <text class="t-field" x="897" y="152"><tspan class="k">itemId</tspan> — the missing link, finally explicit</text>
+  <text class="t-field" x="897" y="170"><tspan class="k">trigger</tspan>: absolute time | offset from start/end</text>
+  <text class="t-field" x="897" y="188">(“15 min before start”, “at end”, “2 h after…”)</text>
+  <text class="t-field" x="897" y="206"><tspan class="k">kind</tspan> notification | full alarm · sound/vibrate/snooze cfg</text>
+  <text class="t-field" x="897" y="224">reschedules follow the item automatically</text>
+
+  <!-- ===== alarm machinery ===== -->
+  <rect class="groupbox" x="880" y="392" width="330" height="118" stroke="var(--alarm)"/>
+  <text class="t-group" x="897" y="418" fill="var(--alarm)">ALARM DELIVERY — UNCHANGED</text>
+  <text class="t-field" x="897" y="442">ladder alarmClock → exact → inexact · OS read-back</text>
+  <text class="t-field" x="897" y="460">verify · +90 s watchdog · full-screen ring · boot</text>
+  <text class="t-field" x="897" y="478">receivers · alarm_log.txt — same ids, same code;</text>
+  <text class="t-field" x="897" y="496">standalone clock alarms = Reminder with itemId null</text>
+
+  <!-- ===== Views ===== -->
+  <rect class="groupbox" x="878" y="520" width="330" height="132" stroke="var(--view)"/>
+  <text class="t-group" x="896" y="546" fill="var(--view)">VIEWS = SAVED QUERIES</text>
+  <text class="t-field" x="896" y="570">Home tabs · Calendar · Chronize → schedule range</text>
+  <text class="t-field" x="896" y="588">Board → ProjectLink.stage · Wishlist → system view</text>
+  <text class="t-field" x="896" y="606">Deleted → deletedAt != null · Search → index</text>
+  <text class="t-field" x="896" y="624">user-defined saved filters become possible for free</text>
+  <text class="t-field" x="896" y="642">widgets read the same queries</text>
+
+  <!-- ===== Journal ===== -->
+  <rect class="box" x="455" y="655" width="450" height="145" rx="12" stroke="var(--history)"/>
+  <rect x="455" y="655" width="450" height="40" rx="12" fill="var(--history-soft)"/>
+  <rect x="455" y="683" width="450" height="12" fill="var(--history-soft)"/>
+  <text class="t-title" x="472" y="673" fill="var(--history)">ItemEvent journal — append-only, source of truth for history</text>
+  <text class="t-sub" x="472" y="687">item_events · one row per mutation · compacted by snapshots</text>
+  <text class="t-field" x="472" y="712"><tspan class="k">eventId</tspan> · <tspan class="k">itemId</tspan> · <tspan class="k">seq</tspan> (per-item version) · <tspan class="k">at</tspan> · <tspan class="k">deviceId</tspan></text>
+  <text class="t-field" x="472" y="732"><tspan class="k">type</tspan> created | edited | scheduled | moved | statusChanged |</text>
+  <text class="t-field" x="472" y="750">projectChanged | labeled | reminderChanged | deleted | restored</text>
+  <text class="t-field" x="472" y="770"><tspan class="k">patch</tspan> — field-level diff {field, from, to}; replay(seq) = any version</text>
+
+  <!-- ===== Derived ===== -->
+  <rect class="groupbox" x="455" y="845" width="450" height="112" stroke="var(--history)"/>
+  <text class="t-group" x="472" y="871" fill="var(--history)">DERIVED — NEVER STORED TWICE</text>
+  <text class="t-field" x="472" y="895">undo/redo · per-item timeline in detail page · deleted-items view</text>
+  <text class="t-field" x="472" y="913">DailyTaskStats + heatmaps (a reduce over events) · usage CSVs ·</text>
+  <text class="t-field" x="472" y="931">export task_events (now exact, not reconstructed) · SMS report</text>
+
+  <!-- ===== Sync ===== -->
+  <rect class="box" x="965" y="672" width="245" height="116" rx="12" stroke="var(--sync)" stroke-dasharray="6 5"/>
+  <text class="t-title" x="982" y="698" fill="var(--sync)">Sync (later)</text>
+  <text class="t-sub" x="982" y="713">enabled by the journal, not required by it</text>
+  <text class="t-field" x="982" y="736">journal = op log → ship events, merge by</text>
+  <text class="t-field" x="982" y="754">(itemId, seq, deviceId); last-writer-wins</text>
+  <text class="t-field" x="982" y="772">per field; no file-overwrite races</text>
+</svg>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--core)"></span>The Item core — smaller than today</h2>
+<p class="lead">Everything that was a mode-flag or a single-slot timestamp moves out. What remains is
+the part every item always has.</p>
+<table class="scroll">
+  <thead><tr><th>Field</th><th>Type</th><th>Replaces (current model)</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr class="group-row g-core"><td colspan="4">Identity &amp; content</td></tr>
+    <tr><td><code>id</code></td><td>UUID v4</td><td><code>uid</code></td><td>Unchanged; uniqueness enforced at the store layer, not by a repair pass.</td></tr>
+    <tr><td><code>title</code> · <code>description</code> · <code>note</code></td><td>String</td><td>same</td><td>Unchanged. (Optionally markdown-capable description later — content is opaque to the model.)</td></tr>
+    <tr><td><code>status</code></td><td>enum <code>open | done | dropped</code></td><td><code>isDone</code></td><td>Explicit tri-state: “dropped” ends recurring chores honestly instead of fake-completing them. <code>doneAt</code> comes from the journal.</td></tr>
+    <tr><td><code>parentId</code></td><td>UUID?</td><td>— (new)</td><td>Subtasks / checklists as a self-relation. Depth-1 is enough for the UI; the model doesn't care.</td></tr>
+    <tr><td><code>rank</code></td><td>String (lexo) or double</td><td><code>listRanking</code></td><td>Fractional ordering: insert-between without renumbering the whole tab on every save.</td></tr>
+    <tr><td><code>deletedAt</code></td><td>DateTime?</td><td><code>deleted_tasks.json</code> copies</td><td>Soft delete in place (tombstone). The Deleted-items page is a query; the 100-item cap becomes a retention <em>policy</em> (purge tombstones older than N days), not data loss by trim.</td></tr>
+    <tr class="group-row g-sync"><td colspan="4">Evolution &amp; bookkeeping</td></tr>
+    <tr><td><code>schemaVersion</code></td><td>int</td><td>— (new)</td><td>Written on save; ordered migrations upgrade old records once, instead of every field defaulting forever.</td></tr>
+    <tr><td><code>createdAt</code> / <code>updatedAt</code></td><td>DateTime</td><td><code>createdAt</code>, various slots</td><td>Convenience denormalization; the journal is authoritative (per-field last-write times live there).</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--time)"></span>Scheduling components</h2>
+<div class="cards">
+  <div class="card c-time">
+    <h4>Schedule <span class="pill n1">0..1</span></h4>
+    <ul>
+      <li><code>start</code>, <code>end</code> — the requested start/end date-times. Deadline-style items use <code>start == end</code>; blocked-time items get a real duration (Chronize can finally render height, the calendar real busy-blocks).</li>
+      <li><code>allDay</code> — replaces the implicit “18:00 default” convention and <code>hasExplicitTime</code>: an all-day item has no time; a timed item's time is always intentional.</li>
+      <li><code>timezone</code> — stored with the instant; DST handling becomes data-driven instead of code-path-driven.</li>
+      <li>No component = undated (today's <code>dueDate == null</code> → Future/“Someday”).</li>
+    </ul>
+  </div>
+  <div class="card c-time">
+    <h4>Recurrence <span class="pill n1">0..1</span></h4>
+    <ul>
+      <li><code>rrule</code> — an RFC 5545 subset (<code>FREQ</code>, <code>INTERVAL</code>, <code>BYDAY</code>, <code>UNTIL</code>, <code>COUNT</code>) covers today's every-N-days and unlocks weekly-on-Tue, monthly, weekdays. The alarm model's <code>repeatDays</code> proves the app already wants this shape.</li>
+      <li><code>exdates[]</code> — skip an occurrence without lying about completion.</li>
+      <li>Occurrences stay <strong>virtual</strong> (computed into views) until the user touches one — then it materializes as a child item (<code>parentId</code> + occurrence key), preserving today's proven parent/child behavior while eliminating pre-generated clutter.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--alarm)"></span>Reminders — alarms that belong to items</h2>
+<p class="lead">The single biggest relational fix: a <code>Reminder</code> row carries <code>itemId</code>.
+The delivery machinery — the part that took an entire reliability arc to get right — is reused verbatim.</p>
+<table class="scroll">
+  <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr class="group-row g-alarm"><td colspan="3">Reminder <span style="text-transform:none">— 0..N per item; itemId = null ⇒ a standalone clock alarm (today's Alarm, unchanged)</span></td></tr>
+    <tr><td><code>id</code>, <code>itemId?</code></td><td>UUID, UUID?</td><td>The link. Deleting/completing an item cancels its reminders; rescheduling re-anchors them — automatically, in one place.</td></tr>
+    <tr><td><code>trigger</code></td><td><code>at(DateTime)</code> | <code>offset(anchor: start|end, Duration)</code></td><td>“15 min before start”, “at end”, “2 h after start”. Offsets re-resolve whenever the item's schedule changes — no manual alarm babysitting.</td></tr>
+    <tr><td><code>kind</code></td><td><code>notification | alarm</code></td><td>Light heads-up vs. full insistent alarm with ring page.</td></tr>
+    <tr><td>sound &amp; behavior</td><td>melody, volume, vibrate, overrideDnd, color, snooze cfg, enabled</td><td>Exactly today's <code>Alarm</code> fields — including finally enforcing <code>snoozeMaxCount</code>.</td></tr>
+    <tr><td>delivery</td><td>—</td><td>Same deterministic id scheme, ladder, read-back verify, watchdog, <code>alarm_log.txt</code>. Recurring items: the next virtual occurrence arms the reminder, replacing per-weekday slots for item reminders.</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--project)"></span>Organization: projects, stages, labels</h2>
+<div class="cards">
+  <div class="card c-proj">
+    <h4>ProjectLink <span class="pill nN">0..N</span></h4>
+    <p>A join row <code>{itemId, projectId, stage, rank}</code> instead of two columns on the item.
+    Board stage and per-column order live <em>on the membership</em>, where they belong. Today's
+    “at most one project” is just a UI rule; the model no longer forbids more.</p>
+  </div>
+  <div class="card c-proj">
+    <h4>Project</h4>
+    <p>Gains <code>color</code>, <code>icon</code>, <code>archived</code>, and optional custom
+    <code>stages[]</code> (default = today's todo/ongoing/closed). Stable <code>id</code> semantics kept.
+    <strong>Wishlist becomes a system view/project</strong> — the 0.1.101 insight (“wishlist = a
+    pre-filtered view, like a project”) made structural; <code>isWish</code> disappears.</p>
+  </div>
+  <div class="card c-proj">
+    <h4>Label <span class="pill nN">0..N</span></h4>
+    <p>First-class <code>{id, name, color, kind}</code> with an <code>item_labels</code> join.
+    <code>kind: priority</code> models high/medium/low (at most one per item, UI-enforced);
+    <code>kind: system</code> covers markers like the Todo.md import's <code>old</code>. The single
+    overloaded <code>label</code> string is gone.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--history)"></span>History &amp; versioning: the event journal</h2>
+<p class="lead">One mechanism replaces five ad-hoc ones. Every mutation appends an immutable event;
+per-item <code>seq</code> is the item's version number.</p>
+
+<pre class="snippet"><span class="c">// item_events — append-only</span>
+{
+  <span class="k">"eventId"</span>: "5f0c…",          <span class="c">// UUID</span>
+  <span class="k">"itemId"</span>:  "a41b…",
+  <span class="k">"seq"</span>:     17,               <span class="c">// this item's 17th change ⇒ version 17</span>
+  <span class="k">"at"</span>:      "2026-07-17T09:31:02.114Z",
+  <span class="k">"deviceId"</span>: "pixel-8a",      <span class="c">// future sync: origin of the change</span>
+  <span class="k">"type"</span>:    "scheduled",      <span class="c">// created|edited|scheduled|moved|statusChanged|…</span>
+  <span class="k">"patch"</span>: [ { <span class="k">"field"</span>: "schedule.start",
+               <span class="k">"from"</span>: "2026-07-17T18:00",
+               <span class="k">"to"</span>:   "2026-07-18T09:00" } ]
+}</pre>
+
+<table class="scroll">
+  <thead><tr><th>Capability</th><th>Today</th><th>With the journal</th></tr></thead>
+  <tbody>
+    <tr><td>Edit history of title/description/labels</td><td>none</td><td>full, per field, with timestamps</td></tr>
+    <tr><td>Move/reschedule history</td><td>last occurrence only (<code>movedAt</code>, <code>rescheduledAt</code>)</td><td>every occurrence, with from → to</td></tr>
+    <tr><td>Undo / redo</td><td>one snackbar-scoped undo for deletes</td><td>replay to <code>seq − 1</code>; works for any change, any age</td></tr>
+    <tr><td>Item versions</td><td>—</td><td><code>replay(itemId, seq)</code> reconstructs any past state; detail page gets a timeline tab</td></tr>
+    <tr><td>Deleted items</td><td>copies in a 100-cap file; #101 lost</td><td><code>deleted</code>/<code>restored</code> events + tombstone; retention by age policy</td></tr>
+    <tr><td><code>DailyTaskStats</code> / heatmaps</td><td>separately maintained id-sets, write-time bookkeeping</td><td>a pure reduce over events — recomputable, extendable retroactively</td></tr>
+    <tr><td>Export <code>task_events</code></td><td>reconstructed approximation</td><td>the actual record (export = journal slice)</td></tr>
+    <tr><td>Sync</td><td>impossible (whole-file overwrite)</td><td>journal is an op log: ship, merge per field, deterministic</td></tr>
+  </tbody>
+</table>
+<p class="lead">Compaction: periodic per-item snapshots (state at <code>seq</code> N) let old events
+be archived to the export bundle — the journal stays bounded like <code>alarm_log.txt</code>'s
+trim, but without losing meaning. This is the same pattern the alarm subsystem already proved:
+append-only log + self-trim + derived views.</p>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--edge)"></span>Storage layout</h2>
+<div class="cards">
+  <div class="card c-core">
+    <h4>Recommended: single SQLite database</h4>
+    <div class="file">besttodo.db · drift/sqflite · WAL mode</div>
+    <ul>
+      <li><code>items</code> · <code>schedules</code> · <code>recurrences</code> · <code>reminders</code> · <code>projects</code> · <code>project_links</code> · <code>labels</code> · <code>item_labels</code> · <code>item_events</code> · <code>snapshots</code> · <code>meta</code> (schemaVersion)</li>
+      <li>Transactions end the multi-file consistency problem (task saved, stats file not, etc.); indexes make every view a cheap query; foreign keys make “delete item ⇒ cancel reminders” automatic.</li>
+    </ul>
+  </div>
+  <div class="card c-core">
+    <h4>Conservative alternative: keep JSON files</h4>
+    <div class="file">items.json + item_events.jsonl (append-only) + snapshots.json</div>
+    <p>Same model, journal as JSON-Lines with the proven <code>alarm_log.txt</code> trim/compact
+    pattern. Keeps the current zero-dependency, errors-swallowed persistence philosophy for
+    web/tests. The model is storage-agnostic either way — the repository interface hides the choice.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--view)"></span>Field-by-field mapping: current → future</h2>
+<table class="scroll">
+  <thead><tr><th>Current (<code>Task</code>)</th><th>Becomes</th></tr></thead>
+  <tbody>
+    <tr><td><code>uid</code>, <code>title</code>, <code>description</code>, <code>note</code></td><td><code>Item.id / title / description / note</code> — unchanged</td></tr>
+    <tr><td><code>dueDate</code> + <code>hasExplicitTime</code></td><td><code>Schedule{start, end, allDay, timezone}</code>; import: <code>start = end = dueDate</code>, <code>allDay = !hasExplicitTime</code></td></tr>
+    <tr><td><code>isDone</code></td><td><code>Item.status = done</code> (+ <code>statusChanged</code> event)</td></tr>
+    <tr><td><code>createdAt / completedAt / movedAt / rescheduledAt / deletedAt / autoDeleted</code></td><td>seed events in the journal (<code>created</code>, <code>statusChanged</code>, <code>moved</code>, <code>scheduled</code>, <code>deleted</code> with an <code>auto</code> flag)</td></tr>
+    <tr><td><code>listRanking</code></td><td><code>Item.rank</code> (fractional)</td></tr>
+    <tr><td><code>label</code> (one string)</td><td><code>Label</code> rows: <code>priority-*</code> → kind <em>priority</em>; <code>old</code> → kind <em>system</em>; rest → kind <em>tag</em></td></tr>
+    <tr><td><code>isWish</code></td><td>membership in the Wishlist system view</td></tr>
+    <tr><td><code>projectId</code> + <code>kanbanStatus</code></td><td><code>ProjectLink{projectId, stage, rank}</code></td></tr>
+    <tr><td><code>isRecurring / recurrenceIntervalDays / recurrenceEndDate</code></td><td><code>Recurrence{rrule: FREQ=DAILY;INTERVAL=N, until}</code></td></tr>
+    <tr><td><code>recurrenceParentUid / recurrenceInstanceKey</code></td><td><code>Item.parentId</code> + occurrence key on materialized children</td></tr>
+    <tr><td><code>Alarm</code> (standalone, time-only)</td><td><code>Reminder</code> with <code>itemId = null</code>; item wake-ups get <code>itemId</code> + offset triggers</td></tr>
+    <tr><td><code>deleted_tasks.json</code></td><td>tombstones + journal events; retention policy replaces the 100 cap</td></tr>
+    <tr><td><code>daily_task_stats.json</code></td><td>derived (reduce over journal); kept as a cache table at most</td></tr>
+    <tr><td>export <code>task_events</code> (derived)</td><td>journal slice (exact)</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--sync)"></span>Migration path — incremental, not a rewrite</h2>
+<ol class="mig">
+  <li><b>Introduce the journal alongside the current model.</b><span>Append events on every mutation in <code>_saveTasks</code>-adjacent code; change nothing else. Instant win: the detail page can show a real per-item timeline, and exports stop reconstructing.</span></li>
+  <li><b>Seed history from what exists.</b><span>One-time import: current timestamps + <code>deleted_tasks.json</code> + <code>DailyTaskStats</code> become best-effort seed events (marked <code>seeded: true</code>).</span></li>
+  <li><b>Split the label string.</b><span>Parse <code>priority-*</code>/<code>old</code>/tags into Label rows; keep writing the legacy string for one release (dual-write), then drop it.</span></li>
+  <li><b>Schedule component.</b><span>Add <code>start/end/allDay</code>; tolerant <code>fromJson</code> maps legacy <code>dueDate</code> on read (the codebase's proven evolution move), plus <code>schemaVersion</code> so it happens once per record.</span></li>
+  <li><b>Reminders.</b><span>Add nullable <code>itemId</code> + trigger to <code>Alarm</code> (a purely additive change to <code>alarms.json</code>); wire item edit UI to create/cancel them. Delivery code untouched.</span></li>
+  <li><b>Flip views to queries; retire flags.</b><span>Wishlist reads the system view, board reads <code>ProjectLink</code>, deleted page reads tombstones. Remove <code>isWish</code>/<code>kanbanStatus</code>/<code>deleted_tasks.json</code> writes last, when nothing reads them.</span></li>
+  <li><b>(Optional) move storage to SQLite.</b><span>Behind the repository interface, once the model is settled. Sync, if ever wanted, ships journal events — no redesign needed then.</span></li>
+</ol>
+
+<div class="callout">
+  <h4>✓ What this buys, concretely</h4>
+  <ul>
+    <li><strong>“Wake me for this item”</strong> in two taps, surviving reschedules — the most requested missing relation.</li>
+    <li><strong>Real durations</strong>: Chronize blocks with height, calendar busy-view, overlap detection.</li>
+    <li><strong>Full history &amp; undo</strong> for every item, with stats and exports as free by-products — and the existing analytics get <em>more</em> accurate, not different.</li>
+    <li><strong>No more overloading</strong>: labels, priority, wishlist, kanban each have one obvious home.</li>
+    <li><strong>Future-proof</strong>: schema versioning, storage-agnostic repository, sync-ready op log, custom saved views — all without touching the alarm reliability code that already works.</li>
+  </ul>
+</div>
+
+<footer>
+  Companion to <a href="item-model-current.html">the current-state map</a> · proposal only — nothing
+  here is implemented · grounded in <code>SPEC.md</code> §4–§10, <code>lib/models/*</code>,
+  <code>lib/services/storage_service.dart</code> (dev, v0.1.102).
+</footer>
+</div>
+</body>
+</html>
