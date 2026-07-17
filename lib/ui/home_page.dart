@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/task.dart';
+import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/storage_service.dart';
@@ -1667,25 +1668,15 @@ class _HomePageState extends State<HomePage>
   /// narrowed to matching tasks; pass [applySearch] false for logic that must
   /// see the full tab (e.g. renumbering [Task.listRanking] on save).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
+    // Tab membership is a query over the one list (ItemViews); only the
+    // search predicate is home-page state.
     final query = applySearch ? _searchQuery.trim().toLowerCase() : '';
-    final list = _tasks.where((task) {
-      if (query.isNotEmpty && !_matchesSearch(task, query)) return false;
-      // Undated tasks (e.g. wishlist items) belong to the Future bucket.
-      if (task.dueDate == null) return pageIndex == _futureTabIndex;
-      // Compare dates without considering the time of day so that tasks due
-      // tomorrow don't appear in today's list simply because they are less
-      // than 24 hours away.
-      final diff = dateDiffInDays(task.dueDate!, _currentDate);
-      final isFutureTask = _isFutureBucketDate(task.dueDate!);
-      if (pageIndex == 0) return diff <= 0;
-      if (pageIndex == 1) return diff == 1;
-      if (pageIndex == 2) return diff == 2;
-      if (pageIndex == 3) return diff >= 3 && diff < 30;
-      if (pageIndex == 4) return diff >= 30 && !isFutureTask;
-      return isFutureTask;
-    }).toList();
-    sortTasks(list);
-    return list;
+    return ItemViews.homeBucket(
+      _tasks,
+      pageIndex,
+      _currentDate,
+      where: query.isEmpty ? null : (task) => _matchesSearch(task, query),
+    );
   }
 
   /// Short label for the schedule view's active day shown in the add-task

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.108] - 2026-07-17
+- Internal: every view of your items — home tabs, wishlist, project boards and cards — now runs through one shared query layer over the single task list, instead of each page filtering on its own. No visible change; behavior and speed are identical, and future custom filters/saved views become straightforward
+
 ## [0.1.107] - 2026-07-17
 - Alarms can now belong to a task: open a task's details and tap "Remind me 15 min before due" — one tap, done. The reminder then takes care of itself: rescheduling the task moves it, completing the task silences it, deleting the task removes it, and renaming the task renames it. Reminders ring through the same battle-tested alarm pipeline as regular alarms (escalation ladder, verification, watchdog); regular alarms are completely unaffected
 

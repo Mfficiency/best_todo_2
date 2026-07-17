@@ -187,6 +187,17 @@ Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the f
 frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
 appended after any live events but describe an older past.
 
+### 4.2d Views as queries (0.1.108)
+
+`ItemViews` (`lib/services/item_views.dart`) is the shared query layer over the one task
+list: pure static selectors `inHomeBucket`/`homeBucket` (date-only distance bucketing +
+`sortTasks`, optional extra predicate for search), `wishlist` (isWish), `active`
+(deletedAt == null), `projectTasks`, `boardColumn`. The home page's `_tasksForTab`, the
+Wishlist page, the Projects page (counts + top pane) and the Kanban board all delegate to
+it; the Future-tab sentinel date (2300-01-01) lives here as `futureSentinelDate`.
+Membership flags on the task stay the stored form (dual-write era) — this step moves the
+*reading* of them into one place.
+
 ### 4.2c Structured labels (0.1.105)
 
 `Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/project.dart';
 import '../models/task.dart';
+import '../services/item_views.dart';
 import '../services/project_service.dart';
 import 'adaptive_draggable.dart';
 import 'subpage_app_bar.dart';
@@ -47,14 +48,8 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
     ),
   ];
 
-  List<Task> _tasksForStatus(String status) {
-    return widget.tasks
-        .where((t) =>
-            t.deletedAt == null &&
-            t.projectId == widget.project.id &&
-            t.kanbanStatus == status)
-        .toList();
-  }
+  List<Task> _tasksForStatus(String status) =>
+      ItemViews.boardColumn(widget.tasks, widget.project.id, status);
 
   void _moveTask(Task task, String status) {
     if (task.kanbanStatus == status) return;
