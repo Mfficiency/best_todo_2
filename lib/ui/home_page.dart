@@ -290,6 +290,24 @@ class _HomePageState extends State<HomePage>
   /// and web, where the Projects tool is exercised with a mouse — open with
   /// populated project cards and boards. Only runs while none of the seeded
   /// tasks carries a project yet, so manual (re)assignments survive reloads.
+  /// Dev-only: one task with a real time range (the schema-v2 interval) on
+  /// today's tab and the first project's board, so start/end/duration can be
+  /// inspected on its detail page without hand-editing JSON.
+  void _seedDevRangeTask() {
+    final day = _currentDate;
+    _tasks.add(Task(
+      title: 'Deep work block',
+      description: 'Dev seed: a task with a real time range',
+      createdAt: DateTime.now(),
+      startAt: DateTime(day.year, day.month, day.day, 9),
+      endAt: DateTime(day.year, day.month, day.day, 10, 30),
+      hasExplicitTime: true,
+      projectId: ProjectService.instance.list.isNotEmpty
+          ? ProjectService.instance.list.first.id
+          : null,
+    ));
+  }
+
   /// Dev-only: writes a small ready-made history for the first project-board
   /// task so the History timeline on the task-detail page has data on a
   /// fresh install — including in Chrome, where the journal lives in memory
@@ -511,6 +529,7 @@ class _HomePageState extends State<HomePage>
       // get a visible item history, so the task-detail History timeline can
       // be tested immediately: Tools → Projects → open a board → tap a card.
       if (loaded.isEmpty) {
+        _seedDevRangeTask();
         _seedDevItemHistory();
       }
     }

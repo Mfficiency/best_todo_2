@@ -11,6 +11,20 @@ class TaskDetailPage extends StatelessWidget {
   final Task task;
   const TaskDetailPage({Key? key, required this.task}) : super(key: key);
 
+  static String _clockLabel(DateTime at) {
+    final local = at.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  static String _durationLabel(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    if (hours == 0) return '${minutes}m';
+    return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}m';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -37,6 +51,14 @@ class TaskDetailPage extends StatelessWidget {
           if (task.dueDate != null) ...[
             const SizedBox(height: 8),
             Text('Due: ${task.dueDate!.toLocal().toString().split(' ')[0]}'),
+          ],
+          // A real interval (start != end) shows its range and length;
+          // deadline-style tasks (start == end) keep just the Due line.
+          if (task.duration != null && task.duration! > Duration.zero) ...[
+            const SizedBox(height: 8),
+            Text('Start: ${_clockLabel(task.startAt!)}'),
+            Text('End: ${_clockLabel(task.endAt!)}'),
+            Text('Duration: ${_durationLabel(task.duration!)}'),
           ],
           const SizedBox(height: 8),
           Text('Completed: ${task.isDone ? 'Yes' : 'No'}'),
