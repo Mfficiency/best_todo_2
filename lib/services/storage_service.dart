@@ -8,6 +8,7 @@ import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
 import 'item_event_journal.dart';
+import 'label_service.dart';
 import 'wishlist_migration.dart';
 
 class TaskImportBundle {
@@ -124,6 +125,11 @@ class StorageService {
     if (baseline != null) {
       ItemEventJournal.instance.recordDiff(before: baseline, after: snapshot);
     }
+    // Structured-label dual-write: make sure every token on any task exists
+    // as a first-class Label. Fire-and-forget and write-free once all tokens
+    // are known, so saves stay as fast as before.
+    LabelService.instance
+        .registerFromLabelStrings(tasks.map((t) => t.label));
     final file = await _getLocalFile();
     final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
     await file.writeAsString(jsonString, flush: true);

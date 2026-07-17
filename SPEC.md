@@ -181,6 +181,17 @@ Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the f
 frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
 appended after any live events but describe an older past.
 
+### 4.2c Structured labels (0.1.105)
+
+`Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB
+color) + `LabelService` (`labels.json`, ValueNotifier singleton) form the structured half
+of a label dual-write: `Task.label` (the token string, split on commas/whitespace —
+helpers in `lib/utils/label_utils.dart`) stays canonical; every save auto-registers
+unseen tokens fire-and-forget (`registerFromLabelStrings` from `saveTaskList`; write-free
+when all tokens are known, nothing loads at startup). Kinds derive from the token:
+`priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
+tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next
