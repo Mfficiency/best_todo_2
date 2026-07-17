@@ -5,13 +5,17 @@
 
 ## [0.1.105] - 2026-07-17
 - Labels are now tracked as first-class entries (in labels.json) with a kind — regular tag, wishlist priority, or app marker — and room for a colour, laying the groundwork for coloured tags and label filtering. Nothing changes in how you type or see labels: the registry fills itself in the background from the labels you already use, with no effect on startup or save speed
+- Task details now annotate each label with its registry kind, e.g. "urgent (tag) · priority-high (priority)"
+- How to test (dev build, `flutter run -d chrome`): a fresh dev start labels the first board task "urgent, priority-high" and the second "gift, old" — the labels show as tags on their home tiles (Future tab), and Tools → Projects → board → tap a card shows the kind annotations: urgent (tag), priority-high (priority), gift (tag), old (system). Add your own label to any task (pencil on its tile) and reopen its details — the new token is registered and annotated the same way
 
 ## [0.1.104] - 2026-07-17
 - Task history timelines now reach back before the journal existed: on first launch after updating, the app reconstructs each task's past (created, rescheduled, completed, deleted, restored) from its stored timestamps, the deleted list and the daily stats — marked "(reconstructed)" in the timeline. The backfill runs once, a few seconds after startup, so launching stays as fast as before
+- How to test (dev build, `flutter run -d chrome`): open Tools → Projects → a project board → tap the second card — its History shows entries suffixed "(reconstructed)" dated weeks back (dev-seeded, since the browser has no stored pre-journal data to backfill from), interleaved correctly before any live entries you create by editing the task. The real backfill (timestamps + deleted list + daily stats → seeded events, guarded by `item_events_seed_v1.txt`, run 3 s after launch) is exercised by `test/core/item_history_seeder_test.dart` and on an Android/desktop install with existing data
 
 ## [0.1.103] - 2026-07-17
 - Every change to a task — edits, rescheduling, completing, project moves, label changes, deletes and restores — is now recorded in an on-device history journal; open a task's details (e.g. from a project board) to see its timeline. Recording happens in the background after each save and the journal is only read on demand, so app startup and list interactions are exactly as fast as before
 - Exports now include the exact recorded history (`item_events`) alongside the reconstructed `task_events`
+- How to test (dev build, `flutter run -d chrome`): a fresh dev start pre-seeds a ready-made history on the first project-board task — open Tools → Projects → tap a project's board button → tap the first card → the details page shows a History section ("Created", "Rescheduled to …", "Edited description"). Then verify live recording: back on the home list, rename any task, check one off, or swipe-delay it, and reopen its details from the board — each action appears as a new History line. On Chrome the journal lives in memory for the session (no files on web); on Android/desktop it persists in `item_events.jsonl`
 
 ## [0.1.102] - 2026-07-10
 - New minimalist mode in Settings → Appearance: a calm, monochrome ink-on-paper look with no accent colours, flat surfaces, and underlined (instead of highlighted) selections; works in both light and dark mode

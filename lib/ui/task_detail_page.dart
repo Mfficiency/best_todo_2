@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/item_event.dart';
+import '../models/label.dart';
 import '../models/task.dart';
 import '../services/item_event_journal.dart';
+import '../services/label_service.dart';
+import '../utils/label_utils.dart';
 import 'subpage_app_bar.dart';
 
 class TaskDetailPage extends StatelessWidget {
@@ -29,7 +32,7 @@ class TaskDetailPage extends StatelessWidget {
           ],
           if (task.label.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('Label: ${task.label}'),
+            TaskLabelLine(label: task.label),
           ],
           if (task.dueDate != null) ...[
             const SizedBox(height: 8),
@@ -40,6 +43,33 @@ class TaskDetailPage extends StatelessWidget {
           TaskHistorySection(taskUid: task.uid),
         ],
       ),
+    );
+  }
+}
+
+/// The task's label tokens annotated with their registry kind, e.g.
+/// "Label: urgent (tag) · priority-high (priority)". Ensures the tokens are
+/// registered (idempotent, background) and live-updates with the registry;
+/// until it answers, the kind falls back to the same pure classification the
+/// registry itself uses.
+class TaskLabelLine extends StatelessWidget {
+  final String label;
+  const TaskLabelLine({Key? key, required this.label}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = splitLabelTokens(label);
+    LabelService.instance.registerTokens(tokens);
+    return ValueListenableBuilder<List<Label>>(
+      valueListenable: LabelService.instance.labels,
+      builder: (context, _, __) {
+        final parts = tokens.map((token) {
+          final kind =
+              LabelService.instance.byName(token)?.kind ?? labelKindFor(token);
+          return '$token ($kind)';
+        }).join(' · ');
+        return Text('Label: $parts');
+      },
     );
   }
 }
