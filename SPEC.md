@@ -500,7 +500,8 @@ target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) o
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
 show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows the same duration as
 decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
-(orange). Notify-on-zero fires a notification once (suppressed for already-past timers so
+(orange); the instant date picker ranges 1900 → now+100y (0.1.98) so past events
+(birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session). Notify-at-round-numbers (# icon,
 per-timer, 0.1.97) fires whenever the remaining time crosses a power-of-ten second count
 (1e9 → 1e3; `CountdownTimerItem.roundMilestones`/`crossedRoundMilestone`): the page
