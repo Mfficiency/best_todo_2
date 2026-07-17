@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/task.dart';
+import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
@@ -59,6 +60,9 @@ class _HomePageState extends State<HomePage>
   final List<Task> _deletedTasks = [];
 
   final Map<String, DailyTaskStats> _dailyStatsByDay = {};
+  // Item store goes through the repository seam; _storageService remains for
+  // backup/export tooling, which is about files rather than the item store.
+  final ItemRepository _repository = ItemRepository.instance;
   final StorageService _storageService = StorageService();
 
   final String appGroupId = 'group.homeScreenApp';
@@ -397,9 +401,9 @@ class _HomePageState extends State<HomePage>
   Future<void> _loadTasks() async {
     // loadTaskList also merges legacy wishlist.json items (and the one-time
     // Todo.md import) into the task list as isWish tasks.
-    final loaded = await _storageService.loadTaskList();
-    final loadedDeleted = await _storageService.loadDeletedTaskList();
-    final loadedDailyStats = await _storageService.loadDailyTaskStats();
+    final loaded = await _repository.loadItems();
+    final loadedDeleted = await _repository.loadDeletedItems();
+    final loadedDailyStats = await _repository.loadDailyStats();
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(
@@ -475,11 +479,11 @@ class _HomePageState extends State<HomePage>
   }
 
   void _saveDeletedTasks() {
-    _storageService.saveDeletedTaskList(_deletedTasks);
+    _repository.saveDeletedItems(_deletedTasks);
   }
 
   void _saveDailyStats() {
-    _storageService.saveDailyTaskStats(_dailyStatsByDay);
+    _repository.saveDailyStats(_dailyStatsByDay);
   }
 
   DateTime _dateOnly(DateTime date) =>
@@ -767,7 +771,7 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _reloadTasksFromStorage() async {
-    final loaded = await _storageService.loadTaskList();
+    final loaded = await _repository.loadItems();
     if (!mounted) return;
     setState(() {
       _tasks
@@ -1319,7 +1323,7 @@ class _HomePageState extends State<HomePage>
     // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
     // multiple tasks land on the same day so no two share a time.
     applyDefaultDeadlineTimes(_tasks);
-    _storageService.saveTaskList(_tasks);
+    _repository.saveItems(_tasks);
     _updateHomeWidget();
   }
 

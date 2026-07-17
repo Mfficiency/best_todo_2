@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.109] - 2026-07-17
+- Internal: all pages now access tasks, the deleted list, daily stats and item history through one repository interface, completing the item-model migration. A written decision record (docs/architecture/storage-decision.md) documents why storage stays on fast JSON files for now — startup speed is the top priority — and exactly what would trigger a move to a database later. No visible change
+
 ## [0.1.108] - 2026-07-17
 - Internal: every view of your items — home tabs, wishlist, project boards and cards — now runs through one shared query layer over the single task list, instead of each page filtering on its own. No visible change; behavior and speed are identical, and future custom filters/saved views become straightforward
 

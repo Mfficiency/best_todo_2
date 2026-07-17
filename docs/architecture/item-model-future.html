@@ -598,9 +598,12 @@ append-only log + self-trim + derived views.</p>
 </div>
 
 <footer>
-  Companion to <a href="item-model-current.html">the current-state map</a> · proposal only — nothing
-  here is implemented · grounded in <code>SPEC.md</code> §4–§10, <code>lib/models/*</code>,
-  <code>lib/services/storage_service.dart</code> (dev, v0.1.102).
+  Companion to <a href="item-model-current.html">the current-state map</a> · implemented incrementally
+  in 0.1.103–0.1.109 (migration steps 1–7: event journal, history seeding, structured labels,
+  schedule interval + schemaVersion, item-linked reminders, views-as-queries, repository seam) —
+  the SQLite storage move is deliberately deferred, see <code>storage-decision.md</code> ·
+  grounded in <code>SPEC.md</code> §4–§10, <code>lib/models/*</code>,
+  <code>lib/services/storage_service.dart</code>.
 </footer>
 </div>
 </body>

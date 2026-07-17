@@ -3,7 +3,7 @@ import '../models/alarm.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
-import '../services/item_event_journal.dart';
+import '../services/item_repository.dart';
 import '../services/reminder_sync_service.dart';
 import 'subpage_app_bar.dart';
 
@@ -119,7 +119,7 @@ class TaskHistorySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<ItemEvent>>(
-      future: ItemEventJournal.instance.eventsForItem(taskUid),
+      future: ItemRepository.instance.historyOf(taskUid),
       builder: (context, snapshot) {
         final events = snapshot.data;
         if (events == null || events.isEmpty) {

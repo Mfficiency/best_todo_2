@@ -187,6 +187,18 @@ Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the f
 frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
 appended after any live events but describe an older past.
 
+### 4.2e Repository seam (0.1.109)
+
+`ItemRepository` (`lib/services/item_repository.dart`, singleton) is the one interface
+pages use for the item store: `loadItems`/`saveItems` (task list),
+`loadDeletedItems`/`saveDeletedItems`, `loadDailyStats`/`saveDailyStats`,
+`historyOf`/`allHistory` (journal). Today it delegates to `StorageService` +
+`ItemEventJournal`; swapping the backend (SQLite, sync) happens inside this class only.
+Backup/export tooling stays on `StorageService` directly (it deals in files). The
+decision to stay on JSON files — and the concrete triggers for revisiting (sync, ~5k
+items / ~2 MB, measured startup regression) — is recorded in
+`docs/architecture/storage-decision.md`.
+
 ### 4.2d Views as queries (0.1.108)
 
 `ItemViews` (`lib/services/item_views.dart`) is the shared query layer over the one task
