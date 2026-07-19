@@ -41,7 +41,7 @@ Flutter (Dart SDK >=3.0.0), tested against Flutter 3.29.2 in CI. Key directories
 ```
 lib/main.dart            app entry, widget background callback, MyApp/theme/start page
 lib/config.dart          runtime + persisted configuration (settings.json)
-lib/models/              task, daily_task_stats, alarm, countdown_timer, sms_*
+lib/models/              task, daily_task_stats, alarm, countdown_timer, countdown_milestone, sms_*
 lib/services/            storage, startup times, log, notifications (io/web/stub),
                          alarm pipeline (service/notification/watchdog/diagnostics/log/
                          storage/ids/widget), sms report (scheduler/service/config/log),
@@ -554,7 +554,7 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 (5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
 
 ### 10.2 Countdown timers (Tools → Countdown)
-`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,createdAt,editedAt}`
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt}`
 in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
 target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
@@ -562,15 +562,38 @@ show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows the same duration
 decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
 (orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
-they never retro-fire; suppression is per-session). Notify-at-round-numbers (# icon,
-per-timer, 0.1.103) fires whenever the remaining time — or, for past timers, the elapsed
-time — crosses a power-of-ten second count (1e9 → 1e3;
-`CountdownTimerItem.roundMilestones` / `crossedRoundMilestone` /
-`crossedRoundMilestoneUp`): the page tracks last-seen signed remaining seconds per timer
-(`_roundSeen`, negative once past; per-session), the first observation only baselines
-(no retro-fire on load/toggle/edit), and a jump across several milestones (backgrounded
-app) fires only the most recent one crossed (smallest counting down, largest counting
-up).
+they never retro-fire; suppression is per-session).
+
+**Milestone notifications** (# icon → `showCountdownMilestonesDialog`, per-timer, 0.1.105;
+replaced the fixed power-of-ten-seconds ladder of 0.1.103). `notifyRoundNumbers` is now the
+master switch for `List<CountdownMilestone>`
+(`lib/models/countdown_milestone.dart`): `{value:int, unit:MilestoneUnit, direction:
+MilestoneDirection}` where unit ∈ seconds|minutes|hours|days|weeks|months|years and
+direction ∈ before|after|both. Any count of any unit, any number of entries.
+
+A milestone is *not* compared as a span of remaining seconds — it resolves to **absolute
+instants** relative to the target: `target − value` (before side) and `target + value`
+(after side), via `CountdownMilestone.shift`. Seconds→weeks add a fixed `Duration`;
+months/years walk the calendar with day-of-month clamping (`addMonths`: 31 Mar − 1 month →
+28/29 Feb), so "10 months before" lands on the same day-of-month. This is what makes the two
+directions symmetric and calendar units correct.
+
+`CountdownTimerItem.dueMilestone({previousNow, now})` returns the `MilestoneHit`
+(milestone + `isAfter` + instant) whose instant lies in the half-open window
+`(previousNow, now]`, or null. The page keeps last-checked wall-clock per timer
+(`_milestoneSeen`, per-session); the first observation only baselines (no retro-fire on
+load/edit/dialog-save), and a window spanning several milestones (backgrounded app) reports
+only the **most recent** so reopening yields one notification, not a burst. Message reads
+"<name> — 10 days to go" / "… since".
+
+Defaults (`CountdownTimerItem.defaultMilestones()`, both directions, declared longest-first):
+10 years, 10 months, 10,000,000 s, 10 weeks, 100,000 min, 1,000 h, 10 days — note
+10,000,000 s (~115.7 d) outranks 10 weeks (70 d). Timers saved before 0.1.105 carry no
+`milestones` key and inherit the defaults on load. The dialog owns one
+`TextEditingController` per row and disposes them itself (never dispose from the caller after
+`showDialog`); on save it drops non-positive rows, collapses duplicate number+unit pairs, and
+re-sorts by `approximateSeconds` descending (months/years use average lengths — display
+ordering only, never placement).
 
 ### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
 Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts

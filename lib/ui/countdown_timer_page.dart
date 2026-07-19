@@ -7,6 +7,7 @@ import '../models/countdown_timer.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_time_format.dart';
+import 'countdown_milestones_dialog.dart';
 import 'subpage_app_bar.dart';
 
 /// How the timer list is ordered. [manual] is the user's drag order; the rest
@@ -31,12 +32,11 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   /// switched on. Not persisted.
   final Set<String> _notifySuppressed = {};
 
-  /// Last observed remaining whole seconds per timer with the round-number
-  /// bell on — negative once the timer is past (counting up). The first
-  /// observation only records a baseline (so switching the bell on or opening
-  /// the page never retro-fires for milestones already passed); crossings are
-  /// detected against it on later ticks. Not persisted.
-  final Map<String, int> _roundSeen = {};
+  /// Last wall-clock instant each milestone-enabled timer was checked at. The
+  /// first observation only records a baseline (so switching the bell on or
+  /// opening the page never retro-fires for milestones already passed);
+  /// crossings are detected over the window since it. Not persisted.
+  final Map<String, DateTime> _milestoneSeen = {};
 
   Timer? _ticker;
   bool _loading = true;
@@ -64,7 +64,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     _listController.addListener(_handleListScroll);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       _checkZeroNotifications();
-      _checkRoundNotifications();
+      _checkMilestoneNotifications();
       if (mounted) setState(() {});
     });
   }
@@ -149,51 +149,25 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     }
   }
 
-  void _checkRoundNotifications() {
+  void _checkMilestoneNotifications() {
     final now = DateTime.now();
     for (final t in _timers) {
-      if (!t.notifyRoundNumbers) {
-        _roundSeen.remove(t.uid);
+      if (!t.notifyRoundNumbers || t.milestones.isEmpty) {
+        _milestoneSeen.remove(t.uid);
         continue;
       }
-      // Positive while counting down, negative once past (counting up).
-      final remaining = t.target.difference(now).inSeconds;
-      final previous = _roundSeen[t.uid];
-      _roundSeen[t.uid] = remaining;
+      final previous = _milestoneSeen[t.uid];
+      _milestoneSeen[t.uid] = now;
+      // First tick for this timer only establishes the baseline.
       if (previous == null) continue;
-      final int? milestone;
-      final String suffix;
-      if (remaining > 0) {
-        milestone = CountdownTimerItem.crossedRoundMilestone(
-          previousSeconds: previous,
-          currentSeconds: remaining,
-        );
-        suffix = 'seconds to go';
-      } else {
-        milestone = CountdownTimerItem.crossedRoundMilestoneUp(
-          previousSeconds: -previous,
-          currentSeconds: -remaining,
-        );
-        suffix = 'seconds since';
-      }
-      if (milestone != null) {
-        final name = t.label.trim().isEmpty ? 'Countdown' : t.label.trim();
-        NotificationService.showTaskNotification(
-          '$name — ${_formatThousands(milestone)} $suffix',
-          delaySeconds: 0,
-        );
-      }
+      final hit = t.dueMilestone(previousNow: previous, now: now);
+      if (hit == null) continue;
+      final name = t.label.trim().isEmpty ? 'Countdown' : t.label.trim();
+      NotificationService.showTaskNotification(
+        '$name — ${hit.message}',
+        delaySeconds: 0,
+      );
     }
-  }
-
-  String _formatThousands(int n) {
-    final s = n.toString();
-    final b = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
-      b.write(s[i]);
-    }
-    return b.toString();
   }
 
   /// Switches the given timer's row into the inline editor (same UI as adding).
@@ -216,8 +190,8 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       if (timer.notifyOnZero && !timer.target.isAfter(DateTime.now())) {
         _notifySuppressed.add(timer.uid);
       }
-      // Re-baseline round-number tracking against the new target.
-      _roundSeen.remove(timer.uid);
+      // Re-baseline milestone tracking against the new target.
+      _milestoneSeen.remove(timer.uid);
       _editingUid = null;
     });
     await _save();
@@ -240,14 +214,18 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     _save();
   }
 
-  void _toggleRoundNotify(CountdownTimerItem timer) {
+  /// Opens the milestone editor for [timer] and applies the result.
+  Future<void> _openMilestones(CountdownTimerItem timer) async {
+    final result = await showCountdownMilestonesDialog(context, timer);
+    if (result == null || !mounted) return;
     setState(() {
-      timer.notifyRoundNumbers = !timer.notifyRoundNumbers;
-      // Tracking re-baselines on the next tick; clearing here covers both
-      // switching off and switching back on after a target change.
-      _roundSeen.remove(timer.uid);
+      timer.notifyRoundNumbers = result.enabled;
+      timer.milestones = result.milestones;
+      // Tracking re-baselines on the next tick, so milestones already behind us
+      // never retro-fire after an edit.
+      _milestoneSeen.remove(timer.uid);
     });
-    _save();
+    await _save();
   }
 
   void _deleteTimer(CountdownTimerItem timer) {
@@ -553,9 +531,9 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                         : null,
                   ),
                   tooltip: timer.notifyRoundNumbers
-                      ? 'Notify at round numbers: on'
-                      : 'Notify at round numbers: off',
-                  onPressed: () => _toggleRoundNotify(timer),
+                      ? 'Milestone notifications: ${timer.milestones.length} on'
+                      : 'Milestone notifications: off',
+                  onPressed: () => _openMilestones(timer),
                 ),
               ],
             ),

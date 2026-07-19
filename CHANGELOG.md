@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.105] - 2026-07-19
+- Countdown: the # bell is now a full milestone menu — tap it on any timer to set as many notifications as you like, each at any number of any unit (seconds, minutes, hours, days, weeks, months or years), and choose whether each one fires before the event, after it, or both
+- Countdown: months and years now follow the calendar, so "10 months before" lands on the same day of the month rather than 304 days out
+- Countdown: new timers start with 10 years, 10 months, 10,000,000 seconds, 10 weeks, 100,000 minutes, 1,000 hours and 10 days — existing timers keep notifying and pick up the same defaults; "Defaults" in the menu restores them at any time
+
 ## [0.1.104] - 2026-07-19
 - Dev builds: the wishlist backlog now repopulates even after the one-time import flag has been spent (idempotent, dev-only).
 

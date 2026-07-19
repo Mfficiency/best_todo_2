@@ -13,7 +13,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip, alarm editor (top save), alarm ring page |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
 | `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, wishlist items on the Future tab |
-| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model, timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes) |
+| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes) |
 
 ## Which suites to run
 
