@@ -1,9 +1,22 @@
 # Changelog
 
-## [0.1.103] - 2026-07-17
+## [0.1.106] - 2026-07-17
 - Every change to a task — edits, rescheduling, completing, project moves, label changes, deletes and restores — is now recorded in an on-device history journal; open a task's details (e.g. from a project board) to see its timeline. Recording happens in the background after each save and the journal is only read on demand, so app startup and list interactions are exactly as fast as before
 - Exports now include the exact recorded history (`item_events`) alongside the reconstructed `task_events`
 - How to test (dev build, `flutter run -d chrome`): a fresh dev start pre-seeds a ready-made history on the first project-board task — open Tools → Projects → tap a project's board button → tap the first card → the details page shows a History section ("Created", "Rescheduled to …", "Edited description"). Then verify live recording: back on the home list, rename any task, check one off, or swipe-delay it, and reopen its details from the board — each action appears as a new History line. On Chrome the journal lives in memory for the session (no files on web); on Android/desktop it persists in `item_events.jsonl`
+
+## [0.1.105] - 2026-07-19
+- Countdown: the # bell is now a full milestone menu — tap it on any timer to set as many notifications as you like, each at any number of any unit (seconds, minutes, hours, days, weeks, months or years), and choose whether each one fires before the event, after it, or both
+- Countdown: months and years now follow the calendar, so "10 months before" lands on the same day of the month rather than 304 days out
+- Countdown: new timers start with 10 years, 10 months, 10,000,000 seconds, 10 weeks, 100,000 minutes, 1,000 hours and 10 days — existing timers keep notifying and pick up the same defaults; "Defaults" in the menu restores them at any time
+
+## [0.1.104] - 2026-07-19
+- Dev builds: the wishlist backlog now repopulates even after the one-time import flag has been spent (idempotent, dev-only).
+
+## [0.1.103] - 2026-07-17
+- Countdown: new per-timer round-number bell (# icon next to the zero bell) — get a notification whenever the remaining time crosses a round number of seconds: 1,000,000,000 down to 1,000 in powers of ten (100,000 seconds is about 1.2 days before the event)
+- Countdown: timers can now be set in the past — the date picker goes back to 1900, so you can track how long since your birthday or any other past event (past timers count up, and the expanded card shows the total in days, weeks, months and years)
+- Countdown: the round-number bell also works for past timers counting up — get a notification when the elapsed time crosses a round number of seconds (e.g. 1,000,000,000 seconds since your birthday, about 31.7 years)
 
 ## [0.1.102] - 2026-07-10
 - New minimalist mode in Settings → Appearance: a calm, monochrome ink-on-paper look with no accent colours, flat surfaces, and underlined (instead of highlighted) selections; works in both light and dark mode

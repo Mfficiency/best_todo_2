@@ -7,6 +7,7 @@ import '../models/countdown_timer.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_time_format.dart';
+import 'countdown_milestones_dialog.dart';
 import 'subpage_app_bar.dart';
 
 /// How the timer list is ordered. [manual] is the user's drag order; the rest
@@ -30,6 +31,12 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   /// already fired this session, or they were already past when the bell was
   /// switched on. Not persisted.
   final Set<String> _notifySuppressed = {};
+
+  /// Last wall-clock instant each milestone-enabled timer was checked at. The
+  /// first observation only records a baseline (so switching the bell on or
+  /// opening the page never retro-fires for milestones already passed);
+  /// crossings are detected over the window since it. Not persisted.
+  final Map<String, DateTime> _milestoneSeen = {};
 
   Timer? _ticker;
   bool _loading = true;
@@ -57,6 +64,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     _listController.addListener(_handleListScroll);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       _checkZeroNotifications();
+      _checkMilestoneNotifications();
       if (mounted) setState(() {});
     });
   }
@@ -109,6 +117,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       CountdownTimerItem(
         label: 'New Year',
         target: DateTime(now.year + 1, 1, 1, 0, 0),
+        notifyRoundNumbers: true,
       ),
       CountdownTimerItem(
         label: 'Project deadline',
@@ -140,6 +149,27 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     }
   }
 
+  void _checkMilestoneNotifications() {
+    final now = DateTime.now();
+    for (final t in _timers) {
+      if (!t.notifyRoundNumbers || t.milestones.isEmpty) {
+        _milestoneSeen.remove(t.uid);
+        continue;
+      }
+      final previous = _milestoneSeen[t.uid];
+      _milestoneSeen[t.uid] = now;
+      // First tick for this timer only establishes the baseline.
+      if (previous == null) continue;
+      final hit = t.dueMilestone(previousNow: previous, now: now);
+      if (hit == null) continue;
+      final name = t.label.trim().isEmpty ? 'Countdown' : t.label.trim();
+      NotificationService.showTaskNotification(
+        '$name — ${hit.message}',
+        delaySeconds: 0,
+      );
+    }
+  }
+
   /// Switches the given timer's row into the inline editor (same UI as adding).
   void _editTimer(CountdownTimerItem timer) {
     setState(() => _editingUid = timer.uid);
@@ -160,6 +190,8 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       if (timer.notifyOnZero && !timer.target.isAfter(DateTime.now())) {
         _notifySuppressed.add(timer.uid);
       }
+      // Re-baseline milestone tracking against the new target.
+      _milestoneSeen.remove(timer.uid);
       _editingUid = null;
     });
     await _save();
@@ -180,6 +212,20 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       }
     });
     _save();
+  }
+
+  /// Opens the milestone editor for [timer] and applies the result.
+  Future<void> _openMilestones(CountdownTimerItem timer) async {
+    final result = await showCountdownMilestonesDialog(context, timer);
+    if (result == null || !mounted) return;
+    setState(() {
+      timer.notifyRoundNumbers = result.enabled;
+      timer.milestones = result.milestones;
+      // Tracking re-baselines on the next tick, so milestones already behind us
+      // never retro-fire after an edit.
+      _milestoneSeen.remove(timer.uid);
+    });
+    await _save();
   }
 
   void _deleteTimer(CountdownTimerItem timer) {
@@ -476,6 +522,18 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                       ? 'Notify at zero: on'
                       : 'Notify at zero: off',
                   onPressed: () => _toggleNotify(timer),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.tag,
+                    color: timer.notifyRoundNumbers
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                  tooltip: timer.notifyRoundNumbers
+                      ? 'Milestone notifications: ${timer.milestones.length} on'
+                      : 'Milestone notifications: off',
+                  onPressed: () => _openMilestones(timer),
                 ),
               ],
             ),
