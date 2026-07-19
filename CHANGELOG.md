@@ -1,18 +1,31 @@
 # Changelog
 
-## [0.1.105] - 2026-07-17
+## [0.1.108] - 2026-07-17
 - Labels are now tracked as first-class entries (in labels.json) with a kind — regular tag, wishlist priority, or app marker — and room for a colour, laying the groundwork for coloured tags and label filtering. Nothing changes in how you type or see labels: the registry fills itself in the background from the labels you already use, with no effect on startup or save speed
 - Task details now annotate each label with its registry kind, e.g. "urgent (tag) · priority-high (priority)"
 - How to test (dev build, `flutter run -d chrome`): a fresh dev start labels the first board task "urgent, priority-high" and the second "gift, old" — the labels show as tags on their home tiles (Future tab), and Tools → Projects → board → tap a card shows the kind annotations: urgent (tag), priority-high (priority), gift (tag), old (system). Add your own label to any task (pencil on its tile) and reopen its details — the new token is registered and annotated the same way
 
-## [0.1.104] - 2026-07-17
+## [0.1.107] - 2026-07-17
 - Task history timelines now reach back before the journal existed: on first launch after updating, the app reconstructs each task's past (created, rescheduled, completed, deleted, restored) from its stored timestamps, the deleted list and the daily stats — marked "(reconstructed)" in the timeline. The backfill runs once, a few seconds after startup, so launching stays as fast as before
 - How to test (dev build, `flutter run -d chrome`): open Tools → Projects → a project board → tap the second card — its History shows entries suffixed "(reconstructed)" dated weeks back (dev-seeded, since the browser has no stored pre-journal data to backfill from), interleaved correctly before any live entries you create by editing the task. The real backfill (timestamps + deleted list + daily stats → seeded events, guarded by `item_events_seed_v1.txt`, run 3 s after launch) is exercised by `test/core/item_history_seeder_test.dart` and on an Android/desktop install with existing data
 
-## [0.1.103] - 2026-07-17
+## [0.1.106] - 2026-07-17
 - Every change to a task — edits, rescheduling, completing, project moves, label changes, deletes and restores — is now recorded in an on-device history journal; open a task's details (e.g. from a project board) to see its timeline. Recording happens in the background after each save and the journal is only read on demand, so app startup and list interactions are exactly as fast as before
 - Exports now include the exact recorded history (`item_events`) alongside the reconstructed `task_events`
 - How to test (dev build, `flutter run -d chrome`): a fresh dev start pre-seeds a ready-made history on the first project-board task — open Tools → Projects → tap a project's board button → tap the first card → the details page shows a History section ("Created", "Rescheduled to …", "Edited description"). Then verify live recording: back on the home list, rename any task, check one off, or swipe-delay it, and reopen its details from the board — each action appears as a new History line. On Chrome the journal lives in memory for the session (no files on web); on Android/desktop it persists in `item_events.jsonl`
+
+## [0.1.105] - 2026-07-19
+- Countdown: the # bell is now a full milestone menu — tap it on any timer to set as many notifications as you like, each at any number of any unit (seconds, minutes, hours, days, weeks, months or years), and choose whether each one fires before the event, after it, or both
+- Countdown: months and years now follow the calendar, so "10 months before" lands on the same day of the month rather than 304 days out
+- Countdown: new timers start with 10 years, 10 months, 10,000,000 seconds, 10 weeks, 100,000 minutes, 1,000 hours and 10 days — existing timers keep notifying and pick up the same defaults; "Defaults" in the menu restores them at any time
+
+## [0.1.104] - 2026-07-19
+- Dev builds: the wishlist backlog now repopulates even after the one-time import flag has been spent (idempotent, dev-only).
+
+## [0.1.103] - 2026-07-17
+- Countdown: new per-timer round-number bell (# icon next to the zero bell) — get a notification whenever the remaining time crosses a round number of seconds: 1,000,000,000 down to 1,000 in powers of ten (100,000 seconds is about 1.2 days before the event)
+- Countdown: timers can now be set in the past — the date picker goes back to 1900, so you can track how long since your birthday or any other past event (past timers count up, and the expanded card shows the total in days, weeks, months and years)
+- Countdown: the round-number bell also works for past timers counting up — get a notification when the elapsed time crosses a round number of seconds (e.g. 1,000,000,000 seconds since your birthday, about 31.7 years)
 
 ## [0.1.102] - 2026-07-10
 - New minimalist mode in Settings → Appearance: a calm, monochrome ink-on-paper look with no accent colours, flat surfaces, and underlined (instead of highlighted) selections; works in both light and dark mode

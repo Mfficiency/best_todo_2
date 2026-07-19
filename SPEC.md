@@ -41,7 +41,7 @@ Flutter (Dart SDK >=3.0.0), tested against Flutter 3.29.2 in CI. Key directories
 ```
 lib/main.dart            app entry, widget background callback, MyApp/theme/start page
 lib/config.dart          runtime + persisted configuration (settings.json)
-lib/models/              task, daily_task_stats, alarm, countdown_timer, sms_*
+lib/models/              task, daily_task_stats, alarm, countdown_timer, countdown_milestone, sms_*
 lib/services/            storage, startup times, log, notifications (io/web/stub),
                          alarm pipeline (service/notification/watchdog/diagnostics/log/
                          storage/ids/widget), sms report (scheduler/service/config/log),
@@ -156,7 +156,7 @@ Everything use `export_version: 1` (two version namespaces — intentional). Imp
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
 
-### 4.2b Item history journal (0.1.103)
+### 4.2b Item history journal (0.1.106)
 
 `ItemEventJournal` (`lib/services/item_event_journal.dart`) records every change to a
 task as an immutable `ItemEvent` (`lib/models/item_event.dart`: eventId, itemId, per-item
@@ -172,7 +172,7 @@ A reappearing uid whose seq index (`item_event_meta.json`) is non-zero logs `res
 not `created`. Self-compacts past ~1 MB to the newest 4000 events. Task exports carry the
 journal as `item_events` next to the derived `task_events`.
 
-**History seeding (0.1.104):** `ItemHistorySeeder.runOnce()` backfills the journal once
+**History seeding (0.1.107):** `ItemHistorySeeder.runOnce()` backfills the journal once
 per install from pre-journal data — task lifecycle timestamps (created/moved/rescheduled/
 completed/deleted + the restore heuristic), the deleted list, and `DailyTaskStats` id sets
 (at day-noon, only for uids still present somewhere, never duplicating timestamp-covered
@@ -181,7 +181,7 @@ Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the f
 frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
 appended after any live events but describe an older past.
 
-### 4.2c Structured labels (0.1.105)
+### 4.2c Structured labels (0.1.108)
 
 `Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB
 color) + `LabelService` (`labels.json`, ValueNotifier singleton) form the structured half
@@ -592,14 +592,46 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 (5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
 
 ### 10.2 Countdown timers (Tools → Countdown)
-`CountdownTimerItem{uid,label,target,notifyOnZero,createdAt,editedAt}` in
-`countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt}`
+in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
 target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
 show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows the same duration as
 decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
-(orange). Notify-on-zero fires a notification once (suppressed for already-past timers so
+(orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
+(birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session).
+
+**Milestone notifications** (# icon → `showCountdownMilestonesDialog`, per-timer, 0.1.105;
+replaced the fixed power-of-ten-seconds ladder of 0.1.103). `notifyRoundNumbers` is now the
+master switch for `List<CountdownMilestone>`
+(`lib/models/countdown_milestone.dart`): `{value:int, unit:MilestoneUnit, direction:
+MilestoneDirection}` where unit ∈ seconds|minutes|hours|days|weeks|months|years and
+direction ∈ before|after|both. Any count of any unit, any number of entries.
+
+A milestone is *not* compared as a span of remaining seconds — it resolves to **absolute
+instants** relative to the target: `target − value` (before side) and `target + value`
+(after side), via `CountdownMilestone.shift`. Seconds→weeks add a fixed `Duration`;
+months/years walk the calendar with day-of-month clamping (`addMonths`: 31 Mar − 1 month →
+28/29 Feb), so "10 months before" lands on the same day-of-month. This is what makes the two
+directions symmetric and calendar units correct.
+
+`CountdownTimerItem.dueMilestone({previousNow, now})` returns the `MilestoneHit`
+(milestone + `isAfter` + instant) whose instant lies in the half-open window
+`(previousNow, now]`, or null. The page keeps last-checked wall-clock per timer
+(`_milestoneSeen`, per-session); the first observation only baselines (no retro-fire on
+load/edit/dialog-save), and a window spanning several milestones (backgrounded app) reports
+only the **most recent** so reopening yields one notification, not a burst. Message reads
+"<name> — 10 days to go" / "… since".
+
+Defaults (`CountdownTimerItem.defaultMilestones()`, both directions, declared longest-first):
+10 years, 10 months, 10,000,000 s, 10 weeks, 100,000 min, 1,000 h, 10 days — note
+10,000,000 s (~115.7 d) outranks 10 weeks (70 d). Timers saved before 0.1.105 carry no
+`milestones` key and inherit the defaults on load. The dialog owns one
+`TextEditingController` per row and disposes them itself (never dispose from the caller after
+`showDialog`); on save it drops non-positive rows, collapses duplicate number+unit pairs, and
+re-sorts by `approximateSeconds` descending (months/years use average lengths — display
+ordering only, never placement).
 
 ### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
 Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
