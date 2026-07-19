@@ -31,6 +31,13 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   /// switched on. Not persisted.
   final Set<String> _notifySuppressed = {};
 
+  /// Last observed remaining whole seconds per timer with the round-number
+  /// bell on — negative once the timer is past (counting up). The first
+  /// observation only records a baseline (so switching the bell on or opening
+  /// the page never retro-fires for milestones already passed); crossings are
+  /// detected against it on later ticks. Not persisted.
+  final Map<String, int> _roundSeen = {};
+
   Timer? _ticker;
   bool _loading = true;
 
@@ -57,6 +64,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     _listController.addListener(_handleListScroll);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       _checkZeroNotifications();
+      _checkRoundNotifications();
       if (mounted) setState(() {});
     });
   }
@@ -109,6 +117,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       CountdownTimerItem(
         label: 'New Year',
         target: DateTime(now.year + 1, 1, 1, 0, 0),
+        notifyRoundNumbers: true,
       ),
       CountdownTimerItem(
         label: 'Project deadline',
@@ -140,6 +149,53 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     }
   }
 
+  void _checkRoundNotifications() {
+    final now = DateTime.now();
+    for (final t in _timers) {
+      if (!t.notifyRoundNumbers) {
+        _roundSeen.remove(t.uid);
+        continue;
+      }
+      // Positive while counting down, negative once past (counting up).
+      final remaining = t.target.difference(now).inSeconds;
+      final previous = _roundSeen[t.uid];
+      _roundSeen[t.uid] = remaining;
+      if (previous == null) continue;
+      final int? milestone;
+      final String suffix;
+      if (remaining > 0) {
+        milestone = CountdownTimerItem.crossedRoundMilestone(
+          previousSeconds: previous,
+          currentSeconds: remaining,
+        );
+        suffix = 'seconds to go';
+      } else {
+        milestone = CountdownTimerItem.crossedRoundMilestoneUp(
+          previousSeconds: -previous,
+          currentSeconds: -remaining,
+        );
+        suffix = 'seconds since';
+      }
+      if (milestone != null) {
+        final name = t.label.trim().isEmpty ? 'Countdown' : t.label.trim();
+        NotificationService.showTaskNotification(
+          '$name — ${_formatThousands(milestone)} $suffix',
+          delaySeconds: 0,
+        );
+      }
+    }
+  }
+
+  String _formatThousands(int n) {
+    final s = n.toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+      b.write(s[i]);
+    }
+    return b.toString();
+  }
+
   /// Switches the given timer's row into the inline editor (same UI as adding).
   void _editTimer(CountdownTimerItem timer) {
     setState(() => _editingUid = timer.uid);
@@ -160,6 +216,8 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       if (timer.notifyOnZero && !timer.target.isAfter(DateTime.now())) {
         _notifySuppressed.add(timer.uid);
       }
+      // Re-baseline round-number tracking against the new target.
+      _roundSeen.remove(timer.uid);
       _editingUid = null;
     });
     await _save();
@@ -178,6 +236,16 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       } else {
         _notifySuppressed.remove(timer.uid);
       }
+    });
+    _save();
+  }
+
+  void _toggleRoundNotify(CountdownTimerItem timer) {
+    setState(() {
+      timer.notifyRoundNumbers = !timer.notifyRoundNumbers;
+      // Tracking re-baselines on the next tick; clearing here covers both
+      // switching off and switching back on after a target change.
+      _roundSeen.remove(timer.uid);
     });
     _save();
   }
@@ -476,6 +544,18 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                       ? 'Notify at zero: on'
                       : 'Notify at zero: off',
                   onPressed: () => _toggleNotify(timer),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.tag,
+                    color: timer.notifyRoundNumbers
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                  tooltip: timer.notifyRoundNumbers
+                      ? 'Notify at round numbers: on'
+                      : 'Notify at round numbers: off',
+                  onPressed: () => _toggleRoundNotify(timer),
                 ),
               ],
             ),

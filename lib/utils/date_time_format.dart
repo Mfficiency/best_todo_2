@@ -53,7 +53,9 @@ String formatTimerDateTime(DateTime d) =>
 /// no separate OK/Cancel step. Selecting a year or navigating months does not
 /// close it. Returns null if dismissed without a selection.
 Future<DateTime?> pickDateInstantly(BuildContext context, DateTime initial) {
-  final firstDate = DateTime(2000);
+  // A century back and forward: past dates make count-up timers (days since
+  // a birthday etc.), future dates make countdowns.
+  final firstDate = DateTime(1900);
   final lastDate = DateTime(DateTime.now().year + 100);
   // Clamp the initial date into range so CalendarDatePicker never asserts.
   var initialDate = initial;

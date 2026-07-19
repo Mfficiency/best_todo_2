@@ -1,7 +1,12 @@
 # Changelog
 
-## [0.1.103] - 2026-07-10
+## [0.1.104] - 2026-07-19
 - Dev builds: the wishlist backlog now repopulates even after the one-time import flag has been spent (idempotent, dev-only).
+
+## [0.1.103] - 2026-07-17
+- Countdown: new per-timer round-number bell (# icon next to the zero bell) — get a notification whenever the remaining time crosses a round number of seconds: 1,000,000,000 down to 1,000 in powers of ten (100,000 seconds is about 1.2 days before the event)
+- Countdown: timers can now be set in the past — the date picker goes back to 1900, so you can track how long since your birthday or any other past event (past timers count up, and the expanded card shows the total in days, weeks, months and years)
+- Countdown: the round-number bell also works for past timers counting up — get a notification when the elapsed time crosses a round number of seconds (e.g. 1,000,000,000 seconds since your birthday, about 31.7 years)
 
 ## [0.1.102] - 2026-07-10
 - New minimalist mode in Settings → Appearance: a calm, monochrome ink-on-paper look with no accent colours, flat surfaces, and underlined (instead of highlighted) selections; works in both light and dark mode
