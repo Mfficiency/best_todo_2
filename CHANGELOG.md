@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.103] - 2026-07-10
+- Dev builds: the wishlist backlog now repopulates even after the one-time import flag has been spent (idempotent, dev-only).
+
 ## [0.1.102] - 2026-07-10
 - New minimalist mode in Settings → Appearance: a calm, monochrome ink-on-paper look with no accent colours, flat surfaces, and underlined (instead of highlighted) selections; works in both light and dark mode
 - Wishlist rebuilt as a filtered view of your one task list: wish items now live with your tasks (old wishlist entries are moved over automatically), show up as normal editable tasks on the Future tab tagged "wish", and the Wishlist page looks like a to-do list — checkboxes, no due dates, and the same swipe gestures as home, except swiping right raises an item's priority (hold for one step up, or tap high/medium/low) and sorts it up the list, while swiping left moves it to the deleted list with Undo
