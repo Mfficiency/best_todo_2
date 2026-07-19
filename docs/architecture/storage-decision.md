@@ -1,6 +1,6 @@
 # ADR: Item storage stays on JSON files (for now)
 
-**Status:** accepted · 0.1.110 (migration step 7)
+**Status:** accepted · 0.1.112 (migration step 7)
 **Context:** end of the item-model migration (steps 1–6: event journal, history
 seeding, structured labels, schedule interval + schemaVersion, item-linked
 reminders, views-as-queries). The obvious next step from the

@@ -41,7 +41,7 @@ Flutter (Dart SDK >=3.0.0), tested against Flutter 3.29.2 in CI. Key directories
 ```
 lib/main.dart            app entry, widget background callback, MyApp/theme/start page
 lib/config.dart          runtime + persisted configuration (settings.json)
-lib/models/              task, daily_task_stats, alarm, countdown_timer, sms_*
+lib/models/              task, daily_task_stats, alarm, countdown_timer, countdown_milestone, sms_*
 lib/services/            storage, startup times, log, notifications (io/web/stub),
                          alarm pipeline (service/notification/watchdog/diagnostics/log/
                          storage/ids/widget), sms report (scheduler/service/config/log),
@@ -106,7 +106,7 @@ telephony silently no-op.
 
 Uuid-v4 `uid`; JSON keys equal field names. Fields: `title`, `description`, `note`, `label`
 (single string), `createdAt`, `completedAt`, `movedAt`, `rescheduledAt`,
-`startAt`/`endAt` (schema v2, 0.1.107 — the scheduled interval; deadline-style tasks have
+`startAt`/`endAt` (schema v2, 0.1.109 — the scheduled interval; deadline-style tasks have
 `startAt == endAt`; `dueDate` is now a compat getter (= `endAt`) / setter (collapses the
 interval to a deadline) and is still written to JSON as a mirror so downgrades/old imports
 work; records carry `schemaVersion` (current 2), v1 records upgrade on read via
@@ -162,7 +162,7 @@ Everything use `export_version: 1` (two version namespaces — intentional). Imp
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
 
-### 4.2b Item history journal (0.1.104)
+### 4.2b Item history journal (0.1.106)
 
 `ItemEventJournal` (`lib/services/item_event_journal.dart`) records every change to a
 task as an immutable `ItemEvent` (`lib/models/item_event.dart`: eventId, itemId, per-item
@@ -178,7 +178,7 @@ A reappearing uid whose seq index (`item_event_meta.json`) is non-zero logs `res
 not `created`. Self-compacts past ~1 MB to the newest 4000 events. Task exports carry the
 journal as `item_events` next to the derived `task_events`.
 
-**History seeding (0.1.105):** `ItemHistorySeeder.runOnce()` backfills the journal once
+**History seeding (0.1.107):** `ItemHistorySeeder.runOnce()` backfills the journal once
 per install from pre-journal data — task lifecycle timestamps (created/moved/rescheduled/
 completed/deleted + the restore heuristic), the deleted list, and `DailyTaskStats` id sets
 (at day-noon, only for uids still present somewhere, never duplicating timestamp-covered
@@ -187,7 +187,7 @@ Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the f
 frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
 appended after any live events but describe an older past.
 
-### 4.2f Upgrade safety (0.1.111)
+### 4.2f Upgrade safety (0.1.113)
 
 No update path may lose data. Three layers (`lib/services/safe_file.dart`,
 `lib/services/pre_update_backup.dart`):
@@ -198,7 +198,7 @@ No update path may lose data. Three layers (`lib/services/safe_file.dart`,
    and `alarms.json`. A crash mid-save can no longer leave a half-written file.
 2. **Corruption recovery** — loads go through `SafeFile.readWithRecovery`: an
    unparseable main file is quarantined as `<file>.corrupt-<timestamp>` (so a later save
-   can never destroy the only copy — the pre-0.1.111 failure mode) and the `.bak` is
+   can never destroy the only copy — the pre-0.1.113 failure mode) and the `.bak` is
    used instead. `wishlist.json` is deliberately excluded (its migration contract is
    "unreadable file left untouched"); `loadCountdownTimers` keeps its null-vs-[] first-run
    semantics by also checking the `.bak` for existence.
@@ -214,7 +214,7 @@ Covered by `test/core/upgrade_safety_test.dart` (payload matrix from the no-uid 
 through projects/wishlist to schema v2, corruption drills, snapshot invariants) and
 `test/alarms/alarm_storage_recovery_test.dart`.
 
-### 4.2e Repository seam (0.1.110)
+### 4.2e Repository seam (0.1.112)
 
 `ItemRepository` (`lib/services/item_repository.dart`, singleton) is the one interface
 pages use for the item store: `loadItems`/`saveItems` (task list),
@@ -226,7 +226,7 @@ decision to stay on JSON files — and the concrete triggers for revisiting (syn
 items / ~2 MB, measured startup regression) — is recorded in
 `docs/architecture/storage-decision.md`.
 
-### 4.2d Views as queries (0.1.109)
+### 4.2d Views as queries (0.1.111)
 
 `ItemViews` (`lib/services/item_views.dart`) is the shared query layer over the one task
 list: pure static selectors `inHomeBucket`/`homeBucket` (date-only distance bucketing +
@@ -237,7 +237,7 @@ it; the Future-tab sentinel date (2300-01-01) lives here as `futureSentinelDate`
 Membership flags on the task stay the stored form (dual-write era) — this step moves the
 *reading* of them into one place.
 
-### 4.2c Structured labels (0.1.106)
+### 4.2c Structured labels (0.1.108)
 
 `Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB
 color) + `LabelService` (`labels.json`, ValueNotifier singleton) form the structured half
@@ -452,7 +452,7 @@ Deterministic id scheme so every path can find an alarm's notifications:
 slots, `base + 0x10000000` watchdog id; fixed test-alarm ids at `0x20000000/1`. All within
 signed 32-bit; spaces cannot collide.
 
-**Item-linked reminders (0.1.108):** `Alarm` additionally carries `itemUid?` +
+**Item-linked reminders (0.1.110):** `Alarm` additionally carries `itemUid?` +
 `triggerAnchor` (`start`/`end`) + `triggerOffsetMinutes` (negative = before; serialized
 only when linked, so standalone alarm JSON is byte-identical to before). A linked alarm
 is an ordinary one-off whose `date`/`hour`/`minute` are rewritten from its task by
@@ -658,7 +658,7 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 (5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
 
 ### 10.2 Countdown timers (Tools → Countdown)
-`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,createdAt,editedAt}`
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt}`
 in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
 target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
@@ -666,15 +666,38 @@ show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows the same duration
 decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
 (orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
-they never retro-fire; suppression is per-session). Notify-at-round-numbers (# icon,
-per-timer, 0.1.103) fires whenever the remaining time — or, for past timers, the elapsed
-time — crosses a power-of-ten second count (1e9 → 1e3;
-`CountdownTimerItem.roundMilestones` / `crossedRoundMilestone` /
-`crossedRoundMilestoneUp`): the page tracks last-seen signed remaining seconds per timer
-(`_roundSeen`, negative once past; per-session), the first observation only baselines
-(no retro-fire on load/toggle/edit), and a jump across several milestones (backgrounded
-app) fires only the most recent one crossed (smallest counting down, largest counting
-up).
+they never retro-fire; suppression is per-session).
+
+**Milestone notifications** (# icon → `showCountdownMilestonesDialog`, per-timer, 0.1.105;
+replaced the fixed power-of-ten-seconds ladder of 0.1.103). `notifyRoundNumbers` is now the
+master switch for `List<CountdownMilestone>`
+(`lib/models/countdown_milestone.dart`): `{value:int, unit:MilestoneUnit, direction:
+MilestoneDirection}` where unit ∈ seconds|minutes|hours|days|weeks|months|years and
+direction ∈ before|after|both. Any count of any unit, any number of entries.
+
+A milestone is *not* compared as a span of remaining seconds — it resolves to **absolute
+instants** relative to the target: `target − value` (before side) and `target + value`
+(after side), via `CountdownMilestone.shift`. Seconds→weeks add a fixed `Duration`;
+months/years walk the calendar with day-of-month clamping (`addMonths`: 31 Mar − 1 month →
+28/29 Feb), so "10 months before" lands on the same day-of-month. This is what makes the two
+directions symmetric and calendar units correct.
+
+`CountdownTimerItem.dueMilestone({previousNow, now})` returns the `MilestoneHit`
+(milestone + `isAfter` + instant) whose instant lies in the half-open window
+`(previousNow, now]`, or null. The page keeps last-checked wall-clock per timer
+(`_milestoneSeen`, per-session); the first observation only baselines (no retro-fire on
+load/edit/dialog-save), and a window spanning several milestones (backgrounded app) reports
+only the **most recent** so reopening yields one notification, not a burst. Message reads
+"<name> — 10 days to go" / "… since".
+
+Defaults (`CountdownTimerItem.defaultMilestones()`, both directions, declared longest-first):
+10 years, 10 months, 10,000,000 s, 10 weeks, 100,000 min, 1,000 h, 10 days — note
+10,000,000 s (~115.7 d) outranks 10 weeks (70 d). Timers saved before 0.1.105 carry no
+`milestones` key and inherit the defaults on load. The dialog owns one
+`TextEditingController` per row and disposes them itself (never dispose from the caller after
+`showDialog`); on save it drops non-positive rows, collapses duplicate number+unit pairs, and
+re-sorts by `approximateSeconds` descending (months/years use average lengths — display
+ordering only, never placement).
 
 ### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
 Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
