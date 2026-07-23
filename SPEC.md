@@ -196,6 +196,9 @@ No update path may lose data. Three layers (`lib/services/safe_file.dart`,
    rotates the previous content to `<file>.bak`, then renames over. Applied to
    `tasks.json`, `deleted_tasks.json`, `daily_task_stats.json`, `countdown_timers.json`
    and `alarms.json`. A crash mid-save can no longer leave a half-written file.
+   Writes to the same path are serialized on a per-path future chain (overlapping
+   saves — e.g. delete + undo — would otherwise race on the shared `.tmp`; last
+   caller wins, a failed write still surfaces to its own caller only).
 2. **Corruption recovery** — loads go through `SafeFile.readWithRecovery`: an
    unparseable main file is quarantined as `<file>.corrupt-<timestamp>` (so a later save
    can never destroy the only copy — the pre-0.1.113 failure mode) and the `.bak` is

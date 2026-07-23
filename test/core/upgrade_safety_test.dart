@@ -74,6 +74,19 @@ void main() {
           await SafeFile.readWithRecovery(dataFile('none.json'), (c) => c),
           isNull);
     });
+
+    test('overlapping writes to the same file serialize; the last one wins',
+        () async {
+      final file = dataFile('t.json');
+      // Unawaited concurrent saves used to race on the shared .tmp: one
+      // rename stole it and the other threw PathNotFoundException.
+      await Future.wait([
+        for (var i = 0; i < 10; i++) SafeFile.writeString(file, 'write $i'),
+      ]);
+      expect(await file.readAsString(), 'write 9');
+      expect(await File('${file.path}.bak').readAsString(), 'write 8');
+      expect(File('${file.path}.tmp').existsSync(), isFalse);
+    });
   });
 
   group('corrupt stores recover instead of wiping', () {

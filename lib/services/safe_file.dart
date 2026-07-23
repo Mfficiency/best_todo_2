@@ -20,9 +20,26 @@ import 'dart:io';
 class SafeFile {
   SafeFile._();
 
+  /// Writes to the same path run strictly one after another: overlapping
+  /// saves (e.g. a delete immediately followed by an undo) would otherwise
+  /// race on the shared `.tmp`/`.bak` companions — the first rename steals
+  /// the `.tmp` and the second throws. Chaining keeps every write atomic
+  /// and makes the last caller win. Bounded by the number of data files.
+  static final Map<String, Future<void>> _writeChains = {};
+
   /// Atomically replaces [file] with [contents], rotating the previous
   /// content to `<file>.bak` first.
-  static Future<void> writeString(File file, String contents) async {
+  static Future<void> writeString(File file, String contents) {
+    final previous = _writeChains[file.path] ?? Future<void>.value();
+    final next =
+        previous.then((_) => _writeStringNow(file, contents));
+    // Keep the chain alive after a failed write; the failure itself still
+    // reaches the caller through `next`.
+    _writeChains[file.path] = next.then((_) {}, onError: (_) {});
+    return next;
+  }
+
+  static Future<void> _writeStringNow(File file, String contents) async {
     final tmp = File('${file.path}.tmp');
     await tmp.writeAsString(contents, flush: true);
     if (await file.exists()) {
