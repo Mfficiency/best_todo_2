@@ -64,10 +64,13 @@ void main() {
       expect(edited.patch.map((c) => c.field), ['title', 'description']);
       final scheduled =
           events.singleWhere((e) => e.type == ItemEvent.typeScheduled);
-      expect(scheduled.patch.single.field, 'dueDate');
-      expect(scheduled.patch.single.from, isNull);
-      expect(scheduled.patch.single.to,
-          DateTime(2026, 8, 1, 18).toIso8601String());
+      // Schema v2 records the real interval plus the legacy dueDate mirror
+      // (the mirror is what the timeline UI reads for its wording).
+      expect(scheduled.patch.map((c) => c.field).toSet(),
+          {'dueDate', 'startAt', 'endAt'});
+      final due = scheduled.patch.singleWhere((c) => c.field == 'dueDate');
+      expect(due.from, isNull);
+      expect(due.to, DateTime(2026, 8, 1, 18).toIso8601String());
     });
 
     test('status, project, wish and label changes get their own types', () {
@@ -144,6 +147,9 @@ void main() {
 
     test('reappearing after a recorded delete is a restore', () async {
       final service = StorageService();
+      // First contact only snapshots (no events), so establish the baseline
+      // with an empty save — the next save then records phoenix's creation.
+      await service.saveTaskList([]);
       final task = Task(title: 'phoenix');
       await service.saveTaskList([task]);
       final other = Task(title: 'keeper');
