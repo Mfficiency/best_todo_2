@@ -10,7 +10,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/task.dart';
-import '../services/storage_service.dart';
+import '../services/item_repository.dart';
+import '../services/item_views.dart';
 import 'subpage_app_bar.dart';
 
 /// Priority labels a wishlist item can carry inside [Task.label], ordered
@@ -72,7 +73,7 @@ class WishlistPage extends StatefulWidget {
 }
 
 class _WishlistPageState extends State<WishlistPage> {
-  final StorageService _storage = StorageService();
+  final ItemRepository _repository = ItemRepository.instance;
 
   /// The full task list; the page shows and mutates only the isWish subset
   /// but always persists the whole list.
@@ -87,7 +88,19 @@ class _WishlistPageState extends State<WishlistPage> {
 
   Future<void> _load() async {
     // Also merges legacy wishlist.json items into the task list.
-    final tasks = await _storage.loadTaskList();
+    final tasks = await _repository.loadItems();
+    // Platforms without storage (web) load an empty list; dev builds seed
+    // the same wish item the home page seeds so the tool is testable in
+    // Chrome. On devices with data the list is never empty here.
+    if (tasks.isEmpty && Config.isDev) {
+      tasks.add(Task(
+        title: 'Learn to sail',
+        description: 'Dev seed: a wishlist item',
+        label: 'priority-medium',
+        createdAt: DateTime.now(),
+        isWish: true,
+      ));
+    }
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
@@ -95,12 +108,12 @@ class _WishlistPageState extends State<WishlistPage> {
     });
   }
 
-  Future<void> _save() => _storage.saveTaskList(_tasks);
+  Future<void> _save() => _repository.saveItems(_tasks);
 
   /// Wishlist items sorted like a to-do list: open items before done ones,
   /// higher priority first, otherwise keeping their list order.
   List<Task> _wishes() {
-    final wishes = _tasks.where((task) => task.isWish).toList();
+    final wishes = ItemViews.wishlist(_tasks);
     final order = <String, int>{
       for (var i = 0; i < wishes.length; i++) wishes[i].uid: i,
     };
@@ -259,9 +272,9 @@ class _WishlistPageState extends State<WishlistPage> {
     late Timer timer;
     timer = Timer(Config.delayDuration, () async {
       item.deletedAt = DateTime.now();
-      final deleted = await _storage.loadDeletedTaskList();
+      final deleted = await _repository.loadDeletedItems();
       deleted.insert(0, item);
-      await _storage.saveDeletedTaskList(deleted);
+      await _repository.saveDeletedItems(deleted);
       messenger.hideCurrentSnackBar();
     });
 

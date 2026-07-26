@@ -5,6 +5,13 @@ class Task {
 
   static String newUid() => _uuid.v4();
 
+  /// Version of the on-disk task record. Bump when a field changes meaning;
+  /// [fromJson] upgrades older records on read (v1 → v2: the single
+  /// `dueDate` became the `startAt`/`endAt` interval) and [toJson] always
+  /// writes the current version plus the legacy `dueDate` mirror, so a
+  /// downgrade or an old import keeps working.
+  static const int currentSchemaVersion = 2;
+
   String uid;
   String title;
   String description;
@@ -14,14 +21,40 @@ class Task {
   DateTime? completedAt;
   DateTime? movedAt;
   DateTime? rescheduledAt;
-  DateTime? dueDate;
+
+  /// Scheduled interval (schema v2). A deadline-style task — everything the
+  /// UI creates today — has `startAt == endAt`; a future blocked-time item
+  /// gets a real duration. Undated tasks have both null.
+  DateTime? startAt;
+  DateTime? endAt;
+
   DateTime? deletedAt;
   bool autoDeleted;
   bool isDone;
-  /// When true, [dueDate]'s time-of-day was set deliberately (e.g. placed on the
-  /// Chronize timeline) and must not be overwritten by the default 18:00
-  /// deadline normalization.
+  /// When true, the schedule's time-of-day was set deliberately (e.g. placed
+  /// on the Chronize timeline) and must not be overwritten by the default
+  /// 18:00 deadline normalization.
   bool hasExplicitTime;
+
+  /// Legacy view of the schedule: the deadline. Reading gives [endAt];
+  /// writing collapses the interval to a deadline (`startAt = endAt =
+  /// value`), which is exactly what every current caller means. Range-aware
+  /// code should use [startAt]/[endAt] directly.
+  DateTime? get dueDate => endAt;
+  set dueDate(DateTime? value) {
+    startAt = value;
+    endAt = value;
+  }
+
+  /// All-day semantics derive from [hasExplicitTime] — a task without a
+  /// deliberately chosen time is date-only (the 18:00 default is a display
+  /// convention, not data).
+  bool get allDay => !hasExplicitTime;
+
+  /// The scheduled length; zero for deadline-style tasks, null when undated.
+  Duration? get duration => (startAt == null || endAt == null)
+      ? null
+      : endAt!.difference(startAt!);
   int? listRanking;
   bool isRecurring;
   DateTime? recurrenceEndDate;
@@ -56,7 +89,9 @@ class Task {
     this.completedAt,
     this.movedAt,
     this.rescheduledAt,
-    this.dueDate,
+    DateTime? dueDate,
+    DateTime? startAt,
+    DateTime? endAt,
     this.deletedAt,
     this.autoDeleted = false,
     this.isDone = false,
@@ -70,13 +105,29 @@ class Task {
     this.isWish = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
-  }) : uid = uid ?? Task.newUid();
+  })  : uid = uid ?? Task.newUid(),
+        // An explicit interval wins; a plain dueDate is a deadline
+        // (start == end), matching what every existing caller means.
+        startAt = startAt ?? dueDate,
+        endAt = endAt ?? dueDate;
 
   void toggleDone() {
     isDone = !isDone;
   }
 
   factory Task.fromJson(Map<String, dynamic> json) {
+    DateTime? date(String key) => json[key] != null
+        ? DateTime.tryParse(json[key] as String? ?? '')
+        : null;
+    // Schema upgrade on read. v1 records only carry dueDate; v2 carries the
+    // startAt/endAt interval (dueDate kept as a mirror for downgrades). A v2
+    // record missing endAt still falls back to dueDate so hand-edited or
+    // partial payloads import sanely.
+    final legacyDue = date('dueDate');
+    var start = date('startAt');
+    var end = date('endAt');
+    end ??= legacyDue;
+    start ??= end;
     return Task(
       uid: json['uid'] as String?,
       title: json['title'] as String? ?? '',
@@ -95,9 +146,8 @@ class Task {
       rescheduledAt: json['rescheduledAt'] != null
           ? DateTime.parse(json['rescheduledAt'] as String)
           : null,
-      dueDate: json['dueDate'] != null
-          ? DateTime.parse(json['dueDate'] as String)
-          : null,
+      startAt: start,
+      endAt: end,
       deletedAt: json['deletedAt'] != null
           ? DateTime.parse(json['deletedAt'] as String)
           : null,
@@ -119,6 +169,7 @@ class Task {
   }
 
   Map<String, dynamic> toJson() => {
+        'schemaVersion': currentSchemaVersion,
         'uid': uid,
         'title': title,
         'description': description,
@@ -128,6 +179,9 @@ class Task {
         'completedAt': completedAt?.toIso8601String(),
         'movedAt': movedAt?.toIso8601String(),
         'rescheduledAt': rescheduledAt?.toIso8601String(),
+        'startAt': startAt?.toIso8601String(),
+        'endAt': endAt?.toIso8601String(),
+        // Legacy mirror of the deadline so downgrades and old importers work.
         'dueDate': dueDate?.toIso8601String(),
         'deletedAt': deletedAt?.toIso8601String(),
         'autoDeleted': autoDeleted,

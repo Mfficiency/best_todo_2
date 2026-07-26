@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BestToDo · Item model — current state</title>
+<style>
+  :root {
+    --bg: #f6f8fb;
+    --card: #ffffff;
+    --ink: #1c2733;
+    --muted: #5b6b7b;
+    --line: #d7e0ea;
+    --edge: #8fa3b8;
+
+    --core: #005fdd;      /* item / task core */
+    --core-soft: #e3edfd;
+    --time: #00897b;      /* scheduling & time */
+    --time-soft: #dff3f0;
+    --project: #8e24aa;   /* projects / kanban */
+    --project-soft: #f5e6fa;
+    --alarm: #e5533a;     /* alarms */
+    --alarm-soft: #fdeae6;
+    --history: #b07a10;   /* history / analytics */
+    --history-soft: #fdf3dd;
+    --view: #2e7d32;      /* views & surfaces */
+    --view-soft: #e5f3e6;
+    --standalone: #78909c;
+    --warn-bg: #fff4e5;
+    --warn-edge: #e8a13c;
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161d;
+      --card: #1a232e;
+      --ink: #e4ecf4;
+      --muted: #9db0c2;
+      --line: #2c3a49;
+      --edge: #566d84;
+      --core: #5b9bff;
+      --core-soft: #17304f;
+      --time: #37c0ae;
+      --time-soft: #123330;
+      --project: #ce6de8;
+      --project-soft: #351a3d;
+      --alarm: #ff7a5c;
+      --alarm-soft: #3d1e17;
+      --history: #e0b048;
+      --history-soft: #362a10;
+      --view: #6ecf74;
+      --view-soft: #16301a;
+      --standalone: #90a4ae;
+      --warn-bg: #33270f;
+      --warn-edge: #c98a2e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  header.doc { margin-bottom: 28px; }
+  .kicker {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--core); font-weight: 700;
+  }
+  h1 { margin: 6px 0 6px; font-size: 30px; line-height: 1.2; }
+  .sub { color: var(--muted); max-width: 72ch; }
+  .doc-switch {
+    display: inline-flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;
+  }
+  .doc-switch a {
+    text-decoration: none; font-weight: 600; font-size: 13px;
+    padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--card);
+  }
+  .doc-switch a.active { background: var(--core); border-color: var(--core); color: #fff; }
+  .doc-switch a:not(.active):hover { border-color: var(--core); color: var(--core); }
+
+  h2 {
+    font-size: 21px; margin: 48px 0 6px; padding-top: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .dot { width: 12px; height: 12px; border-radius: 4px; flex: 0 0 auto; }
+  h2 + p.lead { margin-top: 0; color: var(--muted); max-width: 80ch; }
+  h3 { font-size: 16px; margin: 26px 0 8px; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 18px 0 8px;
+    font-size: 13px; color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+  .diagram {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 10px; overflow-x: auto;
+  }
+  .diagram svg { min-width: 980px; width: 100%; height: auto; display: block; }
+
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; fill: var(--ink); }
+  svg .t-title { font-size: 15px; font-weight: 700; }
+  svg .t-sub   { font-size: 10.5px; fill: var(--muted); }
+  svg .t-field { font-size: 11px; }
+  svg .t-field tspan.k { font-weight: 600; }
+  svg .t-edge  { font-size: 10.5px; fill: var(--muted); }
+  svg .t-group { font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  svg .edge { stroke: var(--edge); stroke-width: 1.6; fill: none; }
+  svg .edge.dashed { stroke-dasharray: 5 5; }
+  svg .edge.none { stroke: var(--alarm); stroke-dasharray: 3 5; }
+  svg .box { fill: var(--card); stroke-width: 1.5; rx: 10; }
+  svg .groupbox { fill: none; stroke-width: 1.3; stroke-dasharray: 6 5; rx: 12; opacity: .8; }
+  svg .chip { stroke-width: 1.2; rx: 7; }
+
+  table {
+    width: 100%; border-collapse: collapse; background: var(--card);
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    font-size: 13.5px; margin: 14px 0;
+  }
+  table.fields { display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); background: color-mix(in srgb, var(--card) 60%, var(--bg));
+  }
+  tr:last-child td { border-bottom: none; }
+  td code, p code, li code {
+    font: 12.5px/1.4 "Cascadia Code", Consolas, Menlo, monospace;
+    background: color-mix(in srgb, var(--core-soft) 55%, transparent);
+    padding: 1px 5px; border-radius: 5px;
+  }
+  .group-row td {
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+    padding: 6px 12px;
+  }
+  .g-core td { color: var(--core); background: var(--core-soft); }
+  .g-time td { color: var(--time); background: var(--time-soft); }
+  .g-hist td { color: var(--history); background: var(--history-soft); }
+  .g-proj td { color: var(--project); background: var(--project-soft); }
+  .g-view td { color: var(--view); background: var(--view-soft); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--edge);
+    border-radius: 12px; padding: 14px 16px;
+  }
+  .card h4 { margin: 0 0 4px; font-size: 15px; }
+  .card .file { font: 11.5px/1.4 Consolas, Menlo, monospace; color: var(--muted); }
+  .card p { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); }
+  .card ul { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; }
+  .card li { margin: 3px 0; }
+  .card.c-core { border-left-color: var(--core); }
+  .card.c-time { border-left-color: var(--time); }
+  .card.c-proj { border-left-color: var(--project); }
+  .card.c-alarm { border-left-color: var(--alarm); }
+  .card.c-hist { border-left-color: var(--history); }
+  .card.c-view { border-left-color: var(--view); }
+  .card.c-standalone { border-left-color: var(--standalone); border-left-style: dashed; }
+
+  .callout {
+    border: 1px solid var(--warn-edge); background: var(--warn-bg);
+    border-radius: 12px; padding: 14px 18px; margin: 18px 0;
+  }
+  .callout h4 { margin: 0 0 6px; font-size: 14px; }
+  .callout p, .callout li { font-size: 13.5px; }
+  .callout ul { margin: 6px 0 0; padding-left: 18px; }
+
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 700; border-radius: 999px;
+    padding: 2px 9px; vertical-align: 1px;
+  }
+  .pill.rel { background: var(--core-soft); color: var(--core); }
+  .pill.none { background: var(--alarm-soft); color: var(--alarm); }
+  .pill.derived { background: var(--history-soft); color: var(--history); }
+
+  footer { margin-top: 60px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">BestToDo · Architecture</div>
+  <h1>How everything relates to an item — <em>current state</em></h1>
+  <p class="sub">
+    An <strong>item</strong> in BestToDo is a <code>Task</code>. There is exactly <strong>one task list</strong>
+    (<code>tasks.json</code>); every surface in the app — home tabs, wishlist, Chronize timeline, project
+    boards, calendar, widgets — is a filtered view over that single list. This page maps every property an
+    item carries today and everything that attaches to it (or pointedly doesn't). Snapshot of the
+    <code>dev</code> branch, v0.1.102.
+  </p>
+  <nav class="doc-switch">
+    <a class="active" href="item-model-current.html">Current model</a>
+    <a href="item-model-future.html">Optimized / future-proof model →</a>
+  </nav>
+</header>
+
+<div class="legend">
+  <span><i style="background:var(--core)"></i> Item core</span>
+  <span><i style="background:var(--time)"></i> Scheduling &amp; time</span>
+  <span><i style="background:var(--project)"></i> Projects</span>
+  <span><i style="background:var(--alarm)"></i> Alarms</span>
+  <span><i style="background:var(--history)"></i> History &amp; analytics</span>
+  <span><i style="background:var(--view)"></i> Views &amp; surfaces</span>
+  <span><i style="background:var(--standalone)"></i> Standalone (no item link)</span>
+</div>
+
+<div class="diagram">
+<svg viewBox="0 0 1240 960" role="img" aria-label="Relationship map of the Task item and everything around it">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--edge)"/>
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--alarm)"/>
+    </marker>
+  </defs>
+
+  <!-- ===== edges (drawn first, under boxes) ===== -->
+  <!-- Task -> Project -->
+  <path class="edge" d="M445 355 L345 200" marker-end="url(#arr)"/>
+  <text class="t-edge" x="300" y="252" transform="rotate(-53 300 252)">projectId · N → 1</text>
+
+  <!-- Task -> DailyTaskStats -->
+  <path class="edge" d="M445 470 L345 470" marker-end="url(#arr)"/>
+  <text class="t-edge" x="352" y="462">uid sets, per day</text>
+
+  <!-- Task -> deleted_tasks -->
+  <path class="edge" d="M445 545 L345 655" marker-end="url(#arr)"/>
+  <text class="t-edge" x="290" y="588" transform="rotate(47 290 588)">copy on delete / rollover</text>
+
+  <!-- Task -> export events -->
+  <path class="edge" d="M620 620 L620 700" marker-end="url(#arr)"/>
+  <text class="t-edge" x="630" y="668">derived at export</text>
+
+  <!-- Task -> views -->
+  <path class="edge" d="M800 400 L878 300" marker-end="url(#arr)"/>
+  <text class="t-edge" x="792" y="342" transform="rotate(-38 792 342)">filters over the one list</text>
+
+  <!-- Task -> tasks widget -->
+  <path class="edge" d="M800 500 L878 592" marker-end="url(#arr)"/>
+  <text class="t-edge" x="800" y="536" transform="rotate(41 800 536)">today's items</text>
+
+  <!-- Alarm -> alarms widget -->
+  <path class="edge" d="M1040 740 L1040 682" marker-end="url(#arr)"/>
+
+  <!-- Task -x- Alarm : NO relation -->
+  <path class="edge none" d="M780 585 C 830 660, 830 700, 890 762"/>
+  <text class="t-edge" x="812" y="672" fill="var(--alarm)" font-weight="700">✕ no reference</text>
+  <text class="t-edge" x="812" y="686" fill="var(--alarm)">alarms never attach to an item</text>
+
+  <!-- Recurrence self-loop -->
+  <path class="edge" d="M540 348 C 520 268, 720 268, 700 348" marker-end="url(#arr)"/>
+  <text class="t-edge" x="620" y="290" text-anchor="middle">recurrence: parent spawns dated children</text>
+  <text class="t-edge" x="620" y="304" text-anchor="middle">recurrenceParentUid + instanceKey (yyyy-MM-dd)</text>
+
+  <!-- ===== Task core ===== -->
+  <rect class="box" x="445" y="348" width="355" height="272" rx="12" stroke="var(--core)" fill="var(--card)"/>
+  <rect x="445" y="348" width="355" height="44" rx="12" fill="var(--core-soft)"/>
+  <rect x="445" y="380" width="355" height="12" fill="var(--core-soft)"/>
+  <text class="t-title" x="462" y="368" fill="var(--core)">Task — “the item”</text>
+  <text class="t-sub" x="462" y="384">lib/models/task.dart · the one list in tasks.json</text>
+
+  <text class="t-field" x="462" y="410"><tspan class="k">uid</tspan> UUID v4 · <tspan class="k">title</tspan> · <tspan class="k">description</tspan> · <tspan class="k">note</tspan></text>
+  <text class="t-field" x="462" y="428"><tspan class="k">label</tspan> — ONE string (tags + priority + “old” overloaded)</text>
+  <text class="t-field" x="462" y="452" fill="var(--time)"><tspan class="k">dueDate</tspan> — the only date (no start/end pair)</text>
+  <text class="t-field" x="462" y="470" fill="var(--time)"><tspan class="k">hasExplicitTime</tspan> — protects a chosen time-of-day</text>
+  <text class="t-field" x="462" y="494" fill="var(--history)"><tspan class="k">createdAt · completedAt · movedAt</tspan></text>
+  <text class="t-field" x="462" y="512" fill="var(--history)"><tspan class="k">rescheduledAt · deletedAt · autoDeleted</tspan></text>
+  <text class="t-field" x="462" y="536"><tspan class="k">isDone</tspan> · <tspan class="k">listRanking</tspan> (1-based per tab) · <tspan class="k">isWish</tspan></text>
+  <text class="t-field" x="462" y="560"><tspan class="k">isRecurring</tspan> · <tspan class="k">recurrenceIntervalDays</tspan> · <tspan class="k">recurrenceEndDate</tspan></text>
+  <text class="t-field" x="462" y="578"><tspan class="k">recurrenceParentUid</tspan> · <tspan class="k">recurrenceInstanceKey</tspan></text>
+  <text class="t-field" x="462" y="602" fill="var(--project)"><tspan class="k">projectId?</tspan> · <tspan class="k">kanbanStatus</tspan> todo | ongoing | closed</text>
+
+  <!-- ===== Project ===== -->
+  <rect class="box" x="65" y="95" width="280" height="110" rx="12" stroke="var(--project)"/>
+  <rect x="65" y="95" width="280" height="40" rx="12" fill="var(--project-soft)"/>
+  <rect x="65" y="123" width="280" height="12" fill="var(--project-soft)"/>
+  <text class="t-title" x="82" y="113" fill="var(--project)">Project</text>
+  <text class="t-sub" x="82" y="127">projects.json · ProjectService</text>
+  <text class="t-field" x="82" y="152"><tspan class="k">id</tspan> stable · <tspan class="k">name</tspan> · <tspan class="k">description</tspan></text>
+  <text class="t-field" x="82" y="170">seeded “Project 1–3”; renames propagate</text>
+  <text class="t-field" x="82" y="188">Kanban stage lives on the TASK, not here</text>
+
+  <!-- ===== DailyTaskStats ===== -->
+  <rect class="box" x="65" y="405" width="280" height="128" rx="12" stroke="var(--history)"/>
+  <rect x="65" y="405" width="280" height="40" rx="12" fill="var(--history-soft)"/>
+  <rect x="65" y="433" width="280" height="12" fill="var(--history-soft)"/>
+  <text class="t-title" x="82" y="423" fill="var(--history)">DailyTaskStats</text>
+  <text class="t-sub" x="82" y="437">daily_task_stats.json · one record per day</text>
+  <text class="t-field" x="82" y="462"><tspan class="k">dayKey</tspan> yyyy-MM-dd + 5 sets of task uids:</text>
+  <text class="t-field" x="82" y="480">opening · movedFromOpening · completedFromOpening</text>
+  <text class="t-field" x="82" y="498">createdDuringDay · completedFromCreated</text>
+  <text class="t-field" x="82" y="516">powers Productivity Stats + CSV rollups</text>
+
+  <!-- ===== deleted_tasks ===== -->
+  <rect class="box" x="65" y="650" width="280" height="118" rx="12" stroke="var(--history)"/>
+  <rect x="65" y="650" width="280" height="40" rx="12" fill="var(--history-soft)"/>
+  <rect x="65" y="678" width="280" height="12" fill="var(--history-soft)"/>
+  <text class="t-title" x="82" y="668" fill="var(--history)">Deleted items</text>
+  <text class="t-sub" x="82" y="682">deleted_tasks.json · capped at 100</text>
+  <text class="t-field" x="82" y="707">full Task copies with <tspan class="k">deletedAt</tspan> set</text>
+  <text class="t-field" x="82" y="725">day rollover sweeps done items here</text>
+  <text class="t-field" x="82" y="743">restore → dueDate today (wishes stay undated)</text>
+
+  <!-- ===== export / task_events ===== -->
+  <rect class="box" x="445" y="700" width="355" height="118" rx="12" stroke="var(--history)"/>
+  <rect x="445" y="700" width="355" height="40" rx="12" fill="var(--history-soft)"/>
+  <rect x="445" y="728" width="355" height="12" fill="var(--history-soft)"/>
+  <text class="t-title" x="462" y="718" fill="var(--history)">Export bundle · task_events</text>
+  <text class="t-sub" x="462" y="732">export_version 2 · StorageService.buildTaskExportPayload</text>
+  <text class="t-field" x="462" y="757">events <tspan class="k">created/updated/completed/deleted/moved/</tspan></text>
+  <text class="t-field" x="462" y="775"><tspan class="k">rescheduled/restored</tspan> — re-derived from the task's</text>
+  <text class="t-field" x="462" y="793">timestamps at export time; NOT stored history</text>
+
+  <!-- ===== Countdown (standalone) ===== -->
+  <rect class="box" x="445" y="852" width="355" height="76" rx="12" stroke="var(--standalone)" stroke-dasharray="6 5"/>
+  <text class="t-title" x="462" y="878" fill="var(--standalone)">CountdownTimerItem</text>
+  <text class="t-sub" x="462" y="893">countdown_timers.json · uid, label, target, notifyOnZero</text>
+  <text class="t-field" x="462" y="912">standalone — no link to items at all</text>
+
+  <!-- ===== Views group ===== -->
+  <rect class="groupbox" x="878" y="80" width="330" height="440" stroke="var(--view)"/>
+  <text class="t-group" x="896" y="106" fill="var(--view)">VIEWS — ALL FILTERS OVER THE ONE LIST</text>
+  <g>
+    <rect class="chip" x="896" y="122" width="294" height="52" fill="var(--view-soft)" stroke="var(--view)"/>
+    <text class="t-field" x="908" y="142"><tspan class="k">Home tabs</tspan> — 6 buckets by dueDate distance:</text>
+    <text class="t-field" x="908" y="160">Today · Tomorrow · Day after · Next wk/mo · Future</text>
+
+    <rect class="chip" x="896" y="184" width="294" height="52" fill="var(--view-soft)" stroke="var(--view)"/>
+    <text class="t-field" x="908" y="204"><tspan class="k">Wishlist</tspan> — filter isWish == true; undated,</text>
+    <text class="t-field" x="908" y="222">priority via label; swipe bumps priority</text>
+
+    <rect class="chip" x="896" y="246" width="294" height="52" fill="var(--view-soft)" stroke="var(--view)"/>
+    <text class="t-field" x="908" y="266"><tspan class="k">Chronize timeline</tspan> — chips at dueDate time;</text>
+    <text class="t-field" x="908" y="284">placing sets hasExplicitTime</text>
+
+    <rect class="chip" x="896" y="308" width="294" height="52" fill="var(--view-soft)" stroke="var(--view)"/>
+    <text class="t-field" x="908" y="328"><tspan class="k">Project board</tspan> — Kanban columns from</text>
+    <text class="t-field" x="908" y="346">kanbanStatus, filter projectId</text>
+
+    <rect class="chip" x="896" y="370" width="294" height="52" fill="var(--view-soft)" stroke="var(--view)"/>
+    <text class="t-field" x="908" y="390"><tspan class="k">Calendar &amp; schedule view</tspan> — by dueDate,</text>
+    <text class="t-field" x="908" y="408">undated grouped under “Someday”</text>
+
+    <rect class="chip" x="896" y="432" width="294" height="52" fill="var(--view-soft)" stroke="var(--view)"/>
+    <text class="t-field" x="908" y="452"><tspan class="k">Search · Deleted items page</tspan> — text match;</text>
+    <text class="t-field" x="908" y="470">deleted list browser with restore</text>
+  </g>
+
+  <!-- ===== Widgets group ===== -->
+  <rect class="groupbox" x="878" y="560" width="330" height="122" stroke="var(--view)"/>
+  <text class="t-group" x="896" y="586" fill="var(--view)">ANDROID HOME-SCREEN WIDGETS</text>
+  <text class="t-field" x="896" y="612"><tspan class="k">SimpleWidgetProvider</tspan> — today's items list</text>
+  <text class="t-field" x="896" y="632"><tspan class="k">AlarmsWidgetProvider</tspan> — alarms + toggles,</text>
+  <text class="t-field" x="896" y="650">taps deep-link via besttodoalarm:// URIs</text>
+
+  <!-- ===== Alarm group ===== -->
+  <rect class="groupbox" x="878" y="740" width="330" height="190" stroke="var(--alarm)"/>
+  <text class="t-group" x="896" y="766" fill="var(--alarm)">ALARM SUBSYSTEM — SEPARATE WORLD</text>
+  <text class="t-sub" x="896" y="782">alarms.json · AlarmService · reliability showpiece</text>
+  <text class="t-field" x="896" y="804"><tspan class="k">Alarm</tspan>: uid, name, description, hour:minute,</text>
+  <text class="t-field" x="896" y="822">one-off date | repeatDays, melody, volume, vibrate,</text>
+  <text class="t-field" x="896" y="840">overrideDnd, color, snooze cfg, enabled</text>
+  <text class="t-field" x="896" y="864">ladder: alarmClock → exact → inexact · read-back</text>
+  <text class="t-field" x="896" y="882">verify · +90 s watchdog · alarm_log.txt audit trail</text>
+  <text class="t-field" x="896" y="906" fill="var(--alarm)">time-of-day only — knows nothing about items</text>
+</svg>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--core)"></span>The item itself — every property on <code>Task</code></h2>
+<p class="lead">All fields serialize to JSON with keys equal to field names; <code>fromJson</code> is tolerant
+(missing keys get defaults), which is how the schema has evolved without migrations.</p>
+
+<table class="fields">
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it means / who uses it</th></tr></thead>
+  <tbody>
+    <tr class="group-row g-core"><td colspan="4">Identity &amp; content</td></tr>
+    <tr><td><code>uid</code></td><td>String (UUID v4)</td><td>generated</td><td>Stable identity. <code>_ensureUniqueIds</code> reassigns empty/duplicate uids on every load/import.</td></tr>
+    <tr><td><code>title</code></td><td>String</td><td>required</td><td>The item's name; the only mandatory field.</td></tr>
+    <tr><td><code>description</code></td><td>String</td><td><code>''</code></td><td>Longer text; shown in tile subtitles and detail page.</td></tr>
+    <tr><td><code>note</code></td><td>String</td><td><code>''</code></td><td>Free-form note, separate from description.</td></tr>
+    <tr><td><code>label</code></td><td>String</td><td><code>''</code></td><td><strong>One overloaded string</strong>: user tags, wishlist priority (<code>priority-high/medium/low</code>) and the Todo.md import marker (<code>old</code>) all share it.</td></tr>
+
+    <tr class="group-row g-time"><td colspan="4">Scheduling — note: a single point in time, not a range</td></tr>
+    <tr><td><code>dueDate</code></td><td>DateTime?</td><td><code>null</code></td><td>The <em>only</em> date an item has. Drives tab bucketing, calendar, Chronize position, widgets. <code>null</code> ⇒ Future tab / “Someday”. Time-of-day is normalized to 18:00 unless…</td></tr>
+    <tr><td><code>hasExplicitTime</code></td><td>bool</td><td><code>false</code></td><td>…the user deliberately chose a time (e.g. placed the chip on the Chronize timeline); then the 18:00 normalization must not touch it.</td></tr>
+
+    <tr class="group-row g-hist"><td colspan="4">Lifecycle timestamps — the “history” an item carries (latest occurrence only)</td></tr>
+    <tr><td><code>createdAt</code></td><td>DateTime?</td><td><code>null</code></td><td>Set on creation; feeds stats and derived events.</td></tr>
+    <tr><td><code>completedAt</code></td><td>DateTime?</td><td><code>null</code></td><td>Set when checked off; backfilled at day rollover.</td></tr>
+    <tr><td><code>movedAt</code></td><td>DateTime?</td><td><code>null</code></td><td>Last time the item was moved between tabs. Only the <em>last</em> move survives.</td></tr>
+    <tr><td><code>rescheduledAt</code></td><td>DateTime?</td><td><code>null</code></td><td>Last reschedule (swipe-delay etc.). Again: last one wins.</td></tr>
+    <tr><td><code>deletedAt</code></td><td>DateTime?</td><td><code>null</code></td><td>Set when the item enters <code>deleted_tasks.json</code>.</td></tr>
+    <tr><td><code>autoDeleted</code></td><td>bool</td><td><code>false</code></td><td>Swept by rollover vs. manually deleted. (Known inconsistency: the load-time sweep historically doesn't set it.)</td></tr>
+
+    <tr class="group-row g-core"><td colspan="4">State &amp; ordering</td></tr>
+    <tr><td><code>isDone</code></td><td>bool</td><td><code>false</code></td><td>Checkbox state; done items strike through and are archived at the next day rollover.</td></tr>
+    <tr><td><code>listRanking</code></td><td>int?</td><td><code>null</code></td><td>Manual sort position, renumbered 1-based per tab on every save; omitted from JSON when null.</td></tr>
+
+    <tr class="group-row g-time"><td colspan="4">Recurrence — a parent item spawns dated child items</td></tr>
+    <tr><td><code>isRecurring</code></td><td>bool</td><td><code>false</code></td><td>Marks a recurrence parent.</td></tr>
+    <tr><td><code>recurrenceIntervalDays</code></td><td>int</td><td><code>1</code></td><td>Every N days (UI offers 1/2/7). Days-only — no weekly-on-Tuesday, no monthly.</td></tr>
+    <tr><td><code>recurrenceEndDate</code></td><td>DateTime?</td><td><code>null</code></td><td>Stop generating children after this date.</td></tr>
+    <tr><td><code>recurrenceParentUid</code></td><td>String?</td><td><code>null</code></td><td>On generated children: back-reference to the parent item. <span class="pill rel">self-relation</span></td></tr>
+    <tr><td><code>recurrenceInstanceKey</code></td><td>String?</td><td><code>null</code></td><td><code>yyyy-MM-dd</code> occurrence key, dedupes generation per day.</td></tr>
+
+    <tr class="group-row g-view"><td colspan="4">Wishlist flag — a view membership stored as a bool</td></tr>
+    <tr><td><code>isWish</code></td><td>bool</td><td><code>false</code></td><td>Item shows in the Wishlist tool; wish items are undated so they bucket into Future. Priority is encoded in <code>label</code>.</td></tr>
+
+    <tr class="group-row g-proj"><td colspan="4">Project attachment — the only cross-entity reference an item has</td></tr>
+    <tr><td><code>projectId</code></td><td>String?</td><td><code>null</code></td><td>Points at <code>Project.id</code> in <code>projects.json</code>. <span class="pill rel">N → 1</span> Unknown ids fall back to showing the raw id.</td></tr>
+    <tr><td><code>kanbanStatus</code></td><td>String</td><td><code>'todo'</code></td><td><code>todo | ongoing | closed</code> — the item's column on its project's board. Lives on the item, not the project.</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--project)"></span>Project properties — attached by reference</h2>
+<p class="lead">Some items carry project properties: <code>projectId</code> + <code>kanbanStatus</code> on the task,
+resolving against a tiny separate entity.</p>
+<div class="cards">
+  <div class="card c-proj">
+    <h4>Project <span class="pill rel">1 ← N Task.projectId</span></h4>
+    <div class="file">lib/models/project.dart · projects.json · ProjectService (singleton, ValueNotifier)</div>
+    <ul>
+      <li><code>id</code> — stable string (<code>project_1</code>…); tasks reference it, so renames propagate everywhere.</li>
+      <li><code>name</code>, <code>description</code> — editable; immutable model with <code>copyWith</code>.</li>
+      <li>Seeded with 3 placeholders on first run; corrupt/missing file keeps in-memory seeds.</li>
+    </ul>
+    <p>Assignment: drag a task onto a project card → sets <code>projectId</code>, resets stage to
+    <em>todo</em>. Unassign (× on board card) clears both. Home tiles show two live pills:
+    project name + stage.</p>
+  </div>
+  <div class="card c-proj">
+    <h4>Kanban board</h4>
+    <div class="file">lib/ui/project_board_page.dart</div>
+    <p>Three <code>DragTarget</code> columns (To-Do / Ongoing / Closed) — purely a
+    <em>view grouped by</em> <code>kanbanStatus</code> filtered by <code>projectId</code>.
+    No per-project ordering, no per-column ranking, no many-to-many: an item belongs to at most one project.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--alarm)"></span>Alarm properties — <em>not</em> actually attached</h2>
+<p class="lead">Users think of “an item with an alarm”, but structurally the alarm world is a
+<strong>separate silo</strong>: no <code>taskUid</code> on <code>Alarm</code>, no <code>alarmUid</code> on
+<code>Task</code>. The two systems share nothing but the log file and the app. <span class="pill none">✕ no reference</span></p>
+<div class="cards">
+  <div class="card c-alarm">
+    <h4>Alarm</h4>
+    <div class="file">lib/models/alarm.dart · alarms.json · AlarmService</div>
+    <ul>
+      <li>Identity/content: <code>uid</code>, <code>name</code>, <code>description</code>, <code>color</code> (8-color palette).</li>
+      <li>When: <code>hour</code>:<code>minute</code>, one-off <code>date?</code>, <code>isRepeating</code> + <code>repeatDays</code> (Mon=1…Sun=7). <code>nextOccurrence()</code> is the scheduling brain.</li>
+      <li>Sound: <code>melody</code> (7 built-ins), <code>volume</code> 0–1, <code>vibrate</code>, <code>overrideDnd</code>.</li>
+      <li>Snooze: <code>snoozeEnabled</code>, <code>snoozeDurationMinutes</code> (9), <code>snoozeMaxCount</code> (stored, not enforced).</li>
+      <li><code>enabled</code> — the on/off toggle.</li>
+    </ul>
+  </div>
+  <div class="card c-alarm">
+    <h4>Reliability machinery around it</h4>
+    <div class="file">alarm_service / watchdog / diagnostics / alarm_log.txt</div>
+    <ul>
+      <li>Deterministic notification-id scheme derived from <code>uid.hashCode</code> (base+0 one-off/snooze, +1..7 weekdays, +0x10000000 watchdog).</li>
+      <li>Scheduling ladder: <code>alarmClock</code> → <code>exactAllowWhileIdle</code> → <code>inexactAllowWhileIdle</code>; OS read-back verification; independent +90 s watchdog that rings if the primary path was dropped.</li>
+      <li>Full-screen ring UI, escalation, boot receivers, DST-safe stepping.</li>
+    </ul>
+    <p>Consequence of the missing link: deleting or rescheduling an item can never touch an alarm,
+    and an alarm can't deep-link to “its” item. If an item needs a wake-up, the user maintains an
+    alarm that merely <em>happens</em> to be at the right time.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--history)"></span>History &amp; versioning properties — what exists today</h2>
+<p class="lead">There is no revision history and no undo journal. “History” is assembled from four
+partial sources, three of which live <em>outside</em> the item:</p>
+<div class="cards">
+  <div class="card c-hist">
+    <h4>1 · Lifecycle timestamps on the item</h4>
+    <p><code>createdAt / completedAt / movedAt / rescheduledAt / deletedAt / autoDeleted</code> —
+    single slots. A second move overwrites the first; content edits (title, description, label)
+    leave <strong>no trace at all</strong>.</p>
+  </div>
+  <div class="card c-hist">
+    <h4>2 · Deleted items <span class="pill rel">Task copies</span></h4>
+    <div class="file">deleted_tasks.json · cap 100, trimmed on save+load</div>
+    <p>The only “archive”: full task snapshots at deletion time. Day rollover sweeps done items here
+    (newest first). Restore puts them back with <code>dueDate</code> = today (wishes stay undated).
+    Item #101 falls off the end forever.</p>
+  </div>
+  <div class="card c-hist">
+    <h4>3 · DailyTaskStats <span class="pill rel">uid sets</span></h4>
+    <div class="file">daily_task_stats.json · one record per day</div>
+    <p>Per day (<code>dayKey</code>): which uids were open at day start, moved, completed, created.
+    Aggregate membership only — it can say <em>that</em> an item moved that day, never from-where,
+    to-where or when.</p>
+  </div>
+  <div class="card c-hist">
+    <h4>4 · Derived <code>task_events</code> <span class="pill derived">derived, not stored</span></h4>
+    <div class="file">StorageService._deriveTaskEvents · export bundle v2 · Usage Data CSVs</div>
+    <p>At export time the timestamps are re-expanded into pseudo-events
+    (<code>created/updated/completed/deleted/moved/rescheduled/restored</code>).
+    Faithful only for the last occurrence of each kind — a reconstruction, not a record.</p>
+  </div>
+  <div class="card c-hist">
+    <h4>Adjacent audit trails (not item-scoped)</h4>
+    <p><code>alarm_log.txt</code> — real append-only audit of the alarm pipeline (the one true
+    event log in the app, but for alarms). <code>startup_history.json</code>, app-open timestamps,
+    SMS report log — app-level history, no item linkage.</p>
+  </div>
+  <div class="card c-hist">
+    <h4>Versioning that does exist</h4>
+    <p>Export payloads carry <code>export_version</code> (tasks bundle = 2, settings/everything = 1 —
+    two intentional namespaces) and imports warn on unknown versions. The task JSON schema itself is
+    versionless; tolerant <code>fromJson</code> defaults are the de-facto migration strategy.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--view)"></span>Views &amp; surfaces — where an item appears</h2>
+<p class="lead">Every surface below renders the same list; membership is decided by item properties,
+never by separate collections (the wishlist migration in 0.1.101 completed this unification).</p>
+<table>
+  <thead><tr><th>Surface</th><th>Selected by</th><th>Ordered / grouped by</th></tr></thead>
+  <tbody>
+    <tr><td>Home tabs (Today … Future)</td><td>date-only distance of <code>dueDate</code> (≤0 → Today incl. overdue; <code>null</code> → Future)</td><td><code>listRanking</code> per tab</td></tr>
+    <tr><td>Wishlist tool</td><td><code>isWish == true</code></td><td>open first, then priority from <code>label</code></td></tr>
+    <tr><td>Chronize timeline</td><td>has <code>dueDate</code></td><td>chip at due time; placing sets <code>hasExplicitTime</code></td></tr>
+    <tr><td>Projects split view + board</td><td><code>projectId</code></td><td>columns by <code>kanbanStatus</code></td></tr>
+    <tr><td>Calendar / schedule view</td><td><code>dueDate</code> day</td><td>undated under “Someday”</td></tr>
+    <tr><td>Search</td><td>text match</td><td>—</td></tr>
+    <tr><td>Deleted items page</td><td>lives in <code>deleted_tasks.json</code></td><td>newest first</td></tr>
+    <tr><td>Android widget (tasks)</td><td>Today bucket</td><td>same as Today tab</td></tr>
+    <tr><td>SMS daily report</td><td>aggregates over the list</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================================ -->
+<h2><span class="dot" style="background:var(--edge)"></span>Storage: one file per concern</h2>
+<table>
+  <thead><tr><th>File</th><th>Holds</th><th>Cap</th><th>Item linkage</th></tr></thead>
+  <tbody>
+    <tr><td><code>tasks.json</code></td><td>all active items (incl. recurrence children, wish items)</td><td>—</td><td>is the item store</td></tr>
+    <tr><td><code>deleted_tasks.json</code></td><td>deleted item snapshots</td><td>100</td><td>copies</td></tr>
+    <tr><td><code>daily_task_stats.json</code></td><td>per-day uid sets</td><td>—</td><td>by uid</td></tr>
+    <tr><td><code>projects.json</code></td><td>projects</td><td>—</td><td>referenced by <code>projectId</code></td></tr>
+    <tr><td><code>wishlist.json</code></td><td>legacy wish store — drained into <code>tasks.json</code> on load since 0.1.101</td><td>—</td><td>migrated</td></tr>
+    <tr><td><code>alarms.json</code></td><td>alarms</td><td>—</td><td><strong>none</strong></td></tr>
+    <tr><td><code>countdown_timers.json</code></td><td>countdown timers</td><td>—</td><td><strong>none</strong></td></tr>
+    <tr><td><code>last_opened.txt</code></td><td>day-rollover marker</td><td>1</td><td>triggers the sweep</td></tr>
+    <tr><td><code>alarm_log.txt</code></td><td>alarm pipeline audit</td><td>~400 KB</td><td>none</td></tr>
+    <tr><td><code>settings.json</code>, <code>sms_report_*</code>, <code>startup_*</code></td><td>config &amp; app telemetry</td><td>varies</td><td>none</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================================ -->
+<div class="callout">
+  <h4>⚠ Structural gaps this model carries (the future doc addresses each one)</h4>
+  <ul>
+    <li><strong>No time range.</strong> An item has one <code>dueDate</code> — no start/end pair, no duration, no all-day flag; “18:00 unless <code>hasExplicitTime</code>” is a convention, not data.</li>
+    <li><strong>Alarms don't attach to items.</strong> Two parallel time systems the user must keep in sync by hand.</li>
+    <li><strong>No real history.</strong> Single-slot timestamps, edits untracked, derived pseudo-events, a 100-item deletion archive.</li>
+    <li><strong><code>label</code> is three features in one string</strong> (tags, wishlist priority, import marker) and <code>isWish</code> is a view baked in as a bool.</li>
+    <li><strong>Recurrence is days-interval only</strong> and duplicates the parent into child rows.</li>
+    <li><strong>No schema version on the item</strong>; evolution relies on tolerant defaults. No sync/conflict story (per-file overwrite, <code>flush: true</code>, errors swallowed).</li>
+  </ul>
+  <p style="margin:10px 0 0"><a href="item-model-future.html"><strong>→ See the optimized / future-proof model</strong></a></p>
+</div>
+
+<footer>
+  Generated from the <code>dev</code> branch (v0.1.102) · sources: <code>lib/models/task.dart</code>,
+  <code>lib/models/alarm.dart</code>, <code>lib/models/project.dart</code>, <code>lib/models/daily_task_stats.dart</code>,
+  <code>lib/models/countdown_timer.dart</code>, <code>lib/services/storage_service.dart</code>, <code>SPEC.md</code> §4–§10.
+</footer>
+</div>
+</body>
+</html>
