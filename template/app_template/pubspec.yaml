@@ -1,0 +1,42 @@
+# App Template — a reusable Flutter scaffold generalised from BestToDo.
+#
+# To start a new app: change `name` and `description` below, then edit
+# lib/src/app_config.dart (branding, colours, start pages, menu entries,
+# notification defaults, backup identity). See ../TEMPLATE_GUIDE.md.
+#
+# Keep `version` as `x.y.z+build`. Nothing in the code hard-codes a version
+# string — the app reads it at runtime via package_info_plus and the tooling
+# reads it from this file. Bump it with: dart run tool/bump_version.dart <ver>
+name: app_template
+description: A reusable Flutter app template (menu, settings, theming, backups, technical pages).
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.2
+  package_info_plus: ^8.0.2   # dynamic app version at runtime
+  path_provider: ^2.1.2       # settings + technical-page persistence
+  shared_preferences: ^2.2.2  # intro-shown flag
+  flutter_markdown: ^0.6.10   # Changelog rendering
+  file_selector: ^1.0.0       # backup import / export file picking
+  url_launcher: ^6.2.5        # "Update app" link on the About page
+  fl_chart: ^0.63.0           # startup-times chart
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - CHANGELOG.md
+    - assets/test_report.json
