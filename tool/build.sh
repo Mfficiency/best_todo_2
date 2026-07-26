@@ -5,6 +5,11 @@
 # Update version numbers in pubspec.yaml and other files.
 dart run tool/bump_version.dart
 
+# Pull the latest CI test report from GitHub into assets/test_report.json so
+# this local build bundles real test results the app can show offline. Network
+# failures are non-fatal (keeps the existing asset), so offline builds still work.
+dart run tool/pull_test_report.dart
+
 # Run one small unit test as a build gate.
 flutter test test/core/build_smoke_test.dart
 
@@ -22,9 +27,9 @@ rename_if_exists() {
   fi
 }
 
-# Android APK
+# Android APK -> best_todo_<version>.apk
 rename_if_exists "build/app/outputs/flutter-apk/app-release.apk" \
-  "build/app/outputs/flutter-apk/app-release-${VERSION}.apk"
+  "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk"
 
 # Web build directory
 if [ -d build/web ]; then

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.114] - 2026-07-25
+- Local builds now pull the latest CI test report from GitHub so the in-app Test Results page shows real results offline
+
 ## [0.1.113] - 2026-07-17
 - Updating never loses data, no matter which version you come from: before this version writes anything, it snapshots all your existing data files (tasks, deleted list, stats, wishlist, alarms, projects, labels, timers, settings) into a `pre_update_backup/` folder — once, kept forever, visible in App Logs ("Pre-update backup created")
 - Every save of tasks, the deleted list, daily stats, timers and alarms is now atomic (written to a temp file, then swapped in) and keeps the previous version as a `.bak` — a crash or full disk mid-save can no longer corrupt a file
