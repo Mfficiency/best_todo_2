@@ -82,6 +82,24 @@ class Alarm {
   /// Whether the alarm is currently active (the on/off toggle).
   bool enabled;
 
+  /// Uid of the task this alarm is a reminder for, or null for a standalone
+  /// clock alarm (every alarm that existed before 0.1.110). Linked alarms are
+  /// kept in sync by `ReminderSyncService`: their [date]/[hour]/[minute] are
+  /// rewritten from the task's schedule whenever the task list is saved, so
+  /// the scheduling pipeline below this model stays completely unchanged.
+  String? itemUid;
+
+  /// Which end of the task's interval the reminder anchors to.
+  static const String anchorStart = 'start';
+  static const String anchorEnd = 'end';
+
+  /// Only meaningful when [itemUid] is set: [anchorStart] or [anchorEnd].
+  String triggerAnchor;
+
+  /// Only meaningful when [itemUid] is set: minutes relative to the anchor
+  /// (negative = before, e.g. -15 for "15 minutes before").
+  int triggerOffsetMinutes;
+
   Alarm({
     String? uid,
     required this.name,
@@ -100,6 +118,9 @@ class Alarm {
     this.snoozeDurationMinutes = 9,
     this.snoozeMaxCount = 3,
     this.enabled = true,
+    this.itemUid,
+    this.triggerAnchor = anchorEnd,
+    this.triggerOffsetMinutes = 0,
   })  : uid = uid ?? Alarm.newUid(),
         repeatDays = repeatDays ?? <int>[];
 
@@ -180,6 +201,9 @@ class Alarm {
       snoozeDurationMinutes: json['snoozeDurationMinutes'] as int? ?? 9,
       snoozeMaxCount: json['snoozeMaxCount'] as int? ?? 3,
       enabled: json['enabled'] as bool? ?? true,
+      itemUid: json['itemUid'] as String?,
+      triggerAnchor: json['triggerAnchor'] as String? ?? anchorEnd,
+      triggerOffsetMinutes: json['triggerOffsetMinutes'] as int? ?? 0,
     );
   }
 
@@ -201,6 +225,11 @@ class Alarm {
         'snoozeDurationMinutes': snoozeDurationMinutes,
         'snoozeMaxCount': snoozeMaxCount,
         'enabled': enabled,
+        // Reminder link — omitted for standalone alarms so their JSON stays
+        // byte-identical to pre-0.1.110 records.
+        if (itemUid != null) 'itemUid': itemUid,
+        if (itemUid != null) 'triggerAnchor': triggerAnchor,
+        if (itemUid != null) 'triggerOffsetMinutes': triggerOffsetMinutes,
       };
 
   Alarm copy() => Alarm.fromJson(toJson());

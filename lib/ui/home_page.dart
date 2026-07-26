@@ -11,9 +11,15 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/daily_task_stats.dart';
+import '../models/item_event.dart';
 import '../models/task.dart';
+import '../services/alarm_service.dart';
+import '../services/item_event_journal.dart';
+import '../services/item_repository.dart';
+import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
+import '../services/reminder_sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
@@ -59,6 +65,9 @@ class _HomePageState extends State<HomePage>
   final List<Task> _deletedTasks = [];
 
   final Map<String, DailyTaskStats> _dailyStatsByDay = {};
+  // Item store goes through the repository seam; _storageService remains for
+  // backup/export tooling, which is about files rather than the item store.
+  final ItemRepository _repository = ItemRepository.instance;
   final StorageService _storageService = StorageService();
 
   final String appGroupId = 'group.homeScreenApp';
@@ -309,6 +318,133 @@ class _HomePageState extends State<HomePage>
   /// and web, where the Projects tool is exercised with a mouse — open with
   /// populated project cards and boards. Only runs while none of the seeded
   /// tasks carries a project yet, so manual (re)assignments survive reloads.
+  /// Dev-only: one task with a real time range (the schema-v2 interval) on
+  /// today's tab and the first project's board, so start/end/duration can be
+  /// inspected on its detail page without hand-editing JSON.
+  void _seedDevRangeTask() {
+    final day = _currentDate;
+    _tasks.add(Task(
+      title: 'Deep work block',
+      description: 'Dev seed: a task with a real time range',
+      createdAt: DateTime.now(),
+      startAt: DateTime(day.year, day.month, day.day, 9),
+      endAt: DateTime(day.year, day.month, day.day, 10, 30),
+      hasExplicitTime: true,
+      projectId: ProjectService.instance.list.isNotEmpty
+          ? ProjectService.instance.list.first.id
+          : null,
+    ));
+  }
+
+  /// Dev-only: one wishlist item, so the Wishlist tool and the wish rows on
+  /// the Future tab have data on platforms where the one-time Todo.md import
+  /// cannot run (the browser has no files to import from).
+  void _seedDevWishItem() {
+    _tasks.add(Task(
+      title: 'Learn to sail',
+      description: 'Dev seed: a wishlist item',
+      label: 'priority-medium',
+      createdAt: DateTime.now(),
+      isWish: true,
+    ));
+  }
+
+  /// Dev-only: attaches a reminder to the seeded range task ("Deep work
+  /// block", 15 min before its end) so the item-linked reminder row on the
+  /// task-detail page and the linked alarm in the Alarms tool are testable
+  /// right away. In-memory only — a real save persists it like any alarm.
+  void _seedDevLinkedReminder() {
+    Task? found;
+    for (final task in _tasks) {
+      if (task.deletedAt == null &&
+          task.duration != null &&
+          task.duration! > Duration.zero) {
+        found = task;
+        break;
+      }
+    }
+    final target = found;
+    if (target == null) return;
+    final service = AlarmService.instance;
+    if (service.list.any((a) => a.itemUid == target.uid)) return;
+    final reminder = ReminderSyncService.buildReminder(target);
+    if (reminder == null) return;
+    service.alarms.value = [...service.list, reminder];
+  }
+
+  /// Dev-only: writes a small ready-made history for the first project-board
+  /// task so the History timeline on the task-detail page has data on a
+  /// fresh install — including in Chrome, where the journal lives in memory
+  /// for the session. Uses the journal's normal append path.
+  void _seedDevItemHistory() {
+    Task? sample;
+    Task? second;
+    for (final task in _tasks) {
+      if (task.projectId != null && task.deletedAt == null) {
+        if (sample == null) {
+          sample = task;
+        } else {
+          second = task;
+          break;
+        }
+      }
+    }
+    if (sample == null) return;
+    // Give the sample board tasks one label of every kind, so the structured
+    // label registry fills itself on the first save and the kinds are
+    // inspectable on the task-detail page (and as tags on the home tiles).
+    if (sample.label.isEmpty) sample.label = 'urgent, priority-high';
+    if (second != null && second.label.isEmpty) second.label = 'gift, old';
+    final now = DateTime.now();
+    // The second board task gets pre-journal, seeded events so the
+    // "(reconstructed)" rendering of the history backfill is visible in dev
+    // without waiting for the real once-per-install seeder.
+    if (second != null) {
+      ItemEventJournal.instance.recordEvents([
+        ItemEvent(
+          itemId: second.uid,
+          seq: 0,
+          at: now.subtract(const Duration(days: 30)),
+          type: ItemEvent.typeCreated,
+          patch: [FieldChange('title', null, second.title)],
+          seeded: true,
+        ),
+        ItemEvent(
+          itemId: second.uid,
+          seq: 0,
+          at: now.subtract(const Duration(days: 14)),
+          type: ItemEvent.typeScheduled,
+          seeded: true,
+        ),
+      ]);
+    }
+    ItemEventJournal.instance.recordEvents([
+      ItemEvent(
+        itemId: sample.uid,
+        seq: 0,
+        at: now.subtract(const Duration(days: 2)),
+        type: ItemEvent.typeCreated,
+        patch: [FieldChange('title', null, sample.title)],
+      ),
+      ItemEvent(
+        itemId: sample.uid,
+        seq: 0,
+        at: now.subtract(const Duration(days: 1)),
+        type: ItemEvent.typeScheduled,
+        patch: [
+          FieldChange('dueDate', null, sample.dueDate?.toIso8601String()),
+        ],
+      ),
+      ItemEvent(
+        itemId: sample.uid,
+        seq: 0,
+        at: now.subtract(const Duration(hours: 3)),
+        type: ItemEvent.typeEdited,
+        patch: [FieldChange('description', null, sample.description)],
+      ),
+    ]);
+  }
+
   void _applyDevProjectSeed() {
     assignDevProjectSeed(
       _tasks
@@ -417,9 +553,9 @@ class _HomePageState extends State<HomePage>
   Future<void> _loadTasks() async {
     // loadTaskList also merges legacy wishlist.json items (and the one-time
     // Todo.md import) into the task list as isWish tasks.
-    final loaded = await _storageService.loadTaskList();
-    final loadedDeleted = await _storageService.loadDeletedTaskList();
-    final loadedDailyStats = await _storageService.loadDailyTaskStats();
+    final loaded = await _repository.loadItems();
+    final loadedDeleted = await _repository.loadDeletedItems();
+    final loadedDailyStats = await _repository.loadDailyStats();
     if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(
@@ -459,6 +595,15 @@ class _HomePageState extends State<HomePage>
     // data to drag around right away.
     if (Config.isDev) {
       _applyDevProjectSeed();
+      // Fresh dev installs (and every web run, where nothing persists) also
+      // get a visible item history, so the task-detail History timeline can
+      // be tested immediately: Tools → Projects → open a board → tap a card.
+      if (loaded.isEmpty) {
+        _seedDevRangeTask();
+        _seedDevWishItem();
+        _seedDevItemHistory();
+        _seedDevLinkedReminder();
+      }
     }
     _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
@@ -501,11 +646,11 @@ class _HomePageState extends State<HomePage>
   }
 
   void _saveDeletedTasks() {
-    _storageService.saveDeletedTaskList(_deletedTasks);
+    _repository.saveDeletedItems(_deletedTasks);
   }
 
   void _saveDailyStats() {
-    _storageService.saveDailyTaskStats(_dailyStatsByDay);
+    _repository.saveDailyStats(_dailyStatsByDay);
   }
 
   DateTime _dateOnly(DateTime date) =>
@@ -793,7 +938,11 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _reloadTasksFromStorage() async {
-    final loaded = await _storageService.loadTaskList();
+    // On the web nothing can have been persisted by the tool we're returning
+    // from (no documents dir), so reloading would only wipe the in-memory
+    // dev seeds. Keep the current list there.
+    if (kIsWeb) return;
+    final loaded = await _repository.loadItems();
     if (!mounted) return;
     setState(() {
       _tasks
@@ -1345,7 +1494,7 @@ class _HomePageState extends State<HomePage>
     // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
     // multiple tasks land on the same day so no two share a time.
     applyDefaultDeadlineTimes(_tasks);
-    _storageService.saveTaskList(_tasks);
+    _repository.saveItems(_tasks);
     _updateHomeWidget();
   }
 
@@ -1694,25 +1843,15 @@ class _HomePageState extends State<HomePage>
   /// narrowed to matching tasks; pass [applySearch] false for logic that must
   /// see the full tab (e.g. renumbering [Task.listRanking] on save).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
+    // Tab membership is a query over the one list (ItemViews); only the
+    // search predicate is home-page state.
     final query = applySearch ? _searchQuery.trim().toLowerCase() : '';
-    final list = _tasks.where((task) {
-      if (query.isNotEmpty && !_matchesSearch(task, query)) return false;
-      // Undated tasks (e.g. wishlist items) belong to the Future bucket.
-      if (task.dueDate == null) return pageIndex == _futureTabIndex;
-      // Compare dates without considering the time of day so that tasks due
-      // tomorrow don't appear in today's list simply because they are less
-      // than 24 hours away.
-      final diff = dateDiffInDays(task.dueDate!, _currentDate);
-      final isFutureTask = _isFutureBucketDate(task.dueDate!);
-      if (pageIndex == 0) return diff <= 0;
-      if (pageIndex == 1) return diff == 1;
-      if (pageIndex == 2) return diff == 2;
-      if (pageIndex == 3) return diff >= 3 && diff < 30;
-      if (pageIndex == 4) return diff >= 30 && !isFutureTask;
-      return isFutureTask;
-    }).toList();
-    sortTasks(list);
-    return list;
+    return ItemViews.homeBucket(
+      _tasks,
+      pageIndex,
+      _currentDate,
+      where: query.isEmpty ? null : (task) => _matchesSearch(task, query),
+    );
   }
 
   /// Short label for the schedule view's active day shown in the add-task

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/project.dart';
 import '../models/task.dart';
+import '../services/item_views.dart';
 import '../services/project_service.dart';
 import 'adaptive_draggable.dart';
 import 'project_board_page.dart';
@@ -35,11 +36,10 @@ class _ProjectsPageState extends State<ProjectsPage> {
     });
   }
 
-  List<Task> get _activeTasks =>
-      widget.tasks.where((t) => t.deletedAt == null).toList();
+  List<Task> get _activeTasks => ItemViews.active(widget.tasks);
 
   int _taskCountForProject(Project project) =>
-      widget.tasks.where((t) => t.deletedAt == null && t.projectId == project.id).length;
+      ItemViews.projectTasks(widget.tasks, project.id).length;
 
   Project? _projectById(String? id) => _service.byId(id);
 

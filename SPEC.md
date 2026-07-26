@@ -105,7 +105,13 @@ telephony silently no-op.
 ### 4.1 Task model (`lib/models/task.dart`)
 
 Uuid-v4 `uid`; JSON keys equal field names. Fields: `title`, `description`, `note`, `label`
-(single string), `createdAt`, `completedAt`, `movedAt`, `rescheduledAt`, `dueDate`,
+(single string), `createdAt`, `completedAt`, `movedAt`, `rescheduledAt`,
+`startAt`/`endAt` (schema v2, 0.1.109 — the scheduled interval; deadline-style tasks have
+`startAt == endAt`; `dueDate` is now a compat getter (= `endAt`) / setter (collapses the
+interval to a deadline) and is still written to JSON as a mirror so downgrades/old imports
+work; records carry `schemaVersion` (current 2), v1 records upgrade on read via
+`fromJson`'s `dueDate` fallback; derived getters `allDay` (= `!hasExplicitTime`) and
+`duration`),
 `deletedAt`, `autoDeleted` (swept at rollover vs manual delete), `isDone`,
 `hasExplicitTime` (protects a deliberately chosen time from the 18:00 normalization),
 `listRanking` (int?, omitted from JSON when null, renumbered 1-based per tab on every save),
@@ -138,6 +144,8 @@ rollups.
 | `alarms.json` | alarm list | — |
 | `sms_report_config.json` / `sms_report_log.json` | SMS config / log | log 500 |
 | `alarm_log.txt` | human-readable alarm pipeline log | ~400 KB → trim to 250 KB |
+| `item_events.jsonl` | append-only item history journal (one JSON event per line) | ~1 MB → keep newest 4000 |
+| `item_event_meta.json` | per-item last sequence number (`{uid: seq}`) | — |
 
 **Day rollover:** on load, if the calendar date changed since `last_opened.txt`, every
 `isDone` task gets `completedAt`/`deletedAt` backfilled, moves to the top of the deleted
@@ -153,6 +161,95 @@ folder with timestamped names. Tasks bundle is `export_version: 2` with `tasks`,
 Everything use `export_version: 1` (two version namespaces — intentional). Import
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
+
+### 4.2b Item history journal (0.1.106)
+
+`ItemEventJournal` (`lib/services/item_event_journal.dart`) records every change to a
+task as an immutable `ItemEvent` (`lib/models/item_event.dart`: eventId, itemId, per-item
+`seq` = version number, at, type, field-level `patch` [{field, from, to}], `seeded` flag)
+in append-only `item_events.jsonl`. `StorageService.saveTaskList` diffs the new list
+against the last persisted snapshot (static baseline set on load/save; first contact only
+snapshots, so test pre-saves stay silent) and enqueues the events on a fire-and-forget
+write chain — **saves and startup are not slowed; the journal is never read at startup,
+only on demand** (task-detail History section, export). Types: created / edited / labeled /
+scheduled / statusChanged / projectChanged / wishChanged / recurrenceChanged / deleted /
+restored. `listRanking` and the lifecycle timestamps are deliberately untracked (noise).
+A reappearing uid whose seq index (`item_event_meta.json`) is non-zero logs `restored`,
+not `created`. Self-compacts past ~1 MB to the newest 4000 events. Task exports carry the
+journal as `item_events` next to the derived `task_events`.
+
+**History seeding (0.1.107):** `ItemHistorySeeder.runOnce()` backfills the journal once
+per install from pre-journal data — task lifecycle timestamps (created/moved/rescheduled/
+completed/deleted + the restore heuristic), the deleted list, and `DailyTaskStats` id sets
+(at day-noon, only for uids still present somewhere, never duplicating timestamp-covered
+events). All seed events carry `seeded: true` ("(reconstructed)" in the timeline UI).
+Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the first
+frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
+appended after any live events but describe an older past.
+
+### 4.2f Upgrade safety (0.1.113)
+
+No update path may lose data. Three layers (`lib/services/safe_file.dart`,
+`lib/services/pre_update_backup.dart`):
+
+1. **Atomic saves with rotation** — `SafeFile.writeString` writes `<file>.tmp` (flushed),
+   rotates the previous content to `<file>.bak`, then renames over. Applied to
+   `tasks.json`, `deleted_tasks.json`, `daily_task_stats.json`, `countdown_timers.json`
+   and `alarms.json`. A crash mid-save can no longer leave a half-written file.
+   Writes to the same path are serialized on a per-path future chain (overlapping
+   saves — e.g. delete + undo — would otherwise race on the shared `.tmp`; last
+   caller wins, a failed write still surfaces to its own caller only).
+2. **Corruption recovery** — loads go through `SafeFile.readWithRecovery`: an
+   unparseable main file is quarantined as `<file>.corrupt-<timestamp>` (so a later save
+   can never destroy the only copy — the pre-0.1.113 failure mode) and the `.bak` is
+   used instead. `wishlist.json` is deliberately excluded (its migration contract is
+   "unreadable file left untouched"); `loadCountdownTimers` keeps its null-vs-[] first-run
+   semantics by also checking the `.bak` for existence.
+3. **Pre-update snapshot** — `PreUpdateBackup.ensure()` runs before the first *write* of
+   a session (static bool → flag file `pre_update_backup_v1.txt` → once per install):
+   copies every data file (see `backedUpFiles`) verbatim into `pre_update_backup/`.
+   Never on the startup path. The wishlist drain saves the merged list BEFORE emptying
+   `wishlist.json` so the snapshot captures the original (re-merge on crash is deduped
+   by uid). Logged to App Logs. `last_run_version.txt` records the running version
+   (deferred from `main.dart`) for future version-specific migrations.
+
+Covered by `test/core/upgrade_safety_test.dart` (payload matrix from the no-uid era
+through projects/wishlist to schema v2, corruption drills, snapshot invariants) and
+`test/alarms/alarm_storage_recovery_test.dart`.
+
+### 4.2e Repository seam (0.1.112)
+
+`ItemRepository` (`lib/services/item_repository.dart`, singleton) is the one interface
+pages use for the item store: `loadItems`/`saveItems` (task list),
+`loadDeletedItems`/`saveDeletedItems`, `loadDailyStats`/`saveDailyStats`,
+`historyOf`/`allHistory` (journal). Today it delegates to `StorageService` +
+`ItemEventJournal`; swapping the backend (SQLite, sync) happens inside this class only.
+Backup/export tooling stays on `StorageService` directly (it deals in files). The
+decision to stay on JSON files — and the concrete triggers for revisiting (sync, ~5k
+items / ~2 MB, measured startup regression) — is recorded in
+`docs/architecture/storage-decision.md`.
+
+### 4.2d Views as queries (0.1.111)
+
+`ItemViews` (`lib/services/item_views.dart`) is the shared query layer over the one task
+list: pure static selectors `inHomeBucket`/`homeBucket` (date-only distance bucketing +
+`sortTasks`, optional extra predicate for search), `wishlist` (isWish), `active`
+(deletedAt == null), `projectTasks`, `boardColumn`. The home page's `_tasksForTab`, the
+Wishlist page, the Projects page (counts + top pane) and the Kanban board all delegate to
+it; the Future-tab sentinel date (2300-01-01) lives here as `futureSentinelDate`.
+Membership flags on the task stay the stored form (dual-write era) — this step moves the
+*reading* of them into one place.
+
+### 4.2c Structured labels (0.1.108)
+
+`Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB
+color) + `LabelService` (`labels.json`, ValueNotifier singleton) form the structured half
+of a label dual-write: `Task.label` (the token string, split on commas/whitespace —
+helpers in `lib/utils/label_utils.dart`) stays canonical; every save auto-registers
+unseen tokens fire-and-forget (`registerFromLabelStrings` from `saveTaskList`; write-free
+when all tokens are known, nothing loads at startup). Kinds derive from the token:
+`priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
+tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
 
 ### 4.3 Home page UX
 
@@ -357,6 +454,16 @@ Deterministic id scheme so every path can find an alarm's notifications:
 `base = (uid.hashCode & 0x1FFFFFF) * 8`; `base+0` one-off/snooze slot, `base+1..7` weekday
 slots, `base + 0x10000000` watchdog id; fixed test-alarm ids at `0x20000000/1`. All within
 signed 32-bit; spaces cannot collide.
+
+**Item-linked reminders (0.1.110):** `Alarm` additionally carries `itemUid?` +
+`triggerAnchor` (`start`/`end`) + `triggerOffsetMinutes` (negative = before; serialized
+only when linked, so standalone alarm JSON is byte-identical to before). A linked alarm
+is an ordinary one-off whose `date`/`hour`/`minute` are rewritten from its task by
+`ReminderSyncService` (fire-and-forget from `saveTaskList`; free when no linked alarm is
+in memory): reschedule → follows (and re-enables), complete/undated → disabled (never
+deleted, so reopening revives it), task gone → removed, rename → name follows. Created
+via the one-tap "Remind me 15 min before due" on the task-detail page (hidden for
+undated tasks). **The scheduling pipeline below the model is untouched.**
 
 `AlarmService` is a singleton `ValueNotifier` store; every mutation persists →
 syncs the widget → **awaits** `rescheduleAll` (so short-lived isolates don't die mid-work).
