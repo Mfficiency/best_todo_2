@@ -78,12 +78,17 @@ class AppSettings extends ChangeNotifier {
 
   /// Persists the current settings and notifies listeners so the UI/theme
   /// refresh. Call this after mutating any field.
+  ///
+  /// Listeners are notified *first* (optimistic: the UI updates instantly)
+  /// and the file is written after. This also keeps widget tests from hanging
+  /// on the plugin-backed write in the fake-async zone — the notify has already
+  /// fired synchronously by the time the awaited I/O would stall.
   Future<void> save() async {
+    notifyListeners();
     try {
       final file = await _file();
       await file.writeAsString(jsonEncode(toMap()), flush: true);
     } catch (_) {}
-    notifyListeners();
   }
 
   /// Serialises every setting. Also used as the `settings` block of a backup.

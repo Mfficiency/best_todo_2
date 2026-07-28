@@ -1,0 +1,17 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock          # library-style template: let each app resolve its own
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# NOTE: docs/screenshots/ is intentionally committed — it is the preserved,
+# version+date screenshot history built by tool/screenshot_report.dart.

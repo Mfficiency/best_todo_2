@@ -27,10 +27,10 @@ class AppLogsPage extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: const FloatingActionButton(
         onPressed: LogService.clear,
         tooltip: 'Clear logs',
-        child: const Icon(Icons.delete),
+        child: Icon(Icons.delete),
       ),
     );
   }
