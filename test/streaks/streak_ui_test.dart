@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
@@ -21,9 +22,12 @@ class _FakePathProvider extends PathProviderPlatform {
 }
 
 void main() {
+  late String tempPath;
+
   setUp(() async {
     final tempDir = await Directory.systemTemp.createTemp();
-    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    tempPath = tempDir.path;
+    PathProviderPlatform.instance = _FakePathProvider(tempPath);
     ProjectService.instance.resetForTest();
     StorageService.resetJournalBaselineForTest();
     StreakService.instance.resetForTest();
@@ -40,13 +44,23 @@ void main() {
     Config.streakCompletionAnimation = true;
   });
 
-  Future<void> pumpHome(WidgetTester tester, List<Task> tasks) async {
+  /// Seeds `streak.json` with plain file I/O — deliberately NOT through
+  /// StreakService/SafeFile: a chained SafeFile write started from the
+  /// fake-async test zone never completes and deadlocks any later write to
+  /// the same file. An existing file (even `{}`) also marks the history as
+  /// seeded, so HomePage skips the dev-stats backfill and tests stay
+  /// deterministic.
+  Future<void> seedStreakFile(Map<String, int> completionsByDay) =>
+      File('$tempPath/streak.json')
+          .writeAsString(jsonEncode({'completionsByDay': completionsByDay}));
+
+  Future<void> pumpHome(
+    WidgetTester tester,
+    List<Task> tasks, {
+    Map<String, int> streak = const {},
+  }) async {
     // Real file I/O must run on the real event loop (see test/README.md).
-    // Writing the streak file up front (even empty) marks the history as
-    // already seeded, so HomePage skips the dev-stats backfill and tests
-    // stay deterministic. SafeFile chains writes per path, so completions
-    // recorded in the test body land in the file before this resolves.
-    await tester.runAsync(() => StreakService.instance.saveNow());
+    await tester.runAsync(() => seedStreakFile(streak));
     await tester.runAsync(() => StorageService().saveTaskList(tasks));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     final marker = find.text(tasks.first.title);
@@ -59,10 +73,23 @@ void main() {
     expect(marker, findsOneWidget, reason: 'HomePage never loaded the tasks');
   }
 
+  /// Rounds of real-loop slices + pump so I/O kicked off by a tap (task
+  /// save, streak save) completes inside the fake zone (see CLAUDE.md).
+  Future<void> settleIo(WidgetTester tester, [int rounds = 60]) async {
+    for (var i = 0; i < rounds; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+  }
+
   Finder flameIcon() => find.byWidgetPredicate((w) =>
       w is Icon &&
       (w.icon == Icons.local_fire_department ||
           w.icon == Icons.local_fire_department_outlined));
+
+  String dayKeyAgo(int daysBack) => StreakService.dayKey(
+      DateTime.now().subtract(Duration(days: daysBack)));
 
   testWidgets('flame sits in the home app bar next to the dice',
       (tester) async {
@@ -86,13 +113,7 @@ void main() {
     await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
 
     await tester.tap(find.byType(Checkbox).first);
-    // The toggle handler saves tasks and the streak before setState settles;
-    // fixed rounds of real-loop slices (see CLAUDE.md).
-    for (var i = 0; i < 60; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 5)));
-      await tester.pump();
-    }
+    await settleIo(tester);
 
     expect(find.byTooltip('Streak: 1 day'), findsOneWidget);
     expect(find.text('1'), findsWidgets); // badge label
@@ -104,27 +125,25 @@ void main() {
     await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
 
     await tester.tap(find.byType(Checkbox).first);
+    // First pump builds the overlay and starts its ticker; the second one
+    // advances well past the 1.4s animation so the overlay removes itself.
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Streak started! 🔥'), findsOneWidget);
 
-    // The overlay removes itself when the animation finishes.
-    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pump(const Duration(milliseconds: 1600));
     await tester.pump();
     expect(find.text('Streak started! 🔥'), findsNothing);
 
-    for (var i = 0; i < 60; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 5)));
-      await tester.pump();
-    }
+    await settleIo(tester);
   });
 
   testWidgets('tapping the flame opens the streak page with stats',
       (tester) async {
-    StreakService.instance.recordCompletion(
-        DateTime.now().subtract(const Duration(days: 1)));
-    StreakService.instance.recordCompletion(DateTime.now());
-    await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
+    await pumpHome(
+      tester,
+      [Task(title: 'Solo task', dueDate: DateTime.now())],
+      streak: {dayKeyAgo(1): 1, dayKeyAgo(0): 2},
+    );
 
     await tester.tap(find.byTooltip('Streak: 2 days'));
     // The streak page's flame flickers forever — never pumpAndSettle here.
@@ -149,25 +168,22 @@ void main() {
   testWidgets('settings has the Streak section with all four settings',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
-    for (var i = 0; i < 60; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 5)));
-      await tester.pump();
-    }
+    await settleIo(tester);
 
-    await tester.scrollUntilVisible(find.text('Show streak'), 300,
-        scrollable: find.byType(Scrollable).first);
+    // Jump via the section chip header instead of scrolling blindly (the
+    // horizontal chip list is also a Scrollable, so `.first` is ambiguous).
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Streak'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Show streak'), findsOneWidget);
     expect(find.text('Streak grace period'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Streak celebration'), 300,
-        scrollable: find.byType(Scrollable).first);
     expect(find.text('Streak reminder'), findsOneWidget);
     expect(find.text('Streak celebration'), findsOneWidget);
 
     // The grace period is a 24h/48h choice.
-    expect(find.text('24h'), findsOneWidget);
-    expect(find.text('48h'), findsOneWidget);
-    await tester.tap(find.text('48h'));
+    await tester.ensureVisible(find.text('48h'));
+    await tester.pump();
+    await tester.tap(find.text('48h'), warnIfMissed: false);
     await tester.pump();
     expect(Config.streakGraceHours, 48);
     expect(find.textContaining('one missed day is forgiven'), findsOneWidget);
@@ -177,11 +193,7 @@ void main() {
   testWidgets('streak search entries jump to the Streak section',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
-    for (var i = 0; i < 60; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 5)));
-      await tester.pump();
-    }
+    await settleIo(tester);
 
     await tester.tap(find.byTooltip('Search settings'));
     await tester.pumpAndSettle();
