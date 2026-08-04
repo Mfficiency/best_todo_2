@@ -21,6 +21,7 @@ import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
 import '../services/storage_service.dart';
+import '../services/streak_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
 import '../utils/date_utils.dart';
@@ -38,6 +39,8 @@ import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
+import 'streak_celebration.dart';
+import 'streak_page.dart';
 import 'task_tile.dart';
 import 'test_results_page.dart';
 import 'usage_data_page.dart';
@@ -637,6 +640,15 @@ class _HomePageState extends State<HomePage>
       _saveDailyStats();
     }
     _initializeStatsForCurrentDay();
+    await StreakService.instance.load();
+    if (StreakService.instance.needsSeed) {
+      // First run with the streak feature: backfill from the completion
+      // history that already exists so the flame starts warm.
+      StreakService.instance.seedFromHistory(
+        tasks: [..._tasks, ..._deletedTasks],
+        dailyStats: _dailyStatsByDay,
+      );
+    }
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
@@ -815,6 +827,26 @@ class _HomePageState extends State<HomePage>
       stats.completedFromCreatedTaskIds.remove(task.uid);
     }
     _saveDailyStats();
+  }
+
+  /// Feeds a done-state change into the streak. On the first completion of
+  /// the day (the moment the streak is kept) it plays the celebration when
+  /// that setting is on. Uses [_currentDate] so the dev date arrows work.
+  void _recordStreakToggle(Task task, bool wasDone) {
+    if (task.isWish || task.isDone == wasDone) return;
+    if (task.isDone) {
+      final firstOfDay =
+          StreakService.instance.recordCompletion(_currentDate);
+      if (firstOfDay &&
+          Config.showStreak &&
+          Config.streakCompletionAnimation &&
+          mounted) {
+        showStreakCelebration(context,
+            StreakService.instance.currentStreak(now: _currentDate));
+      }
+    } else {
+      StreakService.instance.recordUncompletion(_currentDate);
+    }
   }
 
   void _addToDeletedTasks(Task task, {bool autoDeleted = false}) {
@@ -1387,6 +1419,7 @@ class _HomePageState extends State<HomePage>
       task.completedAt = DateTime.now();
     });
     _trackTaskDoneState(task, false);
+    _recordStreakToggle(task, false);
     _saveTasks();
     LogService.add(
         'HomePage._completeTaskFromDice', 'Completed "${task.title}"');
@@ -1907,6 +1940,7 @@ class _HomePageState extends State<HomePage>
           task.completedAt = task.isDone ? DateTime.now() : null;
         });
         _trackTaskDoneState(task, wasDone);
+        _recordStreakToggle(task, wasDone);
         _saveTasks();
       },
       onDueDateChanged: (oldDueDate, newDueDate) {
@@ -2218,6 +2252,48 @@ class _HomePageState extends State<HomePage>
           onChanged: (value) => setState(() => _searchQuery = value),
         ),
         actions: [
+          ListenableBuilder(
+            listenable: StreakService.instance,
+            builder: (context, _) {
+              if (!Config.showStreak) return const SizedBox.shrink();
+              final streak =
+                  StreakService.instance.currentStreak(now: _currentDate);
+              final progress =
+                  StreakService.instance.flameProgress(now: _currentDate);
+              final theme = Theme.of(context);
+              return IconButton(
+                tooltip: streak > 0
+                    ? 'Streak: $streak day${streak == 1 ? '' : 's'}'
+                    : 'Start a streak: complete a task today',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StreakPage(
+                        onSettingsChanged: () {
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ),
+                  ).then((_) {
+                    if (mounted) setState(() {});
+                  });
+                },
+                icon: Badge(
+                  isLabelVisible: streak > 0,
+                  label: Text('$streak'),
+                  backgroundColor: flameColorFor(progress, theme),
+                  child: Icon(
+                    streak > 0
+                        ? Icons.local_fire_department
+                        : Icons.local_fire_department_outlined,
+                    size: flameSizeFor(progress),
+                    color: flameColorFor(progress, theme),
+                  ),
+                ),
+              );
+            },
+          ),
           ListenableBuilder(
             listenable: DiceTimerController.instance,
             builder: (context, _) {

@@ -6,6 +6,7 @@ import '../models/sms_report_config.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
+import '../services/streak_service.dart';
 import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -32,7 +33,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    6,
+    7,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -40,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Tasks',
     'Widget',
     'Notifications',
+    'Streak',
     'SMS report',
     'Export',
   ];
@@ -77,17 +79,24 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Default notification delay', 3, 'bell reminder'),
     _SettingsSearchEntry(
         'Enable daily SMS report', 4, 'text message snitch daily'),
-    _SettingsSearchEntry('Send time', 4, 'sms schedule daily'),
-    _SettingsSearchEntry('Only send if under threshold', 4, 'sms completion'),
-    _SettingsSearchEntry('SIM subscription id', 4, 'sms dual sim'),
-    _SettingsSearchEntry('Recipients', 4, 'sms phone number contact'),
-    _SettingsSearchEntry('Message template', 4, 'sms tokens text'),
-    _SettingsSearchEntry('Sent message history', 4, 'sms log'),
-    _SettingsSearchEntry('Send test now', 4, 'sms report'),
-    _SettingsSearchEntry('Export Tasks', 5, 'backup save json'),
-    _SettingsSearchEntry('Export Settings', 5, 'backup save json'),
-    _SettingsSearchEntry('Export Everything', 5, 'backup save json'),
-    _SettingsSearchEntry('Import', 5, 'restore backup load json'),
+    _SettingsSearchEntry('Show streak', 4, 'flame fire hide daily habit'),
+    _SettingsSearchEntry(
+        'Streak grace period', 4, '24 48 hours flame miss day forgive'),
+    _SettingsSearchEntry(
+        'Streak reminder', 4, 'flame notification evening nudge daily'),
+    _SettingsSearchEntry(
+        'Streak celebration', 4, 'flame animation complete first task'),
+    _SettingsSearchEntry('Send time', 5, 'sms schedule daily'),
+    _SettingsSearchEntry('Only send if under threshold', 5, 'sms completion'),
+    _SettingsSearchEntry('SIM subscription id', 5, 'sms dual sim'),
+    _SettingsSearchEntry('Recipients', 5, 'sms phone number contact'),
+    _SettingsSearchEntry('Message template', 5, 'sms tokens text'),
+    _SettingsSearchEntry('Sent message history', 5, 'sms log'),
+    _SettingsSearchEntry('Send test now', 5, 'sms report'),
+    _SettingsSearchEntry('Export Tasks', 6, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 6, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 6, 'backup save json'),
+    _SettingsSearchEntry('Import', 6, 'restore backup load json'),
   ];
 
   bool _notifications = Config.enableNotifications;
@@ -108,6 +117,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _quietHoursEnabled = Config.quietHoursEnabled;
   int _quietHoursStartMinutes = Config.quietHoursStartMinutes;
   int _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+  bool _showStreak = Config.showStreak;
+  int _streakGraceHours = Config.streakGraceHours;
+  bool _streakReminderEnabled = Config.streakReminderEnabled;
+  int _streakReminderMinutes = Config.streakReminderMinutes;
+  bool _streakCompletionAnimation = Config.streakCompletionAnimation;
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
@@ -131,6 +145,11 @@ class _SettingsPageState extends State<SettingsPage> {
     _quietHoursEnabled = Config.quietHoursEnabled;
     _quietHoursStartMinutes = Config.quietHoursStartMinutes;
     _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+    _showStreak = Config.showStreak;
+    _streakGraceHours = Config.streakGraceHours;
+    _streakReminderEnabled = Config.streakReminderEnabled;
+    _streakReminderMinutes = Config.streakReminderMinutes;
+    _streakCompletionAnimation = Config.streakCompletionAnimation;
   }
 
   @override
@@ -540,11 +559,102 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _pickStreakReminderTime() async {
+    final current = _streakReminderMinutes;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: current ~/ 60,
+        minute: current % 60,
+      ),
+    );
+    if (picked == null) return;
+    setState(() => _streakReminderMinutes = picked.hour * 60 + picked.minute);
+    Config.streakReminderMinutes = _streakReminderMinutes;
+    await Config.save();
+    StreakService.instance.settingsChanged();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildStreakSection() {
+    return _buildSection(
+      index: 4,
+      title: 'Streak',
+      children: [
+        SwitchListTile(
+          title: const Text('Show streak'),
+          subtitle: const Text(
+              'Flame next to the dice: grows every day you complete a task'),
+          value: _showStreak,
+          onChanged: (val) async {
+            setState(() => _showStreak = val);
+            Config.showStreak = val;
+            await Config.save();
+            StreakService.instance.settingsChanged();
+            widget.onSettingsChanged?.call();
+          },
+        ),
+        ListTile(
+          title: const Text('Streak grace period'),
+          subtitle: Text(_streakGraceHours >= 48
+              ? '48 hours — one missed day is forgiven'
+              : '24 hours — complete a task every day'),
+          trailing: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 24, label: Text('24h')),
+              ButtonSegment(value: 48, label: Text('48h')),
+            ],
+            selected: {_streakGraceHours >= 48 ? 48 : 24},
+            onSelectionChanged: (selection) async {
+              final hours = selection.first;
+              setState(() => _streakGraceHours = hours);
+              Config.streakGraceHours = hours;
+              await Config.save();
+              StreakService.instance.settingsChanged();
+              widget.onSettingsChanged?.call();
+            },
+          ),
+        ),
+        SwitchListTile(
+          title: const Text('Streak reminder'),
+          subtitle: const Text(
+              'Remind me in the evening when no task is done yet'),
+          value: _streakReminderEnabled,
+          onChanged: (val) async {
+            setState(() => _streakReminderEnabled = val);
+            Config.streakReminderEnabled = val;
+            await Config.save();
+            StreakService.instance.settingsChanged();
+            widget.onSettingsChanged?.call();
+          },
+        ),
+        if (_streakReminderEnabled)
+          ListTile(
+            title: const Text('Reminder time'),
+            subtitle: Text(_formatHourMinute(_streakReminderMinutes)),
+            trailing: const Icon(Icons.schedule),
+            onTap: _pickStreakReminderTime,
+          ),
+        SwitchListTile(
+          title: const Text('Streak celebration'),
+          subtitle: const Text(
+              'Short flame animation when the first task of the day is done'),
+          value: _streakCompletionAnimation,
+          onChanged: (val) async {
+            setState(() => _streakCompletionAnimation = val);
+            Config.streakCompletionAnimation = val;
+            await Config.save();
+          },
+        ),
+      ],
+    );
+  }
+
   Widget _buildSmsReportSection() {
     final cfg = _smsConfig;
     if (cfg == null) {
       return _buildSection(
-        index: 4,
+        index: 5,
         title: 'SMS report',
         children: const [
           Padding(
@@ -555,7 +665,7 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     }
     return _buildSection(
-      index: 4,
+      index: 5,
       title: 'SMS report',
       children: [
         SwitchListTile(
@@ -735,7 +845,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildExportSection() {
     return _buildSection(
-      index: 5,
+      index: 6,
       title: 'Export',
       children: [
         Padding(
@@ -1194,6 +1304,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
+                  _buildStreakSection(),
                   _buildSmsReportSection(),
                   _buildExportSection(),
                 ],

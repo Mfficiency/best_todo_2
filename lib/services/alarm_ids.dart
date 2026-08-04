@@ -22,6 +22,11 @@ const int kWatchdogIdOffset = 0x10000000;
 const int kTestAlarmNotificationId = 0x20000000;
 const int kTestAlarmWatchdogId = 0x20000001;
 
+/// Fixed id for the daily streak reminder notification. Lives in the same
+/// fixed-id space (0x20000000+) as the test alarm, above both dynamic alarm
+/// id spaces, so it can never collide with a real alarm or its watchdog.
+const int kStreakReminderNotificationId = 0x20000002;
+
 /// Uid recorded for test alarms in the watchdog registry.
 const String kTestAlarmUid = '__test_alarm__';
 

@@ -931,6 +931,49 @@ Future<void> _showNow(String taskTitle) async {
   await _plugin.show(id, title, null, details);
 }
 
+/// Schedules the one-shot streak reminder on the task-notification channel.
+/// Deliberately NOT on the alarm ladder: a nudge may be minutes late, so the
+/// inexact mode is enough and needs no exact-alarm permission. Everything is
+/// guarded so headless/test runs (no platform channels) stay silent.
+Future<void> scheduleStreakReminder({
+  required DateTime fireAt,
+  required String body,
+}) async {
+  try {
+    final hasPermission = await _ensurePermission();
+    if (!hasPermission) return;
+    await _ensureTimezone();
+    final when = tz.TZDateTime.from(fireAt, tz.local);
+    if (!when.isAfter(tz.TZDateTime.now(tz.local))) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDescription,
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+    await _plugin.zonedSchedule(
+      kStreakReminderNotificationId,
+      'Keep your streak going 🔥',
+      body,
+      when,
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  } catch (_) {}
+}
+
+Future<void> cancelStreakReminder() async {
+  try {
+    await _plugin.cancel(kStreakReminderNotificationId);
+  } catch (_) {}
+}
+
 Future<bool> showTaskNotification(
   String taskTitle, {
   int delaySeconds = 0,

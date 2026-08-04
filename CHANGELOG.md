@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.115] - 2026-08-04
+- streak: a flame next to the dice tracks your daily completion streak — it grows and gets hotter every day you complete at least one task, reaching maximum fire after a year
+- streak: tapping the flame opens the streak page with a fun animated flame, fun stats (longest streak, best day, days until maximum fire, ...) and the streak settings
+- streak: completing the first task of the day plays a short flame celebration (can be turned off)
+- streak: existing completion history counts — your flame starts warm from day one
+- Settings → Streak: hide the streak, choose a 24h or 48h grace period (48h forgives one missed day), and enable an evening reminder (default 22:00) that nudges you when no task is done yet that day
+
 ## [0.1.114] - 2026-07-25
 - Local builds now pull the latest CI test report from GitHub so the in-app Test Results page shows real results offline
 

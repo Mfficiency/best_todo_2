@@ -13,6 +13,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip + corruption recovery/backup, alarm editor (top save), alarm ring page, item-linked reminders (`ReminderSyncService` + task-detail reminder section) |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
 | `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, wishlist items on the Future tab |
+| `test/streaks/` | `flutter test test/streaks` | Daily completion streak: `StreakService` (grace periods, persistence, history seeding, fun stats), home-page flame icon + badge, celebration overlay, `StreakPage`, Streak settings section + search entries |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes) |
 
 ## Which suites to run
@@ -27,7 +28,11 @@ Pick suites by what you touched, always including core:
   `lib/ui/projects_page.dart`, `lib/ui/project_board_page.dart` → core + **projects**
 - `lib/ui/home_page.dart`, `lib/ui/task_tile.dart`, `lib/ui/settings_page.dart`,
   `lib/ui/dice_timer_page.dart`
-  → core + **home** (+ **projects** for `task_tile.dart`, which renders project tags)
+  → core + **home** (+ **projects** for `task_tile.dart`, which renders project tags;
+  + **streaks** for `home_page.dart`/`settings_page.dart`, which host the flame and
+  its settings section)
+- `lib/services/streak_service.dart`, `lib/ui/streak_page.dart`,
+  `lib/ui/streak_celebration.dart` → core + **streaks**
 - `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,
   export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,
   `lib/models/countdown_timer.dart`, `lib/models/test_report.dart`,

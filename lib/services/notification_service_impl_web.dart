@@ -51,6 +51,15 @@ Future<bool> showAlarmNotification(
   return true;
 }
 
+// The web build has no scheduled-notification support; the in-app flame still
+// shows the streak, only the reminder is unavailable.
+Future<void> scheduleStreakReminder({
+  required DateTime fireAt,
+  required String body,
+}) async {}
+
+Future<void> cancelStreakReminder() async {}
+
 Future<void> silenceAlarmNotification(Map<String, dynamic> payload) async {}
 
 Future<bool> ensureAlarmPermissions() async => _ensurePermission();

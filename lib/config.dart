@@ -144,6 +144,25 @@ class Config {
   /// End time for quiet hours in minutes since midnight.
   static int quietHoursEndMinutes = 7 * 60;
 
+  /// If true, the home page shows the streak flame next to the dice and the
+  /// streak feature is active. Off hides the flame and its reminder.
+  static bool showStreak = true;
+
+  /// How long the user has to keep the streak alive: 24 means a task must be
+  /// completed every calendar day, 48 tolerates one missed day in between.
+  static int streakGraceHours = 24;
+
+  /// If true, a daily reminder fires at [streakReminderMinutes] when no task
+  /// has been completed yet that day.
+  static bool streakReminderEnabled = false;
+
+  /// Time of day for the streak reminder in minutes since midnight.
+  static int streakReminderMinutes = 22 * 60;
+
+  /// If true, completing the first task of the day plays a short flame
+  /// celebration animation.
+  static bool streakCompletionAnimation = true;
+
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
   static bool useIconTabs = false;
@@ -210,6 +229,11 @@ class Config {
       'startInScheduleView': startInScheduleView,
       'chronizeShowHourWheel': chronizeShowHourWheel,
       'startTool': startTool,
+      'showStreak': showStreak,
+      'streakGraceHours': streakGraceHours,
+      'streakReminderEnabled': streakReminderEnabled,
+      'streakReminderMinutes': streakReminderMinutes,
+      'streakCompletionAnimation': streakCompletionAnimation,
     };
   }
 
@@ -249,6 +273,18 @@ class Config {
     if (savedStartTool != null && startToolOptions.contains(savedStartTool)) {
       startTool = savedStartTool;
     }
+    showStreak = data['showStreak'] ?? showStreak;
+    final savedGrace = (data['streakGraceHours'] as num?)?.round();
+    if (savedGrace == 24 || savedGrace == 48) {
+      streakGraceHours = savedGrace!;
+    }
+    streakReminderEnabled =
+        data['streakReminderEnabled'] ?? streakReminderEnabled;
+    streakReminderMinutes =
+        (data['streakReminderMinutes'] as num?)?.round().clamp(0, 1439) ??
+            streakReminderMinutes;
+    streakCompletionAnimation =
+        data['streakCompletionAnimation'] ?? streakCompletionAnimation;
   }
 
   /// Persists the current settings to disk.

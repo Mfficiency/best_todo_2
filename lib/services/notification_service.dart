@@ -63,6 +63,18 @@ class NotificationService {
     return impl.showTaskNotification(taskTitle, delaySeconds: effectiveDelay);
   }
 
+  /// Schedules (replacing any previous) the one-shot daily streak reminder.
+  /// The streak service re-arms it on every app start, completion and
+  /// settings change, so a single pending schedule is always enough.
+  static Future<void> scheduleStreakReminder({
+    required DateTime fireAt,
+    required String body,
+  }) =>
+      impl.scheduleStreakReminder(fireAt: fireAt, body: body);
+
+  /// Cancels a pending streak reminder (streak hidden or reminders off).
+  static Future<void> cancelStreakReminder() => impl.cancelStreakReminder();
+
   /// Shows an alarm alert immediately. Used by the watchdog backup path when
   /// an alarm's fire time was missed. With [uid] the notification carries the
   /// alarm payload so the full-screen ring UI can open for it. [melody],

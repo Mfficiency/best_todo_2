@@ -429,6 +429,50 @@ insensitive substring over title, keywords, or section name; section shown as su
 Tapping a result closes search and `_jumpToSection`s to its section (deferred one frame so
 the sections re-mount first). New settings must be added to the registry.
 
+### 4.5 Streak (the flame, 0.1.115)
+
+Daily-completion streak gamification. `StreakService` (ChangeNotifier singleton,
+`streak.json` via `SafeFile`) stores one JSON map `completionsByDay` of dayKey →
+completion **count** (counts, not booleans, so toggle+untoggle on the same day cancels
+out exactly and per-day stats are possible). `recordCompletion(when)` returns true on the
+day's **first** completion (the streak-kept moment); `recordUncompletion` decrements and
+removes the day at zero. Wish items never count. Hooked into both completion paths in
+`home_page.dart` (`_recordStreakToggle`: tile checkbox + dice-timer "done"), using
+`_currentDate` so the dev date stepper works.
+
+**Streak semantics:** consecutive active days ending today or later-graced; a day still
+in progress never breaks the streak. Grace (`Config.streakGraceHours`, 24 default / 48):
+24 = every calendar day needs ≥1 completion; 48 = a single missed day between active days
+is forgiven (`_allowedGap` 0/1 applied both when anchoring from today and while walking
+back). `longestStreak()` scans full history under the same rule. Flame maxes out at
+**365 days** (`flameProgress` = streak/365 clamped to 1).
+
+**UI:** flame `IconButton` in the home app bar directly left of the dice
+(`ListenableBuilder` on the service; hidden when `Config.showStreak` false). Icon grows
+22→30 px and colours grey → orange → deep orange → red with progress; a `Badge` shows the
+day count. Tap → `StreakPage`: big flickering flame (700 ms repeat-reverse controller —
+**never `pumpAndSettle` this page in tests**, it never settles; scale/sway/glow scale with
+progress), fun level names ("First spark" → "MAXIMUM FIRE"), progress bar to a full year,
+stats card (streak start, longest ever, active days, total completions, best day, average
+per active day), gear action → Settings. First completion of the day plays a ~1.4 s
+self-removing overlay celebration (`showStreakCelebration`: flame pop + sparks + "Streak
+kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`).
+
+**Seeding:** on first load without `streak.json` (`needsSeed`), backfilled from existing
+history — per day the **max** of daily-stats completion counts and `completedAt`
+timestamps on live+deleted tasks, so nothing double-counts and long-time users start warm.
+(In dev builds the seeded demo daily-stats produce a pre-lit flame; tests write an empty
+`streak.json` up front to opt out.)
+
+**Reminder:** optional daily nudge (`Config.streakReminderEnabled`, default off; time
+`streakReminderMinutes`, default 22:00). `syncReminder()` re-arms a **one-shot**
+`zonedSchedule` (fixed id `kStreakReminderNotificationId = 0x20000002`, task channel,
+`inexactAllowWhileIdle` — deliberately NOT the alarm ladder, no exact-alarm permission
+needed) for today's time if nothing is done yet, else tomorrow; re-synced on every app
+start, completion, and settings change; cancelled when reminders are off or the streak is
+hidden. Settings live in a searchable "Streak" Settings section (show/hide, 24h/48h
+`SegmentedButton`, reminder toggle + time picker, celebration toggle).
+
 ## 5. Alarm subsystem (the reliability showpiece)
 
 Two **independent** systems share nothing but the log: the user-facing alarm clock
@@ -554,7 +598,9 @@ fixed test ids.
 `notification_service.dart` facade with conditional imports: `_io` (Android/iOS — the real
 implementation), `_web` (immediate `dart:html` notifications only; scheduling is a no-op),
 `_stub` (everything no-op). Two Android channels: `task_notifications` (Importance.high)
-and `alarm_notifications_v2` (see §5.2). Quiet hours shift only task notifications.
+and `alarm_notifications_v2` (see §5.2). Quiet hours shift only task notifications —
+neither alarms nor the streak reminder (§4.5), which rides the task channel at an
+explicit user-chosen time.
 
 ## 7. SMS daily report ("snitch text")
 
