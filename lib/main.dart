@@ -187,6 +187,11 @@ class _MyAppState extends State<MyApp> {
   late bool _showModePicker = widget.showModePicker;
   bool _alarmRingOpen = false;
 
+  /// Set once the tasks home-screen widget has opened the app: the root route
+  /// is then the home page for the rest of this run, whatever start page is
+  /// configured.
+  bool _openedFromTaskWidget = false;
+
   @override
   void initState() {
     super.initState();
@@ -257,6 +262,14 @@ class _MyAppState extends State<MyApp> {
   Future<void> _handleWidgetClick(Uri? uri) async {
     if (uri == null) return;
     final id = uri.queryParameters['id'];
+    // Both widgets use `toggle` / `open` as hosts, so the scheme decides which
+    // one is talking before the host does.
+    if (uri.scheme == TaskWidgetService.scheme) {
+      // `toggle` never arrives here — checkbox taps are broadcasts handled by
+      // [alarmWidgetBackgroundCallback] in its own isolate.
+      if (uri.host == TaskWidgetService.hostOpen) _openTasks();
+      return;
+    }
     switch (uri.host) {
       case AlarmWidgetService.hostToggle:
         if (id != null && id.isNotEmpty) {
@@ -271,6 +284,23 @@ class _MyAppState extends State<MyApp> {
         _openAlarms();
         break;
     }
+  }
+
+  /// Brings the app to the task list after a tap on the tasks widget. The app
+  /// may have been left anywhere — settings, a project board, the alarms page —
+  /// so everything above the root route is popped, and [_openedFromTaskWidget]
+  /// makes that root the home page even when [Config.startPage] points
+  /// elsewhere (which also covers a cold start from the widget).
+  void _openTasks() {
+    if (mounted && !_openedFromTaskWidget) {
+      setState(() => _openedFromTaskWidget = true);
+    }
+    // A warm launch may not have a frame pending; without this the callback
+    // below would only run at the next unrelated rebuild.
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+    });
   }
 
   void _openAlarms({String? editUid}) {
@@ -320,6 +350,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   Widget _initialPage() {
+    if (_openedFromTaskWidget) {
+      return HomePage(initialTabIndex: Config.startTabIndex);
+    }
     switch (Config.startPage) {
       case 'settings':
         return const SettingsPage();

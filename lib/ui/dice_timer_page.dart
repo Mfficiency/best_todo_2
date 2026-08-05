@@ -556,6 +556,20 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     Navigator.of(context).pop();
   }
 
+  /// Throw the timer away without answering for the task: the countdown, any
+  /// ring and the OS-scheduled alarm all go, and the task is left exactly as it
+  /// was (not done, not postponed). Unlike leaving the page, nothing keeps
+  /// running in the background.
+  void _cancelTimer() {
+    LogService.add(
+        'DiceTimerPage._cancelTimer', 'Cancelled "${_controller.task?.title}"');
+    _controller.clear();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Timer cancelled')));
+    Navigator.of(context).pop();
+  }
+
   /// The same settings as the Settings page's "Dice timer" card, reachable
   /// from the gear while the timer is on screen — the moment the alert is
   /// actually on the user's mind. Changes apply to the ring that follows,
@@ -726,6 +740,18 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
         : OutlinedButton.icon(icon: icon, label: label, onPressed: onPressed);
   }
 
+  /// Shown from the moment there is a countdown to throw away; the muted
+  /// destructive styling keeps it clearly apart from Done/Postpone, which
+  /// answer for the task.
+  Widget _cancelButton(BuildContext context) => TextButton.icon(
+        icon: const Icon(Icons.timer_off_outlined),
+        label: const Text('Cancel timer'),
+        style: TextButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.error,
+        ),
+        onPressed: _cancelTimer,
+      );
+
   Widget _lockButton() => OutlinedButton.icon(
         icon: const Icon(Icons.lock_outline),
         label: const Text('Lock touch'),
@@ -734,7 +760,8 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
 
   /// Buttons under the dial. Done and Lock touch are available from the start
   /// (even before the countdown begins); running adds Pause, paused adds
-  /// Resume, and the ring swaps in the finish/postpone/extend actions.
+  /// Resume, both add Cancel timer, and the ring swaps in the
+  /// finish/postpone/extend actions.
   Widget _actions() {
     switch (_controller.phase) {
       case DiceTimerPhase.setting:
@@ -759,6 +786,8 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
             ),
             const SizedBox(height: 12),
             _lockButton(),
+            const SizedBox(height: 4),
+            _cancelButton(context),
           ],
         );
       case DiceTimerPhase.paused:
@@ -774,6 +803,8 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
             _doneButton(filled: false),
             const SizedBox(height: 12),
             _lockButton(),
+            const SizedBox(height: 4),
+            _cancelButton(context),
           ],
         );
       case DiceTimerPhase.ringing:
@@ -853,6 +884,8 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
             addButton(10),
           ],
         ),
+        const SizedBox(height: 4),
+        _cancelButton(context),
       ],
     );
   }

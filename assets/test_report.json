@@ -1,3 +1,12 @@
 {
-  "available": false
+  "available": true,
+  "generatedAt": "2026-08-05T21:03:39.218030Z",
+  "commit": "",
+  "branch": "staging",
+  "appVersion": "0.1.127+98",
+  "passed": 378,
+  "failed": 0,
+  "skipped": 0,
+  "runUrl": "",
+  "failures": []
 }

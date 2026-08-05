@@ -13,7 +13,7 @@ void main() {
   Future<void> pumpPage(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: TestResultsPage()));
     final loaded = find.byType(Card);
-    for (var i = 0; i < 60 && loaded.evaluate().isEmpty; i++) {
+    for (var i = 0; i < 120 && loaded.evaluate().isEmpty; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();
@@ -33,8 +33,11 @@ void main() {
       buildSignature: '',
     );
     TestReportService.instance.resetForTest();
-    // Default: no online report, so tests exercise the bundled fallback unless
-    // they opt into an online report explicitly. Keeps the network out of tests.
+    // Default every layer to "no data" so each test only sets the layers it is
+    // about. This also keeps both the network and the disk cache out of the
+    // fake-async zone — real file I/O inside testWidgets does not complete
+    // (see CLAUDE.md), which would leave the page stuck on its spinner.
+    TestReportService.instance.setReportForTest(TestReport(available: false));
     TestReportService.instance
         .setOnlineReportForTest(TestReport(available: false));
   });
@@ -61,7 +64,7 @@ void main() {
 
     await pumpPage(tester);
 
-    expect(find.text('Bundled with this build (offline)'), findsOneWidget);
+    expect(find.text('Packaged with this build (offline)'), findsOneWidget);
     expect(find.text('2 tests failed'), findsOneWidget);
     expect(
       find.text('40 passed · 2 failed · 1 skipped · 43 total'),
@@ -79,15 +82,17 @@ void main() {
     expect(find.text('Expected X'), findsOneWidget);
   });
 
-  testWidgets('prefers the latest online report over the bundled one',
+  testWidgets('shows the newer online run instead of the packaged one',
       (tester) async {
     TestReportService.instance.setReportForTest(TestReport(
       available: true,
+      generatedAt: DateTime.utc(2026, 8, 1),
       passed: 1,
       appVersion: '0.1.90+60',
     ));
     TestReportService.instance.setOnlineReportForTest(TestReport(
       available: true,
+      generatedAt: DateTime.utc(2026, 8, 5),
       branch: 'dev',
       appVersion: '9.9.9+99',
       passed: 43,
@@ -95,12 +100,52 @@ void main() {
 
     await pumpPage(tester);
 
-    expect(find.text('Latest online run · dev'), findsOneWidget);
+    expect(find.text('Fetched just now from CI'), findsOneWidget);
+    expect(find.textContaining('on dev'), findsOneWidget);
     expect(find.text('All tests passed'), findsOneWidget);
     expect(
       find.text('43 passed · 0 failed · 0 skipped · 43 total'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('keeps the packaged run when it is newer than the online one',
+      (tester) async {
+    TestReportService.instance.setReportForTest(TestReport(
+      available: true,
+      generatedAt: DateTime.utc(2026, 8, 5),
+      branch: 'staging',
+      passed: 44,
+      appVersion: '9.9.9+99',
+    ));
+    TestReportService.instance.setOnlineReportForTest(TestReport(
+      available: true,
+      generatedAt: DateTime.utc(2026, 8, 1),
+      branch: 'dev',
+      passed: 43,
+    ));
+
+    await pumpPage(tester);
+
+    expect(find.text('Packaged with this build (offline)'), findsOneWidget);
+    expect(
+      find.text('44 passed · 0 failed · 0 skipped · 44 total'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('offers a link to the CI run that produced the report',
+      (tester) async {
+    TestReportService.instance.setOnlineReportForTest(TestReport(
+      available: true,
+      generatedAt: DateTime.utc(2026, 8, 5),
+      passed: 43,
+      runUrl: 'https://github.com/o/r/actions/runs/7',
+    ));
+
+    await pumpPage(tester);
+
+    expect(find.text('Open CI run'), findsOneWidget);
   });
 
   testWidgets('states current vs tested version and flags a mismatch',
@@ -151,12 +196,65 @@ void main() {
     expect(find.text('Failed tests'), findsNothing);
   });
 
-  testWidgets('explains when neither online nor bundled report is available',
-      (tester) async {
+  testWidgets('explains when no layer has a report at all', (tester) async {
     TestReportService.instance.setReportForTest(TestReport(available: false));
 
     await pumpPage(tester);
 
-    expect(find.textContaining('no report was bundled'), findsOneWidget);
+    expect(
+      find.textContaining('No test run is packaged with this build'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('states how long ago the run happened', (tester) async {
+    TestReportService.instance.setOnlineReportForTest(TestReport(
+      available: true,
+      generatedAt: DateTime.now().toUtc().subtract(const Duration(hours: 3)),
+      branch: 'dev',
+      passed: 43,
+    ));
+
+    await pumpPage(tester);
+
+    expect(find.text('Ran 3 hours ago on dev'), findsOneWidget);
+  });
+
+  group('formatReportAge', () {
+    final now = DateTime(2026, 8, 5, 12);
+
+    test('reads as a plain age, singular where it should be', () {
+      expect(
+        formatReportAge(now.subtract(const Duration(seconds: 20)), now: now),
+        'just now',
+      );
+      expect(
+        formatReportAge(now.subtract(const Duration(minutes: 1)), now: now),
+        '1 minute ago',
+      );
+      expect(
+        formatReportAge(now.subtract(const Duration(minutes: 42)), now: now),
+        '42 minutes ago',
+      );
+      expect(
+        formatReportAge(now.subtract(const Duration(hours: 1)), now: now),
+        '1 hour ago',
+      );
+      expect(
+        formatReportAge(now.subtract(const Duration(days: 1)), now: now),
+        '1 day ago',
+      );
+      expect(
+        formatReportAge(now.subtract(const Duration(days: 70)), now: now),
+        '2 months ago',
+      );
+    });
+
+    test('a clock-skewed future timestamp does not read as negative', () {
+      expect(
+        formatReportAge(now.add(const Duration(hours: 2)), now: now),
+        'just now',
+      );
+    });
   });
 }

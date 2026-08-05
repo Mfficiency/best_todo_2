@@ -122,3 +122,5 @@ app.*.symbols
 
 
 docs/exports/*
+# CI report store working copy (tool/ci/publish_test_report.sh)
+.ci-reports/

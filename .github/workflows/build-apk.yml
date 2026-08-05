@@ -2,14 +2,17 @@ name: Build APK
 
 on:
   push:
-    branches: [ main, dev ]
-    # The publish step below commits docs/ci/test_report.json back to the
-    # branch; ignore it here so that bot commit doesn't re-trigger the build
-    # in an endless loop (the report's timestamp changes every run).
+    # staging builds too, so an APK cut from any branch of the flow carries the
+    # latest test results (see the sync step below).
+    branches: [ main, staging, dev ]
+    # The test workflow commits the packaged report back to dev; ignore those
+    # bot commits here so they don't re-trigger a build in an endless loop
+    # (the report's timestamp changes every run).
     paths-ignore:
+      - 'assets/test_report.json'
       - 'docs/ci/**'
   pull_request:
-    branches: [ main, dev ]
+    branches: [ main, staging, dev ]
   workflow_dispatch:
 
 permissions:
@@ -48,40 +51,41 @@ jobs:
     # assets/test_report.json. A failing test run does NOT block the build —
     # the app shows a red dot on the drawer icon and lists the failures on
     # its Test Results page instead.
-    - name: Run tests and embed report into build
+    - name: Run tests
       shell: bash
       run: |
         set +e
         flutter test --machine > test_machine_output.jsonl 2>/dev/null
         echo "flutter test exit code: $?"
         set -e
+        mkdir -p build/ci
         dart run tool/generate_test_report.dart \
           --input test_machine_output.jsonl \
-          --output assets/test_report.json \
+          --output build/ci/test_report.json \
           --commit "${GITHUB_SHA:0:9}" \
           --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" \
-          --version "${{ steps.appver.outputs.version }}"
+          --version "${{ steps.appver.outputs.version }}" \
+          --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-    # Publish the same report the APK bundles to a committed path the app can
-    # fetch over the network (see TestReportService.onlineReportUrl), so an
-    # installed build can show the latest CI results even when it's older than
-    # HEAD. Push events only — PR builds can't (and shouldn't) push.
-    - name: Publish test report for the app to pull online
-      if: github.event_name == 'push'
+    # Package the newest run known into the APK: this build's own run, or a newer
+    # one published from another branch. This is what makes the Test Results page
+    # useful in an APK cut from any branch, with no network on the device.
+    - name: Package the newest test report into the APK
       shell: bash
       run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        mkdir -p docs/ci
-        cp assets/test_report.json docs/ci/test_report.json
-        git add docs/ci/test_report.json
-        if git diff --cached --quiet; then
-          echo "No test report change to publish."
-          exit 0
-        fi
-        git commit -m "ci: publish test report [skip-screenshot-changelog]"
-        git pull --rebase origin "${GITHUB_REF_NAME}"
-        git push origin "HEAD:${GITHUB_REF_NAME}"
+        dart run tool/sync_test_report.dart \
+          --candidate build/ci/test_report.json \
+          --output assets/test_report.json
+
+    # Share this run through the branch-independent `ci-reports` store, so other
+    # branches' builds and already-installed apps can pick it up.
+    - name: Publish report to the ci-reports store
+      if: github.event_name == 'push'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        bash tool/ci/publish_test_report.sh build/ci/test_report.json "${GITHUB_REF_NAME}"
 
     - name: Build APK
       run: flutter build apk --release

@@ -327,28 +327,54 @@ spanning the top is always attached.
 Tools ▸ (Alarms, Countdown, Wishlist, Projects, Chronize, Productivity Stats,
 Usage Data, Test Results).
 
-**CI test report (0.1.96, moved to Tools + online in 0.1.99):** CI runs the tests and
-serializes the run into `assets/test_report.json` via `tool/generate_test_report.dart`
-(`--commit/--branch/--version`), which the APK bundles; the committed placeholder is
-`{"available": false}` so local/dev builds carry no bundled data (asset registered in
-pubspec). On push, `build-apk.yml` also commits that JSON to `docs/ci/test_report.json`
-so the app can fetch the latest results over the network (`build-apk` push trigger
-`paths-ignore`s `docs/ci/**` to avoid a self-triggering loop). `models/test_report.dart`
-(tolerant fromJson; also owns `fromMachineJsonLines`, the `flutter test --machine` parser)
-carries `appVersion` (`x.y.z+build` from pubspec at CI time). `TestReportService`
-(singleton; `load` = bundled asset, `loadOnline` = `HttpClient` GET of the dev
-`docs/ci/test_report.json` with all failures swallowed to an unavailable report,
-`loadForDisplay` = online-primary/bundled-fallback; `setReportForTest`/
-`setOnlineReportForTest`/`refreshOnline`/`resetForTest`). The red failure dot still uses
-the **bundled** report (`hasFailures`, loaded offline at startup): the home app bar's
-custom hamburger `leading` (default "Open navigation menu" tooltip, opens the drawer via
-`Scaffold.of`) and the Tools ▸ Test Results entry both carry a 9 px red dot
+**CI test report (0.1.96, moved to Tools + online in 0.1.99, branch-independent and
+packaged in 0.1.128):** the app always shows the **newest** test run it knows of, no
+matter which branch produced it or whether there is a network.
+
+*Storage.* `models/test_report.dart` (tolerant fromJson; also owns
+`fromMachineJsonLines`, the `flutter test --machine` parser, and `runUrl` = the CI run
+link) carries `appVersion` (`x.y.z+build` from pubspec at run time) plus
+`TestReport.newest(candidates)` — the single rule behind "latest": highest
+`generatedAt` wins, unavailable reports never win, a dated run beats an undated one.
+Three places hold a report:
+- `assets/test_report.json` — **packaged into every build** (Android, Windows, web,
+  debug or release) and committed, so a plain checkout of dev and
+  `flutter run -d chrome` show real results with no network and no build step.
+- `ci-reports` branch (orphan, no app code so it triggers no workflow):
+  `latest.json` = newest run across all branches, `branches/<branch>.json` = newest per
+  branch. Written by `tool/ci/publish_test_report.sh` (clone-or-create, newest-wins merge
+  through the sync tool, 3 push attempts, never fails a build).
+- `test_report_cache.json` in the app documents dir — the last report this install
+  fetched, so a later offline launch is not stuck with what the build shipped.
+
+*Tools.* `tool/generate_test_report.dart` (`--input machine.jsonl --commit/--branch/
+--version/--run-url`) parses one run; `tool/sync_test_report.dart` decides what gets
+packaged, taking the newest of the file already at `--output`, each `--candidate`,
+`--candidate-machine` (a local `flutter test --machine` run, version read from pubspec)
+and `latest.json` unless `--no-fetch` — an unreachable network or missing file just keeps
+the existing report, so offline builds still package the last one they had.
+`tool/render_test_report_summary.dart` renders the CI job summary from the same JSON, so
+the summary and the app can never disagree.
+
+*Runtime.* `TestReportService` (singleton): `load` = newest of bundled + cached (no
+network, drives the red dot), `loadOnline` = `HttpClient` GET of `latest.json`
+(`onlineReportUrl`, all failures swallowed to an unavailable report, writes the disk cache
+on success, skipped on web), `loadForDisplay` = newest of online/cached/bundled with the
+layer it came from (`TestReportSource`, `sourceLabel`: "Fetched just now from CI" / "Last
+fetched results (offline)" / "Packaged with this build (offline)"); `setReportForTest`/
+`setCachedReportForTest`/`setOnlineReportForTest`/`refreshOnline`/`resetForTest`. The red
+failure dot uses the offline-best report (`hasFailures`, loaded at startup): the home app
+bar's custom hamburger `leading` (default "Open navigation menu" tooltip, opens the drawer
+via `Scaffold.of`) and the Tools ▸ Test Results entry both carry a 9 px red dot
 (`Key('test-failure-dot')`). `TestResultsPage` (a Tools page, `test_results` start-tool
-key) is a StatefulWidget with an app-bar refresh action: a version card (running version
-vs tested version, match/mismatch note, online-vs-offline source), a summary card
+key) is a StatefulWidget with an app-bar refresh action: a version card (source label,
+"Ran 3 hours ago on dev" via `formatReportAge`, running vs tested version with a
+match/mismatch note, "Open CI run" when `runUrl` is set), a summary card
 (passed/failed/skipped/total, commit + branch + run time), and one ExpansionTile per
 failed test with its error + stack trace. `Config.resetVersionForTest()` clears the
-memoized version future so widget tests reload it per async zone.
+memoized version future so widget tests reload it per async zone. Page tests default every
+layer to "no data" in `setUp`: the disk-cache read is real file I/O and would never
+complete inside `testWidgets`' fake-async zone.
 
 **Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
 non-empty query narrows every tab and the schedule view to tasks whose title,
@@ -395,6 +421,13 @@ even if the page was left, though a mid-ring page exit silences melody and vibra
 moving to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** (stops the
 ring and restarts the countdown with that much time). With no open Today tasks (and no timer
 already running) the dice shows a "No open tasks for today" snackbar instead.
+
+**Cancel timer (0.1.127):** a muted-error `TextButton` under the other actions, shown in the
+running, paused and ringing phases (never on the untouched dial — there is nothing to cancel
+yet). It calls `DiceTimerController.clear()`, so the ticker, any melody/vibration and the
+OS-scheduled ring all stop, then pops the page with a "Timer cancelled" snackbar. This is the
+only exit that leaves the task untouched — Done and Postpone both answer for it, and plain
+back-navigation deliberately keeps the countdown alive.
 
 **Dice timer settings (0.1.120):** `Config.diceTimerAlertMode` picks what zero does —
 `melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
@@ -774,7 +807,17 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
-  at midnight. The whole payload is built by `TaskWidgetService.sync(tasks)`
+  at midnight.
+  **Opening the app (0.1.128):** every tap that is not a checkbox — the progress line (all
+  three coloured bars carry their own handler; they sit above the text and are not part of
+  it), the root container, the summary text, a task row/title, the empty state and
+  "+N more" — launches `besttodotask://open` via `HomeWidgetLaunchIntent`. `main.dart`'s
+  `_handleWidgetClick` branches **on the scheme first** (both widgets use the hosts
+  `toggle`/`open`) and calls `_openTasks()`: it pops everything above the root route and
+  sets `_openedFromTaskWidget`, which makes `_initialPage()` return `HomePage` regardless
+  of `Config.startPage`. So the widget always lands on the task list, warm or cold, instead
+  of resuming on whatever subpage the app was left on. (RemoteViews only deliver single
+  clicks — there is no double-tap on a home-screen widget.) The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
   **Checkable rows (0.1.125, `Config.widgetCheckboxes`, default off):** with the setting on
@@ -787,7 +830,8 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   `Config.load()` (the isolate has no settings) → `TaskWidgetService.toggleInStorage`:
   flips `isDone`/`completedAt` in `tasks.json`, records the streak (guarded — the reminder
   re-sync needs the notification plugin, which may be unavailable there) and re-syncs the
-  widget. The title and every non-row area still open the app.
+  widget. The row (title + the space around it) and every non-row area open the task list
+  as above.
   Because that isolate writes the file behind the app's back, `_HomePageState` is a
   `WidgetsBindingObserver`: on `resumed` it runs `_mergeWidgetCompletions`, which reloads
   storage and copies **only** the done state of changed uids into the in-memory list (plus
@@ -1066,18 +1110,26 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
-  - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
-    `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
-    failing test run does not stop the build) and embeds the parsed results into the APK
-    as `assets/test_report.json` via `dart run tool/generate_test_report.dart --input …
-    --commit … --branch … --version …`. On push events it also commits that JSON to
-    `docs/ci/test_report.json` (`[skip-screenshot-changelog]`) so the app can pull the
-    latest results online. Then builds the release APK, uploads artifact
-    `besttodo-<version>` (30-day retention), adds a download link to the job summary. The
-    app surfaces the bundled report as a red dot on the drawer icon and shows the
-    online-primary/bundled-fallback report on the Tools ▸ Test Results page (see §4.3).
-  - `flutter_test.yml` (main/staging/dev): `flutter test --coverage`, parses results into a
-    PASS/FAIL markdown report artifact, fails on test failure.
+  - `build-apk.yml` (push/PR main+staging+dev, manual; `contents: write`, push trigger
+    `paths-ignore`s `assets/test_report.json` + `docs/ci/**`): runs `flutter test --machine`
+    **non-blocking** (a failing test run does not stop the build) into
+    `build/ci/test_report.json`, then `dart run tool/sync_test_report.dart --candidate …`
+    packages the newest run known — this build's own, or a newer one another branch already
+    published — into `assets/test_report.json`, so an APK cut from **any** branch carries
+    the latest results with no network on the device. On push it shares the run through
+    `tool/ci/publish_test_report.sh`. Then builds the release APK, uploads artifact
+    `besttodo-<version>` (30-day retention), adds a download link to the job summary
+    (see §4.3).
+  - `flutter_test.yml` (main/staging/dev, same `paths-ignore`; `contents: write`): one
+    `flutter test --machine --coverage` run feeds everything — `generate_test_report.dart`
+    for the JSON, `render_test_report_summary.dart` for the PASS/FAIL job summary +
+    artifact (report JSON and machine stream uploaded with it), `sync_test_report.dart` to
+    package the newest run, `publish_test_report.sh` to publish it to `ci-reports`. On
+    **dev only** it commits the packaged `assets/test_report.json` (plus a
+    `docs/ci/test_report.json` copy for app versions before 0.1.128 that still fetch it)
+    with `[skip-screenshot-changelog]`, rebase-retried 3×. dev is the single writer so
+    dev → staging → main merges carry the report along instead of conflicting on it. Fails
+    the job on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
     integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
     search-active, projects page, project board, project edit dialog) into

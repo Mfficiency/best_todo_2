@@ -115,5 +115,58 @@ void main() {
       expect(report.total, 0);
       expect(report.hasFailures, isFalse);
     });
+
+    test('records the CI run URL so the app can link to it', () {
+      final report = TestReport.fromMachineJsonLines(
+        ['{"success":true,"type":"done"}'],
+        runUrl: 'https://github.com/o/r/actions/runs/7',
+      );
+      expect(report.runUrl, 'https://github.com/o/r/actions/runs/7');
+      expect(
+        TestReport.fromJson(jsonDecode(jsonEncode(report.toJson()))).runUrl,
+        'https://github.com/o/r/actions/runs/7',
+      );
+    });
+  });
+
+  // "Latest results" is decided by run time alone — that is what makes the
+  // report branch-independent (any branch's run can be the newest one).
+  group('TestReport.newest', () {
+    TestReport at(DateTime? when, {bool available = true, int passed = 1}) =>
+        TestReport(available: available, generatedAt: when, passed: passed);
+
+    test('picks the most recent run regardless of order or branch', () {
+      final older = at(DateTime.utc(2026, 8, 1));
+      final newer = at(DateTime.utc(2026, 8, 5));
+      expect(TestReport.newest([older, newer]), same(newer));
+      expect(TestReport.newest([newer, older]), same(newer));
+    });
+
+    test('ignores unavailable reports even when they look newer', () {
+      final placeholder = TestReport(
+          available: false, generatedAt: DateTime.utc(2026, 9, 1));
+      final real = at(DateTime.utc(2026, 8, 1));
+      expect(TestReport.newest([placeholder, real]), same(real));
+    });
+
+    test('returns null when nothing carries data', () {
+      expect(
+        TestReport.newest([null, TestReport(available: false)]),
+        isNull,
+      );
+    });
+
+    test('a dated run beats an undated one, whichever comes first', () {
+      final undated = at(null);
+      final dated = at(DateTime.utc(2026, 8, 1));
+      expect(TestReport.newest([undated, dated]), same(dated));
+      expect(TestReport.newest([dated, undated]), same(dated));
+    });
+
+    test('falls back to the first available report when none are dated', () {
+      final first = at(null, passed: 1);
+      final second = at(null, passed: 2);
+      expect(TestReport.newest([first, second]), same(first));
+    });
   });
 }

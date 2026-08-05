@@ -20,12 +20,15 @@ class TestFailureDetail {
   }
 }
 
-/// Result of the `flutter test` run performed by CI right before the APK of
-/// this build was produced. Serialized into `assets/test_report.json` by
-/// `tool/generate_test_report.dart`; the committed placeholder has
-/// `available: false` so local builds show "no report" instead of stale data.
+/// Result of a `flutter test` run, produced by CI (or a local run) and stored
+/// as JSON: bundled into the build as `assets/test_report.json`, published by
+/// CI to the `ci-reports` branch as `latest.json`, and cached on disk by the
+/// app after an online refresh. Written by `tool/generate_test_report.dart` /
+/// `tool/sync_test_report.dart`; a report with `available: false` means "no
+/// data" rather than "everything failed".
 class TestReport {
-  /// False for the committed placeholder (local/dev builds without CI data).
+  /// False for the committed placeholder (a checkout that never ran the sync
+  /// tool and never got a CI report).
   bool available;
   DateTime? generatedAt;
   String commit;
@@ -37,6 +40,10 @@ class TestReport {
   int passed;
   int failed;
   int skipped;
+
+  /// Link to the CI run that produced this report (empty for local runs), so
+  /// the Test Results page can offer "Open CI run".
+  String runUrl;
   List<TestFailureDetail> failures;
 
   TestReport({
@@ -48,6 +55,7 @@ class TestReport {
     this.passed = 0,
     this.failed = 0,
     this.skipped = 0,
+    this.runUrl = '',
     List<TestFailureDetail>? failures,
   }) : failures = failures ?? [];
 
@@ -64,6 +72,7 @@ class TestReport {
         'passed': passed,
         'failed': failed,
         'skipped': skipped,
+        'runUrl': runUrl,
         'failures': failures.map((f) => f.toJson()).toList(),
       };
 
@@ -77,12 +86,38 @@ class TestReport {
       passed: (json['passed'] as num?)?.round() ?? 0,
       failed: (json['failed'] as num?)?.round() ?? 0,
       skipped: (json['skipped'] as num?)?.round() ?? 0,
+      runUrl: json['runUrl'] as String? ?? '',
       failures: (json['failures'] as List?)
               ?.whereType<Map<String, dynamic>>()
               .map(TestFailureDetail.fromJson)
               .toList() ??
           [],
     );
+  }
+
+  /// The freshest of [candidates] by [generatedAt]: reports that are not
+  /// [available] never win, and an available report without a timestamp only
+  /// wins over nothing (a dated run is always the better answer). Returns null
+  /// when no candidate carries data.
+  ///
+  /// This is the whole cross-branch story: "latest results" is decided by run
+  /// time, so it doesn't matter which branch — or which machine — produced
+  /// them. Used by `TestReportService` (bundled vs cached vs online) and by
+  /// `tool/sync_test_report.dart` (local run vs published CI run).
+  static TestReport? newest(Iterable<TestReport?> candidates) {
+    TestReport? best;
+    for (final candidate in candidates) {
+      if (candidate == null || !candidate.available) continue;
+      if (best == null) {
+        best = candidate;
+        continue;
+      }
+      final theirs = candidate.generatedAt;
+      final ours = best.generatedAt;
+      if (theirs == null) continue;
+      if (ours == null || theirs.isAfter(ours)) best = candidate;
+    }
+    return best;
   }
 
   /// Builds a report from `flutter test --machine` output (one JSON event per
@@ -93,6 +128,7 @@ class TestReport {
     String commit = '',
     String branch = '',
     String appVersion = '',
+    String runUrl = '',
     DateTime? generatedAt,
   }) {
     final namesById = <int, String>{};
@@ -153,6 +189,7 @@ class TestReport {
       passed: passed,
       failed: failed,
       skipped: skipped,
+      runUrl: runUrl,
       failures: failedIds
           .map((id) => TestFailureDetail(
                 name: namesById[id] ?? 'Unknown test (id $id)',
