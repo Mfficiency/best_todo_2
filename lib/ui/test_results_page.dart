@@ -98,18 +98,26 @@ class _TestResultsPageState extends State<TestResultsPage> {
                 const SizedBox(height: 12),
                 _SummaryCard(report: report),
                 if (report.failures.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
-                    child: Text(
-                      'Failed tests',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                  const _SectionHeader(title: 'Failed tests'),
                   ...report.failures.map((f) => _FailureTile(failure: f)),
                 ],
+                if (report.suites.isNotEmpty) ...[
+                  _SectionHeader(
+                    title: 'All tests',
+                    subtitle: '${report.total} tests in '
+                        '${report.suites.length} files — tap a file to see '
+                        'every test it ran',
+                  ),
+                  ..._sortedSuites(report).map((s) => _SuiteTile(suite: s)),
+                ] else
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 16, 4, 4),
+                    child: Text(
+                      'This report predates per-test details; only the totals '
+                      'above are known. The next packaged or fetched run will '
+                      'list every test.',
+                    ),
+                  ),
               ],
             ],
           );
@@ -117,6 +125,22 @@ class _TestResultsPageState extends State<TestResultsPage> {
       ),
     );
   }
+}
+
+/// Failing files first (they are what you opened the page for), then
+/// alphabetical so the list reads like the test/ directory.
+List<TestSuiteResult> _sortedSuites(TestReport report) {
+  return [...report.suites]..sort((a, b) {
+      if (a.hasFailures != b.hasFailures) return a.hasFailures ? -1 : 1;
+      return a.path.compareTo(b.path);
+    });
+}
+
+/// Renders a test duration compactly: milliseconds under a second, one-decimal
+/// seconds above ("340 ms", "2.1 s").
+String formatTestDuration(int milliseconds) {
+  if (milliseconds < 1000) return '$milliseconds ms';
+  return '${(milliseconds / 1000).toStringAsFixed(1)} s';
 }
 
 /// Renders "3 hours ago" style ages so a stale report is obvious at a glance —
@@ -307,7 +331,8 @@ class _SummaryCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               '${report.passed} passed · ${report.failed} failed · '
-              '${report.skipped} skipped · ${report.total} total',
+              '${report.skipped} skipped · ${report.total} total'
+              '${report.durationMs != null ? ' · ran in ${formatTestDuration(report.durationMs!)}' : ''}',
             ),
             if (generated != null || report.commit.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -324,6 +349,121 @@ class _SummaryCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+
+  const _SectionHeader({required this.title, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(subtitle!, style: theme.textTheme.bodySmall),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One test file: collapsed it reads as a per-suite scoreboard, expanded it
+/// lists every test the file ran with its outcome and duration — the detail
+/// that exists even when nothing failed.
+class _SuiteTile extends StatelessWidget {
+  final TestSuiteResult suite;
+
+  const _SuiteTile({required this.suite});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final duration = suite.durationMs;
+    final counts = [
+      '${suite.passed} passed',
+      if (suite.failed > 0) '${suite.failed} failed',
+      if (suite.skipped > 0) '${suite.skipped} skipped',
+      if (duration != null) formatTestDuration(duration),
+    ].join(' · ');
+    return Card(
+      child: ExpansionTile(
+        leading: Icon(
+          suite.hasFailures ? Icons.error : Icons.check_circle,
+          color: suite.hasFailures ? theme.colorScheme.error : Colors.green,
+        ),
+        title: Text(
+          suite.path.isEmpty ? '(unnamed suite)' : suite.path,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(fontFamily: 'monospace'),
+        ),
+        subtitle: Text(counts, style: theme.textTheme.bodySmall),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: suite.tests.map((t) => _TestRow(testCase: t)).toList(),
+      ),
+    );
+  }
+}
+
+class _TestRow extends StatelessWidget {
+  final TestCaseResult testCase;
+
+  const _TestRow({required this.testCase});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final IconData icon;
+    final Color color;
+    switch (testCase.result) {
+      case 'failed':
+        icon = Icons.close;
+        color = theme.colorScheme.error;
+        break;
+      case 'skipped':
+        icon = Icons.remove_circle_outline;
+        color = theme.disabledColor;
+        break;
+      default:
+        icon = Icons.check;
+        color = Colors.green;
+    }
+    final duration = testCase.durationMs;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(testCase.name, style: theme.textTheme.bodySmall),
+          ),
+          if (duration != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              formatTestDuration(duration),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.disabledColor),
+            ),
+          ],
+        ],
       ),
     );
   }

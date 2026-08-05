@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.129] - 2026-08-05
+- Test Results now shows detail even when everything passes: an "All tests" section lists every test file with its own pass/fail/skip counts and time, and expanding a file shows each test with a green/red/grey mark and how long it took
+- Files with failures sort to the top, and the summary line now includes the total test time ("ran in 42.3 s")
+- The CI job summary gets the same per-file table, so the app and CI always tell the same story; older reports without per-test details say so instead of showing nothing
+
 ## [0.1.128] - 2026-08-05
 - Home-screen task widget: tapping the progress line, or a task row next to its checkbox, now always opens the app on the task list - even if the app was left on settings or another page
 - Test Results now always shows the newest test run there is, whichever branch it came from — no more empty page because the branch you built from was not the one that last ran the tests
