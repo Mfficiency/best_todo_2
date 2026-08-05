@@ -651,6 +651,84 @@ Future<void> scheduleTestAlarm({int delaySeconds = 60}) async {
       'appears below shortly after');
 }
 
+// ---------------------------------------------------------------------------
+// Dice timer ring (the countdown's end, delivered by the OS)
+// ---------------------------------------------------------------------------
+
+/// Schedules the dice timer's end-of-countdown ring as a real alarm, so it
+/// fires whether or not the app is running — full-screen intent, insistent
+/// until answered, stoppable from the alarm screen. Replaces any previously
+/// scheduled dice ring (only one timer exists at a time).
+///
+/// [melody]/[volume] ride along when the timer should play a melody; without
+/// them the notification goes on the sound-less alarm channel, which is how
+/// the vibration-only and notification alert modes stay quiet while still
+/// taking over the screen.
+Future<void> scheduleDiceTimerAlarm({
+  required DateTime fireAt,
+  required String taskTitle,
+  required bool vibrate,
+  String? melody,
+  double? volume,
+}) async {
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+  await initialize();
+  await _ensureTimezone();
+  final when = tz.TZDateTime.from(fireAt, tz.local);
+  if (!when.isAfter(tz.TZDateTime.now(tz.local))) return;
+  await cancelDiceTimerAlarm();
+
+  final data = diceRingPayload(
+    taskTitle,
+    melody: melody,
+    volume: volume,
+    vibrate: vibrate,
+  );
+  final title = data['name'] as String;
+  final body = data['body'] as String;
+  final payload = jsonEncode(data);
+  await AlarmLog.section('DICE TIMER — ring scheduled for "$body"');
+  final method = await _zonedScheduleLayered(
+    id: kDiceTimerNotificationId,
+    title: title,
+    body: body,
+    when: when,
+    details: _alarmDetails(
+      vibrate: vibrate,
+      snoozeEnabled: false,
+      // A melody is played by the ring page itself; without one the channel
+      // must stay silent, or a "quiet" alert would ring the default alarm
+      // sound anyway.
+      silent: melody == null,
+    ),
+    payload: payload,
+    describe: '"$title" for the dice timer',
+  );
+  if (method != null && Platform.isAndroid) {
+    await AlarmWatchdog.armDiceTimer(
+      fireAt: when,
+      title: title,
+      body: body,
+      vibrate: vibrate,
+      melody: melody,
+      volume: volume,
+    );
+  }
+}
+
+/// Drops the scheduled dice ring (and any copy of it already on screen) when
+/// the countdown is paused, rewound, extended or finished early.
+Future<void> cancelDiceTimerAlarm() async {
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+  await initialize();
+  try {
+    await _plugin.cancel(kDiceTimerNotificationId);
+  } catch (e) {
+    await AlarmLog.warn('SCHEDULE', 'cancelling the dice ring failed: $e');
+  }
+  if (Platform.isAndroid) await AlarmWatchdog.cancelDiceTimer();
+}
+
 Future<void> runAlarmDiagnostics({String trigger = 'manual'}) =>
     AlarmDiagnostics.run(trigger: trigger);
 
@@ -759,10 +837,21 @@ Future<void> _scheduleSnoozeFromData(
 /// insistent sound/vibration). `cancel` also removes any pending schedule
 /// with the same id (e.g. the auto-rearmed next weekly fire), so callers must
 /// re-register schedules from storage afterwards.
+/// Every notification id a ring with [uid] may be showing under. The test
+/// alarm and the dice timer each own a single fixed slot; saved alarms own
+/// their derived one-off/snooze + weekday slots.
+Set<int> _notificationIdsForUid(String uid) {
+  if (uid == kTestAlarmUid) return <int>{kTestAlarmNotificationId};
+  if (uid == kDiceTimerUid) return <int>{kDiceTimerNotificationId};
+  return alarmNotificationIds(uid).toSet();
+}
+
+/// True for rings that have nothing in alarm storage to restore afterwards.
+bool _isStandaloneRing(String uid) =>
+    uid == kTestAlarmUid || uid == kDiceTimerUid;
+
 Future<void> _cancelActiveAlarmNotifications(String uid) async {
-  final ids = uid == kTestAlarmUid
-      ? <int>{kTestAlarmNotificationId}
-      : alarmNotificationIds(uid).toSet();
+  final ids = _notificationIdsForUid(uid);
   try {
     final active = await _plugin.getActiveNotifications();
     for (final n in active) {
@@ -797,7 +886,8 @@ Future<void> dismissAlarmFromRing(Map<String, dynamic> data) async {
   await AlarmLog.ok(
       'ACTION', '"$name": stopped on the full-screen alarm screen');
   await _cancelActiveAlarmNotifications(uid);
-  if (uid != kTestAlarmUid) {
+  if (uid == kDiceTimerUid) await AlarmWatchdog.cancelDiceTimer();
+  if (!_isStandaloneRing(uid)) {
     await _rescheduleFromStorage('alarm stopped on ring screen');
   }
 }
@@ -810,7 +900,7 @@ Future<void> snoozeAlarmFromRing(Map<String, dynamic> data) async {
   final uid = data['uid'] as String? ?? '';
   if (uid.isNotEmpty) await AlarmWatchdog.recordAck(uid, 'ring_snooze');
   await _cancelActiveAlarmNotifications(uid);
-  if (uid != kTestAlarmUid) {
+  if (!_isStandaloneRing(uid)) {
     await _rescheduleFromStorage('alarm snoozed on ring screen');
   }
   await _scheduleSnoozeFromData(data, jsonEncode(data),
@@ -841,7 +931,9 @@ Future<bool> showAlarmNotification(
       ? null
       : (uid == kTestAlarmUid
           ? kTestAlarmNotificationId
-          : alarmNotificationBaseId(uid));
+          : (uid == kDiceTimerUid
+              ? kDiceTimerNotificationId
+              : alarmNotificationBaseId(uid)));
   final id = baseId ?? DateTime.now().millisecondsSinceEpoch % 2147483647;
   final payload = uid == null
       ? null
@@ -877,9 +969,7 @@ Future<void> silenceAlarmNotification(Map<String, dynamic> data) async {
   await initialize();
   final uid = data['uid'] as String? ?? '';
   if (uid.isEmpty) return;
-  final ids = uid == kTestAlarmUid
-      ? <int>{kTestAlarmNotificationId}
-      : alarmNotificationIds(uid).toSet();
+  final ids = _notificationIdsForUid(uid);
   try {
     final active = await _plugin.getActiveNotifications();
     var replaced = false;

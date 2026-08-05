@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.122] - 2026-08-05
+- Dice timer: when the countdown ends and you are not on the timer page, it now rings like a real alarm — the whole screen, one button to stop it, even with the app closed or the phone locked
+- Stopping that alarm drops you straight back on the timer with Done, Postpone to tomorrow and +1/+5/+10 min ready
+- Your alert choice decides how loud it is: the melody at your volume, vibration only, or a quiet takeover — Silent still stays completely out of the way
+- Starting a timer asks once for the alarm permissions Android needs so the ring survives a closed app
+
+## [0.1.121] - 2026-08-05
+- Simple mode keeps the drawer's own pages: Deleted Items, About, Changelog, App Logs and Startup Times are all reachable again — simple mode only strips the tools and the extras off the task list
+
 ## [0.1.120] - 2026-08-05
 - Dice timer settings: choose what happens at zero — the alarm melody (with its own melody and volume), vibration, a notification (the default) or completely silent, where the dial just shows 0:00
 - With notifications switched off, the default dice timer alert stays quiet too: no fallback sound, just 0:00 on the dial

@@ -28,6 +28,16 @@ Future<void> scheduleStreakReminder({
 
 Future<void> cancelStreakReminder() async {}
 
+Future<void> scheduleDiceTimerAlarm({
+  required DateTime fireAt,
+  required String taskTitle,
+  required bool vibrate,
+  String? melody,
+  double? volume,
+}) async {}
+
+Future<void> cancelDiceTimerAlarm() async {}
+
 Future<void> silenceAlarmNotification(Map<String, dynamic> payload) async {}
 
 void Function(Map<String, dynamic> payload)? onAlarmRing;

@@ -86,6 +86,15 @@ class _DiceTimerSettingsListState extends State<DiceTimerSettingsList> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            'Away from the timer page, zero rings like an alarm: the whole '
+            'screen, one button to stop it — even with the app closed or the '
+            'phone locked. Silent is the exception and stays out of the way.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
         ListTile(
           title: const Text('Alert at zero'),
           subtitle: Text(_modeDescription),

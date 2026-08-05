@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../services/alarm_ids.dart';
 import '../services/alarm_sound.dart';
 import '../services/alarm_vibration.dart';
 import '../services/log_service.dart';
@@ -92,6 +95,25 @@ DiceAlertPlan diceAlertPlan({
   }
 }
 
+/// What should happen to the OS-scheduled ring: [arm] it (the countdown is
+/// running with the app away, so only the OS can deliver zero), [cancel] it
+/// (the app is back and rings in-app, or there is nothing left to ring), or
+/// [leave] it alone (it is ringing right now — only answering it clears it).
+enum DiceOsAlarmAction { arm, cancel, leave }
+
+/// The arming rule, kept pure so it can be read and tested on its own.
+DiceOsAlarmAction diceOsAlarmAction({
+  required DiceTimerPhase phase,
+  required bool appResumed,
+  required bool alertSilent,
+}) {
+  if (phase == DiceTimerPhase.ringing) return DiceOsAlarmAction.leave;
+  if (phase == DiceTimerPhase.running && !appResumed && !alertSilent) {
+    return DiceOsAlarmAction.arm;
+  }
+  return DiceOsAlarmAction.cancel;
+}
+
 /// Holds the dice timer's live state so it survives leaving and re-entering
 /// [DiceTimerPage]: the ticker runs here, in a singleton, not in the page's
 /// [State]. The page is a thin view that listens for changes and forwards the
@@ -115,9 +137,28 @@ class DiceTimerController extends ChangeNotifier {
   DateTime? _endAt;
   Timer? _ticker;
 
+  /// True while the app is in the foreground. While it is, the ring is
+  /// presented in-app; while it is not, the OS-scheduled alarm has to do it.
+  bool _appResumed = true;
+
+  /// True while [DiceTimerPage] is the page on screen — then zero rings on the
+  /// dial itself (with the Done / Postpone / +min actions) instead of taking
+  /// over the screen.
+  bool _pageVisible = false;
+
+  /// Observes app lifecycle while a countdown is live, so backgrounding the
+  /// app hands the ring over to the OS alarm and returning takes it back.
+  _DiceLifecycleWatcher? _lifecycle;
+
   /// Overridable ring side-effect (for tests); defaults to playing the alarm
   /// melody and posting a notification.
   Future<void> Function(Task task)? onRingAlert;
+
+  /// Presents the full-screen alarm screen for [payload] — set by the app
+  /// shell (`main.dart`) to the same presenter real alarms use, so a timer
+  /// that runs out while the user is elsewhere in the app takes over the
+  /// screen exactly like a ringing alarm. Null in tests.
+  static void Function(Map<String, dynamic> payload)? presentFullScreenRing;
 
   Task? get task => _task;
   DiceTimerPhase get phase => _phase;
@@ -127,6 +168,10 @@ class DiceTimerController extends ChangeNotifier {
   /// True once a countdown has begun (running, paused or ringing) — i.e. there
   /// is a live timer to return to, versus an untouched dial.
   bool get isActive => _task != null && _phase != DiceTimerPhase.setting;
+
+  /// True while [DiceTimerPage] is in the navigation stack — so a caller
+  /// returning from the alarm screen doesn't push a second copy of it.
+  bool get isPageVisible => _pageVisible;
 
   /// Whole-percent of the started duration still left on the countdown.
   int get percentLeft {
@@ -166,6 +211,7 @@ class DiceTimerController extends ChangeNotifier {
     _ticker = null;
     if (_phase == DiceTimerPhase.ringing) stopAlert();
     if (_phase != DiceTimerPhase.setting) {
+      NotificationService.cancelDiceTimerAlarm();
       _phase = DiceTimerPhase.setting;
       _endAt = null;
       _remaining = Duration(minutes: (_remaining.inSeconds / 60).ceil());
@@ -185,6 +231,7 @@ class DiceTimerController extends ChangeNotifier {
     _ticker = null;
     _phase = DiceTimerPhase.paused;
     _endAt = null;
+    _syncOsAlarm();
     notifyListeners();
     LogService.add('DiceTimerController.pause', 'Paused "${_task?.title}"');
   }
@@ -203,9 +250,57 @@ class DiceTimerController extends ChangeNotifier {
     AlarmVibration.stop();
   }
 
+  /// Called by [DiceTimerPage] while it is on screen, and by the lifecycle
+  /// watcher when the app comes and goes. Both decide who owns the ring: the
+  /// page, the app, or the OS alarm.
+  void setPageVisible(bool visible) {
+    _pageVisible = visible;
+  }
+
+  void _setAppResumed(bool resumed) {
+    if (_appResumed == resumed) return;
+    _appResumed = resumed;
+    _syncOsAlarm();
+  }
+
+  /// Keeps the OS-scheduled ring in step with the countdown: armed while a
+  /// countdown is running with the app away (so zero rings as a full-screen
+  /// alarm even if the app was killed meanwhile), cancelled as soon as the app
+  /// is back and can ring in-app, or the countdown is paused/rewound/finished.
+  ///
+  /// A ring that is already going is left alone — only answering it (Stop,
+  /// Done, Postpone, +min) clears it.
+  void _syncOsAlarm() {
+    final plan = diceAlertPlan();
+    final endAt = _endAt;
+    final action = diceOsAlarmAction(
+      phase: _phase,
+      appResumed: _appResumed,
+      alertSilent: plan.isSilent,
+    );
+    switch (action) {
+      case DiceOsAlarmAction.leave:
+        return;
+      case DiceOsAlarmAction.arm:
+        if (endAt == null) return;
+        NotificationService.scheduleDiceTimerAlarm(
+          fireAt: endAt,
+          taskTitle: _task?.title ?? '',
+          // A melody alert vibrates through the alarm notification as well —
+          // that is what a ringing alarm feels like.
+          vibrate: plan.vibrate || plan.melody,
+          melody: plan.melody ? Config.diceTimerMelody : null,
+          volume: plan.melody ? Config.diceTimerVolume : null,
+        );
+      case DiceOsAlarmAction.cancel:
+        NotificationService.cancelDiceTimerAlarm();
+    }
+  }
+
   /// Stop the ring and give the countdown [extra] more time.
   void addTime(Duration extra) {
     stopAlert();
+    NotificationService.cancelDiceTimerAlarm();
     _remaining += extra;
     _run(resetTotal: true);
   }
@@ -217,9 +312,48 @@ class DiceTimerController extends ChangeNotifier {
     if (resetTotal) _total = _remaining;
     _endAt = DateTime.now().add(_remaining);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    _watchLifecycle();
+    _ensureRingPermissions();
+    _syncOsAlarm();
     notifyListeners();
     LogService.add('DiceTimerController._run',
         'Running ${_remaining.inSeconds}s for "${_task?.title}"');
+  }
+
+  /// Asks (once per app run, Android only) for the permissions the ring needs
+  /// to reach the user with the app closed: notifications, exact alarms and a
+  /// battery-optimization exemption. Skipped entirely in silent mode, which
+  /// never leaves the app.
+  static bool _ringPermissionsAsked = false;
+
+  void _ensureRingPermissions() {
+    if (_ringPermissionsAsked) return;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (diceAlertPlan().isSilent) return;
+    _ringPermissionsAsked = true;
+    NotificationService.ensureAlarmPermissions();
+  }
+
+  /// Starts (once) listening for the app going to the background, so the OS
+  /// alarm can take the ring over. Guarded: a plain `test()` has no binding.
+  void _watchLifecycle() {
+    if (_lifecycle != null) return;
+    try {
+      final watcher = _DiceLifecycleWatcher(this);
+      WidgetsBinding.instance.addObserver(watcher);
+      _lifecycle = watcher;
+      _appResumed = WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    } catch (_) {}
+  }
+
+  void _unwatchLifecycle() {
+    final watcher = _lifecycle;
+    if (watcher == null) return;
+    _lifecycle = null;
+    try {
+      WidgetsBinding.instance.removeObserver(watcher);
+    } catch (_) {}
   }
 
   void _tick() {
@@ -231,15 +365,45 @@ class DiceTimerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reached zero: stop ticking and start the alert. Not awaited — ringing
-  /// must never block the UI, and both default alert paths swallow errors.
+  /// Reached zero: stop ticking and alert. Who alerts depends on where the
+  /// user is — the page shows its own ring actions, anywhere else in the app
+  /// gets the full-screen alarm screen, and with the app away the
+  /// OS-scheduled alarm (armed by [_syncOsAlarm]) does it. Not awaited —
+  /// ringing must never block the UI, and every path swallows its errors.
   void _ring() {
     _ticker?.cancel();
     _ticker = null;
     _phase = DiceTimerPhase.ringing;
-    (onRingAlert ?? _defaultRingAlert)(_task!);
+    final override = onRingAlert;
+    if (override != null) {
+      override(_task!);
+    } else if (_pageVisible && _appResumed) {
+      _defaultRingAlert(_task!);
+    } else if (_appResumed) {
+      _ringFullScreen(_task!);
+    }
     LogService.add(
         'DiceTimerController._ring', 'Timer hit zero for "${_task?.title}"');
+  }
+
+  /// The app is open but the user is somewhere else in it: take over the whole
+  /// screen with the alarm screen (same one real alarms use, so Stop works the
+  /// way it always does) and drop the OS alarm that would ring on top of it.
+  void _ringFullScreen(Task task) {
+    final plan = diceAlertPlan();
+    // A silent alert (silent mode, or a notification alert with notifications
+    // switched off) stays out of the way: the dial reads 0:00 and that is all.
+    if (plan.isSilent) return;
+    final present = presentFullScreenRing;
+    if (present == null) return;
+    NotificationService.cancelDiceTimerAlarm();
+    if (plan.vibrate) AlarmVibration.start();
+    present(diceRingPayload(
+      task.title,
+      melody: plan.melody ? Config.diceTimerMelody : null,
+      volume: plan.melody ? Config.diceTimerVolume : null,
+      vibrate: plan.vibrate,
+    ));
   }
 
   /// Dismiss the timer entirely (Done / postponed / abandoned): stop the
@@ -248,6 +412,8 @@ class DiceTimerController extends ChangeNotifier {
     _ticker?.cancel();
     _ticker = null;
     stopAlert();
+    NotificationService.cancelDiceTimerAlarm();
+    _unwatchLifecycle();
     _task = null;
     _phase = DiceTimerPhase.setting;
     _remaining = defaultDuration;
@@ -261,7 +427,11 @@ class DiceTimerController extends ChangeNotifier {
   void resetForTest() {
     _ticker?.cancel();
     _ticker = null;
+    _unwatchLifecycle();
     onRingAlert = null;
+    presentFullScreenRing = null;
+    _appResumed = true;
+    _pageVisible = false;
     _task = null;
     _phase = DiceTimerPhase.setting;
     _remaining = defaultDuration;
@@ -292,6 +462,20 @@ class DiceTimerController extends ChangeNotifier {
         // Notifications are best-effort (no plugin host on desktop/tests).
       }
     }
+  }
+}
+
+/// Tells [DiceTimerController] when the app leaves and re-enters the
+/// foreground, which is what decides whether a ring can be presented in-app or
+/// has to come from the OS-scheduled alarm.
+class _DiceLifecycleWatcher extends WidgetsBindingObserver {
+  final DiceTimerController controller;
+
+  _DiceLifecycleWatcher(this.controller);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    controller._setAppResumed(state == AppLifecycleState.resumed);
   }
 }
 
@@ -344,11 +528,15 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
       _controller.onRingAlert = widget.onRingAlert;
     }
     _controller.configure(widget.task);
+    // While this page is up the ring belongs to the dial (Done / Postpone /
+    // +min); leaving it hands the ring to the alarm screen.
+    _controller.setPageVisible(true);
     _controller.addListener(_onControllerChanged);
   }
 
   @override
   void dispose() {
+    _controller.setPageVisible(false);
     _controller.removeListener(_onControllerChanged);
     // Leaving the page keeps a running or paused timer alive so it can be
     // reopened later; only a mid-ring exit silences the melody (the expired

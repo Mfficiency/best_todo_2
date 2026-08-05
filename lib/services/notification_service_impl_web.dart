@@ -60,6 +60,18 @@ Future<void> scheduleStreakReminder({
 
 Future<void> cancelStreakReminder() async {}
 
+// Same story for the dice timer's OS-scheduled ring: the browser build only
+// has the in-page alert.
+Future<void> scheduleDiceTimerAlarm({
+  required DateTime fireAt,
+  required String taskTitle,
+  required bool vibrate,
+  String? melody,
+  double? volume,
+}) async {}
+
+Future<void> cancelDiceTimerAlarm() async {}
+
 Future<void> silenceAlarmNotification(Map<String, dynamic> payload) async {}
 
 Future<bool> ensureAlarmPermissions() async => _ensurePermission();

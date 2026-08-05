@@ -919,6 +919,9 @@ class _HomePageState extends State<HomePage>
       }
     });
     HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
+    // Lets the app shell reopen a live dice timer after its full-screen alarm
+    // is stopped (see main.dart), with the task's actions ready.
+    openRunningDiceTimer = _reopenRunningDiceTimer;
     // CI embeds its test results as a bundled asset; builds whose test run
     // had failures get a red dot on the drawer icon (see TestResultsPage).
     TestReportService.instance.load().then((_) {
@@ -1018,12 +1021,29 @@ class _HomePageState extends State<HomePage>
 
   @override
   void dispose() {
+    if (openRunningDiceTimer == _reopenRunningDiceTimer) {
+      openRunningDiceTimer = null;
+    }
     _tabController.dispose();
     _controller.dispose();
     _searchController.dispose();
     _scheduleScrollController.dispose();
     _midnightTimer?.cancel();
     super.dispose();
+  }
+
+  /// Reopens the dice timer page for a timer that is still live — used after
+  /// its full-screen alarm was stopped. Never rolls a new task: with no live
+  /// timer (e.g. the app was killed and relaunched by the alarm) it does
+  /// nothing at all.
+  void _reopenRunningDiceTimer() {
+    if (!mounted) return;
+    final controller = DiceTimerController.instance;
+    if (!controller.isActive || controller.task == null) return;
+    // The timer page can already be behind the alarm screen (the app was open
+    // on it when zero came) — reopening would stack a second copy.
+    if (controller.isPageVisible) return;
+    _rollRandomTaskTimer();
   }
 
   /// Map a due date to the tab index that would own it in list mode.

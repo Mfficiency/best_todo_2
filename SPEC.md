@@ -392,7 +392,7 @@ moving to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** 
 ring and restarts the countdown with that much time). With no open Today tasks (and no timer
 already running) the dice shows a "No open tasks for today" snackbar instead.
 
-**Dice timer settings (0.1.118):** `Config.diceTimerAlertMode` picks what zero does —
+**Dice timer settings (0.1.120):** `Config.diceTimerAlertMode` picks what zero does —
 `melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
 alarm), `vibrate` (repeating buzz only), `notification` (**the default**) or `silent`.
 `Config.diceTimerAlsoVibrate` (off by default) adds the buzz to the melody/notification
@@ -410,6 +410,39 @@ channel gained `vibrate` / `stopVibrate`, a `USAGE_ALARM` waveform repeating unt
 saves on every change, melody Preview included), rendered both by the Settings page's "Dice
 timer" section (index 6, hidden with the `dice_timer` feature) and by the bottom sheet behind
 the timer page's app-bar gear ("Timer settings").
+
+**Ringing like a real alarm (0.1.122):** away from the timer page zero is delivered through
+the alarm pipeline, not by the in-page alert — full-screen `AlarmRingPage`, insistent, one
+Stop button — so it works with the app backgrounded, killed or the phone locked. Three
+delivery paths, picked by where the user is (`DiceTimerController._ring`):
+1. **timer page on screen** (`_pageVisible && _appResumed`) → the in-page alert as above
+   (dial + Done/Postpone/+min); no OS alarm is armed at all.
+2. **app open, elsewhere** → `_ringFullScreen` presents `AlarmRingPage` through
+   `DiceTimerController.presentFullScreenRing` (wired in `main.dart` to the same `_showAlarmRing`
+   real alarms use), cancels the OS ring and starts the vibration itself.
+3. **app away** → the OS-scheduled ring fires: `NotificationService.scheduleDiceTimerAlarm`
+   puts one alarm on the normal ladder (`_zonedScheduleLayered` + `AlarmWatchdog.armDiceTimer`
+   backup) under the fixed `kDiceTimerNotificationId` / `kDiceTimerUid` (`alarm_ids.dart`),
+   with `_alarmDetails(silent: melody == null)` so the vibration-only and notification alerts
+   stay quiet while still taking the screen.
+
+Arming is driven by app lifecycle, not by a timer: `_DiceLifecycleWatcher` flips
+`_appResumed`, and `_syncOsAlarm` applies the pure rule `diceOsAlarmAction(phase, appResumed,
+alertSilent)` — **arm** while running with the app away, **cancel** when the app is back or
+the countdown is paused/rewound/cleared, **leave** a ring that is already going (only Stop /
+Done / Postpone / +min clear it). This is why there is no race between the two paths: only
+one of them is ever armed. A silent alert (silent mode, or a notification alert with
+notifications switched off) arms and presents nothing at all. Starting a countdown asks once
+per app run for the alarm permissions (`_ensureRingPermissions`, Android only).
+
+Both paths share one payload builder, `diceRingPayload` in `alarm_ids.dart`, so the alarm
+screen is identical either way. The dice uid is a *standalone ring*: `_isStandaloneRing`
+keeps `dismissAlarmFromRing` / `snoozeAlarmFromRing` from rescheduling alarm storage for it,
+and stopping it cancels the dice watchdog. When the ring page closes, `main.dart`
+(`_afterDiceRingStopped`) silences the in-app melody/vibration and calls
+`openRunningDiceTimer` (`home_scaffold_key.dart`, set by `HomePage`) — which reopens the
+timer page in its finished state, unless it is already on the stack or the timer is gone
+(cold start after a kill: the alarm still rings, but there is no in-memory countdown left).
 
 **Home widget updates** after every save and at a self-rescheduling midnight timer: writes
 the "due today or overdue" list text (or "Well done! No more tasks for today!"), a progress
@@ -530,8 +563,11 @@ Two ways to run the app, chosen on a first-run picker and changeable in Settings
 `deleted_items`, `changelog`, `app_logs`, `startup_times`, `sms_report`.
 
 **`Config.isFeatureEnabled(key)` is the single gate:** in simple mode it returns false for
-everything except `Config.simpleModeFeatures` (`deleted_items` — the undo of a delete must
-not vanish); in full mode it returns the per-feature switch. Call sites: `home_page.dart`
+everything except `Config.simpleModeFeatures` (`deleted_items`, `changelog`, `app_logs`,
+`startup_times` since 0.1.121 — the app's own service pages are not "extra features", and
+the deleted list is the undo of a delete, so simple mode only strips the home surface and
+the tools); in full mode it returns the per-feature switch. About has no feature key and is
+always in the drawer. Call sites: `home_page.dart`
 drawer entries and the Tools section (built from `_toolEntries`, hidden entirely when no
 tool is enabled), the app-bar streak flame / dice / schedule toggle / search field (which
 becomes a plain "BestToDo" title), `_buildToolPage` (returns null for a disabled tool, so
@@ -1037,8 +1073,9 @@ green, no bundled report), home red dot on the hamburger + drawer entry navigati
 its absence when green/unavailable), settings search (toggle, title + keyword matching,
 section subtitle, no-match message, jump-to-section, close restoring chips). Simple mode &
 features (0.1.118, `test/home/simple_mode_test.dart` + `settings_features_test.dart`):
-home page in simple mode (no dice/flame/schedule/search, drawer down to Settings +
-Deleted Items + About), per-feature hiding of drawer tools and app-bar actions, the mode
+home page in simple mode (no dice/flame/schedule/search, drawer down to Settings + Deleted
+Items + About + Changelog + App Logs + Startup Times, no Tools section),
+per-feature hiding of drawer tools and app-bar actions, the mode
 picker storing and persisting its choice, `isFeatureEnabled` semantics + `features`
 round-trip, and the Settings side (feature switches searchable, feature-owned sections
 disappearing, the simple-mode switch persisting). Both suites restore `Config` in

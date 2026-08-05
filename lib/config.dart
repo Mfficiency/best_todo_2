@@ -191,10 +191,16 @@ class Config {
     for (final key in featureKeys) key: true,
   };
 
-  /// Features that stay available in simple mode. The deleted-items list is
-  /// the undo of a plain task list, so hiding it would make deleting a task
-  /// irreversible; it lives in the drawer and not on the home surface.
-  static const Set<String> simpleModeFeatures = {'deleted_items'};
+  /// Features that stay available in simple mode: the drawer entries that are
+  /// not really "extra features" but the app's own service pages — the deleted
+  /// items (the undo of a plain task list), the changelog, the app logs and the
+  /// startup times. Simple mode is about the home surface, so these stay.
+  static const Set<String> simpleModeFeatures = {
+    'deleted_items',
+    'changelog',
+    'app_logs',
+    'startup_times',
+  };
 
   /// Whether [key] is currently available. Simple mode hides every optional
   /// feature except [simpleModeFeatures], so the per-feature switches only

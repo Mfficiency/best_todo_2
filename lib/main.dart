@@ -8,12 +8,15 @@ import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ui/alarm_ring_page.dart';
 import 'ui/alarms_page.dart';
+import 'ui/dice_timer_page.dart';
+import 'ui/home_scaffold_key.dart';
 import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'config.dart';
+import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
@@ -179,6 +182,9 @@ class _MyAppState extends State<MyApp> {
     NotificationService.getAlarmLaunchPayload().then((payload) {
       if (payload != null) _showAlarmRing(payload);
     }).catchError((_) {});
+    // A dice timer that runs out while the app is open but the timer page is
+    // not shows the very same alarm screen, without going through the OS.
+    DiceTimerController.presentFullScreenRing = _showAlarmRing;
     // Handle taps coming from the alarms home-screen widget. The widget is
     // Android-only; elsewhere the plugin's event channel has no implementation
     // and its activation failure is reported through FlutterError — bypassing
@@ -216,8 +222,20 @@ class _MyAppState extends State<MyApp> {
             fullscreenDialog: true,
             builder: (_) => AlarmRingPage(payload: payload),
           ))
-          .whenComplete(() => _alarmRingOpen = false);
+          .whenComplete(() {
+        _alarmRingOpen = false;
+        if (payload['uid'] == kDiceTimerUid) _afterDiceRingStopped();
+      });
     });
+  }
+
+  /// A stopped dice-timer alarm hands the task back: silence whatever the ring
+  /// was playing and open the timer page in its finished state, so Done /
+  /// Postpone / +min are one tap away. After a cold start (app was killed) no
+  /// timer is left in memory, and the hook simply does nothing.
+  void _afterDiceRingStopped() {
+    DiceTimerController.instance.stopAlert();
+    openRunningDiceTimer?.call();
   }
 
   Future<void> _handleWidgetClick(Uri? uri) async {

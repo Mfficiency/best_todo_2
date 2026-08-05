@@ -72,14 +72,15 @@ void main() {
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
 
-    // Drawer keeps settings and the deleted items (the undo of a delete),
-    // but the tools and the diagnostics pages are hidden.
+    // The drawer keeps the app's own service pages (deleted items, about and
+    // the diagnostics); only the optional tools are gone.
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Deleted Items'), findsOneWidget);
+    expect(find.text('About'), findsOneWidget);
+    expect(find.text('Changelog'), findsOneWidget);
+    expect(find.text('App Logs'), findsOneWidget);
+    expect(find.text('Startup Times'), findsOneWidget);
     expect(find.text('Tools'), findsNothing);
-    expect(find.text('App Logs'), findsNothing);
-    expect(find.text('Startup Times'), findsNothing);
-    expect(find.text('Changelog'), findsNothing);
   });
 
   testWidgets('full mode shows only the tools that are switched on',
@@ -159,12 +160,15 @@ void main() {
     expect(Config.isFeatureEnabled('alarms'), isFalse);
     expect(Config.isFeatureEnabled('streak'), isTrue);
 
-    // Simple mode overrides the individual switches (except the deleted
-    // items, which stay reachable).
+    // Simple mode overrides the individual switches, except for the service
+    // pages in Config.simpleModeFeatures.
     Config.simpleMode = true;
     expect(Config.isFeatureEnabled('streak'), isFalse);
     expect(Config.isFeatureEnabled('projects'), isFalse);
     expect(Config.isFeatureEnabled('deleted_items'), isTrue);
+    expect(Config.isFeatureEnabled('changelog'), isTrue);
+    expect(Config.isFeatureEnabled('app_logs'), isTrue);
+    expect(Config.isFeatureEnabled('startup_times'), isTrue);
 
     // Unknown keys default to enabled in full mode.
     Config.simpleMode = false;
