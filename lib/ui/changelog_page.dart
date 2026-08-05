@@ -72,6 +72,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
   static const double _cellGap = 3;
   static const double _weekGap = 3;
   static const double _monthLabelHeight = 16;
+  static const double _monthLabelMaxWidth = 60;
   static const double _leftLabelsWidth = 32;
   static const int _daysPerWeek = 7;
 
@@ -149,6 +150,18 @@ class _ChangelogPageState extends State<ChangelogPage> {
       'Dec',
     ];
     return names[month];
+  }
+
+  /// Label above a week column: the month when it changes, with the year
+  /// appended on the first column and whenever the year rolls over.
+  String _monthLabel(List<DateTime> weekStarts, int weekIndex) {
+    final weekStart = weekStarts[weekIndex];
+    final previous = weekIndex == 0 ? null : weekStarts[weekIndex - 1];
+    final newYear = previous == null || weekStart.year != previous.year;
+    final newMonth = previous == null || weekStart.month != previous.month;
+    if (!newMonth && !newYear) return '';
+    final month = _shortMonthName(weekStart.month);
+    return newYear ? '$month ${weekStart.year}' : month;
   }
 
   String _formatDate(DateTime date) {
@@ -269,23 +282,28 @@ class _ChangelogPageState extends State<ChangelogPage> {
                     children: [
                       Row(
                         children: List.generate(weeks, (weekIndex) {
-                          final weekStart = weekStarts[weekIndex];
-                          final previousMonth = weekIndex == 0
-                              ? -1
-                              : weekStarts[weekIndex - 1].month;
-                          final label =
-                              weekIndex == 0 || weekStart.month != previousMonth
-                                  ? _shortMonthName(weekStart.month)
-                                  : '';
+                          final label = _monthLabel(weekStarts, weekIndex);
                           return Padding(
                             padding: const EdgeInsets.only(right: _weekGap),
                             child: SizedBox(
                               width: _cellSize,
                               height: _monthLabelHeight,
-                              child: Text(
-                                label,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
+                              child: label.isEmpty
+                                  ? null
+                                  // Labels are wider than one cell; let them
+                                  // run into the (empty) columns after them.
+                                  : OverflowBox(
+                                      alignment: Alignment.centerLeft,
+                                      maxWidth: _monthLabelMaxWidth,
+                                      child: Text(
+                                        label,
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
+                                      ),
+                                    ),
                             ),
                           );
                         }),

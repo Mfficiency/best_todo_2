@@ -8,12 +8,15 @@
 
 ## [0.1.119] - 2026-08-05
 - Changelog page: a new button switches to an update heatmap — a GitHub-style calendar of every release, greener the more releases that day
+- Tap any day in the heatmap to see exactly which versions shipped that day and what changed in them
+- The heatmap's month labels show the year whenever it changes (e.g. "Dec 2025" → "Jan 2026"), so a multi-year history stays readable
 
 ## [0.1.118] - 2026-08-05
 - First launch now asks whether you want simple mode (just the to-do list) or full mode (everything) — you can switch any time in Settings
 - Simple mode keeps only the task list: no tools, no streak flame, no dice, no schedule view and no search — the drawer is down to Settings, Deleted Items and About
 - New Settings section "Mode & features": switch between simple and full mode, bring the welcome picker back, and in full mode pick exactly which features you want (each tool, streak, dice timer, schedule view, task search, deleted items, changelog, app logs, startup times, daily SMS report)
 - A feature you switch off disappears everywhere at once — drawer, app bar and its own settings section — and can no longer be the app's start page
+- Settings: tapping a section chip now always lands on that section — jumping backwards (or far down a long settings page) used to do nothing
 
 ## [0.1.117] - 2026-08-05
 - SMS report: recipients can be switched off individually instead of deleted — paused contacts stay in the list and are skipped by the daily report.

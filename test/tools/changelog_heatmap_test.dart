@@ -127,6 +127,38 @@ void main() {
       expect(find.text('Added the heatmap button'), findsNothing);
     });
 
+    testWidgets('month labels carry the year on the first column and on a '
+        'year switch', (tester) async {
+      await tester.pumpWidget(_wrap('''
+# Changelog
+
+## [0.2.0] - 2026-01-05
+- New year change
+
+## [0.1.0] - 2025-12-01
+- Old year change
+'''));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Show update heatmap'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Dec 2025'), findsOneWidget);
+      expect(find.text('Jan 2026'), findsOneWidget);
+      expect(find.text('Dec'), findsNothing);
+      expect(find.text('Jan'), findsNothing);
+    });
+
+    testWidgets('months inside the same year keep the bare month name',
+        (tester) async {
+      await tester.pumpWidget(_wrap(_sampleChangelog));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Show update heatmap'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Jul 2026'), findsOneWidget); // first column
+      expect(find.text('Aug'), findsOneWidget);
+    });
+
     testWidgets('a day without releases says so', (tester) async {
       await tester.pumpWidget(_wrap(_sampleChangelog));
       await tester.pumpAndSettle();

@@ -172,9 +172,23 @@ void main() {
 
     // Jump via the section chip header instead of scrolling blindly (the
     // horizontal chip list is also a Scrollable, so `.first` is ambiguous).
-    // The chip row scrolls: later sections sit off-screen until brought in.
+    // The chip row itself scrolls horizontally: later sections sit off-screen
+    // until it is dragged (scroll the chip row only — ensureVisible would also
+    // move the settings list underneath it).
     final streakChip = find.widgetWithText(ChoiceChip, 'Streak');
-    await tester.ensureVisible(streakChip);
+    final chipRow = find
+        .ancestor(
+          of: find.widgetWithText(ChoiceChip, 'Appearance'),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    // (Every chip is built even when off-screen, so scrollUntilVisible /
+    // dragUntilVisible would skip straight to their trailing ensureVisible,
+    // which drags the settings list to the bottom instead. Drag by rect.)
+    for (var i = 0; i < 12 && tester.getRect(streakChip).right > 780; i++) {
+      await tester.drag(chipRow, const Offset(-120, 0));
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
     await tester.tap(streakChip);
     // _jumpToSection walks the lazily-built sliver one viewport per animation

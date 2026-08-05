@@ -105,6 +105,15 @@ afterEvaluate {
             val fullVersion =
                 "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"
 
+            // versionCode 1 means pubspec lost its `+build` suffix: the APK would be
+            // rejected as a downgrade on any device holding an earlier build.
+            if (flutter.versionCode == 1) {
+                logger.warn(
+                    "[apk-rename] WARNING: versionCode is 1 — pubspec.yaml `version:` is " +
+                        "missing its +build suffix. Fix it before shipping this APK."
+                )
+            }
+
             val apkCandidates = listOf(
                 rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
                 rootProject.layout.buildDirectory.file("app/outputs/apk/release/app-release.apk").get().asFile,

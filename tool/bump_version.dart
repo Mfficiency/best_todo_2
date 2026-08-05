@@ -38,13 +38,28 @@ void main(List<String> args) {
   }
 
   final currentVersion = versionMatch.group(1)!.trim();
-  if (currentVersion == rawVersion) {
-    stdout.writeln('pubspec.yaml already at version $rawVersion.');
+
+  // The `+build` suffix is the Android versionCode. Dropping it makes Flutter
+  // fall back to versionCode 1, which names the APK `..._0.1.x+1.apk` and makes
+  // Android reject the install as a downgrade. So when the caller passes a bare
+  // `x.y.z`, carry the current build number forward and increment it.
+  final String newVersion;
+  if (rawVersion.contains('+')) {
+    newVersion = rawVersion;
+  } else {
+    final currentParts = currentVersion.split('+');
+    final currentBuild =
+        currentParts.length > 1 ? int.tryParse(currentParts[1].trim()) ?? 0 : 0;
+    newVersion = '$versionOnly+${currentBuild + 1}';
+  }
+
+  if (currentVersion == newVersion) {
+    stdout.writeln('pubspec.yaml already at version $newVersion.');
   } else {
     final updatedPubspec =
-        pubspec.replaceFirst(versionRegex, 'version: $rawVersion');
+        pubspec.replaceFirst(versionRegex, 'version: $newVersion');
     pubspecFile.writeAsStringSync(updatedPubspec);
-    stdout.writeln('Updated pubspec.yaml: $currentVersion -> $rawVersion');
+    stdout.writeln('Updated pubspec.yaml: $currentVersion -> $newVersion');
   }
 
   final changelog = changelogFile.readAsStringSync();

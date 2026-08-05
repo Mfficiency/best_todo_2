@@ -515,23 +515,42 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _jumpToSection(int index) async {
+    final from = _activeSectionIndex;
     setState(() => _activeSectionIndex = index);
 
     // SliverList lays out children lazily, so a section that hasn't been
     // scrolled into view yet has no RenderObject and ensureVisible would
-    // no-op. Walk the scroll forward one viewport at a time until the target
-    // section is laid out, then ensureVisible does the final alignment.
-    // Jumping straight to maxScrollExtent overshoots: a mid-list section can
-    // fall outside the sliver cache again once the view sits at the bottom,
+    // no-op. Walk the scroll one viewport at a time until the target section
+    // is laid out, then ensureVisible does the final alignment. Jumping
+    // straight to maxScrollExtent overshoots: a mid-list section can fall
+    // outside the sliver cache again once the view sits at the bottom,
     // leaving its context null and the jump stuck at the last section.
+    //
+    // Two things the walk has to respect:
+    //  • it must follow the direction of the target — walking only downwards
+    //    left "Appearance" (and every earlier section) unreachable whenever
+    //    the list already sat further down;
+    //  • `maxScrollExtent` is an estimate that grows as each hop lays out more
+    //    children, so stopping at "we reached the bottom" strands the jump
+    //    halfway. Only a hop that moves neither the offset nor the estimate
+    //    means there is really nothing left.
     if (_scrollController.hasClients) {
+      final goingUp = index < from;
       var attempts = 0;
-      while (_sectionKeys[index].currentContext == null && attempts < 20) {
+      var lastOffset = -1.0;
+      var lastMaxExtent = -1.0;
+      while (_sectionKeys[index].currentContext == null && attempts < 30) {
         final position = _scrollController.position;
         final maxExtent = position.maxScrollExtent;
-        if (_scrollController.offset >= maxExtent - 1) break;
-        final target =
-            (position.pixels + position.viewportDimension).clamp(0.0, maxExtent);
+        if (_scrollController.offset == lastOffset &&
+            maxExtent == lastMaxExtent) {
+          break;
+        }
+        lastOffset = _scrollController.offset;
+        lastMaxExtent = maxExtent;
+        final step =
+            goingUp ? -position.viewportDimension : position.viewportDimension;
+        final target = (position.pixels + step).clamp(0.0, maxExtent);
         await _scrollController.animateTo(
           target,
           duration: const Duration(milliseconds: 120),

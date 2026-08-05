@@ -451,6 +451,19 @@ insensitive substring over title, keywords, or section name; section shown as su
 Tapping a result closes search and `_jumpToSection`s to its section (deferred one frame so
 the sections re-mount first). New settings must be added to the registry.
 
+**`_jumpToSection` (chips + search results):** the sections are lazy `SliverList` children,
+so an unbuilt one has no context and `ensureVisible` would no-op; the jump walks the scroll
+one viewport at a time until the target's key has a context. Two rules learned the hard way
+(0.1.118, when the tall Mode & features section pushed the later sections down): walk
+**towards** the target (`index < _activeSectionIndex` ⇒ upwards, else downwards — a
+down-only walk left every earlier section unreachable from the bottom of the page), and
+treat only a hop that changes **neither offset nor `maxScrollExtent`** as the end
+(`maxScrollExtent` is an estimate that grows as more children are laid out, so "reached the
+bottom" fires long before the real bottom). Test note: every chip is built even when
+off-screen, so `scrollUntilVisible`/`dragUntilVisible` skip their drag and run
+`ensureVisible` on a chip inside the **pinned** header — which drags the settings list to
+its very bottom. Tests must drag the chip row by rect instead (see `streak_ui_test.dart`).
+
 ### 4.5 Streak (the flame, 0.1.115)
 
 Daily-completion streak gamification. `StreakService` (ChangeNotifier singleton,
@@ -947,8 +960,10 @@ uses timestamped history with legacy fallback. **Changelog**: renders CHANGELOG.
 (markdown, bundled asset); an app-bar button toggles an update heatmap — the file is
 parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd` headings +
 their bullets, wrapped lines joined, undated headings skipped) and drawn as a
-GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri + month labels,
-horizontally scrolled to the newest week). Tapping a day selects it and lists that day's
+GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri labels, month label
+above the week where the month changes — with the year appended on the first column and
+at every year switch, e.g. "Jan 2026", drawn in an `OverflowBox` so it can run past its
+12 px column — horizontally scrolled to the newest week). Tapping a day selects it and lists that day's
 versions and their entries below; opens on the newest release day. **About**: description,
 version, update link. **Intro**: 3
 value screens (Speed / Minimal Interactions / Open Source), shown once (`intro_shown`),
@@ -956,11 +971,13 @@ replayable, skipped in dev.
 
 ## 11. Build, versioning, CI
 
-- **Versioning:** `dart run tool/bump_version.dart <x.y.z+build> ["changelog entry"]`
+- **Versioning:** `dart run tool/bump_version.dart <x.y.z[+build]> ["changelog entry"]`
   updates pubspec and prepends a dated CHANGELOG section (idempotent). Build number strictly
-  increases per distributed build.
+  increases per distributed build; passing a bare `x.y.z` carries the current build number
+  forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
+  dropped by accident.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
-  rename artifacts with the version (`app-release-<VERSION>.apk`, `web-<VERSION>`, …).
+  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
