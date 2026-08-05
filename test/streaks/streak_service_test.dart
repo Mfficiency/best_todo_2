@@ -163,6 +163,21 @@ void main() {
     expect(service.needsSeed, isFalse);
   });
 
+  test('seedDevStreak fills the demo streak without lowering real counts', () {
+    final service = StreakService.instance;
+    service.recordCompletion(daysAgo(1));
+    service.recordCompletion(daysAgo(1));
+
+    service.seedDevStreak(now: day);
+
+    expect(service.currentStreak(now: day), Config.devSeedStreakDays);
+    expect(service.completionsOn(day), 1);
+    // Existing history is kept, not overwritten with the seed's 1.
+    expect(service.completionsOn(daysAgo(1)), 2);
+    // The seed stops at its length — the day before it stays empty.
+    expect(service.completionsOn(daysAgo(Config.devSeedStreakDays)), 0);
+  });
+
   test('flame progress reaches maximum fire after a year', () {
     final service = StreakService.instance;
     expect(service.flameProgress(now: day), 0);

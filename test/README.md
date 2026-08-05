@@ -12,9 +12,10 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, item-history journal (`ItemEventJournal` diff + persistence), upgrade safety (`SafeFile` atomic writes/recovery, `PreUpdateBackup` snapshot, historical payload matrix), config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip + corruption recovery/backup, alarm editor (top save), alarm ring page, item-linked reminders (`ReminderSyncService` + task-detail reminder section) |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
-| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, wishlist items on the Future tab |
+| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer and its alert settings, wishlist items on the Future tab |
 | `test/streaks/` | `flutter test test/streaks` | Daily completion streak: `StreakService` (grace periods, persistence, history seeding, fun stats), home-page flame icon + badge, celebration overlay, `StreakPage`, Streak settings section + search entries |
-| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes) |
+| `test/sms/` | `flutter test test/sms` | SMS daily report: `SmsRecipient`/`SmsReportConfig` JSON round-trip, per-recipient enable flag + `activeRecipients` filtering, Settings recipient rows (pause switch, edit keeps the flag) |
+| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection) |
 
 ## Which suites to run
 
@@ -33,8 +34,12 @@ Pick suites by what you touched, always including core:
   its settings section)
 - `lib/services/streak_service.dart`, `lib/ui/streak_page.dart`,
   `lib/ui/streak_celebration.dart` → core + **streaks**
+- `lib/models/sms_*`, `lib/services/sms_report_*`, the SMS section of
+  `lib/ui/settings_page.dart` → core + **sms** (+ **home**/**streaks**, which also
+  pump the settings page)
 - `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,
   export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,
+  `lib/ui/changelog_page.dart`,
   `lib/models/countdown_timer.dart`, `lib/models/test_report.dart`,
   `lib/services/test_report_service.dart`, `lib/ui/test_results_page.dart`,
   `lib/services/wishlist_migration.dart`, `lib/ui/wishlist_page.dart`,

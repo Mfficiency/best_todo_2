@@ -172,8 +172,17 @@ void main() {
 
     // Jump via the section chip header instead of scrolling blindly (the
     // horizontal chip list is also a Scrollable, so `.first` is ambiguous).
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Streak'));
+    // The chip row scrolls: later sections sit off-screen until brought in.
+    final streakChip = find.widgetWithText(ChoiceChip, 'Streak');
+    await tester.ensureVisible(streakChip);
     await tester.pumpAndSettle();
+    await tester.tap(streakChip);
+    // _jumpToSection walks the lazily-built sliver one viewport per animation
+    // and awaits each one, so a single pumpAndSettle can return between two
+    // hops; settle repeatedly until the section is mounted.
+    for (var i = 0; i < 25 && find.text('Show streak').evaluate().isEmpty; i++) {
+      await tester.pumpAndSettle();
+    }
 
     expect(find.text('Show streak'), findsOneWidget);
     expect(find.text('Streak grace period'), findsOneWidget);

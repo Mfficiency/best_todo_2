@@ -126,7 +126,11 @@ void main() {
       await tester.pump(const Duration(minutes: 5, seconds: 1));
 
       expect(rang, 1);
-      expect(find.text("Time's up!"), findsOneWidget);
+      // Default alert settings (notification) with notifications switched off:
+      // the ring is silent and the dial simply reads 0:00 — the noisy face is
+      // covered in dice_timer_settings_test.dart.
+      expect(find.text('0:00'), findsOneWidget);
+      expect(find.text("Time's up"), findsOneWidget);
       expect(find.text('Postpone to tomorrow'), findsOneWidget);
       expect(find.text('+5 min'), findsOneWidget);
 

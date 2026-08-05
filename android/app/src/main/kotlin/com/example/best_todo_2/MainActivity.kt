@@ -3,8 +3,12 @@ package com.mfficiency.best_todo_2
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -47,6 +51,44 @@ class MainActivity : FlutterActivity() {
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             if (show) window.addFlags(flags) else window.clearFlags(flags)
         }
+    }
+
+    private fun vibrator(): Vibrator? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val manager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE)
+                as? VibratorManager
+            manager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+    }
+
+    // Buzz-pause-buzz until stopVibration(), on the alarm usage so it keeps
+    // going the way an alarm would. Returns false when the device has no
+    // vibrator.
+    private fun startVibration(): Boolean {
+        val vibrator = vibrator() ?: return false
+        if (!vibrator.hasVibrator()) return false
+        val pattern = longArrayOf(0, 600, 500)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val attributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            vibrator.vibrate(
+                VibrationEffect.createWaveform(pattern, 0),
+                attributes,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(pattern, 0)
+        }
+        return true
+    }
+
+    private fun stopVibration() {
+        vibrator()?.cancel()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -100,6 +142,14 @@ class MainActivity : FlutterActivity() {
                 }
                 "stop" -> {
                     AlarmSoundPlayer.stop(applicationContext)
+                    result.success(null)
+                }
+                // Repeating alarm-style vibration, used on its own by the dice
+                // timer's vibrate-only alert and alongside a melody when the
+                // user asked for both.
+                "vibrate" -> result.success(startVibration())
+                "stopVibrate" -> {
+                    stopVibration()
                     result.success(null)
                 }
                 else -> result.notImplemented()

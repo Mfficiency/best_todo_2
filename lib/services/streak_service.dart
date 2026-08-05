@@ -118,6 +118,24 @@ class StreakService extends ChangeNotifier {
     unawaited(syncReminder());
   }
 
+  /// Dev/demo-only backfill: marks the last [days] calendar days (ending on
+  /// [now]) as active so the flame starts at a presentable streak. Existing
+  /// counts win where they are larger, so this only fills gaps — call it
+  /// after [seedFromHistory] and only while [needsSeed] was true, otherwise
+  /// it would paper over a genuinely broken streak while testing.
+  void seedDevStreak({int days = Config.devSeedStreakDays, DateTime? now}) {
+    if (days <= 0) return;
+    final today = _dateOnly(now ?? DateTime.now());
+    for (var back = 0; back < days; back++) {
+      final key = dayKey(today.subtract(Duration(days: back)));
+      _completionsByDay[key] = max(_completionsByDay[key] ?? 0, 1);
+    }
+    _hadFile = true;
+    unawaited(_save());
+    notifyListeners();
+    unawaited(syncReminder());
+  }
+
   /// Records a task completion. Returns true when this was the first
   /// completion of that day — the moment the streak is kept — so the caller
   /// can celebrate.
@@ -246,7 +264,9 @@ class StreakService extends ChangeNotifier {
   /// the current settings and today's completion state. One-shot: it re-arms
   /// on every app start, completion and settings change.
   Future<void> syncReminder({DateTime? now}) async {
-    if (!Config.streakReminderEnabled || !Config.showStreak) {
+    if (!Config.streakReminderEnabled ||
+        !Config.showStreak ||
+        !Config.isFeatureEnabled('streak')) {
       await NotificationService.cancelStreakReminder();
       return;
     }

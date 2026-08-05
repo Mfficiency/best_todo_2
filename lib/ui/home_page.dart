@@ -47,6 +47,16 @@ import 'usage_data_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
 
+/// One entry of the drawer's Tools section: its feature/tool key, the label
+/// shown in the drawer and the icon in front of it.
+class _ToolEntry {
+  final String key;
+  final String label;
+  final IconData icon;
+
+  const _ToolEntry(this.key, this.label, this.icon);
+}
+
 class HomePage extends StatefulWidget {
   final int initialTabIndex;
 
@@ -95,7 +105,8 @@ class _HomePageState extends State<HomePage>
 
   /// When true, the body renders one long schedule list with day-grouped
   /// sections; tab taps scroll that list instead of switching panes.
-  bool _scheduleView = Config.startInScheduleView;
+  bool _scheduleView =
+      Config.startInScheduleView && Config.isFeatureEnabled('schedule_view');
 
   /// Day section currently scrolled to the top of the schedule view (the
   /// highlighted one). New tasks added while the schedule view is open are
@@ -648,6 +659,12 @@ class _HomePageState extends State<HomePage>
         tasks: [..._tasks, ..._deletedTasks],
         dailyStats: _dailyStatsByDay,
       );
+      // Dev/demo builds (Chrome above all, where nothing persists between
+      // runs) get a longer streak than the 14 days of seeded stats, so the
+      // flame and the streak page have something to show off.
+      if (Config.isDev) {
+        StreakService.instance.seedDevStreak(now: _currentDate);
+      }
     }
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
@@ -834,6 +851,7 @@ class _HomePageState extends State<HomePage>
   /// that setting is on. Uses [_currentDate] so the dev date arrows work.
   void _recordStreakToggle(Task task, bool wasDone) {
     if (task.isWish || task.isDone == wasDone) return;
+    if (!Config.isFeatureEnabled('streak')) return;
     if (task.isDone) {
       final firstOfDay =
           StreakService.instance.recordCompletion(_currentDate);
@@ -918,6 +936,9 @@ class _HomePageState extends State<HomePage>
   /// The page for a tool key from [Config.startToolOptions]; null for
   /// 'tasks' (the home page itself) and unknown keys.
   Widget? _buildToolPage(String tool) {
+    // Simple mode and the per-feature switches hide a tool's entry points;
+    // this guard also covers stale deep links and start-page settings.
+    if (!Config.isFeatureEnabled(tool)) return null;
     switch (tool) {
       case 'alarms':
         return const AlarmsPage();
@@ -1447,7 +1468,16 @@ class _HomePageState extends State<HomePage>
   }
 
   void _updateSettings() {
-    setState(() {});
+    setState(() {
+      // Switching to simple mode (or turning a feature off) while its view is
+      // active would leave the home page in a state with no way back, so both
+      // are reset here.
+      if (!Config.isFeatureEnabled('schedule_view')) _scheduleView = false;
+      if (!Config.isFeatureEnabled('search') && _searchQuery.isNotEmpty) {
+        _searchController.clear();
+        _searchQuery = '';
+      }
+    });
     _updateHomeWidget();
     LogService.add('HomePage._updateSettings', 'Settings updated');
   }
@@ -2031,6 +2061,21 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// Tools listed under the drawer's Tools section, in display order. Each
+  /// key doubles as its feature key ([Config.featureKeys]) and its
+  /// [Config.startToolOptions] key, so a tool switched off in Settings
+  /// disappears here and can no longer be the start page.
+  static const List<_ToolEntry> _toolEntries = [
+    _ToolEntry('alarms', 'Alarms', Icons.alarm),
+    _ToolEntry('countdown', 'Countdown', Icons.timer),
+    _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
+    _ToolEntry('projects', 'Projects', Icons.dashboard),
+    _ToolEntry('chronize', 'Chronize', Icons.access_time),
+    _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
+    _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
+    _ToolEntry('test_results', 'Test Results', Icons.fact_check),
+  ];
+
   /// An icon overlaid with a small red dot, used on the drawer/hamburger
   /// icon and the Test Results entry when this build's CI test run failed.
   Widget _iconWithFailureDot(IconData icon) {
@@ -2057,6 +2102,8 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    final enabledTools =
+        _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
     return Scaffold(
       key: homeScaffoldKey,
       drawer: Drawer(
@@ -2091,22 +2138,23 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text('Deleted Items'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DeletedItemsPage(
-                      items: _deletedTasks,
-                      onRestore: _restoreTask,
-                      onDeletePermanently: _deleteTaskPermanently,
+            if (Config.isFeatureEnabled('deleted_items'))
+              ListTile(
+                leading: const Icon(Icons.delete),
+                title: const Text('Deleted Items'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => DeletedItemsPage(
+                        items: _deletedTasks,
+                        onRestore: _restoreTask,
+                        onDeletePermanently: _deleteTaskPermanently,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.info),
               title: const Text('About'),
@@ -2117,109 +2165,59 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Changelog'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ChangelogPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.list_alt),
-              title: const Text('App Logs'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AppLogsPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.show_chart),
-              title: const Text('Startup Times'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const StartupTimesPage()),
-                );
-              },
-            ),
-            ExpansionTile(
-              leading: const Icon(Icons.build),
-              title: const Text('Tools'),
-              childrenPadding: const EdgeInsets.only(left: 16),
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.alarm),
-                  title: const Text('Alarms'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('alarms');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.timer),
-                  title: const Text('Countdown'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('countdown');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.favorite_border),
-                  title: const Text('Wishlist'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('wishlist');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.dashboard),
-                  title: const Text('Projects'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('projects');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.access_time),
-                  title: const Text('Chronize'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('chronize');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.insights),
-                  title: const Text('Productivity Stats'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('productivity_stats');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.query_stats),
-                  title: const Text('Usage Data'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('usage_data');
-                  },
-                ),
-                ListTile(
-                  leading: TestReportService.instance.hasFailures
-                      ? _iconWithFailureDot(Icons.fact_check)
-                      : const Icon(Icons.fact_check),
-                  title: const Text('Test Results'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('test_results');
-                  },
-                ),
-              ],
-            ),
+            if (Config.isFeatureEnabled('changelog'))
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Changelog'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ChangelogPage()),
+                  );
+                },
+              ),
+            if (Config.isFeatureEnabled('app_logs'))
+              ListTile(
+                leading: const Icon(Icons.list_alt),
+                title: const Text('App Logs'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                  );
+                },
+              ),
+            if (Config.isFeatureEnabled('startup_times'))
+              ListTile(
+                leading: const Icon(Icons.show_chart),
+                title: const Text('Startup Times'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const StartupTimesPage()),
+                  );
+                },
+              ),
+            if (enabledTools.isNotEmpty)
+              ExpansionTile(
+                leading: const Icon(Icons.build),
+                title: const Text('Tools'),
+                childrenPadding: const EdgeInsets.only(left: 16),
+                children: [
+                  for (final tool in enabledTools)
+                    ListTile(
+                      leading: tool.key == 'test_results' &&
+                              TestReportService.instance.hasFailures
+                          ? _iconWithFailureDot(tool.icon)
+                          : Icon(tool.icon),
+                      title: Text(tool.label),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openTool(tool.key);
+                      },
+                    ),
+                ],
+              ),
           ],
         ),
       ),
@@ -2233,29 +2231,33 @@ class _HomePageState extends State<HomePage>
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Search tasks',
-            border: InputBorder.none,
-            suffixIcon: _searchQuery.isEmpty
-                ? const Icon(Icons.search)
-                : IconButton(
-                    icon: const Icon(Icons.clear),
-                    tooltip: 'Clear search',
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  ),
-          ),
-          onChanged: (value) => setState(() => _searchQuery = value),
-        ),
+        title: Config.isFeatureEnabled('search')
+            ? TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search tasks',
+                  border: InputBorder.none,
+                  suffixIcon: _searchQuery.isEmpty
+                      ? const Icon(Icons.search)
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        ),
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
+              )
+            : const Text('BestToDo'),
         actions: [
           ListenableBuilder(
             listenable: StreakService.instance,
             builder: (context, _) {
-              if (!Config.showStreak) return const SizedBox.shrink();
+              if (!Config.showStreak || !Config.isFeatureEnabled('streak')) {
+                return const SizedBox.shrink();
+              }
               final streak =
                   StreakService.instance.currentStreak(now: _currentDate);
               final progress =
@@ -2297,6 +2299,9 @@ class _HomePageState extends State<HomePage>
           ListenableBuilder(
             listenable: DiceTimerController.instance,
             builder: (context, _) {
+              if (!Config.isFeatureEnabled('dice_timer')) {
+                return const SizedBox.shrink();
+              }
               final active = DiceTimerController.instance.isActive;
               return IconButton(
                 icon: active
@@ -2312,22 +2317,23 @@ class _HomePageState extends State<HomePage>
               );
             },
           ),
-          IconButton(
-            icon: Icon(_scheduleView
-                ? Icons.format_list_bulleted
-                : Icons.calendar_month),
-            tooltip: _scheduleView ? 'List view' : 'Schedule view',
-            onPressed: () {
-              setState(() {
-                _scheduleView = !_scheduleView;
-              });
-              if (_scheduleView) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _scrollToScheduleAnchor(_tabController.index);
+          if (Config.isFeatureEnabled('schedule_view'))
+            IconButton(
+              icon: Icon(_scheduleView
+                  ? Icons.format_list_bulleted
+                  : Icons.calendar_month),
+              tooltip: _scheduleView ? 'List view' : 'Schedule view',
+              onPressed: () {
+                setState(() {
+                  _scheduleView = !_scheduleView;
                 });
-              }
-            },
-          ),
+                if (_scheduleView) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToScheduleAnchor(_tabController.index);
+                  });
+                }
+              },
+            ),
         ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),

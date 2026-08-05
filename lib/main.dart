@@ -12,6 +12,7 @@ import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
+import 'ui/mode_select_page.dart';
 import 'config.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
@@ -127,7 +128,7 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final showIntro =
       Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);
-  runApp(MyApp(showIntro: showIntro));
+  runApp(MyApp(showIntro: showIntro, showModePicker: !Config.modeChosen));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
     // One-time backfill of the item-history journal from pre-journal data.
@@ -145,7 +146,15 @@ Future<void> main() async {
 
 class MyApp extends StatefulWidget {
   final bool showIntro;
-  const MyApp({Key? key, required this.showIntro}) : super(key: key);
+
+  /// Whether the simple/full mode picker is shown after the intro. Set from
+  /// [Config.modeChosen] on launch; tests and screenshot runs pass false.
+  final bool showModePicker;
+  const MyApp({
+    Key? key,
+    required this.showIntro,
+    this.showModePicker = false,
+  }) : super(key: key);
 
   static _MyAppState? of(BuildContext context) =>
       context.findAncestorStateOfType<_MyAppState>();
@@ -156,6 +165,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late bool _showIntro = widget.showIntro;
+  late bool _showModePicker = widget.showModePicker;
   bool _alarmRingOpen = false;
 
   @override
@@ -252,6 +262,15 @@ class _MyAppState extends State<MyApp> {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  /// Shows the simple/full mode picker again (Settings → Mode & features).
+  Future<void> restartModePicker() async {
+    Config.modeChosen = false;
+    await Config.save();
+    if (!mounted) return;
+    setState(() => _showModePicker = true);
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   Widget _initialPage() {
     switch (Config.startPage) {
       case 'settings':
@@ -295,7 +314,14 @@ class _MyAppState extends State<MyApp> {
               useMaterial3: true,
             ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: _showIntro ? IntroPage(onFinished: _finishIntro) : _initialPage(),
+      home: _showIntro
+          ? IntroPage(onFinished: _finishIntro)
+          : _showModePicker
+              ? ModeSelectPage(
+                  onModeSelected: () =>
+                      setState(() => _showModePicker = false),
+                )
+              : _initialPage(),
     );
   }
 }

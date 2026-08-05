@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../config.dart';
 import '../models/sms_report_config.dart';
 import '../models/sms_report_log_entry.dart';
 import 'sms_report_config_service.dart';
@@ -57,7 +58,12 @@ class SmsReportScheduler {
     if (!_isAndroidNative) return;
     await initialize();
     final config = await SmsReportConfigService.load();
-    if (!config.enabled || config.recipients.isEmpty) {
+    // The feature can be switched off wholesale in Settings → Mode & features
+    // (and always is in simple mode); that must also stop the daily alarm,
+    // not just hide its settings.
+    if (!Config.isFeatureEnabled('sms_report') ||
+        !config.enabled ||
+        config.recipients.isEmpty) {
       await cancel();
       return;
     }

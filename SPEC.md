@@ -91,7 +91,9 @@ Dependencies and why they exist:
 8. Home-widget setup in try/catch: `HomeWidget.setAppGroupId` +
    `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
 9. SharedPreferences → `showIntro` (always skipped in dev builds).
-10. `runApp(MyApp(showIntro))`; post-frame → `StartupTimeService.record()`.
+10. `runApp(MyApp(showIntro, showModePicker: !Config.modeChosen))`; post-frame →
+    `StartupTimeService.record()`. `MyApp.home` is a three-step first-run chain:
+    intro → simple/full mode picker (§4.6) → `_initialPage()`.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
@@ -381,14 +383,33 @@ very start (even before a countdown begins); while **running** the page adds **P
 **Resume**/**Done**). **Lock touch** flips a page-local `_locked` flag that lays a full-screen
 scrim (`AbsorbPointer` over the whole `Scaffold` + a `PopScope(canPop: !_locked)` to swallow
 the system back) with only an **Unlock** button live — so a pocket bump or an incoming call
-can't disturb the timer. At zero the controller plays the 'Classic' alarm melody (loop,
-0.8 volume) + a task notification (both best-effort; injectable via
-`DiceTimerController.onRingAlert` for tests) — this fires even if the page was left, though a
-mid-ring page exit silences the melody while keeping the expired state — and offers: **Done**
+can't disturb the timer. At zero the controller runs the alert the settings ask for (see
+below; best-effort, injectable via `DiceTimerController.onRingAlert` for tests) — this fires
+even if the page was left, though a mid-ring page exit silences melody and vibration
+(`DiceTimerController.stopAlert`) while keeping the expired state — and offers: **Done**
 (marks the task done via the home page callback), **Postpone to tomorrow** (same semantics as
 moving to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** (stops the
 ring and restarts the countdown with that much time). With no open Today tasks (and no timer
 already running) the dice shows a "No open tasks for today" snackbar instead.
+
+**Dice timer settings (0.1.118):** `Config.diceTimerAlertMode` picks what zero does —
+`melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
+alarm), `vibrate` (repeating buzz only), `notification` (**the default**) or `silent`.
+`Config.diceTimerAlsoVibrate` (off by default) adds the buzz to the melody/notification
+modes, and `Config.diceTimerDefaultMinutes` (20) sets where the dial opens — so
+`DiceTimerController.defaultDuration` is a getter now, not a const. `diceAlertPlan()` in
+`dice_timer_page.dart` resolves those settings (plus `Config.enableNotifications`) into a
+pure `DiceAlertPlan {melody, vibrate, notification}`, which both the ring and the UI read:
+**a notification alert with notifications switched off degrades to complete silence**, never
+to a sound nobody asked for, and a silent plan (`DiceAlertPlan.isSilent`) shows `0:00` +
+"Time's up" in the dial instead of the loud red "Time's up!". Vibration goes through
+`AlarmVibration` (`lib/services/alarm_vibration.dart`) — the `besttodo/alarm_audio` method
+channel gained `vibrate` / `stopVibrate`, a `USAGE_ALARM` waveform repeating until stopped
+(no-op off Android, like `AlarmSound`). The controls live in one shared widget,
+`DiceTimerSettingsList` (`lib/ui/dice_timer_settings.dart`, writes through to `Config` and
+saves on every change, melody Preview included), rendered both by the Settings page's "Dice
+timer" section (index 6, hidden with the `dice_timer` feature) and by the bottom sheet behind
+the timer page's app-bar gear ("Timer settings").
 
 **Home widget updates** after every save and at a self-rescheduling midnight timer: writes
 the "due today or overdue" list text (or "Well done! No more tasks for today!"), a progress
@@ -410,7 +431,8 @@ only, transparent `surfaceTint`, no ink splashes, selected chips underlined via 
 backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with dark
 mode), icon tabs, 24-hour time (default on), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, swipe-left-delete, default delay 0–10 s slider,
-start tab, default start page (`startTool`: the task list or any tool — Alarms, Countdown,
+start tab (simple mode hides the tool-related entries, see §4.6), default start page
+(`startTool`: the task list or any enabled tool — Alarms, Countdown,
 Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
 list after loading, so back lands on the tasks), start in schedule view, Chronize hour
 wheel. Widget: progress line. Notifications:
@@ -462,7 +484,11 @@ kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`)
 history — per day the **max** of daily-stats completion counts and `completedAt`
 timestamps on live+deleted tasks, so nothing double-counts and long-time users start warm.
 (In dev builds the seeded demo daily-stats produce a pre-lit flame; tests write an empty
-`streak.json` up front to opt out.)
+`streak.json` up front to opt out.) Dev/demo builds then also run `seedDevStreak()`, which
+fills the last `Config.devSeedStreakDays` (**50**) days back from today with one completion
+each — max-merged, so real counts survive — giving the Chrome demo, where nothing persists
+between runs, a 50-day flame instead of the 14 days the stats seed covers. It runs only
+inside the `needsSeed` branch, so a dev install's real streak is never papered over.
 
 **Reminder:** optional daily nudge (`Config.streakReminderEnabled`, default off; time
 `streakReminderMinutes`, default 22:00). `syncReminder()` re-arms a **one-shot**
@@ -472,6 +498,42 @@ needed) for today's time if nothing is done yet, else tomorrow; re-synced on eve
 start, completion, and settings change; cancelled when reminders are off or the streak is
 hidden. Settings live in a searchable "Streak" Settings section (show/hide, 24h/48h
 `SegmentedButton`, reminder toggle + time picker, celebration toggle).
+
+### 4.6 Simple mode & feature switches (0.1.118)
+
+Two ways to run the app, chosen on a first-run picker and changeable in Settings.
+
+**Picker (`lib/ui/mode_select_page.dart`):** shown by `MyApp` after the intro while
+`Config.modeChosen` is false — two cards ("Simple mode" / "Full mode", `Start simple` /
+`Use everything`). Picking one sets `Config.simpleMode` + `modeChosen` and saves
+(`settings.json`, so it never reappears). `MyApp.showModePicker` is a constructor flag
+(default false) so screenshot/integration runs and tests never hit the picker;
+`MyApp.restartModePicker()` clears `modeChosen` and pops back to it.
+
+**Feature registry (`Config`):** `featureKeys` / `featureLabels` / `featureDescriptions`
+(index-aligned) + `Map<String,bool> featureEnabled` (all true by default, persisted under
+`'features'`; unknown/missing keys count as enabled). Keys: the eight tool keys (equal to
+`startToolOptions` minus `tasks`) plus `streak`, `dice_timer`, `schedule_view`, `search`,
+`deleted_items`, `changelog`, `app_logs`, `startup_times`, `sms_report`.
+
+**`Config.isFeatureEnabled(key)` is the single gate:** in simple mode it returns false for
+everything except `Config.simpleModeFeatures` (`deleted_items` — the undo of a delete must
+not vanish); in full mode it returns the per-feature switch. Call sites: `home_page.dart`
+drawer entries and the Tools section (built from `_toolEntries`, hidden entirely when no
+tool is enabled), the app-bar streak flame / dice / schedule toggle / search field (which
+becomes a plain "BestToDo" title), `_buildToolPage` (returns null for a disabled tool, so
+a stale `startTool` or deep link can't reach it) and `_recordStreakToggle`.
+`_updateSettings` resets `_scheduleView`/`_searchQuery` when their feature disappears, so
+switching modes can't strand the home page in a view with no way back.
+
+**Settings section "Mode & features" (index 1):** the simple-mode switch, "Show the mode
+picker again", and — full mode only — one `SwitchListTile` per feature. Sections owned by
+a feature drop out of the chip row, the scroll list and the settings search when it is
+off (`_isSectionVisible`: Streak → `streak`, SMS report → `sms_report`); single entries do
+the same via `_isEntryVisible` (start-in-schedule-view, Chronize hour wheel, default start
+page). Feature labels are searchable (`_featureSearchEntries`). Turning off the tool that
+is the configured `startTool` resets it to `tasks` (`_dropUnavailableStartTool`), and the
+start-page dropdown only offers enabled tools.
 
 ## 5. Alarm subsystem (the reliability showpiece)
 
@@ -607,8 +669,16 @@ explicit user-chosen time.
 Social-accountability feature: a scheduled daily SMS with today's completed/uncompleted
 counts and remaining list. Config (`sms_report_config.json`): enabled (default off), time
 (default 22:00), message template with tokens `{hello}{nickname}{completed}{uncompleted}
-{date}{list}`, recipients (nickname+phone), `subscriptionId` (-1 = default SIM; dual-SIM
-support), optional completion-rate threshold (only send on days below X%).
+{date}{list}`, recipients (nickname+phone+`enabled`), `subscriptionId` (-1 = default SIM;
+dual-SIM support), optional completion-rate threshold (only send on days below X%).
+
+**Recipient pause switch (0.1.117):** each recipient carries `enabled` (default true;
+missing key in older payloads reads as true). Settings shows a `Switch` per row next to
+edit/delete — off dims the row, appends "• disabled" to the number, and keeps the contact
+so it never has to be re-typed; editing a paused recipient preserves the flag.
+`SmsReportConfig.activeRecipients` is the send list, so the daily report and "Send test
+now" both skip paused contacts; an all-disabled list logs "Skipped — all N recipient(s)
+disabled" and the send diag reports "Sent x/y (N disabled)".
 
 **Scheduling:** exact **one-shot self-re-arming chain** (`oneShotAt` →
 `setExactAndAllowWhileIdle`, fixed id `0x517D`), NOT `periodic` (maps to `setRepeating`:
@@ -622,7 +692,7 @@ prevents same-day double-fire.
 (SMS, exact alarm, ignore-battery-optimizations, notifications) — a background isolate has
 no Activity and cannot show a permission dialog, so the send would be silently skipped.
 
-**Sending:** per recipient, render template, auto-multipart when >160 ASCII / >70 unicode
+**Sending:** per enabled recipient, render template, auto-multipart when >160 ASCII / >70 unicode
 chars (carriers silently drop over-length single parts), send via `another_telephony` with
 a 20 s status-listener timeout. Everything logged to `sms_report_log.json` (500 entries,
 send + diag kinds) with an in-app viewer and export. "Send test now" calls the report
@@ -669,7 +739,10 @@ would demand compileSdk 37); NDK 28.2.13676358. **Signing:** `key.properties` if
 otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, password
 `android`) — deliberate, so every build (CI or local) is signed identically and updates
 install in place instead of failing with a signature mismatch. A Gradle task renames the
-release APK to `app-release_<patch>.apk`.
+release APK to `best_todo_<version>+<build>.apk` (e.g. `best_todo_0.1.117+87.apk`),
+alongside the untouched `app-release.apk` CI uploads. The pubspec version must keep its
+`+build` suffix — without it `flutter.versionCode` falls back to `1` and the APK is
+rejected as a downgrade on any device holding an earlier build.
 
 **ProGuard/R8 (`android/app/proguard-rules.pro`, wired in the release build type):** keep
 rules for Gson generic signatures/`TypeToken` and `com.dexterous.flutterlocalnotifications.**`.
@@ -871,7 +944,13 @@ chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, 
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer
 trend, share of slow starts, outlier callout, first-launch-of-day cold-start comparison;
 uses timestamped history with legacy fallback. **Changelog**: renders CHANGELOG.md
-(markdown, bundled asset). **About**: description, version, update link. **Intro**: 3
+(markdown, bundled asset); an app-bar button toggles an update heatmap — the file is
+parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd` headings +
+their bullets, wrapped lines joined, undated headings skipped) and drawn as a
+GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri + month labels,
+horizontally scrolled to the newest week). Tapping a day selects it and lists that day's
+versions and their entries below; opens on the newest release day. **About**: description,
+version, update link. **Intro**: 3
 value screens (Speed / Minimal Interactions / Open Source), shown once (`intro_shown`),
 replayable, skipped in dev.
 
@@ -939,7 +1018,14 @@ toJson round-trip and the `--machine` output parser (hidden/skipped handling, er
 capture, garbage tolerance), Test Results page states (failures + expandable errors, all
 green, no bundled report), home red dot on the hamburger + drawer entry navigation (and
 its absence when green/unavailable), settings search (toggle, title + keyword matching,
-section subtitle, no-match message, jump-to-section, close restoring chips). Widget tests that
+section subtitle, no-match message, jump-to-section, close restoring chips). Simple mode &
+features (0.1.118, `test/home/simple_mode_test.dart` + `settings_features_test.dart`):
+home page in simple mode (no dice/flame/schedule/search, drawer down to Settings +
+Deleted Items + About), per-feature hiding of drawer tools and app-bar actions, the mode
+picker storing and persisting its choice, `isFeatureEnabled` semantics + `features`
+round-trip, and the Settings side (feature switches searchable, feature-owned sections
+disappearing, the simple-mode switch persisting). Both suites restore `Config` in
+`tearDown` — the flags are global statics. Widget tests that
 touch persistence use a `_FakePathProvider` + temp dir. Caveat: real file I/O awaited
 inside `testWidgets` hangs until the 10-min per-test timeout (the fake-async zone never
 services dart:io completions — locally and on CI) — such tests wrap I/O in

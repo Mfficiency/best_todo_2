@@ -111,6 +111,105 @@ class Config {
   /// instead of the per-tab list view.
   static bool startInScheduleView = false;
 
+  /// If true the app runs in *simple mode*: the home page is the plain task
+  /// list and every optional feature (tools, streak, dice, schedule view, …)
+  /// is hidden regardless of [featureEnabled]. Switchable any time from
+  /// Settings → Mode & features.
+  static bool simpleMode = false;
+
+  /// True once the user picked simple or full mode on the mode picker shown
+  /// at first launch. While false the picker is shown before the home page.
+  static bool modeChosen = false;
+
+  /// Optional features that can be switched off individually in full mode.
+  /// Keys are persisted, so keep them stable; the first eight match
+  /// [startToolOptions] tool keys.
+  static const List<String> featureKeys = [
+    'alarms',
+    'countdown',
+    'wishlist',
+    'projects',
+    'chronize',
+    'usage_data',
+    'productivity_stats',
+    'test_results',
+    'streak',
+    'dice_timer',
+    'schedule_view',
+    'search',
+    'deleted_items',
+    'changelog',
+    'app_logs',
+    'startup_times',
+    'sms_report',
+  ];
+
+  /// Human-readable labels for [featureKeys], index-aligned.
+  static const List<String> featureLabels = [
+    'Alarms',
+    'Countdown',
+    'Wishlist',
+    'Projects',
+    'Chronize',
+    'Usage Data',
+    'Productivity Stats',
+    'Test Results',
+    'Streak',
+    'Dice timer',
+    'Schedule view',
+    'Task search',
+    'Deleted items',
+    'Changelog',
+    'App logs',
+    'Startup times',
+    'Daily SMS report',
+  ];
+
+  /// One-line explanations for [featureKeys], index-aligned.
+  static const List<String> featureDescriptions = [
+    'Alarm clock with escalating reminders',
+    'Countdown timers with milestones',
+    'Wishlist of someday items',
+    'Project boards for grouping tasks',
+    'Timeline planner for the day',
+    'Charts about how you use the app',
+    'Completion stats and trends',
+    'Results of the latest CI test run',
+    'Flame that grows for every day you finish a task',
+    'Roll a random task and time it',
+    'Calendar-style day-by-day view of the tasks',
+    'Search field in the home app bar',
+    'Restore or purge deleted tasks',
+    "What changed in each version of the app",
+    'Diagnostic log of what the app did',
+    'How fast the app started, over time',
+    'Daily SMS with your completion rate',
+  ];
+
+  /// Per-feature switches used in full mode. Missing keys count as enabled.
+  static final Map<String, bool> featureEnabled = {
+    for (final key in featureKeys) key: true,
+  };
+
+  /// Features that stay available in simple mode. The deleted-items list is
+  /// the undo of a plain task list, so hiding it would make deleting a task
+  /// irreversible; it lives in the drawer and not on the home surface.
+  static const Set<String> simpleModeFeatures = {'deleted_items'};
+
+  /// Whether [key] is currently available. Simple mode hides every optional
+  /// feature except [simpleModeFeatures], so the per-feature switches only
+  /// apply in full mode.
+  static bool isFeatureEnabled(String key) {
+    if (simpleMode) return simpleModeFeatures.contains(key);
+    return featureEnabled[key] ?? true;
+  }
+
+  /// Turns a feature on or off (full mode only; no-op for unknown keys).
+  static void setFeatureEnabled(String key, bool enabled) {
+    if (!featureKeys.contains(key)) return;
+    featureEnabled[key] = enabled;
+  }
+
   /// If true, the experimental Chronize tool shows the hour scroll wheel on the
   /// right. Off by default so the timeline gets more room (the hour is set by
   /// scrolling the timeline itself).
@@ -162,6 +261,61 @@ class Config {
   /// If true, completing the first task of the day plays a short flame
   /// celebration animation.
   static bool streakCompletionAnimation = true;
+
+  /// Length of the streak the dev/demo seed builds (ending today), so the
+  /// flame is already warm in the Chrome demo, where nothing persists between
+  /// runs. Only applied when [isDev] and no streak history exists yet.
+  static const int devSeedStreakDays = 50;
+
+  /// How the dice timer announces that the countdown hit zero. The keys are
+  /// persisted, so keep them stable:
+  ///  * `melody` — plays [diceTimerMelody] at [diceTimerVolume], like an alarm
+  ///  * `vibrate` — vibration only, no sound
+  ///  * `notification` — a notification only (the default); with notifications
+  ///    switched off nothing happens beyond the dial reading 0:00
+  ///  * `silent` — nothing at all, the dial just reads 0:00
+  static const List<String> diceTimerAlertModes = [
+    'melody',
+    'vibrate',
+    'notification',
+    'silent',
+  ];
+
+  /// Human-readable labels for [diceTimerAlertModes], index-aligned.
+  static const List<String> diceTimerAlertLabels = [
+    'Melody',
+    'Vibration',
+    'Notification',
+    'Silent',
+  ];
+
+  /// One-line explanations for [diceTimerAlertModes], index-aligned.
+  static const List<String> diceTimerAlertDescriptions = [
+    'Rings the chosen melody until you answer',
+    'Buzzes until you answer, no sound',
+    'Posts a notification (nothing when notifications are off)',
+    'Stays completely quiet — the dial just shows 0:00',
+  ];
+
+  /// Which of [diceTimerAlertModes] the dice timer uses at zero.
+  static String diceTimerAlertMode = 'notification';
+
+  /// Melody played at zero in `melody` mode, see `kAlarmMelodies`.
+  static String diceTimerMelody = 'Classic';
+
+  /// Playback volume for the dice timer melody, 0.0 - 1.0 of the device max.
+  static double diceTimerVolume = 0.8;
+
+  /// If true the phone also vibrates in `melody` / `notification` mode
+  /// (vibration is the alert itself in `vibrate` mode, and never happens in
+  /// `silent` mode).
+  static bool diceTimerAlsoVibrate = false;
+
+  /// Minutes the dice timer dial is pre-wound to when a fresh timer opens.
+  static int diceTimerDefaultMinutes = 20;
+
+  /// Dial lengths offered as the pre-wound default (one dial turn = 60 min).
+  static const List<int> diceTimerLengthOptions = [5, 10, 15, 20, 25, 30, 45, 60];
 
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
@@ -234,6 +388,14 @@ class Config {
       'streakReminderEnabled': streakReminderEnabled,
       'streakReminderMinutes': streakReminderMinutes,
       'streakCompletionAnimation': streakCompletionAnimation,
+      'simpleMode': simpleMode,
+      'modeChosen': modeChosen,
+      'diceTimerAlertMode': diceTimerAlertMode,
+      'diceTimerMelody': diceTimerMelody,
+      'diceTimerVolume': diceTimerVolume,
+      'diceTimerAlsoVibrate': diceTimerAlsoVibrate,
+      'diceTimerDefaultMinutes': diceTimerDefaultMinutes,
+      'features': Map<String, bool>.from(featureEnabled),
     };
   }
 
@@ -285,6 +447,28 @@ class Config {
             streakReminderMinutes;
     streakCompletionAnimation =
         data['streakCompletionAnimation'] ?? streakCompletionAnimation;
+    simpleMode = data['simpleMode'] ?? simpleMode;
+    modeChosen = data['modeChosen'] ?? modeChosen;
+    final savedAlertMode = data['diceTimerAlertMode'] as String?;
+    if (savedAlertMode != null && diceTimerAlertModes.contains(savedAlertMode)) {
+      diceTimerAlertMode = savedAlertMode;
+    }
+    diceTimerMelody = data['diceTimerMelody'] as String? ?? diceTimerMelody;
+    diceTimerVolume =
+        (data['diceTimerVolume'] as num?)?.toDouble().clamp(0.0, 1.0) ??
+            diceTimerVolume;
+    diceTimerAlsoVibrate =
+        data['diceTimerAlsoVibrate'] ?? diceTimerAlsoVibrate;
+    diceTimerDefaultMinutes =
+        (data['diceTimerDefaultMinutes'] as num?)?.round().clamp(1, 60) ??
+            diceTimerDefaultMinutes;
+    final savedFeatures = data['features'];
+    if (savedFeatures is Map) {
+      for (final key in featureKeys) {
+        final value = savedFeatures[key];
+        if (value is bool) featureEnabled[key] = value;
+      }
+    }
   }
 
   /// Persists the current settings to disk.

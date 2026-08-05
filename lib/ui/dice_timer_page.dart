@@ -3,10 +3,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/task.dart';
 import '../services/alarm_sound.dart';
+import '../services/alarm_vibration.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
+import 'dice_timer_settings.dart';
 import 'subpage_app_bar.dart';
 
 /// Angle of [point] around [center] in radians, measured clockwise from
@@ -34,6 +37,61 @@ double dialAngleDelta(double from, double to) {
 /// ringing at zero.
 enum DiceTimerPhase { setting, running, paused, ringing }
 
+/// Which alert channels fire when the countdown hits zero — the settings
+/// (`Config.diceTimerAlertMode` + `Config.diceTimerAlsoVibrate`) resolved into
+/// the three things the ring can actually do.
+class DiceAlertPlan {
+  /// Play `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping.
+  final bool melody;
+
+  /// Buzz the repeating vibration pattern.
+  final bool vibrate;
+
+  /// Post a "Time is up" notification. Silently does nothing when
+  /// notifications are switched off in Settings.
+  final bool notification;
+
+  const DiceAlertPlan({
+    required this.melody,
+    required this.vibrate,
+    required this.notification,
+  });
+
+  /// True when the ring makes no noise at all and the dial simply reads 0:00.
+  bool get isSilent => !melody && !vibrate && !notification;
+}
+
+/// Resolves the dice timer's alert settings into a [DiceAlertPlan]. Pure, so
+/// the routing is testable without a platform underneath.
+///
+/// `notification` is the default, and it needs the app's notifications to be
+/// on: with them switched off the ring degrades to complete silence (the dial
+/// just shows 0:00) instead of falling back to a sound nobody asked for.
+DiceAlertPlan diceAlertPlan({
+  String? mode,
+  bool? alsoVibrate,
+  bool? notificationsEnabled,
+}) {
+  final resolved = mode ?? Config.diceTimerAlertMode;
+  final extraBuzz = alsoVibrate ?? Config.diceTimerAlsoVibrate;
+  final canNotify = notificationsEnabled ?? Config.enableNotifications;
+  switch (resolved) {
+    case 'melody':
+      return DiceAlertPlan(
+          melody: true, vibrate: extraBuzz, notification: canNotify);
+    case 'vibrate':
+      return const DiceAlertPlan(
+          melody: false, vibrate: true, notification: false);
+    case 'silent':
+      return const DiceAlertPlan(
+          melody: false, vibrate: false, notification: false);
+    case 'notification':
+    default:
+      return DiceAlertPlan(
+          melody: false, vibrate: extraBuzz, notification: canNotify);
+  }
+}
+
 /// Holds the dice timer's live state so it survives leaving and re-entering
 /// [DiceTimerPage]: the ticker runs here, in a singleton, not in the page's
 /// [State]. The page is a thin view that listens for changes and forwards the
@@ -46,7 +104,9 @@ class DiceTimerController extends ChangeNotifier {
   static final DiceTimerController instance = DiceTimerController._();
 
   /// Where the dial sits when a fresh timer opens; turn back for less time.
-  static const Duration defaultDuration = Duration(minutes: 20);
+  /// Configurable in Settings → Dice timer (20 minutes out of the box).
+  static Duration get defaultDuration =>
+      Duration(minutes: Config.diceTimerDefaultMinutes.clamp(1, 60));
 
   Task? _task;
   DiceTimerPhase _phase = DiceTimerPhase.setting;
@@ -104,7 +164,7 @@ class DiceTimerController extends ChangeNotifier {
   void grabDial() {
     _ticker?.cancel();
     _ticker = null;
-    if (_phase == DiceTimerPhase.ringing) AlarmSound.stop();
+    if (_phase == DiceTimerPhase.ringing) stopAlert();
     if (_phase != DiceTimerPhase.setting) {
       _phase = DiceTimerPhase.setting;
       _endAt = null;
@@ -136,9 +196,16 @@ class DiceTimerController extends ChangeNotifier {
     _run(resetTotal: false);
   }
 
+  /// Silences whichever alert channels the ring started (melody, vibration —
+  /// a posted notification is dismissed by the user, like any other).
+  void stopAlert() {
+    AlarmSound.stop();
+    AlarmVibration.stop();
+  }
+
   /// Stop the ring and give the countdown [extra] more time.
   void addTime(Duration extra) {
-    AlarmSound.stop();
+    stopAlert();
     _remaining += extra;
     _run(resetTotal: true);
   }
@@ -180,7 +247,7 @@ class DiceTimerController extends ChangeNotifier {
   void clear() {
     _ticker?.cancel();
     _ticker = null;
-    AlarmSound.stop();
+    stopAlert();
     _task = null;
     _phase = DiceTimerPhase.setting;
     _remaining = defaultDuration;
@@ -202,15 +269,28 @@ class DiceTimerController extends ChangeNotifier {
     _endAt = null;
   }
 
+  /// Alerts according to the user's dice timer settings: melody, vibration,
+  /// notification, any combination of those — or nothing at all in silent
+  /// mode, where the dial reading 0:00 is the whole alert.
   static Future<void> _defaultRingAlert(Task task) async {
-    await AlarmSound.play(melody: 'Classic', volume: 0.8, loop: true);
-    try {
-      await NotificationService.showTaskNotification(
-        'Time is up: ${task.title}',
-        delaySeconds: 0,
+    final plan = diceAlertPlan();
+    if (plan.melody) {
+      await AlarmSound.play(
+        melody: Config.diceTimerMelody,
+        volume: Config.diceTimerVolume,
+        loop: true,
       );
-    } catch (_) {
-      // Notifications are best-effort (no plugin host on desktop/tests).
+    }
+    if (plan.vibrate) await AlarmVibration.start();
+    if (plan.notification) {
+      try {
+        await NotificationService.showTaskNotification(
+          'Time is up: ${task.title}',
+          delaySeconds: 0,
+        );
+      } catch (_) {
+        // Notifications are best-effort (no plugin host on desktop/tests).
+      }
     }
   }
 }
@@ -273,7 +353,7 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     // Leaving the page keeps a running or paused timer alive so it can be
     // reopened later; only a mid-ring exit silences the melody (the expired
     // state is kept, so returning still shows the finish actions).
-    if (_controller.phase == DiceTimerPhase.ringing) AlarmSound.stop();
+    if (_controller.phase == DiceTimerPhase.ringing) _controller.stopAlert();
     super.dispose();
   }
 
@@ -286,6 +366,41 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     callback();
     _controller.clear();
     Navigator.of(context).pop();
+  }
+
+  /// The same settings as the Settings page's "Dice timer" card, reachable
+  /// from the gear while the timer is on screen — the moment the alert is
+  /// actually on the user's mind. Changes apply to the ring that follows,
+  /// including one that is already ringing (rebuilt on close).
+  Future<void> _openSettingsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'Dice timer settings',
+                  style: Theme.of(sheetContext)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const DiceTimerSettingsList(),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   String _two(int n) => n.toString().padLeft(2, '0');
@@ -350,6 +465,26 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
           ],
         );
       case DiceTimerPhase.ringing:
+        // A silent alert has nothing but the dial to say it: show the clock at
+        // zero instead of shouting.
+        if (diceAlertPlan().isSilent) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '0:00',
+                style: theme.textTheme.headlineMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Time's up",
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          );
+        }
         return Text(
           "Time's up!",
           textAlign: TextAlign.center,
@@ -538,7 +673,17 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final page = Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Dice timer'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Dice timer',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Timer settings',
+            onPressed: _openSettingsSheet,
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),

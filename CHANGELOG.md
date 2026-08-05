@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.120] - 2026-08-05
+- Dice timer settings: choose what happens at zero — the alarm melody (with its own melody and volume), vibration, a notification (the default) or completely silent, where the dial just shows 0:00
+- With notifications switched off, the default dice timer alert stays quiet too: no fallback sound, just 0:00 on the dial
+- An "Also vibrate" switch adds a buzz to the melody or notification alert, and the dial's pre-wound default length (20 min) is now yours to pick
+- Reach all of it from the new "Dice timer" settings section or the gear on the timer page itself, melody preview included
+
+## [0.1.119] - 2026-08-05
+- Changelog page: a new button switches to an update heatmap — a GitHub-style calendar of every release, greener the more releases that day
+
+## [0.1.118] - 2026-08-05
+- First launch now asks whether you want simple mode (just the to-do list) or full mode (everything) — you can switch any time in Settings
+- Simple mode keeps only the task list: no tools, no streak flame, no dice, no schedule view and no search — the drawer is down to Settings, Deleted Items and About
+- New Settings section "Mode & features": switch between simple and full mode, bring the welcome picker back, and in full mode pick exactly which features you want (each tool, streak, dice timer, schedule view, task search, deleted items, changelog, app logs, startup times, daily SMS report)
+- A feature you switch off disappears everywhere at once — drawer, app bar and its own settings section — and can no longer be the app's start page
+
+## [0.1.117] - 2026-08-05
+- SMS report: recipients can be switched off individually instead of deleted — paused contacts stay in the list and are skipped by the daily report.
+
+## [0.1.116] - 2026-08-05
+- Demo builds (Chrome) now start with a 50-day streak so the flame and streak page have history to show.
+
 ## [0.1.115] - 2026-08-04
 - streak: a flame next to the dice tracks your daily completion streak — it grows and gets hotter every day you complete at least one task, reaching maximum fire after a year
 - streak: tapping the flame opens the streak page with a fun animated flame, fun stats (longest streak, best day, days until maximum fire, ...) and the streak settings

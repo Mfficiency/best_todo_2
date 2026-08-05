@@ -100,10 +100,10 @@ flutter {
 afterEvaluate {
     val createVersionedReleaseApk = tasks.register("createVersionedReleaseApk") {
         doLast {
-            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.57+27 -> 57)
-            val suffix = (flutter.versionName ?: "0.0.0")
-                .substringBefore("+")
-                .substringAfterLast(".")
+            // Full pubspec version: x.y.z+build (e.g. 0.1.117+87). versionName carries
+            // x.y.z, versionCode the build number, so recombine them.
+            val fullVersion =
+                "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"
 
             val apkCandidates = listOf(
                 rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
@@ -119,7 +119,7 @@ afterEvaluate {
                 return@doLast
             }
 
-            val renamedApk = File(sourceApk.parentFile, "${sourceApk.nameWithoutExtension}_${suffix}.apk")
+            val renamedApk = File(sourceApk.parentFile, "best_todo_${fullVersion}.apk")
             sourceApk.copyTo(renamedApk, overwrite = true)
             logger.lifecycle("[apk-rename] Created ${renamedApk.path}")
         }

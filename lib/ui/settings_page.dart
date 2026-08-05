@@ -7,6 +7,7 @@ import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
 import '../services/streak_service.dart';
+import 'dice_timer_settings.dart';
 import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -33,18 +34,41 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    7,
+    9,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
     'Appearance',
+    'Mode & features',
     'Tasks',
     'Widget',
     'Notifications',
     'Streak',
+    'Dice timer',
     'SMS report',
     'Export',
   ];
+
+  /// Sections currently on screen, in order. A section belonging to a feature
+  /// that is switched off (or hidden by simple mode) drops out of the chip row
+  /// and of the settings search along with its content.
+  List<int> get _visibleSections => [
+        for (var i = 0; i < _sectionTitles.length; i++)
+          if (_isSectionVisible(i)) i,
+      ];
+
+  bool _isSectionVisible(int index) {
+    switch (index) {
+      case 5:
+        return Config.isFeatureEnabled('streak');
+      case 6:
+        return Config.isFeatureEnabled('dice_timer');
+      case 7:
+        return Config.isFeatureEnabled('sms_report');
+      default:
+        return true;
+    }
+  }
   int _activeSectionIndex = 0;
   static const double _tabsHeaderHeight = 60;
   static const double _sectionActivationOffset = 56;
@@ -66,38 +90,61 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Use tab icons', 0, 'tabs labels home'),
     _SettingsSearchEntry('24-hour time', 0, 'clock am pm 12-hour format'),
     _SettingsSearchEntry('Date format', 0, 'display day month year'),
-    _SettingsSearchEntry('Add new tasks at top', 1, 'bottom order insert'),
-    _SettingsSearchEntry('Swipe left to delete', 1, 'gesture direction move'),
-    _SettingsSearchEntry('Default delay', 1, 'undo seconds snackbar'),
-    _SettingsSearchEntry('Start page', 1, 'tab launch open today'),
-    _SettingsSearchEntry('Default start page', 1, 'tool launch open tasks'),
-    _SettingsSearchEntry('Start in schedule view', 1, 'calendar launch'),
-    _SettingsSearchEntry('Chronize: show hour wheel', 1, 'timeline scroll'),
-    _SettingsSearchEntry('Widget progress line', 2, 'home screen completion'),
-    _SettingsSearchEntry('Enable notifications', 3, 'push reminders'),
-    _SettingsSearchEntry('Quiet hours', 3, 'silence night do not disturb'),
-    _SettingsSearchEntry('Default notification delay', 3, 'bell reminder'),
     _SettingsSearchEntry(
-        'Enable daily SMS report', 4, 'text message snitch daily'),
-    _SettingsSearchEntry('Show streak', 4, 'flame fire hide daily habit'),
+        'Simple mode', 1, 'full mode basic minimal features hide tools'),
     _SettingsSearchEntry(
-        'Streak grace period', 4, '24 48 hours flame miss day forgive'),
+        'Show the mode picker again', 1, 'simple full first start choose'),
+    _SettingsSearchEntry('Add new tasks at top', 2, 'bottom order insert'),
+    _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
+    _SettingsSearchEntry('Default delay', 2, 'undo seconds snackbar'),
+    _SettingsSearchEntry('Start page', 2, 'tab launch open today'),
+    _SettingsSearchEntry('Default start page', 2, 'tool launch open tasks'),
+    _SettingsSearchEntry('Start in schedule view', 2, 'calendar launch'),
+    _SettingsSearchEntry('Chronize: show hour wheel', 2, 'timeline scroll'),
+    _SettingsSearchEntry('Widget progress line', 3, 'home screen completion'),
+    _SettingsSearchEntry('Enable notifications', 4, 'push reminders'),
+    _SettingsSearchEntry('Quiet hours', 4, 'silence night do not disturb'),
+    _SettingsSearchEntry('Default notification delay', 4, 'bell reminder'),
+    _SettingsSearchEntry('Show streak', 5, 'flame fire hide daily habit'),
     _SettingsSearchEntry(
-        'Streak reminder', 4, 'flame notification evening nudge daily'),
+        'Streak grace period', 5, '24 48 hours flame miss day forgive'),
     _SettingsSearchEntry(
-        'Streak celebration', 4, 'flame animation complete first task'),
-    _SettingsSearchEntry('Send time', 5, 'sms schedule daily'),
-    _SettingsSearchEntry('Only send if under threshold', 5, 'sms completion'),
-    _SettingsSearchEntry('SIM subscription id', 5, 'sms dual sim'),
-    _SettingsSearchEntry('Recipients', 5, 'sms phone number contact'),
-    _SettingsSearchEntry('Message template', 5, 'sms tokens text'),
-    _SettingsSearchEntry('Sent message history', 5, 'sms log'),
-    _SettingsSearchEntry('Send test now', 5, 'sms report'),
-    _SettingsSearchEntry('Export Tasks', 6, 'backup save json'),
-    _SettingsSearchEntry('Export Settings', 6, 'backup save json'),
-    _SettingsSearchEntry('Export Everything', 6, 'backup save json'),
-    _SettingsSearchEntry('Import', 6, 'restore backup load json'),
+        'Streak reminder', 5, 'flame notification evening nudge daily'),
+    _SettingsSearchEntry(
+        'Streak celebration', 5, 'flame animation complete first task'),
+    _SettingsSearchEntry('Alert at zero', 6,
+        'dice timer melody vibration notification silent sound alarm quiet'),
+    _SettingsSearchEntry('Melody', 6, 'dice timer sound tune alarm ring'),
+    _SettingsSearchEntry('Volume', 6, 'dice timer loud quiet melody'),
+    _SettingsSearchEntry('Also vibrate', 6, 'dice timer buzz vibration'),
+    _SettingsSearchEntry(
+        'Default timer length', 6, 'dice minutes dial pre-wound 20'),
+    _SettingsSearchEntry(
+        'Enable daily SMS report', 7, 'text message snitch daily'),
+    _SettingsSearchEntry('Send time', 7, 'sms schedule daily'),
+    _SettingsSearchEntry('Only send if under threshold', 7, 'sms completion'),
+    _SettingsSearchEntry('SIM subscription id', 7, 'sms dual sim'),
+    _SettingsSearchEntry(
+        'Recipients', 7, 'sms phone number contact disable pause skip'),
+    _SettingsSearchEntry('Message template', 7, 'sms tokens text'),
+    _SettingsSearchEntry('Sent message history', 7, 'sms log'),
+    _SettingsSearchEntry('Send test now', 7, 'sms report'),
+    _SettingsSearchEntry('Export Tasks', 8, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
+    _SettingsSearchEntry('Import', 8, 'restore backup load json'),
   ];
+
+  /// The feature switches of the Mode & features section are searchable too,
+  /// so "alarms" or "wishlist" finds the switch that turns them on.
+  static List<_SettingsSearchEntry> get _featureSearchEntries => [
+        for (var i = 0; i < Config.featureKeys.length; i++)
+          _SettingsSearchEntry(
+            Config.featureLabels[i],
+            1,
+            'feature show hide ${Config.featureDescriptions[i].toLowerCase()}',
+          ),
+      ];
 
   bool _notifications = Config.enableNotifications;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
@@ -122,6 +169,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _streakReminderEnabled = Config.streakReminderEnabled;
   int _streakReminderMinutes = Config.streakReminderMinutes;
   bool _streakCompletionAnimation = Config.streakCompletionAnimation;
+  bool _simpleMode = Config.simpleMode;
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
@@ -150,6 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _streakReminderEnabled = Config.streakReminderEnabled;
     _streakReminderMinutes = Config.streakReminderMinutes;
     _streakCompletionAnimation = Config.streakCompletionAnimation;
+    _simpleMode = Config.simpleMode;
   }
 
   @override
@@ -295,6 +344,8 @@ class _SettingsPageState extends State<SettingsPage> {
               Navigator.of(context).pop(SmsRecipient(
                 nickname: nicknameController.text.trim(),
                 phoneNumber: phone,
+                // Editing must not silently re-enable a paused recipient.
+                enabled: existing?.enabled ?? true,
               ));
             },
             child: const Text('Save'),
@@ -320,6 +371,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final cfg = _smsConfig;
     if (cfg == null) return;
     setState(() => cfg.recipients.removeAt(index));
+    await _persistSms();
+  }
+
+  /// Pauses/resumes a recipient without deleting them — the daily report skips
+  /// disabled ones ([SmsReportConfig.activeRecipients]).
+  Future<void> _toggleSmsRecipient(int index, bool enabled) async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() => cfg.recipients[index].enabled = enabled);
     await _persistSms();
   }
 
@@ -576,9 +636,106 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  /// Applies a simple/full mode change: the mode itself is one switch, but a
+  /// tool that just became unavailable must not stay the configured start
+  /// page, or the app would open a page the user can no longer reach.
+  Future<void> _setSimpleMode(bool value) async {
+    setState(() => _simpleMode = value);
+    Config.simpleMode = value;
+    _dropUnavailableStartTool();
+    await Config.save();
+    StreakService.instance.settingsChanged();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _setFeatureEnabled(String key, bool value) async {
+    setState(() => Config.setFeatureEnabled(key, value));
+    _dropUnavailableStartTool();
+    await Config.save();
+    if (key == 'streak') StreakService.instance.settingsChanged();
+    if (key == 'sms_report') await SmsReportScheduler.applyFromConfig();
+    widget.onSettingsChanged?.call();
+  }
+
+  void _dropUnavailableStartTool() {
+    if (Config.startTool != 'tasks' &&
+        !Config.isFeatureEnabled(Config.startTool)) {
+      Config.startTool = 'tasks';
+      _startTool = 'tasks';
+    }
+  }
+
+  /// Start-page options that are actually reachable: the task list plus every
+  /// enabled tool.
+  List<String> get _startToolChoices => [
+        for (final tool in Config.startToolOptions)
+          if (tool == 'tasks' || Config.isFeatureEnabled(tool)) tool,
+      ];
+
+  Widget _buildModeFeaturesSection() {
+    final theme = Theme.of(context);
+    return _buildSection(
+      index: 1,
+      title: 'Mode & features',
+      children: [
+        SwitchListTile(
+          title: const Text('Simple mode'),
+          subtitle: const Text(
+              'Just the task list: hides the tools, streak, dice, schedule '
+              'view and search'),
+          value: _simpleMode,
+          onChanged: _setSimpleMode,
+        ),
+        ListTile(
+          title: const Text('Show the mode picker again'),
+          subtitle: const Text(
+              'Choose simple or full mode on the welcome screen'),
+          trailing: const Icon(Icons.restart_alt),
+          onTap: () => MyApp.of(context)?.restartModePicker(),
+        ),
+        const Divider(height: 1),
+        if (_simpleMode)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Text(
+              'Simple mode hides every optional feature. Turn it off to pick '
+              'the features you want.',
+              style: theme.textTheme.bodyMedium,
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Text(
+              'Features in full mode',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              'Switch off what you do not use — it disappears from the drawer, '
+              'the app bar and these settings.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          for (var i = 0; i < Config.featureKeys.length; i++)
+            SwitchListTile(
+              title: Text(Config.featureLabels[i]),
+              subtitle: Text(Config.featureDescriptions[i]),
+              value: Config.featureEnabled[Config.featureKeys[i]] ?? true,
+              onChanged: (val) =>
+                  _setFeatureEnabled(Config.featureKeys[i], val),
+            ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildStreakSection() {
     return _buildSection(
-      index: 4,
+      index: 5,
       title: 'Streak',
       children: [
         SwitchListTile(
@@ -650,11 +807,23 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// The dice timer's own alert settings, shared with the gear on the timer
+  /// page ([DiceTimerSettingsList] writes straight through to [Config]).
+  Widget _buildDiceTimerSection() {
+    return _buildSection(
+      index: 6,
+      title: 'Dice timer',
+      children: [
+        DiceTimerSettingsList(onChanged: widget.onSettingsChanged),
+      ],
+    );
+  }
+
   Widget _buildSmsReportSection() {
     final cfg = _smsConfig;
     if (cfg == null) {
       return _buildSection(
-        index: 5,
+        index: 7,
         title: 'SMS report',
         children: const [
           Padding(
@@ -665,13 +834,13 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     }
     return _buildSection(
-      index: 5,
+      index: 7,
       title: 'SMS report',
       children: [
         SwitchListTile(
           title: const Text('Enable daily SMS report'),
           subtitle: const Text(
-              'Sends an SMS each day at the chosen time to all recipients'),
+              'Sends an SMS each day at the chosen time to enabled recipients'),
           value: cfg.enabled,
           onChanged: (v) async {
             setState(() => cfg.enabled = v);
@@ -760,18 +929,40 @@ class _SettingsPageState extends State<SettingsPage> {
           ...List<Widget>.generate(cfg.recipients.length, (i) {
             final r = cfg.recipients[i];
             final label = r.nickname.isEmpty ? '(no nickname)' : r.nickname;
+            final dimmed = Theme.of(context).disabledColor;
             return ListTile(
-              title: Text(label),
-              subtitle: Text(r.phoneNumber),
+              title: Text(
+                label,
+                style: r.enabled ? null : TextStyle(color: dimmed),
+              ),
+              subtitle: Text(
+                r.enabled ? r.phoneNumber : '${r.phoneNumber} • disabled',
+                style: r.enabled ? null : TextStyle(color: dimmed),
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Tooltip(
+                    message: r.enabled
+                        ? 'Disable recipient'
+                        : 'Enable recipient',
+                    child: Switch(
+                      value: r.enabled,
+                      materialTapTargetSize:
+                          MaterialTapTargetSize.shrinkWrap,
+                      onChanged: (value) => _toggleSmsRecipient(i, value),
+                    ),
+                  ),
                   IconButton(
+                    tooltip: 'Edit recipient',
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.edit),
                     onPressed: () =>
                         _editSmsRecipient(existing: r, index: i),
                   ),
                   IconButton(
+                    tooltip: 'Remove recipient',
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () => _removeSmsRecipient(i),
                   ),
@@ -845,7 +1036,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildExportSection() {
     return _buildSection(
-      index: 6,
+      index: 8,
       title: 'Export',
       children: [
         Padding(
@@ -900,12 +1091,35 @@ class _SettingsPageState extends State<SettingsPage> {
   List<_SettingsSearchEntry> get _searchResults {
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return const [];
-    return _searchEntries
+    return [..._searchEntries, ..._featureSearchEntries]
+        .where((e) => _isSectionVisible(e.sectionIndex))
+        .where((e) => _isEntryVisible(e))
         .where((e) =>
             e.title.toLowerCase().contains(q) ||
             e.keywords.contains(q) ||
             _sectionTitles[e.sectionIndex].toLowerCase().contains(q))
         .toList();
+  }
+
+  /// Single entries that disappear with their feature even though their
+  /// section stays (the feature switches themselves are hidden in simple
+  /// mode, where they have no effect).
+  bool _isEntryVisible(_SettingsSearchEntry entry) {
+    if (entry.sectionIndex == 1 &&
+        Config.simpleMode &&
+        Config.featureLabels.contains(entry.title)) {
+      return false;
+    }
+    if (entry.title == 'Start in schedule view') {
+      return Config.isFeatureEnabled('schedule_view');
+    }
+    if (entry.title == 'Chronize: show hour wheel') {
+      return Config.isFeatureEnabled('chronize');
+    }
+    if (entry.title == 'Default start page') {
+      return !Config.simpleMode;
+    }
+    return true;
   }
 
   void _closeSearch() {
@@ -1015,17 +1229,17 @@ class _SettingsPageState extends State<SettingsPage> {
                     : SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: List<Widget>.generate(
-                              _sectionTitles.length, (index) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(_sectionTitles[index]),
-                                selected: _activeSectionIndex == index,
-                                onSelected: (_) => _jumpToSection(index),
+                          children: [
+                            for (final index in _visibleSections)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(_sectionTitles[index]),
+                                  selected: _activeSectionIndex == index,
+                                  onSelected: (_) => _jumpToSection(index),
+                                ),
                               ),
-                            );
-                          }),
+                          ],
                         ),
                       ),
               ),
@@ -1114,8 +1328,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
+                  _buildModeFeaturesSection(),
                   _buildSection(
-                    index: 1,
+                    index: 2,
                     title: 'Tasks',
                     children: [
                       SwitchListTile(
@@ -1184,59 +1399,63 @@ class _SettingsPageState extends State<SettingsPage> {
                           },
                         ),
                       ),
-                      ListTile(
-                        title: const Text('Default start page'),
-                        subtitle: const Text(
-                            'Open the task list or one of the tools when '
-                            'launching the app'),
-                        trailing: DropdownButton<String>(
-                          value: Config.startToolOptions.contains(_startTool)
-                              ? _startTool
-                              : Config.startToolOptions.first,
-                          items: List.generate(
-                            Config.startToolOptions.length,
-                            (index) => DropdownMenuItem<String>(
-                              value: Config.startToolOptions[index],
-                              child: Text(Config.startToolLabels[index]),
-                            ),
+                      if (!_simpleMode)
+                        ListTile(
+                          title: const Text('Default start page'),
+                          subtitle: const Text(
+                              'Open the task list or one of the tools when '
+                              'launching the app'),
+                          trailing: DropdownButton<String>(
+                            value: _startToolChoices.contains(_startTool)
+                                ? _startTool
+                                : _startToolChoices.first,
+                            items: [
+                              for (final tool in _startToolChoices)
+                                DropdownMenuItem<String>(
+                                  value: tool,
+                                  child: Text(Config.startToolLabels[
+                                      Config.startToolOptions.indexOf(tool)]),
+                                ),
+                            ],
+                            onChanged: (val) async {
+                              if (val == null) return;
+                              setState(() => _startTool = val);
+                              Config.startTool = val;
+                              await Config.save();
+                              widget.onSettingsChanged?.call();
+                            },
                           ),
+                        ),
+                      if (Config.isFeatureEnabled('schedule_view'))
+                        SwitchListTile(
+                          title: const Text('Start in schedule view'),
+                          subtitle: const Text(
+                              'Open the calendar / schedule view on launch instead of the tab list'),
+                          value: _startInScheduleView,
                           onChanged: (val) async {
-                            if (val == null) return;
-                            setState(() => _startTool = val);
-                            Config.startTool = val;
+                            setState(() => _startInScheduleView = val);
+                            Config.startInScheduleView = val;
                             await Config.save();
                             widget.onSettingsChanged?.call();
                           },
                         ),
-                      ),
-                      SwitchListTile(
-                        title: const Text('Start in schedule view'),
-                        subtitle: const Text(
-                            'Open the calendar / schedule view on launch instead of the tab list'),
-                        value: _startInScheduleView,
-                        onChanged: (val) async {
-                          setState(() => _startInScheduleView = val);
-                          Config.startInScheduleView = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('Chronize: show hour wheel'),
-                        subtitle: const Text(
-                            'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
-                        value: _chronizeShowHourWheel,
-                        onChanged: (val) async {
-                          setState(() => _chronizeShowHourWheel = val);
-                          Config.chronizeShowHourWheel = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
+                      if (Config.isFeatureEnabled('chronize'))
+                        SwitchListTile(
+                          title: const Text('Chronize: show hour wheel'),
+                          subtitle: const Text(
+                              'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
+                          value: _chronizeShowHourWheel,
+                          onChanged: (val) async {
+                            setState(() => _chronizeShowHourWheel = val);
+                            Config.chronizeShowHourWheel = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
                     ],
                   ),
                   _buildSection(
-                    index: 2,
+                    index: 3,
                     title: 'Widget',
                     children: [
                       SwitchListTile(
@@ -1254,7 +1473,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                   _buildSection(
-                    index: 3,
+                    index: 4,
                     title: 'Notifications',
                     children: [
                       SwitchListTile(
@@ -1304,8 +1523,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
-                  _buildStreakSection(),
-                  _buildSmsReportSection(),
+                  if (_isSectionVisible(5)) _buildStreakSection(),
+                  if (_isSectionVisible(6)) _buildDiceTimerSection(),
+                  if (_isSectionVisible(7)) _buildSmsReportSection(),
                   _buildExportSection(),
                 ],
               ),
