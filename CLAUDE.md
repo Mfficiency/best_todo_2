@@ -16,6 +16,12 @@ file is the short operational guide.
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
 - Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+- Test results shown in-app come from `assets/test_report.json`, packaged into every
+  build. CI keeps it current; locally refresh it with
+  `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`
+  branch), or from your own run:
+  `flutter test --machine > build/ci/machine.jsonl` then
+  `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
   or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`
 

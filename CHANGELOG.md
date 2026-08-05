@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.128] - 2026-08-05
+- Home-screen task widget: tapping the progress line, or a task row next to its checkbox, now always opens the app on the task list - even if the app was left on settings or another page
+- Test Results now always shows the newest test run there is, whichever branch it came from — no more empty page because the branch you built from was not the one that last ran the tests
+- The results are packaged into every build, so the page works with no network at all: a fresh checkout, a release APK on a plane, or the app running in the browser all show real numbers
+- The page says how old the run is ("Ran 3 hours ago on dev"), where the numbers came from, and links straight to the CI run that produced them; refreshing pulls the latest and keeps it for the next offline start
+
+## [0.1.127] - 2026-08-05
+- Dice timer: a "Cancel timer" button ends a running, paused or ringing timer and drops its alarm with it — the task is left exactly as it was, neither done nor postponed
+- Cancelling returns to the home page with a "Timer cancelled" note and the dice goes back to offering a fresh roll; leaving the page with the back arrow still keeps the countdown running, as before
+
 ## [0.1.126] - 2026-08-05
 - Introduction: the welcome slides are back — the app no longer opens straight on the simple/full mode question, the three intro screens run first and the mode choice is now their closing page
 - About → "Replay Introduction" now replays the whole thing, slides and the simple/full mode choice, instead of only the slides

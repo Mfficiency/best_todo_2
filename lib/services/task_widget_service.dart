@@ -41,6 +41,11 @@ class TaskWidgetService {
   static const String scheme = 'besttodotask';
   static const String hostToggle = 'toggle';
 
+  /// Any tap that is not a checkbox (progress line, task row, summary text).
+  /// Opens the app and, unlike a plain launch intent, always lands on the task
+  /// list — see `_handleWidgetClick` in `main.dart`.
+  static const String hostOpen = 'open';
+
   /// Today's list as the widget shows it: everything due today or earlier,
   /// open tasks first (in list order) so a full slate still shows what is
   /// left, with the completed ones after them for un-checking.

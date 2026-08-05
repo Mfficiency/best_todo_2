@@ -141,6 +141,38 @@ void main() {
     expect(Config.widgetCheckboxes, isTrue);
   });
 
+  test('every non-checkbox tap on the widget opens the task list', () {
+    // The Kotlin side writes the URI as a literal, so the two halves of the
+    // contract can only be checked against each other. `besttodotask://open`
+    // is what makes `main.dart` pop back to the home page instead of resuming
+    // on whatever page the app was left on.
+    final provider = File('android/app/src/main/kotlin/com/example/'
+        'best_todo_2/SimpleWidgetProvider.kt');
+    if (!provider.existsSync()) return; // not checked out (e.g. pub package)
+    final source = provider.readAsStringSync();
+
+    final openUri = '${TaskWidgetService.scheme}://${TaskWidgetService.hostOpen}';
+    expect(source, contains('Uri.parse("$openUri")'));
+
+    // The progress line, the task rows and the summary text all use it.
+    for (final id in const [
+      'R.id.widget_container',
+      'R.id.widget_text',
+      'R.id.widget_progress_green',
+      'R.id.widget_progress_orange',
+      'R.id.widget_progress_red',
+      'rowContainers[i]',
+      'titleViews[i]',
+    ]) {
+      expect(source, contains('setOnClickPendingIntent($id, pendingIntent)'),
+          reason: '$id should open the app');
+    }
+
+    // ...while the checkbox still toggles in the background.
+    expect(source,
+        contains('setOnClickPendingIntent(checkViews[i], toggleIntent)'));
+  });
+
   test('an unknown id leaves storage untouched', () async {
     final storage = StorageService();
     final task = taskDue('Keep me', DateTime(2026, 8, 5), ranking: 1);

@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../models/test_report.dart';
 import '../services/test_report_service.dart';
 import 'subpage_app_bar.dart';
 
-/// Data assembled for one render of the Test Results page: the chosen report,
-/// whether it came from the latest online CI run, and the version of the app
-/// the user is currently running.
+/// Data assembled for one render of the Test Results page: the newest report
+/// found across the three layers (see `TestReportService`), plus the version of
+/// the app the user is currently running.
 class _PageData {
   final DisplayedTestReport displayed;
   final String currentVersion;
@@ -15,10 +16,11 @@ class _PageData {
   const _PageData({required this.displayed, required this.currentVersion});
 }
 
-/// Shows CI test results in the Tools section. Prefers the latest report
-/// published online (dev branch); falls back to the report bundled with this
-/// build when offline. The header makes the version you are running and the
-/// version the tests ran against explicit (see `TestReportService`).
+/// Shows the newest known test run in the Tools section. The report is packaged
+/// into every build (`assets/test_report.json`), so this page has data offline,
+/// on any branch, and in `flutter run -d chrome`; a network refresh pulls the
+/// newest run CI published from any branch and caches it for later offline
+/// launches (see `TestReportService`).
 class TestResultsPage extends StatefulWidget {
   const TestResultsPage({Key? key}) : super(key: key);
 
@@ -78,17 +80,17 @@ class _TestResultsPageState extends State<TestResultsPage> {
               _VersionCard(
                 currentVersion: data.currentVersion,
                 report: report,
-                online: data.displayed.online,
+                displayed: data.displayed,
               ),
               if (!report.available)
                 const Padding(
                   padding: EdgeInsets.fromLTRB(4, 24, 4, 4),
                   child: Text(
-                    "Couldn't reach the latest online test report, and no "
-                    'report was bundled with this build.\n\n'
-                    'CI publishes results for each build; local and dev '
-                    'builds carry no bundled report, and the online report '
-                    'needs a network connection.',
+                    'No test run is packaged with this build yet.\n\n'
+                    'Every build packages the newest known run into '
+                    'assets/test_report.json (CI does this, and so does '
+                    'tool/sync_test_report.dart locally). Pull the branch '
+                    'again, or run the tests, to fill this in.',
                     textAlign: TextAlign.center,
                   ),
                 )
@@ -117,18 +119,34 @@ class _TestResultsPageState extends State<TestResultsPage> {
   }
 }
 
-/// States the version the app is running vs the version the shown report was
-/// tested against, and whether the report is the latest online run or the
-/// offline bundled fallback.
+/// Renders "3 hours ago" style ages so a stale report is obvious at a glance —
+/// the single most useful fact about a test report you did not just trigger.
+String formatReportAge(DateTime generatedAt, {DateTime? now}) {
+  final delta = (now ?? DateTime.now()).difference(generatedAt);
+  if (delta.isNegative || delta.inMinutes < 1) return 'just now';
+  if (delta.inMinutes < 60) {
+    return '${delta.inMinutes} minute${delta.inMinutes == 1 ? '' : 's'} ago';
+  }
+  if (delta.inHours < 24) {
+    return '${delta.inHours} hour${delta.inHours == 1 ? '' : 's'} ago';
+  }
+  final days = delta.inDays;
+  if (days < 30) return '$days day${days == 1 ? '' : 's'} ago';
+  final months = days ~/ 30;
+  return '$months month${months == 1 ? '' : 's'} ago';
+}
+
+/// States where the shown run came from, how old it is, which branch it ran on,
+/// and how its version relates to the one the user is running.
 class _VersionCard extends StatelessWidget {
   final String currentVersion;
   final TestReport report;
-  final bool online;
+  final DisplayedTestReport displayed;
 
   const _VersionCard({
     required this.currentVersion,
     required this.report,
-    required this.online,
+    required this.displayed,
   });
 
   @override
@@ -139,6 +157,7 @@ class _VersionCard extends StatelessWidget {
         : (report.available ? 'unknown' : '—');
     final matches =
         report.appVersion.isNotEmpty && report.appVersion == currentVersion;
+    final generatedAt = report.generatedAt;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -148,21 +167,27 @@ class _VersionCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  online ? Icons.cloud_done : Icons.cloud_off,
+                  displayed.online ? Icons.cloud_done : Icons.cloud_off,
                   size: 20,
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    online
-                        ? 'Latest online run · ${report.branch.isNotEmpty ? report.branch : 'dev'}'
-                        : 'Bundled with this build (offline)',
+                    displayed.sourceLabel,
                     style: theme.textTheme.labelLarge,
                   ),
                 ),
               ],
             ),
+            if (report.available && generatedAt != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Ran ${formatReportAge(generatedAt.toLocal())}'
+                '${report.branch.isNotEmpty ? ' on ${report.branch}' : ''}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: 12),
             _VersionRow(label: 'You are running', value: currentVersion),
             const SizedBox(height: 4),
@@ -174,9 +199,8 @@ class _VersionCard extends StatelessWidget {
                   Icon(
                     matches ? Icons.check_circle_outline : Icons.info_outline,
                     size: 18,
-                    color: matches
-                        ? Colors.green
-                        : theme.colorScheme.tertiary,
+                    color:
+                        matches ? Colors.green : theme.colorScheme.tertiary,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -189,6 +213,20 @@ class _VersionCard extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ],
+            if (report.runUrl.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Open CI run'),
+                  onPressed: () => launchUrl(
+                    Uri.parse(report.runUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
               ),
             ],
           ],
