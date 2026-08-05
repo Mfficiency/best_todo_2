@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -612,13 +614,64 @@ class _YourStatsPageState extends State<YourStatsPage>
     return grid;
   }
 
-  Color _activityCellColor(int count, int maxCount, BuildContext context) {
+  Color _activityCellColor(int count, _ActivityScale scale, BuildContext context) {
     final base = Theme.of(context).colorScheme.primary;
-    if (count <= 0 || maxCount <= 0) {
+    if (count <= 0 || scale.cap <= 0) {
       return Theme.of(context).colorScheme.surfaceContainerHighest;
     }
-    final t = count / maxCount;
-    return Color.lerp(base.withOpacity(0.18), base.withOpacity(0.92), t.clamp(0.0, 1.0))!;
+    final t = scale.intensity(count);
+    return Color.lerp(
+      base.withValues(alpha: 0.18),
+      base.withValues(alpha: 0.92),
+      t,
+    )!;
+  }
+
+  Widget _buildActivityLegend(_ActivityScale scale) {
+    final caption = scale.cap <= 0
+        ? 'No activity yet.'
+        : scale.maxCount > scale.cap
+            ? 'Log scale, saturating at ${scale.cap}/h (busiest slot: ${scale.maxCount}).'
+            : 'Log scale.';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              Text('Legend', style: Theme.of(context).textTheme.bodySmall),
+              ...scale.legendStops().map((stop) {
+                final isTop = stop == scale.cap && scale.maxCount > scale.cap;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 14,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _activityCellColor(stop, scale, context),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isTop ? '$stop+' : '$stop',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(caption, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
+    );
   }
 
   String _weekdayName(int dayIndex) {
@@ -676,12 +729,7 @@ class _YourStatsPageState extends State<YourStatsPage>
               controller: _activityTabController,
               children: tabs.map((type) {
                 final counts = _hourWeekdayCounts(type);
-                var maxCount = 0;
-                for (final row in counts) {
-                  for (final value in row) {
-                    if (value > maxCount) maxCount = value;
-                  }
-                }
+                final scale = _ActivityScale.fromCounts(counts);
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
                   children: [
@@ -742,7 +790,7 @@ class _YourStatsPageState extends State<YourStatsPage>
                                             decoration: BoxDecoration(
                                               color: _activityCellColor(
                                                 counts[hour][day],
-                                                maxCount,
+                                                scale,
                                                 context,
                                               ),
                                               borderRadius: BorderRadius.circular(2),
@@ -758,6 +806,8 @@ class _YourStatsPageState extends State<YourStatsPage>
                       ),
                     ),
                     const SizedBox(height: 10),
+                    _buildActivityLegend(scale),
+                    const SizedBox(height: 8),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: Text(
@@ -817,5 +867,59 @@ class _YourStatsPageState extends State<YourStatsPage>
         ],
       ),
     );
+  }
+}
+
+/// Colour scale for the hour x weekday activity heatmap.
+///
+/// Normalising against the raw maximum makes a single outlier slot (a bulk
+/// import, one marathon session) push every other slot into the same faint
+/// shade. Instead the scale saturates at the 95th percentile of the non-empty
+/// cells and compresses counts logarithmically, so the ordinary range keeps
+/// most of the colour ramp.
+class _ActivityScale {
+  /// Count that renders at full intensity; anything above saturates.
+  final int cap;
+
+  /// Raw busiest-cell count, used for the legend caption.
+  final int maxCount;
+
+  const _ActivityScale({required this.cap, required this.maxCount});
+
+  factory _ActivityScale.fromCounts(List<List<int>> counts) {
+    final values = <int>[];
+    var maxCount = 0;
+    for (final row in counts) {
+      for (final value in row) {
+        if (value > maxCount) maxCount = value;
+        if (value > 0) values.add(value);
+      }
+    }
+    if (values.isEmpty) {
+      return const _ActivityScale(cap: 0, maxCount: 0);
+    }
+    values.sort();
+    final index = ((values.length - 1) * 0.95).round();
+    return _ActivityScale(cap: math.max(1, values[index]), maxCount: maxCount);
+  }
+
+  /// 0..1 position on the colour ramp for [count].
+  double intensity(int count) {
+    if (count <= 0 || cap <= 0) return 0;
+    if (cap == 1) return 1;
+    final t = math.log(1 + count) / math.log(1 + cap);
+    return t.clamp(0.0, 1.0);
+  }
+
+  /// Representative counts for the legend, spaced geometrically so the swatches
+  /// are evenly spread along the ramp rather than bunched at the low end.
+  List<int> legendStops() {
+    if (cap <= 0) return const <int>[0];
+    final stops = <int>{0, 1};
+    for (var step = 1; step <= 3; step++) {
+      stops.add(math.max(1, math.pow(cap, step / 3).round()));
+    }
+    stops.add(cap);
+    return stops.toList()..sort();
   }
 }

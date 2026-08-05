@@ -330,6 +330,11 @@ class Config {
   /// If true, the homescreen widget shows today's completion progress line.
   static bool showWidgetProgressLine = true;
 
+  /// If true, the homescreen widget lists today's tasks as tappable rows with
+  /// a checkbox, so tasks can be completed without opening the app. Off by
+  /// default: the widget then stays the read-only text summary.
+  static bool widgetCheckboxes = false;
+
   /// If true, new tasks are inserted at the top of the current list.
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
@@ -382,6 +387,7 @@ class Config {
       'quietHoursEndMinutes': quietHoursEndMinutes,
       'useIconTabs': useIconTabs,
       'showWidgetProgressLine': showWidgetProgressLine,
+      'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
       'use24HourFormat': use24HourFormat,
       'dateFormat': dateFormat,
@@ -426,6 +432,7 @@ class Config {
     useIconTabs = data['useIconTabs'] ?? useIconTabs;
     showWidgetProgressLine =
         data['showWidgetProgressLine'] ?? showWidgetProgressLine;
+    widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
     use24HourFormat = data['use24HourFormat'] ?? use24HourFormat;
     final savedDateFormat = data['dateFormat'] as String?;

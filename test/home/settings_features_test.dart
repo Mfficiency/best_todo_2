@@ -93,6 +93,9 @@ void main() {
       (tester) async {
     await pumpSettings(tester);
 
+    // "Mode & features" starts collapsed; its chip expands it and jumps there.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Mode & features'));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Simple mode'), 80,
         scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();

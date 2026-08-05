@@ -497,6 +497,18 @@ off-screen, so `scrollUntilVisible`/`dragUntilVisible` skip their drag and run
 `ensureVisible` on a chip inside the **pinned** header — which drags the settings list to
 its very bottom. Tests must drag the chip row by rect instead (see `streak_ui_test.dart`).
 
+**Collapsible sections (0.1.123):** every section card's title row is an `InkWell` with a
+trailing chevron (`AnimatedRotation`, 0 → half turn, tooltip "Expand/Collapse &lt;section&gt;");
+tapping it toggles the section, its body simply not being built while collapsed.
+`_collapsedSections` (a `Set<int>` of section indexes, in-memory only — not persisted)
+starts as `{1}`, so **Mode & features** is closed on every open (longest section, rarely
+touched after setup). A right-aligned `TextButton.icon` above the first card is the master
+toggle: "Collapse all" (`unfold_less`) while any visible section is open, "Expand all"
+(`unfold_more`) once they are all closed. `_jumpToSection` removes the target from
+`_collapsedSections` first, so chips and search results never land on a closed title;
+toggles re-run `_updateActiveSectionFromScroll` on the next frame because the list height
+changed under the chip row.
+
 ### 4.5 Streak (the flame, 0.1.115)
 
 Daily-completion streak gamification. `StreakService` (ChangeNotifier singleton,

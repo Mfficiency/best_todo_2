@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.123] - 2026-08-05
+- Settings: every section now folds away — tap a title (or its chevron) to open and close it, so you only see the part you came for
+- Settings: a "Collapse all" / "Expand all" button sits at the top of the page
+- Settings: "Mode & features" starts collapsed, and jumping to a section from a chip or from the search opens it for you
+
 ## [0.1.122] - 2026-08-05
 - Dice timer: when the countdown ends and you are not on the timer page, it now rings like a real alarm — the whole screen, one button to stop it, even with the app closed or the phone locked
 - Stopping that alarm drops you straight back on the timer with Done, Postpone to tomorrow and +1/+5/+10 min ready

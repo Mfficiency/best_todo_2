@@ -1524,47 +1524,40 @@ class _HomePageState extends State<HomePage>
         'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }
 
-  Future<void> _updateHomeWidget() async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final todayTasks = _tasks.where((t) {
-      if (t.dueDate == null) return false;
-      final due = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      return !due.isAfter(today);
-    }).toList()
-      ..sort((a, b) =>
-          (a.listRanking ?? 1 << 31).compareTo(b.listRanking ?? 1 << 31));
+  Future<void> _updateHomeWidget() => TaskWidgetService.sync(_tasks);
 
-    final openTasks = todayTasks.where((t) => !t.isDone).toList();
-    final totalCount = todayTasks.length;
-    final completedCount = totalCount - openTasks.length;
-    final remainingCount = openTasks.length;
-    final percent = totalCount == 0
-        ? 0
-        : ((completedCount / totalCount) * 100).round().clamp(0, 100);
-
-    String progressColor = 'green';
-    if (completedCount == totalCount && totalCount > 0) {
-      progressColor = 'green';
-    } else if (remainingCount >= 5) {
-      progressColor = 'red';
-    } else if (remainingCount == 4) {
-      progressColor = 'orange';
+  /// Picks up completions made on the home-screen widget while the app was in
+  /// the background ([Config.widgetCheckboxes]). The widget writes straight to
+  /// `tasks.json` from its own isolate, so without this the in-memory list
+  /// would overwrite the change on the next save. Only the done state is
+  /// merged — everything else in memory is newer than the file.
+  Future<void> _mergeWidgetCompletions() async {
+    if (!Config.widgetCheckboxes) return;
+    final stored = await _repository.loadItems();
+    if (!mounted || stored.isEmpty) return;
+    final doneByUid = {for (final t in stored) t.uid: t};
+    final changed = <Task>[];
+    for (final task in _tasks) {
+      final other = doneByUid[task.uid];
+      if (other == null || other.isDone == task.isDone) continue;
+      changed.add(task);
     }
-
-    final data = openTasks.isEmpty
-        ? 'Well done!\nNo more tasks for today!'
-        : openTasks.map((t) => '- ${t.title}').join('\n');
-
-    try {
-      await HomeWidget.saveWidgetData(dataKey, data);
-      await HomeWidget.saveWidgetData(
-          progressVisibleKey, Config.showWidgetProgressLine);
-      await HomeWidget.saveWidgetData(progressPercentKey, percent);
-      await HomeWidget.saveWidgetData(progressColorKey, progressColor);
-      await HomeWidget.updateWidget(
-          iOSName: iOSWidgetName, androidName: androidWidgetName);
-    } catch (_) {}
+    if (changed.isEmpty) return;
+    setState(() {
+      for (final task in changed) {
+        final other = doneByUid[task.uid]!;
+        task.isDone = other.isDone;
+        task.completedAt = other.completedAt;
+      }
+    });
+    for (final task in changed) {
+      // The streak was already recorded by the widget's isolate; the daily
+      // stats live only here, so they catch up now.
+      _trackTaskDoneState(task, !task.isDone);
+    }
+    _saveTasks();
+    LogService.add('HomePage._mergeWidgetCompletions',
+        'Merged ${changed.length} widget completion(s)');
   }
 
   void _saveTasks() {

@@ -70,6 +70,12 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
   int _activeSectionIndex = 0;
+
+  /// Sections whose body is hidden. Tapping a section title toggles it; the
+  /// "Mode & features" section (index 1) starts collapsed because it is the
+  /// longest one and is rarely changed after setup.
+  final Set<int> _collapsedSections = {1};
+
   static const double _tabsHeaderHeight = 60;
   static const double _sectionActivationOffset = 56;
   double _lastScrollOffset = 0;
@@ -516,7 +522,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _jumpToSection(int index) async {
     final from = _activeSectionIndex;
-    setState(() => _activeSectionIndex = index);
+    // Jumping to a collapsed section would land on a title with nothing under
+    // it, so open it on the way.
+    setState(() {
+      _activeSectionIndex = index;
+      _collapsedSections.remove(index);
+    });
 
     // SliverList lays out children lazily, so a section that hasn't been
     // scrolled into view yet has no RenderObject and ensureVisible would
@@ -614,6 +625,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required String title,
     required List<Widget> children,
   }) {
+    final collapsed = _collapsedSections.contains(index);
     return Container(
       key: _sectionKeys[index],
       margin: const EdgeInsets.only(bottom: 12),
@@ -621,19 +633,82 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Text(
-                title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+            InkWell(
+              onTap: () => _toggleSection(index),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Tooltip(
+                      message: collapsed
+                          ? 'Expand $title'
+                          : 'Collapse $title',
+                      child: AnimatedRotation(
+                        turns: collapsed ? 0 : 0.5,
+                        duration: const Duration(milliseconds: 180),
+                        child: const Icon(Icons.expand_more),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            ...children,
+            if (!collapsed) ...children,
           ],
         ),
+      ),
+    );
+  }
+
+  void _toggleSection(int index) {
+    setState(() {
+      if (!_collapsedSections.remove(index)) _collapsedSections.add(index);
+    });
+    // Collapsing shortens the list, so the chip row has to re-pick the
+    // section the viewport now shows.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateActiveSectionFromScroll();
+    });
+  }
+
+  /// One toggle for every section: collapses everything while any section is
+  /// still open, expands everything once they are all closed.
+  Widget _buildCollapseAllBar() {
+    final anyExpanded =
+        _visibleSections.any((i) => !_collapsedSections.contains(i));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton.icon(
+            onPressed: () {
+              setState(() {
+                if (anyExpanded) {
+                  _collapsedSections.addAll(
+                    List<int>.generate(_sectionTitles.length, (i) => i),
+                  );
+                } else {
+                  _collapsedSections.clear();
+                }
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _updateActiveSectionFromScroll();
+              });
+            },
+            icon: Icon(anyExpanded ? Icons.unfold_less : Icons.unfold_more),
+            label: Text(anyExpanded ? 'Collapse all' : 'Expand all'),
+          ),
+        ],
       ),
     );
   }
@@ -1271,6 +1346,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 showSearchResults
                     ? _buildSearchResultTiles()
                     : [
+                  _buildCollapseAllBar(),
                   _buildSection(
                     index: 0,
                     title: 'Appearance',
