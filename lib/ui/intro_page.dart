@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'mode_select_page.dart';
+
+/// The welcome flow: three slides about what the app is, then the simple/full
+/// mode question as the closing page. Shown on a first launch and replayable
+/// from About → "Replay introduction"; [onFinished] runs once a mode is picked.
 class IntroPage extends StatefulWidget {
   final VoidCallback onFinished;
   const IntroPage({super.key, required this.onFinished});
@@ -12,15 +17,21 @@ class _IntroPageState extends State<IntroPage> {
   final PageController _controller = PageController();
   int _currentIndex = 0;
 
+  /// Number of slides before the mode chooser, which is always the last page.
+  static const int _slideCount = 3;
+  static const int _pageCount = _slideCount + 1;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   void _nextPage() {
-    if (_currentIndex < 2) {
-      _controller.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      widget.onFinished();
-    }
+    _controller.nextPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   Widget _buildPage(String title, String body, IconData icon) {
@@ -53,6 +64,7 @@ class _IntroPageState extends State<IntroPage> {
 
   @override
   Widget build(BuildContext context) {
+    final onLastPage = _currentIndex == _pageCount - 1;
     final pages = [
       _buildPage(
         'Privacy First',
@@ -68,6 +80,10 @@ class _IntroPageState extends State<IntroPage> {
         'Minimal Interactions',
         'Designed for the fewest clicks possible!',
         Icons.touch_app,
+      ),
+      SafeArea(
+        bottom: false,
+        child: ModeSelectView(onModeSelected: widget.onFinished),
       ),
     ];
 
@@ -97,10 +113,20 @@ class _IntroPageState extends State<IntroPage> {
                 );
               }),
             ),
-            TextButton(
-              onPressed: _nextPage,
-              child: Text(_currentIndex == pages.length - 1 ? 'Get Started' : 'Next'),
-            ),
+            // The last page ends the intro by picking a mode, so it gets a
+            // nudge instead of a button that could skip the question.
+            if (onLastPage)
+              Text(
+                'Pick a mode to start',
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            else
+              TextButton(
+                onPressed: _nextPage,
+                child: Text(
+                  _currentIndex == _slideCount - 1 ? 'Get Started' : 'Next',
+                ),
+              ),
           ],
         ),
       ),

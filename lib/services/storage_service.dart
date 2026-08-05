@@ -170,6 +170,23 @@ class StorageService {
     }
   }
 
+  /// Reads `tasks.json` exactly as it sits on disk — no new-day rollover, no
+  /// wishlist migration, no journal baseline. For callers that only want to
+  /// see what another isolate wrote (the home-screen widget completing a task
+  /// while the app was in the background), where [loadTaskList]'s side effects
+  /// would fight the in-memory list.
+  Future<List<Task>> readTaskListRaw() async {
+    try {
+      final file = await _getLocalFile();
+      final tasks =
+          await SafeFile.readWithRecovery(file, _parseTaskArray) ?? <Task>[];
+      _ensureUniqueIds(tasks);
+      return tasks;
+    } catch (_) {
+      return <Task>[];
+    }
+  }
+
   Future<List<Task>> loadTaskList() async {
     try {
       final isNewDay = await _isNewDay();

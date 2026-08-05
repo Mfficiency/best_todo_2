@@ -874,9 +874,9 @@ class _YourStatsPageState extends State<YourStatsPage>
 ///
 /// Normalising against the raw maximum makes a single outlier slot (a bulk
 /// import, one marathon session) push every other slot into the same faint
-/// shade. Instead the scale saturates at the 95th percentile of the non-empty
-/// cells and compresses counts logarithmically, so the ordinary range keeps
-/// most of the colour ramp.
+/// shade. Instead the scale saturates at the Tukey upper fence of the
+/// non-empty cells and compresses counts logarithmically, so the ordinary
+/// range keeps most of the colour ramp and outliers simply top out.
 class _ActivityScale {
   /// Count that renders at full intensity; anything above saturates.
   final int cap;
@@ -899,8 +899,19 @@ class _ActivityScale {
       return const _ActivityScale(cap: 0, maxCount: 0);
     }
     values.sort();
-    final index = ((values.length - 1) * 0.95).round();
-    return _ActivityScale(cap: math.max(1, values[index]), maxCount: maxCount);
+    final q1 = _quantile(values, 0.25);
+    final q3 = _quantile(values, 0.75);
+    final fence = (q3 + 1.5 * (q3 - q1)).round();
+    // One step above q3 keeps a busy-but-not-outlier slot distinguishable even
+    // when the fence collapses (e.g. every ordinary cell holds the same count).
+    final cap = math.min(maxCount, math.max(q3 + 1, math.max(1, fence)));
+    return _ActivityScale(cap: math.max(1, cap), maxCount: maxCount);
+  }
+
+  /// Nearest-rank quantile of an ascending [sorted] list.
+  static int _quantile(List<int> sorted, double fraction) {
+    final index = ((sorted.length - 1) * fraction).round();
+    return sorted[index];
   }
 
   /// 0..1 position on the colour ramp for [count].

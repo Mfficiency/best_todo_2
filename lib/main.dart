@@ -22,6 +22,7 @@ import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/startup_time_service.dart';
+import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
 
@@ -93,8 +94,10 @@ ThemeData buildMinimalistTheme(Brightness brightness) {
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
-/// Background entry point invoked by the home-screen widget when a toggle is
-/// tapped. Runs in its own isolate, so it works directly against storage.
+/// Background entry point invoked by a home-screen widget when a toggle is
+/// tapped — an alarm's ON/OFF (`besttodoalarm://`) or a task's checkbox
+/// (`besttodotask://`). Runs in its own isolate, so it works directly against
+/// storage; the app itself may not be running at all.
 @pragma('vm:entry-point')
 Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   // This isolate starts without the app's plugin registrations; without these
@@ -103,11 +106,18 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
   if (uri == null) return;
+  final id = uri.queryParameters['id'];
+  if (id == null || id.isEmpty) return;
+  if (uri.scheme == TaskWidgetService.scheme) {
+    if (uri.host != TaskWidgetService.hostToggle) return;
+    // Settings decide what the widget redraws afterwards (progress line,
+    // checkbox rows), and this isolate has not loaded them.
+    await Config.load();
+    await TaskWidgetService.toggleInStorage(id);
+    return;
+  }
   if (uri.host == AlarmWidgetService.hostToggle) {
-    final id = uri.queryParameters['id'];
-    if (id != null && id.isNotEmpty) {
-      await AlarmService.toggleInStorage(id);
-    }
+    await AlarmService.toggleInStorage(id);
   }
 }
 
@@ -129,9 +139,15 @@ Future<void> main() async {
     await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
   } catch (_) {}
   final prefs = await SharedPreferences.getInstance();
-  final showIntro =
-      Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);
-  runApp(MyApp(showIntro: showIntro, showModePicker: !Config.modeChosen));
+  // The mode question closes the intro, so someone who has never answered it
+  // gets the whole welcome flow rather than the chooser on its own.
+  final showIntro = Config.isDev
+      ? false
+      : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
+  runApp(MyApp(
+    showIntro: showIntro,
+    showModePicker: !showIntro && !Config.modeChosen,
+  ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
     // One-time backfill of the item-history journal from pre-journal data.
@@ -267,16 +283,30 @@ class _MyAppState extends State<MyApp> {
 
   void updateTheme() => setState(() {});
 
+  /// Called once the intro's closing page has stored a mode, so the picker
+  /// never appears a second time straight after it.
   Future<void> _finishIntro() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('intro_shown', true);
-    setState(() => _showIntro = false);
+    if (!mounted) return;
+    setState(() {
+      _showIntro = false;
+      _showModePicker = false;
+    });
   }
 
+  /// Replays the whole welcome flow — the slides *and* the mode question
+  /// (About → "Replay introduction").
   Future<void> restartIntro() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('intro_shown', false);
-    setState(() => _showIntro = true);
+    Config.modeChosen = false;
+    await Config.save();
+    if (!mounted) return;
+    setState(() {
+      _showIntro = true;
+      _showModePicker = false;
+    });
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.126] - 2026-08-05
+- Introduction: the welcome slides are back — the app no longer opens straight on the simple/full mode question, the three intro screens run first and the mode choice is now their closing page
+- About → "Replay Introduction" now replays the whole thing, slides and the simple/full mode choice, instead of only the slides
+
+## [0.1.125] - 2026-08-05
+- Home-screen widget: a new setting lets you tick tasks off straight on the widget — Settings → Widget → "Check off tasks on the widget", off by default so the widget stays the plain text summary
+- With it on, the widget lists today's tasks as rows with a checkbox: tapping the box completes (or un-completes) the task without opening the app, tapping the task name opens it
+- Open tasks come first, finished ones stay underneath so a mis-tap is one tap away from being undone, and a "+N more" line shows what did not fit
+- Ticking a task off on the widget counts toward your streak and shows up in the app the moment you open it again
+
+## [0.1.124] - 2026-08-05
+- Productivity Stats: the item activity heatmap no longer washes out — a single freakishly busy hour used to leave every other slot the same pale shade
+- Colours now follow a logarithmic scale that tops out just above your normal range, so quiet, average and busy hours are told apart at a glance while the outlier simply maxes out
+- Each activity tab gained a legend showing which count each shade means, plus a note of the busiest slot
+
 ## [0.1.123] - 2026-08-05
 - Settings: every section now folds away — tap a title (or its chevron) to open and close it, so you only see the part you came for
 - Settings: a "Collapse all" / "Expand all" button sits at the top of the page

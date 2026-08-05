@@ -108,6 +108,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Start in schedule view', 2, 'calendar launch'),
     _SettingsSearchEntry('Chronize: show hour wheel', 2, 'timeline scroll'),
     _SettingsSearchEntry('Widget progress line', 3, 'home screen completion'),
+    _SettingsSearchEntry('Check off tasks on the widget', 3,
+        'home screen checkbox tick complete done interactive'),
     _SettingsSearchEntry('Enable notifications', 4, 'push reminders'),
     _SettingsSearchEntry('Quiet hours', 4, 'silence night do not disturb'),
     _SettingsSearchEntry('Default notification delay', 4, 'bell reminder'),
@@ -158,6 +160,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _minimalistMode = Config.minimalistMode;
   bool _useIconTabs = Config.useIconTabs;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
+  bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
   bool _use24HourFormat = Config.use24HourFormat;
   String _dateFormat = Config.dateFormat;
@@ -187,6 +190,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _minimalistMode = Config.minimalistMode;
     _useIconTabs = Config.useIconTabs;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
+    _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
     _use24HourFormat = Config.use24HourFormat;
     _dateFormat = Config.dateFormat;
@@ -1561,6 +1565,19 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (val) async {
                           setState(() => _showWidgetProgressLine = val);
                           Config.showWidgetProgressLine = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Check off tasks on the widget'),
+                        subtitle: const Text(
+                            'Show today\'s tasks as rows with a checkbox — '
+                            'tapping one completes it without opening the app'),
+                        value: _widgetCheckboxes,
+                        onChanged: (val) async {
+                          setState(() => _widgetCheckboxes = val);
+                          Config.widgetCheckboxes = val;
                           await Config.save();
                           widget.onSettingsChanged?.call();
                         },

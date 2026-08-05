@@ -40,11 +40,19 @@ class AboutPage extends StatelessWidget {
                 textAlign: TextAlign.left,
               ),
               const SizedBox(height: 24),
-              ElevatedButton(
+              ElevatedButton.icon(
                 onPressed: () {
                   MyApp.of(context)?.restartIntro();
                 },
-                child: const Text('Replay Introduction'),
+                icon: const Icon(Icons.replay),
+                label: const Text('Replay Introduction'),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Shows the welcome slides again, ending with the simple/full '
+                'mode choice.',
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
               ElevatedButton(

@@ -90,10 +90,14 @@ Dependencies and why they exist:
    (this fixed a black-screen-at-open bug, v0.1.85 era).
 8. Home-widget setup in try/catch: `HomeWidget.setAppGroupId` +
    `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
-9. SharedPreferences → `showIntro` (always skipped in dev builds).
-10. `runApp(MyApp(showIntro, showModePicker: !Config.modeChosen))`; post-frame →
-    `StartupTimeService.record()`. `MyApp.home` is a three-step first-run chain:
-    intro → simple/full mode picker (§4.6) → `_initialPage()`.
+9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
+   (always skipped in dev builds); the mode question closes the intro, so an
+   unanswered mode brings the whole welcome flow back rather than the chooser
+   alone.
+10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
+    post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
+    mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
+    for asking the mode question again (Settings → Mode & features, §4.6).
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
@@ -468,7 +472,8 @@ start tab (simple mode hides the tool-related entries, see §4.6), default start
 (`startTool`: the task list or any enabled tool — Alarms, Countdown,
 Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
 list after loading, so back lands on the tasks), start in schedule view, Chronize hour
-wheel. Widget: progress line. Notifications:
+wheel. Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes`,
+default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
 prod 300 s). SMS report: see §7. Export/Import buttons. `Config.applyMap` is defensive
@@ -561,12 +566,15 @@ hidden. Settings live in a searchable "Streak" Settings section (show/hide, 24h/
 
 Two ways to run the app, chosen on a first-run picker and changeable in Settings.
 
-**Picker (`lib/ui/mode_select_page.dart`):** shown by `MyApp` after the intro while
-`Config.modeChosen` is false — two cards ("Simple mode" / "Full mode", `Start simple` /
-`Use everything`). Picking one sets `Config.simpleMode` + `modeChosen` and saves
-(`settings.json`, so it never reappears). `MyApp.showModePicker` is a constructor flag
-(default false) so screenshot/integration runs and tests never hit the picker;
-`MyApp.restartModePicker()` clears `modeChosen` and pops back to it.
+**Picker (`lib/ui/mode_select_page.dart`):** `ModeSelectView` is the chooser itself
+(no `Scaffold`) — two cards ("Simple mode" / "Full mode", `Start simple` /
+`Use everything`); picking one sets `Config.simpleMode` + `modeChosen` and saves
+(`settings.json`, so it never reappears). It is the last page of the intro on a first
+run (§10), and `ModeSelectPage` wraps it in a `Scaffold` for the ask-again path.
+`MyApp.showModePicker` is a constructor flag (default false, and false whenever the
+intro is showing) so screenshot/integration runs and tests never hit the picker;
+`MyApp.restartModePicker()` clears `modeChosen` and pops back to the standalone page,
+while `MyApp.restartIntro()` (About) replays the slides and the question together.
 
 **Feature registry (`Config`):** `featureKeys` / `featureLabels` / `featureDescriptions`
 (index-aligned) + `Map<String,bool> featureEnabled` (all true by default, persisted under
@@ -766,7 +774,25 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
-  at midnight.
+  at midnight. The whole payload is built by `TaskWidgetService.sync(tasks)`
+  (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
+  background isolate both go through it, so both looks always agree.
+  **Checkable rows (0.1.125, `Config.widgetCheckboxes`, default off):** with the setting on
+  the provider hides the text blob and draws up to `maxRows` = 5 rows
+  (`widget_task_{i}_id/title/done` + `widget_task_count`/`widget_task_overflow`), each a
+  vector checkbox (`widget_check_box[_checked].xml`) plus the title; done rows go grey.
+  Rows are today's + overdue tasks, **open first** (so a busy day still shows what is left)
+  and completed after them (so a mis-tap can be undone). The checkbox fires
+  `besttodotask://toggle?id=` as a background broadcast → `alarmWidgetBackgroundCallback` →
+  `Config.load()` (the isolate has no settings) → `TaskWidgetService.toggleInStorage`:
+  flips `isDone`/`completedAt` in `tasks.json`, records the streak (guarded — the reminder
+  re-sync needs the notification plugin, which may be unavailable there) and re-syncs the
+  widget. The title and every non-row area still open the app.
+  Because that isolate writes the file behind the app's back, `_HomePageState` is a
+  `WidgetsBindingObserver`: on `resumed` it runs `_mergeWidgetCompletions`, which reloads
+  storage and copies **only** the done state of changed uids into the in-memory list (plus
+  the daily stats, which live only in the page) — without it the next in-app save would
+  silently undo the widget's completion.
 - **Alarm widget** (`AlarmsWidgetProvider.kt`): up to 4 alarms (time/name/sub + ON/OFF),
   "+N more", empty state. URI scheme `besttodoalarm://` — `open` (root container +
   header/+ + empty state + "+N more" → alarms list; since 0.1.90 the container-level
@@ -893,6 +919,15 @@ not-completed-from-created (light grey); weekend tint/bold; unit height
 tabs Created/Completed/Moved/Deleted/Combined, primary-color lerp 0.18→0.92, with a peak
 sentence ("Most items are completed on Monday between 09:00-10:00.").
 
+The item-activity cell shading is **outlier-resistant** (`_ActivityScale`, 0.1.124): the
+ramp saturates at the Tukey upper fence of the non-empty cells
+(`cap = clamp(max(q3+1, q3 + 1.5·IQR), 1, maxCount)`) and counts are compressed
+logarithmically inside it (`log(1+count)/log(1+cap)`, `cap == 1` → full intensity).
+Normalising against the raw maximum instead made one huge slot (bulk import, marathon
+session) flatten every other slot into the same faint shade. A legend under each tab shows
+geometric swatch stops (0, 1, `cap^⅓`, `cap^⅔`, `cap`, the top one labelled `cap+` when it
+saturates) plus a caption naming the cap and the raw busiest slot.
+
 ### 10.4 Usage Data (Tools → Usage Data)
 Digital-Wellbeing-style CSV dump of everything ever recorded, as far back as device data
 goes. Loads all sources fault-tolerantly, shows summary (earliest day, total records) + a
@@ -1013,9 +1048,13 @@ above the week where the month changes — with the year appended on the first c
 at every year switch, e.g. "Jan 2026", drawn in an `OverflowBox` so it can run past its
 12 px column — horizontally scrolled to the newest week). Tapping a day selects it and lists that day's
 versions and their entries below; opens on the newest release day. **About**: description,
-version, update link. **Intro**: 3
-value screens (Speed / Minimal Interactions / Open Source), shown once (`intro_shown`),
-replayable, skipped in dev.
+version, update link, "Replay Introduction" (clears `intro_shown` *and*
+`Config.modeChosen`, so the slides and the mode question both run again).
+**Intro** (`intro_page.dart`): 3 value screens (Privacy First / Open Source & Fast /
+Minimal Interactions) followed by the simple/full mode chooser (`ModeSelectView`) as
+its last page — the dots count 4, the last page has no Next button so the mode
+question cannot be skipped, and picking a mode is what ends the intro. Shown once
+(`intro_shown` + `Config.modeChosen`), replayable from About, skipped in dev.
 
 ## 11. Build, versioning, CI
 

@@ -22,6 +22,7 @@ import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
+import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
 import '../utils/date_utils.dart';
@@ -67,7 +68,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// Current virtual date for the app. In dev mode this can be changed
   /// using the arrows in the app bar.
   DateTime _currentDate = DateTime.now();
@@ -82,14 +83,6 @@ class _HomePageState extends State<HomePage>
   // backup/export tooling, which is about files rather than the item store.
   final ItemRepository _repository = ItemRepository.instance;
   final StorageService _storageService = StorageService();
-
-  final String appGroupId = 'group.homeScreenApp';
-  final String iOSWidgetName = 'SimpleWidgetProvider';
-  final String androidWidgetName = 'SimpleWidgetProvider';
-  final String dataKey = 'text_from_flutter_app';
-  final String progressVisibleKey = 'widget_progress_visible';
-  final String progressPercentKey = 'widget_progress_percent';
-  final String progressColorKey = 'widget_progress_color';
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
@@ -918,7 +911,11 @@ class _HomePageState extends State<HomePage>
         setState(() {});
       }
     });
-    HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
+    HomeWidget.setAppGroupId(TaskWidgetService.appGroupId)
+        .catchError((_) => false);
+    // Tasks ticked off on the home-screen widget are written to storage by the
+    // widget's own isolate; on the way back into the app they are merged in.
+    WidgetsBinding.instance.addObserver(this);
     // Lets the app shell reopen a live dice timer after its full-screen alarm
     // is stopped (see main.dart), with the task's actions ready.
     openRunningDiceTimer = _reopenRunningDiceTimer;
@@ -1020,7 +1017,15 @@ class _HomePageState extends State<HomePage>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_mergeWidgetCompletions());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {
       openRunningDiceTimer = null;
     }
@@ -1533,7 +1538,9 @@ class _HomePageState extends State<HomePage>
   /// merged — everything else in memory is newer than the file.
   Future<void> _mergeWidgetCompletions() async {
     if (!Config.widgetCheckboxes) return;
-    final stored = await _repository.loadItems();
+    // Deliberately the raw read: loadTaskList's day-rollover sweep would fight
+    // the in-memory list on a resume that crosses midnight.
+    final stored = await _storageService.readTaskListRaw();
     if (!mounted || stored.isEmpty) return;
     final doneByUid = {for (final t in stored) t.uid: t};
     final changed = <Task>[];
