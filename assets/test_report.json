@@ -1,9 +1,9 @@
 {
   "available": true,
-  "generatedAt": "2026-08-05T21:03:39.218030Z",
+  "generatedAt": "2026-08-05T21:16:05.326119Z",
   "commit": "",
   "branch": "staging",
-  "appVersion": "0.1.127+98",
+  "appVersion": "0.1.128+100",
   "passed": 378,
   "failed": 0,
   "skipped": 0,
