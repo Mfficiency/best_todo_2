@@ -336,6 +336,14 @@ matter which branch produced it or whether there is a network.
 link) carries `appVersion` (`x.y.z+build` from pubspec at run time) plus
 `TestReport.newest(candidates)` — the single rule behind "latest": highest
 `generatedAt` wins, unavailable reports never win, a dated run beats an undated one.
+Since 0.1.129 the report also carries `suites`: one `TestSuiteResult` per test file
+(path trimmed to the repo-relative `test/…` / `integration_test/…` part, Windows
+backslashes normalized) holding a `TestCaseResult` per executed test — name, result
+(`passed`/`failed`/`skipped`) and `durationMs` (testDone − testStart machine
+timestamps; null when absent). Hidden bookkeeping entries are excluded, tests whose
+suite was never named group under an empty path, and per-suite/report durations sum
+only the known times (null when none). Reports without a `suites` key parse to an
+empty list, so pre-0.1.129 JSON stays valid everywhere.
 Three places hold a report:
 - `assets/test_report.json` — **packaged into every build** (Android, Windows, web,
   debug or release) and committed, so a plain checkout of dev and
@@ -370,8 +378,15 @@ via `Scaffold.of`) and the Tools ▸ Test Results entry both carry a 9 px red do
 key) is a StatefulWidget with an app-bar refresh action: a version card (source label,
 "Ran 3 hours ago on dev" via `formatReportAge`, running vs tested version with a
 match/mismatch note, "Open CI run" when `runUrl` is set), a summary card
-(passed/failed/skipped/total, commit + branch + run time), and one ExpansionTile per
-failed test with its error + stack trace. `Config.resetVersionForTest()` clears the
+(passed/failed/skipped/total plus "ran in 42.3 s" when durations are known, commit +
+branch + run time), one ExpansionTile per failed test with its error + stack trace,
+and — since 0.1.129 — an "All tests" section listing every suite as an ExpansionTile
+(monospace path, per-suite counts + time, failing files sorted first) whose children
+are one row per test: green check / red close / grey skip icon, name, and
+`formatTestDuration` ("340 ms" under a second, "2.1 s" above). Reports without suite
+detail show a "predates per-test details" note instead.
+`tool/render_test_report_summary.dart` mirrors the same detail as a per-suite
+markdown table (✅/❌, counts, time) in the CI job summary. `Config.resetVersionForTest()` clears the
 memoized version future so widget tests reload it per async zone. Page tests default every
 layer to "no data" in `setUp`: the disk-cache read is real file I/O and would never
 complete inside `testWidgets`' fake-async zone.

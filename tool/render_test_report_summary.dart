@@ -75,6 +75,24 @@ void main(List<String> args) {
     '',
   ];
 
+  if (report.suites.isNotEmpty) {
+    final suites = [...report.suites]..sort((a, b) {
+        if (a.hasFailures != b.hasFailures) return a.hasFailures ? -1 : 1;
+        return a.path.compareTo(b.path);
+      });
+    lines.addAll([
+      '### Suites',
+      '| Suite | Passed | Failed | Skipped | Time |',
+      '| --- | ---: | ---: | ---: | ---: |',
+      for (final suite in suites)
+        '| ${suite.hasFailures ? '❌' : '✅'} '
+            '`${_escape(suite.path.isEmpty ? '(unnamed suite)' : suite.path)}` '
+            '| ${suite.passed} | ${suite.failed} | ${suite.skipped} '
+            '| ${suite.durationMs == null ? '—' : _duration(suite.durationMs!)} |',
+      '',
+    ]);
+  }
+
   if (report.failures.isNotEmpty) {
     lines.add('### Failures');
     for (final failure in report.failures) {
@@ -140,6 +158,10 @@ String _printedOutput(String machinePath) {
   }
   return out.join('\n');
 }
+
+String _duration(int milliseconds) => milliseconds < 1000
+    ? '$milliseconds ms'
+    : '${(milliseconds / 1000).toStringAsFixed(1)} s';
 
 String _escape(String value) => value.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
