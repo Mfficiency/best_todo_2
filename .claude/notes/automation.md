@@ -58,7 +58,8 @@ online refresh) and by `sync_test_report.dart` (build packaging).
 | Script | Purpose |
 |---|---|
 | `bump_version.dart` | `dart run tool/bump_version.dart <x.y.z[+build]> ["entry"]` — updates pubspec + prepends a dated CHANGELOG section. A bare `x.y.z` carries the build number forward and increments it, so `+build` (Android versionCode) can never be dropped — without it the APK is rejected as a downgrade. |
-| `build.sh` | Local release build: pulls latest CI report (`pull_test_report.dart`) → smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` → renames artifacts with the version. |
+| `build.sh` | Local release build: pulls latest CI report (`pull_test_report.dart`) → smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` → renames artifacts with the version. With `PUBLISH_APK=1` it also runs `publish_apk.dart`. |
+| `publish_apk.dart` | Uploads a locally built release APK to a GitHub release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk` and the newest CHANGELOG section as release notes — exactly where the app's About → "Check for updates" (`UpdateService`) looks. Token from `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI. |
 | `generate_test_report.dart` | machine.jsonl → report JSON (one run, with commit/branch/version/run-url). |
 | `sync_test_report.dart` | Newest-wins merge of output/candidates/machine-run/`ci-reports latest.json` into `assets/test_report.json`. Everything non-fatal — offline keeps the existing report. |
 | `pull_test_report.dart` | Local-build helper: fetch the latest published report (network-failure-safe). |
@@ -76,7 +77,10 @@ online refresh) and by `sync_test_report.dart` (build packaging).
 3. A local `flutter build apk --release` is signed with the committed debug
    keystore, so it installs over any CI build (identical signature —
    deliberate; see SPEC §9).
-4. Promote by merging dev → staging → main when asked.
+4. To feed the in-app updater, publish the APK as a GitHub release:
+   `PUBLISH_APK=1 sh tool/build.sh apk --release` (or
+   `dart run tool/publish_apk.dart` after any release build).
+5. Promote by merging dev → staging → main when asked.
 
 ## In-app automation (runs on the user's device)
 
