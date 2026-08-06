@@ -10,12 +10,17 @@ file is the short operational guide.
 - Tests: `flutter test` runs everything (CI does this). Locally, run only the
   suites your change touches — `test/core/` always, plus the matching silo:
   `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
-  `home`, `sync` or `tools`. See `test/README.md` for the file→suite map. Cross-cutting
+  `home`, `sync`, `update` or `tools`. See `test/README.md` for the file→suite map. Cross-cutting
   changes (theme, navigation, pubspec) → full `flutter test`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
 - Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+- Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
+  (or `PUBLISH_APK=1 sh tool/build.sh apk --release` to build + publish). Creates
+  release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk`; the About
+  page "Check for updates" button downloads and installs it in-app. Token from
+  `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

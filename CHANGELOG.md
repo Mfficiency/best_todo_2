@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.132] - 2026-08-06
+- The app can now update itself: About → "Check for updates" looks up the newest release on GitHub, and one tap downloads the new APK (with a progress bar) and opens the Android installer — no store needed
+- The first in-app update asks for Android's one-time "allow installs from this app" permission; the page explains what to do and the Install button waits for you to come back
+- On desktop, web, or when a release ships without an APK, the button opens the release page in the browser instead
+- New for local builds: `PUBLISH_APK=1 sh tool/build.sh apk --release` (or `dart run tool/publish_apk.dart` after any release build) uploads the APK to a GitHub release — exactly where the in-app updater looks
+
 ## [0.1.131] - 2026-08-06
 - Synced mode: choose between fully offline (as before) and syncing your tasks to a folder of your choice — Settings → Sync & export, pick the folder once and you're set
 - The sync runs in the background every time you leave or quit the app, so it never slows down startup or gets in your way

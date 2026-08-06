@@ -4,15 +4,19 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import android.view.WindowManager
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 class MainActivity : FlutterActivity() {
 
@@ -151,6 +155,57 @@ class MainActivity : FlutterActivity() {
                 "stopVibrate" -> {
                     stopVibration()
                     result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/update",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                // Hands a downloaded update APK to the system package
+                // installer. Returns "needs-permission" (after opening the
+                // "install unknown apps" settings screen for this app) when
+                // the one-time install permission is still missing — the
+                // Dart side tells the user to grant it and tap Install again.
+                "installApk" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.error("bad-args", "path missing", null)
+                        return@setMethodCallHandler
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                        !packageManager.canRequestPackageInstalls()
+                    ) {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:$packageName"),
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                        result.success("needs-permission")
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val uri = FileProvider.getUriForFile(
+                            this, "$packageName.fileprovider", File(path)
+                        )
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(
+                                uri,
+                                "application/vnd.android.package-archive",
+                            )
+                            addFlags(
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_ACTIVITY_NEW_TASK
+                            )
+                        }
+                        startActivity(intent)
+                        result.success("ok")
+                    } catch (e: Exception) {
+                        result.error("install-failed", e.message, null)
+                    }
                 }
                 else -> result.notImplemented()
             }
