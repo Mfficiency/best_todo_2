@@ -25,6 +25,10 @@ void main() {
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
     ProjectService.instance.resetForTest();
     TestReportService.instance.resetForTest();
+    // The Test Results page awaits the memoized version future; reset it so
+    // each test creates it in its own async zone (a future completed in a
+    // prior test's zone never fires its continuation in the next test).
+    Config.resetVersionForTest();
     // The Test Results page pulls online; keep the network out of tests so it
     // falls back to the bundled report set per test.
     TestReportService.instance
@@ -141,15 +145,21 @@ void main() {
         scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Test Results'));
-    for (var i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 20));
+    // The page loads through a FutureBuilder; round-pump with runAsync until
+    // the summary card appears (see home_search_test.dart for the pattern).
+    final failedHeadline = find.text('1 test failed');
+    for (var i = 0; i < 300 && failedHeadline.evaluate().isEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
     }
-    expect(find.text('1 test failed'), findsOneWidget);
+    expect(failedHeadline, findsOneWidget);
 
     // Looking at the failed run is the acknowledgement — back on the home
-    // page every dot is gone.
+    // page every dot is gone. Subpages use a custom back action, so
+    // tester.pageBack() cannot find it.
     expect(TestReportService.instance.hasUnseenFailures, isFalse);
-    await tester.pageBack();
+    await tester.tap(find.byTooltip('Back to Home'));
     await tester.pumpAndSettle();
     expect(dot, findsNothing);
   });
