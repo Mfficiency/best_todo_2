@@ -565,7 +565,12 @@ class _HomePageState extends State<HomePage>
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
     final loadedDailyStats = await _repository.loadDailyStats();
-    if (loaded.isEmpty) {
+    // A fresh install does not come back empty: the merge above turns the
+    // one-time Todo.md import into wish tasks. Only real (non-wish) tasks
+    // decide whether the starter list still has to be seeded — otherwise a
+    // first launch would silently skip it.
+    final isFirstLaunch = !loaded.any((t) => !t.isWish);
+    if (isFirstLaunch) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(
               title: t,
@@ -582,6 +587,9 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       );
+      // The imported wishes follow the starter tasks, so the Today list opens
+      // on them instead of on the old backlog.
+      _tasks.addAll(loaded);
       if (Config.isDev) {
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
@@ -607,7 +615,7 @@ class _HomePageState extends State<HomePage>
       // Fresh dev installs (and every web run, where nothing persists) also
       // get a visible item history, so the task-detail History timeline can
       // be tested immediately: Tools → Projects → open a board → tap a card.
-      if (loaded.isEmpty) {
+      if (isFirstLaunch) {
         _seedDevRangeTask();
         _seedDevWishItem();
         _seedDevItemHistory();

@@ -560,7 +560,11 @@ tasks, 20 deleted tasks, and 14 days of stats (marker strings prevent re-seeding
 builds also spread 9 of the seeded future tasks across the three seed projects (one task
 per Kanban column in each project) so the Projects tool opens populated — including on
 desktop/web where storage may not persist; skipped as soon as any seeded task carries a
-`projectId`, so manual (re)assignments survive reloads.
+`projectId`, so manual (re)assignments survive reloads. "First run" means *no non-wish
+task exists* (0.1.138): `loadItems()` merges the one-time Todo.md import into the task
+list as wishes, so a plain `isEmpty` check saw a fresh install as an existing one and
+skipped the starter tasks (and the dev range/history/reminder seeds) entirely. The starter
+tasks are inserted ahead of the imported wishes.
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
 
