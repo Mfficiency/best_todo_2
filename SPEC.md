@@ -152,6 +152,7 @@ rollups.
 | `alarm_log.txt` | human-readable alarm pipeline log | ~400 KB → trim to 250 KB |
 | `item_events.jsonl` | append-only item history journal (one JSON event per line) | ~1 MB → keep newest 4000 |
 | `item_event_meta.json` | per-item last sequence number (`{uid: seq}`) | — |
+| `sync_log.json` | `{unseen_error, entries[]}` background-sync history (§4.7) | 100 entries |
 
 **Day rollover:** on load, if the calendar date changed since `last_opened.txt`, every
 `isDone` task gets `completedAt`/`deletedAt` backfilled, moves to the top of the deleted
@@ -524,7 +525,8 @@ wheel. Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes
 default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
-prod 300 s). SMS report: see §7. Export/Import buttons. `Config.applyMap` is defensive
+prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
+(§4.7), Export/Import buttons. `Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
 
@@ -651,6 +653,47 @@ the same via `_isEntryVisible` (start-in-schedule-view, Chronize hour wheel, def
 page). Feature labels are searchable (`_featureSearchEntries`). Turning off the tool that
 is the configured `startTool` resets it to `tasks` (`_dropUnavailableStartTool`), and the
 start-page dropdown only offers enabled tools.
+
+### 4.7 Synced mode — background folder sync on quit (0.1.130)
+
+The offline/synced choice: `Config.syncEnabled` (default **off** = fully offline) +
+`Config.syncFolderPath` (empty until picked), both in Settings → **Sync & export**
+("Synced mode" switch; enabling it with no folder opens the `getDirectoryPath` picker
+immediately; the "Sync folder" tile only shows while enabled). `SyncService`
+(`lib/services/sync_service.dart`, singleton with `resetForTest`) writes the task list
+to `<folder>/besttodo_tasks.json` (`{sync_version: 1, synced_at, app_version,
+task_count, tasks[]}`) — **tasks only** for now.
+
+**Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
+forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
+hidden/paused/detached after a resume starts exactly one fire-and-forget sync
+(`_syncedThisBackground` latch, reset on `resumed`; hidden→paused→detached arriving in
+a row must not sync three times). Nothing runs at launch: the service is only touched
+at startup by a lazy `ensureLoaded()` (memoized read of `sync_log.json`) from the home
+page/App Logs, so first frame and load paths are untouched. The sync reads
+`readTaskListRaw()` (state already on disk — every mutation saves), so it needs no page
+state.
+
+**Graceful failure:** the write is atomic (`SafeFile`, tmp+rename — a reader or crash
+can never see a half-written file); every failure (no folder chosen, folder deleted,
+write denied) is caught and becomes a red history entry, never an exception. Overlapping
+runs are skipped (`_syncInFlight`).
+
+**Sync history (App Logs → "Sync" tab):** every run is a `SyncLogEntry` (at,
+durationMs, itemCount, success, message, trigger 'app quit'/'manual'), newest first,
+capped 100, persisted in `sync_log.json` and mirrored as a one-liner into `LogService`.
+The page has two tabs since 0.1.130: "Logs" (the live 24 h `LogService` list) and
+"Sync" (green check "Synced N items in M ms" / red error "Sync failed: reason", with
+timestamp · trigger subtitle).
+
+**Red dot:** a failed sync sets `hasUnseenError` (persisted as `unseen_error`), which
+puts a small red dot (Key `sync-error-dot`, same `_iconWithFailureDot` stack as the CI
+test-failure dot but its own key) on the drawer's App Logs entry via a
+`ValueListenableBuilder`. Opening App Logs calls `markErrorSeen()` (dot gone, entry
+stays); a later successful sync also clears it.
+
+Tests live in their own silo `test/sync/` (service round-trip/failures/lifecycle latch
++ Sync tab, drawer dot, settings switch).
 
 ## 5. Alarm subsystem (the reliability showpiece)
 
