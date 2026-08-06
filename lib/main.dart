@@ -22,6 +22,7 @@ import 'services/alarm_service.dart';
 import 'services/log_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
+import 'services/permission_flow.dart';
 import 'services/pre_update_backup.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
@@ -164,6 +165,12 @@ Future<void> main() async {
     // migrations can take version-specific precautions. Same deferral.
     unawaited(Future<void>.delayed(const Duration(seconds: 3))
         .then((_) => PreUpdateBackup.recordCurrentVersion()));
+    // First open after an update: ask for every permission the app can use,
+    // so none is silently missing after new code shipped. Deferred a beat so
+    // the dialogs never compete with the first frame; a first-ever launch is
+    // skipped here (mode not chosen yet) — the mode picker settles it.
+    unawaited(Future<void>.delayed(const Duration(seconds: 1))
+        .then((_) => PermissionFlow.maybeRequestAfterUpdate()));
   });
 }
 

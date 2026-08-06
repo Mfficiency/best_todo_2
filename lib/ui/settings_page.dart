@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -6,6 +8,7 @@ import '../main.dart';
 import '../models/sms_recipient.dart';
 import '../models/sms_report_config.dart';
 import '../services/auto_backup_service.dart';
+import '../services/permission_flow.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
@@ -768,6 +771,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _dropUnavailableStartTool();
     await Config.save();
     StreakService.instance.settingsChanged();
+    // Turning simple mode off is choosing the full experience — make sure
+    // every permission its features rely on has been asked for.
+    if (!value) {
+      unawaited(
+          PermissionFlow.requestAll(trigger: 'full mode enabled in Settings'));
+    }
     widget.onSettingsChanged?.call();
   }
 

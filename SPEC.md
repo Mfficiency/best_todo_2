@@ -111,6 +111,11 @@ diagnostics, hit again pre-0.1.136 via the plugin-init awaits).
    4. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))`.
    5. Home-widget setup: `HomeWidget.setAppGroupId` +
       `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
+7. Also post-first-frame (deferred 1 s, fire-and-forget):
+   `PermissionFlow.maybeRequestAfterUpdate()` — on the first open after an app
+   update, asks for **every** runtime permission in one pass (§9); skipped
+   while the mode picker has never been answered, because the picker's
+   full-mode choice runs the same flow itself.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
@@ -980,12 +985,28 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 
 ## 9. Android platform config
 
-**Manifest permissions** (each exists for a reason): `POST_NOTIFICATIONS` (13+),
+**Manifest permissions** (each exists for a reason): `INTERNET` (update check +
+APK download from GitHub releases — it must live in the **main** manifest; debug/profile
+get it implicitly from their own manifests, so its absence only breaks release builds,
+as every network call then fails with "Failed host lookup"), `POST_NOTIFICATIONS` (13+),
 `SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
 `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
 `FOREGROUND_SERVICE`, `VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
-About page; the user still confirms every install). An `androidx.core.content.FileProvider`
+About page; the user still confirms every install).
+
+**Up-front permission flow** (`lib/services/permission_flow.dart`): every runtime
+permission is asked in one pass — notifications, exact alarms, the battery-optimization
+exemption and full-screen intent (via `NotificationService.ensureAlarmPermissions`, each
+logged to `alarm_log.txt`), then SMS — at the two moments the user expects the question:
+picking the **full experience** ("Use everything" on the mode picker, or turning simple
+mode off in Settings) and the **first open after an app update** (startup step 7, §3).
+A marker file `permissions_prompted_version.txt` holding the last handled
+`version+build` makes the after-update ask one-time per version; picking simple mode
+writes the marker without asking. At most one run per app session; individual features
+still re-check lazily as before (alarms/dice pages, enabling the SMS report).
+
+An `androidx.core.content.FileProvider`
 (authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
 dirs) shares the downloaded update APK with the system installer as a `content://` URI.
 

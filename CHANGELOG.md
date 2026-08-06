@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.140] - 2026-08-06
+- The app now asks for all its permissions up front (notifications, exact alarms, battery-optimization exemption, full-screen alarms, SMS) when you choose the full experience - "Use everything" on the welcome screen or turning simple mode off in Settings
+- The same one-pass permission check also runs on the first open after an app update, so a new version can never be quietly missing a permission it needs
+- Choosing simple mode keeps the welcome flow dialog-free: nothing is asked until you opt into the full experience or the app is updated
+
 ## [0.1.139] - 2026-08-06
 - Fixed "Check for updates" always failing with a host-lookup error (SocketException: api.github.com) in release builds: the installed app was missing the Android internet permission, so it could not reach GitHub at all
 
