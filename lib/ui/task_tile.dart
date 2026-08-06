@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -38,9 +39,7 @@ class TaskTile extends StatefulWidget {
   final VoidCallback? onRecurringChanged;
 
   /// Called when "Start timer" is picked from the double-tap menu. When null
-  /// the tile has no double-tap handling at all (so plain taps stay instant —
-  /// a registered double-tap recognizer delays them by the double-tap
-  /// timeout).
+  /// double taps do nothing (each tap just toggles the expansion).
   final VoidCallback? onStartTimer;
   final int pageIndex;
   final bool showSwipeButton;
@@ -167,6 +166,30 @@ class _TaskTileState extends State<TaskTile>
 
   void _toggleExpanded() {
     setState(() => _expanded = !_expanded);
+  }
+
+  /// Wall-clock moment of the previous tap, for the hand-rolled double-tap
+  /// detection in [_handleTap]. A real `onDoubleTap` recognizer would hold
+  /// the gesture arena for the double-tap timeout on EVERY tap in the tile —
+  /// delaying the checkbox and the expand-on-tap by ~300 ms (and deadlocking
+  /// fake-async widget tests, which don't advance that timer).
+  DateTime? _lastTapAt;
+
+  void _handleTap() {
+    final now = DateTime.now();
+    final last = _lastTapAt;
+    _lastTapAt = now;
+    if (widget.onStartTimer != null &&
+        last != null &&
+        now.difference(last) < kDoubleTapTimeout) {
+      _lastTapAt = null;
+      // Second tap of a double tap: take back the expansion toggle the first
+      // tap made, then show the menu.
+      _toggleExpanded();
+      _showDoubleTapMenu();
+      return;
+    }
+    _toggleExpanded();
   }
 
   /// Little menu shown on a double tap. For now it holds a single action:
@@ -411,8 +434,7 @@ class _TaskTileState extends State<TaskTile>
     );
 
     Widget content = InkWell(
-      onTap: _toggleExpanded,
-      onDoubleTap: widget.onStartTimer == null ? null : _showDoubleTapMenu,
+      onTap: _handleTap,
       child: Column(
         children: [
           stackTile,
