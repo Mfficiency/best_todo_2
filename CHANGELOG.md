@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.134] - 2026-08-06
+- Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
+- Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too
+- The Markdown file is one-way for now: it is overwritten on every sync, so edits made in Obsidian stay in Obsidian
+
 ## [0.1.133] - 2026-08-06
 - The app can now update itself: About → "Check for updates" looks up the newest release on GitHub, and one tap downloads the new APK (with a progress bar) and opens the Android installer — no store needed
 - The first in-app update asks for Android's one-time "allow installs from this app" permission; the page explains what to do and the Install button waits for you to come back

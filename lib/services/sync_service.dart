@@ -11,6 +11,7 @@ import '../models/sync_log_entry.dart';
 import 'log_service.dart';
 import 'safe_file.dart';
 import 'storage_service.dart';
+import 'sync_markdown.dart';
 
 /// One-way background sync of the task list into a user-chosen folder
 /// ("synced mode", Settings → Sync & export).
@@ -34,6 +35,11 @@ class SyncService {
 
   /// Fixed file name written into the chosen folder on every sync.
   static const String syncFileName = 'besttodo_tasks.json';
+
+  /// Human-readable companion written next to [syncFileName]: an
+  /// Obsidian-friendly Markdown checklist ([SyncMarkdown]). Point the sync
+  /// folder into an Obsidian vault and the list renders natively.
+  static const String syncMarkdownFileName = 'besttodo_tasks.md';
   static const _logFileName = 'sync_log.json';
   static const _maxLogEntries = 100;
 
@@ -154,17 +160,21 @@ class SyncService {
     // Raw read straight from disk: every change is already saved there, and
     // this keeps the sync independent of whatever page is open.
     final tasks = await StorageService().readTaskListRaw();
+    final now = DateTime.now();
     final payload = jsonEncode(<String, dynamic>{
       'sync_version': 1,
-      'synced_at': DateTime.now().toIso8601String(),
+      'synced_at': now.toIso8601String(),
       'app_version': Config.versionWithBuild,
       'task_count': tasks.length,
       'tasks': [for (final t in tasks) t.toJson()],
     });
     final sep = Platform.pathSeparator;
-    final target =
-        File('$folder${folder.endsWith(sep) ? '' : sep}$syncFileName');
-    await SafeFile.writeString(target, payload);
+    final prefix = '$folder${folder.endsWith(sep) ? '' : sep}';
+    await SafeFile.writeString(File('$prefix$syncFileName'), payload);
+    await SafeFile.writeString(
+      File('$prefix$syncMarkdownFileName'),
+      SyncMarkdown.build(tasks, now, Config.versionWithBuild),
+    );
     return tasks.length;
   }
 
