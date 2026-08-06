@@ -4,11 +4,13 @@
 > app disappeared tomorrow, this file is what a human or AI needs to rebuild BestToDo from
 > zero and to understand *why* it is built the way it is. Part I is the functional/technical
 > specification (what to build). Part II is the complete development history (every step the
-> project took and why). `CHANGELOG.md` remains the authoritative per-version record;
-> `.claude/notes/alarm-work-spec.md` holds the deep-dive on the alarm reliability sessions.
+> project took and why). `CHANGELOG.md` remains the authoritative per-version record; the
+> operational deep dives (rebuild order, testing, CI/automation, environment, principles,
+> the alarm reliability sessions) are indexed in `.claude/README.md`.
 >
-> Accurate as of version **0.1.88+58** (2026-07-07), commit history through the 0.1.88
-> full-screen alarm work.
+> Part I is accurate as of version **0.1.131+103** (2026-08-06). Part II's narrated
+> history runs in detail through 0.1.91; every later version is covered feature-wise in
+> Part I and per-version in `CHANGELOG.md`.
 
 ---
 
