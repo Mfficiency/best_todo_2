@@ -22,6 +22,19 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A widget tap while the app is already running must re-front the
+        // existing UI, never build a second copy of it. singleTop plus the
+        // default task affinity (see AndroidManifest.xml) make that the normal
+        // outcome; if a launcher still routes the widget's PendingIntent into
+        // a duplicate MainActivity stacked on the real one, close the
+        // duplicate so the live instance underneath shows instead of this
+        // one's never-finishing launch window (a black screen).
+        if (!isTaskRoot &&
+            intent?.action == "es.antonborri.home_widget.action.LAUNCH"
+        ) {
+            finish()
+            return
+        }
         showOverLockScreenIfAlarmLaunch(intent)
     }
 

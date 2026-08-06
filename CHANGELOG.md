@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.142] - 2026-08-06
+- Fixed tapping the tasks home-screen widget showing a black screen when the app was already open in the background (only a force-close recovered it): the widget tap could start a second copy of the app in its own task instead of bringing the running one back to the front - widget taps now always return to the existing app, and a stray duplicate closes itself instead of sitting on a black launch window
+
 ## [0.1.141] - 2026-08-06
 - New read-only Obsidian plugin (Tier 2 of the Obsidian integration, in `obsidian-plugin/`): a proper task view inside Obsidian rendering the synced `besttodo_tasks.json` - the six home tabs, checkboxes, due dates, label and project chips, open-first ordering, and an "as of ..." freshness line; it refreshes automatically when the sync file changes and never writes anything back
 

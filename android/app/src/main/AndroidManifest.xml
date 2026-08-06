@@ -29,11 +29,20 @@
         android:label="BestToDo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- No android:taskAffinity="" here, on purpose: with an empty (null)
+             affinity Android can fail to find the app's existing task when a
+             home-screen widget's PendingIntent launches MainActivity while the
+             app sits in the background. It then starts a second MainActivity
+             in a fresh task, whose Flutter engine never gets past the launch
+             window — the "widget opens a black screen until the app is
+             force-closed" bug. The default affinity (the package name) lets
+             every launch path — app icon, widget tap, notification — agree on
+             the one existing task, so a background app is simply brought back
+             to the front. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"

@@ -969,7 +969,17 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   sets `_openedFromTaskWidget`, which makes `_initialPage()` return `HomePage` regardless
   of `Config.startPage`. So the widget always lands on the task list, warm or cold, instead
   of resuming on whatever subpage the app was left on. (RemoteViews only deliver single
-  clicks — there is no double-tap on a home-screen widget.) The whole payload is built by `TaskWidgetService.sync(tasks)`
+  clicks — there is no double-tap on a home-screen widget.)
+  **Warm re-front (0.1.142):** `MainActivity` must keep the *default* task affinity —
+  never `android:taskAffinity=""`. With an empty affinity Android could not match the
+  widget's PendingIntent (which implicitly carries `FLAG_ACTIVITY_NEW_TASK`) to the app's
+  existing task while the app sat in the background, so it started a second MainActivity
+  in a new task that never got past the launch window: the widget opened a black screen
+  only a force-close fixed. With the default affinity plus `launchMode="singleTop"` a
+  warm tap re-fronts the running task via `onNewIntent` → `HomeWidget.widgetClicked`.
+  `MainActivity.onCreate` additionally finishes a duplicate non-task-root instance
+  created by a widget launch, revealing the live one underneath.
+  The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
   **Checkable rows (0.1.125, `Config.widgetCheckboxes`, default off):** with the setting on
