@@ -31,6 +31,7 @@ When you change something, update its canonical doc — never fork a second copy
 | [`notes/automation.md`](notes/automation.md) | Touching CI, releases, or the tool scripts. All three workflows, the `ci-reports` branch, loop protections, the release flow. |
 | [`notes/environment.md`](notes/environment.md) | Setting up a dev machine, a CI runner, or a fresh AI sandbox (Flutter install recipe, what's not available where). |
 | [`notes/alarm-work-spec.md`](notes/alarm-work-spec.md) | Touching anything in the alarm/SMS/background pipeline. Session-by-session history of the reliability arc — the bugs, root causes, and why each mechanism exists. |
+| [`notes/obsidian-integration.md`](notes/obsidian-integration.md) | Building on the Obsidian integration. Tier 1 (Markdown export, shipped 0.1.135) recap plus the full designs for Tier 2 (read-only Obsidian plugin) and Tier 3 (two-way sync via a change journal). |
 
 ## How to rebuild the app from scratch
 

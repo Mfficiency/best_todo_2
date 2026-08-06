@@ -712,7 +712,9 @@ tasks excluded, empty sections skipped. Lines follow the Obsidian Tasks plugin f
 dates omitted) + `✅ yyyy-MM-dd` completion date. Point the sync folder into an Obsidian
 vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way: the
 file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
-the whole sync run (red history entry) like the JSON write.
+the whole sync run (red history entry) like the JSON write. Future directions (a
+read-only Obsidian plugin over the JSON, then two-way sync via a change journal) are
+designed in `.claude/notes/obsidian-integration.md`.
 
 **Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
 forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
