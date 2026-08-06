@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.138] - 2026-08-06
+- Fixed a first launch on a new phone opening with the imported idea backlog instead of the three starter tasks - the starter list is seeded again, and now sits above the imported items
+
 ## [0.1.137] - 2026-08-06
 - The red dot on the menu icon for failed tests is now opt-in: turn it on under Settings → Appearance → "Red dot for failed tests" (off by default)
 - Red dots now clear themselves once you have looked at the problem: opening Test Results acknowledges the failed run (the dot stays off until a newer run fails), and the App Logs dot already cleared on opening after a failed sync
