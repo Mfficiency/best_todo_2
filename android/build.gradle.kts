@@ -36,9 +36,12 @@ subprojects {
             }
     }
     // The evaluationDependsOn(":app") above force-evaluates :app before this
-    // block runs, and afterEvaluate throws on an already-evaluated project —
-    // configure those immediately instead.
-    if (state.executed) alignJvmTarget() else afterEvaluate { alignJvmTarget() }
+    // block runs; on an evaluated project afterEvaluate throws and AGP has
+    // already finalized compileOptions. Skip it — :app builds at JVM 11 via
+    // its own build script; only the plugin modules need the alignment.
+    if (!state.executed) {
+        afterEvaluate { alignJvmTarget() }
+    }
 }
 
 tasks.register<Delete>("clean") {
