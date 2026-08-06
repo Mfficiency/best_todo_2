@@ -109,6 +109,18 @@ jobs:
         if-no-files-found: error
         retention-days: 30
 
+    # Publish the APK as a GitHub release, which is where the About page
+    # "Check for updates" button looks (UpdateService reads releases/latest and
+    # needs an .apk asset there). Same tool as a local publish, so the tag,
+    # release name, asset name and CHANGELOG body stay identical; it reuses an
+    # existing release for the version and replaces its asset, so re-running
+    # across dev/staging/main for one version is safe.
+    - name: Publish APK to a GitHub release
+      if: github.event_name == 'push'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: dart run tool/publish_apk.dart --apk "${{ steps.stage_apk.outputs.apk }}"
+
     - name: Add APK download link to summary
       if: always()
       shell: bash
