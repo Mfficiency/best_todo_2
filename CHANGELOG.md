@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.133] - 2026-08-06
+- The app can now update itself: About → "Check for updates" looks up the newest release on GitHub, and one tap downloads the new APK (with a progress bar) and opens the Android installer — no store needed
+- The first in-app update asks for Android's one-time "allow installs from this app" permission; the page explains what to do and the Install button waits for you to come back
+- On desktop, web, or when a release ships without an APK, the button opens the release page in the browser instead
+- New for local builds: `PUBLISH_APK=1 sh tool/build.sh apk --release` (or `dart run tool/publish_apk.dart` after any release build) uploads the APK to a GitHub release — exactly where the in-app updater looks
+
+## [0.1.132] - 2026-08-06
+- Double-tap a task to open a little menu — its first (and for now only) entry starts a timer for that task
+- The timer is the same egg timer the dice uses, but it starts counting down the default 20 minutes right away; grabbing the dial still pauses and rewinds it, exactly like a dice-rolled timer
+- Double-tapping the task whose timer is already running returns to the countdown instead of restarting it
+
+## [0.1.131] - 2026-08-06
+- Synced mode: choose between fully offline (as before) and syncing your tasks to a folder of your choice — Settings → Sync & export, pick the folder once and you're set
+- The sync runs in the background every time you leave or quit the app, so it never slows down startup or gets in your way
+- App Logs got a "Sync" tab showing every sync: when it ran, how long it took and how many items it wrote — failures show up in red with the reason
+- If a sync fails (folder deleted, drive unplugged, ...), a little red dot appears on App Logs in the main menu; opening the page clears it, and the next successful sync does too
+- Sync writes are atomic: a crash or an unplugged drive mid-sync can never leave a half-written file behind
+
+## [0.1.130] - 2026-08-06
+- Settings has a new Backup section: choose a folder and the app writes a full backup of everything (tasks, settings, timers) there automatically - daily, weekly, or never
+- Daily backs up the first time you open the app each day, weekly once seven days have passed; a "Back up now" button writes one on demand and the section shows when the last backup ran
+- Each backup is a single timestamped file that the existing Import button can restore
+
 ## [0.1.129] - 2026-08-05
 - Test Results now shows detail even when everything passes: an "All tests" section lists every test file with its own pass/fail/skip counts and time, and expanding a file shows each test with a green/red/grey mark and how long it took
 - Files with failures sort to the top, and the summary line now includes the total test time ("ran in 42.3 s")

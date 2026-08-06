@@ -14,6 +14,7 @@ import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
+import '../services/auto_backup_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -22,6 +23,7 @@ import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
+import '../services/sync_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
@@ -924,12 +926,19 @@ class _HomePageState extends State<HomePage>
     TestReportService.instance.load().then((_) {
       if (mounted) setState(() {});
     });
+    // A sync failure from a previous run keeps its red dot on the App Logs
+    // drawer entry until acknowledged; lazy load, nothing blocks startup.
+    SyncService.instance.ensureLoaded();
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
     // Some tools (Chronize, Productivity Stats, ...) render the task data, so
     // the configured start tool is only opened once loading finished.
-    _loadTasks().then((_) => _maybeOpenStartTool());
+    _loadTasks().then((_) {
+      _maybeOpenStartTool();
+      // A due automatic backup runs after startup, off the critical path.
+      unawaited(AutoBackupService.maybeRun());
+    });
     _scheduleMidnightUpdate();
   }
 
@@ -1020,6 +1029,8 @@ class _HomePageState extends State<HomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_mergeWidgetCompletions());
+      // An app kept open across midnight still gets its scheduled backup.
+      unawaited(AutoBackupService.maybeRun());
     }
   }
 
@@ -1447,6 +1458,40 @@ class _HomePageState extends State<HomePage>
           MaterialPageRoute(
             builder: (_) => DiceTimerPage(
               task: task,
+              onTaskDone: () => _completeTaskFromDice(task),
+              onTaskPostponed: () => _postponeTaskFromDice(task),
+            ),
+          ),
+        )
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// Double-tap → "Start timer": opens the same egg-timer page the dice
+  /// uses, but for [task] specifically, with the countdown already running at
+  /// the default duration — grabbing the dial still pauses and rewinds it
+  /// like any dice timer. Double-tapping the task whose timer is already
+  /// live just returns to it; picking a different task replaces the old
+  /// timer, since the double tap is an explicit choice for this one.
+  void _startTaskTimer(Task task) {
+    final controller = DiceTimerController.instance;
+    if (controller.isActive && identical(controller.task, task)) {
+      LogService.add('HomePage._startTaskTimer',
+          'Returned to running timer for "${task.title}"');
+    } else {
+      controller.configure(task);
+      controller.releaseDial();
+      LogService.add(
+          'HomePage._startTaskTimer', 'Started timer for "${task.title}"');
+    }
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => DiceTimerPage(
+              task: task,
+              caption: 'Timer for',
+              captionIcon: Icons.timer_outlined,
               onTaskDone: () => _completeTaskFromDice(task),
               onTaskPostponed: () => _postponeTaskFromDice(task),
             ),
@@ -2013,6 +2058,7 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
+      onStartTimer: () => _startTaskTimer(task),
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
@@ -2097,8 +2143,10 @@ class _HomePageState extends State<HomePage>
   ];
 
   /// An icon overlaid with a small red dot, used on the drawer/hamburger
-  /// icon and the Test Results entry when this build's CI test run failed.
-  Widget _iconWithFailureDot(IconData icon) {
+  /// icon and the Test Results entry when this build's CI test run failed,
+  /// and (with its own [dotKey]) on the App Logs entry after a failed sync.
+  Widget _iconWithFailureDot(IconData icon,
+      {Key dotKey = const Key('test-failure-dot')}) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -2107,7 +2155,7 @@ class _HomePageState extends State<HomePage>
           right: -2,
           top: -2,
           child: Container(
-            key: const Key('test-failure-dot'),
+            key: dotKey,
             width: 9,
             height: 9,
             decoration: BoxDecoration(
@@ -2197,15 +2245,21 @@ class _HomePageState extends State<HomePage>
                 },
               ),
             if (Config.isFeatureEnabled('app_logs'))
-              ListTile(
-                leading: const Icon(Icons.list_alt),
-                title: const Text('App Logs'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AppLogsPage()),
-                  );
-                },
+              ValueListenableBuilder<bool>(
+                valueListenable: SyncService.instance.hasUnseenError,
+                builder: (context, syncError, _) => ListTile(
+                  leading: syncError
+                      ? _iconWithFailureDot(Icons.list_alt,
+                          dotKey: const Key('sync-error-dot'))
+                      : const Icon(Icons.list_alt),
+                  title: const Text('App Logs'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                    );
+                  },
+                ),
               ),
             if (Config.isFeatureEnabled('startup_times'))
               ListTile(

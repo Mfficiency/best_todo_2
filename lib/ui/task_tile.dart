@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -36,6 +37,10 @@ class TaskTile extends StatefulWidget {
   final void Function(DateTime? oldDueDate, DateTime? newDueDate)?
       onDueDateChanged;
   final VoidCallback? onRecurringChanged;
+
+  /// Called when "Start timer" is picked from the double-tap menu. When null
+  /// double taps do nothing (each tap just toggles the expansion).
+  final VoidCallback? onStartTimer;
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
@@ -51,6 +56,7 @@ class TaskTile extends StatefulWidget {
     required this.onDelete,
     this.onDueDateChanged,
     this.onRecurringChanged,
+    this.onStartTimer,
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
@@ -160,6 +166,69 @@ class _TaskTileState extends State<TaskTile>
 
   void _toggleExpanded() {
     setState(() => _expanded = !_expanded);
+  }
+
+  /// Wall-clock moment of the previous tap, for the hand-rolled double-tap
+  /// detection in [_handleTap]. A real `onDoubleTap` recognizer would hold
+  /// the gesture arena for the double-tap timeout on EVERY tap in the tile —
+  /// delaying the checkbox and the expand-on-tap by ~300 ms (and deadlocking
+  /// fake-async widget tests, which don't advance that timer).
+  DateTime? _lastTapAt;
+
+  void _handleTap() {
+    final now = DateTime.now();
+    final last = _lastTapAt;
+    _lastTapAt = now;
+    if (widget.onStartTimer != null &&
+        last != null &&
+        now.difference(last) < kDoubleTapTimeout) {
+      _lastTapAt = null;
+      // Second tap of a double tap: take back the expansion toggle the first
+      // tap made, then show the menu.
+      _toggleExpanded();
+      _showDoubleTapMenu();
+      return;
+    }
+    _toggleExpanded();
+  }
+
+  /// Little menu shown on a double tap. For now it holds a single action:
+  /// starting the egg timer (the dice one) for this task.
+  Future<void> _showDoubleTapMenu() async {
+    final minutes = Config.diceTimerDefaultMinutes.clamp(1, 60);
+    final start = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                widget.task.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(sheetContext)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Start timer'),
+              subtitle: Text('Counts down $minutes min — '
+                  'turn the dial to change it'),
+              onTap: () => Navigator.of(sheetContext).pop(true),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (start == true) widget.onStartTimer?.call();
   }
 
   Future<void> _sendTaskNotification() async {
@@ -365,7 +434,7 @@ class _TaskTileState extends State<TaskTile>
     );
 
     Widget content = InkWell(
-      onTap: _toggleExpanded,
+      onTap: _handleTap,
       child: Column(
         children: [
           stackTile,

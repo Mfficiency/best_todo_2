@@ -51,3 +51,11 @@ if [ -d build/linux/outputs/flutter-linux-x64/release/bundle ]; then
      "build/linux-${VERSION}"
   echo "Renamed linux bundle"
 fi
+
+# Optionally publish the APK to a GitHub release, where the app's About page
+# "Check for updates" button looks for new versions. Opt-in:
+#   PUBLISH_APK=1 sh tool/build.sh apk --release
+# Needs a GitHub token (GITHUB_TOKEN / GH_TOKEN, or a logged-in gh CLI).
+if [ "$PUBLISH_APK" = "1" ]; then
+  dart run tool/publish_apk.dart
+fi

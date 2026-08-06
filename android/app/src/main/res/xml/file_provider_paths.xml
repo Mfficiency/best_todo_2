@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths the update FileProvider may share. The updater writes the
+     downloaded APK into the cache dir (Flutter's getTemporaryDirectory). -->
+<paths>
+    <cache-path name="cache" path="." />
+    <files-path name="files" path="." />
+</paths>

@@ -4,11 +4,13 @@
 > app disappeared tomorrow, this file is what a human or AI needs to rebuild BestToDo from
 > zero and to understand *why* it is built the way it is. Part I is the functional/technical
 > specification (what to build). Part II is the complete development history (every step the
-> project took and why). `CHANGELOG.md` remains the authoritative per-version record;
-> `.claude/notes/alarm-work-spec.md` holds the deep-dive on the alarm reliability sessions.
+> project took and why). `CHANGELOG.md` remains the authoritative per-version record; the
+> operational deep dives (rebuild order, testing, CI/automation, environment, principles,
+> the alarm reliability sessions) are indexed in `.claude/README.md`.
 >
-> Accurate as of version **0.1.88+58** (2026-07-07), commit history through the 0.1.88
-> full-screen alarm work.
+> Part I is accurate as of version **0.1.133+105** (2026-08-06). Part II's narrated
+> history runs in detail through 0.1.91; every later version is covered feature-wise in
+> Part I and per-version in `CHANGELOG.md`.
 
 ---
 
@@ -152,6 +154,7 @@ rollups.
 | `alarm_log.txt` | human-readable alarm pipeline log | ~400 KB → trim to 250 KB |
 | `item_events.jsonl` | append-only item history journal (one JSON event per line) | ~1 MB → keep newest 4000 |
 | `item_event_meta.json` | per-item last sequence number (`{uid: seq}`) | — |
+| `sync_log.json` | `{unseen_error, entries[]}` background-sync history (§4.7) | 100 entries |
 
 **Day rollover:** on load, if the calendar date changed since `last_opened.txt`, every
 `isDone` task gets `completedAt`/`deletedAt` backfilled, moves to the top of the deleted
@@ -167,6 +170,18 @@ folder with timestamped names. Tasks bundle is `export_version: 2` with `tasks`,
 Everything use `export_version: 1` (two version namespaces — intentional). Import
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
+
+**Automatic backup (0.1.130):** Settings → Backup schedules the Everything export
+(`AutoBackupService`, `lib/services/auto_backup_service.dart`): frequency off/daily/weekly
+(`Config.autoBackupFrequency`, default off) into a user-picked folder
+(`Config.autoBackupDirectory`), checked after the home page loads and on every app resume
+(`maybeRun`, cheap no-op when off). Daily = first check of each calendar day; weekly =
+≥ 7 days since the last run. The last successful run is stored in `last_auto_backup.txt`
+in the documents dir — deliberately *not* in settings.json, so importing an old settings
+export cannot fake a recent backup. Backups read straight from disk
+(`readTaskListRaw` etc., not the home page's in-memory list), are written as
+`besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
+The Backup section also offers a "Back up now" tile and shows the last backup time.
 
 ### 4.2b Item history journal (0.1.106)
 
@@ -444,6 +459,25 @@ OS-scheduled ring all stop, then pops the page with a "Timer cancelled" snackbar
 only exit that leaves the task untouched — Done and Postpone both answer for it, and plain
 back-navigation deliberately keeps the countdown alive.
 
+**Start timer from a task (0.1.132):** double-tapping a task tile opens a little
+bottom-sheet menu — for now a single "Start timer" entry (subtitle shows the default
+duration). The double tap is detected by hand inside the tile's `onTap` (two taps within
+`kDoubleTapTimeout`, the second one taking back the expansion toggle the first made) —
+deliberately NOT via `InkWell.onDoubleTap`, whose recognizer holds the gesture arena for
+the double-tap timeout on every tap in the tile, delaying the checkbox and expand-on-tap
+by ~300 ms and deadlocking fake-async widget tests (the streak checkbox test caught
+this). The menu only appears when `TaskTile.onStartTimer` is set (it is null in the
+standalone-tile tests). Picking "Start timer" calls
+`HomePage._startTaskTimer`, which — unlike a dice roll — `configure()`s
+`DiceTimerController` for *that* task and immediately `releaseDial()`s, so
+`DiceTimerPage` opens with the countdown already running at
+`Config.diceTimerDefaultMinutes`; the dial still pauses/rewinds it like any dice timer,
+and Done/Postpone/Cancel behave identically. The page header is parameterized for this
+(`DiceTimerPage.caption`/`captionIcon`: "Timer for" + `Icons.timer_outlined` here,
+"The dice picked" + `Icons.casino` by default). Double-tapping the task whose timer is
+already live reopens the running countdown; starting a timer for a different task
+replaces the old one — the double tap is an explicit choice for that task.
+
 **Dice timer settings (0.1.120):** `Config.diceTimerAlertMode` picks what zero does —
 `melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
 alarm), `vibrate` (repeating buzz only), `notification` (**the default**) or `silent`.
@@ -524,7 +558,8 @@ wheel. Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes
 default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
-prod 300 s). SMS report: see §7. Export/Import buttons. `Config.applyMap` is defensive
+prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
+(§4.7), Export/Import buttons. `Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
 
@@ -651,6 +686,47 @@ the same via `_isEntryVisible` (start-in-schedule-view, Chronize hour wheel, def
 page). Feature labels are searchable (`_featureSearchEntries`). Turning off the tool that
 is the configured `startTool` resets it to `tasks` (`_dropUnavailableStartTool`), and the
 start-page dropdown only offers enabled tools.
+
+### 4.7 Synced mode — background folder sync on quit (0.1.131)
+
+The offline/synced choice: `Config.syncEnabled` (default **off** = fully offline) +
+`Config.syncFolderPath` (empty until picked), both in Settings → **Sync & export**
+("Synced mode" switch; enabling it with no folder opens the `getDirectoryPath` picker
+immediately; the "Sync folder" tile only shows while enabled). `SyncService`
+(`lib/services/sync_service.dart`, singleton with `resetForTest`) writes the task list
+to `<folder>/besttodo_tasks.json` (`{sync_version: 1, synced_at, app_version,
+task_count, tasks[]}`) — **tasks only** for now.
+
+**Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
+forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
+hidden/paused/detached after a resume starts exactly one fire-and-forget sync
+(`_syncedThisBackground` latch, reset on `resumed`; hidden→paused→detached arriving in
+a row must not sync three times). Nothing runs at launch: the service is only touched
+at startup by a lazy `ensureLoaded()` (memoized read of `sync_log.json`) from the home
+page/App Logs, so first frame and load paths are untouched. The sync reads
+`readTaskListRaw()` (state already on disk — every mutation saves), so it needs no page
+state.
+
+**Graceful failure:** the write is atomic (`SafeFile`, tmp+rename — a reader or crash
+can never see a half-written file); every failure (no folder chosen, folder deleted,
+write denied) is caught and becomes a red history entry, never an exception. Overlapping
+runs are skipped (`_syncInFlight`).
+
+**Sync history (App Logs → "Sync" tab):** every run is a `SyncLogEntry` (at,
+durationMs, itemCount, success, message, trigger 'app quit'/'manual'), newest first,
+capped 100, persisted in `sync_log.json` and mirrored as a one-liner into `LogService`.
+The page has two tabs since 0.1.131: "Logs" (the live 24 h `LogService` list) and
+"Sync" (green check "Synced N items in M ms" / red error "Sync failed: reason", with
+timestamp · trigger subtitle).
+
+**Red dot:** a failed sync sets `hasUnseenError` (persisted as `unseen_error`), which
+puts a small red dot (Key `sync-error-dot`, same `_iconWithFailureDot` stack as the CI
+test-failure dot but its own key) on the drawer's App Logs entry via a
+`ValueListenableBuilder`. Opening App Logs calls `markErrorSeen()` (dot gone, entry
+stays); a later successful sync also clears it.
+
+Tests live in their own silo `test/sync/` (service round-trip/failures/lifecycle latch
++ Sync tab, drawer dot, settings switch).
 
 ## 5. Alarm subsystem (the reliability showpiece)
 
@@ -868,7 +944,10 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 `SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
 `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
-`FOREGROUND_SERVICE`, `VIBRATE`.
+`FOREGROUND_SERVICE`, `VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
+About page; the user still confirms every install). An `androidx.core.content.FileProvider`
+(authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
+dirs) shares the downloaded update APK with the system installer as a `content://` URI.
 
 **Receivers/services:** android_alarm_manager_plus `AlarmService` +
 **`AlarmBroadcastReceiver`** (its absence was the original "SMS never sent" root cause —
@@ -900,7 +979,12 @@ late). Do not remove.
 **MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
 `FlutterActivity`: it sets show-when-locked/turn-screen-on when launched by an alarm's
 full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
-(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI".
+(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
+the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
+installer via the FileProvider (ACTION_VIEW, `application/vnd.android.package-archive`);
+when the one-time "install unknown apps" toggle is missing (O+,
+`canRequestPackageInstalls()` false) it opens that settings screen and returns
+`"needs-permission"` so the Dart side tells the user to grant it and retry.
 
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
@@ -1123,7 +1207,22 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
   dropped by accident.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
-  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …).
+  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) →
+  optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+- **In-app updates (0.1.133):** `tool/publish_apk.dart` uploads a locally built release APK
+  to a GitHub release — tag `v<x.y.z>-<build>` (git tags can't carry `+`), name
+  `BestToDo <x.y.z>+<build>`, asset `BestToDo-<x.y.z>+<build>.apk`, body = the newest
+  CHANGELOG section; token from `GITHUB_TOKEN`/`GH_TOKEN` or `gh auth token`; re-running
+  for the same version reuses the release and replaces the asset. The app side
+  (`lib/services/update_service.dart`, singleton `UpdateService.instance` with an
+  injectable `fetchOverride` for tests) hits the public
+  `repos/Mfficiency/best_todo_2/releases/latest` API unauthenticated, maps the tag back to
+  `x.y.z+build`, and compares numeric components (unparseable versions — 'unknown' in
+  tests — compare as all-zero). The About page's "Check for updates" section then walks
+  check → "Version x available" → download to the temp dir with a progress bar → hand to
+  the installer over the `besttodo/update` channel (§9); a `needs-permission` reply keeps
+  an "Install update" button up for the retry after granting. Web/desktop or a release
+  without an APK asset falls back to opening the release page in the browser.
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+staging+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `assets/test_report.json` + `docs/ci/**`): runs `flutter test --machine`
@@ -1164,7 +1263,8 @@ suites it can affect (see `test/README.md` for the file→suite map): `core/`
 deadline normalization, app-boot + build-gate smoke tests — always run),
 `alarms/` (alarm model/storage, editor, ring page), `projects/` (model,
 service, projects page, board, tile tags), `home/` (search, drawer, tile
-description editing), `tools/` (export/import + analytics, usage data,
+description editing), `update/` (in-app update check + About page update
+section + publish-tool helpers), `tools/` (export/import + analytics, usage data,
 startup-times page, countdown model, chronize). Plain `flutter test` still
 runs the full suite and is what CI uses; `tool/build.sh` gates builds on
 `test/core/build_smoke_test.dart`.
