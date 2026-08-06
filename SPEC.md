@@ -168,6 +168,18 @@ Everything use `export_version: 1` (two version namespaces — intentional). Imp
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
 
+**Automatic backup (0.1.130):** Settings → Backup schedules the Everything export
+(`AutoBackupService`, `lib/services/auto_backup_service.dart`): frequency off/daily/weekly
+(`Config.autoBackupFrequency`, default off) into a user-picked folder
+(`Config.autoBackupDirectory`), checked after the home page loads and on every app resume
+(`maybeRun`, cheap no-op when off). Daily = first check of each calendar day; weekly =
+≥ 7 days since the last run. The last successful run is stored in `last_auto_backup.txt`
+in the documents dir — deliberately *not* in settings.json, so importing an old settings
+export cannot fake a recent backup. Backups read straight from disk
+(`readTaskListRaw` etc., not the home page's in-memory list), are written as
+`besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
+The Backup section also offers a "Back up now" tile and shows the last backup time.
+
 ### 4.2b Item history journal (0.1.106)
 
 `ItemEventJournal` (`lib/services/item_event_journal.dart`) records every change to a

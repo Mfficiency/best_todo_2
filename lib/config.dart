@@ -355,6 +355,24 @@ class Config {
   /// Date display format, one of [dateFormats]. Defaults to dd.mm.yy.
   static String dateFormat = dateFormats.first;
 
+  /// How often the automatic backup writes a full export to
+  /// [autoBackupDirectory]. The keys are persisted, so keep them stable:
+  /// `off` (never, the default), `daily`, `weekly`.
+  static const List<String> autoBackupFrequencies = ['off', 'daily', 'weekly'];
+
+  /// Human-readable labels for [autoBackupFrequencies], index-aligned.
+  static const List<String> autoBackupFrequencyLabels = [
+    'Off',
+    'Daily',
+    'Weekly',
+  ];
+
+  /// Which of [autoBackupFrequencies] the automatic backup uses.
+  static String autoBackupFrequency = 'off';
+
+  /// Folder the automatic backup writes into; empty until the user picks one.
+  static String autoBackupDirectory = '';
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -407,6 +425,8 @@ class Config {
       'diceTimerVolume': diceTimerVolume,
       'diceTimerAlsoVibrate': diceTimerAlsoVibrate,
       'diceTimerDefaultMinutes': diceTimerDefaultMinutes,
+      'autoBackupFrequency': autoBackupFrequency,
+      'autoBackupDirectory': autoBackupDirectory,
       'features': Map<String, bool>.from(featureEnabled),
     };
   }
@@ -475,6 +495,13 @@ class Config {
     diceTimerDefaultMinutes =
         (data['diceTimerDefaultMinutes'] as num?)?.round().clamp(1, 60) ??
             diceTimerDefaultMinutes;
+    final savedBackupFrequency = data['autoBackupFrequency'] as String?;
+    if (savedBackupFrequency != null &&
+        autoBackupFrequencies.contains(savedBackupFrequency)) {
+      autoBackupFrequency = savedBackupFrequency;
+    }
+    autoBackupDirectory =
+        data['autoBackupDirectory'] as String? ?? autoBackupDirectory;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {

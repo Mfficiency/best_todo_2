@@ -14,6 +14,7 @@ import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
+import '../services/auto_backup_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -929,7 +930,11 @@ class _HomePageState extends State<HomePage>
     ProjectService.instance.load();
     // Some tools (Chronize, Productivity Stats, ...) render the task data, so
     // the configured start tool is only opened once loading finished.
-    _loadTasks().then((_) => _maybeOpenStartTool());
+    _loadTasks().then((_) {
+      _maybeOpenStartTool();
+      // A due automatic backup runs after startup, off the critical path.
+      unawaited(AutoBackupService.maybeRun());
+    });
     _scheduleMidnightUpdate();
   }
 
@@ -1020,6 +1025,8 @@ class _HomePageState extends State<HomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_mergeWidgetCompletions());
+      // An app kept open across midnight still gets its scheduled backup.
+      unawaited(AutoBackupService.maybeRun());
     }
   }
 
