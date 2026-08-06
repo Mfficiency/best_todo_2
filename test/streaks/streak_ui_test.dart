@@ -113,6 +113,9 @@ void main() {
     await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
 
     await tester.tap(find.byType(Checkbox).first);
+    // The tile's double-tap menu holds every tap in the gesture arena for the
+    // double-tap window; advance the clock past it so the checkbox tap lands.
+    await tester.pump(const Duration(milliseconds: 350));
     await settleIo(tester);
 
     expect(find.byTooltip('Streak: 1 day'), findsOneWidget);
