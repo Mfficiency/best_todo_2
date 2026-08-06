@@ -1,8 +1,17 @@
 # Changelog
 
-## [0.1.135] - 2026-08-06
+## [0.1.137] - 2026-08-06
 - The red dot on the menu icon for failed tests is now opt-in: turn it on under Settings → Appearance → "Red dot for failed tests" (off by default)
 - Red dots now clear themselves once you have looked at the problem: opening Test Results acknowledges the failed run (the dot stays off until a newer run fails), and the App Logs dot already cleared on opening after a failed sync
+
+## [0.1.136] - 2026-08-06
+- Fixed the occasional black screen when opening the app that needed a force-close to recover: startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame - they now initialize right after it, with timeouts so a stuck one can't wedge the app
+- If reading settings ever fails at launch, the app now opens with defaults instead of not opening at all
+
+## [0.1.135] - 2026-08-06
+- Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
+- Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too
+- The Markdown file is one-way for now: it is overwritten on every sync, so edits made in Obsidian stay in Obsidian
 
 ## [0.1.134] - 2026-08-06
 - Dice timer buttons now sit in a compact grid and the dial shrinks on small screens, so every control fits on one screen without scrolling

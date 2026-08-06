@@ -61,6 +61,16 @@ void main() {
 
     expect(SyncService.instance.entries.value.single.success, isTrue);
     expect(SyncService.instance.hasUnseenError.value, isFalse);
+
+    // The Obsidian-friendly Markdown companion lands next to the JSON.
+    final markdown =
+        File('${syncDir.path}/${SyncService.syncMarkdownFileName}');
+    expect(await markdown.exists(), isTrue);
+    final text = await markdown.readAsString();
+    expect(text, contains('# BestToDo tasks'));
+    expect(text, contains('## Today'));
+    expect(text, contains('- [ ] Alpha'));
+    expect(text, contains('- [ ] Beta'));
   });
 
   test('a vanished folder records a failure; the next success clears the flag',

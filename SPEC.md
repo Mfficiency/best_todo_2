@@ -79,27 +79,38 @@ Dependencies and why they exist:
 
 ## 3. App startup sequence (order matters)
 
-`main()` in `lib/main.dart`, strictly in this order:
+`main()` in `lib/main.dart`, strictly in this order. Guiding rule (0.1.136):
+**nothing before `runApp` may block indefinitely** — until the first frame
+renders, Android shows a black window, so any pre-frame `await` that hangs is
+the intermittent black-screen-at-open bug (first hit v0.1.85 via awaited
+diagnostics, hit again pre-0.1.136 via the plugin-init awaits).
 
 1. `StartupTimeService.start()` — stopwatch for the <1s cold-start budget.
 2. `WidgetsFlutterBinding.ensureInitialized()`.
-3. `await Config.load()` — reads `settings.json` so theme/tabs are right before first frame.
-4. `await NotificationService.initialize()` — plugin + notification channels.
-5. Non-web: `await SmsReportScheduler.applyFromConfig()` — restore the daily SMS alarm chain.
-6. `await AlarmService.instance.load()` — load persisted alarms.
-7. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))` — deliberately
-   NOT awaited; writing the diagnostics snapshot must never delay the first frame
-   (this fixed a black-screen-at-open bug, v0.1.85 era).
-8. Home-widget setup in try/catch: `HomeWidget.setAppGroupId` +
-   `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
-9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
-   (always skipped in dev builds); the mode question closes the intro, so an
-   unanswered mode brings the whole welcome flow back rather than the chooser
-   alone.
-10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
-    post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
-    mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
-    for asking the mode question again (Settings → Mode & features, §4.6).
+3. `await Config.load()` — reads `settings.json` so theme/tabs are right before
+   first frame. Wrapped in try/catch with a 5 s timeout: on failure the app
+   opens with defaults instead of never opening.
+4. SharedPreferences (also try/catch + 5 s timeout) → `showIntro` =
+   `!intro_shown || !Config.modeChosen` (always skipped in dev builds; false if
+   prefs fail); the mode question closes the intro, so an unanswered mode
+   brings the whole welcome flow back rather than the chooser alone.
+5. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
+   post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
+   mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
+   for asking the mode question again (Settings → Mode & features, §4.6).
+6. Post-first-frame, `_initServicesAfterFirstFrame()` (fire-and-forget, order
+   preserved, each step in try/catch with a 20 s timeout so one wedged plugin
+   can't stall the rest; failures land in LogService + `alarm_log.txt`):
+   1. `NotificationService.initialize()` — plugin + notification channels
+      (memoized: concurrent callers — e.g. `getAlarmLaunchPayload` in
+      `MyApp.initState` — share one underlying init).
+   2. Non-web: `SmsReportScheduler.applyFromConfig()` — restore the daily SMS
+      alarm chain.
+   3. `AlarmService.instance.load()` — load persisted alarms + reschedule
+      (memoized so the alarms page's own `load()` can't double-reschedule).
+   4. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))`.
+   5. Home-widget setup: `HomeWidget.setAppGroupId` +
+      `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
@@ -709,6 +720,19 @@ immediately; the "Sync folder" tile only shows while enabled). `SyncService`
 to `<folder>/besttodo_tasks.json` (`{sync_version: 1, synced_at, app_version,
 task_count, tasks[]}`) — **tasks only** for now.
 
+Since 0.1.135 every sync also writes `<folder>/besttodo_tasks.md`, an Obsidian-friendly
+Markdown companion (`SyncMarkdown.build` in `lib/services/sync_markdown.dart`, pure and
+unit-tested): a header comment marking the file auto-generated, `# BestToDo tasks`, a
+`Synced <yyyy-MM-dd HH:mm> · BestToDo <version> · N open / M total` line, then one `##`
+section per home tab (Today/Tomorrow/Day After Tomorrow/Next Week/Next Month/Future) —
+same bucketing and open-first/ranking sort as the tabs (`ItemViews.homeBucket`), deleted
+tasks excluded, empty sections skipped. Lines follow the Obsidian Tasks plugin format:
+`- [ ]`/`- [x]` + title (newlines flattened) + `📅 yyyy-MM-dd` due date (future-sentinel
+dates omitted) + `✅ yyyy-MM-dd` completion date. Point the sync folder into an Obsidian
+vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way: the
+file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
+the whole sync run (red history entry) like the JSON write.
+
 **Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
 forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
 hidden/paused/detached after a resume starts exactly one fire-and-forget sync
@@ -972,7 +996,11 @@ two widget providers.
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(23, flutter.minSdkVersion)` (androidx.work via home_widget needs 23); Java/Kotlin 11
 with core-library desugaring; glance pinned to 1.1.1 (home_widget 0.8.1 pulls `1.+` which
-would demand compileSdk 37); NDK 28.2.13676358. **Signing:** `key.properties` if present,
+would demand compileSdk 37); NDK 28.2.13676358. The root `android/build.gradle.kts`
+forces every plugin subproject to Java/Kotlin JVM target 11 (afterEvaluate +
+configureEach): home_widget 0.8.1 still compiles Kotlin at 1.8 while the androidx
+bytecode it inlines is built with JVM 11, which broke every release APK build from
+2026-07-28 until this override. **Signing:** `key.properties` if present,
 otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, password
 `android`) — deliberate, so every build (CI or local) is signed identically and updates
 install in place instead of failing with a signature mismatch. A Gradle task renames the
