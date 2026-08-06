@@ -36,6 +36,12 @@ class TaskTile extends StatefulWidget {
   final void Function(DateTime? oldDueDate, DateTime? newDueDate)?
       onDueDateChanged;
   final VoidCallback? onRecurringChanged;
+
+  /// Called when "Start timer" is picked from the double-tap menu. When null
+  /// the tile has no double-tap handling at all (so plain taps stay instant —
+  /// a registered double-tap recognizer delays them by the double-tap
+  /// timeout).
+  final VoidCallback? onStartTimer;
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
@@ -51,6 +57,7 @@ class TaskTile extends StatefulWidget {
     required this.onDelete,
     this.onDueDateChanged,
     this.onRecurringChanged,
+    this.onStartTimer,
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
@@ -160,6 +167,45 @@ class _TaskTileState extends State<TaskTile>
 
   void _toggleExpanded() {
     setState(() => _expanded = !_expanded);
+  }
+
+  /// Little menu shown on a double tap. For now it holds a single action:
+  /// starting the egg timer (the dice one) for this task.
+  Future<void> _showDoubleTapMenu() async {
+    final minutes = Config.diceTimerDefaultMinutes.clamp(1, 60);
+    final start = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                widget.task.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(sheetContext)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Start timer'),
+              subtitle: Text('Counts down $minutes min — '
+                  'turn the dial to change it'),
+              onTap: () => Navigator.of(sheetContext).pop(true),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (start == true) widget.onStartTimer?.call();
   }
 
   Future<void> _sendTaskNotification() async {
@@ -366,6 +412,7 @@ class _TaskTileState extends State<TaskTile>
 
     Widget content = InkWell(
       onTap: _toggleExpanded,
+      onDoubleTap: widget.onStartTimer == null ? null : _showDoubleTapMenu,
       child: Column(
         children: [
           stackTile,
