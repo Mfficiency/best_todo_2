@@ -4,11 +4,13 @@
 > app disappeared tomorrow, this file is what a human or AI needs to rebuild BestToDo from
 > zero and to understand *why* it is built the way it is. Part I is the functional/technical
 > specification (what to build). Part II is the complete development history (every step the
-> project took and why). `CHANGELOG.md` remains the authoritative per-version record;
-> `.claude/notes/alarm-work-spec.md` holds the deep-dive on the alarm reliability sessions.
+> project took and why). `CHANGELOG.md` remains the authoritative per-version record; the
+> operational deep dives (rebuild order, testing, CI/automation, environment, principles,
+> the alarm reliability sessions) are indexed in `.claude/README.md`.
 >
-> Accurate as of version **0.1.88+58** (2026-07-07), commit history through the 0.1.88
-> full-screen alarm work.
+> Part I is accurate as of version **0.1.134+106** (2026-08-06). Part II's narrated
+> history runs in detail through 0.1.91; every later version is covered feature-wise in
+> Part I and per-version in `CHANGELOG.md`.
 
 ---
 
@@ -943,7 +945,10 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 `SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
 `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
-`FOREGROUND_SERVICE`, `VIBRATE`.
+`FOREGROUND_SERVICE`, `VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
+About page; the user still confirms every install). An `androidx.core.content.FileProvider`
+(authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
+dirs) shares the downloaded update APK with the system installer as a `content://` URI.
 
 **Receivers/services:** android_alarm_manager_plus `AlarmService` +
 **`AlarmBroadcastReceiver`** (its absence was the original "SMS never sent" root cause —
@@ -975,7 +980,12 @@ late). Do not remove.
 **MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
 `FlutterActivity`: it sets show-when-locked/turn-screen-on when launched by an alarm's
 full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
-(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI".
+(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
+the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
+installer via the FileProvider (ACTION_VIEW, `application/vnd.android.package-archive`);
+when the one-time "install unknown apps" toggle is missing (O+,
+`canRequestPackageInstalls()` false) it opens that settings screen and returns
+`"needs-permission"` so the Dart side tells the user to grant it and retry.
 
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
@@ -1198,7 +1208,22 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
   dropped by accident.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
-  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …).
+  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) →
+  optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+- **In-app updates (0.1.133):** `tool/publish_apk.dart` uploads a locally built release APK
+  to a GitHub release — tag `v<x.y.z>-<build>` (git tags can't carry `+`), name
+  `BestToDo <x.y.z>+<build>`, asset `BestToDo-<x.y.z>+<build>.apk`, body = the newest
+  CHANGELOG section; token from `GITHUB_TOKEN`/`GH_TOKEN` or `gh auth token`; re-running
+  for the same version reuses the release and replaces the asset. The app side
+  (`lib/services/update_service.dart`, singleton `UpdateService.instance` with an
+  injectable `fetchOverride` for tests) hits the public
+  `repos/Mfficiency/best_todo_2/releases/latest` API unauthenticated, maps the tag back to
+  `x.y.z+build`, and compares numeric components (unparseable versions — 'unknown' in
+  tests — compare as all-zero). The About page's "Check for updates" section then walks
+  check → "Version x available" → download to the temp dir with a progress bar → hand to
+  the installer over the `besttodo/update` channel (§9); a `needs-permission` reply keeps
+  an "Install update" button up for the retry after granting. Web/desktop or a release
+  without an APK asset falls back to opening the release page in the browser.
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+staging+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `assets/test_report.json` + `docs/ci/**`): runs `flutter test --machine`
@@ -1239,7 +1264,8 @@ suites it can affect (see `test/README.md` for the file→suite map): `core/`
 deadline normalization, app-boot + build-gate smoke tests — always run),
 `alarms/` (alarm model/storage, editor, ring page), `projects/` (model,
 service, projects page, board, tile tags), `home/` (search, drawer, tile
-description editing), `tools/` (export/import + analytics, usage data,
+description editing), `update/` (in-app update check + About page update
+section + publish-tool helpers), `tools/` (export/import + analytics, usage data,
 startup-times page, countdown model, chronize). Plain `flutter test` still
 runs the full suite and is what CI uses; `tool/build.sh` gates builds on
 `test/core/build_smoke_test.dart`.
