@@ -922,7 +922,9 @@ class _HomePageState extends State<HomePage>
     // is stopped (see main.dart), with the task's actions ready.
     openRunningDiceTimer = _reopenRunningDiceTimer;
     // CI embeds its test results as a bundled asset; builds whose test run
-    // had failures get a red dot on the drawer icon (see TestResultsPage).
+    // had unacknowledged failures get a red dot on the Test Results drawer
+    // entry — and on the hamburger icon itself when the "Red dot on menu"
+    // setting is on. Opening the Test Results page clears the dots.
     TestReportService.instance.load().then((_) {
       if (mounted) setState(() {});
     });
@@ -2142,9 +2144,11 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
   ];
 
-  /// An icon overlaid with a small red dot, used on the drawer/hamburger
-  /// icon and the Test Results entry when this build's CI test run failed,
-  /// and (with its own [dotKey]) on the App Logs entry after a failed sync.
+  /// An icon overlaid with a small red dot, used on the Test Results entry —
+  /// and, when [Config.showFailureDotOnMenu] is on, the drawer/hamburger
+  /// icon — while the newest test run has unacknowledged failures, and (with
+  /// its own [dotKey]) on the App Logs entry after a failed sync. Every dot
+  /// clears itself once its page is opened.
   Widget _iconWithFailureDot(IconData icon,
       {Key dotKey = const Key('test-failure-dot')}) {
     return Stack(
@@ -2281,7 +2285,7 @@ class _HomePageState extends State<HomePage>
                   for (final tool in enabledTools)
                     ListTile(
                       leading: tool.key == 'test_results' &&
-                              TestReportService.instance.hasFailures
+                              TestReportService.instance.hasUnseenFailures
                           ? _iconWithFailureDot(tool.icon)
                           : Icon(tool.icon),
                       title: Text(tool.label),
@@ -2299,7 +2303,8 @@ class _HomePageState extends State<HomePage>
         leading: Builder(
           builder: (context) => IconButton(
             tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
-            icon: TestReportService.instance.hasFailures
+            icon: Config.showFailureDotOnMenu &&
+                    TestReportService.instance.hasUnseenFailures
                 ? _iconWithFailureDot(Icons.menu)
                 : const Icon(Icons.menu),
             onPressed: () => Scaffold.of(context).openDrawer(),

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.135] - 2026-08-06
+- The red dot on the menu icon for failed tests is now opt-in: turn it on under Settings → Appearance → "Red dot for failed tests" (off by default)
+- Red dots now clear themselves once you have looked at the problem: opening Test Results acknowledges the failed run (the dot stays off until a newer run fails), and the App Logs dot already cleared on opening after a failed sync
+
 ## [0.1.134] - 2026-08-06
 - Dice timer buttons now sit in a compact grid and the dial shrinks on small screens, so every control fits on one screen without scrolling
 

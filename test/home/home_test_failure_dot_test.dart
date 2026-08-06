@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/models/test_report.dart';
 import 'package:besttodo/services/project_service.dart';
@@ -32,6 +33,7 @@ void main() {
 
   tearDown(() {
     TestReportService.instance.resetForTest();
+    Config.showFailureDotOnMenu = false;
   });
 
   Future<void> pumpHomeUntilLoaded(WidgetTester tester) async {
@@ -51,8 +53,10 @@ void main() {
   }
 
   testWidgets(
-      'hamburger icon carries a red dot when the bundled test report has '
-      'failures, and Test Results opens from the Tools section', (tester) async {
+      'with the menu-dot setting on, the hamburger icon carries a red dot '
+      'when the bundled test report has failures, and Test Results opens '
+      'from the Tools section', (tester) async {
+    Config.showFailureDotOnMenu = true;
     TestReportService.instance.setReportForTest(TestReport(
       available: true,
       passed: 42,
@@ -85,6 +89,69 @@ void main() {
 
     expect(find.text('1 test failed'), findsOneWidget);
     expect(find.text('broken test'), findsOneWidget);
+  });
+
+  testWidgets(
+      'by default the hamburger icon stays clean even with failures; the '
+      'Test Results entry under Tools still shows the dot', (tester) async {
+    TestReportService.instance.setReportForTest(TestReport(
+      available: true,
+      passed: 42,
+      failed: 1,
+      failures: [TestFailureDetail(name: 'broken test', error: 'boom')],
+    ));
+
+    await pumpHomeUntilLoaded(tester);
+
+    final dot = find.byKey(const Key('test-failure-dot'));
+    expect(dot, findsNothing);
+
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tools'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Test Results'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    expect(dot, findsOneWidget);
+  });
+
+  testWidgets(
+      'opening Test Results acknowledges the failures and clears the dots',
+      (tester) async {
+    Config.showFailureDotOnMenu = true;
+    TestReportService.instance.setReportForTest(TestReport(
+      available: true,
+      generatedAt: DateTime.utc(2026, 8, 6),
+      passed: 42,
+      failed: 1,
+      failures: [TestFailureDetail(name: 'broken test', error: 'boom')],
+    ));
+
+    await pumpHomeUntilLoaded(tester);
+
+    final dot = find.byKey(const Key('test-failure-dot'));
+    expect(dot, findsOneWidget);
+
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tools'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Test Results'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Test Results'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(find.text('1 test failed'), findsOneWidget);
+
+    // Looking at the failed run is the acknowledgement — back on the home
+    // page every dot is gone.
+    expect(TestReportService.instance.hasUnseenFailures, isFalse);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(dot, findsNothing);
   });
 
   testWidgets('no red dot when no report is bundled', (tester) async {

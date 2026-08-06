@@ -386,10 +386,16 @@ on success, skipped on web), `loadForDisplay` = newest of online/cached/bundled 
 layer it came from (`TestReportSource`, `sourceLabel`: "Fetched just now from CI" / "Last
 fetched results (offline)" / "Packaged with this build (offline)"); `setReportForTest`/
 `setCachedReportForTest`/`setOnlineReportForTest`/`refreshOnline`/`resetForTest`. The red
-failure dot uses the offline-best report (`hasFailures`, loaded at startup): the home app
-bar's custom hamburger `leading` (default "Open navigation menu" tooltip, opens the drawer
-via `Scaffold.of`) and the Tools ▸ Test Results entry both carry a 9 px red dot
-(`Key('test-failure-dot')`). `TestResultsPage` (a Tools page, `test_results` start-tool
+failure dot uses the offline-best report loaded at startup, filtered through an
+acknowledgement marker (`hasUnseenFailures`): the Tools ▸ Test Results entry — and, only
+when the "Red dot for failed tests" Appearance setting (`Config.showFailureDotOnMenu`,
+default off) is on, the home app bar's custom hamburger `leading` (default "Open
+navigation menu" tooltip, opens the drawer via `Scaffold.of`) — carries a 9 px red dot
+(`Key('test-failure-dot')`). Opening the Test Results page calls `markSeen(displayed)`
+(unawaited): it records the newest acknowledged run date plus fingerprints
+(commit|date|counts) of the seen + offline-best reports in `test_report_seen.json`, so
+every dot disappears immediately and stays off across restarts until a run newer than
+anything acknowledged fails. `TestResultsPage` (a Tools page, `test_results` start-tool
 key) is a StatefulWidget with an app-bar refresh action: a version card (source label,
 "Ran 3 hours ago on dev" via `formatReportAge`, running vs tested version with a
 match/mismatch note, "Open CI run" when `runUrl` is set), a summary card
@@ -552,7 +558,9 @@ monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pu
 only, transparent `surfaceTint`, no ink splashes, selected chips underlined via a
 `WidgetStateTextStyle` label instead of a colour fill; the orange/red/green swipe
 backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with dark
-mode), icon tabs, 24-hour time (default on), date format (6 choices,
+mode), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
+marks the home hamburger icon while the newest test run has unacknowledged failures,
+see §4.3), 24-hour time (default on), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, swipe-left-delete, default delay 0–10 s slider,
 start tab (simple mode hides the tool-related entries, see §4.6), default start page
 (`startTool`: the task list or any enabled tool — Alarms, Countdown,
@@ -1291,8 +1299,9 @@ active-day tracking (highlight follows scroll, back-to-top arrow, add-to-highlig
 end to end). CI test report & settings search (0.1.96): `TestReport` tolerant fromJson /
 toJson round-trip and the `--machine` output parser (hidden/skipped handling, error
 capture, garbage tolerance), Test Results page states (failures + expandable errors, all
-green, no bundled report), home red dot on the hamburger + drawer entry navigation (and
-its absence when green/unavailable), settings search (toggle, title + keyword matching,
+green, no bundled report), home red dot on the hamburger (opt-in setting) + drawer entry
+navigation (its absence when green/unavailable/by default on the hamburger, and its
+clearing once Test Results is opened), settings search (toggle, title + keyword matching,
 section subtitle, no-match message, jump-to-section, close restoring chips). Simple mode &
 features (0.1.118, `test/home/simple_mode_test.dart` + `settings_features_test.dart`):
 home page in simple mode (no dice/flame/schedule/search, drawer down to Settings + Deleted
