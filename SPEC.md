@@ -465,10 +465,13 @@ back-navigation deliberately keeps the countdown alive.
 
 **Start timer from a task (0.1.132):** double-tapping a task tile opens a little
 bottom-sheet menu — for now a single "Start timer" entry (subtitle shows the default
-duration). The tile's `InkWell` registers `onDoubleTap` only when `TaskTile.onStartTimer`
-is set (it is null in the standalone-tile tests), because a registered double-tap
-recognizer delays single taps by the double-tap timeout (~300 ms) — the expand-on-tap
-on the home/schedule lists accepts that delay. Picking "Start timer" calls
+duration). The double tap is detected by hand inside the tile's `onTap` (two taps within
+`kDoubleTapTimeout`, the second one taking back the expansion toggle the first made) —
+deliberately NOT via `InkWell.onDoubleTap`, whose recognizer holds the gesture arena for
+the double-tap timeout on every tap in the tile, delaying the checkbox and expand-on-tap
+by ~300 ms and deadlocking fake-async widget tests (the streak checkbox test caught
+this). The menu only appears when `TaskTile.onStartTimer` is set (it is null in the
+standalone-tile tests). Picking "Start timer" calls
 `HomePage._startTaskTimer`, which — unlike a dice roll — `configure()`s
 `DiceTimerController` for *that* task and immediately `releaseDial()`s, so
 `DiceTimerPage` opens with the countdown already running at

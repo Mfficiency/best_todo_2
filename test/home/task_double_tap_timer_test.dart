@@ -40,12 +40,15 @@ void main() {
     expect(marker, findsOneWidget, reason: 'HomePage never loaded the tasks');
   }
 
-  /// Two quick taps on [finder] — close enough together to register as a
-  /// double tap (past kDoubleTapMinTime, well inside kDoubleTapTimeout).
+  /// Two quick taps on [finder]'s position — close enough together to count
+  /// as a double tap. Taps by coordinate because the first tap expands the
+  /// tile, whose title editor then also matches a `find.text` on the title
+  /// (the row itself stays put; the expansion only grows downward).
   Future<void> doubleTap(WidgetTester tester, Finder finder) async {
-    await tester.tap(finder);
+    final center = tester.getCenter(finder);
+    await tester.tapAt(center);
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(finder);
+    await tester.tapAt(center);
     await tester.pumpAndSettle();
   }
 
