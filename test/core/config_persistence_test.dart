@@ -29,6 +29,7 @@ void main() {
     Config.use24HourFormat = false;
     Config.dateFormat = 'yyyy-MM-dd';
     Config.startTool = 'productivity_stats';
+    Config.showFailureDotOnMenu = true;
     await Config.save();
 
     // Reset to defaults
@@ -42,6 +43,7 @@ void main() {
     Config.use24HourFormat = true;
     Config.dateFormat = Config.dateFormats.first;
     Config.startTool = 'tasks';
+    Config.showFailureDotOnMenu = false;
 
     await Config.load();
 
@@ -55,6 +57,10 @@ void main() {
     expect(Config.use24HourFormat, isFalse);
     expect(Config.dateFormat, 'yyyy-MM-dd');
     expect(Config.startTool, 'productivity_stats');
+    expect(Config.showFailureDotOnMenu, isTrue);
+
+    // Restore the default (off) so other tests see a clean config.
+    Config.showFailureDotOnMenu = false;
   });
 
   test('unknown startTool values are ignored on load', () {

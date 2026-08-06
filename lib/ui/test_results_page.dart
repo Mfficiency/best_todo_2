@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -40,6 +42,11 @@ class _TestResultsPageState extends State<TestResultsPage> {
   Future<_PageData> _load() async {
     await Config.ensureVersionLoaded();
     final displayed = await TestReportService.instance.loadForDisplay();
+    // Looking at the results acknowledges them: the red failure dots on the
+    // hamburger icon and the Test Results drawer entry go away until a newer
+    // run fails. Unawaited so the page renders without waiting on the disk
+    // write that persists the acknowledgement.
+    unawaited(TestReportService.instance.markSeen(displayed.report));
     return _PageData(
       displayed: displayed,
       currentVersion: Config.versionWithBuild,

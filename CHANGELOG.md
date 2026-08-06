@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.140] - 2026-08-06
+- The app now asks for all its permissions up front (notifications, exact alarms, battery-optimization exemption, full-screen alarms, SMS) when you choose the full experience - "Use everything" on the welcome screen or turning simple mode off in Settings
+- The same one-pass permission check also runs on the first open after an app update, so a new version can never be quietly missing a permission it needs
+- Choosing simple mode keeps the welcome flow dialog-free: nothing is asked until you opt into the full experience or the app is updated
+
+## [0.1.139] - 2026-08-06
+- Fixed "Check for updates" always failing with a host-lookup error (SocketException: api.github.com) in release builds: the installed app was missing the Android internet permission, so it could not reach GitHub at all
+
+## [0.1.138] - 2026-08-06
+- Fixed a first launch on a new phone opening with the imported idea backlog instead of the three starter tasks - the starter list is seeded again, and now sits above the imported items
+
+## [0.1.137] - 2026-08-06
+- The red dot on the menu icon for failed tests is now opt-in: turn it on under Settings → Appearance → "Red dot for failed tests" (off by default)
+- Red dots now clear themselves once you have looked at the problem: opening Test Results acknowledges the failed run (the dot stays off until a newer run fails), and the App Logs dot already cleared on opening after a failed sync
+
+## [0.1.136] - 2026-08-06
+- Fixed the occasional black screen when opening the app that needed a force-close to recover: startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame - they now initialize right after it, with timeouts so a stuck one can't wedge the app
+- If reading settings ever fails at launch, the app now opens with defaults instead of not opening at all
+
 ## [0.1.135] - 2026-08-06
 - Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
 - Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too

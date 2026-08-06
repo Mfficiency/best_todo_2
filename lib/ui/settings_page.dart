@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -6,6 +8,7 @@ import '../main.dart';
 import '../models/sms_recipient.dart';
 import '../models/sms_report_config.dart';
 import '../services/auto_backup_service.dart';
+import '../services/permission_flow.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
@@ -98,6 +101,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Minimalist mode', 0,
         'theme monochrome serene calm plain simple no colours colors underline'),
     _SettingsSearchEntry('Use tab icons', 0, 'tabs labels home'),
+    _SettingsSearchEntry('Red dot for failed tests', 0,
+        'menu hamburger drawer badge notification ci test results dot'),
     _SettingsSearchEntry('24-hour time', 0, 'clock am pm 12-hour format'),
     _SettingsSearchEntry('Date format', 0, 'display day month year'),
     _SettingsSearchEntry(
@@ -170,6 +175,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _darkMode = Config.darkMode;
   bool _minimalistMode = Config.minimalistMode;
   bool _useIconTabs = Config.useIconTabs;
+  bool _showFailureDotOnMenu = Config.showFailureDotOnMenu;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
@@ -205,6 +211,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _darkMode = Config.darkMode;
     _minimalistMode = Config.minimalistMode;
     _useIconTabs = Config.useIconTabs;
+    _showFailureDotOnMenu = Config.showFailureDotOnMenu;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
@@ -764,6 +771,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _dropUnavailableStartTool();
     await Config.save();
     StreakService.instance.settingsChanged();
+    // Turning simple mode off is choosing the full experience — make sure
+    // every permission its features rely on has been asked for.
+    if (!value) {
+      unawaited(
+          PermissionFlow.requestAll(trigger: 'full mode enabled in Settings'));
+    }
     widget.onSettingsChanged?.call();
   }
 
@@ -1569,6 +1582,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (val) async {
                           setState(() => _useIconTabs = val);
                           Config.useIconTabs = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Red dot for failed tests'),
+                        subtitle: const Text(
+                            'Mark the menu icon with a red dot while the '
+                            'newest test run has failures you have not '
+                            'looked at yet'),
+                        value: _showFailureDotOnMenu,
+                        onChanged: (val) async {
+                          setState(() => _showFailureDotOnMenu = val);
+                          Config.showFailureDotOnMenu = val;
                           await Config.save();
                           widget.onSettingsChanged?.call();
                         },

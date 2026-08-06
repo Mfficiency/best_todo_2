@@ -17,9 +17,12 @@ import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'config.dart';
 import 'services/alarm_ids.dart';
+import 'services/alarm_log_service.dart';
 import 'services/alarm_service.dart';
+import 'services/log_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
+import 'services/permission_flow.dart';
 import 'services/pre_update_backup.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
@@ -125,32 +128,33 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
-  await Config.load();
-  await NotificationService.initialize();
-  if (!kIsWeb) {
-    await SmsReportScheduler.applyFromConfig();
-  }
-  await AlarmService.instance.load();
-  // Snapshot the device/permission state into the alarm log on every launch,
-  // so a missed alarm can be diagnosed from the file after the fact. Fire and
-  // forget: must not delay first frame.
-  unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'));
+  // Config decides the first frame's theme and start page, so it is the one
+  // load worth waiting for — but never indefinitely: until the first frame
+  // renders, Android shows a black window, so a wedged platform channel here
+  // means a permanent black screen. On timeout the app opens with defaults.
   try {
-    await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
-    await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
+    await Config.load().timeout(const Duration(seconds: 5));
   } catch (_) {}
-  final prefs = await SharedPreferences.getInstance();
   // The mode question closes the intro, so someone who has never answered it
-  // gets the whole welcome flow rather than the chooser on its own.
-  final showIntro = Config.isDev
-      ? false
-      : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
+  // gets the whole welcome flow rather than the chooser on its own. If prefs
+  // can't be read, skip the intro rather than not opening at all.
+  var showIntro = false;
+  try {
+    final prefs =
+        await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
+    showIntro = Config.isDev
+        ? false
+        : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
+  } catch (_) {}
   runApp(MyApp(
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
+    // Plugin/service startup runs after the first frame — see
+    // _initServicesAfterFirstFrame for why it must never happen before it.
+    unawaited(_initServicesAfterFirstFrame());
     // One-time backfill of the item-history journal from pre-journal data.
     // Deliberately a few seconds after the first frame so it never competes
     // with startup or the home page's initial load; once seeded it is a
@@ -161,6 +165,47 @@ Future<void> main() async {
     // migrations can take version-specific precautions. Same deferral.
     unawaited(Future<void>.delayed(const Duration(seconds: 3))
         .then((_) => PreUpdateBackup.recordCurrentVersion()));
+    // First open after an update: ask for every permission the app can use,
+    // so none is silently missing after new code shipped. Deferred a beat so
+    // the dialogs never compete with the first frame; a first-ever launch is
+    // skipped here (mode not chosen yet) — the mode picker settles it.
+    unawaited(Future<void>.delayed(const Duration(seconds: 1))
+        .then((_) => PermissionFlow.maybeRequestAfterUpdate()));
+  });
+}
+
+/// Plugin/service startup that used to be awaited in [main] before `runApp`.
+/// Any of these platform-channel calls stalling — the notification plugin,
+/// the timezone lookup, `AndroidAlarmManager`, rescheduling every alarm with
+/// the OS, home-widget registration — kept the first frame from ever
+/// rendering, which on Android is a black screen only a force-close fixes
+/// (the intermittent black-screen-at-open bug; same class as the v0.1.85
+/// diagnostics one). Now they run right after the first frame: order is
+/// preserved (alarm rescheduling needs the notification plugin initialized
+/// first), each step gets a timeout so a wedged plugin can't also stall the
+/// steps after it, and a failure is logged instead of aborting the chain.
+Future<void> _initServicesAfterFirstFrame() async {
+  Future<void> step(String name, Future<void> Function() body) async {
+    try {
+      await body().timeout(const Duration(seconds: 20));
+    } catch (e) {
+      LogService.add('startup', '$name init failed: $e');
+      unawaited(AlarmLog.warn('ENV', 'startup step "$name" failed: $e'));
+    }
+  }
+
+  await step('notifications', NotificationService.initialize);
+  if (!kIsWeb) {
+    await step('sms report scheduler', SmsReportScheduler.applyFromConfig);
+  }
+  await step('alarms', AlarmService.instance.load);
+  // Snapshot the device/permission state into the alarm log on every launch,
+  // so a missed alarm can be diagnosed from the file after the fact. Fire and
+  // forget: must not hold up the widget registration below.
+  unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'));
+  await step('home widgets', () async {
+    await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
+    await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
   });
 }
 

@@ -67,6 +67,76 @@ void main() {
     expect(TestReportService.instance.report, isNotNull);
   });
 
+  group('failure-dot acknowledgement', () {
+    TestReport failingReport(DateTime generatedAt) => TestReport(
+          available: true,
+          generatedAt: generatedAt,
+          commit: 'abc123',
+          passed: 10,
+          failed: 1,
+          failures: [TestFailureDetail(name: 'broken test')],
+        );
+
+    test('markSeen clears the unseen flag and survives a restart', () async {
+      writeCache(failingReport(DateTime.utc(2030, 1, 1)));
+      final report = await TestReportService.instance.load();
+      expect(TestReportService.instance.hasUnseenFailures, isTrue);
+
+      await TestReportService.instance.markSeen(report);
+
+      // The failures are still there, but they have been looked at.
+      expect(TestReportService.instance.hasFailures, isTrue);
+      expect(TestReportService.instance.hasUnseenFailures, isFalse);
+
+      // A "restart": a fresh load re-reads the persisted marker from disk.
+      TestReportService.instance.resetForTest();
+      TestReportService.instance
+          .setOnlineReportForTest(TestReport(available: false));
+      await TestReportService.instance.load();
+      expect(TestReportService.instance.hasFailures, isTrue);
+      expect(TestReportService.instance.hasUnseenFailures, isFalse);
+    });
+
+    test('a newer failing run lights the dot up again', () async {
+      writeCache(failingReport(DateTime.utc(2030, 1, 1)));
+      final report = await TestReportService.instance.load();
+      await TestReportService.instance.markSeen(report);
+
+      TestReportService.instance.resetForTest();
+      TestReportService.instance
+          .setOnlineReportForTest(TestReport(available: false));
+      writeCache(failingReport(DateTime.utc(2030, 2, 1)));
+      await TestReportService.instance.load();
+
+      expect(TestReportService.instance.hasUnseenFailures, isTrue);
+    });
+
+    test('an undated report is acknowledged by its fingerprint', () async {
+      final report = TestReport(
+        available: true,
+        passed: 5,
+        failed: 2,
+        failures: [TestFailureDetail(name: 'broken test')],
+      );
+      TestReportService.instance.setReportForTest(report);
+      expect(TestReportService.instance.hasUnseenFailures, isTrue);
+
+      await TestReportService.instance.markSeen(report);
+
+      expect(TestReportService.instance.hasUnseenFailures, isFalse);
+    });
+
+    test('an all-green run never counts as unseen failures', () async {
+      writeCache(TestReport(
+        available: true,
+        generatedAt: DateTime.utc(2030, 1, 1),
+        passed: 12,
+      ));
+      await TestReportService.instance.load();
+      expect(TestReportService.instance.hasUnseenFailures, isFalse);
+    });
+  });
+
   group('loadForDisplay picks the newest layer', () {
     test('online when it is the freshest', () async {
       TestReportService.instance.setReportForTest(TestReport(

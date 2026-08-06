@@ -25,6 +25,12 @@ void main() {
   });
 
   Future<void> pumpSettings(WidgetTester tester) async {
+    // The Appearance section has grown past the default 600 px test viewport;
+    // a taller surface keeps the Mode & features header on screen so its
+    // collapse chevron is built and findable.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     // initState kicks off the SMS config file load; walk real-event-loop
     // slices so the dart:io future completes inside testWidgets (see

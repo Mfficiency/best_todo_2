@@ -72,11 +72,18 @@ class TestReportService {
       'https://raw.githubusercontent.com/Mfficiency/best_todo_2/ci-reports/latest.json';
 
   static const String _cacheFileName = 'test_report_cache.json';
+  static const String _seenFileName = 'test_report_seen.json';
 
   TestReport? _bundled;
   TestReport? _cached;
   TestReport? _offlineBest;
   Future<TestReport>? _loadFuture;
+
+  /// Acknowledgement state for the red failure dots: the newest run date the
+  /// user has looked at on the Test Results page, plus fingerprints of the
+  /// exact reports they saw (so undated reports can be acknowledged too).
+  DateTime? _seenGeneratedAt;
+  final Set<String> _seenFingerprints = <String>{};
 
   Future<TestReport>? _onlineFuture;
   TestReport? _onlineOverrideForTest;
@@ -86,9 +93,19 @@ class TestReportService {
   /// cached), or null before [load] completes.
   TestReport? get report => _offlineBest;
 
-  /// Whether the newest report available offline has failing tests. Drives the
-  /// drawer's red dot: no network, so startup stays fast and works on a plane.
+  /// Whether the newest report available offline has failing tests. No
+  /// network, so startup stays fast and works on a plane.
   bool get hasFailures => _offlineBest?.hasFailures ?? false;
+
+  /// Whether the newest report available offline has failing tests the user
+  /// has not looked at yet. Drives the red dots on the drawer icon and the
+  /// Test Results entry: opening the Test Results page calls [markSeen], which
+  /// switches this off until a newer failing run shows up.
+  bool get hasUnseenFailures {
+    final report = _offlineBest;
+    if (report == null || !report.hasFailures) return false;
+    return !_isSeen(report);
+  }
 
   /// Loads the offline layers (bundled asset + disk cache) and keeps the newer.
   Future<TestReport> load() => _loadFuture ??= _load();
@@ -96,10 +113,78 @@ class TestReportService {
   Future<TestReport> _load() async {
     _bundled = await _loadBundled();
     _cached = await _loadCached();
+    await _loadSeen();
     _offlineBest = TestReport.newest([_bundled, _cached]) ??
         _bundled ??
         TestReport(available: false);
     return _offlineBest!;
+  }
+
+  /// A report identity that survives a JSON round-trip, so acknowledging a
+  /// report also acknowledges the same run re-read from disk on a later
+  /// launch. Dated reports are additionally covered by [_seenGeneratedAt].
+  String _fingerprint(TestReport report) =>
+      '${report.commit}|${report.generatedAt?.toIso8601String() ?? ''}'
+      '|${report.passed}|${report.failed}|${report.skipped}';
+
+  bool _isSeen(TestReport report) {
+    if (_seenFingerprints.contains(_fingerprint(report))) return true;
+    final date = report.generatedAt;
+    final seenUpTo = _seenGeneratedAt;
+    return date != null && seenUpTo != null && !date.isAfter(seenUpTo);
+  }
+
+  /// Acknowledges [report] (the one the Test Results page just displayed) and
+  /// the offline-best report driving the red dots. In-memory state updates
+  /// synchronously so the UI redraws without the dot right away; the marker
+  /// is persisted best-effort so the dots stay off across restarts — until a
+  /// run newer than anything acknowledged fails again.
+  Future<void> markSeen(TestReport report) {
+    var changed = false;
+    for (final r in [report, _offlineBest]) {
+      if (r == null || !r.available) continue;
+      final date = r.generatedAt;
+      if (date != null &&
+          (_seenGeneratedAt == null || date.isAfter(_seenGeneratedAt!))) {
+        _seenGeneratedAt = date;
+        changed = true;
+      }
+      if (_seenFingerprints.add(_fingerprint(r))) changed = true;
+    }
+    return changed ? _writeSeen() : Future.value();
+  }
+
+  Future<void> _loadSeen() async {
+    if (kIsWeb) return;
+    try {
+      final file = await _docFile(_seenFileName);
+      if (file == null || !await file.exists()) return;
+      final data =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      _seenGeneratedAt = DateTime.tryParse(data['generatedAt'] as String? ?? '');
+      final prints = data['fingerprints'];
+      if (prints is List) _seenFingerprints.addAll(prints.whereType<String>());
+    } catch (_) {
+      // Unreadable marker just means the dots reappear until re-acknowledged.
+    }
+  }
+
+  Future<void> _writeSeen() async {
+    if (kIsWeb) return;
+    try {
+      final file = await _docFile(_seenFileName);
+      await file?.writeAsString(
+        jsonEncode({
+          'generatedAt': _seenGeneratedAt?.toIso8601String(),
+          // Bounded: only the last few distinct reports need remembering.
+          'fingerprints': _seenFingerprints.toList().reversed.take(12).toList(),
+        }),
+        flush: true,
+      );
+    } catch (_) {
+      // Persisting the acknowledgement is a convenience; a failed write only
+      // means the dot comes back on the next launch.
+    }
   }
 
   Future<TestReport> _loadBundled() async {
@@ -125,10 +210,12 @@ class TestReportService {
     }
   }
 
-  Future<File?> _cacheFile() async {
+  Future<File?> _cacheFile() => _docFile(_cacheFileName);
+
+  Future<File?> _docFile(String name) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      return File('${dir.path}/$_cacheFileName');
+      return File('${dir.path}/$name');
     } catch (_) {
       return null; // No file system (web) or path_provider unavailable.
     }
@@ -248,5 +335,7 @@ class TestReportService {
     _onlineFuture = null;
     _onlineOverridden = false;
     _onlineOverrideForTest = null;
+    _seenGeneratedAt = null;
+    _seenFingerprints.clear();
   }
 }
