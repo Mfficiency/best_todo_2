@@ -79,27 +79,38 @@ Dependencies and why they exist:
 
 ## 3. App startup sequence (order matters)
 
-`main()` in `lib/main.dart`, strictly in this order:
+`main()` in `lib/main.dart`, strictly in this order. Guiding rule (0.1.136):
+**nothing before `runApp` may block indefinitely** — until the first frame
+renders, Android shows a black window, so any pre-frame `await` that hangs is
+the intermittent black-screen-at-open bug (first hit v0.1.85 via awaited
+diagnostics, hit again pre-0.1.136 via the plugin-init awaits).
 
 1. `StartupTimeService.start()` — stopwatch for the <1s cold-start budget.
 2. `WidgetsFlutterBinding.ensureInitialized()`.
-3. `await Config.load()` — reads `settings.json` so theme/tabs are right before first frame.
-4. `await NotificationService.initialize()` — plugin + notification channels.
-5. Non-web: `await SmsReportScheduler.applyFromConfig()` — restore the daily SMS alarm chain.
-6. `await AlarmService.instance.load()` — load persisted alarms.
-7. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))` — deliberately
-   NOT awaited; writing the diagnostics snapshot must never delay the first frame
-   (this fixed a black-screen-at-open bug, v0.1.85 era).
-8. Home-widget setup in try/catch: `HomeWidget.setAppGroupId` +
-   `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
-9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
-   (always skipped in dev builds); the mode question closes the intro, so an
-   unanswered mode brings the whole welcome flow back rather than the chooser
-   alone.
-10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
-    post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
-    mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
-    for asking the mode question again (Settings → Mode & features, §4.6).
+3. `await Config.load()` — reads `settings.json` so theme/tabs are right before
+   first frame. Wrapped in try/catch with a 5 s timeout: on failure the app
+   opens with defaults instead of never opening.
+4. SharedPreferences (also try/catch + 5 s timeout) → `showIntro` =
+   `!intro_shown || !Config.modeChosen` (always skipped in dev builds; false if
+   prefs fail); the mode question closes the intro, so an unanswered mode
+   brings the whole welcome flow back rather than the chooser alone.
+5. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
+   post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
+   mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
+   for asking the mode question again (Settings → Mode & features, §4.6).
+6. Post-first-frame, `_initServicesAfterFirstFrame()` (fire-and-forget, order
+   preserved, each step in try/catch with a 20 s timeout so one wedged plugin
+   can't stall the rest; failures land in LogService + `alarm_log.txt`):
+   1. `NotificationService.initialize()` — plugin + notification channels
+      (memoized: concurrent callers — e.g. `getAlarmLaunchPayload` in
+      `MyApp.initState` — share one underlying init).
+   2. Non-web: `SmsReportScheduler.applyFromConfig()` — restore the daily SMS
+      alarm chain.
+   3. `AlarmService.instance.load()` — load persisted alarms + reschedule
+      (memoized so the alarms page's own `load()` can't double-reschedule).
+   4. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))`.
+   5. Home-widget setup: `HomeWidget.setAppGroupId` +
+      `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
