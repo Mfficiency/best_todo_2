@@ -33,6 +33,11 @@ void main() {
     TestReportService.instance.resetForTest();
     TestReportService.instance
         .setOnlineReportForTest(TestReport(available: false));
+    // Pin a green report so the bundled assets/test_report.json can't leak
+    // in: a packaged run with failures would light the CI-failure dot these
+    // tests assert absent — keeping CI red no matter what else is fixed.
+    TestReportService.instance
+        .setReportForTest(TestReport(available: true, passed: 1, failed: 0));
   });
 
   tearDown(() {

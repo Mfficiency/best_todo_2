@@ -40,10 +40,18 @@ void main() {
   }
 
   Future<void> tapCheck(WidgetTester tester) async {
+    // The update section sits below the fold of the 600px test viewport.
+    await tester.ensureVisible(find.text('Check for updates'));
+    await tester.pump();
     await tester.tap(find.text('Check for updates'));
-    await tester.pump();
-    await tester.pump();
-    await tester.pump();
+    // The check awaits PackageInfo (a platform-channel call): give the real
+    // event loop a few slices so the await chain completes (see CLAUDE.md on
+    // I/O started inside a tap handler).
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
   }
 
   testWidgets('offers a newer release for download', (tester) async {
