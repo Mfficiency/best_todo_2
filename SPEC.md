@@ -425,7 +425,11 @@ dial starts the countdown (a 1 s decrementing ticker, deliberately not wall-cloc
 tests can fake-pump it) and shows the remaining time, the percentage of the started duration
 still left (`DiceTimerController.percentLeft`, relative to `_total`), and the wall-clock end
 time ("Ends at 14:32"). Grabbing the dial mid-countdown (or mid-ring) pauses/silences and
-rounds up to whole minutes for rewinding.
+rounds up to whole minutes for rewinding. The page is sized to fit on one screen without
+scrolling: the action buttons sit in a compact grid (two per row — only "Postpone to
+tomorrow" keeps a full-width row, its label is too long to halve) and the dial diameter
+adapts to the viewport (`maxHeight - 340`, clamped to 220–280 px) via a `LayoutBuilder`,
+with a `SingleChildScrollView` kept only as a safety net for very short viewports.
 
 The live timer lives in **`DiceTimerController`** — a singleton `ChangeNotifier` that owns the
 ticker and state (task/phase/remaining/total/endAt), NOT the page's `State`. So leaving the
@@ -450,9 +454,9 @@ moving to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** 
 ring and restarts the countdown with that much time). With no open Today tasks (and no timer
 already running) the dice shows a "No open tasks for today" snackbar instead.
 
-**Cancel timer (0.1.127):** a muted-error `TextButton` under the other actions, shown in the
-running, paused and ringing phases (never on the untouched dial — there is nothing to cancel
-yet). It calls `DiceTimerController.clear()`, so the ticker, any melody/vibration and the
+**Cancel timer (0.1.127):** a muted-error `TextButton` in the action grid (beside Lock touch
+while running/paused, beside Done at the ring), shown in the running, paused and ringing
+phases (never on the untouched dial — there is nothing to cancel yet). It calls `DiceTimerController.clear()`, so the ticker, any melody/vibration and the
 OS-scheduled ring all stop, then pops the page with a "Timer cancelled" snackbar. This is the
 only exit that leaves the task untouched — Done and Postpone both answer for it, and plain
 back-navigation deliberately keeps the countdown alive.
