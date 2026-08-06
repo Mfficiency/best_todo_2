@@ -740,9 +740,23 @@ tasks excluded, empty sections skipped. Lines follow the Obsidian Tasks plugin f
 dates omitted) + `✅ yyyy-MM-dd` completion date. Point the sync folder into an Obsidian
 vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way: the
 file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
-the whole sync run (red history entry) like the JSON write. Future directions (a
-read-only Obsidian plugin over the JSON, then two-way sync via a change journal) are
-designed in `.claude/notes/obsidian-integration.md`.
+the whole sync run (red history entry) like the JSON write.
+
+Since 0.1.141 the repo also ships **Tier 2** of the Obsidian integration: a read-only
+Obsidian community plugin in the top-level `obsidian-plugin/` folder (TypeScript +
+esbuild, own npm package and CI job `obsidian_plugin.yml` — not part of the Flutter
+build). It renders `besttodo_tasks.json` as a custom `ItemView` (ribbon icon /
+"Open task view" command): the six home buckets, disabled checkbox + title + `📅` due
+date (sentinel omitted) + `✅` completion date + `🔁` recurring marker, label chip and a
+generic `📁 project` chip (the sync file carries no project names), open-first/ranking
+order, plus an "as of …" line showing `synced_at` + app version. It re-reads on
+Obsidian's file-change events (safe because the app's write is atomic), refuses unknown
+`sync_version` values with a friendly notice, and parses tasks as tolerantly as
+`Task.fromJson`. The contract lives in the pure module `obsidian-plugin/src/model.ts`
+(mirrors `ItemViews.inHomeBucket`, `sortTasks`, `Task.fromJson`) and is pinned by jest
+tests (`obsidian-plugin/test/model.test.ts`) mirroring `test/sync/sync_markdown_test
+.dart`. Strictly a viewer — it never writes. Tier 3 (two-way via a change journal)
+remains designed-only in `.claude/notes/obsidian-integration.md`.
 
 **Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
 forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first

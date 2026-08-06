@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.141] - 2026-08-06
+- New read-only Obsidian plugin (Tier 2 of the Obsidian integration, in `obsidian-plugin/`): a proper task view inside Obsidian rendering the synced `besttodo_tasks.json` - the six home tabs, checkboxes, due dates, label and project chips, open-first ordering, and an "as of ..." freshness line; it refreshes automatically when the sync file changes and never writes anything back
+
 ## [0.1.140] - 2026-08-06
 - The app now asks for all its permissions up front (notifications, exact alarms, battery-optimization exemption, full-screen alarms, SMS) when you choose the full experience - "Use everything" on the welcome screen or turning simple mode off in Settings
 - The same one-pass permission check also runs on the first open after an app update, so a new version can never be quietly missing a permission it needs

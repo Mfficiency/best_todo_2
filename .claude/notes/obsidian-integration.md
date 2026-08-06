@@ -1,14 +1,14 @@
 # Obsidian integration — roadmap for Tiers 2 and 3
 
 Status of the three-tier plan for reaching the task list from Obsidian on a
-computer. Tier 1 shipped in **0.1.135**; this note is the design record for the
-two unbuilt tiers so a future session can implement either without re-deriving
-the analysis.
+computer. Tier 1 shipped in **0.1.135** and Tier 2 in **0.1.141**; this note is
+the design record for the remaining tier so a future session can implement it
+without re-deriving the analysis.
 
 | Tier | What | Status |
 |---|---|---|
 | 1 | Markdown checklist written by synced mode (`besttodo_tasks.md`) | **Shipped 0.1.135** — `lib/services/sync_markdown.dart`, SPEC §4.7 |
-| 2 | Read-only Obsidian plugin rendering the synced JSON | Not started |
+| 2 | Read-only Obsidian plugin rendering the synced JSON | **Shipped 0.1.141** — `obsidian-plugin/`, SPEC §4.7 |
 | 3 | Two-way: edits made in Obsidian flow back to the phone | Not started |
 
 **The transport is settled and shared by all tiers:** the app's synced mode
@@ -18,7 +18,12 @@ folder into an Obsidian vault (folder inside the vault synced by
 Syncthing/Dropbox/Drive, or Obsidian mobile's own vault on the phone). No tier
 adds networking to the app.
 
-## Tier 2 — read-only Obsidian plugin
+## Tier 2 — read-only Obsidian plugin (shipped 0.1.141)
+
+Implemented as designed below, in the top-level `obsidian-plugin/` folder
+(own npm package + `obsidian_plugin.yml` CI job; contract module
+`src/model.ts`, jest tests in `test/model.test.ts`). The original design
+record is kept for context.
 
 **Goal:** a proper task view inside Obsidian (tabs, labels, projects) instead
 of the flat Tier 1 checklist. Strictly a *viewer*: it never writes.

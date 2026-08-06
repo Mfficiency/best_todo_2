@@ -29,6 +29,8 @@ file is the short operational guide.
   `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
   or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`
+- Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
+  build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 
 ## Workflow ("bump, sync and build")
 
