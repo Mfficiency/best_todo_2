@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.139] - 2026-08-06
+- Fixed "Check for updates" always failing with a host-lookup error (SocketException: api.github.com) in release builds: the installed app was missing the Android internet permission, so it could not reach GitHub at all
+
 ## [0.1.138] - 2026-08-06
 - Fixed a first launch on a new phone opening with the imported idea backlog instead of the three starter tasks - the starter list is seeded again, and now sits above the imported items
 
