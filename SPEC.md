@@ -988,7 +988,11 @@ two widget providers.
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(23, flutter.minSdkVersion)` (androidx.work via home_widget needs 23); Java/Kotlin 11
 with core-library desugaring; glance pinned to 1.1.1 (home_widget 0.8.1 pulls `1.+` which
-would demand compileSdk 37); NDK 28.2.13676358. **Signing:** `key.properties` if present,
+would demand compileSdk 37); NDK 28.2.13676358. The root `android/build.gradle.kts`
+forces every plugin subproject to Java/Kotlin JVM target 11 (afterEvaluate +
+configureEach): home_widget 0.8.1 still compiles Kotlin at 1.8 while the androidx
+bytecode it inlines is built with JVM 11, which broke every release APK build from
+2026-07-28 until this override. **Signing:** `key.properties` if present,
 otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, password
 `android`) — deliberate, so every build (CI or local) is signed identically and updates
 install in place instead of failing with a signature mismatch. A Gradle task renames the
