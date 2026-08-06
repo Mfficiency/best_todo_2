@@ -22,6 +22,7 @@ import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/startup_time_service.dart';
+import 'services/sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
@@ -182,7 +183,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late bool _showIntro = widget.showIntro;
   late bool _showModePicker = widget.showModePicker;
   bool _alarmRingOpen = false;
@@ -195,6 +196,10 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    // Synced mode writes the task list to the chosen folder whenever the app
+    // is left (backgrounded/quit). The observer only forwards lifecycle
+    // states; SyncService does nothing at startup, keeping launch untouched.
+    WidgetsBinding.instance.addObserver(this);
     // Full-screen alarm UI: when a ringing alarm opens the app (tap on the
     // notification, or its full-screen intent firing over the lock screen),
     // present the ring page. Covers both a warm app (callback) and a cold
@@ -225,8 +230,14 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     NotificationService.setOnAlarmRing(null);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    SyncService.instance.onLifecycleChanged(state);
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
