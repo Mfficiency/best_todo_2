@@ -23,7 +23,7 @@ subprojects {
 // Align every plugin module with the app's JVM 11. afterEvaluate + configureEach
 // so these win over whatever the plugin's own build script sets.
 subprojects {
-    afterEvaluate {
+    val alignJvmTarget = {
         extensions.findByType<com.android.build.gradle.BaseExtension>()
             ?.compileOptions?.apply {
                 sourceCompatibility = JavaVersion.VERSION_11
@@ -35,6 +35,10 @@ subprojects {
                     .set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
             }
     }
+    // The evaluationDependsOn(":app") above force-evaluates :app before this
+    // block runs, and afterEvaluate throws on an already-evaluated project —
+    // configure those immediately instead.
+    if (state.executed) alignJvmTarget() else afterEvaluate { alignJvmTarget() }
 }
 
 tasks.register<Delete>("clean") {
