@@ -49,7 +49,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Streak',
     'Dice timer',
     'SMS report',
-    'Export',
+    'Sync & export',
     'Backup',
   ];
 
@@ -141,6 +141,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Message template', 7, 'sms tokens text'),
     _SettingsSearchEntry('Sent message history', 7, 'sms log'),
     _SettingsSearchEntry('Send test now', 7, 'sms report'),
+    _SettingsSearchEntry('Synced mode', 8,
+        'sync offline folder background quit backup automatic tasks'),
+    _SettingsSearchEntry('Sync folder', 8, 'sync directory location choose'),
     _SettingsSearchEntry('Export Tasks', 8, 'backup save json'),
     _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
     _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
@@ -190,6 +193,8 @@ class _SettingsPageState extends State<SettingsPage> {
   String _autoBackupFrequency = Config.autoBackupFrequency;
   String _autoBackupDirectory = Config.autoBackupDirectory;
   DateTime? _lastAutoBackup;
+  bool _syncEnabled = Config.syncEnabled;
+  String _syncFolderPath = Config.syncFolderPath;
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
@@ -222,6 +227,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _simpleMode = Config.simpleMode;
     _autoBackupFrequency = Config.autoBackupFrequency;
     _autoBackupDirectory = Config.autoBackupDirectory;
+    _syncEnabled = Config.syncEnabled;
+    _syncFolderPath = Config.syncFolderPath;
   }
 
   @override
@@ -1146,13 +1153,57 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// Turns synced mode on/off. Enabling without a chosen folder opens the
+  /// folder picker right away; declining it keeps the switch on — the missed
+  /// sync then surfaces as a red entry and the drawer dot, pointing back here.
+  Future<void> _setSyncEnabled(bool value) async {
+    setState(() => _syncEnabled = value);
+    Config.syncEnabled = value;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+    if (value && _syncFolderPath.trim().isEmpty) {
+      await _pickSyncFolder();
+    }
+  }
+
+  Future<void> _pickSyncFolder() async {
+    final current = _syncFolderPath.trim();
+    final picked =
+        await getDirectoryPath(initialDirectory: current.isEmpty ? null : current);
+    if (picked == null) return;
+    setState(() => _syncFolderPath = picked);
+    Config.syncFolderPath = picked;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
   Widget _buildExportSection() {
     return _buildSection(
       index: 8,
-      title: 'Export',
+      title: 'Sync & export',
       children: [
+        SwitchListTile(
+          title: const Text('Synced mode'),
+          subtitle: const Text(
+              'Write the tasks to a folder of your choice in the background '
+              'whenever you leave the app. Off keeps everything offline.'),
+          value: _syncEnabled,
+          onChanged: _setSyncEnabled,
+        ),
+        if (_syncEnabled)
+          ListTile(
+            title: const Text('Sync folder'),
+            subtitle: Text(
+              _syncFolderPath.trim().isEmpty
+                  ? 'No folder chosen yet — tap to choose'
+                  : _syncFolderPath,
+            ),
+            trailing: const Icon(Icons.folder_open),
+            onTap: _pickSyncFolder,
+          ),
+        const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
