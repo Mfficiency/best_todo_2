@@ -1,9 +1,12 @@
 # Changelog
 
-## [0.1.134] - 2026-08-06
+## [0.1.135] - 2026-08-06
 - Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
 - Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too
 - The Markdown file is one-way for now: it is overwritten on every sync, so edits made in Obsidian stay in Obsidian
+
+## [0.1.134] - 2026-08-06
+- Dice timer buttons now sit in a compact grid and the dial shrinks on small screens, so every control fits on one screen without scrolling
 
 ## [0.1.133] - 2026-08-06
 - The app can now update itself: About → "Check for updates" looks up the newest release on GitHub, and one tap downloads the new APK (with a progress bar) and opens the Android installer — no store needed
