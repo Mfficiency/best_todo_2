@@ -8,7 +8,7 @@
 > operational deep dives (rebuild order, testing, CI/automation, environment, principles,
 > the alarm reliability sessions) are indexed in `.claude/README.md`.
 >
-> Part I is accurate as of version **0.1.131+103** (2026-08-06). Part II's narrated
+> Part I is accurate as of version **0.1.133+105** (2026-08-06). Part II's narrated
 > history runs in detail through 0.1.91; every later version is covered feature-wise in
 > Part I and per-version in `CHANGELOG.md`.
 

@@ -12,7 +12,8 @@
   the code (see `rebuild-playbook.md`).
 - **Siloed suites, core sacred.** `test/core/` (task model, persistence,
   bucketing, upgrade safety, smoke tests) runs for *every* change. Feature
-  silos (`alarms`, `projects`, `home`, `streaks`, `sms`, `sync`, `tools`) run
+  silos (`alarms`, `projects`, `home`, `streaks`, `sms`, `sync`, `update`,
+  `tools`) run
   when their area is touched. Plain `flutter test` runs everything and is what
   CI uses. Cross-cutting changes (theme, navigation, pubspec) → full suite.
 - **A failing suite is a feature, not just a gate.** Results are packaged into
