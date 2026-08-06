@@ -1,5 +1,5 @@
 
-Building Windows application...                                    74.7s
+Building Windows application...                                    71.6s
 √ Built build\windows\x64\runner\Debug\BestToDo.exe
 ::group::❌ capture home page screenshot (failed)
 ALARMLOG [WARN] FIRE | could not read notification launch details: LateInitializationError: Field '_instance@972271368' has not been initialized.
