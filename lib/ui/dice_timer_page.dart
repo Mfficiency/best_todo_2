@@ -488,6 +488,13 @@ class DiceTimerPage extends StatefulWidget {
   /// The task the dice landed on.
   final Task task;
 
+  /// Line shown above the task title — "The dice picked" for a dice roll,
+  /// "Timer for" when the timer is started from the task list.
+  final String caption;
+
+  /// Icon next to [caption] (the dice for a roll, a timer otherwise).
+  final IconData captionIcon;
+
   /// Called when the user confirms the task is done at (or after) the ring.
   final VoidCallback onTaskDone;
 
@@ -504,6 +511,8 @@ class DiceTimerPage extends StatefulWidget {
     required this.onTaskDone,
     required this.onTaskPostponed,
     this.onRingAlert,
+    this.caption = 'The dice picked',
+    this.captionIcon = Icons.casino,
   }) : super(key: key);
 
   @override
@@ -913,9 +922,9 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.casino, color: theme.colorScheme.primary),
+                  Icon(widget.captionIcon, color: theme.colorScheme.primary),
                   const SizedBox(width: 8),
-                  Text('The dice picked', style: theme.textTheme.titleSmall),
+                  Text(widget.caption, style: theme.textTheme.titleSmall),
                 ],
               ),
               const SizedBox(height: 4),

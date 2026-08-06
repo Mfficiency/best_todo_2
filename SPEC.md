@@ -457,6 +457,22 @@ OS-scheduled ring all stop, then pops the page with a "Timer cancelled" snackbar
 only exit that leaves the task untouched — Done and Postpone both answer for it, and plain
 back-navigation deliberately keeps the countdown alive.
 
+**Start timer from a task (0.1.132):** double-tapping a task tile opens a little
+bottom-sheet menu — for now a single "Start timer" entry (subtitle shows the default
+duration). The tile's `InkWell` registers `onDoubleTap` only when `TaskTile.onStartTimer`
+is set (it is null in the standalone-tile tests), because a registered double-tap
+recognizer delays single taps by the double-tap timeout (~300 ms) — the expand-on-tap
+on the home/schedule lists accepts that delay. Picking "Start timer" calls
+`HomePage._startTaskTimer`, which — unlike a dice roll — `configure()`s
+`DiceTimerController` for *that* task and immediately `releaseDial()`s, so
+`DiceTimerPage` opens with the countdown already running at
+`Config.diceTimerDefaultMinutes`; the dial still pauses/rewinds it like any dice timer,
+and Done/Postpone/Cancel behave identically. The page header is parameterized for this
+(`DiceTimerPage.caption`/`captionIcon`: "Timer for" + `Icons.timer_outlined` here,
+"The dice picked" + `Icons.casino` by default). Double-tapping the task whose timer is
+already live reopens the running countdown; starting a timer for a different task
+replaces the old one — the double tap is an explicit choice for that task.
+
 **Dice timer settings (0.1.120):** `Config.diceTimerAlertMode` picks what zero does —
 `melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
 alarm), `vibrate` (repeating buzz only), `notification` (**the default**) or `silent`.
@@ -1188,7 +1204,7 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) →
   optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
-- **In-app updates (0.1.132):** `tool/publish_apk.dart` uploads a locally built release APK
+- **In-app updates (0.1.133):** `tool/publish_apk.dart` uploads a locally built release APK
   to a GitHub release — tag `v<x.y.z>-<build>` (git tags can't carry `+`), name
   `BestToDo <x.y.z>+<build>`, asset `BestToDo-<x.y.z>+<build>.apk`, body = the newest
   CHANGELOG section; token from `GITHUB_TOKEN`/`GH_TOKEN` or `gh auth token`; re-running
