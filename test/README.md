@@ -16,6 +16,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/streaks/` | `flutter test test/streaks` | Daily completion streak: `StreakService` (grace periods, persistence, history seeding, fun stats), home-page flame icon + badge, celebration overlay, `StreakPage`, Streak settings section + search entries |
 | `test/sms/` | `flutter test test/sms` | SMS daily report: `SmsRecipient`/`SmsReportConfig` JSON round-trip, per-recipient enable flag + `activeRecipients` filtering, Settings recipient rows (pause switch, edit keeps the flag) |
 | `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile |
+| `test/update/` | `flutter test test/update` | In-app updates from GitHub releases: `UpdateService` (version compare, tag parsing, release-JSON mapping, update check via the injectable fetch), the About page update section (check → offer → fallback/error states), `tool/publish_apk.dart` naming/changelog helpers |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser (`TestReport.newest`), report layering service, `sync_test_report` packaging tool + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`) |
 
 ## Which suites to run
@@ -42,6 +43,8 @@ Pick suites by what you touched, always including core:
   `lib/ui/app_logs_page.dart`, the Sync & export section of
   `lib/ui/settings_page.dart` → core + **sync** (+ **home**, which also pumps the
   settings page and drawer)
+- `lib/services/update_service.dart`, `lib/ui/about_page.dart`,
+  `tool/publish_apk.dart` → core + **update**
 - `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,
   export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,
   `lib/ui/changelog_page.dart`,

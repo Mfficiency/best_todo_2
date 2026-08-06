@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.133] - 2026-08-06
+- The app can now update itself: About → "Check for updates" looks up the newest release on GitHub, and one tap downloads the new APK (with a progress bar) and opens the Android installer — no store needed
+- The first in-app update asks for Android's one-time "allow installs from this app" permission; the page explains what to do and the Install button waits for you to come back
+- On desktop, web, or when a release ships without an APK, the button opens the release page in the browser instead
+- New for local builds: `PUBLISH_APK=1 sh tool/build.sh apk --release` (or `dart run tool/publish_apk.dart` after any release build) uploads the APK to a GitHub release — exactly where the in-app updater looks
+
 ## [0.1.132] - 2026-08-06
 - Double-tap a task to open a little menu — its first (and for now only) entry starts a timer for that task
 - The timer is the same egg timer the dice uses, but it starts counting down the default 20 minutes right away; grabbing the dial still pauses and rewinds it, exactly like a dice-rolled timer
