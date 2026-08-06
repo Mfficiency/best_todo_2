@@ -36,7 +36,9 @@ file is the short operational guide.
 2. Commit to `dev`, push (`sync`). Branch flow: feature → dev → staging → main.
 3. `flutter build apk --release` when a release is asked for.
 4. Keep `SPEC.md` updated when adding/changing features (it must stay
-   rebuild-grade). Deep-dive notes live in `.claude/notes/`.
+   rebuild-grade). Deep-dive docs live in `.claude/` — `.claude/README.md` is
+   the index (rebuild playbook, testing, CI/automation, environment,
+   engineering principles, alarm-work history).
 
 ## Architecture in one minute
 
