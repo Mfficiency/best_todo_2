@@ -1468,6 +1468,40 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  /// Double-tap → "Start timer": opens the same egg-timer page the dice
+  /// uses, but for [task] specifically, with the countdown already running at
+  /// the default duration — grabbing the dial still pauses and rewinds it
+  /// like any dice timer. Double-tapping the task whose timer is already
+  /// live just returns to it; picking a different task replaces the old
+  /// timer, since the double tap is an explicit choice for this one.
+  void _startTaskTimer(Task task) {
+    final controller = DiceTimerController.instance;
+    if (controller.isActive && identical(controller.task, task)) {
+      LogService.add('HomePage._startTaskTimer',
+          'Returned to running timer for "${task.title}"');
+    } else {
+      controller.configure(task);
+      controller.releaseDial();
+      LogService.add(
+          'HomePage._startTaskTimer', 'Started timer for "${task.title}"');
+    }
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => DiceTimerPage(
+              task: task,
+              caption: 'Timer for',
+              captionIcon: Icons.timer_outlined,
+              onTaskDone: () => _completeTaskFromDice(task),
+              onTaskPostponed: () => _postponeTaskFromDice(task),
+            ),
+          ),
+        )
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   /// The dice timer rang and the user confirmed the task is done.
   void _completeTaskFromDice(Task task) {
     if (task.isDone) return;
@@ -2024,6 +2058,7 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
+      onStartTimer: () => _startTaskTimer(task),
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
