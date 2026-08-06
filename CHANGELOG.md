@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.132] - 2026-08-06
+- Double-tap a task to open a little menu — its first (and for now only) entry starts a timer for that task
+- The timer is the same egg timer the dice uses, but it starts counting down the default 20 minutes right away; grabbing the dial still pauses and rewinds it, exactly like a dice-rolled timer
+- Double-tapping the task whose timer is already running returns to the countdown instead of restarting it
+
 ## [0.1.131] - 2026-08-06
 - Synced mode: choose between fully offline (as before) and syncing your tasks to a folder of your choice — Settings → Sync & export, pick the folder once and you're set
 - The sync runs in the background every time you leave or quit the app, so it never slows down startup or gets in your way
