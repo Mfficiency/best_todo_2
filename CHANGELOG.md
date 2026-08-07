@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.143] - 2026-08-07
+- Second fix for the widget tap showing a black screen while the app was open in the background: switched the Android renderer from Impeller (the Flutter 3.29 default, which on some phones comes back from the background as a black, unresponsive window) back to the long-proven Skia renderer
+- The app now also forces a repaint every time it returns to the foreground, so a recreated screen surface can never stay blank
+- Widget taps leave a breadcrumb in the App Logs page to help diagnose any remaining launch issues
+
 ## [0.1.142] - 2026-08-06
 - Fixed tapping the tasks home-screen widget showing a black screen when the app was already open in the background (only a force-close recovered it): the widget tap could start a second copy of the app in its own task instead of bringing the running one back to the front - widget taps now always return to the existing app, and a stray duplicate closes itself instead of sitting on a black launch window
 

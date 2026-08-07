@@ -65,6 +65,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Render with Skia instead of Impeller (the Flutter 3.29 Android
+             default). Impeller on 3.29 has known black-screen bugs on some
+             devices/GPU drivers — including a permanently black, unresponsive
+             window after the app is brought back from the background (e.g. by
+             a home-screen widget tap) that only a force-close clears
+             (flutter/flutter#164717, #180054). Re-test on a newer Flutter
+             before removing this opt-out. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <service
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
             android:permission="android.permission.BIND_JOB_SERVICE"

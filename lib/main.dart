@@ -283,6 +283,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
+    // Coming back from the background, Android may have destroyed the render
+    // surface; a new one only shows content once the framework produces a
+    // frame. Normally the engine asks for one itself, but if that request is
+    // ever missed the app sits on a black window while being perfectly alive
+    // (seen with widget taps re-fronting the backgrounded app). Forcing a
+    // frame here is free when everything works and repaints the UI when the
+    // engine's own request went missing.
+    if (state == AppLifecycleState.resumed) {
+      WidgetsBinding.instance.scheduleForcedFrame();
+    }
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
@@ -317,6 +327,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _handleWidgetClick(Uri? uri) async {
     if (uri == null) return;
+    LogService.add('widget', 'tap received: $uri');
     final id = uri.queryParameters['id'];
     // Both widgets use `toggle` / `open` as hosts, so the scheme decides which
     // one is talking before the host does.
