@@ -10,7 +10,7 @@ file is the short operational guide.
 - Tests: `flutter test` runs everything (CI does this). Locally, run only the
   suites your change touches — `test/core/` always, plus the matching silo:
   `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
-  `home`, `sync`, `update` or `tools`. See `test/README.md` for the file→suite map. Cross-cutting
+  `home`, `share`, `sync`, `update` or `tools`. See `test/README.md` for the file→suite map. Cross-cutting
   changes (theme, navigation, pubspec) → full `flutter test`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
