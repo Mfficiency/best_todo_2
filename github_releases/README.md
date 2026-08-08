@@ -1,0 +1,1 @@
+here you have the last 2 releases copied to download the apk via the app itself
