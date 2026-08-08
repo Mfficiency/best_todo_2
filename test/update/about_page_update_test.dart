@@ -90,6 +90,45 @@ void main() {
     expect(find.text('Open release page'), findsOneWidget);
   });
 
+  /// A `github_releases/` directory listing, the update section's primary
+  /// source (the app version is 'unknown' → 0.0.0, so both builds are "newer").
+  String folderJson(List<String> versions) => jsonEncode([
+        {'name': 'README.md', 'download_url': 'https://example.com/README.md'},
+        for (final v in versions)
+          {
+            'name': 'best_todo_$v.apk',
+            'download_url': 'https://example.com/best_todo_$v.apk',
+            'size': 60803674,
+          },
+      ]);
+
+  testWidgets('offers the newest folder build plus one version back',
+      (tester) async {
+    UpdateService.instance.fetchOverride =
+        (url) async => folderJson(['0.1.142+114', '0.1.143+115']);
+
+    await pumpAboutPage(tester);
+    await tapCheck(tester);
+
+    expect(find.text('Version 0.1.143+115 is available.'), findsOneWidget);
+    expect(find.textContaining('Download & install'), findsOneWidget);
+    expect(find.textContaining('Go back to 0.1.142+114'), findsOneWidget);
+    expect(
+        find.textContaining('Reinstalls the previous build'), findsOneWidget);
+  });
+
+  testWidgets('no rollback button when the folder keeps a single build',
+      (tester) async {
+    UpdateService.instance.fetchOverride =
+        (url) async => folderJson(['0.1.143+115']);
+
+    await pumpAboutPage(tester);
+    await tapCheck(tester);
+
+    expect(find.text('Version 0.1.143+115 is available.'), findsOneWidget);
+    expect(find.textContaining('Go back to'), findsNothing);
+  });
+
   testWidgets('a failed check shows the error and allows a retry',
       (tester) async {
     UpdateService.instance.fetchOverride =

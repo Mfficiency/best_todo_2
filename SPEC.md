@@ -1360,21 +1360,38 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   dropped by accident.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
   rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) →
-  optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+  `dart run tool/stage_local_release.dart` for an APK build → optionally
+  `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+- **Kept builds in the repo (0.1.146):** `tool/stage_local_release.dart` copies the built
+  APK to `github_releases/best_todo_<x.y.z+build>.apk` and deletes everything but the
+  newest two (`--keep`, `--dir`, `--apk`, `--dry-run`; ordering by the numeric name
+  components, non-APK files such as the folder README never touched). Committing that
+  folder is what publishes a build: the app reads it over plain HTTPS, so the newest APK
+  is the update and the one next to it is the rollback.
 - **In-app updates (0.1.133):** `tool/publish_apk.dart` uploads a locally built release APK
   to a GitHub release — tag `v<x.y.z>-<build>` (git tags can't carry `+`), name
   `BestToDo <x.y.z>+<build>`, asset `BestToDo-<x.y.z>+<build>.apk`, body = the newest
   CHANGELOG section; token from `GITHUB_TOKEN`/`GH_TOKEN` or `gh auth token`; re-running
   for the same version reuses the release and replaces the asset. The app side
   (`lib/services/update_service.dart`, singleton `UpdateService.instance` with an
-  injectable `fetchOverride` for tests) hits the public
-  `repos/Mfficiency/best_todo_2/releases/latest` API unauthenticated, maps the tag back to
-  `x.y.z+build`, and compares numeric components (unparseable versions — 'unknown' in
-  tests — compare as all-zero). The About page's "Check for updates" section then walks
-  check → "Version x available" → download to the temp dir with a progress bar → hand to
-  the installer over the `besttodo/update` channel (§9); a `needs-permission` reply keeps
-  an "Install update" button up for the retry after granting. Web/desktop or a release
-  without an APK asset falls back to opening the release page in the browser.
+  injectable `fetchOverride` for tests) maps a tag back to `x.y.z+build` and compares
+  numeric components (unparseable versions — 'unknown' in tests — compare as all-zero).
+  The About page's "Check for updates" section then walks check → "Version x available" →
+  download to the temp dir with a progress bar → hand to the installer over the
+  `besttodo/update` channel (§9); a `needs-permission` reply keeps an "Install update"
+  button up for the retry after granting. Web/desktop or a release without an APK asset
+  falls back to opening the release page in the browser.
+- **Update source + rollback (0.1.146):** `checkReleases()` reads the repo folder first —
+  `contents/github_releases?ref=dev` (unauthenticated; `dev` is where every build lands
+  first, and the API's `download_url` is already percent-encoded, which matters because
+  the file names carry `+`). Versions come from the file names
+  (`best_todo_0.1.143+115.apk`, also the `BestToDo-…` asset spelling), newest first, so
+  the result is an `UpdateCheck` of `latest` + `previous`; when the folder is missing or
+  holds no APK it falls back to `releases/latest` (single build, no rollback). The About
+  page shows "Download & install" for `latest` and "Go back to <version>" for
+  `UpdateCheck.rollback` — `previous` unless that is the running version — in both the
+  update-available and up-to-date states. The rollback warns that Android blocks
+  downgrades for non-debuggable builds, so the install may need an uninstall first.
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+staging+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `assets/test_report.json` + `docs/ci/**`): runs `flutter test --machine`

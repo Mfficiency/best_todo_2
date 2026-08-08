@@ -31,6 +31,14 @@ rename_if_exists() {
 rename_if_exists "build/app/outputs/flutter-apk/app-release.apk" \
   "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk"
 
+# Keep the last two APKs in github_releases/ (newest + one version back): the
+# app's About page reads that folder for both its "Download & install" and its
+# "Go back to …" button. Commit the folder for the build to reach the app.
+if [ -e "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk" ]; then
+  dart run tool/stage_local_release.dart \
+    --apk "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk"
+fi
+
 # Web build directory
 if [ -d build/web ]; then
   mv build/web "build/web-${VERSION}"

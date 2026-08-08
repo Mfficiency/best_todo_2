@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.146] - 2026-08-08
+- Updates now come from the two APKs the repo keeps in `github_releases/`: "Check for updates" offers the newest build as before, and a second button goes one version back - handy when a fresh build misbehaves (Android blocks downgrades, so the older build may need the current version uninstalled first; export a backup before doing that)
+- Every release build now stages its APK into that folder and deletes the oldest one, so the app always has the latest build plus one to fall back to
+
 ## [0.1.145] - 2026-08-08
 - BestToDo now appears in Android's share menu: share a link, selected text or an email address from any app and it instantly becomes a task on Today (first line as the title, the full shared text kept in the description)
 

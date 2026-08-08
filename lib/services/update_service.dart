@@ -6,7 +6,13 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 
-/// A newer app version published as a GitHub release.
+/// Where an [UpdateInfo] was found: an APK committed to the repo's
+/// `github_releases/` folder (the primary source — see
+/// [UpdateService.folderContentsUrl]) or a published GitHub release (the
+/// fallback for branches where the folder does not exist yet).
+enum UpdateSource { repoFolder, githubRelease }
+
+/// An installable app build — the newest one, or the one kept for a rollback.
 class UpdateInfo {
   UpdateInfo({
     required this.version,
@@ -15,6 +21,7 @@ class UpdateInfo {
     this.body = '',
     this.apkUrl,
     this.apkSizeBytes,
+    this.source = UpdateSource.githubRelease,
   });
 
   /// Full pubspec-style version, `x.y.z+build`.
@@ -35,14 +42,55 @@ class UpdateInfo {
 
   /// Size of the APK asset in bytes, for the download progress bar.
   final int? apkSizeBytes;
+
+  /// Which of the two lookups produced this build.
+  final UpdateSource source;
 }
 
-/// Checks GitHub releases for a newer build, downloads its APK and hands it
-/// to the Android package installer (via the `besttodo/update` channel).
+/// The outcome of one update check: the newest installable build and the one
+/// version back that the `github_releases/` folder still keeps, so the About
+/// page can offer both an update and a rollback.
+class UpdateCheck {
+  UpdateCheck({required this.currentVersion, this.latest, this.previous});
+
+  /// The version the app is running, `x.y.z+build`.
+  final String currentVersion;
+
+  /// Newest build found, whatever its version relative to [currentVersion].
+  final UpdateInfo? latest;
+
+  /// Second-newest build kept in the repo folder, if there is one.
+  final UpdateInfo? previous;
+
+  /// True when [latest] is actually newer than the running app.
+  bool get hasUpdate =>
+      latest != null &&
+      UpdateService.compareVersions(latest!.version, currentVersion) > 0;
+
+  /// The build to offer as "one version back": [previous], unless that is the
+  /// version already running (which happens right after an update is
+  /// published, when the folder keeps new + current).
+  UpdateInfo? get rollback {
+    final candidate = previous;
+    if (candidate == null) return null;
+    if (UpdateService.compareVersions(candidate.version, currentVersion) == 0) {
+      return null;
+    }
+    return candidate;
+  }
+}
+
+/// Finds installable builds, downloads an APK and hands it to the Android
+/// package installer (via the `besttodo/update` channel).
 ///
-/// The repo is public, so both the release lookup and the asset download are
-/// plain unauthenticated HTTPS. Releases are published by
-/// `tool/publish_apk.dart` after a local build (see CLAUDE.md).
+/// Primary source is the repo's `github_releases/` folder, which
+/// `tool/stage_local_release.dart` (run from `tool/build.sh`) keeps at the last
+/// two APKs — that is what makes "one version back" possible. When the folder
+/// is missing or empty the lookup falls back to the newest published GitHub
+/// release (`tool/publish_apk.dart` / the build-apk workflow).
+///
+/// The repo is public, so both the lookup and the download are plain
+/// unauthenticated HTTPS.
 class UpdateService {
   UpdateService._();
 
@@ -57,6 +105,21 @@ class UpdateService {
   static const String repo = 'best_todo_2';
   static const String latestReleaseUrl =
       'https://api.github.com/repos/$owner/$repo/releases/latest';
+
+  /// Repo folder holding the last two built APKs.
+  static const String releasesFolder = 'github_releases';
+
+  /// Branch the folder is read from. `dev` is where every build lands first
+  /// (both local `tool/build.sh` runs and the build-apk workflow publish from
+  /// it), so it always carries the two newest APKs.
+  static const String releasesRef = 'dev';
+
+  /// Directory listing of [releasesFolder]. Entries carry `name`, `size` and a
+  /// ready-made `download_url` (percent-encoded, which matters because the
+  /// file names contain `+`).
+  static const String folderContentsUrl =
+      'https://api.github.com/repos/$owner/$repo/contents/$releasesFolder'
+      '?ref=$releasesRef';
 
   static const MethodChannel _channel = MethodChannel('besttodo/update');
 
@@ -122,24 +185,87 @@ class UpdateService {
     );
   }
 
-  /// Looks up the newest release and returns it when it is newer than
-  /// [currentVersion] (defaults to the running app's version), or null when
-  /// the app is up to date. Throws on network/parse failures — the caller
-  /// shows the error, this is a user-initiated check.
-  Future<UpdateInfo?> checkForUpdate({String? currentVersion}) async {
+  /// `best_todo_0.1.143+115.apk` → `0.1.143+115`. Also accepts the release
+  /// asset spelling (`BestToDo-0.1.143+115.apk`) and a `-build` separator.
+  /// Returns null for names that are not a versioned APK.
+  static String? versionFromApkFileName(String name) {
+    if (!name.toLowerCase().endsWith('.apk')) return null;
+    final m =
+        RegExp(r'(\d+\.\d+\.\d+)(?:[+\-_](\d+))?').firstMatch(name);
+    if (m == null) return null;
+    final build = m.group(2);
+    return build == null ? m.group(1)! : '${m.group(1)}+$build';
+  }
+
+  /// Maps a GitHub contents-API directory listing to installable builds,
+  /// newest first. Non-APK entries (the folder's README) are skipped.
+  static List<UpdateInfo> folderReleases(List<dynamic> contents) {
+    final builds = <UpdateInfo>[];
+    for (final entry in contents) {
+      if (entry is! Map) continue;
+      final name = entry['name'] as String? ?? '';
+      final version = versionFromApkFileName(name);
+      final url = entry['download_url'] as String? ?? '';
+      if (version == null || url.isEmpty) continue;
+      builds.add(UpdateInfo(
+        version: version,
+        releaseName: 'BestToDo $version',
+        htmlUrl: entry['html_url'] as String? ??
+            'https://github.com/$owner/$repo/tree/$releasesRef/$releasesFolder',
+        apkUrl: url,
+        apkSizeBytes: (entry['size'] as num?)?.round(),
+        source: UpdateSource.repoFolder,
+      ));
+    }
+    builds.sort((a, b) => compareVersions(b.version, a.version));
+    return builds;
+  }
+
+  /// The APKs currently kept in the repo folder, newest first. Empty when the
+  /// folder holds no versioned APK; throws when the listing can't be fetched.
+  Future<List<UpdateInfo>> fetchFolderReleases() async {
+    final decoded = jsonDecode(await _fetch(Uri.parse(folderContentsUrl)));
+    if (decoded is! List) return const [];
+    return folderReleases(decoded);
+  }
+
+  /// Looks up the installable builds: the repo folder first (newest + one
+  /// version back), the newest published release as a fallback. Throws on
+  /// network/parse failures of the fallback — the caller shows the error, this
+  /// is a user-initiated check.
+  Future<UpdateCheck> checkReleases({String? currentVersion}) async {
     var current = currentVersion;
     if (current == null) {
       await Config.ensureVersionLoaded();
       current = Config.versionWithBuild;
+    }
+    var folder = const <UpdateInfo>[];
+    try {
+      folder = await fetchFolderReleases();
+    } catch (_) {
+      // No folder on this branch (or offline for it) — the release lookup
+      // below is the fallback and reports the failure instead.
+    }
+    if (folder.isNotEmpty) {
+      return UpdateCheck(
+        currentVersion: current,
+        latest: folder.first,
+        previous: folder.length > 1 ? folder[1] : null,
+      );
     }
     final body = await _fetch(Uri.parse(latestReleaseUrl));
     final release = jsonDecode(body);
     if (release is! Map<String, dynamic>) {
       throw const FormatException('Unexpected release payload');
     }
-    final info = releaseInfo(release);
-    if (compareVersions(info.version, current) <= 0) return null;
-    return info;
+    return UpdateCheck(currentVersion: current, latest: releaseInfo(release));
+  }
+
+  /// The newest build when it is newer than [currentVersion] (defaults to the
+  /// running app's version), or null when the app is up to date.
+  Future<UpdateInfo?> checkForUpdate({String? currentVersion}) async {
+    final check = await checkReleases(currentVersion: currentVersion);
+    return check.hasUpdate ? check.latest : null;
   }
 
   Future<String> _fetch(Uri url) async {

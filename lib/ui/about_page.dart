@@ -76,10 +76,11 @@ enum _UpdatePhase {
   error,
 }
 
-/// "Check for updates" → newest GitHub release → download the APK with a
-/// progress bar → hand it to the Android installer. On web/desktop (or a
-/// release without an APK asset) the download button opens the release page
-/// in the browser instead.
+/// "Check for updates" → the two APKs kept in the repo's `github_releases/`
+/// folder → download one with a progress bar → hand it to the Android
+/// installer. The main button takes the newest build; a second button reinstalls
+/// the one kept for a rollback. On web/desktop (or a release without an APK
+/// asset) the buttons open the download page in the browser instead.
 class _UpdateSection extends StatefulWidget {
   const _UpdateSection();
 
@@ -89,16 +90,20 @@ class _UpdateSection extends StatefulWidget {
 
 class _UpdateSectionState extends State<_UpdateSection> {
   _UpdatePhase _phase = _UpdatePhase.idle;
-  UpdateInfo? _update;
+  UpdateCheck? _result;
+
+  /// The build currently being downloaded/installed — the newest one, or the
+  /// rollback build when that button was tapped.
+  UpdateInfo? _target;
   String? _apkPath;
   String _note = '';
   int _received = 0;
   int? _total;
 
-  bool get _installsInPlace =>
+  bool _installsInPlace(UpdateInfo? info) =>
       !kIsWeb &&
       defaultTargetPlatform == TargetPlatform.android &&
-      _update?.apkUrl != null;
+      info?.apkUrl != null;
 
   Future<void> _check() async {
     setState(() {
@@ -106,11 +111,12 @@ class _UpdateSectionState extends State<_UpdateSection> {
       _note = '';
     });
     try {
-      final info = await UpdateService.instance.checkForUpdate();
+      final result = await UpdateService.instance.checkReleases();
       if (!mounted) return;
       setState(() {
-        _update = info;
-        _phase = info == null ? _UpdatePhase.upToDate : _UpdatePhase.available;
+        _result = result;
+        _phase =
+            result.hasUpdate ? _UpdatePhase.available : _UpdatePhase.upToDate;
       });
     } catch (e) {
       if (!mounted) return;
@@ -121,19 +127,27 @@ class _UpdateSectionState extends State<_UpdateSection> {
     }
   }
 
-  Future<void> _downloadAndInstall() async {
-    final info = _update;
+  Future<void> _downloadAndInstall(UpdateInfo? info,
+      {bool rollback = false}) async {
     if (info == null) return;
-    if (!_installsInPlace) {
+    if (!_installsInPlace(info)) {
       await launchUrl(Uri.parse(info.htmlUrl),
           mode: LaunchMode.externalApplication);
       return;
     }
+    _target = info;
     setState(() {
       _phase = _UpdatePhase.downloading;
       _received = 0;
       _total = info.apkSizeBytes;
-      _note = '';
+      // Android's package installer refuses to replace an app with an older
+      // build, so say so up front rather than leaving the user with a bare
+      // "App not installed" from the system UI.
+      _note = rollback
+          ? 'Going back to ${info.version}. Android blocks downgrades: if the '
+              'install is refused, uninstall the current version first — that '
+              'clears the app\'s data, so export a backup before you do.'
+          : '';
     });
     try {
       final file = await UpdateService.instance.downloadApk(
@@ -183,9 +197,33 @@ class _UpdateSectionState extends State<_UpdateSection> {
     return ' (${mb.toStringAsFixed(1)} MB)';
   }
 
+  /// "Go back to x.y.z+b" — offered whenever the repo folder still keeps a
+  /// build other than the running one, both when an update is available and
+  /// when the app is already up to date.
+  List<Widget> _rollbackControls(BuildContext context, UpdateInfo previous) {
+    return [
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: () => _downloadAndInstall(previous, rollback: true),
+        icon: const Icon(Icons.settings_backup_restore),
+        label: Text(_installsInPlace(previous)
+            ? 'Go back to ${previous.version}${_sizeLabel(previous.apkSizeBytes)}'
+            : 'Open previous version'),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'Reinstalls the previous build, the oldest one the repo still keeps.',
+        style: Theme.of(context).textTheme.bodySmall,
+        textAlign: TextAlign.center,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final info = _update;
+    final result = _result;
+    final info = result?.latest;
+    final previous = result?.rollback;
     final children = <Widget>[];
 
     switch (_phase) {
@@ -197,6 +235,9 @@ class _UpdateSectionState extends State<_UpdateSection> {
           'You are on the latest version (v${Config.versionWithBuild}).',
           textAlign: TextAlign.center,
         ));
+        if (previous != null) {
+          children.addAll(_rollbackControls(context, previous));
+        }
       case _UpdatePhase.available:
         children.add(Text(
           'Version ${info?.version} is available.',
@@ -204,12 +245,15 @@ class _UpdateSectionState extends State<_UpdateSection> {
         ));
         children.add(const SizedBox(height: 8));
         children.add(ElevatedButton.icon(
-          onPressed: _downloadAndInstall,
+          onPressed: () => _downloadAndInstall(info),
           icon: const Icon(Icons.download),
-          label: Text(_installsInPlace
+          label: Text(_installsInPlace(info)
               ? 'Download & install${_sizeLabel(info?.apkSizeBytes)}'
               : 'Open release page'),
         ));
+        if (previous != null) {
+          children.addAll(_rollbackControls(context, previous));
+        }
       case _UpdatePhase.downloading:
         final total = _total;
         final progress = (total != null && total > 0) ? _received / total : null;
@@ -223,7 +267,7 @@ class _UpdateSectionState extends State<_UpdateSection> {
         children.add(LinearProgressIndicator(value: progress));
       case _UpdatePhase.readyToInstall:
         children.add(Text(
-          'Version ${info?.version} downloaded.',
+          'Version ${_target?.version} downloaded.',
           textAlign: TextAlign.center,
         ));
         children.add(const SizedBox(height: 8));
@@ -262,8 +306,8 @@ class _UpdateSectionState extends State<_UpdateSection> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Updates come straight from the app\'s GitHub releases — no store '
-          'needed.',
+          'Updates come straight from the app\'s GitHub repo, which keeps the '
+          'last two builds — no store needed.',
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),

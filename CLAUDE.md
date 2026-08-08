@@ -16,6 +16,11 @@ file is the short operational guide.
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
 - Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+- Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
+  release build (`tool/build.sh` does it automatically). Copies the APK to
+  `github_releases/` and deletes the older ones; commit the folder — the app's About page
+  downloads the newest from there ("Download & install") and the other one for
+  "Go back to <version>" (`UpdateService.releasesRef` = the `dev` branch)
 - Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
   (or `PUBLISH_APK=1 sh tool/build.sh apk --release` to build + publish). Creates
   release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk`; the About
