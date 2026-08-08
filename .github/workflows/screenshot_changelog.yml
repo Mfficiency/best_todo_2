@@ -61,8 +61,15 @@ jobs:
           Copy-Item capture_output.log docs/ci/screenshot_capture_failure.txt -Force
           git add -f docs/ci/screenshot_capture_failure.txt
           git commit -m "ci: record screenshot capture failure log [skip-screenshot-changelog]"
-          git pull --rebase origin ${{ github.ref_name }}
-          git push
+          foreach ($attempt in 1..3) {
+            git pull --rebase origin ${{ github.ref_name }}
+            git push
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Output "Push attempt $attempt failed; retrying."
+            Start-Sleep -Seconds ($attempt * 3)
+          }
+          Write-Output "Could not publish the capture failure log."
+          exit 1
 
       - name: Save screenshot in repo
         id: screenshot_meta
@@ -108,4 +115,16 @@ jobs:
           }
 
           git commit -m "chore: update home screenshot changelog [skip-screenshot-changelog]"
-          git push
+          # The flutter-tests workflow pushes its packaged report to the same
+          # branch around the same time, so a plain push loses the race and
+          # fails the job (seen on dev repeatedly). Rebase-and-retry like
+          # flutter_test.yml does.
+          foreach ($attempt in 1..3) {
+            git pull --rebase origin ${{ github.ref_name }}
+            git push
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Output "Push attempt $attempt failed; retrying."
+            Start-Sleep -Seconds ($attempt * 3)
+          }
+          Write-Output "Could not push the screenshot changelog."
+          exit 1
