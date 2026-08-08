@@ -1006,16 +1006,18 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   warm tap re-fronts the running task via `onNewIntent` → `HomeWidget.widgetClicked`.
   `MainActivity.onCreate` additionally finishes a duplicate non-task-root instance
   created by a widget launch, revealing the live one underneath.
-  **Black screen on warm re-front (0.1.143):** the 0.1.142 task fix alone did not cure
-  the widget tap turning a backgrounded app into a permanent black window. Flutter 3.29
-  made Impeller the default Android renderer, and on some devices/GPU drivers it comes
-  back from a destroyed surface black and unresponsive (flutter/flutter#164717,
-  #180054) — exactly the widget-tap-from-background path. The manifest therefore opts
-  out (`io.flutter.embedding.android.EnableImpeller` = `false`, back to Skia); re-test
-  before removing on a newer Flutter. Belt-and-braces, `_MyAppState`'s lifecycle
-  observer calls `scheduleForcedFrame()` on `resumed` so a recreated surface always
-  gets a frame even if the engine's own request goes missing, and every widget tap
-  logs a `[widget]` breadcrumb to the App Logs page.
+  **Black screen on warm re-front (0.1.143, reverted 0.1.147):** 0.1.143 suspected
+  Impeller (the Flutter 3.29 Android default renderer) of the widget tap turning a
+  backgrounded app into a permanent black window (flutter/flutter#164717, #180054) and
+  opted the manifest out (`io.flutter.embedding.android.EnableImpeller` = `false`,
+  back to Skia). Field testing showed the opposite: build 114 (0.1.142, Impeller)
+  re-fronted fine, while every Skia build (115–118) black-screened — it is Skia's GL
+  surface that fails to repaint after Android destroys it. 0.1.147 removed the opt-out
+  and stays on Impeller; do not reintroduce `EnableImpeller=false`. Kept from 0.1.143
+  as belt-and-braces: `_MyAppState`'s lifecycle observer calls `scheduleForcedFrame()`
+  on `resumed` so a recreated surface always gets a frame even if the engine's own
+  request goes missing, and every widget tap logs a `[widget]` breadcrumb to the App
+  Logs page.
   The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
