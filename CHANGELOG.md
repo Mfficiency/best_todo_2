@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.145] - 2026-08-08
+- BestToDo now appears in Android's share menu: share a link, selected text or an email address from any app and it instantly becomes a task on Today (first line as the title, the full shared text kept in the description)
+
 ## [0.1.144] - 2026-08-08
 - Tapping "Longest streak ever" on the streak page now opens a yearly streak calendar: all twelve months of a year with the longest streak highlighted in flame orange (grace days outlined), every other active day in light orange, and a header naming the streak's exact first and last day - browse other years with the arrows
 - The streak page got 26 Duolingo-style challenges with an earned counter and progress bars: time-of-day badges (complete a task before 8:00, before 6:00, after 22:00, over lunch), single-day counts (3/5/10/20 tasks in one day), streak lengths (7 up to 365 days), calendar patterns (weekend pair, a Monday, the 1st of a month, a full calendar month, a comeback after a broken streak) and lifetime totals (active days and completed tasks up to 1000)

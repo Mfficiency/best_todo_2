@@ -18,6 +18,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile |
 | `test/update/` | `flutter test test/update` | In-app updates from GitHub releases: `UpdateService` (version compare, tag parsing, release-JSON mapping, update check via the injectable fetch), the About page update section (check → offer → fallback/error states), `tool/publish_apk.dart` naming/changelog helpers |
 | `test/permissions/` | `flutter test test/permissions` | Up-front permission flow (`PermissionFlow`): version-marker logic for the ask on the first open after an update, the mode-picker/settings triggers' skip conditions, the once-per-session latch |
+| `test/share/` | `flutter test test/share` | Share-sheet task creation (`ShareIntentService`): shared text → task-due-today mapping (title/description split, truncation), consumer routing/queueing between the home page and the direct-to-storage fallback, the platform-channel pull |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser (`TestReport.newest`), report layering service, `sync_test_report` packaging tool + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`) |
 
 ## Which suites to run
@@ -50,6 +51,9 @@ Pick suites by what you touched, always including core:
 - `lib/services/permission_flow.dart`, `lib/ui/mode_select_page.dart` → core +
   **permissions** (+ **home**, whose intro/mode-picker and settings tests walk
   the triggers)
+- `lib/services/share_intent_service.dart`, `ShareActivity.kt`, the share
+  wiring in `MainActivity.kt` → core + **share** (+ **home**, which registers
+  the consumer)
 - `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,
   export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,
   `lib/ui/changelog_page.dart`,

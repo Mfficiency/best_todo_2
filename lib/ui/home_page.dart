@@ -21,6 +21,7 @@ import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
+import '../services/share_intent_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
 import '../services/sync_service.dart';
@@ -565,6 +566,13 @@ class _HomePageState extends State<HomePage>
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
     final loadedDailyStats = await _repository.loadDailyStats();
+    // A share-sheet task created while this load was reading the file can be
+    // in memory (via ShareIntentService's consumer) *and* in the read result
+    // (via its own save); keep the in-memory one only.
+    if (_tasks.isNotEmpty) {
+      final known = _tasks.map((t) => t.uid).toSet();
+      loaded.removeWhere((t) => known.contains(t.uid));
+    }
     // A fresh install does not come back empty: the merge above turns the
     // one-time Todo.md import into wish tasks. Only real (non-wish) tasks
     // decide whether the starter list still has to be seeded — otherwise a
@@ -926,6 +934,10 @@ class _HomePageState extends State<HomePage>
     // Tasks ticked off on the home-screen widget are written to storage by the
     // widget's own isolate; on the way back into the app they are merged in.
     WidgetsBinding.instance.addObserver(this);
+    // Text shared into the app from other apps becomes a task on Today.
+    // Registering before _loadTasks means every share from here on goes
+    // through this page's in-memory list — never a second tasks.json writer.
+    ShareIntentService.instance.registerConsumer(_addSharedTask);
     // Lets the app shell reopen a live dice timer after its full-screen alarm
     // is stopped (see main.dart), with the task's actions ready.
     openRunningDiceTimer = _reopenRunningDiceTimer;
@@ -1047,6 +1059,7 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ShareIntentService.instance.unregisterConsumer(_addSharedTask);
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {
       openRunningDiceTimer = null;
     }
@@ -1179,6 +1192,22 @@ class _HomePageState extends State<HomePage>
     _controller.clear();
     _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
+  }
+
+  /// Creates a task from text shared into the app (Android share sheet) —
+  /// always due today, whatever tab or view is open.
+  void _addSharedTask(String text) {
+    final task = ShareIntentService.buildTask(text);
+    task.listRanking = _listRankingForNewTask(
+      0,
+      addToTop: Config.addNewTasksToTop,
+    );
+    setState(() {
+      _tasks.add(task);
+    });
+    _trackTaskCreated(task);
+    _saveTasks();
+    LogService.add('HomePage._addSharedTask', 'Added shared task: ${task.title}');
   }
 
   /// Creates a task from the Chronize timeline at an explicit deadline

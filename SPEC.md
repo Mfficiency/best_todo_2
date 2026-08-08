@@ -1114,6 +1114,30 @@ when the one-time "install unknown apps" toggle is missing (O+,
 `canRequestPackageInstalls()` false) it opens that settings screen and returns
 `"needs-permission"` so the Dart side tells the user to grant it and retry.
 
+**Share-sheet task capture** (0.1.145): BestToDo appears in Android's share sheet
+for any `text/plain` ACTION_SEND (links, selected text, email addresses, ...) and turns
+the shared text into a task due **today**. `ShareActivity` — a translucent,
+non-Flutter trampoline (`excludeFromRecents`, `noHistory`) — receives the share,
+merges `EXTRA_SUBJECT` + `EXTRA_TEXT` (browsers put the page title in the subject;
+the subject is dropped when the text already contains it), and forwards the result
+to `MainActivity` with `FLAG_ACTIVITY_NEW_TASK`. It is deliberately not
+`MainActivity` itself: the share sheet starts its target inside the *sharing*
+app's task, and a second MainActivity there means a second Flutter engine — the
+black-screen failure mode §13 warns about. MainActivity queues the text
+(`pendingSharedTexts`) and pokes Dart over the `besttodo/share` channel; delivery
+is always **pull-with-clear** (`takeSharedTexts`), so a cold start (queue filled
+before the engine ran, drained by `ShareIntentService.init`) and a warm poke can
+never double-deliver. On the Dart side `ShareIntentService`
+(`lib/services/share_intent_service.dart`) builds the task — first non-empty line
+as title (capped at 120 chars), full text preserved in the description when it
+carries more, due date = today (18:00 via the usual deadline normalization) — and
+routes it: while a home page is alive it is the registered consumer and adds the
+task through its own in-memory list + `_saveTasks()` (no second `tasks.json`
+writer); without one (start page Settings/App Logs) texts wait 3 s for a home
+page, then are persisted directly through `ItemRepository`. The home page also
+drops just-loaded uids that are already in memory, closing the
+share-during-initial-load duplicate window. Tests: `test/share/`.
+
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
 here have broken builds before.
