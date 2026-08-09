@@ -591,7 +591,7 @@ default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
 prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
-(§4.7), Export/Import buttons. `Config.applyMap` is defensive
++ Sync now tile (§4.7), Export/Import buttons. `Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
 
@@ -751,7 +751,11 @@ start-page dropdown only offers enabled tools.
 The offline/synced choice: `Config.syncEnabled` (default **off** = fully offline) +
 `Config.syncFolderPath` (empty until picked), both in Settings → **Sync & export**
 ("Synced mode" switch; enabling it with no folder opens the `getDirectoryPath` picker
-immediately; the "Sync folder" tile only shows while enabled). `SyncService`
+immediately; the "Sync folder" tile only shows while enabled; a "Sync now" tile below
+it (0.1.148) runs a manual sync — `SyncService.syncNow(trigger: 'manual')` — with a
+result snackbar, is disabled until a folder is chosen, and its subtitle shows the last
+run from the sync history, "Last sync: <time> (N tasks)" or "Last sync failed: <time>",
+live via the `entries` ValueNotifier). `SyncService`
 (`lib/services/sync_service.dart`, singleton with `resetForTest`) writes the task list
 to `<folder>/besttodo_tasks.json` (`{sync_version: 1, synced_at, app_version,
 task_count, tasks[]}`) — **tasks only** for now.
@@ -1291,11 +1295,20 @@ mutates only the wish subset and always saves the whole list; HomePage reloads
 items first, then by priority label (`priority-high` > `priority-medium` >
 `priority-low` > none, stable within a group). Tiles look like home task tiles
 (checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
-archived by the normal new-day rollover). Tap opens the add/edit dialog (title,
-description, labels/tags with quick priority buttons — a `_WishEditDialog`
+archived by the normal new-day rollover). Tap opens the add/edit dialog — field order
+since 0.1.148: title, labels/tags with the quick-priority buttons right below (most
+wishes are a title plus a priority), description last (a `_WishEditDialog`
 StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
 recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
 exported_at, wishlist_items: [...]}`) remain.
+
+**Clickable URLs (0.1.148):** http/https URLs in descriptions are auto-linkified by
+`LinkifiedText` (`lib/utils/linkified_text.dart`): a StatefulWidget that renders
+`Text.rich` with underlined, primary-colored link spans (trailing sentence punctuation
+excluded), owns and disposes the spans' `TapGestureRecognizer`s, and opens links via
+`url_launcher` (`LaunchMode.externalApplication`; `onOpenLink` test hook). A link tap
+wins the gesture arena over the tile's own `onTap`, so it never opens the edit dialog.
+Used by the wish tile subtitle and by `TaskDetailPage` (description and note).
 
 **Swipes (0.1.101):** same gesture mechanics as `TaskTile` (drag with AnimatedSlide,
 100 px/500 velocity thresholds, directions honor `Config.swipeLeftDelete`, GestureDetector

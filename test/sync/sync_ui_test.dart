@@ -135,6 +135,41 @@ void main() {
     expect(find.byKey(const Key('sync-error-dot')), findsNothing);
   });
 
+  testWidgets('the Sync now tile runs a manual sync and shows the last sync',
+      (tester) async {
+    // Real file I/O must run on the real event loop, not the fake-async zone.
+    final syncDir = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('sync_now_target')))!;
+    Config.syncEnabled = true;
+    Config.syncFolderPath = syncDir.path;
+    await tester.runAsync(() => StorageService()
+        .saveTaskList([Task(title: 'Alpha', dueDate: DateTime.now())]));
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    await settleIo(tester);
+
+    await tester.scrollUntilVisible(find.text('Sync now'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    expect(find.text('No sync yet'), findsOneWidget);
+
+    await tester.tap(find.text('Sync now'));
+    await settleIo(tester);
+
+    // The snackbar reports the run and the subtitle now shows the last sync.
+    expect(find.text('Synced 1 task'), findsOneWidget);
+    expect(find.textContaining('Last sync:'), findsOneWidget);
+    expect(
+      File('${syncDir.path}/${SyncService.syncFileName}').existsSync(),
+      isTrue,
+    );
+    final entry = SyncService.instance.entries.value.single;
+    expect(entry.trigger, 'manual');
+    expect(entry.success, isTrue);
+    // Let the snackbar's dismiss timer expire before the test ends.
+    await tester.pump(const Duration(seconds: 5));
+  });
+
   testWidgets(
       'the Synced mode switch persists and reveals the sync folder tile',
       (tester) async {

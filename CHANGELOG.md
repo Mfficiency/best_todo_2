@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.148] - 2026-08-09
+- Settings → Sync & export got a "Sync now" tile: run a sync by hand instead of waiting for the next app quit, with the time and task count of the last sync shown right on the tile
+- Web links in descriptions are now clickable: URLs in wishlist items and on the task-details page open in the browser with a tap
+- The wishlist add/edit dialog now puts labels and the quick-priority buttons right under the title, with the description at the bottom - quicker to file a wish with just a title and a priority
+
 ## [0.1.147] - 2026-08-08
 - Fixed the widget tap black screen coming back in recent builds: 0.1.143's switch from the Impeller renderer to Skia turned out to be the cause, not the cure - build 114 (0.1.142, still on Impeller) re-fronted fine while every Skia build (115-118) could return from the background as a black, unresponsive window. The app now renders with Impeller again (the Flutter default); the forced repaint on returning to the foreground and the widget-tap breadcrumbs in App Logs stay
 
