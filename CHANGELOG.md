@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.148] - 2026-08-09
+- Settings → Sync & export got a "Sync now" tile: run a sync by hand instead of waiting for the next app quit, with the time and task count of the last sync shown right on the tile
+- Web links in descriptions are now clickable: URLs in wishlist items and on the task-details page open in the browser with a tap
+- The wishlist add/edit dialog now puts labels and the quick-priority buttons right under the title, with the description at the bottom - quicker to file a wish with just a title and a priority
+
 ## [0.1.146] - 2026-08-08
 - Updates now come from the two APKs the repo keeps in `github_releases/`: "Check for updates" offers the newest build as before, and a second button goes one version back - handy when a fresh build misbehaves (Android blocks downgrades, so the older build may need the current version uninstalled first; export a backup before doing that)
 - Every release build now stages its APK into that folder and deletes the oldest one, so the app always has the latest build plus one to fall back to

@@ -8,6 +8,8 @@ import 'package:besttodo/ui/wishlist_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:url_launcher_platform_interface/link.dart';
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.path);
@@ -15,6 +17,19 @@ class _FakePathProvider extends PathProviderPlatform {
 
   @override
   Future<String?> getApplicationDocumentsPath() async => path;
+}
+
+class _FakeUrlLauncher extends UrlLauncherPlatform {
+  final List<String> launched = <String>[];
+
+  @override
+  LinkDelegate? get linkDelegate => null;
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) async {
+    launched.add(url);
+    return true;
+  }
 }
 
 void main() {
@@ -189,6 +204,56 @@ void main() {
     final deleted = await readJsonList(tester, 'deleted_tasks.json');
     expect(deleted, isEmpty);
     await tester.pump(Config.delayDuration + const Duration(seconds: 1));
+  });
+
+  testWidgets('add dialog puts labels and quick priority above description',
+      (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Buy a telescope', isWish: true)],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.tap(find.byTooltip('Add wishlist item'));
+    await tester.pumpAndSettle();
+
+    final titleY = tester.getTopLeft(find.text('Title')).dy;
+    final labelsY = tester.getTopLeft(find.text('Labels / tags')).dy;
+    final quickY = tester.getTopLeft(find.text('Quick priority')).dy;
+    final descriptionY = tester.getTopLeft(find.text('Description')).dy;
+    expect(titleY, lessThan(labelsY));
+    expect(labelsY, lessThan(quickY));
+    expect(quickY, lessThan(descriptionY));
+  });
+
+  testWidgets('a URL in the description opens externally, not the edit dialog',
+      (tester) async {
+    final launcher = _FakeUrlLauncher();
+    UrlLauncherPlatform.instance = launcher;
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'compare models at https://example.com/scopes first',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    await tester
+        .tapOnText(find.textRange.ofSubstring('https://example.com/scopes'));
+    await tester.pump();
+
+    // The link's recognizer wins the gesture arena over the tile's onTap.
+    expect(launcher.launched, ['https://example.com/scopes']);
+    expect(find.text('Edit wishlist item'), findsNothing);
+
+    // A tap elsewhere on the tile still opens the edit dialog.
+    await tester.tap(find.text('Buy a telescope'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit wishlist item'), findsOneWidget);
   });
 
   testWidgets('wishes are ordered by priority', (tester) async {
