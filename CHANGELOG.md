@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.150] - 2026-08-15
+- The widget-tap black screen can now be diagnosed instead of guessed at: the app records what happens on the way back to the foreground - the Android side logs the tap's intent, every lifecycle step and whether the window actually drew anything, and the app side logs whether Flutter produced a frame after the resume, with the exact scheduler state that decides it
+- App Logs survive a force-close: both logs are written to files, so the very act of recovering from a black screen no longer wipes the evidence. The previous run is shown again above the new one when the app reopens
+- App Logs got a copy button that puts both logs, with the build number, on the clipboard in one go - that is the text to paste into a bug report - plus a "Device" tab showing the Android-side record
+
 ## [0.1.149] - 2026-08-15
 - Fixed the widget-tap black screen for real this time: the culprit was a "belt-and-braces" forced repaint added in 0.1.143, not the renderer. Returning to the foreground fired that repaint before Android had given the app its drawing surface back, and Flutter then believed a frame was already on its way - so it never asked for another one, leaving the app running perfectly behind a window that stayed black until a force-close. Build 114 never did this, and neither does this build
 

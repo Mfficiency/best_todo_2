@@ -24,6 +24,7 @@ import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/permission_flow.dart';
 import 'services/pre_update_backup.dart';
+import 'services/render_diagnostics.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
@@ -153,6 +154,11 @@ Future<void> main() async {
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
+    // Black-screen diagnostics: start counting frames and write the launch
+    // banner. Restoring the previous run's log first keeps the lines from
+    // before the force-close (the only way out of the black screen) visible
+    // above this launch instead of only in the file.
+    unawaited(LogService.restore().then((_) => RenderDiagnostics.install()));
     // Plugin/service startup runs after the first frame — see
     // _initServicesAfterFirstFrame for why it must never happen before it.
     unawaited(_initServicesAfterFirstFrame());
@@ -263,12 +269,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // the stream's onError — which fails desktop/CI test runs.
     if (!kIsWeb && Platform.isAndroid) {
       try {
-        HomeWidget.initiallyLaunchedFromHomeWidget()
-            .then(_handleWidgetClick)
-            .catchError((_) {});
+        HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
+          RenderDiagnostics.log('launch uri from widget: ${uri ?? 'none'}');
+          _handleWidgetClick(uri);
+        }).catchError((_) {});
         HomeWidget.widgetClicked.listen(
           _handleWidgetClick,
-          onError: (_) {},
+          onError: (e) => RenderDiagnostics.log('widgetClicked stream error: $e'),
         );
       } catch (_) {}
       // Text shared into the app from other apps becomes a task on Today.
@@ -284,8 +291,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeMetrics() {
+    // The surface coming back after a re-front shows up here; the black-screen
+    // reports are resumes where this happens and no frame follows.
+    RenderDiagnostics.onMetricsChanged();
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
+    // Records the state change and, on resume, watches for the frames that
+    // make the app visible again — the black screen is exactly "resumed, and
+    // then no frame ever". Diagnostics only; it changes nothing about how the
+    // app resumes.
+    RenderDiagnostics.onLifecycleChanged(state);
     // Do NOT force a frame on resume here. 0.1.143 added
     // `scheduleForcedFrame()` as belt-and-braces against a black window and
     // it was the black window: `scheduleForcedFrame` ignores `framesEnabled`
@@ -333,6 +352,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _handleWidgetClick(Uri? uri) async {
     if (uri == null) return;
     LogService.add('widget', 'tap received: $uri');
+    // Same line in the shared timeline, with the frame state at the moment the
+    // tap arrived: a warm tap that ends black still gets this far.
+    RenderDiagnostics.log('widget tap: $uri | ${RenderDiagnostics.snapshot()}');
     final id = uri.queryParameters['id'];
     // Both widgets use `toggle` / `open` as hosts, so the scheme decides which
     // one is talking before the host does.
@@ -370,7 +392,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // A warm launch may not have a frame pending; without this the callback
     // below would only run at the next unrelated rebuild.
     WidgetsBinding.instance.scheduleFrame();
+    RenderDiagnostics.log(
+        'widget open: asked for a frame, waiting for it to pop to the task '
+        'list | ${RenderDiagnostics.snapshot()}');
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Never logged after a widget tap => the frame this callback waits for
+      // never happened, i.e. the black window.
+      RenderDiagnostics.log('widget open: frame arrived, showing the task list');
       appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
     });
   }

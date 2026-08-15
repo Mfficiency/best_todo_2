@@ -7,10 +7,15 @@ import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -26,8 +31,25 @@ class MainActivity : FlutterActivity() {
     private val pendingSharedTexts = ArrayDeque<String>()
     private var shareChannel: MethodChannel? = null
 
+    // Black-screen diagnostics (see DiagLog). Counting the window's draws is
+    // the one signal that does not depend on the Flutter side being healthy:
+    // if a widget tap re-fronts the app and the window never draws afterwards,
+    // this is where that shows up.
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var drawCount = 0
+    private var drawsAtResume = 0
+    private var resumeAtMs = 0L
+    private var drawListenerAdded = false
+    private val drawListener = ViewTreeObserver.OnDrawListener { drawCount++ }
+
+    private fun diag(message: String) = DiagLog.write(applicationContext, "native", message)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        diag(
+            "onCreate taskId=$taskId isTaskRoot=$isTaskRoot " +
+                "recreated=${savedInstanceState != null} ${describeIntent(intent)}"
+        )
         // A widget tap while the app is already running must re-front the
         // existing UI, never build a second copy of it. singleTop plus the
         // default task affinity (see AndroidManifest.xml) make that the normal
@@ -38,6 +60,10 @@ class MainActivity : FlutterActivity() {
         if (!isTaskRoot &&
             intent?.action == "es.antonborri.home_widget.action.LAUNCH"
         ) {
+            // If the app comes back black after a widget tap, this line says
+            // whether a duplicate activity was created and closed again — the
+            // instance revealed underneath is then the one that stayed black.
+            diag("onCreate: duplicate widget launch on a non-root task -> finish()")
             finish()
             return
         }
@@ -47,8 +73,138 @@ class MainActivity : FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // The healthy warm path for a widget tap: the running activity is
+        // re-fronted and the URI arrives here (home_widget then forwards it to
+        // Dart's widgetClicked stream).
+        diag("onNewIntent taskId=$taskId isTaskRoot=$isTaskRoot ${describeIntent(intent)}")
         showOverLockScreenIfAlarmLaunch(intent)
         queueSharedText(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        diag("onStart")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        addDrawListener()
+        drawsAtResume = drawCount
+        resumeAtMs = System.currentTimeMillis()
+        diag("onResume ${describeWindow()}")
+        // Two probes after the resume: by 1.5 s a healthy re-front has drawn
+        // several frames. "draws=0" here is the black window, caught on the
+        // Android side regardless of what Flutter believes.
+        scheduleDrawProbe(1500)
+        scheduleDrawProbe(5000)
+    }
+
+    private fun scheduleDrawProbe(delayMs: Long) {
+        mainHandler.postDelayed({
+            val since = drawCount - drawsAtResume
+            val age = System.currentTimeMillis() - resumeAtMs
+            val verdict = if (since == 0) "NO DRAW since resume — black window" else "ok"
+            diag(
+                "draw probe +${age}ms draws=$since $verdict " +
+                    "${describeWindow()} ${describeFlutterViews()}"
+            )
+        }, delayMs)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        diag("onPause draws=${drawCount - drawsAtResume} since resume")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        diag("onStop")
+    }
+
+    override fun onDestroy() {
+        removeDrawListener()
+        mainHandler.removeCallbacksAndMessages(null)
+        diag("onDestroy isFinishing=$isFinishing changingConfig=$isChangingConfigurations")
+        super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        diag("windowFocus=$hasFocus ${describeWindow()}")
+    }
+
+    private fun addDrawListener() {
+        if (drawListenerAdded) return
+        try {
+            val observer = window?.decorView?.viewTreeObserver ?: return
+            if (!observer.isAlive) return
+            observer.addOnDrawListener(drawListener)
+            drawListenerAdded = true
+        } catch (t: Throwable) {
+            diag("could not observe draws: ${t.message}")
+        }
+    }
+
+    private fun removeDrawListener() {
+        if (!drawListenerAdded) return
+        try {
+            val observer = window?.decorView?.viewTreeObserver
+            if (observer != null && observer.isAlive) {
+                observer.removeOnDrawListener(drawListener)
+            }
+        } catch (t: Throwable) {
+        }
+        drawListenerAdded = false
+    }
+
+    private fun describeIntent(intent: Intent?): String {
+        if (intent == null) return "intent=null"
+        val flags = Integer.toHexString(intent.flags)
+        val categories = intent.categories?.joinToString("+") ?: "-"
+        val extras = try {
+            intent.extras?.keySet()?.joinToString("+") ?: "-"
+        } catch (t: Throwable) {
+            "?"
+        }
+        return "action=${intent.action} data=${intent.dataString} " +
+            "flags=0x$flags categories=$categories extras=$extras"
+    }
+
+    private fun describeWindow(): String {
+        val decor = window?.decorView
+        return "window(visible=${decor?.visibility} size=${decor?.width}x${decor?.height} " +
+            "focus=${decor?.hasWindowFocus()} attached=${decor?.isAttachedToWindow})"
+    }
+
+    // Reports the Flutter surface/texture views by class name only — no
+    // compile-time dependency on engine internals, so this keeps working
+    // across engine versions. A re-front that comes back black typically
+    // still has the view here at full size: proof the window is fine and the
+    // content simply never gets painted into it.
+    private fun describeFlutterViews(): String {
+        val decor = window?.decorView ?: return "views(no decorView)"
+        val found = StringBuilder()
+        fun walk(view: View) {
+            val name = view.javaClass.simpleName
+            if (name.contains("Flutter") || name.contains("Surface") ||
+                name.contains("Texture")
+            ) {
+                found.append(
+                    "$name(${view.width}x${view.height} vis=${view.visibility} " +
+                        "alpha=${view.alpha} attached=${view.isAttachedToWindow}) "
+                )
+            }
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) walk(view.getChildAt(i))
+            }
+        }
+        try {
+            walk(decor)
+        } catch (t: Throwable) {
+            return "views(walk failed: ${t.message})"
+        }
+        return if (found.isEmpty()) "views(no Flutter view in hierarchy)"
+        else "views(${found.toString().trim()})"
     }
 
     // Queues text forwarded by ShareActivity and pokes the Dart side. When
@@ -131,6 +287,30 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        diag("configureFlutterEngine — Dart side attaching")
+        // Black-screen diagnostics: reading and appending to the native
+        // breadcrumb file. The Dart side mirrors its own lifecycle/frame
+        // verdicts in here so App Logs → Device shows one ordered timeline of
+        // both sides, and it survives the force-close that ends the black
+        // screen.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/diag",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "read" -> result.success(DiagLog.read(applicationContext))
+                "clear" -> {
+                    DiagLog.clear(applicationContext)
+                    result.success(null)
+                }
+                "note" -> {
+                    val message = call.argument<String>("message") ?: ""
+                    DiagLog.write(applicationContext, "dart", message)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/alarm_ring",

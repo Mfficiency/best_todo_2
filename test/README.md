@@ -18,6 +18,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile + "Sync now" tile (manual run + last-sync subtitle) |
 | `test/update/` | `flutter test test/update` | In-app updates: `UpdateService` (version compare, tag parsing, release-JSON mapping, the `github_releases/` folder listing → latest + rollback, fallback to the newest release, all via the injectable fetch), the About page update section (check → offer → "Go back to …" → fallback/error states), `tool/publish_apk.dart` naming/changelog helpers, `tool/stage_local_release.dart` staging + pruning of the two kept APKs |
 | `test/permissions/` | `flutter test test/permissions` | Up-front permission flow (`PermissionFlow`): version-marker logic for the ask on the first open after an update, the mode-picker/settings triggers' skip conditions, the once-per-session latch |
+| `test/diagnostics/` | `flutter test test/diagnostics` | Black-screen diagnostics: `LogService` file persistence (append, restore after a force-close, whole-file read for the copy button, clear), the App Logs copy button's combined report + Device tab, `RenderDiagnostics.snapshot()` fields |
 | `test/share/` | `flutter test test/share` | Share-sheet task creation (`ShareIntentService`): shared text → task-due-today mapping (title/description split, truncation), consumer routing/queueing between the home page and the direct-to-storage fallback, the platform-channel pull |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser (`TestReport.newest`), report layering service, `sync_test_report` packaging tool + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes, dialog field order, clickable description URLs), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`) |
 
@@ -45,7 +46,11 @@ Pick suites by what you touched, always including core:
   `lib/models/sync_log_entry.dart`,
   `lib/ui/app_logs_page.dart`, the Sync & export section of
   `lib/ui/settings_page.dart` → core + **sync** (+ **home**, which also pumps the
-  settings page and drawer)
+  settings page and drawer; + **diagnostics** for `app_logs_page.dart`, whose
+  copy button and Device tab live there)
+- `lib/services/log_service.dart`, `lib/services/render_diagnostics.dart`,
+  `lib/services/device_log_service.dart`, `DiagLog.kt`, the lifecycle/draw
+  logging in `MainActivity.kt` → core + **diagnostics**
 - `lib/services/update_service.dart`, `lib/ui/about_page.dart`,
   `tool/publish_apk.dart`, `tool/stage_local_release.dart` → core + **update**
 - `lib/services/permission_flow.dart`, `lib/ui/mode_select_page.dart` → core +
