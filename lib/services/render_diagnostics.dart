@@ -16,8 +16,18 @@ import 'log_service.dart';
 /// The failure is invisible from inside the app: everything keeps running —
 /// timers, taps, saves — while the window never repaints, so no ordinary log
 /// line says anything is wrong. What distinguishes it is *frames*, so this
-/// class counts them (`addTimingsCallback` fires once per rasterized frame)
-/// and, on every resume, watches whether any arrive.
+/// class counts them and, on every resume, watches whether any arrive.
+///
+/// Two counters, because they fail apart and the difference is the diagnosis:
+///   * `frames` — frames Flutter **built**, counted from a persistent frame
+///     callback, which runs inside the frame itself and so is exact and
+///     immediate.
+///   * `raster` — frames the engine **rasterized**, from `addTimingsCallback`.
+///     The engine batches these and flushes them about once a second, so this
+///     one legitimately lags; it is never used for a verdict on its own.
+/// `frames` climbing while `raster` stays put means Flutter is drawing into
+/// something that never reaches the screen (a surface problem); both stuck
+/// means no frame is being produced at all (a scheduler problem).
 ///
 /// Each line goes to the App Logs page (persisted in `app_log.txt`) and is
 /// mirrored into the Android breadcrumb file, so one shared timeline shows
@@ -35,7 +45,9 @@ class RenderDiagnostics {
   RenderDiagnostics._();
 
   static int _frames = 0;
+  static int _rasterFrames = 0;
   static int _framesAtResume = 0;
+  static int? _firstFrameAfterResumeMs;
   static DateTime _resumedAt = DateTime.now();
   static Timer? _watchdog;
   static bool _installed = false;
@@ -44,7 +56,7 @@ class RenderDiagnostics {
   /// and its timers would otherwise outlive widget tests.
   static bool get _watchEnabled => !kIsWeb && Platform.isAndroid;
 
-  /// Number of frames rasterized since the app started.
+  /// Number of frames Flutter has built since the app started.
   static int get frameCount => _frames;
 
   /// Starts frame counting and writes the launch banner. Called from `main`
@@ -52,10 +64,21 @@ class RenderDiagnostics {
   static void install() {
     if (_installed) return;
     _installed = true;
+    // Runs as part of every frame, so the count is exact the moment the
+    // watchdog reads it — unlike the timings callback below.
+    SchedulerBinding.instance.addPersistentFrameCallback(_countFrame);
     WidgetsBinding.instance.addTimingsCallback((timings) {
-      _frames += timings.length;
+      _rasterFrames += timings.length;
     });
     unawaited(_logStartBanner());
+  }
+
+  /// Counts every frame Flutter builds and timestamps the first one after a
+  /// resume. Only bookkeeping happens here — logging from inside a frame
+  /// would rebuild the App Logs list mid-frame.
+  static void _countFrame(Duration _) {
+    _frames++;
+    _firstFrameAfterResumeMs ??= _sinceResumeMs();
   }
 
   /// The build number is the first thing to check in a shared log, and it
@@ -75,7 +98,7 @@ class RenderDiagnostics {
     final geometry = size == null
         ? 'none'
         : '${size.width.round()}x${size.height.round()}';
-    return 'frames=$_frames '
+    return 'frames=$_frames raster=$_rasterFrames '
         'hasScheduledFrame=${scheduler.hasScheduledFrame} '
         'framesEnabled=${scheduler.framesEnabled} '
         'lifecycle=${scheduler.lifecycleState?.name ?? '-'} '
@@ -114,6 +137,7 @@ class RenderDiagnostics {
     if (!_watchEnabled) return;
     _framesAtResume = _frames;
     _resumedAt = DateTime.now();
+    _firstFrameAfterResumeMs = null;
     // If frames are dead this callback never runs at all — its absence from
     // the log is itself part of the evidence.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -127,8 +151,10 @@ class RenderDiagnostics {
       if (rendered > 0) {
         timer.cancel();
         _watchdog = null;
-        log('first frame after resume +${_sinceResumeMs()}ms '
-            '(frames=$rendered) | ${snapshot()}');
+        // The frame's own timestamp, not this tick's — the watchdog only
+        // looks every 500 ms and would otherwise report that as the latency.
+        log('first frame after resume +${_firstFrameAfterResumeMs ?? 0}ms '
+            '($rendered frames so far) | ${snapshot()}');
         return;
       }
       // 1 s, 3 s, 5 s, 10 s: enough detail to see whether the window ever

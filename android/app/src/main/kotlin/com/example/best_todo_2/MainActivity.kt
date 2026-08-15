@@ -42,6 +42,11 @@ class MainActivity : FlutterActivity() {
     private var drawListenerAdded = false
     private val drawListener = ViewTreeObserver.OnDrawListener { drawCount++ }
 
+    // The engine's own answer to "is Flutter's UI on screen?" — the one signal
+    // that states the black screen directly instead of inferring it. Kept as a
+    // field so the draw probe can ask at any moment.
+    private var engine: FlutterEngine? = null
+
     private fun diag(message: String) = DiagLog.write(applicationContext, "native", message)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,12 +108,21 @@ class MainActivity : FlutterActivity() {
         mainHandler.postDelayed({
             val since = drawCount - drawsAtResume
             val age = System.currentTimeMillis() - resumeAtMs
-            val verdict = if (since == 0) "NO DRAW since resume — black window" else "ok"
+            // Flutter renders into its own surface, so the window's own draw
+            // count stays low (1-2) even on a perfectly healthy resume — it is
+            // context, not a verdict. `flutterUi` is the verdict: false here,
+            // seconds after a resume, is the black screen.
             diag(
-                "draw probe +${age}ms draws=$since $verdict " +
-                    "${describeWindow()} ${describeFlutterViews()}"
+                "probe +${age}ms flutterUi=${isFlutterUiDisplayed()} " +
+                    "windowDraws=$since ${describeWindow()} ${describeContentView()}"
             )
         }, delayMs)
+    }
+
+    private fun isFlutterUiDisplayed(): String = try {
+        engine?.renderer?.isDisplayingFlutterUi?.toString() ?: "no engine"
+    } catch (t: Throwable) {
+        "unknown (${t.message})"
     }
 
     override fun onPause() {
@@ -124,13 +138,30 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         removeDrawListener()
         mainHandler.removeCallbacksAndMessages(null)
+        // isFinishing=true means the activity was closed for good (a Back
+        // press, a swipe from recents) — the next widget tap is then a cold
+        // start, not the warm re-front the black screen needs.
         diag("onDestroy isFinishing=$isFinishing changingConfig=$isChangingConfigurations")
+        engine = null
         super.onDestroy()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         diag("windowFocus=$hasFocus ${describeWindow()}")
+    }
+
+    // The engine reports these when its first frame reaches the surface and
+    // when it stops rendering to one. A widget tap that comes back black
+    // should show the resume without a following "flutter UI displayed".
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        diag("flutter UI displayed (+${System.currentTimeMillis() - resumeAtMs}ms after resume)")
+    }
+
+    override fun onFlutterUiNoLongerDisplayed() {
+        super.onFlutterUiNoLongerDisplayed()
+        diag("flutter UI no longer displayed")
     }
 
     private fun addDrawListener() {
@@ -171,40 +202,47 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun describeWindow(): String {
-        val decor = window?.decorView
-        return "window(visible=${decor?.visibility} size=${decor?.width}x${decor?.height} " +
-            "focus=${decor?.hasWindowFocus()} attached=${decor?.isAttachedToWindow})"
+        val decor = window?.decorView ?: return "window(none)"
+        return "window(${visibilityName(decor.visibility)} " +
+            "size=${decor.width}x${decor.height} " +
+            "focus=${decor.hasWindowFocus()} attached=${decor.isAttachedToWindow})"
     }
 
-    // Reports the Flutter surface/texture views by class name only — no
-    // compile-time dependency on engine internals, so this keeps working
-    // across engine versions. A re-front that comes back black typically
-    // still has the view here at full size: proof the window is fine and the
-    // content simply never gets painted into it.
-    private fun describeFlutterViews(): String {
-        val decor = window?.decorView ?: return "views(no decorView)"
-        val found = StringBuilder()
-        fun walk(view: View) {
-            val name = view.javaClass.simpleName
-            if (name.contains("Flutter") || name.contains("Surface") ||
-                name.contains("Texture")
-            ) {
-                found.append(
-                    "$name(${view.width}x${view.height} vis=${view.visibility} " +
-                        "alpha=${view.alpha} attached=${view.isAttachedToWindow}) "
-                )
-            }
-            if (view is ViewGroup) {
-                for (i in 0 until view.childCount) walk(view.getChildAt(i))
-            }
-        }
+    // Walks down the content view reporting size and visibility at each level.
+    // Class names are deliberately not matched against "Flutter…": R8 renames
+    // them in a release build, which is why the first version of this reported
+    // "no Flutter view in hierarchy" on every real device. Geometry survives
+    // obfuscation — a re-front that comes back black still shows the view at
+    // full size, proving the window is fine and nothing is painted into it.
+    private fun describeContentView(): String {
+        val root = findViewById<View>(android.R.id.content)
+            ?: return "content(missing)"
+        val parts = StringBuilder()
+        var view: View? = root
+        var depth = 0
         try {
-            walk(decor)
+            while (view != null && depth < 4) {
+                parts.append(
+                    "${view.javaClass.simpleName}(${view.width}x${view.height} " +
+                        "vis=${visibilityName(view.visibility)}) "
+                )
+                val group = view as? ViewGroup ?: break
+                if (group.childCount == 0) break
+                if (group.childCount > 1) parts.append("[${group.childCount} children] ")
+                view = group.getChildAt(0)
+                depth++
+            }
         } catch (t: Throwable) {
-            return "views(walk failed: ${t.message})"
+            return "content(walk failed: ${t.message})"
         }
-        return if (found.isEmpty()) "views(no Flutter view in hierarchy)"
-        else "views(${found.toString().trim()})"
+        return "content(${parts.toString().trim()})"
+    }
+
+    private fun visibilityName(visibility: Int): String = when (visibility) {
+        View.VISIBLE -> "visible"
+        View.INVISIBLE -> "invisible"
+        View.GONE -> "gone"
+        else -> visibility.toString()
     }
 
     // Queues text forwarded by ShareActivity and pokes the Dart side. When
@@ -287,6 +325,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        engine = flutterEngine
         diag("configureFlutterEngine — Dart side attaching")
         // Black-screen diagnostics: reading and appending to the native
         // breadcrumb file. The Dart side mirrors its own lifecycle/frame

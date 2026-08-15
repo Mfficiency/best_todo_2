@@ -1037,29 +1037,44 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
     App Logs → Device): `MainActivity` logs `onCreate` (task id, `isTaskRoot`,
     whether it was recreated, the full intent — action/data/flags/categories),
     the duplicate-launch `finish()` branch, `onNewIntent`, start/resume/pause/stop/
-    destroy, window-focus changes, and — the key one — a `ViewTreeObserver
-    .OnDrawListener` counting the window's draws, probed 1.5 s and 5 s after every
-    resume (`draw probe +1500ms draws=0 NO DRAW since resume — black window`),
-    alongside the decor view's geometry and every Flutter/Surface/Texture view in
-    the hierarchy found **by class name only** (no compile-time dependency on
-    engine internals). This half keeps recording when the Dart half is wedged.
+    destroy (with `isFinishing`), window-focus changes, the engine's own
+    `onFlutterUiDisplayed`/`onFlutterUiNoLongerDisplayed`, and a probe 1.5 s and
+    5 s after every resume carrying `flutterUi=` (`FlutterRenderer
+    .isDisplayingFlutterUi` — the renderer's direct answer to "is Flutter on
+    screen?"), the window's draw count from a `ViewTreeObserver.OnDrawListener`,
+    the decor geometry and a four-level walk of the content view. This half keeps
+    recording when the Dart half is wedged.
   - **Dart** (`RenderDiagnostics` → `LogService` → `app_log.txt`, mirrored into the
     native file through the `besttodo/diag` channel so one timeline holds both):
-    frames are counted with `addTimingsCallback`; every lifecycle change and metrics
-    change logs a snapshot of `frames / hasScheduledFrame / framesEnabled /
-    lifecycleState / view size`; each resume starts a 500 ms watchdog that reports
-    `first frame after resume +Nms` or `NO FRAME …ms after resume — window is black`
-    at 1/3/5/10 s, requests one plain `scheduleFrame()` at 2 s (announced in the log
-    so an induced frame is never read as spontaneous recovery — **never**
-    `scheduleForcedFrame`, see above) and reports at 4 s whether that produced
-    anything. `_openTasks` logs both that it asked for a frame and, from the
-    post-frame callback, that the frame arrived: the second line missing after a
-    widget tap *is* the black window.
+    every lifecycle change and metrics change logs a snapshot of `frames / raster /
+    hasScheduledFrame / framesEnabled / lifecycleState / view size`; each resume
+    starts a 500 ms watchdog that reports `first frame after resume +Nms` (the
+    frame's own timestamp, taken in the frame callback) or `NO FRAME …ms after
+    resume — window is black` at 1/3/5/10 s, requests one plain `scheduleFrame()`
+    at 2 s (announced in the log so an induced frame is never read as spontaneous
+    recovery — **never** `scheduleForcedFrame`, see above) and reports at 4 s
+    whether that produced anything. `_openTasks` logs both that it asked for a
+    frame and, from the post-frame callback, that the frame arrived: the second
+    line missing after a widget tap *is* the black window.
+  **Two frame counters, and why (learned from the first field capture, 0.1.151).**
+  `frames` counts frames Flutter *built*, from `addPersistentFrameCallback` —
+  exact and immediate. `raster` counts frames the engine *rasterized*, from
+  `addTimingsCallback` — the engine batches those and flushes roughly once a
+  second. 0.1.150 used timings for the verdict and every healthy resume duly
+  reported "first frame after resume +1001 ms"; a real black screen would have
+  looked the same for that first second. Build-frames decide the verdict; raster
+  is context. Same lesson on the native side: the original view walk matched class
+  names containing "Flutter"/"Surface", which **R8 renames in a release build**, so
+  it printed "no Flutter view in hierarchy" on every device — never identify engine
+  views by name in shipped code; geometry and the renderer's own flags survive.
   Reading a report: `hasScheduledFrame=true` with no frames means a frame was
   requested and never serviced (wedged scheduler); `framesEnabled=false` means the
-  engine still thinks the app is invisible and is dropping requests; native
-  `draws>0` while Dart reports no frames points at the app painting into a surface
-  the window no longer shows.
+  engine still thinks the app is invisible and is dropping requests; `frames`
+  climbing while `flutterUi=false` points at the app painting into a surface the
+  window no longer shows. Note also that a capture only bears on this bug if the
+  app was still alive: `onDestroy isFinishing=true` (Back press, swipe from
+  recents) means the next widget tap is a cold start, not the warm re-front that
+  fails — reproduce by leaving the app with Home.
   The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.151] - 2026-08-15
+- Sharper black-screen logs after the first real capture: the app now counts the frames Flutter actually builds (immediately and exactly) instead of the ones the engine reports back about a second later, so "no frame after resume" is a real finding rather than a side effect of that delay - and the first frame is timed to the millisecond
+- The Android side now asks the renderer directly whether Flutter's UI is on screen, and logs the moment it appears or goes away; the view description it prints also survives release builds, where renamed classes made it report "no Flutter view" on every device
+- The log now spells out when the app was closed for good (a Back press or a swipe from recents) rather than left running, since only a still-running app can show the widget-tap black screen
+
 ## [0.1.150] - 2026-08-15
 - The widget-tap black screen can now be diagnosed instead of guessed at: the app records what happens on the way back to the foreground - the Android side logs the tap's intent, every lifecycle step and whether the window actually drew anything, and the app side logs whether Flutter produced a frame after the resume, with the exact scheduler state that decides it
 - App Logs survive a force-close: both logs are written to files, so the very act of recovering from a black screen no longer wipes the evidence. The previous run is shown again above the new one when the app reopens
