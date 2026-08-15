@@ -1,7 +1,10 @@
 # Changelog
 
-## [0.1.153] - 2026-08-15
+## [0.1.154] - 2026-08-15
 - App Logs: new export button writes the full app + device log bundle to a .txt file you choose a folder for — the copy button's trimmed report is still there for quick pastes
+
+## [0.1.153] - 2026-08-15
+- Fixed the App Logs copy button silently reusing the device log it read when the page was first opened instead of its current contents — two reports pulled minutes apart during the same visit to the page came back with byte-identical device halves, which is the "device log goes quiet while the app keeps running" shape every earlier black-screen field report has shown. The button now re-reads the device log fresh every time, like it already did for the app log
 
 ## [0.1.152] - 2026-08-15
 - The shared log now leads with the Android half and keeps the newest lines of each: the first black-screen report was cut off exactly where the evidence was, because the app's own log records nothing at all while the screen is black

@@ -1088,6 +1088,24 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   app was still alive: `onDestroy isFinishing=true` (Back press, swipe from
   recents) means the next widget tap is a cold start, not the warm re-front that
   fails — reproduce by leaving the app with Home.
+  **The "device log goes quiet" reports were the report tool, not the app
+  (third field capture, 0.1.153).** Two exports pulled ~36 s apart during the
+  same visit to App Logs came back with a byte-identical device half, cut off
+  mid-session, while the app half kept growing the whole time — the same shape
+  0.1.152 blamed on the native side going silent. Cause: `AppLogsPage._report()`
+  read the device log once in `initState` and reused that string on every
+  `_copyAll()` after, while the app log was always re-read fresh
+  (`LogService.readFile()`); the native file itself was fine, `DiagLog.write`
+  keeps appending regardless. Any report pulled without first doing a
+  pull-to-refresh on the Device tab was silently missing everything the native
+  side logged after the page opened — which, for a report written *after*
+  noticing a black screen, is exactly the window that matters. Fixed by having
+  `_report()` call `DeviceLogService.read()` fresh every time (and refresh the
+  visible Device tab to match) instead of trusting the cached field. This does
+  not rule out a real black screen still occurring — no capture has shown a
+  `NO FRAME` verdict since 0.1.149 — but it means every report gathered before
+  0.1.153 needs re-reading with this in mind, and the tool can now be trusted
+  for the next one.
   The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
@@ -1418,7 +1436,9 @@ force-close, which used to destroy the in-memory log in the act of recovering. T
 Logs, **Device** (the Android breadcrumb file, §8) and Sync — plus a copy button that puts
 the version banner, the app log file's last 150 lines and the device log's last 250 on the
 clipboard as one report (device half first: the first field report of a black screen was
-cut off exactly at the half that records the failure), an **export** button (0.1.153) that
+cut off exactly at the half that records the failure; both halves are re-read from disk on
+every report since 0.1.153, the page's cached `_deviceLog` was serving the snapshot taken
+when the page opened), an **export** button (0.1.154) that
 writes the same report *untrimmed* to `besttodo_logs_<yyyymmdd_hhmmss>.txt` in a folder
 picked with `getDirectoryPath` (Downloads offered as the start where the platform has one),
 and a FAB that clears both. Export is the answer when the interesting entry is further back

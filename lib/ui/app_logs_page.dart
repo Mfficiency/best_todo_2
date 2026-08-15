@@ -64,9 +64,17 @@ class _AppLogsPageState extends State<AppLogsPage> {
   /// while the screen is black. Both are trimmed to their newest lines for the
   /// same reason — unless [full] is set, which is the export: a file has no
   /// paste limit to survive, so it carries every line there is.
+  ///
+  /// Always re-reads the device log from disk instead of reusing [_deviceLog]
+  /// (which is only loaded once, in `initState`): two reports pulled minutes
+  /// apart during the same page visit were coming back with byte-identical
+  /// device halves — every native breadcrumb written after the page opened
+  /// was silently missing, which is exactly the "device log went silent"
+  /// shape earlier field reports blamed on the engine.
   Future<String> _report({bool full = false}) async {
     final appLog = await LogService.readFile();
-    final device = _deviceLog ?? await DeviceLogService.read();
+    final device = await DeviceLogService.read();
+    if (mounted) setState(() => _deviceLog = device);
     return 'BestToDo ${Config.versionWithBuild} — app logs\n'
         'exported ${DateTime.now().toIso8601String()}\n\n'
         '===== DEVICE LOG (Android) =====\n'
