@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.152] - 2026-08-15
+- The shared log now leads with the Android half and keeps the newest lines of each: the first black-screen report was cut off exactly where the evidence was, because the app's own log records nothing at all while the screen is black
+- Added the earliest line each side can write - the moment the app's process is created, and the moment the app's code starts running - so a black screen that logs nothing else still says whether the widget tap started the app at all, and how far it got
+
 ## [0.1.151] - 2026-08-15
 - Sharper black-screen logs after the first real capture: the app now counts the frames Flutter actually builds (immediately and exactly) instead of the ones the engine reports back about a second later, so "no frame after resume" is a real finding rather than a side effect of that delay - and the first frame is timed to the millisecond
 - The Android side now asks the renderer directly whether Flutter's UI is on screen, and logs the moment it appears or goes away; the view description it prints also survives release builds, where renamed classes made it report "no Flutter view" on every device

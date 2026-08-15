@@ -1067,6 +1067,19 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   names containing "Flutter"/"Surface", which **R8 renames in a release build**, so
   it printed "no Flutter view in hierarchy" on every device — never identify engine
   views by name in shipped code; geometry and the renderer's own flags survive.
+  **The Dart side is silent during the failure (second field capture, 0.1.152).**
+  A reproduction on 0.1.151 left a 45-second hole in `app_log.txt` — background,
+  tap, black screen, force-close — with no lifecycle change, no widget tap, no
+  frame verdict, nothing. Whatever the black window is, it is not "the app
+  running behind a dead surface", which is what every fix from 0.1.142 on
+  assumed; the Dart isolate is not there to log. That makes the Android file the
+  only witness, so: the copy button now emits the **device log first** (the first
+  report was truncated exactly at it) and trims both halves to their newest
+  lines, `MainApplication.onCreate` logs `process start pid=`, and `main()` logs
+  `main() entered` as its first statement. Those two lines split the hole three
+  ways — no `process start` means the tap never reached the app; `process start`
+  with no `onCreate` means it died between process and activity; `main() entered`
+  with no first frame means startup wedged before rendering.
   Reading a report: `hasScheduledFrame=true` with no frames means a frame was
   requested and never serviced (wedged scheduler); `framesEnabled=false` means the
   engine still thinks the app is invisible and is dropping requests; `frames`

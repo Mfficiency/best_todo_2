@@ -44,18 +44,37 @@ class _AppLogsPageState extends State<AppLogsPage> {
     setState(() => _deviceLog = content);
   }
 
-  /// Everything worth sharing, in one block: app version, the app log (from
-  /// the file, so it includes the runs before the last force-close) and the
-  /// Android breadcrumbs.
+  /// How many trailing lines of each log the report carries. A pasted report
+  /// gets truncated somewhere, and what matters is always the end.
+  static const int _deviceLines = 250;
+  static const int _appLines = 150;
+
+  /// Everything worth sharing, in one block: app version, then the **device
+  /// log first**. The app log used to lead, and the first field report of a
+  /// black screen was cut off exactly at the device half — which is the only
+  /// half that records the failure, because the Dart side logs nothing at all
+  /// while the screen is black. Both are trimmed to their newest lines for the
+  /// same reason.
   Future<String> _report() async {
     final appLog = await LogService.readFile();
     final device = _deviceLog ?? await DeviceLogService.read();
     return 'BestToDo ${Config.versionWithBuild} — app logs\n'
         'exported ${DateTime.now().toIso8601String()}\n\n'
-        '===== APP LOG =====\n'
-        '${appLog.trim().isEmpty ? '(empty)' : appLog.trim()}\n\n'
         '===== DEVICE LOG (Android) =====\n'
-        '${device.trim().isEmpty ? '(empty)' : device.trim()}\n';
+        '${_tail(device, _deviceLines)}\n\n'
+        '===== APP LOG =====\n'
+        '${_tail(appLog, _appLines)}\n';
+  }
+
+  /// The last [maxLines] lines, saying so when anything was left out.
+  static String _tail(String content, int maxLines) {
+    final lines =
+        content.trim().split('\n').where((l) => l.trim().isNotEmpty).toList();
+    if (lines.isEmpty) return '(empty)';
+    if (lines.length <= maxLines) return lines.join('\n');
+    final kept = lines.sublist(lines.length - maxLines);
+    return '(showing the last $maxLines of ${lines.length} lines)\n'
+        '${kept.join('\n')}';
   }
 
   Future<void> _copyAll() async {

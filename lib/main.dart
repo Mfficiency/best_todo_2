@@ -130,6 +130,12 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
+  // The earliest line Dart can write. Everything else in the log happens after
+  // the first frame, so a startup that wedges before it (the awaits below) is
+  // otherwise indistinguishable from Dart never having started — and a black
+  // screen with a `process start` line but no `main() entered` after it says
+  // exactly that.
+  LogService.add('startup', 'main() entered');
   // Config decides the first frame's theme and start page, so it is the one
   // load worth waiting for — but never indefinitely: until the first frame
   // renders, Android shows a black window, so a wedged platform channel here

@@ -25,9 +25,14 @@
          the system package installer. The user still confirms the install
          and grants the one-time "install unknown apps" toggle. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- android:name is .MainApplication, not ${applicationName}:
+         MainApplication is a plain android.app.Application (all the v2
+         embedding needs) whose only job is to log the moment this process is
+         created, so a black screen that logs nothing else at least says
+         whether the tap started the app at all. -->
     <application
         android:label="BestToDo"
-        android:name="${applicationName}"
+        android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher">
         <!-- No android:taskAffinity="" here, on purpose: with an empty (null)
              affinity Android can fail to find the app's existing task when a
