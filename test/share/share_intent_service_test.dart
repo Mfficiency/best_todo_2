@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/share_intent_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:flutter/services.dart';
@@ -126,18 +127,24 @@ void main() {
     ShareIntentService.flushDelay = Duration.zero;
     ShareIntentService.instance.handleSharedText('shared into storage');
 
+    // loadTaskList also merges the one-time Todo.md wishlist import into an
+    // empty store, so match the shared task by title instead of expecting it
+    // to be alone in the list.
     final storage = StorageService();
     var tries = 0;
-    var titles = <String>[];
+    var shared = <Task>[];
     while (tries < 100) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      titles = (await storage.loadTaskList()).map((t) => t.title).toList();
-      if (titles.isNotEmpty) break;
+      shared = (await storage.loadTaskList())
+          .where((t) => t.title == 'shared into storage')
+          .toList();
+      if (shared.isNotEmpty) break;
       tries++;
     }
-    expect(titles, ['shared into storage']);
+    expect(shared.length, 1);
 
-    final saved = (await storage.loadTaskList()).single;
+    final saved = shared.single;
+    expect(saved.isWish, false);
     final now = DateTime.now();
     expect(saved.dueDate!.year, now.year);
     expect(saved.dueDate!.month, now.month);
