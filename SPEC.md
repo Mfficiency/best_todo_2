@@ -1416,8 +1416,14 @@ also appends every entry to `app_log.txt` in the documents dir (chained writes, 
 first frame. Persistence exists for the widget black screen: the only way out of it is a
 force-close, which used to destroy the in-memory log in the act of recovering. Three tabs —
 Logs, **Device** (the Android breadcrumb file, §8) and Sync — plus a copy button that puts
-the version banner, the whole app log file and the device log on the clipboard as one
-report, and a FAB that clears both. See §8 for what gets logged and how to read it.
+the version banner, the app log file's last 150 lines and the device log's last 250 on the
+clipboard as one report (device half first: the first field report of a black screen was
+cut off exactly at the half that records the failure), an **export** button (0.1.153) that
+writes the same report *untrimmed* to `besttodo_logs_<yyyymmdd_hhmmss>.txt` in a folder
+picked with `getDirectoryPath` (Downloads offered as the start where the platform has one),
+and a FAB that clears both. Export is the answer when the interesting entry is further back
+than the copy's tail or the log is too big for a chat box. See §8 for what gets logged and
+how to read it.
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer

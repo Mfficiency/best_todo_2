@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.153] - 2026-08-15
+- App Logs: new export button writes the full app + device log bundle to a .txt file you choose a folder for — the copy button's trimmed report is still there for quick pastes
+
 ## [0.1.152] - 2026-08-15
 - The shared log now leads with the Android half and keeps the newest lines of each: the first black-screen report was cut off exactly where the evidence was, because the app's own log records nothing at all while the screen is black
 - Added the earliest line each side can write - the moment the app's process is created, and the moment the app's code starts running - so a black screen that logs nothing else still says whether the widget tap started the app at all, and how far it got

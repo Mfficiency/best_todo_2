@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.1.152+124
+version: 0.1.153+125
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -34,6 +34,8 @@ dev_dependencies:
     sdk: flutter
   integration_test:
     sdk: flutter
+  # Lets tests swap in a fake folder picker for the export buttons.
+  file_selector_platform_interface: ^2.6.2
 
 flutter:
   uses-material-design: true

@@ -1,5 +1,9 @@
+import 'dart:io' show File, Platform;
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/sync_log_entry.dart';
@@ -16,7 +20,10 @@ import 'subpage_app_bar.dart';
 /// The copy button hands over both logs at once — that is the bundle to paste
 /// into a bug report, and the reason both are written to files: the widget
 /// black screen is only recoverable with a force-close, which takes anything
-/// kept in memory with it.
+/// kept in memory with it. The export button writes the same bundle to a
+/// `.txt` file, untrimmed: a paste has to survive a chat box, a file does
+/// not, so exporting is what to reach for when the interesting entry might be
+/// further back than the copy's tail.
 class AppLogsPage extends StatefulWidget {
   const AppLogsPage({Key? key}) : super(key: key);
 
@@ -26,6 +33,7 @@ class AppLogsPage extends StatefulWidget {
 
 class _AppLogsPageState extends State<AppLogsPage> {
   String? _deviceLog;
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -54,24 +62,26 @@ class _AppLogsPageState extends State<AppLogsPage> {
   /// black screen was cut off exactly at the device half — which is the only
   /// half that records the failure, because the Dart side logs nothing at all
   /// while the screen is black. Both are trimmed to their newest lines for the
-  /// same reason.
-  Future<String> _report() async {
+  /// same reason — unless [full] is set, which is the export: a file has no
+  /// paste limit to survive, so it carries every line there is.
+  Future<String> _report({bool full = false}) async {
     final appLog = await LogService.readFile();
     final device = _deviceLog ?? await DeviceLogService.read();
     return 'BestToDo ${Config.versionWithBuild} — app logs\n'
         'exported ${DateTime.now().toIso8601String()}\n\n'
         '===== DEVICE LOG (Android) =====\n'
-        '${_tail(device, _deviceLines)}\n\n'
+        '${_tail(device, full ? null : _deviceLines)}\n\n'
         '===== APP LOG =====\n'
-        '${_tail(appLog, _appLines)}\n';
+        '${_tail(appLog, full ? null : _appLines)}\n';
   }
 
-  /// The last [maxLines] lines, saying so when anything was left out.
-  static String _tail(String content, int maxLines) {
+  /// The last [maxLines] lines, saying so when anything was left out. A null
+  /// [maxLines] keeps everything.
+  static String _tail(String content, int? maxLines) {
     final lines =
         content.trim().split('\n').where((l) => l.trim().isNotEmpty).toList();
     if (lines.isEmpty) return '(empty)';
-    if (lines.length <= maxLines) return lines.join('\n');
+    if (maxLines == null || lines.length <= maxLines) return lines.join('\n');
     final kept = lines.sublist(lines.length - maxLines);
     return '(showing the last $maxLines of ${lines.length} lines)\n'
         '${kept.join('\n')}';
@@ -86,6 +96,50 @@ class _AppLogsPageState extends State<AppLogsPage> {
         content: Text('Logs copied — paste them into your report'),
       ),
     );
+  }
+
+  /// Writes the whole bundle to a `.txt` in a folder the user picks. Same
+  /// shape as the other exports in the app (SMS history, usage data): offer
+  /// Downloads as the starting point where the platform has one, timestamp
+  /// the filename so repeated exports never overwrite each other.
+  Future<void> _export() async {
+    if (_exporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    String? downloads;
+    try {
+      downloads = (await getDownloadsDirectory())?.path;
+    } catch (_) {
+      // Android has no downloads directory to suggest — the picker opens
+      // wherever it likes instead.
+    }
+    final directory = await getDirectoryPath(initialDirectory: downloads);
+    if (directory == null) {
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(content: Text('Export canceled')));
+      return;
+    }
+    setState(() => _exporting = true);
+    try {
+      final report = await _report(full: true);
+      final sep = Platform.pathSeparator;
+      final path = '$directory${directory.endsWith(sep) ? '' : sep}'
+          'besttodo_logs_${_timestampForFilename()}.txt';
+      await File(path).writeAsString(report, flush: true);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Exported to $path')));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  static String _timestampForFilename() {
+    final now = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}';
   }
 
   Future<void> _clearAll() async {
@@ -111,6 +165,17 @@ class _AppLogsPageState extends State<AppLogsPage> {
               icon: const Icon(Icons.copy),
               tooltip: 'Copy logs',
               onPressed: _copyAll,
+            ),
+            IconButton(
+              icon: _exporting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_alt),
+              tooltip: 'Export logs to a file',
+              onPressed: _exporting ? null : _export,
             ),
           ],
           bottom: const TabBar(
