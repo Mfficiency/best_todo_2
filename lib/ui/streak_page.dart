@@ -3,9 +3,11 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../config.dart';
+import '../services/streak_challenges.dart';
 import '../services/streak_service.dart';
 import '../utils/date_time_format.dart';
 import 'settings_page.dart';
+import 'streak_calendar_page.dart';
 import 'subpage_app_bar.dart';
 
 /// Flame colour for a streak progress between 0 (no streak, cold grey) and 1
@@ -66,11 +68,13 @@ class _StreakPageState extends State<StreakPage>
     return 'MAXIMUM FIRE';
   }
 
-  Widget _statTile(IconData icon, String title, String value) {
+  Widget _statTile(IconData icon, String title, String value,
+      {String? subtitle, VoidCallback? onTap}) {
     return ListTile(
       dense: true,
       leading: Icon(icon),
       title: Text(title),
+      subtitle: subtitle != null ? Text(subtitle) : null,
       trailing: Text(
         value,
         style: Theme.of(context)
@@ -78,6 +82,46 @@ class _StreakPageState extends State<StreakPage>
             .titleMedium
             ?.copyWith(fontWeight: FontWeight.bold),
       ),
+      onTap: onTap,
+    );
+  }
+
+  Widget _challengeTile(StreakChallenge challenge) {
+    final theme = Theme.of(context);
+    final earned = challenge.earned;
+    final accent = earned ? Colors.amber.shade700 : theme.disabledColor;
+    return ListTile(
+      dense: true,
+      leading: Icon(challenge.icon, color: accent, size: 28),
+      title: Text(
+        challenge.title,
+        style: TextStyle(
+          fontWeight: earned ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(challenge.description),
+          if (!earned && challenge.target > 1) ...[
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: challenge.fraction,
+                minHeight: 5,
+                color: Colors.deepOrange,
+              ),
+            ),
+          ],
+        ],
+      ),
+      trailing: earned
+          ? Icon(Icons.check_circle, color: Colors.amber.shade700)
+          : (challenge.target > 1
+              ? Text('${challenge.progress}/${challenge.target}',
+                  style: theme.textTheme.bodySmall)
+              : null),
     );
   }
 
@@ -135,6 +179,8 @@ class _StreakPageState extends State<StreakPage>
     final start = _streak.currentStreakStart();
     final daysToMax = StreakService.maxStreakDays - streak;
     final maxed = streak >= StreakService.maxStreakDays;
+    final challenges = evaluateStreakChallenges(_streak);
+    final earnedChallenges = challenges.where((c) => c.earned).length;
 
     return Scaffold(
       appBar: buildSubpageAppBar(
@@ -231,7 +277,13 @@ class _StreakPageState extends State<StreakPage>
                     _statTile(Icons.flag, 'Streak started',
                         formatTimerDate(start)),
                   _statTile(Icons.emoji_events, 'Longest streak ever',
-                      longest > 0 ? '$longest days' : '—'),
+                      longest > 0 ? '$longest days' : '—',
+                      subtitle: 'Tap to see it on the calendar',
+                      onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const StreakCalendarPage()),
+                          )),
                   _statTile(Icons.calendar_month, 'Days with a done task',
                       '$activeDays'),
                   _statTile(Icons.task_alt, 'Tasks completed on those days',
@@ -248,6 +300,38 @@ class _StreakPageState extends State<StreakPage>
                         Icons.local_fire_department,
                         'Average tasks per active day',
                         (completions / activeDays).toStringAsFixed(1)),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Challenges',
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        Text(
+                          '$earnedChallenges / ${challenges.length} earned',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.amber.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  for (final challenge in challenges)
+                    _challengeTile(challenge),
                   const SizedBox(height: 8),
                 ],
               ),
