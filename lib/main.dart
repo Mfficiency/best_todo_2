@@ -17,14 +17,11 @@ import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'config.dart';
 import 'services/alarm_ids.dart';
-import 'services/alarm_log_service.dart';
 import 'services/alarm_service.dart';
-import 'services/log_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/permission_flow.dart';
 import 'services/pre_update_backup.dart';
-import 'services/render_diagnostics.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
@@ -130,44 +127,32 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
-  // The earliest line Dart can write. Everything else in the log happens after
-  // the first frame, so a startup that wedges before it (the awaits below) is
-  // otherwise indistinguishable from Dart never having started — and a black
-  // screen with a `process start` line but no `main() entered` after it says
-  // exactly that.
-  LogService.add('startup', 'main() entered');
-  // Config decides the first frame's theme and start page, so it is the one
-  // load worth waiting for — but never indefinitely: until the first frame
-  // renders, Android shows a black window, so a wedged platform channel here
-  // means a permanent black screen. On timeout the app opens with defaults.
+  await Config.load();
+  await NotificationService.initialize();
+  if (!kIsWeb) {
+    await SmsReportScheduler.applyFromConfig();
+  }
+  await AlarmService.instance.load();
+  // Snapshot the device/permission state into the alarm log on every launch,
+  // so a missed alarm can be diagnosed from the file after the fact. Fire and
+  // forget: must not delay first frame.
+  unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'));
   try {
-    await Config.load().timeout(const Duration(seconds: 5));
+    await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
+    await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
   } catch (_) {}
+  final prefs = await SharedPreferences.getInstance();
   // The mode question closes the intro, so someone who has never answered it
-  // gets the whole welcome flow rather than the chooser on its own. If prefs
-  // can't be read, skip the intro rather than not opening at all.
-  var showIntro = false;
-  try {
-    final prefs =
-        await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
-    showIntro = Config.isDev
-        ? false
-        : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
-  } catch (_) {}
+  // gets the whole welcome flow rather than the chooser on its own.
+  final showIntro = Config.isDev
+      ? false
+      : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
   runApp(MyApp(
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
-    // Black-screen diagnostics: start counting frames and write the launch
-    // banner. Restoring the previous run's log first keeps the lines from
-    // before the force-close (the only way out of the black screen) visible
-    // above this launch instead of only in the file.
-    unawaited(LogService.restore().then((_) => RenderDiagnostics.install()));
-    // Plugin/service startup runs after the first frame — see
-    // _initServicesAfterFirstFrame for why it must never happen before it.
-    unawaited(_initServicesAfterFirstFrame());
     // One-time backfill of the item-history journal from pre-journal data.
     // Deliberately a few seconds after the first frame so it never competes
     // with startup or the home page's initial load; once seeded it is a
@@ -184,41 +169,6 @@ Future<void> main() async {
     // skipped here (mode not chosen yet) — the mode picker settles it.
     unawaited(Future<void>.delayed(const Duration(seconds: 1))
         .then((_) => PermissionFlow.maybeRequestAfterUpdate()));
-  });
-}
-
-/// Plugin/service startup that used to be awaited in [main] before `runApp`.
-/// Any of these platform-channel calls stalling — the notification plugin,
-/// the timezone lookup, `AndroidAlarmManager`, rescheduling every alarm with
-/// the OS, home-widget registration — kept the first frame from ever
-/// rendering, which on Android is a black screen only a force-close fixes
-/// (the intermittent black-screen-at-open bug; same class as the v0.1.85
-/// diagnostics one). Now they run right after the first frame: order is
-/// preserved (alarm rescheduling needs the notification plugin initialized
-/// first), each step gets a timeout so a wedged plugin can't also stall the
-/// steps after it, and a failure is logged instead of aborting the chain.
-Future<void> _initServicesAfterFirstFrame() async {
-  Future<void> step(String name, Future<void> Function() body) async {
-    try {
-      await body().timeout(const Duration(seconds: 20));
-    } catch (e) {
-      LogService.add('startup', '$name init failed: $e');
-      unawaited(AlarmLog.warn('ENV', 'startup step "$name" failed: $e'));
-    }
-  }
-
-  await step('notifications', NotificationService.initialize);
-  if (!kIsWeb) {
-    await step('sms report scheduler', SmsReportScheduler.applyFromConfig);
-  }
-  await step('alarms', AlarmService.instance.load);
-  // Snapshot the device/permission state into the alarm log on every launch,
-  // so a missed alarm can be diagnosed from the file after the fact. Fire and
-  // forget: must not hold up the widget registration below.
-  unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'));
-  await step('home widgets', () async {
-    await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
-    await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
   });
 }
 
@@ -275,13 +225,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // the stream's onError — which fails desktop/CI test runs.
     if (!kIsWeb && Platform.isAndroid) {
       try {
-        HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
-          RenderDiagnostics.log('launch uri from widget: ${uri ?? 'none'}');
-          _handleWidgetClick(uri);
-        }).catchError((_) {});
+        HomeWidget.initiallyLaunchedFromHomeWidget()
+            .then(_handleWidgetClick)
+            .catchError((_) {});
         HomeWidget.widgetClicked.listen(
           _handleWidgetClick,
-          onError: (e) => RenderDiagnostics.log('widgetClicked stream error: $e'),
+          onError: (_) {},
         );
       } catch (_) {}
       // Text shared into the app from other apps becomes a task on Today.
@@ -297,32 +246,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeMetrics() {
-    // The surface coming back after a re-front shows up here; the black-screen
-    // reports are resumes where this happens and no frame follows.
-    RenderDiagnostics.onMetricsChanged();
-  }
-
-  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
-    // Records the state change and, on resume, watches for the frames that
-    // make the app visible again — the black screen is exactly "resumed, and
-    // then no frame ever". Diagnostics only; it changes nothing about how the
-    // app resumes.
-    RenderDiagnostics.onLifecycleChanged(state);
-    // Do NOT force a frame on resume here. 0.1.143 added
-    // `scheduleForcedFrame()` as belt-and-braces against a black window and
-    // it was the black window: `scheduleForcedFrame` ignores `framesEnabled`
-    // and sets the binding's `_hasScheduledFrame` flag. On a resume the Dart
-    // lifecycle event arrives before the destroyed Android surface is back,
-    // so the forced vsync request is never serviced and the flag stays set
-    // forever — after which every legitimate `scheduleFrame()` (markNeedsPaint,
-    // surface recreation, setState) early-returns on `if (_hasScheduledFrame
-    // || !framesEnabled) return;` and no frame is ever requested again. The
-    // app stays alive and responsive while its window never repaints, which is
-    // exactly the "black screen only a force-close clears" report from builds
-    // 115-119. Build 114 had no forced frame and re-fronted fine.
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
@@ -357,10 +282,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _handleWidgetClick(Uri? uri) async {
     if (uri == null) return;
-    LogService.add('widget', 'tap received: $uri');
-    // Same line in the shared timeline, with the frame state at the moment the
-    // tap arrived: a warm tap that ends black still gets this far.
-    RenderDiagnostics.log('widget tap: $uri | ${RenderDiagnostics.snapshot()}');
     final id = uri.queryParameters['id'];
     // Both widgets use `toggle` / `open` as hosts, so the scheme decides which
     // one is talking before the host does.
@@ -398,13 +319,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // A warm launch may not have a frame pending; without this the callback
     // below would only run at the next unrelated rebuild.
     WidgetsBinding.instance.scheduleFrame();
-    RenderDiagnostics.log(
-        'widget open: asked for a frame, waiting for it to pop to the task '
-        'list | ${RenderDiagnostics.snapshot()}');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Never logged after a widget tap => the frame this callback waits for
-      // never happened, i.e. the black window.
-      RenderDiagnostics.log('widget open: frame arrived, showing the task list');
       appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
     });
   }

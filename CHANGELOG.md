@@ -1,39 +1,21 @@
 # Changelog
 
-## [0.1.155] - 2026-08-15
-- New attempt at the widget black screen, aimed at the one layer every previous fix left untouched. The latest logs were the clue: they show the app building *and* rasterizing frames, with the engine itself reporting its UI is on screen, while the screen stays black - so the frames are being drawn into a display surface that never actually reaches the glass. The app now renders through Android's ordinary view pipeline (a TextureView) instead of a separate SurfaceView, which is immune to the surface-recreation glitch that signature points to. Every earlier renderer change swapped the drawing *engine*; this changes the *surface* it draws onto, which is what the evidence now implicates
-- Added the logging that was still missing to prove it either way: the Android side now watches Flutter's own render surface and records the moment it is created, resized or destroyed, and reports its validity every second after the app comes forward; both the app and the Android side now keep a once-a-second heartbeat while the app is in front, so a black screen leaves an unbroken second-by-second trail instead of the silent gap the last two captures had
-
-## [0.1.154] - 2026-08-15
-- App Logs: new export button writes the full app + device log bundle to a .txt file you choose a folder for — the copy button's trimmed report is still there for quick pastes
-
-## [0.1.153] - 2026-08-15
-- Fixed the App Logs copy button silently reusing the device log it read when the page was first opened instead of its current contents — two reports pulled minutes apart during the same visit to the page came back with byte-identical device halves, which is the "device log goes quiet while the app keeps running" shape every earlier black-screen field report has shown. The button now re-reads the device log fresh every time, like it already did for the app log
-
-## [0.1.152] - 2026-08-15
-- The shared log now leads with the Android half and keeps the newest lines of each: the first black-screen report was cut off exactly where the evidence was, because the app's own log records nothing at all while the screen is black
-- Added the earliest line each side can write - the moment the app's process is created, and the moment the app's code starts running - so a black screen that logs nothing else still says whether the widget tap started the app at all, and how far it got
-
-## [0.1.151] - 2026-08-15
-- Sharper black-screen logs after the first real capture: the app now counts the frames Flutter actually builds (immediately and exactly) instead of the ones the engine reports back about a second later, so "no frame after resume" is a real finding rather than a side effect of that delay - and the first frame is timed to the millisecond
-- The Android side now asks the renderer directly whether Flutter's UI is on screen, and logs the moment it appears or goes away; the view description it prints also survives release builds, where renamed classes made it report "no Flutter view" on every device
-- The log now spells out when the app was closed for good (a Back press or a swipe from recents) rather than left running, since only a still-running app can show the widget-tap black screen
-
-## [0.1.150] - 2026-08-15
-- The widget-tap black screen can now be diagnosed instead of guessed at: the app records what happens on the way back to the foreground - the Android side logs the tap's intent, every lifecycle step and whether the window actually drew anything, and the app side logs whether Flutter produced a frame after the resume, with the exact scheduler state that decides it
-- App Logs survive a force-close: both logs are written to files, so the very act of recovering from a black screen no longer wipes the evidence. The previous run is shown again above the new one when the app reopens
-- App Logs got a copy button that puts both logs, with the build number, on the clipboard in one go - that is the text to paste into a bug report - plus a "Device" tab showing the Android-side record
-
-## [0.1.149] - 2026-08-15
-- Fixed the widget-tap black screen for real this time: the culprit was a "belt-and-braces" forced repaint added in 0.1.143, not the renderer. Returning to the foreground fired that repaint before Android had given the app its drawing surface back, and Flutter then believed a frame was already on its way - so it never asked for another one, leaving the app running perfectly behind a window that stayed black until a force-close. Build 114 never did this, and neither does this build
+## [0.1.156] - 2026-08-15
+- Rebuilt the app from the v0.1.114 snapshot and re-applied every feature shipped since then **except** the ones below, all of which touched app startup or the widget/resume rendering path and were the source (or an artifact) of the recurring "widget tap re-fronts the app as a black screen" bug. Everything else from v0.1.115 through v0.1.155 is included: the daily streak (incl. the yearly calendar and 26 challenges), the Obsidian sync integration, dice timer + its alarm-style ring, mode picker (simple/full), permission up-front flow, Settings collapse/search, automatic + on-demand backup, folder sync with an Obsidian Markdown export, self-update from GitHub releases with one-version rollback, the Android share-sheet entry, Sync-now tile, clickable description links, and the App Logs copy/export-to-.txt buttons (rebuilt without the black-screen-specific Device tab and native log watcher, which were dropped along with the rest of the diagnostics)
+- **Skipped, on purpose** (see SPEC.md §3 and §8 for the restored behavior each one temporarily changed):
+  - **v0.1.136** — "Fixed the occasional black screen when opening the app... startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame." This deferred-first-frame rewrite of `main()` is the change most directly implicated in the bug reports that followed; this build keeps the original eager startup sequence instead
+  - **v0.1.142** — "Fixed tapping the tasks home-screen widget showing a black screen... widget taps now always return to the existing app, and a stray duplicate closes itself." This build keeps the original `android:taskAffinity=""` and does not add the duplicate-instance `finish()` check in `MainActivity`
+  - **v0.1.143** — switched the Android renderer from Impeller to Skia "to fix" the widget black screen; field testing later showed Skia was the actual cause. This build never opts out of Impeller in the first place
+  - **v0.1.147** — reverted 0.1.143's renderer switch back to Impeller (moot here, since 0.1.143 was never applied) but also added a forced repaint on every foreground resume
+  - **v0.1.149** — removed that forced repaint, having identified it as the real cause of a still-recurring black screen (also moot here, since it was never added)
+  - **v0.1.150, v0.1.151, v0.1.152** — progressively deeper widget-tap/black-screen diagnostics: a native (Android) log watcher, a render-scheduler heartbeat, and process/isolate-startup breadcrumbs
+  - **v0.1.155** — switched `MainActivity`'s render surface from `SurfaceView` to `TextureView` and added a render-surface heartbeat, the latest attempt at the same bug
+- Bumped straight to 0.1.156 (there is no 0.1.149-0.1.155 in this line's own history) so the version number stays ahead of `dev`'s highest released build
 
 ## [0.1.148] - 2026-08-09
 - Settings → Sync & export got a "Sync now" tile: run a sync by hand instead of waiting for the next app quit, with the time and task count of the last sync shown right on the tile
 - Web links in descriptions are now clickable: URLs in wishlist items and on the task-details page open in the browser with a tap
 - The wishlist add/edit dialog now puts labels and the quick-priority buttons right under the title, with the description at the bottom - quicker to file a wish with just a title and a priority
-
-## [0.1.147] - 2026-08-08
-- Fixed the widget tap black screen coming back in recent builds: 0.1.143's switch from the Impeller renderer to Skia turned out to be the cause, not the cure - build 114 (0.1.142, still on Impeller) re-fronted fine while every Skia build (115-118) could return from the background as a black, unresponsive window. The app now renders with Impeller again (the Flutter default); the forced repaint on returning to the foreground and the widget-tap breadcrumbs in App Logs stay
 
 ## [0.1.146] - 2026-08-08
 - Updates now come from the two APKs the repo keeps in `github_releases/`: "Check for updates" offers the newest build as before, and a second button goes one version back - handy when a fresh build misbehaves (Android blocks downgrades, so the older build may need the current version uninstalled first; export a backup before doing that)
@@ -46,11 +28,6 @@
 - Tapping "Longest streak ever" on the streak page now opens a yearly streak calendar: all twelve months of a year with the longest streak highlighted in flame orange (grace days outlined), every other active day in light orange, and a header naming the streak's exact first and last day - browse other years with the arrows
 - The streak page got 26 Duolingo-style challenges with an earned counter and progress bars: time-of-day badges (complete a task before 8:00, before 6:00, after 22:00, over lunch), single-day counts (3/5/10/20 tasks in one day), streak lengths (7 up to 365 days), calendar patterns (weekend pair, a Monday, the 1st of a month, a full calendar month, a comeback after a broken streak) and lifetime totals (active days and completed tasks up to 1000)
 - Completion times are now recorded alongside the daily counts (from this version on), powering the time-of-day challenges; untoggling a task removes its time again
-
-## [0.1.143] - 2026-08-07
-- Second fix for the widget tap showing a black screen while the app was open in the background: switched the Android renderer from Impeller (the Flutter 3.29 default, which on some phones comes back from the background as a black, unresponsive window) back to the long-proven Skia renderer
-- The app now also forces a repaint every time it returns to the foreground, so a recreated screen surface can never stay blank
-- Widget taps leave a breadcrumb in the App Logs page to help diagnose any remaining launch issues
 
 ## [0.1.142] - 2026-08-06
 - Fixed tapping the tasks home-screen widget showing a black screen when the app was already open in the background (only a force-close recovered it): the widget tap could start a second copy of the app in its own task instead of bringing the running one back to the front - widget taps now always return to the existing app, and a stray duplicate closes itself instead of sitting on a black launch window

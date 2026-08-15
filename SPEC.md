@@ -79,43 +79,39 @@ Dependencies and why they exist:
 
 ## 3. App startup sequence (order matters)
 
-`main()` in `lib/main.dart`, strictly in this order. Guiding rule (0.1.136):
-**nothing before `runApp` may block indefinitely** — until the first frame
-renders, Android shows a black window, so any pre-frame `await` that hangs is
-the intermittent black-screen-at-open bug (first hit v0.1.85 via awaited
-diagnostics, hit again pre-0.1.136 via the plugin-init awaits).
+`main()` in `lib/main.dart`, strictly in this order:
 
 1. `StartupTimeService.start()` — stopwatch for the <1s cold-start budget.
 2. `WidgetsFlutterBinding.ensureInitialized()`.
 3. `await Config.load()` — reads `settings.json` so theme/tabs are right before
-   first frame. Wrapped in try/catch with a 5 s timeout: on failure the app
-   opens with defaults instead of never opening.
-4. SharedPreferences (also try/catch + 5 s timeout) → `showIntro` =
-   `!intro_shown || !Config.modeChosen` (always skipped in dev builds; false if
-   prefs fail); the mode question closes the intro, so an unanswered mode
-   brings the whole welcome flow back rather than the chooser alone.
-5. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
-   post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
-   mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
-   for asking the mode question again (Settings → Mode & features, §4.6).
-6. Post-first-frame, `_initServicesAfterFirstFrame()` (fire-and-forget, order
-   preserved, each step in try/catch with a 20 s timeout so one wedged plugin
-   can't stall the rest; failures land in LogService + `alarm_log.txt`):
-   1. `NotificationService.initialize()` — plugin + notification channels
-      (memoized: concurrent callers — e.g. `getAlarmLaunchPayload` in
-      `MyApp.initState` — share one underlying init).
-   2. Non-web: `SmsReportScheduler.applyFromConfig()` — restore the daily SMS
-      alarm chain.
-   3. `AlarmService.instance.load()` — load persisted alarms + reschedule
-      (memoized so the alarms page's own `load()` can't double-reschedule).
-   4. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))`.
-   5. Home-widget setup: `HomeWidget.setAppGroupId` +
-      `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
-7. Also post-first-frame (deferred 1 s, fire-and-forget):
-   `PermissionFlow.maybeRequestAfterUpdate()` — on the first open after an app
-   update, asks for **every** runtime permission in one pass (§9); skipped
-   while the mode picker has never been answered, because the picker's
-   full-mode choice runs the same flow itself.
+   first frame.
+4. `await NotificationService.initialize()` — plugin + notification channels
+   (memoized: concurrent callers — e.g. `getAlarmLaunchPayload` in
+   `MyApp.initState` — share one underlying init).
+5. Non-web: `await SmsReportScheduler.applyFromConfig()` — restore the daily
+   SMS alarm chain.
+6. `await AlarmService.instance.load()` — load persisted alarms + reschedule
+   (memoized so the alarms page's own `load()` can't double-reschedule).
+7. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))` —
+   fire-and-forget, must not delay first frame.
+8. Home-widget setup (best-effort, wrapped in try/catch): `HomeWidget.setAppGroupId` +
+   `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
+9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
+   (always skipped in dev builds); the mode question closes the intro, so an
+   unanswered mode brings the whole welcome flow back rather than the chooser
+   alone.
+10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
+    post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
+    mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
+    for asking the mode question again (Settings → Mode & features, §4.6).
+11. Also post-first-frame (fire-and-forget, deliberately deferred so they never
+    compete with the first frame or the home page's initial load):
+    - `ItemHistorySeeder.runOnce()` (3 s) — one-time journal backfill.
+    - `PreUpdateBackup.recordCurrentVersion()` (3 s).
+    - `PermissionFlow.maybeRequestAfterUpdate()` (1 s) — on the first open
+      after an app update, asks for **every** runtime permission in one pass
+      (§9); skipped while the mode picker has never been answered, because the
+      picker's full-mode choice runs the same flow itself.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
@@ -1001,151 +997,9 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   of `Config.startPage`. So the widget always lands on the task list, warm or cold, instead
   of resuming on whatever subpage the app was left on. (RemoteViews only deliver single
   clicks — there is no double-tap on a home-screen widget.)
-  **Warm re-front (0.1.142):** `MainActivity` must keep the *default* task affinity —
-  never `android:taskAffinity=""`. With an empty affinity Android could not match the
-  widget's PendingIntent (which implicitly carries `FLAG_ACTIVITY_NEW_TASK`) to the app's
-  existing task while the app sat in the background, so it started a second MainActivity
-  in a new task that never got past the launch window: the widget opened a black screen
-  only a force-close fixed. With the default affinity plus `launchMode="singleTop"` a
-  warm tap re-fronts the running task via `onNewIntent` → `HomeWidget.widgetClicked`.
-  `MainActivity.onCreate` additionally finishes a duplicate non-task-root instance
-  created by a widget launch, revealing the live one underneath.
-  **Black screen on warm re-front (introduced 0.1.143, fixed 0.1.149) — the forced
-  frame was the bug.** 0.1.143 shipped three changes at once: `EnableImpeller=false`
-  (Skia), a `scheduleForcedFrame()` on `resumed`, and `[widget]` tap breadcrumbs.
-  Builds 115–118 black-screened, so 0.1.147 blamed Skia and removed the opt-out —
-  but build 119 (Impeller again, forced frame still in) black-screened too, which
-  isolates the remaining variable. **Never call `WidgetsBinding.instance
-  .scheduleForcedFrame()` on `AppLifecycleState.resumed`.** Unlike `scheduleFrame()`
-  it ignores `framesEnabled`, and both set the scheduler binding's `_hasScheduledFrame`
-  flag. On a warm re-front the Dart lifecycle event arrives *before* Android has
-  handed back the destroyed render surface, so the forced vsync request is never
-  serviced and the flag stays `true` forever. From then on every legitimate
-  `scheduleFrame()` — `markNeedsPaint`, surface recreation, `setState` — hits
-  `if (_hasScheduledFrame || !framesEnabled) return;` and no frame is ever requested
-  again: the app keeps running (timers, isolates, touch dispatch) behind a window
-  that never repaints, exactly the "black screen only a force-close clears" report.
-  0.1.149 removes the call, restoring build 114's resume path. Renderer stays
-  Impeller (the Flutter 3.29 Android default, as in 114) — do not reintroduce
-  `EnableImpeller=false`; it was never the cause. Kept from 0.1.143: every widget
-  tap logs a `[widget]` breadcrumb to the App Logs page.
-  **Still reproducible after 0.1.149 → instrumented in 0.1.150.** The report came
-  back on a build with no forced frame, so the remaining cause is unknown and the
-  next step is evidence, not another guess. Two records are written, both to files
-  because the force-close that ends the black screen destroys anything in memory:
-  - **Android** (`DiagLog.kt` → `native_log.txt` in the private files dir, shown in
-    App Logs → Device): `MainActivity` logs `onCreate` (task id, `isTaskRoot`,
-    whether it was recreated, the full intent — action/data/flags/categories),
-    the duplicate-launch `finish()` branch, `onNewIntent`, start/resume/pause/stop/
-    destroy (with `isFinishing`), window-focus changes, the engine's own
-    `onFlutterUiDisplayed`/`onFlutterUiNoLongerDisplayed`, and a probe 1.5 s and
-    5 s after every resume carrying `flutterUi=` (`FlutterRenderer
-    .isDisplayingFlutterUi` — the renderer's direct answer to "is Flutter on
-    screen?"), the window's draw count from a `ViewTreeObserver.OnDrawListener`,
-    the decor geometry and a four-level walk of the content view. This half keeps
-    recording when the Dart half is wedged.
-  - **Dart** (`RenderDiagnostics` → `LogService` → `app_log.txt`, mirrored into the
-    native file through the `besttodo/diag` channel so one timeline holds both):
-    every lifecycle change and metrics change logs a snapshot of `frames / raster /
-    hasScheduledFrame / framesEnabled / lifecycleState / view size`; each resume
-    starts a 500 ms watchdog that reports `first frame after resume +Nms` (the
-    frame's own timestamp, taken in the frame callback) or `NO FRAME …ms after
-    resume — window is black` at 1/3/5/10 s, requests one plain `scheduleFrame()`
-    at 2 s (announced in the log so an induced frame is never read as spontaneous
-    recovery — **never** `scheduleForcedFrame`, see above) and reports at 4 s
-    whether that produced anything. `_openTasks` logs both that it asked for a
-    frame and, from the post-frame callback, that the frame arrived: the second
-    line missing after a widget tap *is* the black window.
-  **Two frame counters, and why (learned from the first field capture, 0.1.151).**
-  `frames` counts frames Flutter *built*, from `addPersistentFrameCallback` —
-  exact and immediate. `raster` counts frames the engine *rasterized*, from
-  `addTimingsCallback` — the engine batches those and flushes roughly once a
-  second. 0.1.150 used timings for the verdict and every healthy resume duly
-  reported "first frame after resume +1001 ms"; a real black screen would have
-  looked the same for that first second. Build-frames decide the verdict; raster
-  is context. Same lesson on the native side: the original view walk matched class
-  names containing "Flutter"/"Surface", which **R8 renames in a release build**, so
-  it printed "no Flutter view in hierarchy" on every device — never identify engine
-  views by name in shipped code; geometry and the renderer's own flags survive.
-  **The Dart side is silent during the failure (second field capture, 0.1.152).**
-  A reproduction on 0.1.151 left a 45-second hole in `app_log.txt` — background,
-  tap, black screen, force-close — with no lifecycle change, no widget tap, no
-  frame verdict, nothing. Whatever the black window is, it is not "the app
-  running behind a dead surface", which is what every fix from 0.1.142 on
-  assumed; the Dart isolate is not there to log. That makes the Android file the
-  only witness, so: the copy button now emits the **device log first** (the first
-  report was truncated exactly at it) and trims both halves to their newest
-  lines, `MainApplication.onCreate` logs `process start pid=`, and `main()` logs
-  `main() entered` as its first statement. Those two lines split the hole three
-  ways — no `process start` means the tap never reached the app; `process start`
-  with no `onCreate` means it died between process and activity; `main() entered`
-  with no first frame means startup wedged before rendering.
-  Reading a report: `hasScheduledFrame=true` with no frames means a frame was
-  requested and never serviced (wedged scheduler); `framesEnabled=false` means the
-  engine still thinks the app is invisible and is dropping requests; `frames`
-  climbing while `flutterUi=false` points at the app painting into a surface the
-  window no longer shows. Note also that a capture only bears on this bug if the
-  app was still alive: `onDestroy isFinishing=true` (Back press, swipe from
-  recents) means the next widget tap is a cold start, not the warm re-front that
-  fails — reproduce by leaving the app with Home.
-  **The "device log goes quiet" reports were the report tool, not the app
-  (third field capture, 0.1.153).** Two exports pulled ~36 s apart during the
-  same visit to App Logs came back with a byte-identical device half, cut off
-  mid-session, while the app half kept growing the whole time — the same shape
-  0.1.152 blamed on the native side going silent. Cause: `AppLogsPage._report()`
-  read the device log once in `initState` and reused that string on every
-  `_copyAll()` after, while the app log was always re-read fresh
-  (`LogService.readFile()`); the native file itself was fine, `DiagLog.write`
-  keeps appending regardless. Any report pulled without first doing a
-  pull-to-refresh on the Device tab was silently missing everything the native
-  side logged after the page opened — which, for a report written *after*
-  noticing a black screen, is exactly the window that matters. Fixed by having
-  `_report()` call `DeviceLogService.read()` fresh every time (and refresh the
-  visible Device tab to match) instead of trusting the cached field. This does
-  not rule out a real black screen still occurring — no capture has shown a
-  `NO FRAME` verdict since 0.1.149 — but it means every report gathered before
-  0.1.153 needs re-reading with this in mind, and the tool can now be trusted
-  for the next one.
-  **The surface is the last suspect (0.1.153–154 captures → 0.1.155).** The
-  0.1.153/0.1.154 captures are all cold-start-from-widget launches (`onDestroy
-  isFinishing=true` → `process start` → `onResume window(size=0x0
-  attached=false)`), and every render signal in them reads *healthy*:
-  `flutterUi=true`, `frames` climbs 0→64, `raster` climbs 0→65 — Flutter builds
-  and rasterizes frames throughout — yet the screen is black. That rules out the
-  two causes the instrumentation was built to catch (wedged scheduler, dropped
-  frame requests): the frames exist. What none of it observed was the layer
-  those frames land on — the Android render **surface**. A SurfaceView whose
-  surface is present but never composited to the display looks exactly like
-  this, and it is a documented Android failure after the OS destroys/recreates a
-  SurfaceView's surface (or brings a window up 0x0/detached, as these cold
-  starts do). Two changes follow:
-  - **Fix hypothesis: `RenderMode.texture`.** `MainActivity.getRenderMode()`
-    now returns `RenderMode.texture`, so the engine presents into a
-    `FlutterTextureView` drawn through the ordinary view pipeline instead of a
-    separate `FlutterSurfaceView`. That pipeline has no surface-recreate race,
-    and its frames register on the window's `OnDrawListener`, so `windowDraws`
-    becomes a real present-counter instead of the flat 1–2 a SurfaceView reads.
-    This is deliberately *not* another engine swap (Impeller stays; do not
-    reintroduce `EnableImpeller=false`) — every prior renderer change swapped
-    the drawing engine, this changes the view the engine draws into, which is
-    the layer the evidence implicates. TextureView costs marginally more GPU
-    memory and one copy per frame — irrelevant for a to-do list.
-  - **The two remaining blind spots, instrumented.** (1) A **render-surface
-    witness**: `MainActivity` finds Flutter's render view (SurfaceView *or*
-    TextureView) and, for a SurfaceView, subscribes an additive
-    `SurfaceHolder.Callback` logging `surface created/changed/destroyed`; every
-    heartbeat also polls the view's `isValid`/`isAvailable`, size and
-    visibility, so a surface that dies or never comes up is a recorded event.
-    (2) A **gap-free heartbeat** on *both* sides while the app is foreground: a
-    once-a-second line (dense for the first ~15 s after a resume, on any stall,
-    and sparse otherwise), replacing the two one-shot native probes. The last
-    two captures had a *silent* Dart side during the black window; the heartbeat
-    fills that hole and splits the failure three ways — heartbeat **stops** =
-    isolate wedged; heartbeat continues with `frames` **flat** = scheduler
-    wedged; heartbeat continues with `frames` **climbing** = drawing into a
-    surface that never reaches the screen (which is what 153/154 showed). Both
-    heartbeats stop on background so they neither drain power nor bury the next
-    resume's evidence.
+  **Warm re-front:** `MainActivity` uses `android:taskAffinity=""` (its own task,
+  separate from the launcher/other activities) with `launchMode="singleTop"`; a warm tap
+  re-fronts the running task via `onNewIntent` → `HomeWidget.widgetClicked`.
   The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
@@ -1468,22 +1322,10 @@ Since 0.1.101 this import feeds the task list via the wishlist migration above (
 installs get the backlog as wish tasks on first `loadTaskList`).
 
 ### 10.7 The rest
-**App Logs**: `LogService` — a `ValueNotifier` list (self-trims >24 h) that since 0.1.150
-also appends every entry to `app_log.txt` in the documents dir (chained writes, trimmed at
-256 KB to the newest 160 KB) and restores the file's last 400 lines into the list after the
-first frame. Persistence exists for the widget black screen: the only way out of it is a
-force-close, which used to destroy the in-memory log in the act of recovering. Three tabs —
-Logs, **Device** (the Android breadcrumb file, §8) and Sync — plus a copy button that puts
-the version banner, the app log file's last 150 lines and the device log's last 250 on the
-clipboard as one report (device half first: the first field report of a black screen was
-cut off exactly at the half that records the failure; both halves are re-read from disk on
-every report since 0.1.153, the page's cached `_deviceLog` was serving the snapshot taken
-when the page opened), an **export** button (0.1.154) that
-writes the same report *untrimmed* to `besttodo_logs_<yyyymmdd_hhmmss>.txt` in a folder
-picked with `getDirectoryPath` (Downloads offered as the start where the platform has one),
-and a FAB that clears both. Export is the answer when the interesting entry is further back
-than the copy's tail or the log is too big for a chat box. See §8 for what gets logged and
-how to read it.
+**App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted). A
+copy button (app-bar) puts the current log on the clipboard, versioned and timestamped, for
+pasting into a bug report; an export button writes the same content to a timestamped `.txt`
+file in a user-picked folder (same shape as the other exports in the app).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer

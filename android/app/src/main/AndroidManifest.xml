@@ -25,29 +25,15 @@
          the system package installer. The user still confirms the install
          and grants the one-time "install unknown apps" toggle. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- android:name is .MainApplication, not ${applicationName}:
-         MainApplication is a plain android.app.Application (all the v2
-         embedding needs) whose only job is to log the moment this process is
-         created, so a black screen that logs nothing else at least says
-         whether the tap started the app at all. -->
     <application
         android:label="BestToDo"
-        android:name=".MainApplication"
+        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- No android:taskAffinity="" here, on purpose: with an empty (null)
-             affinity Android can fail to find the app's existing task when a
-             home-screen widget's PendingIntent launches MainActivity while the
-             app sits in the background. It then starts a second MainActivity
-             in a fresh task, whose Flutter engine never gets past the launch
-             window — the "widget opens a black screen until the app is
-             force-closed" bug. The default affinity (the package name) lets
-             every launch path — app icon, widget tap, notification — agree on
-             the one existing task, so a background app is simply brought back
-             to the front. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -69,9 +55,9 @@
              app offers BestToDo, which creates a task on Today from the
              shared text. A translucent trampoline (not MainActivity itself):
              the share sheet starts its target inside the sharing app's task,
-             and a second MainActivity there means a second Flutter engine —
-             the black-screen failure mode described above. ShareActivity
-             forwards the text into the app's real task and finishes. -->
+             and a second MainActivity there would mean a second Flutter
+             engine competing for the same app state. ShareActivity forwards
+             the text into the app's real task and finishes. -->
         <activity
             android:name=".ShareActivity"
             android:exported="true"
@@ -89,14 +75,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Renderer: Impeller, the Flutter 3.29 Android default — no
-             EnableImpeller=false opt-out here, on purpose. 0.1.143 (build 115)
-             switched to Skia suspecting Impeller resume bugs, but field
-             testing proved the opposite on real devices: build 114 (Impeller)
-             re-fronted fine from a widget tap, while every Skia build
-             (115-118) came back from the background as a permanently black
-             window. Skia's GL surface is what fails to repaint after Android
-             destroys it; do not reintroduce the opt-out. -->
         <service
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
             android:permission="android.permission.BIND_JOB_SERVICE"
