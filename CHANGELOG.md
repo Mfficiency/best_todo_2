@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.155] - 2026-08-15
+- New attempt at the widget black screen, aimed at the one layer every previous fix left untouched. The latest logs were the clue: they show the app building *and* rasterizing frames, with the engine itself reporting its UI is on screen, while the screen stays black - so the frames are being drawn into a display surface that never actually reaches the glass. The app now renders through Android's ordinary view pipeline (a TextureView) instead of a separate SurfaceView, which is immune to the surface-recreation glitch that signature points to. Every earlier renderer change swapped the drawing *engine*; this changes the *surface* it draws onto, which is what the evidence now implicates
+- Added the logging that was still missing to prove it either way: the Android side now watches Flutter's own render surface and records the moment it is created, resized or destroyed, and reports its validity every second after the app comes forward; both the app and the Android side now keep a once-a-second heartbeat while the app is in front, so a black screen leaves an unbroken second-by-second trail instead of the silent gap the last two captures had
+
 ## [0.1.154] - 2026-08-15
 - App Logs: new export button writes the full app + device log bundle to a .txt file you choose a folder for — the copy button's trimmed report is still there for quick pastes
 

@@ -1106,6 +1106,46 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   `NO FRAME` verdict since 0.1.149 — but it means every report gathered before
   0.1.153 needs re-reading with this in mind, and the tool can now be trusted
   for the next one.
+  **The surface is the last suspect (0.1.153–154 captures → 0.1.155).** The
+  0.1.153/0.1.154 captures are all cold-start-from-widget launches (`onDestroy
+  isFinishing=true` → `process start` → `onResume window(size=0x0
+  attached=false)`), and every render signal in them reads *healthy*:
+  `flutterUi=true`, `frames` climbs 0→64, `raster` climbs 0→65 — Flutter builds
+  and rasterizes frames throughout — yet the screen is black. That rules out the
+  two causes the instrumentation was built to catch (wedged scheduler, dropped
+  frame requests): the frames exist. What none of it observed was the layer
+  those frames land on — the Android render **surface**. A SurfaceView whose
+  surface is present but never composited to the display looks exactly like
+  this, and it is a documented Android failure after the OS destroys/recreates a
+  SurfaceView's surface (or brings a window up 0x0/detached, as these cold
+  starts do). Two changes follow:
+  - **Fix hypothesis: `RenderMode.texture`.** `MainActivity.getRenderMode()`
+    now returns `RenderMode.texture`, so the engine presents into a
+    `FlutterTextureView` drawn through the ordinary view pipeline instead of a
+    separate `FlutterSurfaceView`. That pipeline has no surface-recreate race,
+    and its frames register on the window's `OnDrawListener`, so `windowDraws`
+    becomes a real present-counter instead of the flat 1–2 a SurfaceView reads.
+    This is deliberately *not* another engine swap (Impeller stays; do not
+    reintroduce `EnableImpeller=false`) — every prior renderer change swapped
+    the drawing engine, this changes the view the engine draws into, which is
+    the layer the evidence implicates. TextureView costs marginally more GPU
+    memory and one copy per frame — irrelevant for a to-do list.
+  - **The two remaining blind spots, instrumented.** (1) A **render-surface
+    witness**: `MainActivity` finds Flutter's render view (SurfaceView *or*
+    TextureView) and, for a SurfaceView, subscribes an additive
+    `SurfaceHolder.Callback` logging `surface created/changed/destroyed`; every
+    heartbeat also polls the view's `isValid`/`isAvailable`, size and
+    visibility, so a surface that dies or never comes up is a recorded event.
+    (2) A **gap-free heartbeat** on *both* sides while the app is foreground: a
+    once-a-second line (dense for the first ~15 s after a resume, on any stall,
+    and sparse otherwise), replacing the two one-shot native probes. The last
+    two captures had a *silent* Dart side during the black window; the heartbeat
+    fills that hole and splits the failure three ways — heartbeat **stops** =
+    isolate wedged; heartbeat continues with `frames` **flat** = scheduler
+    wedged; heartbeat continues with `frames` **climbing** = drawing into a
+    surface that never reaches the screen (which is what 153/154 showed). Both
+    heartbeats stop on background so they neither drain power nor bury the next
+    resume's evidence.
   The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.

@@ -13,12 +13,16 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -42,12 +46,67 @@ class MainActivity : FlutterActivity() {
     private var drawListenerAdded = false
     private val drawListener = ViewTreeObserver.OnDrawListener { drawCount++ }
 
+    // The one blind spot every prior build shared: the render surface itself.
+    // The Dart side can report frames built and rasterized, and the engine can
+    // report `isDisplayingFlutterUi=true`, while the actual Android surface
+    // those frames land on is gone or was never valid — which looks exactly
+    // like a black screen and shows up in none of those signals. These watch
+    // Flutter's own render view — a TextureView with the render-mode override
+    // above, a SurfaceView without it — and log when a SurfaceView's surface is
+    // created, resized or destroyed, plus the view's validity/availability on
+    // every heartbeat, so a surface that dies or never comes up is finally a
+    // recorded event instead of an inference.
+    private var renderView: View? = null
+    private var surfaceCallbackAdded = false
+    private val surfaceCallback = object : SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: SurfaceHolder) {
+            diag("render surface created ${describeHolder(holder)}")
+        }
+
+        override fun surfaceChanged(
+            holder: SurfaceHolder, format: Int, width: Int, height: Int
+        ) {
+            diag("render surface changed format=$format size=${width}x$height ${describeHolder(holder)}")
+        }
+
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            diag("render surface destroyed — nothing Flutter paints now reaches the screen")
+        }
+    }
+
+    // Repeating post-resume heartbeat (replaces the old two one-shot probes):
+    // a black window persists until a force-close, so a line every second for
+    // the first dozen seconds after a resume gives an uninterrupted Android
+    // record of it even when the Dart isolate has gone silent.
+    private var heartbeat: Runnable? = null
+    private var heartbeatTick = 0
+
     // The engine's own answer to "is Flutter's UI on screen?" — the one signal
     // that states the black screen directly instead of inferring it. Kept as a
     // field so the draw probe can ask at any moment.
     private var engine: FlutterEngine? = null
 
     private fun diag(message: String) = DiagLog.write(applicationContext, "native", message)
+
+    // Render with a TextureView instead of the default SurfaceView.
+    //
+    // The 0.1.153–154 captures are the first to rule the render surface out as
+    // "obviously dead": the engine reports frames built *and* rasterized and
+    // `isDisplayingFlutterUi=true` throughout, yet the screen stays black. That
+    // is the signature of a SurfaceView whose surface exists but is never
+    // composited to the display — a documented Android failure after the OS
+    // destroys and recreates a SurfaceView's surface across a background/resume
+    // (or a cold start whose window begins 0x0/detached, as these logs show).
+    // A TextureView is drawn through the ordinary view pipeline, so it is
+    // immune to that surface-recreate race and — a bonus for the diagnostics —
+    // its frames register on the window's own OnDrawListener, making
+    // `windowDraws` a true present-counter instead of the flat 1–2 it reads for
+    // a SurfaceView. The cost (marginally more GPU memory and one extra copy
+    // per frame) is irrelevant for a to-do list; reliability is the point here.
+    // Every prior renderer change swapped the *engine* (Impeller↔Skia); this
+    // changes the *view* the engine presents into, which is the layer the new
+    // evidence actually implicates. See SPEC §8.
+    override fun getRenderMode(): RenderMode = RenderMode.texture
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,26 +156,117 @@ class MainActivity : FlutterActivity() {
         drawsAtResume = drawCount
         resumeAtMs = System.currentTimeMillis()
         diag("onResume ${describeWindow()}")
-        // Two probes after the resume: by 1.5 s a healthy re-front has drawn
-        // several frames. "draws=0" here is the black window, caught on the
-        // Android side regardless of what Flutter believes.
-        scheduleDrawProbe(1500)
-        scheduleDrawProbe(5000)
+        attachSurfaceWitness()
+        startHeartbeat()
     }
 
-    private fun scheduleDrawProbe(delayMs: Long) {
-        mainHandler.postDelayed({
-            val since = drawCount - drawsAtResume
-            val age = System.currentTimeMillis() - resumeAtMs
-            // Flutter renders into its own surface, so the window's own draw
-            // count stays low (1-2) even on a perfectly healthy resume — it is
-            // context, not a verdict. `flutterUi` is the verdict: false here,
-            // seconds after a resume, is the black screen.
-            diag(
-                "probe +${age}ms flutterUi=${isFlutterUiDisplayed()} " +
-                    "windowDraws=$since ${describeWindow()} ${describeContentView()}"
-            )
-        }, delayMs)
+    // A once-per-second heartbeat for the first dozen seconds after a resume.
+    // Each line carries the verdict (`flutterUi`) plus the render surface's
+    // own validity, so a black window shows a steady flutterUi=true /
+    // surface-invalid (or windowDraws not moving) trail across the whole
+    // episode rather than two isolated samples.
+    private fun startHeartbeat() {
+        stopHeartbeat()
+        heartbeatTick = 0
+        val tick = object : Runnable {
+            override fun run() {
+                heartbeatTick++
+                // The surface view can be laid out a beat after resume on a
+                // cold start (the window is 0x0/detached at onResume then);
+                // keep trying to attach until it is there.
+                attachSurfaceWitness()
+                val since = drawCount - drawsAtResume
+                val age = System.currentTimeMillis() - resumeAtMs
+                // The full content-view walk is verbose, so it rides along only
+                // on the 1st and 6th beats (≈1 s and 6 s) — enough to see the
+                // hierarchy's geometry early and again once a black window has
+                // had time to settle, without it on all twelve lines.
+                val tree = if (heartbeatTick == 1 || heartbeatTick == 6) {
+                    " ${describeContentView()}"
+                } else {
+                    ""
+                }
+                diag(
+                    "heartbeat +${age}ms flutterUi=${isFlutterUiDisplayed()} " +
+                        "windowDraws=$since ${describeRenderSurface()} " +
+                        "${describeWindow()}$tree"
+                )
+                if (heartbeatTick < 12) mainHandler.postDelayed(this, 1000)
+            }
+        }
+        heartbeat = tick
+        mainHandler.postDelayed(tick, 1000)
+    }
+
+    private fun stopHeartbeat() {
+        heartbeat?.let { mainHandler.removeCallbacks(it) }
+        heartbeat = null
+    }
+
+    // Finds Flutter's render view (a SurfaceView by default, a TextureView in
+    // texture render mode) and, for a SurfaceView, subscribes to its surface
+    // lifecycle. addCallback is additive — it does not displace the engine's
+    // own callback — and does not replay `surfaceCreated` for an
+    // already-created surface, so the per-heartbeat validity poll in
+    // describeRenderSurface() covers the window between attach and the next
+    // create/destroy event.
+    private fun attachSurfaceWitness() {
+        if (surfaceCallbackAdded) return
+        val view = findRenderView(findViewById(android.R.id.content))
+        renderView = view
+        when (view) {
+            is SurfaceView -> {
+                try {
+                    view.holder.addCallback(surfaceCallback)
+                    surfaceCallbackAdded = true
+                    diag("render view = SurfaceView ${describeRenderSurface()}")
+                } catch (t: Throwable) {
+                    diag("could not observe render surface: ${t.message}")
+                }
+            }
+            is TextureView -> {
+                // Flutter owns the TextureView's SurfaceTextureListener; the
+                // heartbeat polls isAvailable instead of displacing it.
+                surfaceCallbackAdded = true
+                diag("render view = TextureView ${describeRenderSurface()}")
+            }
+            null -> {} // Not laid out yet; the next heartbeat retries.
+            else -> {
+                surfaceCallbackAdded = true
+                diag("render view = ${view.javaClass.simpleName} (unexpected)")
+            }
+        }
+    }
+
+    private fun findRenderView(root: View?): View? {
+        if (root == null) return null
+        if (root is SurfaceView || root is TextureView) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val found = findRenderView(root.getChildAt(i))
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    private fun describeHolder(holder: SurfaceHolder): String {
+        val surface = holder.surface
+        val frame = holder.surfaceFrame
+        return "valid=${surface?.isValid} frame=${frame.width()}x${frame.height()}"
+    }
+
+    private fun describeRenderSurface(): String = try {
+        when (val v = renderView) {
+            is SurfaceView -> "renderSurface(SurfaceView ${v.width}x${v.height} " +
+                "valid=${v.holder.surface?.isValid} vis=${visibilityName(v.visibility)})"
+            is TextureView -> "renderSurface(TextureView ${v.width}x${v.height} " +
+                "available=${v.isAvailable} vis=${visibilityName(v.visibility)})"
+            null -> "renderSurface(not found yet)"
+            else -> "renderSurface(${v.javaClass.simpleName})"
+        }
+    } catch (t: Throwable) {
+        "renderSurface(read failed: ${t.message})"
     }
 
     private fun isFlutterUiDisplayed(): String = try {
@@ -127,16 +277,23 @@ class MainActivity : FlutterActivity() {
 
     override fun onPause() {
         super.onPause()
+        // The black window only happens while foreground; stop the per-second
+        // heartbeat so it neither wastes power nor buries the next resume's
+        // evidence under idle lines.
+        stopHeartbeat()
         diag("onPause draws=${drawCount - drawsAtResume} since resume")
     }
 
     override fun onStop() {
         super.onStop()
+        stopHeartbeat()
         diag("onStop")
     }
 
     override fun onDestroy() {
         removeDrawListener()
+        removeSurfaceCallback()
+        stopHeartbeat()
         mainHandler.removeCallbacksAndMessages(null)
         // isFinishing=true means the activity was closed for good (a Back
         // press, a swipe from recents) — the next widget tap is then a cold
@@ -186,6 +343,16 @@ class MainActivity : FlutterActivity() {
         } catch (t: Throwable) {
         }
         drawListenerAdded = false
+    }
+
+    private fun removeSurfaceCallback() {
+        if (!surfaceCallbackAdded) return
+        try {
+            (renderView as? SurfaceView)?.holder?.removeCallback(surfaceCallback)
+        } catch (t: Throwable) {
+        }
+        surfaceCallbackAdded = false
+        renderView = null
     }
 
     private fun describeIntent(intent: Intent?): String {

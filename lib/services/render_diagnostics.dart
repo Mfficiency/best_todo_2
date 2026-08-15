@@ -52,6 +52,21 @@ class RenderDiagnostics {
   static Timer? _watchdog;
   static bool _installed = false;
 
+  /// Gap-free liveness. The watchdog above only reports around a resume and
+  /// then goes quiet; the lifecycle/metrics lines only fire on a transition.
+  /// The first two field captures had a *silent* Dart side while the screen
+  /// was black — no transition, no verdict, nothing (SPEC §8). This heartbeat
+  /// runs a plain timer for the whole time the app is foreground, so a black
+  /// window right after a widget tap leaves a dense, uninterrupted trail
+  /// instead of a hole. Crucially it separates the three failure shapes: the
+  /// heartbeat *stopping* means the isolate itself is wedged (the timer never
+  /// fires); the heartbeat continuing with `frames` flat means the scheduler
+  /// is wedged; the heartbeat continuing with `frames` climbing means Flutter
+  /// is drawing into a surface that never reaches the screen.
+  static Timer? _heartbeat;
+  static int _heartbeatTick = 0;
+  static int _framesAtLastBeat = 0;
+
   /// The watchdog runs on Android only: it is the only platform with the bug,
   /// and its timers would otherwise outlive widget tests.
   static bool get _watchEnabled => !kIsWeb && Platform.isAndroid;
@@ -71,6 +86,12 @@ class RenderDiagnostics {
       _rasterFrames += timings.length;
     });
     unawaited(_logStartBanner());
+    // A cold start (including the widget's cold-start launch, which is where
+    // the recent captures show the black window) begins already `resumed`, so
+    // the lifecycle observer never sees a transition into it and never starts
+    // the heartbeat. Start it here, at the first frame, so that launch path is
+    // covered too.
+    _startHeartbeat();
   }
 
   /// Counts every frame Flutter builds and timestamps the first one after a
@@ -116,10 +137,45 @@ class RenderDiagnostics {
     log('lifecycle -> ${state.name} | ${snapshot()}');
     if (state == AppLifecycleState.resumed) {
       _startResumeWatch();
+      _startHeartbeat();
     } else {
       _watchdog?.cancel();
       _watchdog = null;
+      // Stop once the app is no longer in front: the black window only happens
+      // while foreground, and a timer left running in the background would both
+      // waste power and bury the next resume's evidence under idle lines.
+      _stopHeartbeat();
     }
+  }
+
+  /// Starts (or restarts) the foreground heartbeat. Android only — it is the
+  /// only platform with the bug, and a periodic timer would otherwise outlive
+  /// widget tests.
+  static void _startHeartbeat() {
+    if (!_watchEnabled) return;
+    _heartbeat?.cancel();
+    _heartbeatTick = 0;
+    _framesAtLastBeat = _frames;
+    _heartbeat = Timer.periodic(const Duration(seconds: 1), (_) {
+      _heartbeatTick++;
+      final flat = _frames == _framesAtLastBeat;
+      // Dense for the first 15 s after a resume (when the black window
+      // appears), and on any tick where no frame was built (a stall is always
+      // worth a line); otherwise a sparse keep-alive every 10 s so ordinary
+      // steady-state use does not flood the log.
+      final recent = _sinceResumeMs() < 15000;
+      if (recent || flat || _heartbeatTick % 10 == 0) {
+        log('heartbeat +${_sinceResumeMs()}ms '
+            '${flat ? '(no frame built since last beat) ' : ''}'
+            '| ${snapshot()}');
+      }
+      _framesAtLastBeat = _frames;
+    });
+  }
+
+  static void _stopHeartbeat() {
+    _heartbeat?.cancel();
+    _heartbeat = null;
   }
 
   /// Called when the window metrics change. A resume that ends black often
@@ -189,6 +245,7 @@ class RenderDiagnostics {
   static void resetForTest() {
     _watchdog?.cancel();
     _watchdog = null;
+    _stopHeartbeat();
     _installed = false;
     _frames = 0;
   }
