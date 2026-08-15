@@ -31,6 +31,17 @@ void main() {
     SyncService.resetForTest();
   });
 
+  /// Walks real-event-loop slices so the futures the copy handler awaits —
+  /// the log reads and the clipboard channel — actually complete; plain
+  /// `pump()` never advances them (see test/README.md).
+  Future<void> settleIo(WidgetTester tester, {int rounds = 20}) async {
+    for (var i = 0; i < rounds; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+  }
+
   testWidgets('the copy button hands over the app log and the device log',
       (tester) async {
     LogService.logs.value = <String>[
@@ -43,10 +54,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Copy logs'));
-    // The handler reads both logs before it copies, so give its futures a
-    // beat to resolve before the snackbar is expected.
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await settleIo(tester);
     await tester.pumpAndSettle();
 
     expect(clipboardCalls, hasLength(1));
