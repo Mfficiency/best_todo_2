@@ -7,12 +7,14 @@ import '../config.dart';
 import '../main.dart';
 import '../models/sms_recipient.dart';
 import '../models/sms_report_config.dart';
+import '../models/sync_log_entry.dart';
 import '../services/auto_backup_service.dart';
 import '../services/permission_flow.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
 import '../services/streak_service.dart';
+import '../services/sync_service.dart';
 import 'dice_timer_settings.dart';
 import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
@@ -149,6 +151,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Synced mode', 8,
         'sync offline folder background quit backup automatic tasks'),
     _SettingsSearchEntry('Sync folder', 8, 'sync directory location choose'),
+    _SettingsSearchEntry('Sync now', 8, 'sync manual run last synced'),
     _SettingsSearchEntry('Export Tasks', 8, 'backup save json'),
     _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
     _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
@@ -244,6 +247,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _scrollController.addListener(_updateActiveSectionFromScroll);
     _loadSmsConfig();
     _loadLastAutoBackup();
+    // Lazy, fire-and-forget: the "Sync now" tile shows the last sync from the
+    // persisted history once it arrives.
+    unawaited(SyncService.instance.ensureLoaded());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _updateActiveSectionFromScroll();
@@ -1214,6 +1220,30 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.folder_open),
             onTap: _pickSyncFolder,
           ),
+        if (_syncEnabled)
+          ValueListenableBuilder<List<SyncLogEntry>>(
+            valueListenable: SyncService.instance.entries,
+            builder: (context, entries, _) {
+              final folderChosen = _syncFolderPath.trim().isNotEmpty;
+              final last = entries.isEmpty ? null : entries.first;
+              return ListTile(
+                enabled: folderChosen,
+                leading: const Icon(Icons.sync),
+                title: const Text('Sync now'),
+                subtitle: Text(
+                  last == null
+                      ? (folderChosen
+                          ? 'No sync yet'
+                          : 'Choose a sync folder first')
+                      : last.success
+                          ? 'Last sync: ${_formatDateTime(last.at)} '
+                              '(${last.itemCount} tasks)'
+                          : 'Last sync failed: ${_formatDateTime(last.at)}',
+                ),
+                onTap: folderChosen ? _syncNow : null,
+              );
+            },
+          ),
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -1262,6 +1292,20 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _syncNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final entry = await SyncService.instance.syncNow();
+    if (!mounted || entry == null) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        entry.success
+            ? 'Synced ${entry.itemCount} '
+                '${entry.itemCount == 1 ? 'task' : 'tasks'}'
+            : 'Sync failed: ${entry.message}',
+      ),
+    ));
   }
 
   Future<void> _loadLastAutoBackup() async {
