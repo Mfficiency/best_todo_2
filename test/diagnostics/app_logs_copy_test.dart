@@ -43,7 +43,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Copy logs'));
+    // The handler reads both logs before it copies, so give its futures a
+    // beat to resolve before the snackbar is expected.
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.pumpAndSettle();
 
     expect(clipboardCalls, hasLength(1));
@@ -52,7 +55,13 @@ void main() {
     expect(copied, contains('tap received: besttodotask://open'));
     expect(copied, contains('NO FRAME'));
     expect(copied, contains('===== DEVICE LOG (Android) ====='));
-    expect(find.text('Logs copied — paste them into your report'), findsOneWidget);
+    expect(
+      find.text('Logs copied — paste them into your report'),
+      findsOneWidget,
+    );
+
+    // Let the snackbar's dismiss timer expire before the test ends.
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('the Device tab explains itself when there is nothing to show',
