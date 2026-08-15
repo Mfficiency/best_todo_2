@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.156] - 2026-08-15
+- Rebuilt the app from the v0.1.114 snapshot and re-applied every feature shipped since then **except** the ones below, all of which touched app startup or the widget/resume rendering path and were the source (or an artifact) of the recurring "widget tap re-fronts the app as a black screen" bug. Everything else from v0.1.115 through v0.1.155 is included: the daily streak (incl. the yearly calendar and 26 challenges), the Obsidian sync integration, dice timer + its alarm-style ring, mode picker (simple/full), permission up-front flow, Settings collapse/search, automatic + on-demand backup, folder sync with an Obsidian Markdown export, self-update from GitHub releases with one-version rollback, the Android share-sheet entry, Sync-now tile, clickable description links, and the App Logs copy/export-to-.txt buttons (rebuilt without the black-screen-specific Device tab and native log watcher, which were dropped along with the rest of the diagnostics)
+- **Skipped, on purpose** (see SPEC.md §3 and §8 for the restored behavior each one temporarily changed):
+  - **v0.1.136** — "Fixed the occasional black screen when opening the app... startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame." This deferred-first-frame rewrite of `main()` is the change most directly implicated in the bug reports that followed; this build keeps the original eager startup sequence instead
+  - **v0.1.142** — "Fixed tapping the tasks home-screen widget showing a black screen... widget taps now always return to the existing app, and a stray duplicate closes itself." This build keeps the original `android:taskAffinity=""` and does not add the duplicate-instance `finish()` check in `MainActivity`
+  - **v0.1.143** — switched the Android renderer from Impeller to Skia "to fix" the widget black screen; field testing later showed Skia was the actual cause. This build never opts out of Impeller in the first place
+  - **v0.1.147** — reverted 0.1.143's renderer switch back to Impeller (moot here, since 0.1.143 was never applied) but also added a forced repaint on every foreground resume
+  - **v0.1.149** — removed that forced repaint, having identified it as the real cause of a still-recurring black screen (also moot here, since it was never added)
+  - **v0.1.150, v0.1.151, v0.1.152** — progressively deeper widget-tap/black-screen diagnostics: a native (Android) log watcher, a render-scheduler heartbeat, and process/isolate-startup breadcrumbs
+  - **v0.1.155** — switched `MainActivity`'s render surface from `SurfaceView` to `TextureView` and added a render-surface heartbeat, the latest attempt at the same bug
+- Bumped straight to 0.1.156 (there is no 0.1.149-0.1.155 in this line's own history) so the version number stays ahead of `dev`'s highest released build
+
 ## [0.1.148] - 2026-08-09
 - Settings → Sync & export got a "Sync now" tile: run a sync by hand instead of waiting for the next app quit, with the time and task count of the last sync shown right on the tile
 - Web links in descriptions are now clickable: URLs in wishlist items and on the task-details page open in the browser with a tap
