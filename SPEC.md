@@ -1006,18 +1006,25 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   warm tap re-fronts the running task via `onNewIntent` → `HomeWidget.widgetClicked`.
   `MainActivity.onCreate` additionally finishes a duplicate non-task-root instance
   created by a widget launch, revealing the live one underneath.
-  **Black screen on warm re-front (0.1.143, reverted 0.1.147):** 0.1.143 suspected
-  Impeller (the Flutter 3.29 Android default renderer) of the widget tap turning a
-  backgrounded app into a permanent black window (flutter/flutter#164717, #180054) and
-  opted the manifest out (`io.flutter.embedding.android.EnableImpeller` = `false`,
-  back to Skia). Field testing showed the opposite: build 114 (0.1.142, Impeller)
-  re-fronted fine, while every Skia build (115–118) black-screened — it is Skia's GL
-  surface that fails to repaint after Android destroys it. 0.1.147 removed the opt-out
-  and stays on Impeller; do not reintroduce `EnableImpeller=false`. Kept from 0.1.143
-  as belt-and-braces: `_MyAppState`'s lifecycle observer calls `scheduleForcedFrame()`
-  on `resumed` so a recreated surface always gets a frame even if the engine's own
-  request goes missing, and every widget tap logs a `[widget]` breadcrumb to the App
-  Logs page.
+  **Black screen on warm re-front (introduced 0.1.143, fixed 0.1.149) — the forced
+  frame was the bug.** 0.1.143 shipped three changes at once: `EnableImpeller=false`
+  (Skia), a `scheduleForcedFrame()` on `resumed`, and `[widget]` tap breadcrumbs.
+  Builds 115–118 black-screened, so 0.1.147 blamed Skia and removed the opt-out —
+  but build 119 (Impeller again, forced frame still in) black-screened too, which
+  isolates the remaining variable. **Never call `WidgetsBinding.instance
+  .scheduleForcedFrame()` on `AppLifecycleState.resumed`.** Unlike `scheduleFrame()`
+  it ignores `framesEnabled`, and both set the scheduler binding's `_hasScheduledFrame`
+  flag. On a warm re-front the Dart lifecycle event arrives *before* Android has
+  handed back the destroyed render surface, so the forced vsync request is never
+  serviced and the flag stays `true` forever. From then on every legitimate
+  `scheduleFrame()` — `markNeedsPaint`, surface recreation, `setState` — hits
+  `if (_hasScheduledFrame || !framesEnabled) return;` and no frame is ever requested
+  again: the app keeps running (timers, isolates, touch dispatch) behind a window
+  that never repaints, exactly the "black screen only a force-close clears" report.
+  0.1.149 removes the call, restoring build 114's resume path. Renderer stays
+  Impeller (the Flutter 3.29 Android default, as in 114) — do not reintroduce
+  `EnableImpeller=false`; it was never the cause. Kept from 0.1.143: every widget
+  tap logs a `[widget]` breadcrumb to the App Logs page.
   The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.149] - 2026-08-15
+- Fixed the widget-tap black screen for real this time: the culprit was a "belt-and-braces" forced repaint added in 0.1.143, not the renderer. Returning to the foreground fired that repaint before Android had given the app its drawing surface back, and Flutter then believed a frame was already on its way - so it never asked for another one, leaving the app running perfectly behind a window that stayed black until a force-close. Build 114 never did this, and neither does this build
+
 ## [0.1.147] - 2026-08-08
 - Fixed the widget tap black screen coming back in recent builds: 0.1.143's switch from the Impeller renderer to Skia turned out to be the cause, not the cure - build 114 (0.1.142, still on Impeller) re-fronted fine while every Skia build (115-118) could return from the background as a black, unresponsive window. The app now renders with Impeller again (the Flutter default); the forced repaint on returning to the foreground and the widget-tap breadcrumbs in App Logs stay
 

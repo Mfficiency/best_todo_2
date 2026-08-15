@@ -286,16 +286,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
-    // Coming back from the background, Android may have destroyed the render
-    // surface; a new one only shows content once the framework produces a
-    // frame. Normally the engine asks for one itself, but if that request is
-    // ever missed the app sits on a black window while being perfectly alive
-    // (seen with widget taps re-fronting the backgrounded app). Forcing a
-    // frame here is free when everything works and repaints the UI when the
-    // engine's own request went missing.
-    if (state == AppLifecycleState.resumed) {
-      WidgetsBinding.instance.scheduleForcedFrame();
-    }
+    // Do NOT force a frame on resume here. 0.1.143 added
+    // `scheduleForcedFrame()` as belt-and-braces against a black window and
+    // it was the black window: `scheduleForcedFrame` ignores `framesEnabled`
+    // and sets the binding's `_hasScheduledFrame` flag. On a resume the Dart
+    // lifecycle event arrives before the destroyed Android surface is back,
+    // so the forced vsync request is never serviced and the flag stays set
+    // forever — after which every legitimate `scheduleFrame()` (markNeedsPaint,
+    // surface recreation, setState) early-returns on `if (_hasScheduledFrame
+    // || !framesEnabled) return;` and no frame is ever requested again. The
+    // app stays alive and responsive while its window never repaints, which is
+    // exactly the "black screen only a force-close clears" report from builds
+    // 115-119. Build 114 had no forced frame and re-fronted fine.
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
