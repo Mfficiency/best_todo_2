@@ -16,14 +16,17 @@ class AlarmService {
   final AlarmStorageService _storage = AlarmStorageService();
   final ValueNotifier<List<Alarm>> alarms = ValueNotifier<List<Alarm>>(<Alarm>[]);
   bool _loaded = false;
+  Future<void>? _loading;
 
   List<Alarm> get list => alarms.value;
 
   /// Loads alarms from disk (only once) and syncs the widget + schedule.
-  Future<void> load() async {
-    if (_loaded) return;
-    await reload(persist: false, trigger: 'app start');
-    _loaded = true;
+  /// Memoized: the app-start load runs deferred after the first frame and can
+  /// race the alarms page's own load() — both must share one reload rather
+  /// than rescheduling the OS alarms twice concurrently.
+  Future<void> load() {
+    if (_loaded) return Future<void>.value();
+    return _loading ??= reload(persist: false, trigger: 'app start');
   }
 
   /// Re-reads alarms from disk, optionally persisting afterwards. Used after a

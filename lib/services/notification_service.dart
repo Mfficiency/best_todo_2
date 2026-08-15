@@ -63,6 +63,40 @@ class NotificationService {
     return impl.showTaskNotification(taskTitle, delaySeconds: effectiveDelay);
   }
 
+  /// Schedules (replacing any previous) the one-shot daily streak reminder.
+  /// The streak service re-arms it on every app start, completion and
+  /// settings change, so a single pending schedule is always enough.
+  static Future<void> scheduleStreakReminder({
+    required DateTime fireAt,
+    required String body,
+  }) =>
+      impl.scheduleStreakReminder(fireAt: fireAt, body: body);
+
+  /// Cancels a pending streak reminder (streak hidden or reminders off).
+  static Future<void> cancelStreakReminder() => impl.cancelStreakReminder();
+
+  /// Arms the dice timer's end-of-countdown ring as a real OS alarm, so zero
+  /// rings (full screen, insistent, stoppable with one button) even when the
+  /// app is closed or the phone is locked. Pass [melody]/[volume] only when
+  /// the timer should play a melody — without them the ring stays silent.
+  static Future<void> scheduleDiceTimerAlarm({
+    required DateTime fireAt,
+    required String taskTitle,
+    required bool vibrate,
+    String? melody,
+    double? volume,
+  }) =>
+      impl.scheduleDiceTimerAlarm(
+        fireAt: fireAt,
+        taskTitle: taskTitle,
+        vibrate: vibrate,
+        melody: melody,
+        volume: volume,
+      );
+
+  /// Drops the armed dice ring (paused, rewound, extended or finished early).
+  static Future<void> cancelDiceTimerAlarm() => impl.cancelDiceTimerAlarm();
+
   /// Shows an alarm alert immediately. Used by the watchdog backup path when
   /// an alarm's fire time was missed. With [uid] the notification carries the
   /// alarm payload so the full-screen ring UI can open for it. [melody],

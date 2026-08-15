@@ -51,6 +51,27 @@ Future<bool> showAlarmNotification(
   return true;
 }
 
+// The web build has no scheduled-notification support; the in-app flame still
+// shows the streak, only the reminder is unavailable.
+Future<void> scheduleStreakReminder({
+  required DateTime fireAt,
+  required String body,
+}) async {}
+
+Future<void> cancelStreakReminder() async {}
+
+// Same story for the dice timer's OS-scheduled ring: the browser build only
+// has the in-page alert.
+Future<void> scheduleDiceTimerAlarm({
+  required DateTime fireAt,
+  required String taskTitle,
+  required bool vibrate,
+  String? melody,
+  double? volume,
+}) async {}
+
+Future<void> cancelDiceTimerAlarm() async {}
+
 Future<void> silenceAlarmNotification(Map<String, dynamic> payload) async {}
 
 Future<bool> ensureAlarmPermissions() async => _ensurePermission();

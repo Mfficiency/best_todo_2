@@ -10,14 +10,27 @@ file is the short operational guide.
 - Tests: `flutter test` runs everything (CI does this). Locally, run only the
   suites your change touches — `test/core/` always, plus the matching silo:
   `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
-  `home` or `tools`. See `test/README.md` for the file→suite map. Cross-cutting
+  `home`, `sync`, `update` or `tools`. See `test/README.md` for the file→suite map. Cross-cutting
   changes (theme, navigation, pubspec) → full `flutter test`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
 - Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+- Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
+  (or `PUBLISH_APK=1 sh tool/build.sh apk --release` to build + publish). Creates
+  release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk`; the About
+  page "Check for updates" button downloads and installs it in-app. Token from
+  `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
+- Test results shown in-app come from `assets/test_report.json`, packaged into every
+  build. CI keeps it current; locally refresh it with
+  `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`
+  branch), or from your own run:
+  `flutter test --machine > build/ci/machine.jsonl` then
+  `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
   or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`
+- Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
+  build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 
 ## Workflow ("bump, sync and build")
 
@@ -25,7 +38,9 @@ file is the short operational guide.
 2. Commit to `dev`, push (`sync`). Branch flow: feature → dev → staging → main.
 3. `flutter build apk --release` when a release is asked for.
 4. Keep `SPEC.md` updated when adding/changing features (it must stay
-   rebuild-grade). Deep-dive notes live in `.claude/notes/`.
+   rebuild-grade). Deep-dive docs live in `.claude/` — `.claude/README.md` is
+   the index (rebuild playbook, testing, CI/automation, environment,
+   engineering principles, alarm-work history).
 
 ## Architecture in one minute
 

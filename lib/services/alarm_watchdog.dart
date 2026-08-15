@@ -164,6 +164,52 @@ class AlarmWatchdog {
     }
   }
 
+  /// Watchdog for the dice timer's end-of-countdown ring, so a dropped
+  /// primary schedule still rings ~90 s late instead of never.
+  static Future<void> armDiceTimer({
+    required DateTime fireAt,
+    required String title,
+    required String body,
+    required bool vibrate,
+    String? melody,
+    double? volume,
+  }) async {
+    if (!await _ensureManager()) return;
+    final prefs = await _prefs();
+    final registry = _readRegistry(prefs);
+    final entry = await _armOne(
+      watchdogId: kDiceTimerWatchdogId,
+      uid: kDiceTimerUid,
+      title: title,
+      body: body,
+      vibrate: vibrate,
+      notifIds: [kDiceTimerNotificationId],
+      fireAt: fireAt,
+      melody: melody,
+      volume: volume,
+    );
+    if (entry != null) {
+      registry['$kDiceTimerWatchdogId'] = entry;
+      await prefs.setString(_registryKey, jsonEncode(registry));
+    }
+  }
+
+  /// Drops the dice timer watchdog when the countdown is paused, extended or
+  /// finished early — nothing to verify once the ring is off the table.
+  static Future<void> cancelDiceTimer() async {
+    if (!_isAndroid) return;
+    try {
+      if (_managerReady) await AndroidAlarmManager.cancel(kDiceTimerWatchdogId);
+    } catch (_) {}
+    try {
+      final prefs = await _prefs();
+      final registry = _readRegistry(prefs);
+      if (registry.remove('$kDiceTimerWatchdogId') != null) {
+        await prefs.setString(_registryKey, jsonEncode(registry));
+      }
+    } catch (_) {}
+  }
+
   /// Watchdog for the in-app test alarm.
   static Future<void> armTest({required DateTime fireAt}) async {
     if (!await _ensureManager()) return;
@@ -377,7 +423,9 @@ class AlarmWatchdog {
 
     // 4. Re-arm coverage for the alarm's next occurrence (repeating alarms
     // repeat natively on the primary path, but each watchdog is one-shot).
-    if (uid == kTestAlarmUid) return;
+    // The test alarm and the dice timer are one-offs with nothing in alarm
+    // storage, so there is nothing to re-arm for them.
+    if (uid == kTestAlarmUid || uid == kDiceTimerUid) return;
     try {
       final alarms = await AlarmStorageService().loadAlarms();
       final matches = alarms.where((a) => a.uid == uid);

@@ -8,16 +8,23 @@ import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ui/alarm_ring_page.dart';
 import 'ui/alarms_page.dart';
+import 'ui/dice_timer_page.dart';
+import 'ui/home_scaffold_key.dart';
 import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
+import 'ui/mode_select_page.dart';
 import 'config.dart';
+import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
+import 'services/permission_flow.dart';
 import 'services/pre_update_backup.dart';
 import 'services/startup_time_service.dart';
+import 'services/sync_service.dart';
+import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
 
@@ -89,8 +96,10 @@ ThemeData buildMinimalistTheme(Brightness brightness) {
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
-/// Background entry point invoked by the home-screen widget when a toggle is
-/// tapped. Runs in its own isolate, so it works directly against storage.
+/// Background entry point invoked by a home-screen widget when a toggle is
+/// tapped — an alarm's ON/OFF (`besttodoalarm://`) or a task's checkbox
+/// (`besttodotask://`). Runs in its own isolate, so it works directly against
+/// storage; the app itself may not be running at all.
 @pragma('vm:entry-point')
 Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   // This isolate starts without the app's plugin registrations; without these
@@ -99,11 +108,18 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
   if (uri == null) return;
+  final id = uri.queryParameters['id'];
+  if (id == null || id.isEmpty) return;
+  if (uri.scheme == TaskWidgetService.scheme) {
+    if (uri.host != TaskWidgetService.hostToggle) return;
+    // Settings decide what the widget redraws afterwards (progress line,
+    // checkbox rows), and this isolate has not loaded them.
+    await Config.load();
+    await TaskWidgetService.toggleInStorage(id);
+    return;
+  }
   if (uri.host == AlarmWidgetService.hostToggle) {
-    final id = uri.queryParameters['id'];
-    if (id != null && id.isNotEmpty) {
-      await AlarmService.toggleInStorage(id);
-    }
+    await AlarmService.toggleInStorage(id);
   }
 }
 
@@ -125,9 +141,15 @@ Future<void> main() async {
     await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
   } catch (_) {}
   final prefs = await SharedPreferences.getInstance();
-  final showIntro =
-      Config.isDev ? false : !(prefs.getBool('intro_shown') ?? false);
-  runApp(MyApp(showIntro: showIntro));
+  // The mode question closes the intro, so someone who has never answered it
+  // gets the whole welcome flow rather than the chooser on its own.
+  final showIntro = Config.isDev
+      ? false
+      : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
+  runApp(MyApp(
+    showIntro: showIntro,
+    showModePicker: !showIntro && !Config.modeChosen,
+  ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
     // One-time backfill of the item-history journal from pre-journal data.
@@ -140,12 +162,26 @@ Future<void> main() async {
     // migrations can take version-specific precautions. Same deferral.
     unawaited(Future<void>.delayed(const Duration(seconds: 3))
         .then((_) => PreUpdateBackup.recordCurrentVersion()));
+    // First open after an update: ask for every permission the app can use,
+    // so none is silently missing after new code shipped. Deferred a beat so
+    // the dialogs never compete with the first frame; a first-ever launch is
+    // skipped here (mode not chosen yet) — the mode picker settles it.
+    unawaited(Future<void>.delayed(const Duration(seconds: 1))
+        .then((_) => PermissionFlow.maybeRequestAfterUpdate()));
   });
 }
 
 class MyApp extends StatefulWidget {
   final bool showIntro;
-  const MyApp({Key? key, required this.showIntro}) : super(key: key);
+
+  /// Whether the simple/full mode picker is shown after the intro. Set from
+  /// [Config.modeChosen] on launch; tests and screenshot runs pass false.
+  final bool showModePicker;
+  const MyApp({
+    Key? key,
+    required this.showIntro,
+    this.showModePicker = false,
+  }) : super(key: key);
 
   static _MyAppState? of(BuildContext context) =>
       context.findAncestorStateOfType<_MyAppState>();
@@ -154,13 +190,23 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late bool _showIntro = widget.showIntro;
+  late bool _showModePicker = widget.showModePicker;
   bool _alarmRingOpen = false;
+
+  /// Set once the tasks home-screen widget has opened the app: the root route
+  /// is then the home page for the rest of this run, whatever start page is
+  /// configured.
+  bool _openedFromTaskWidget = false;
 
   @override
   void initState() {
     super.initState();
+    // Synced mode writes the task list to the chosen folder whenever the app
+    // is left (backgrounded/quit). The observer only forwards lifecycle
+    // states; SyncService does nothing at startup, keeping launch untouched.
+    WidgetsBinding.instance.addObserver(this);
     // Full-screen alarm UI: when a ringing alarm opens the app (tap on the
     // notification, or its full-screen intent firing over the lock screen),
     // present the ring page. Covers both a warm app (callback) and a cold
@@ -169,6 +215,9 @@ class _MyAppState extends State<MyApp> {
     NotificationService.getAlarmLaunchPayload().then((payload) {
       if (payload != null) _showAlarmRing(payload);
     }).catchError((_) {});
+    // A dice timer that runs out while the app is open but the timer page is
+    // not shows the very same alarm screen, without going through the OS.
+    DiceTimerController.presentFullScreenRing = _showAlarmRing;
     // Handle taps coming from the alarms home-screen widget. The widget is
     // Android-only; elsewhere the plugin's event channel has no implementation
     // and its activation failure is reported through FlutterError — bypassing
@@ -188,8 +237,14 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     NotificationService.setOnAlarmRing(null);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    SyncService.instance.onLifecycleChanged(state);
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
@@ -206,13 +261,33 @@ class _MyAppState extends State<MyApp> {
             fullscreenDialog: true,
             builder: (_) => AlarmRingPage(payload: payload),
           ))
-          .whenComplete(() => _alarmRingOpen = false);
+          .whenComplete(() {
+        _alarmRingOpen = false;
+        if (payload['uid'] == kDiceTimerUid) _afterDiceRingStopped();
+      });
     });
+  }
+
+  /// A stopped dice-timer alarm hands the task back: silence whatever the ring
+  /// was playing and open the timer page in its finished state, so Done /
+  /// Postpone / +min are one tap away. After a cold start (app was killed) no
+  /// timer is left in memory, and the hook simply does nothing.
+  void _afterDiceRingStopped() {
+    DiceTimerController.instance.stopAlert();
+    openRunningDiceTimer?.call();
   }
 
   Future<void> _handleWidgetClick(Uri? uri) async {
     if (uri == null) return;
     final id = uri.queryParameters['id'];
+    // Both widgets use `toggle` / `open` as hosts, so the scheme decides which
+    // one is talking before the host does.
+    if (uri.scheme == TaskWidgetService.scheme) {
+      // `toggle` never arrives here — checkbox taps are broadcasts handled by
+      // [alarmWidgetBackgroundCallback] in its own isolate.
+      if (uri.host == TaskWidgetService.hostOpen) _openTasks();
+      return;
+    }
     switch (uri.host) {
       case AlarmWidgetService.hostToggle:
         if (id != null && id.isNotEmpty) {
@@ -229,6 +304,23 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  /// Brings the app to the task list after a tap on the tasks widget. The app
+  /// may have been left anywhere — settings, a project board, the alarms page —
+  /// so everything above the root route is popped, and [_openedFromTaskWidget]
+  /// makes that root the home page even when [Config.startPage] points
+  /// elsewhere (which also covers a cold start from the widget).
+  void _openTasks() {
+    if (mounted && !_openedFromTaskWidget) {
+      setState(() => _openedFromTaskWidget = true);
+    }
+    // A warm launch may not have a frame pending; without this the callback
+    // below would only run at the next unrelated rebuild.
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+    });
+  }
+
   void _openAlarms({String? editUid}) {
     final navigator = appNavigatorKey.currentState;
     if (navigator == null) return;
@@ -239,20 +331,46 @@ class _MyAppState extends State<MyApp> {
 
   void updateTheme() => setState(() {});
 
+  /// Called once the intro's closing page has stored a mode, so the picker
+  /// never appears a second time straight after it.
   Future<void> _finishIntro() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('intro_shown', true);
-    setState(() => _showIntro = false);
+    if (!mounted) return;
+    setState(() {
+      _showIntro = false;
+      _showModePicker = false;
+    });
   }
 
+  /// Replays the whole welcome flow — the slides *and* the mode question
+  /// (About → "Replay introduction").
   Future<void> restartIntro() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('intro_shown', false);
-    setState(() => _showIntro = true);
+    Config.modeChosen = false;
+    await Config.save();
+    if (!mounted) return;
+    setState(() {
+      _showIntro = true;
+      _showModePicker = false;
+    });
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  /// Shows the simple/full mode picker again (Settings → Mode & features).
+  Future<void> restartModePicker() async {
+    Config.modeChosen = false;
+    await Config.save();
+    if (!mounted) return;
+    setState(() => _showModePicker = true);
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Widget _initialPage() {
+    if (_openedFromTaskWidget) {
+      return HomePage(initialTabIndex: Config.startTabIndex);
+    }
     switch (Config.startPage) {
       case 'settings':
         return const SettingsPage();
@@ -295,7 +413,14 @@ class _MyAppState extends State<MyApp> {
               useMaterial3: true,
             ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: _showIntro ? IntroPage(onFinished: _finishIntro) : _initialPage(),
+      home: _showIntro
+          ? IntroPage(onFinished: _finishIntro)
+          : _showModePicker
+              ? ModeSelectPage(
+                  onModeSelected: () =>
+                      setState(() => _showModePicker = false),
+                )
+              : _initialPage(),
     );
   }
 }

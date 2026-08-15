@@ -1,11 +1,19 @@
+import 'dart:async' show unawaited;
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../main.dart';
 import '../models/sms_recipient.dart';
 import '../models/sms_report_config.dart';
+import '../services/auto_backup_service.dart';
+import '../services/permission_flow.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
+import '../services/streak_service.dart';
+import 'dice_timer_settings.dart';
 import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -32,18 +40,49 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    6,
+    10,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
     'Appearance',
+    'Mode & features',
     'Tasks',
     'Widget',
     'Notifications',
+    'Streak',
+    'Dice timer',
     'SMS report',
-    'Export',
+    'Sync & export',
+    'Backup',
   ];
+
+  /// Sections currently on screen, in order. A section belonging to a feature
+  /// that is switched off (or hidden by simple mode) drops out of the chip row
+  /// and of the settings search along with its content.
+  List<int> get _visibleSections => [
+        for (var i = 0; i < _sectionTitles.length; i++)
+          if (_isSectionVisible(i)) i,
+      ];
+
+  bool _isSectionVisible(int index) {
+    switch (index) {
+      case 5:
+        return Config.isFeatureEnabled('streak');
+      case 6:
+        return Config.isFeatureEnabled('dice_timer');
+      case 7:
+        return Config.isFeatureEnabled('sms_report');
+      default:
+        return true;
+    }
+  }
   int _activeSectionIndex = 0;
+
+  /// Sections whose body is hidden. Tapping a section title toggles it; the
+  /// "Mode & features" section (index 1) starts collapsed because it is the
+  /// longest one and is rarely changed after setup.
+  final Set<int> _collapsedSections = {1};
+
   static const double _tabsHeaderHeight = 60;
   static const double _sectionActivationOffset = 56;
   double _lastScrollOffset = 0;
@@ -62,40 +101,83 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Minimalist mode', 0,
         'theme monochrome serene calm plain simple no colours colors underline'),
     _SettingsSearchEntry('Use tab icons', 0, 'tabs labels home'),
+    _SettingsSearchEntry('Red dot for failed tests', 0,
+        'menu hamburger drawer badge notification ci test results dot'),
     _SettingsSearchEntry('24-hour time', 0, 'clock am pm 12-hour format'),
     _SettingsSearchEntry('Date format', 0, 'display day month year'),
-    _SettingsSearchEntry('Add new tasks at top', 1, 'bottom order insert'),
-    _SettingsSearchEntry('Swipe left to delete', 1, 'gesture direction move'),
-    _SettingsSearchEntry('Default delay', 1, 'undo seconds snackbar'),
-    _SettingsSearchEntry('Start page', 1, 'tab launch open today'),
-    _SettingsSearchEntry('Default start page', 1, 'tool launch open tasks'),
-    _SettingsSearchEntry('Start in schedule view', 1, 'calendar launch'),
-    _SettingsSearchEntry('Chronize: show hour wheel', 1, 'timeline scroll'),
-    _SettingsSearchEntry('Widget progress line', 2, 'home screen completion'),
-    _SettingsSearchEntry('Enable notifications', 3, 'push reminders'),
-    _SettingsSearchEntry('Quiet hours', 3, 'silence night do not disturb'),
-    _SettingsSearchEntry('Default notification delay', 3, 'bell reminder'),
     _SettingsSearchEntry(
-        'Enable daily SMS report', 4, 'text message snitch daily'),
-    _SettingsSearchEntry('Send time', 4, 'sms schedule daily'),
-    _SettingsSearchEntry('Only send if under threshold', 4, 'sms completion'),
-    _SettingsSearchEntry('SIM subscription id', 4, 'sms dual sim'),
-    _SettingsSearchEntry('Recipients', 4, 'sms phone number contact'),
-    _SettingsSearchEntry('Message template', 4, 'sms tokens text'),
-    _SettingsSearchEntry('Sent message history', 4, 'sms log'),
-    _SettingsSearchEntry('Send test now', 4, 'sms report'),
-    _SettingsSearchEntry('Export Tasks', 5, 'backup save json'),
-    _SettingsSearchEntry('Export Settings', 5, 'backup save json'),
-    _SettingsSearchEntry('Export Everything', 5, 'backup save json'),
-    _SettingsSearchEntry('Import', 5, 'restore backup load json'),
+        'Simple mode', 1, 'full mode basic minimal features hide tools'),
+    _SettingsSearchEntry(
+        'Show the mode picker again', 1, 'simple full first start choose'),
+    _SettingsSearchEntry('Add new tasks at top', 2, 'bottom order insert'),
+    _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
+    _SettingsSearchEntry('Default delay', 2, 'undo seconds snackbar'),
+    _SettingsSearchEntry('Start page', 2, 'tab launch open today'),
+    _SettingsSearchEntry('Default start page', 2, 'tool launch open tasks'),
+    _SettingsSearchEntry('Start in schedule view', 2, 'calendar launch'),
+    _SettingsSearchEntry('Chronize: show hour wheel', 2, 'timeline scroll'),
+    _SettingsSearchEntry('Widget progress line', 3, 'home screen completion'),
+    _SettingsSearchEntry('Check off tasks on the widget', 3,
+        'home screen checkbox tick complete done interactive'),
+    _SettingsSearchEntry('Enable notifications', 4, 'push reminders'),
+    _SettingsSearchEntry('Quiet hours', 4, 'silence night do not disturb'),
+    _SettingsSearchEntry('Default notification delay', 4, 'bell reminder'),
+    _SettingsSearchEntry('Show streak', 5, 'flame fire hide daily habit'),
+    _SettingsSearchEntry(
+        'Streak grace period', 5, '24 48 hours flame miss day forgive'),
+    _SettingsSearchEntry(
+        'Streak reminder', 5, 'flame notification evening nudge daily'),
+    _SettingsSearchEntry(
+        'Streak celebration', 5, 'flame animation complete first task'),
+    _SettingsSearchEntry('Alert at zero', 6,
+        'dice timer melody vibration notification silent sound alarm quiet'),
+    _SettingsSearchEntry('Melody', 6, 'dice timer sound tune alarm ring'),
+    _SettingsSearchEntry('Volume', 6, 'dice timer loud quiet melody'),
+    _SettingsSearchEntry('Also vibrate', 6, 'dice timer buzz vibration'),
+    _SettingsSearchEntry(
+        'Default timer length', 6, 'dice minutes dial pre-wound 20'),
+    _SettingsSearchEntry(
+        'Enable daily SMS report', 7, 'text message snitch daily'),
+    _SettingsSearchEntry('Send time', 7, 'sms schedule daily'),
+    _SettingsSearchEntry('Only send if under threshold', 7, 'sms completion'),
+    _SettingsSearchEntry('SIM subscription id', 7, 'sms dual sim'),
+    _SettingsSearchEntry(
+        'Recipients', 7, 'sms phone number contact disable pause skip'),
+    _SettingsSearchEntry('Message template', 7, 'sms tokens text'),
+    _SettingsSearchEntry('Sent message history', 7, 'sms log'),
+    _SettingsSearchEntry('Send test now', 7, 'sms report'),
+    _SettingsSearchEntry('Synced mode', 8,
+        'sync offline folder background quit backup automatic tasks'),
+    _SettingsSearchEntry('Sync folder', 8, 'sync directory location choose'),
+    _SettingsSearchEntry('Export Tasks', 8, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
+    _SettingsSearchEntry('Import', 8, 'restore backup load json'),
+    _SettingsSearchEntry('Automatic backup', 9,
+        'daily weekly schedule export save everything off'),
+    _SettingsSearchEntry('Backup folder', 9, 'directory location path choose'),
+    _SettingsSearchEntry('Back up now', 9, 'manual backup export run'),
   ];
+
+  /// The feature switches of the Mode & features section are searchable too,
+  /// so "alarms" or "wishlist" finds the switch that turns them on.
+  static List<_SettingsSearchEntry> get _featureSearchEntries => [
+        for (var i = 0; i < Config.featureKeys.length; i++)
+          _SettingsSearchEntry(
+            Config.featureLabels[i],
+            1,
+            'feature show hide ${Config.featureDescriptions[i].toLowerCase()}',
+          ),
+      ];
 
   bool _notifications = Config.enableNotifications;
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
   bool _minimalistMode = Config.minimalistMode;
   bool _useIconTabs = Config.useIconTabs;
+  bool _showFailureDotOnMenu = Config.showFailureDotOnMenu;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
+  bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
   bool _use24HourFormat = Config.use24HourFormat;
   String _dateFormat = Config.dateFormat;
@@ -108,6 +190,17 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _quietHoursEnabled = Config.quietHoursEnabled;
   int _quietHoursStartMinutes = Config.quietHoursStartMinutes;
   int _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+  bool _showStreak = Config.showStreak;
+  int _streakGraceHours = Config.streakGraceHours;
+  bool _streakReminderEnabled = Config.streakReminderEnabled;
+  int _streakReminderMinutes = Config.streakReminderMinutes;
+  bool _streakCompletionAnimation = Config.streakCompletionAnimation;
+  bool _simpleMode = Config.simpleMode;
+  String _autoBackupFrequency = Config.autoBackupFrequency;
+  String _autoBackupDirectory = Config.autoBackupDirectory;
+  DateTime? _lastAutoBackup;
+  bool _syncEnabled = Config.syncEnabled;
+  String _syncFolderPath = Config.syncFolderPath;
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
@@ -118,7 +211,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _darkMode = Config.darkMode;
     _minimalistMode = Config.minimalistMode;
     _useIconTabs = Config.useIconTabs;
+    _showFailureDotOnMenu = Config.showFailureDotOnMenu;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
+    _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
     _use24HourFormat = Config.use24HourFormat;
     _dateFormat = Config.dateFormat;
@@ -131,6 +226,16 @@ class _SettingsPageState extends State<SettingsPage> {
     _quietHoursEnabled = Config.quietHoursEnabled;
     _quietHoursStartMinutes = Config.quietHoursStartMinutes;
     _quietHoursEndMinutes = Config.quietHoursEndMinutes;
+    _showStreak = Config.showStreak;
+    _streakGraceHours = Config.streakGraceHours;
+    _streakReminderEnabled = Config.streakReminderEnabled;
+    _streakReminderMinutes = Config.streakReminderMinutes;
+    _streakCompletionAnimation = Config.streakCompletionAnimation;
+    _simpleMode = Config.simpleMode;
+    _autoBackupFrequency = Config.autoBackupFrequency;
+    _autoBackupDirectory = Config.autoBackupDirectory;
+    _syncEnabled = Config.syncEnabled;
+    _syncFolderPath = Config.syncFolderPath;
   }
 
   @override
@@ -138,6 +243,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _scrollController.addListener(_updateActiveSectionFromScroll);
     _loadSmsConfig();
+    _loadLastAutoBackup();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _updateActiveSectionFromScroll();
@@ -276,6 +382,8 @@ class _SettingsPageState extends State<SettingsPage> {
               Navigator.of(context).pop(SmsRecipient(
                 nickname: nicknameController.text.trim(),
                 phoneNumber: phone,
+                // Editing must not silently re-enable a paused recipient.
+                enabled: existing?.enabled ?? true,
               ));
             },
             child: const Text('Save'),
@@ -301,6 +409,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final cfg = _smsConfig;
     if (cfg == null) return;
     setState(() => cfg.recipients.removeAt(index));
+    await _persistSms();
+  }
+
+  /// Pauses/resumes a recipient without deleting them — the daily report skips
+  /// disabled ones ([SmsReportConfig.activeRecipients]).
+  Future<void> _toggleSmsRecipient(int index, bool enabled) async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    setState(() => cfg.recipients[index].enabled = enabled);
     await _persistSms();
   }
 
@@ -436,23 +553,47 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _jumpToSection(int index) async {
-    setState(() => _activeSectionIndex = index);
+    final from = _activeSectionIndex;
+    // Jumping to a collapsed section would land on a title with nothing under
+    // it, so open it on the way.
+    setState(() {
+      _activeSectionIndex = index;
+      _collapsedSections.remove(index);
+    });
 
     // SliverList lays out children lazily, so a section that hasn't been
     // scrolled into view yet has no RenderObject and ensureVisible would
-    // no-op. Walk the scroll forward one viewport at a time until the target
-    // section is laid out, then ensureVisible does the final alignment.
-    // Jumping straight to maxScrollExtent overshoots: a mid-list section can
-    // fall outside the sliver cache again once the view sits at the bottom,
+    // no-op. Walk the scroll one viewport at a time until the target section
+    // is laid out, then ensureVisible does the final alignment. Jumping
+    // straight to maxScrollExtent overshoots: a mid-list section can fall
+    // outside the sliver cache again once the view sits at the bottom,
     // leaving its context null and the jump stuck at the last section.
+    //
+    // Two things the walk has to respect:
+    //  • it must follow the direction of the target — walking only downwards
+    //    left "Appearance" (and every earlier section) unreachable whenever
+    //    the list already sat further down;
+    //  • `maxScrollExtent` is an estimate that grows as each hop lays out more
+    //    children, so stopping at "we reached the bottom" strands the jump
+    //    halfway. Only a hop that moves neither the offset nor the estimate
+    //    means there is really nothing left.
     if (_scrollController.hasClients) {
+      final goingUp = index < from;
       var attempts = 0;
-      while (_sectionKeys[index].currentContext == null && attempts < 20) {
+      var lastOffset = -1.0;
+      var lastMaxExtent = -1.0;
+      while (_sectionKeys[index].currentContext == null && attempts < 30) {
         final position = _scrollController.position;
         final maxExtent = position.maxScrollExtent;
-        if (_scrollController.offset >= maxExtent - 1) break;
-        final target =
-            (position.pixels + position.viewportDimension).clamp(0.0, maxExtent);
+        if (_scrollController.offset == lastOffset &&
+            maxExtent == lastMaxExtent) {
+          break;
+        }
+        lastOffset = _scrollController.offset;
+        lastMaxExtent = maxExtent;
+        final step =
+            goingUp ? -position.viewportDimension : position.viewportDimension;
+        final target = (position.pixels + step).clamp(0.0, maxExtent);
         await _scrollController.animateTo(
           target,
           duration: const Duration(milliseconds: 120),
@@ -516,6 +657,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required String title,
     required List<Widget> children,
   }) {
+    final collapsed = _collapsedSections.contains(index);
     return Container(
       key: _sectionKeys[index],
       margin: const EdgeInsets.only(bottom: 12),
@@ -523,20 +665,289 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Text(
-                title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+            InkWell(
+              onTap: () => _toggleSection(index),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Tooltip(
+                      message: collapsed
+                          ? 'Expand $title'
+                          : 'Collapse $title',
+                      child: AnimatedRotation(
+                        turns: collapsed ? 0 : 0.5,
+                        duration: const Duration(milliseconds: 180),
+                        child: const Icon(Icons.expand_more),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            ...children,
+            if (!collapsed) ...children,
           ],
         ),
       ),
+    );
+  }
+
+  void _toggleSection(int index) {
+    setState(() {
+      if (!_collapsedSections.remove(index)) _collapsedSections.add(index);
+    });
+    // Collapsing shortens the list, so the chip row has to re-pick the
+    // section the viewport now shows.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateActiveSectionFromScroll();
+    });
+  }
+
+  /// One toggle for every section: collapses everything while any section is
+  /// still open, expands everything once they are all closed.
+  Widget _buildCollapseAllBar() {
+    final anyExpanded =
+        _visibleSections.any((i) => !_collapsedSections.contains(i));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton.icon(
+            onPressed: () {
+              setState(() {
+                if (anyExpanded) {
+                  _collapsedSections.addAll(
+                    List<int>.generate(_sectionTitles.length, (i) => i),
+                  );
+                } else {
+                  _collapsedSections.clear();
+                }
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _updateActiveSectionFromScroll();
+              });
+            },
+            icon: Icon(anyExpanded ? Icons.unfold_less : Icons.unfold_more),
+            label: Text(anyExpanded ? 'Collapse all' : 'Expand all'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickStreakReminderTime() async {
+    final current = _streakReminderMinutes;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: current ~/ 60,
+        minute: current % 60,
+      ),
+    );
+    if (picked == null) return;
+    setState(() => _streakReminderMinutes = picked.hour * 60 + picked.minute);
+    Config.streakReminderMinutes = _streakReminderMinutes;
+    await Config.save();
+    StreakService.instance.settingsChanged();
+    widget.onSettingsChanged?.call();
+  }
+
+  /// Applies a simple/full mode change: the mode itself is one switch, but a
+  /// tool that just became unavailable must not stay the configured start
+  /// page, or the app would open a page the user can no longer reach.
+  Future<void> _setSimpleMode(bool value) async {
+    setState(() => _simpleMode = value);
+    Config.simpleMode = value;
+    _dropUnavailableStartTool();
+    await Config.save();
+    StreakService.instance.settingsChanged();
+    // Turning simple mode off is choosing the full experience — make sure
+    // every permission its features rely on has been asked for.
+    if (!value) {
+      unawaited(
+          PermissionFlow.requestAll(trigger: 'full mode enabled in Settings'));
+    }
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _setFeatureEnabled(String key, bool value) async {
+    setState(() => Config.setFeatureEnabled(key, value));
+    _dropUnavailableStartTool();
+    await Config.save();
+    if (key == 'streak') StreakService.instance.settingsChanged();
+    if (key == 'sms_report') await SmsReportScheduler.applyFromConfig();
+    widget.onSettingsChanged?.call();
+  }
+
+  void _dropUnavailableStartTool() {
+    if (Config.startTool != 'tasks' &&
+        !Config.isFeatureEnabled(Config.startTool)) {
+      Config.startTool = 'tasks';
+      _startTool = 'tasks';
+    }
+  }
+
+  /// Start-page options that are actually reachable: the task list plus every
+  /// enabled tool.
+  List<String> get _startToolChoices => [
+        for (final tool in Config.startToolOptions)
+          if (tool == 'tasks' || Config.isFeatureEnabled(tool)) tool,
+      ];
+
+  Widget _buildModeFeaturesSection() {
+    final theme = Theme.of(context);
+    return _buildSection(
+      index: 1,
+      title: 'Mode & features',
+      children: [
+        SwitchListTile(
+          title: const Text('Simple mode'),
+          subtitle: const Text(
+              'Just the task list: hides the tools, streak, dice, schedule '
+              'view and search'),
+          value: _simpleMode,
+          onChanged: _setSimpleMode,
+        ),
+        ListTile(
+          title: const Text('Show the mode picker again'),
+          subtitle: const Text(
+              'Choose simple or full mode on the welcome screen'),
+          trailing: const Icon(Icons.restart_alt),
+          onTap: () => MyApp.of(context)?.restartModePicker(),
+        ),
+        const Divider(height: 1),
+        if (_simpleMode)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Text(
+              'Simple mode hides every optional feature. Turn it off to pick '
+              'the features you want.',
+              style: theme.textTheme.bodyMedium,
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Text(
+              'Features in full mode',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              'Switch off what you do not use — it disappears from the drawer, '
+              'the app bar and these settings.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          for (var i = 0; i < Config.featureKeys.length; i++)
+            SwitchListTile(
+              title: Text(Config.featureLabels[i]),
+              subtitle: Text(Config.featureDescriptions[i]),
+              value: Config.featureEnabled[Config.featureKeys[i]] ?? true,
+              onChanged: (val) =>
+                  _setFeatureEnabled(Config.featureKeys[i], val),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStreakSection() {
+    return _buildSection(
+      index: 5,
+      title: 'Streak',
+      children: [
+        SwitchListTile(
+          title: const Text('Show streak'),
+          subtitle: const Text(
+              'Flame next to the dice: grows every day you complete a task'),
+          value: _showStreak,
+          onChanged: (val) async {
+            setState(() => _showStreak = val);
+            Config.showStreak = val;
+            await Config.save();
+            StreakService.instance.settingsChanged();
+            widget.onSettingsChanged?.call();
+          },
+        ),
+        ListTile(
+          title: const Text('Streak grace period'),
+          subtitle: Text(_streakGraceHours >= 48
+              ? '48 hours — one missed day is forgiven'
+              : '24 hours — complete a task every day'),
+          trailing: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 24, label: Text('24h')),
+              ButtonSegment(value: 48, label: Text('48h')),
+            ],
+            selected: {_streakGraceHours >= 48 ? 48 : 24},
+            onSelectionChanged: (selection) async {
+              final hours = selection.first;
+              setState(() => _streakGraceHours = hours);
+              Config.streakGraceHours = hours;
+              await Config.save();
+              StreakService.instance.settingsChanged();
+              widget.onSettingsChanged?.call();
+            },
+          ),
+        ),
+        SwitchListTile(
+          title: const Text('Streak reminder'),
+          subtitle: const Text(
+              'Remind me in the evening when no task is done yet'),
+          value: _streakReminderEnabled,
+          onChanged: (val) async {
+            setState(() => _streakReminderEnabled = val);
+            Config.streakReminderEnabled = val;
+            await Config.save();
+            StreakService.instance.settingsChanged();
+            widget.onSettingsChanged?.call();
+          },
+        ),
+        if (_streakReminderEnabled)
+          ListTile(
+            title: const Text('Reminder time'),
+            subtitle: Text(_formatHourMinute(_streakReminderMinutes)),
+            trailing: const Icon(Icons.schedule),
+            onTap: _pickStreakReminderTime,
+          ),
+        SwitchListTile(
+          title: const Text('Streak celebration'),
+          subtitle: const Text(
+              'Short flame animation when the first task of the day is done'),
+          value: _streakCompletionAnimation,
+          onChanged: (val) async {
+            setState(() => _streakCompletionAnimation = val);
+            Config.streakCompletionAnimation = val;
+            await Config.save();
+          },
+        ),
+      ],
+    );
+  }
+
+  /// The dice timer's own alert settings, shared with the gear on the timer
+  /// page ([DiceTimerSettingsList] writes straight through to [Config]).
+  Widget _buildDiceTimerSection() {
+    return _buildSection(
+      index: 6,
+      title: 'Dice timer',
+      children: [
+        DiceTimerSettingsList(onChanged: widget.onSettingsChanged),
+      ],
     );
   }
 
@@ -544,7 +955,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final cfg = _smsConfig;
     if (cfg == null) {
       return _buildSection(
-        index: 4,
+        index: 7,
         title: 'SMS report',
         children: const [
           Padding(
@@ -555,13 +966,13 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     }
     return _buildSection(
-      index: 4,
+      index: 7,
       title: 'SMS report',
       children: [
         SwitchListTile(
           title: const Text('Enable daily SMS report'),
           subtitle: const Text(
-              'Sends an SMS each day at the chosen time to all recipients'),
+              'Sends an SMS each day at the chosen time to enabled recipients'),
           value: cfg.enabled,
           onChanged: (v) async {
             setState(() => cfg.enabled = v);
@@ -650,18 +1061,40 @@ class _SettingsPageState extends State<SettingsPage> {
           ...List<Widget>.generate(cfg.recipients.length, (i) {
             final r = cfg.recipients[i];
             final label = r.nickname.isEmpty ? '(no nickname)' : r.nickname;
+            final dimmed = Theme.of(context).disabledColor;
             return ListTile(
-              title: Text(label),
-              subtitle: Text(r.phoneNumber),
+              title: Text(
+                label,
+                style: r.enabled ? null : TextStyle(color: dimmed),
+              ),
+              subtitle: Text(
+                r.enabled ? r.phoneNumber : '${r.phoneNumber} • disabled',
+                style: r.enabled ? null : TextStyle(color: dimmed),
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Tooltip(
+                    message: r.enabled
+                        ? 'Disable recipient'
+                        : 'Enable recipient',
+                    child: Switch(
+                      value: r.enabled,
+                      materialTapTargetSize:
+                          MaterialTapTargetSize.shrinkWrap,
+                      onChanged: (value) => _toggleSmsRecipient(i, value),
+                    ),
+                  ),
                   IconButton(
+                    tooltip: 'Edit recipient',
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.edit),
                     onPressed: () =>
                         _editSmsRecipient(existing: r, index: i),
                   ),
                   IconButton(
+                    tooltip: 'Remove recipient',
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () => _removeSmsRecipient(i),
                   ),
@@ -733,13 +1166,57 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// Turns synced mode on/off. Enabling without a chosen folder opens the
+  /// folder picker right away; declining it keeps the switch on — the missed
+  /// sync then surfaces as a red entry and the drawer dot, pointing back here.
+  Future<void> _setSyncEnabled(bool value) async {
+    setState(() => _syncEnabled = value);
+    Config.syncEnabled = value;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+    if (value && _syncFolderPath.trim().isEmpty) {
+      await _pickSyncFolder();
+    }
+  }
+
+  Future<void> _pickSyncFolder() async {
+    final current = _syncFolderPath.trim();
+    final picked =
+        await getDirectoryPath(initialDirectory: current.isEmpty ? null : current);
+    if (picked == null) return;
+    setState(() => _syncFolderPath = picked);
+    Config.syncFolderPath = picked;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
   Widget _buildExportSection() {
     return _buildSection(
-      index: 5,
-      title: 'Export',
+      index: 8,
+      title: 'Sync & export',
       children: [
+        SwitchListTile(
+          title: const Text('Synced mode'),
+          subtitle: const Text(
+              'Write the tasks to a folder of your choice in the background '
+              'whenever you leave the app. Off keeps everything offline.'),
+          value: _syncEnabled,
+          onChanged: _setSyncEnabled,
+        ),
+        if (_syncEnabled)
+          ListTile(
+            title: const Text('Sync folder'),
+            subtitle: Text(
+              _syncFolderPath.trim().isEmpty
+                  ? 'No folder chosen yet — tap to choose'
+                  : _syncFolderPath,
+            ),
+            trailing: const Icon(Icons.folder_open),
+            onTap: _pickSyncFolder,
+          ),
+        const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -787,15 +1264,154 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _loadLastAutoBackup() async {
+    final last = await AutoBackupService.lastRun();
+    if (!mounted) return;
+    setState(() => _lastAutoBackup = last);
+  }
+
+  Future<void> _pickBackupFolder() async {
+    final downloadsDir = await getDownloadsDirectory();
+    final directory = await getDirectoryPath(
+      initialDirectory: downloadsDir?.path,
+    );
+    if (directory == null) return;
+    setState(() => _autoBackupDirectory = directory);
+    Config.autoBackupDirectory = directory;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _setAutoBackupFrequency(String value) async {
+    setState(() => _autoBackupFrequency = value);
+    Config.autoBackupFrequency = value;
+    await Config.save();
+    // Turning the schedule on is the moment to ask for the folder; a fresh
+    // schedule with a folder writes its first backup right away instead of
+    // waiting for the next app start.
+    if (value != 'off' && Config.autoBackupDirectory.isEmpty) {
+      await _pickBackupFolder();
+    }
+    if (value != 'off' && Config.autoBackupDirectory.isNotEmpty) {
+      await AutoBackupService.maybeRun();
+      await _loadLastAutoBackup();
+    }
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _backupNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final file = await AutoBackupService.runNow();
+    await _loadLastAutoBackup();
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        file != null ? 'Backed up to ${file.path}' : 'Backup failed',
+      ),
+    ));
+  }
+
+  String _formatDateTime(DateTime dt) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} '
+        '${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  Widget _buildBackupSection() {
+    final folderChosen = _autoBackupDirectory.isNotEmpty;
+    return _buildSection(
+      index: 9,
+      title: 'Backup',
+      children: [
+        ListTile(
+          title: const Text('Automatic backup'),
+          subtitle: Text(switch (_autoBackupFrequency) {
+            'daily' =>
+              'Writes a full backup once a day when you open the app',
+            'weekly' =>
+              'Writes a full backup once a week when you open the app',
+            _ => 'No automatic backups',
+          }),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: SegmentedButton<String>(
+            segments: [
+              for (var i = 0; i < Config.autoBackupFrequencies.length; i++)
+                ButtonSegment(
+                  value: Config.autoBackupFrequencies[i],
+                  label: Text(Config.autoBackupFrequencyLabels[i]),
+                ),
+            ],
+            selected: {_autoBackupFrequency},
+            onSelectionChanged: (selection) =>
+                _setAutoBackupFrequency(selection.first),
+          ),
+        ),
+        ListTile(
+          title: const Text('Backup folder'),
+          subtitle: Text(
+            folderChosen ? _autoBackupDirectory : 'Not set — tap to choose',
+          ),
+          trailing: const Icon(Icons.folder_open),
+          onTap: _pickBackupFolder,
+        ),
+        ListTile(
+          enabled: folderChosen,
+          leading: const Icon(Icons.backup),
+          title: const Text('Back up now'),
+          subtitle: Text(
+            _lastAutoBackup == null
+                ? (folderChosen
+                    ? 'No backup yet'
+                    : 'Choose a backup folder first')
+                : 'Last backup: ${_formatDateTime(_lastAutoBackup!)}',
+          ),
+          onTap: folderChosen ? _backupNow : null,
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Text(
+            'Each backup is one timestamped file with everything — tasks, '
+            'settings and timers — and can be restored with Export → Import.',
+          ),
+        ),
+      ],
+    );
+  }
+
   List<_SettingsSearchEntry> get _searchResults {
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return const [];
-    return _searchEntries
+    return [..._searchEntries, ..._featureSearchEntries]
+        .where((e) => _isSectionVisible(e.sectionIndex))
+        .where((e) => _isEntryVisible(e))
         .where((e) =>
             e.title.toLowerCase().contains(q) ||
             e.keywords.contains(q) ||
             _sectionTitles[e.sectionIndex].toLowerCase().contains(q))
         .toList();
+  }
+
+  /// Single entries that disappear with their feature even though their
+  /// section stays (the feature switches themselves are hidden in simple
+  /// mode, where they have no effect).
+  bool _isEntryVisible(_SettingsSearchEntry entry) {
+    if (entry.sectionIndex == 1 &&
+        Config.simpleMode &&
+        Config.featureLabels.contains(entry.title)) {
+      return false;
+    }
+    if (entry.title == 'Start in schedule view') {
+      return Config.isFeatureEnabled('schedule_view');
+    }
+    if (entry.title == 'Chronize: show hour wheel') {
+      return Config.isFeatureEnabled('chronize');
+    }
+    if (entry.title == 'Default start page') {
+      return !Config.simpleMode;
+    }
+    return true;
   }
 
   void _closeSearch() {
@@ -905,17 +1521,17 @@ class _SettingsPageState extends State<SettingsPage> {
                     : SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: List<Widget>.generate(
-                              _sectionTitles.length, (index) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(_sectionTitles[index]),
-                                selected: _activeSectionIndex == index,
-                                onSelected: (_) => _jumpToSection(index),
+                          children: [
+                            for (final index in _visibleSections)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(_sectionTitles[index]),
+                                  selected: _activeSectionIndex == index,
+                                  onSelected: (_) => _jumpToSection(index),
+                                ),
                               ),
-                            );
-                          }),
+                          ],
                         ),
                       ),
               ),
@@ -928,6 +1544,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 showSearchResults
                     ? _buildSearchResultTiles()
                     : [
+                  _buildCollapseAllBar(),
                   _buildSection(
                     index: 0,
                     title: 'Appearance',
@@ -970,6 +1587,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                       SwitchListTile(
+                        title: const Text('Red dot for failed tests'),
+                        subtitle: const Text(
+                            'Mark the menu icon with a red dot while the '
+                            'newest test run has failures you have not '
+                            'looked at yet'),
+                        value: _showFailureDotOnMenu,
+                        onChanged: (val) async {
+                          setState(() => _showFailureDotOnMenu = val);
+                          Config.showFailureDotOnMenu = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
                         title: const Text('24-hour time'),
                         subtitle: const Text(
                             'Turn off for 12-hour AM/PM time'),
@@ -1004,8 +1635,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
+                  _buildModeFeaturesSection(),
                   _buildSection(
-                    index: 1,
+                    index: 2,
                     title: 'Tasks',
                     children: [
                       SwitchListTile(
@@ -1074,59 +1706,63 @@ class _SettingsPageState extends State<SettingsPage> {
                           },
                         ),
                       ),
-                      ListTile(
-                        title: const Text('Default start page'),
-                        subtitle: const Text(
-                            'Open the task list or one of the tools when '
-                            'launching the app'),
-                        trailing: DropdownButton<String>(
-                          value: Config.startToolOptions.contains(_startTool)
-                              ? _startTool
-                              : Config.startToolOptions.first,
-                          items: List.generate(
-                            Config.startToolOptions.length,
-                            (index) => DropdownMenuItem<String>(
-                              value: Config.startToolOptions[index],
-                              child: Text(Config.startToolLabels[index]),
-                            ),
+                      if (!_simpleMode)
+                        ListTile(
+                          title: const Text('Default start page'),
+                          subtitle: const Text(
+                              'Open the task list or one of the tools when '
+                              'launching the app'),
+                          trailing: DropdownButton<String>(
+                            value: _startToolChoices.contains(_startTool)
+                                ? _startTool
+                                : _startToolChoices.first,
+                            items: [
+                              for (final tool in _startToolChoices)
+                                DropdownMenuItem<String>(
+                                  value: tool,
+                                  child: Text(Config.startToolLabels[
+                                      Config.startToolOptions.indexOf(tool)]),
+                                ),
+                            ],
+                            onChanged: (val) async {
+                              if (val == null) return;
+                              setState(() => _startTool = val);
+                              Config.startTool = val;
+                              await Config.save();
+                              widget.onSettingsChanged?.call();
+                            },
                           ),
+                        ),
+                      if (Config.isFeatureEnabled('schedule_view'))
+                        SwitchListTile(
+                          title: const Text('Start in schedule view'),
+                          subtitle: const Text(
+                              'Open the calendar / schedule view on launch instead of the tab list'),
+                          value: _startInScheduleView,
                           onChanged: (val) async {
-                            if (val == null) return;
-                            setState(() => _startTool = val);
-                            Config.startTool = val;
+                            setState(() => _startInScheduleView = val);
+                            Config.startInScheduleView = val;
                             await Config.save();
                             widget.onSettingsChanged?.call();
                           },
                         ),
-                      ),
-                      SwitchListTile(
-                        title: const Text('Start in schedule view'),
-                        subtitle: const Text(
-                            'Open the calendar / schedule view on launch instead of the tab list'),
-                        value: _startInScheduleView,
-                        onChanged: (val) async {
-                          setState(() => _startInScheduleView = val);
-                          Config.startInScheduleView = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('Chronize: show hour wheel'),
-                        subtitle: const Text(
-                            'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
-                        value: _chronizeShowHourWheel,
-                        onChanged: (val) async {
-                          setState(() => _chronizeShowHourWheel = val);
-                          Config.chronizeShowHourWheel = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
+                      if (Config.isFeatureEnabled('chronize'))
+                        SwitchListTile(
+                          title: const Text('Chronize: show hour wheel'),
+                          subtitle: const Text(
+                              'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
+                          value: _chronizeShowHourWheel,
+                          onChanged: (val) async {
+                            setState(() => _chronizeShowHourWheel = val);
+                            Config.chronizeShowHourWheel = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
                     ],
                   ),
                   _buildSection(
-                    index: 2,
+                    index: 3,
                     title: 'Widget',
                     children: [
                       SwitchListTile(
@@ -1141,10 +1777,23 @@ class _SettingsPageState extends State<SettingsPage> {
                           widget.onSettingsChanged?.call();
                         },
                       ),
+                      SwitchListTile(
+                        title: const Text('Check off tasks on the widget'),
+                        subtitle: const Text(
+                            'Show today\'s tasks as rows with a checkbox — '
+                            'tapping one completes it without opening the app'),
+                        value: _widgetCheckboxes,
+                        onChanged: (val) async {
+                          setState(() => _widgetCheckboxes = val);
+                          Config.widgetCheckboxes = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
                     ],
                   ),
                   _buildSection(
-                    index: 3,
+                    index: 4,
                     title: 'Notifications',
                     children: [
                       SwitchListTile(
@@ -1194,8 +1843,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
-                  _buildSmsReportSection(),
+                  if (_isSectionVisible(5)) _buildStreakSection(),
+                  if (_isSectionVisible(6)) _buildDiceTimerSection(),
+                  if (_isSectionVisible(7)) _buildSmsReportSection(),
                   _buildExportSection(),
+                  _buildBackupSection(),
                 ],
               ),
             ),

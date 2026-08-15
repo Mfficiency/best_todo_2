@@ -1,12 +1,18 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/task.dart';
+import '../services/alarm_ids.dart';
 import '../services/alarm_sound.dart';
+import '../services/alarm_vibration.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
+import 'dice_timer_settings.dart';
 import 'subpage_app_bar.dart';
 
 /// Angle of [point] around [center] in radians, measured clockwise from
@@ -34,6 +40,80 @@ double dialAngleDelta(double from, double to) {
 /// ringing at zero.
 enum DiceTimerPhase { setting, running, paused, ringing }
 
+/// Which alert channels fire when the countdown hits zero — the settings
+/// (`Config.diceTimerAlertMode` + `Config.diceTimerAlsoVibrate`) resolved into
+/// the three things the ring can actually do.
+class DiceAlertPlan {
+  /// Play `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping.
+  final bool melody;
+
+  /// Buzz the repeating vibration pattern.
+  final bool vibrate;
+
+  /// Post a "Time is up" notification. Silently does nothing when
+  /// notifications are switched off in Settings.
+  final bool notification;
+
+  const DiceAlertPlan({
+    required this.melody,
+    required this.vibrate,
+    required this.notification,
+  });
+
+  /// True when the ring makes no noise at all and the dial simply reads 0:00.
+  bool get isSilent => !melody && !vibrate && !notification;
+}
+
+/// Resolves the dice timer's alert settings into a [DiceAlertPlan]. Pure, so
+/// the routing is testable without a platform underneath.
+///
+/// `notification` is the default, and it needs the app's notifications to be
+/// on: with them switched off the ring degrades to complete silence (the dial
+/// just shows 0:00) instead of falling back to a sound nobody asked for.
+DiceAlertPlan diceAlertPlan({
+  String? mode,
+  bool? alsoVibrate,
+  bool? notificationsEnabled,
+}) {
+  final resolved = mode ?? Config.diceTimerAlertMode;
+  final extraBuzz = alsoVibrate ?? Config.diceTimerAlsoVibrate;
+  final canNotify = notificationsEnabled ?? Config.enableNotifications;
+  switch (resolved) {
+    case 'melody':
+      return DiceAlertPlan(
+          melody: true, vibrate: extraBuzz, notification: canNotify);
+    case 'vibrate':
+      return const DiceAlertPlan(
+          melody: false, vibrate: true, notification: false);
+    case 'silent':
+      return const DiceAlertPlan(
+          melody: false, vibrate: false, notification: false);
+    case 'notification':
+    default:
+      return DiceAlertPlan(
+          melody: false, vibrate: extraBuzz, notification: canNotify);
+  }
+}
+
+/// What should happen to the OS-scheduled ring: [arm] it (the countdown is
+/// running with the app away, so only the OS can deliver zero), [cancel] it
+/// (the app is back and rings in-app, or there is nothing left to ring), or
+/// [leave] it alone (it is ringing right now — only answering it clears it).
+enum DiceOsAlarmAction { arm, cancel, leave }
+
+/// The arming rule, kept pure so it can be read and tested on its own.
+DiceOsAlarmAction diceOsAlarmAction({
+  required DiceTimerPhase phase,
+  required bool appResumed,
+  required bool alertSilent,
+}) {
+  if (phase == DiceTimerPhase.ringing) return DiceOsAlarmAction.leave;
+  if (phase == DiceTimerPhase.running && !appResumed && !alertSilent) {
+    return DiceOsAlarmAction.arm;
+  }
+  return DiceOsAlarmAction.cancel;
+}
+
 /// Holds the dice timer's live state so it survives leaving and re-entering
 /// [DiceTimerPage]: the ticker runs here, in a singleton, not in the page's
 /// [State]. The page is a thin view that listens for changes and forwards the
@@ -46,7 +126,9 @@ class DiceTimerController extends ChangeNotifier {
   static final DiceTimerController instance = DiceTimerController._();
 
   /// Where the dial sits when a fresh timer opens; turn back for less time.
-  static const Duration defaultDuration = Duration(minutes: 20);
+  /// Configurable in Settings → Dice timer (20 minutes out of the box).
+  static Duration get defaultDuration =>
+      Duration(minutes: Config.diceTimerDefaultMinutes.clamp(1, 60));
 
   Task? _task;
   DiceTimerPhase _phase = DiceTimerPhase.setting;
@@ -55,9 +137,28 @@ class DiceTimerController extends ChangeNotifier {
   DateTime? _endAt;
   Timer? _ticker;
 
+  /// True while the app is in the foreground. While it is, the ring is
+  /// presented in-app; while it is not, the OS-scheduled alarm has to do it.
+  bool _appResumed = true;
+
+  /// True while [DiceTimerPage] is the page on screen — then zero rings on the
+  /// dial itself (with the Done / Postpone / +min actions) instead of taking
+  /// over the screen.
+  bool _pageVisible = false;
+
+  /// Observes app lifecycle while a countdown is live, so backgrounding the
+  /// app hands the ring over to the OS alarm and returning takes it back.
+  _DiceLifecycleWatcher? _lifecycle;
+
   /// Overridable ring side-effect (for tests); defaults to playing the alarm
   /// melody and posting a notification.
   Future<void> Function(Task task)? onRingAlert;
+
+  /// Presents the full-screen alarm screen for [payload] — set by the app
+  /// shell (`main.dart`) to the same presenter real alarms use, so a timer
+  /// that runs out while the user is elsewhere in the app takes over the
+  /// screen exactly like a ringing alarm. Null in tests.
+  static void Function(Map<String, dynamic> payload)? presentFullScreenRing;
 
   Task? get task => _task;
   DiceTimerPhase get phase => _phase;
@@ -67,6 +168,10 @@ class DiceTimerController extends ChangeNotifier {
   /// True once a countdown has begun (running, paused or ringing) — i.e. there
   /// is a live timer to return to, versus an untouched dial.
   bool get isActive => _task != null && _phase != DiceTimerPhase.setting;
+
+  /// True while [DiceTimerPage] is in the navigation stack — so a caller
+  /// returning from the alarm screen doesn't push a second copy of it.
+  bool get isPageVisible => _pageVisible;
 
   /// Whole-percent of the started duration still left on the countdown.
   int get percentLeft {
@@ -104,8 +209,9 @@ class DiceTimerController extends ChangeNotifier {
   void grabDial() {
     _ticker?.cancel();
     _ticker = null;
-    if (_phase == DiceTimerPhase.ringing) AlarmSound.stop();
+    if (_phase == DiceTimerPhase.ringing) stopAlert();
     if (_phase != DiceTimerPhase.setting) {
+      NotificationService.cancelDiceTimerAlarm();
       _phase = DiceTimerPhase.setting;
       _endAt = null;
       _remaining = Duration(minutes: (_remaining.inSeconds / 60).ceil());
@@ -125,6 +231,7 @@ class DiceTimerController extends ChangeNotifier {
     _ticker = null;
     _phase = DiceTimerPhase.paused;
     _endAt = null;
+    _syncOsAlarm();
     notifyListeners();
     LogService.add('DiceTimerController.pause', 'Paused "${_task?.title}"');
   }
@@ -136,9 +243,64 @@ class DiceTimerController extends ChangeNotifier {
     _run(resetTotal: false);
   }
 
+  /// Silences whichever alert channels the ring started (melody, vibration —
+  /// a posted notification is dismissed by the user, like any other).
+  void stopAlert() {
+    AlarmSound.stop();
+    AlarmVibration.stop();
+  }
+
+  /// Called by [DiceTimerPage] while it is on screen, and by the lifecycle
+  /// watcher when the app comes and goes. Both decide who owns the ring: the
+  /// page, the app, or the OS alarm.
+  void setPageVisible(bool visible) {
+    _pageVisible = visible;
+  }
+
+  void _setAppResumed(bool resumed) {
+    if (_appResumed == resumed) return;
+    _appResumed = resumed;
+    _syncOsAlarm();
+  }
+
+  /// Keeps the OS-scheduled ring in step with the countdown: armed while a
+  /// countdown is running with the app away (so zero rings as a full-screen
+  /// alarm even if the app was killed meanwhile), cancelled as soon as the app
+  /// is back and can ring in-app, or the countdown is paused/rewound/finished.
+  ///
+  /// A ring that is already going is left alone — only answering it (Stop,
+  /// Done, Postpone, +min) clears it.
+  void _syncOsAlarm() {
+    final plan = diceAlertPlan();
+    final endAt = _endAt;
+    final action = diceOsAlarmAction(
+      phase: _phase,
+      appResumed: _appResumed,
+      alertSilent: plan.isSilent,
+    );
+    switch (action) {
+      case DiceOsAlarmAction.leave:
+        return;
+      case DiceOsAlarmAction.arm:
+        if (endAt == null) return;
+        NotificationService.scheduleDiceTimerAlarm(
+          fireAt: endAt,
+          taskTitle: _task?.title ?? '',
+          // A melody alert vibrates through the alarm notification as well —
+          // that is what a ringing alarm feels like.
+          vibrate: plan.vibrate || plan.melody,
+          melody: plan.melody ? Config.diceTimerMelody : null,
+          volume: plan.melody ? Config.diceTimerVolume : null,
+        );
+      case DiceOsAlarmAction.cancel:
+        NotificationService.cancelDiceTimerAlarm();
+    }
+  }
+
   /// Stop the ring and give the countdown [extra] more time.
   void addTime(Duration extra) {
-    AlarmSound.stop();
+    stopAlert();
+    NotificationService.cancelDiceTimerAlarm();
     _remaining += extra;
     _run(resetTotal: true);
   }
@@ -150,9 +312,48 @@ class DiceTimerController extends ChangeNotifier {
     if (resetTotal) _total = _remaining;
     _endAt = DateTime.now().add(_remaining);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    _watchLifecycle();
+    _ensureRingPermissions();
+    _syncOsAlarm();
     notifyListeners();
     LogService.add('DiceTimerController._run',
         'Running ${_remaining.inSeconds}s for "${_task?.title}"');
+  }
+
+  /// Asks (once per app run, Android only) for the permissions the ring needs
+  /// to reach the user with the app closed: notifications, exact alarms and a
+  /// battery-optimization exemption. Skipped entirely in silent mode, which
+  /// never leaves the app.
+  static bool _ringPermissionsAsked = false;
+
+  void _ensureRingPermissions() {
+    if (_ringPermissionsAsked) return;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (diceAlertPlan().isSilent) return;
+    _ringPermissionsAsked = true;
+    NotificationService.ensureAlarmPermissions();
+  }
+
+  /// Starts (once) listening for the app going to the background, so the OS
+  /// alarm can take the ring over. Guarded: a plain `test()` has no binding.
+  void _watchLifecycle() {
+    if (_lifecycle != null) return;
+    try {
+      final watcher = _DiceLifecycleWatcher(this);
+      WidgetsBinding.instance.addObserver(watcher);
+      _lifecycle = watcher;
+      _appResumed = WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    } catch (_) {}
+  }
+
+  void _unwatchLifecycle() {
+    final watcher = _lifecycle;
+    if (watcher == null) return;
+    _lifecycle = null;
+    try {
+      WidgetsBinding.instance.removeObserver(watcher);
+    } catch (_) {}
   }
 
   void _tick() {
@@ -164,15 +365,45 @@ class DiceTimerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reached zero: stop ticking and start the alert. Not awaited — ringing
-  /// must never block the UI, and both default alert paths swallow errors.
+  /// Reached zero: stop ticking and alert. Who alerts depends on where the
+  /// user is — the page shows its own ring actions, anywhere else in the app
+  /// gets the full-screen alarm screen, and with the app away the
+  /// OS-scheduled alarm (armed by [_syncOsAlarm]) does it. Not awaited —
+  /// ringing must never block the UI, and every path swallows its errors.
   void _ring() {
     _ticker?.cancel();
     _ticker = null;
     _phase = DiceTimerPhase.ringing;
-    (onRingAlert ?? _defaultRingAlert)(_task!);
+    final override = onRingAlert;
+    if (override != null) {
+      override(_task!);
+    } else if (_pageVisible && _appResumed) {
+      _defaultRingAlert(_task!);
+    } else if (_appResumed) {
+      _ringFullScreen(_task!);
+    }
     LogService.add(
         'DiceTimerController._ring', 'Timer hit zero for "${_task?.title}"');
+  }
+
+  /// The app is open but the user is somewhere else in it: take over the whole
+  /// screen with the alarm screen (same one real alarms use, so Stop works the
+  /// way it always does) and drop the OS alarm that would ring on top of it.
+  void _ringFullScreen(Task task) {
+    final plan = diceAlertPlan();
+    // A silent alert (silent mode, or a notification alert with notifications
+    // switched off) stays out of the way: the dial reads 0:00 and that is all.
+    if (plan.isSilent) return;
+    final present = presentFullScreenRing;
+    if (present == null) return;
+    NotificationService.cancelDiceTimerAlarm();
+    if (plan.vibrate) AlarmVibration.start();
+    present(diceRingPayload(
+      task.title,
+      melody: plan.melody ? Config.diceTimerMelody : null,
+      volume: plan.melody ? Config.diceTimerVolume : null,
+      vibrate: plan.vibrate,
+    ));
   }
 
   /// Dismiss the timer entirely (Done / postponed / abandoned): stop the
@@ -180,7 +411,9 @@ class DiceTimerController extends ChangeNotifier {
   void clear() {
     _ticker?.cancel();
     _ticker = null;
-    AlarmSound.stop();
+    stopAlert();
+    NotificationService.cancelDiceTimerAlarm();
+    _unwatchLifecycle();
     _task = null;
     _phase = DiceTimerPhase.setting;
     _remaining = defaultDuration;
@@ -194,7 +427,11 @@ class DiceTimerController extends ChangeNotifier {
   void resetForTest() {
     _ticker?.cancel();
     _ticker = null;
+    _unwatchLifecycle();
     onRingAlert = null;
+    presentFullScreenRing = null;
+    _appResumed = true;
+    _pageVisible = false;
     _task = null;
     _phase = DiceTimerPhase.setting;
     _remaining = defaultDuration;
@@ -202,16 +439,43 @@ class DiceTimerController extends ChangeNotifier {
     _endAt = null;
   }
 
+  /// Alerts according to the user's dice timer settings: melody, vibration,
+  /// notification, any combination of those — or nothing at all in silent
+  /// mode, where the dial reading 0:00 is the whole alert.
   static Future<void> _defaultRingAlert(Task task) async {
-    await AlarmSound.play(melody: 'Classic', volume: 0.8, loop: true);
-    try {
-      await NotificationService.showTaskNotification(
-        'Time is up: ${task.title}',
-        delaySeconds: 0,
+    final plan = diceAlertPlan();
+    if (plan.melody) {
+      await AlarmSound.play(
+        melody: Config.diceTimerMelody,
+        volume: Config.diceTimerVolume,
+        loop: true,
       );
-    } catch (_) {
-      // Notifications are best-effort (no plugin host on desktop/tests).
     }
+    if (plan.vibrate) await AlarmVibration.start();
+    if (plan.notification) {
+      try {
+        await NotificationService.showTaskNotification(
+          'Time is up: ${task.title}',
+          delaySeconds: 0,
+        );
+      } catch (_) {
+        // Notifications are best-effort (no plugin host on desktop/tests).
+      }
+    }
+  }
+}
+
+/// Tells [DiceTimerController] when the app leaves and re-enters the
+/// foreground, which is what decides whether a ring can be presented in-app or
+/// has to come from the OS-scheduled alarm.
+class _DiceLifecycleWatcher extends WidgetsBindingObserver {
+  final DiceTimerController controller;
+
+  _DiceLifecycleWatcher(this.controller);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    controller._setAppResumed(state == AppLifecycleState.resumed);
   }
 }
 
@@ -223,6 +487,13 @@ class DiceTimerController extends ChangeNotifier {
 class DiceTimerPage extends StatefulWidget {
   /// The task the dice landed on.
   final Task task;
+
+  /// Line shown above the task title — "The dice picked" for a dice roll,
+  /// "Timer for" when the timer is started from the task list.
+  final String caption;
+
+  /// Icon next to [caption] (the dice for a roll, a timer otherwise).
+  final IconData captionIcon;
 
   /// Called when the user confirms the task is done at (or after) the ring.
   final VoidCallback onTaskDone;
@@ -240,6 +511,8 @@ class DiceTimerPage extends StatefulWidget {
     required this.onTaskDone,
     required this.onTaskPostponed,
     this.onRingAlert,
+    this.caption = 'The dice picked',
+    this.captionIcon = Icons.casino,
   }) : super(key: key);
 
   @override
@@ -264,16 +537,20 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
       _controller.onRingAlert = widget.onRingAlert;
     }
     _controller.configure(widget.task);
+    // While this page is up the ring belongs to the dial (Done / Postpone /
+    // +min); leaving it hands the ring to the alarm screen.
+    _controller.setPageVisible(true);
     _controller.addListener(_onControllerChanged);
   }
 
   @override
   void dispose() {
+    _controller.setPageVisible(false);
     _controller.removeListener(_onControllerChanged);
     // Leaving the page keeps a running or paused timer alive so it can be
     // reopened later; only a mid-ring exit silences the melody (the expired
     // state is kept, so returning still shows the finish actions).
-    if (_controller.phase == DiceTimerPhase.ringing) AlarmSound.stop();
+    if (_controller.phase == DiceTimerPhase.ringing) _controller.stopAlert();
     super.dispose();
   }
 
@@ -286,6 +563,55 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
     callback();
     _controller.clear();
     Navigator.of(context).pop();
+  }
+
+  /// Throw the timer away without answering for the task: the countdown, any
+  /// ring and the OS-scheduled alarm all go, and the task is left exactly as it
+  /// was (not done, not postponed). Unlike leaving the page, nothing keeps
+  /// running in the background.
+  void _cancelTimer() {
+    LogService.add(
+        'DiceTimerPage._cancelTimer', 'Cancelled "${_controller.task?.title}"');
+    _controller.clear();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Timer cancelled')));
+    Navigator.of(context).pop();
+  }
+
+  /// The same settings as the Settings page's "Dice timer" card, reachable
+  /// from the gear while the timer is on screen — the moment the alert is
+  /// actually on the user's mind. Changes apply to the ring that follows,
+  /// including one that is already ringing (rebuilt on close).
+  Future<void> _openSettingsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'Dice timer settings',
+                  style: Theme.of(sheetContext)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const DiceTimerSettingsList(),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   String _two(int n) => n.toString().padLeft(2, '0');
@@ -350,6 +676,26 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
           ],
         );
       case DiceTimerPhase.ringing:
+        // A silent alert has nothing but the dial to say it: show the clock at
+        // zero instead of shouting.
+        if (diceAlertPlan().isSilent) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '0:00',
+                style: theme.textTheme.headlineMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Time's up",
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          );
+        }
         return Text(
           "Time's up!",
           textAlign: TextAlign.center,
@@ -403,54 +749,73 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
         : OutlinedButton.icon(icon: icon, label: label, onPressed: onPressed);
   }
 
+  /// Shown from the moment there is a countdown to throw away; the muted
+  /// destructive styling keeps it clearly apart from Done/Postpone, which
+  /// answer for the task.
+  Widget _cancelButton(BuildContext context) => TextButton.icon(
+        icon: const Icon(Icons.timer_off_outlined),
+        label: const Text('Cancel timer'),
+        style: TextButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.error,
+        ),
+        onPressed: _cancelTimer,
+      );
+
   Widget _lockButton() => OutlinedButton.icon(
         icon: const Icon(Icons.lock_outline),
         label: const Text('Lock touch'),
         onPressed: () => setState(() => _locked = true),
       );
 
-  /// Buttons under the dial. Done and Lock touch are available from the start
-  /// (even before the countdown begins); running adds Pause, paused adds
-  /// Resume, and the ring swaps in the finish/postpone/extend actions.
+  /// One grid row: [buttons] side by side, each stretched to an equal share.
+  Widget _buttonRow(List<Widget> buttons) => Row(
+        children: [
+          for (var i = 0; i < buttons.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: buttons[i]),
+          ],
+        ],
+      );
+
+  /// Buttons under the dial, laid out as a compact grid (two per row) so every
+  /// phase fits on one screen without scrolling. Done and Lock touch are
+  /// available from the start (even before the countdown begins); running adds
+  /// Pause, paused adds Resume, both add Cancel timer, and the ring swaps in
+  /// the finish/postpone/extend actions.
   Widget _actions() {
     switch (_controller.phase) {
       case DiceTimerPhase.setting:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _doneButton(),
-            const SizedBox(height: 12),
-            _lockButton(),
-          ],
-        );
+        return _buttonRow([_doneButton(), _lockButton()]);
       case DiceTimerPhase.running:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _doneButton(),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.pause),
-              label: const Text('Pause'),
-              onPressed: _controller.pause,
-            ),
-            const SizedBox(height: 12),
-            _lockButton(),
+            _buttonRow([
+              _doneButton(),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.pause),
+                label: const Text('Pause'),
+                onPressed: _controller.pause,
+              ),
+            ]),
+            const SizedBox(height: 8),
+            _buttonRow([_lockButton(), _cancelButton(context)]),
           ],
         );
       case DiceTimerPhase.paused:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Resume'),
-              onPressed: _controller.resume,
-            ),
-            const SizedBox(height: 12),
-            _doneButton(filled: false),
-            const SizedBox(height: 12),
-            _lockButton(),
+            _buttonRow([
+              FilledButton.icon(
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Resume'),
+                onPressed: _controller.resume,
+              ),
+              _doneButton(filled: false),
+            ]),
+            const SizedBox(height: 8),
+            _buttonRow([_lockButton(), _cancelButton(context)]),
           ],
         );
       case DiceTimerPhase.ringing:
@@ -505,31 +870,26 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
           child: Text('+$minutes min'),
         );
 
+    // Postpone keeps a row of its own — its label is too long to halve.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FilledButton.icon(
-          icon: const Icon(Icons.check),
-          label: const Text('Done'),
-          onPressed: () => _finish(widget.onTaskDone),
-        ),
-        const SizedBox(height: 12),
+        _buttonRow([
+          FilledButton.icon(
+            icon: const Icon(Icons.check),
+            label: const Text('Done'),
+            onPressed: () => _finish(widget.onTaskDone),
+          ),
+          _cancelButton(context),
+        ]),
+        const SizedBox(height: 8),
         FilledButton.tonalIcon(
           icon: const Icon(Icons.update),
           label: const Text('Postpone to tomorrow'),
           onPressed: () => _finish(widget.onTaskPostponed),
         ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            addButton(1),
-            const SizedBox(width: 8),
-            addButton(5),
-            const SizedBox(width: 8),
-            addButton(10),
-          ],
-        ),
+        const SizedBox(height: 8),
+        _buttonRow([addButton(1), addButton(5), addButton(10)]),
       ],
     );
   }
@@ -538,45 +898,68 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final page = Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Dice timer'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Dice timer',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Timer settings',
+            onPressed: _openSettingsSheet,
+          ),
+        ],
+      ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Everything around the dial (title, status line, the tallest
+            // action grid, paddings) needs roughly 340px; the dial gets what
+            // is left, within bounds, so the whole page — buttons included —
+            // fits on one screen. The scroll view stays only as a safety net
+            // for very short viewports (e.g. landscape phones).
+            final dialSize = constraints.maxHeight.isFinite
+                ? (constraints.maxHeight - 340).clamp(220.0, 280.0)
+                : 280.0;
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 children: [
-                  Icon(Icons.casino, color: theme.colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Text('The dice picked', style: theme.textTheme.titleSmall),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(widget.captionIcon,
+                          color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(widget.caption, style: theme.textTheme.titleSmall),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.task.title,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox.square(
+                    dimension: dialSize,
+                    child: DiceTimerDial(
+                      value: _controller.remaining,
+                      maxMinutes: _maxMinutes,
+                      onDragStart: _controller.grabDial,
+                      onChanged: _controller.setRemaining,
+                      onDragEnd: _controller.releaseDial,
+                      center: _dialCenter(context),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _statusLine(context),
+                  const SizedBox(height: 16),
+                  _actions(),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                widget.task.title,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 24),
-              SizedBox.square(
-                dimension: 280,
-                child: DiceTimerDial(
-                  value: _controller.remaining,
-                  maxMinutes: _maxMinutes,
-                  onDragStart: _controller.grabDial,
-                  onChanged: _controller.setRemaining,
-                  onDragEnd: _controller.releaseDial,
-                  center: _dialCenter(context),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _statusLine(context),
-              const SizedBox(height: 24),
-              _actions(),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

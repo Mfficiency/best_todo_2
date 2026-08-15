@@ -14,6 +14,7 @@ import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
+import '../services/auto_backup_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -21,6 +22,9 @@ import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
 import '../services/storage_service.dart';
+import '../services/streak_service.dart';
+import '../services/sync_service.dart';
+import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
 import '../utils/date_utils.dart';
@@ -38,11 +42,23 @@ import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
+import 'streak_celebration.dart';
+import 'streak_page.dart';
 import 'task_tile.dart';
 import 'test_results_page.dart';
 import 'usage_data_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
+
+/// One entry of the drawer's Tools section: its feature/tool key, the label
+/// shown in the drawer and the icon in front of it.
+class _ToolEntry {
+  final String key;
+  final String label;
+  final IconData icon;
+
+  const _ToolEntry(this.key, this.label, this.icon);
+}
 
 class HomePage extends StatefulWidget {
   final int initialTabIndex;
@@ -54,7 +70,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// Current virtual date for the app. In dev mode this can be changed
   /// using the arrows in the app bar.
   DateTime _currentDate = DateTime.now();
@@ -70,14 +86,6 @@ class _HomePageState extends State<HomePage>
   final ItemRepository _repository = ItemRepository.instance;
   final StorageService _storageService = StorageService();
 
-  final String appGroupId = 'group.homeScreenApp';
-  final String iOSWidgetName = 'SimpleWidgetProvider';
-  final String androidWidgetName = 'SimpleWidgetProvider';
-  final String dataKey = 'text_from_flutter_app';
-  final String progressVisibleKey = 'widget_progress_visible';
-  final String progressPercentKey = 'widget_progress_percent';
-  final String progressColorKey = 'widget_progress_color';
-
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
@@ -92,7 +100,8 @@ class _HomePageState extends State<HomePage>
 
   /// When true, the body renders one long schedule list with day-grouped
   /// sections; tab taps scroll that list instead of switching panes.
-  bool _scheduleView = Config.startInScheduleView;
+  bool _scheduleView =
+      Config.startInScheduleView && Config.isFeatureEnabled('schedule_view');
 
   /// Day section currently scrolled to the top of the schedule view (the
   /// highlighted one). New tasks added while the schedule view is open are
@@ -556,7 +565,12 @@ class _HomePageState extends State<HomePage>
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
     final loadedDailyStats = await _repository.loadDailyStats();
-    if (loaded.isEmpty) {
+    // A fresh install does not come back empty: the merge above turns the
+    // one-time Todo.md import into wish tasks. Only real (non-wish) tasks
+    // decide whether the starter list still has to be seeded — otherwise a
+    // first launch would silently skip it.
+    final isFirstLaunch = !loaded.any((t) => !t.isWish);
+    if (isFirstLaunch) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(
               title: t,
@@ -573,6 +587,9 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       );
+      // The imported wishes follow the starter tasks, so the Today list opens
+      // on them instead of on the old backlog.
+      _tasks.addAll(loaded);
       if (Config.isDev) {
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
@@ -598,7 +615,7 @@ class _HomePageState extends State<HomePage>
       // Fresh dev installs (and every web run, where nothing persists) also
       // get a visible item history, so the task-detail History timeline can
       // be tested immediately: Tools → Projects → open a board → tap a card.
-      if (loaded.isEmpty) {
+      if (isFirstLaunch) {
         _seedDevRangeTask();
         _seedDevWishItem();
         _seedDevItemHistory();
@@ -637,6 +654,21 @@ class _HomePageState extends State<HomePage>
       _saveDailyStats();
     }
     _initializeStatsForCurrentDay();
+    await StreakService.instance.load();
+    if (StreakService.instance.needsSeed) {
+      // First run with the streak feature: backfill from the completion
+      // history that already exists so the flame starts warm.
+      StreakService.instance.seedFromHistory(
+        tasks: [..._tasks, ..._deletedTasks],
+        dailyStats: _dailyStatsByDay,
+      );
+      // Dev/demo builds (Chrome above all, where nothing persists between
+      // runs) get a longer streak than the 14 days of seeded stats, so the
+      // flame and the streak page have something to show off.
+      if (Config.isDev) {
+        StreakService.instance.seedDevStreak(now: _currentDate);
+      }
+    }
     LogService.add('HomePage._loadTasks',
         '*** Tasks loaded into widget (${_tasks.length}) ***');
     if (mounted) {
@@ -817,6 +849,27 @@ class _HomePageState extends State<HomePage>
     _saveDailyStats();
   }
 
+  /// Feeds a done-state change into the streak. On the first completion of
+  /// the day (the moment the streak is kept) it plays the celebration when
+  /// that setting is on. Uses [_currentDate] so the dev date arrows work.
+  void _recordStreakToggle(Task task, bool wasDone) {
+    if (task.isWish || task.isDone == wasDone) return;
+    if (!Config.isFeatureEnabled('streak')) return;
+    if (task.isDone) {
+      final firstOfDay =
+          StreakService.instance.recordCompletion(_currentDate);
+      if (firstOfDay &&
+          Config.showStreak &&
+          Config.streakCompletionAnimation &&
+          mounted) {
+        showStreakCelebration(context,
+            StreakService.instance.currentStreak(now: _currentDate));
+      }
+    } else {
+      StreakService.instance.recordUncompletion(_currentDate);
+    }
+  }
+
   void _addToDeletedTasks(Task task, {bool autoDeleted = false}) {
     task.deletedAt = DateTime.now();
     task.autoDeleted = autoDeleted;
@@ -868,24 +921,43 @@ class _HomePageState extends State<HomePage>
         setState(() {});
       }
     });
-    HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
+    HomeWidget.setAppGroupId(TaskWidgetService.appGroupId)
+        .catchError((_) => false);
+    // Tasks ticked off on the home-screen widget are written to storage by the
+    // widget's own isolate; on the way back into the app they are merged in.
+    WidgetsBinding.instance.addObserver(this);
+    // Lets the app shell reopen a live dice timer after its full-screen alarm
+    // is stopped (see main.dart), with the task's actions ready.
+    openRunningDiceTimer = _reopenRunningDiceTimer;
     // CI embeds its test results as a bundled asset; builds whose test run
-    // had failures get a red dot on the drawer icon (see TestResultsPage).
+    // had unacknowledged failures get a red dot on the Test Results drawer
+    // entry — and on the hamburger icon itself when the "Red dot on menu"
+    // setting is on. Opening the Test Results page clears the dots.
     TestReportService.instance.load().then((_) {
       if (mounted) setState(() {});
     });
+    // A sync failure from a previous run keeps its red dot on the App Logs
+    // drawer entry until acknowledged; lazy load, nothing blocks startup.
+    SyncService.instance.ensureLoaded();
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
     // Some tools (Chronize, Productivity Stats, ...) render the task data, so
     // the configured start tool is only opened once loading finished.
-    _loadTasks().then((_) => _maybeOpenStartTool());
+    _loadTasks().then((_) {
+      _maybeOpenStartTool();
+      // A due automatic backup runs after startup, off the critical path.
+      unawaited(AutoBackupService.maybeRun());
+    });
     _scheduleMidnightUpdate();
   }
 
   /// The page for a tool key from [Config.startToolOptions]; null for
   /// 'tasks' (the home page itself) and unknown keys.
   Widget? _buildToolPage(String tool) {
+    // Simple mode and the per-feature switches hide a tool's entry points;
+    // this guard also covers stale deep links and start-page settings.
+    if (!Config.isFeatureEnabled(tool)) return null;
     switch (tool) {
       case 'alarms':
         return const AlarmsPage();
@@ -964,13 +1036,40 @@ class _HomePageState extends State<HomePage>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_mergeWidgetCompletions());
+      // An app kept open across midnight still gets its scheduled backup.
+      unawaited(AutoBackupService.maybeRun());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (openRunningDiceTimer == _reopenRunningDiceTimer) {
+      openRunningDiceTimer = null;
+    }
     _tabController.dispose();
     _controller.dispose();
     _searchController.dispose();
     _scheduleScrollController.dispose();
     _midnightTimer?.cancel();
     super.dispose();
+  }
+
+  /// Reopens the dice timer page for a timer that is still live — used after
+  /// its full-screen alarm was stopped. Never rolls a new task: with no live
+  /// timer (e.g. the app was killed and relaunched by the alarm) it does
+  /// nothing at all.
+  void _reopenRunningDiceTimer() {
+    if (!mounted) return;
+    final controller = DiceTimerController.instance;
+    if (!controller.isActive || controller.task == null) return;
+    // The timer page can already be behind the alarm screen (the app was open
+    // on it when zero came) — reopening would stack a second copy.
+    if (controller.isPageVisible) return;
+    _rollRandomTaskTimer();
   }
 
   /// Map a due date to the tab index that would own it in list mode.
@@ -1379,6 +1478,40 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  /// Double-tap → "Start timer": opens the same egg-timer page the dice
+  /// uses, but for [task] specifically, with the countdown already running at
+  /// the default duration — grabbing the dial still pauses and rewinds it
+  /// like any dice timer. Double-tapping the task whose timer is already
+  /// live just returns to it; picking a different task replaces the old
+  /// timer, since the double tap is an explicit choice for this one.
+  void _startTaskTimer(Task task) {
+    final controller = DiceTimerController.instance;
+    if (controller.isActive && identical(controller.task, task)) {
+      LogService.add('HomePage._startTaskTimer',
+          'Returned to running timer for "${task.title}"');
+    } else {
+      controller.configure(task);
+      controller.releaseDial();
+      LogService.add(
+          'HomePage._startTaskTimer', 'Started timer for "${task.title}"');
+    }
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => DiceTimerPage(
+              task: task,
+              caption: 'Timer for',
+              captionIcon: Icons.timer_outlined,
+              onTaskDone: () => _completeTaskFromDice(task),
+              onTaskPostponed: () => _postponeTaskFromDice(task),
+            ),
+          ),
+        )
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   /// The dice timer rang and the user confirmed the task is done.
   void _completeTaskFromDice(Task task) {
     if (task.isDone) return;
@@ -1387,6 +1520,7 @@ class _HomePageState extends State<HomePage>
       task.completedAt = DateTime.now();
     });
     _trackTaskDoneState(task, false);
+    _recordStreakToggle(task, false);
     _saveTasks();
     LogService.add(
         'HomePage._completeTaskFromDice', 'Completed "${task.title}"');
@@ -1414,7 +1548,16 @@ class _HomePageState extends State<HomePage>
   }
 
   void _updateSettings() {
-    setState(() {});
+    setState(() {
+      // Switching to simple mode (or turning a feature off) while its view is
+      // active would leave the home page in a state with no way back, so both
+      // are reset here.
+      if (!Config.isFeatureEnabled('schedule_view')) _scheduleView = false;
+      if (!Config.isFeatureEnabled('search') && _searchQuery.isNotEmpty) {
+        _searchController.clear();
+        _searchQuery = '';
+      }
+    });
     _updateHomeWidget();
     LogService.add('HomePage._updateSettings', 'Settings updated');
   }
@@ -1441,47 +1584,42 @@ class _HomePageState extends State<HomePage>
         'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }
 
-  Future<void> _updateHomeWidget() async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final todayTasks = _tasks.where((t) {
-      if (t.dueDate == null) return false;
-      final due = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      return !due.isAfter(today);
-    }).toList()
-      ..sort((a, b) =>
-          (a.listRanking ?? 1 << 31).compareTo(b.listRanking ?? 1 << 31));
+  Future<void> _updateHomeWidget() => TaskWidgetService.sync(_tasks);
 
-    final openTasks = todayTasks.where((t) => !t.isDone).toList();
-    final totalCount = todayTasks.length;
-    final completedCount = totalCount - openTasks.length;
-    final remainingCount = openTasks.length;
-    final percent = totalCount == 0
-        ? 0
-        : ((completedCount / totalCount) * 100).round().clamp(0, 100);
-
-    String progressColor = 'green';
-    if (completedCount == totalCount && totalCount > 0) {
-      progressColor = 'green';
-    } else if (remainingCount >= 5) {
-      progressColor = 'red';
-    } else if (remainingCount == 4) {
-      progressColor = 'orange';
+  /// Picks up completions made on the home-screen widget while the app was in
+  /// the background ([Config.widgetCheckboxes]). The widget writes straight to
+  /// `tasks.json` from its own isolate, so without this the in-memory list
+  /// would overwrite the change on the next save. Only the done state is
+  /// merged — everything else in memory is newer than the file.
+  Future<void> _mergeWidgetCompletions() async {
+    if (!Config.widgetCheckboxes) return;
+    // Deliberately the raw read: loadTaskList's day-rollover sweep would fight
+    // the in-memory list on a resume that crosses midnight.
+    final stored = await _storageService.readTaskListRaw();
+    if (!mounted || stored.isEmpty) return;
+    final doneByUid = {for (final t in stored) t.uid: t};
+    final changed = <Task>[];
+    for (final task in _tasks) {
+      final other = doneByUid[task.uid];
+      if (other == null || other.isDone == task.isDone) continue;
+      changed.add(task);
     }
-
-    final data = openTasks.isEmpty
-        ? 'Well done!\nNo more tasks for today!'
-        : openTasks.map((t) => '- ${t.title}').join('\n');
-
-    try {
-      await HomeWidget.saveWidgetData(dataKey, data);
-      await HomeWidget.saveWidgetData(
-          progressVisibleKey, Config.showWidgetProgressLine);
-      await HomeWidget.saveWidgetData(progressPercentKey, percent);
-      await HomeWidget.saveWidgetData(progressColorKey, progressColor);
-      await HomeWidget.updateWidget(
-          iOSName: iOSWidgetName, androidName: androidWidgetName);
-    } catch (_) {}
+    if (changed.isEmpty) return;
+    setState(() {
+      for (final task in changed) {
+        final other = doneByUid[task.uid]!;
+        task.isDone = other.isDone;
+        task.completedAt = other.completedAt;
+      }
+    });
+    for (final task in changed) {
+      // The streak was already recorded by the widget's isolate; the daily
+      // stats live only here, so they catch up now.
+      _trackTaskDoneState(task, !task.isDone);
+    }
+    _saveTasks();
+    LogService.add('HomePage._mergeWidgetCompletions',
+        'Merged ${changed.length} widget completion(s)');
   }
 
   void _saveTasks() {
@@ -1907,6 +2045,7 @@ class _HomePageState extends State<HomePage>
           task.completedAt = task.isDone ? DateTime.now() : null;
         });
         _trackTaskDoneState(task, wasDone);
+        _recordStreakToggle(task, wasDone);
         _saveTasks();
       },
       onDueDateChanged: (oldDueDate, newDueDate) {
@@ -1929,6 +2068,7 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
+      onStartTimer: () => _startTaskTimer(task),
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
@@ -1997,9 +2137,28 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// An icon overlaid with a small red dot, used on the drawer/hamburger
-  /// icon and the Test Results entry when this build's CI test run failed.
-  Widget _iconWithFailureDot(IconData icon) {
+  /// Tools listed under the drawer's Tools section, in display order. Each
+  /// key doubles as its feature key ([Config.featureKeys]) and its
+  /// [Config.startToolOptions] key, so a tool switched off in Settings
+  /// disappears here and can no longer be the start page.
+  static const List<_ToolEntry> _toolEntries = [
+    _ToolEntry('alarms', 'Alarms', Icons.alarm),
+    _ToolEntry('countdown', 'Countdown', Icons.timer),
+    _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
+    _ToolEntry('projects', 'Projects', Icons.dashboard),
+    _ToolEntry('chronize', 'Chronize', Icons.access_time),
+    _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
+    _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
+    _ToolEntry('test_results', 'Test Results', Icons.fact_check),
+  ];
+
+  /// An icon overlaid with a small red dot, used on the Test Results entry —
+  /// and, when [Config.showFailureDotOnMenu] is on, the drawer/hamburger
+  /// icon — while the newest test run has unacknowledged failures, and (with
+  /// its own [dotKey]) on the App Logs entry after a failed sync. Every dot
+  /// clears itself once its page is opened.
+  Widget _iconWithFailureDot(IconData icon,
+      {Key dotKey = const Key('test-failure-dot')}) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -2008,7 +2167,7 @@ class _HomePageState extends State<HomePage>
           right: -2,
           top: -2,
           child: Container(
-            key: const Key('test-failure-dot'),
+            key: dotKey,
             width: 9,
             height: 9,
             decoration: BoxDecoration(
@@ -2023,6 +2182,8 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    final enabledTools =
+        _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
     return Scaffold(
       key: homeScaffoldKey,
       drawer: Drawer(
@@ -2057,22 +2218,23 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text('Deleted Items'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DeletedItemsPage(
-                      items: _deletedTasks,
-                      onRestore: _restoreTask,
-                      onDeletePermanently: _deleteTaskPermanently,
+            if (Config.isFeatureEnabled('deleted_items'))
+              ListTile(
+                leading: const Icon(Icons.delete),
+                title: const Text('Deleted Items'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => DeletedItemsPage(
+                        items: _deletedTasks,
+                        onRestore: _restoreTask,
+                        onDeletePermanently: _deleteTaskPermanently,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.info),
               title: const Text('About'),
@@ -2083,109 +2245,65 @@ class _HomePageState extends State<HomePage>
                 );
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Changelog'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ChangelogPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.list_alt),
-              title: const Text('App Logs'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AppLogsPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.show_chart),
-              title: const Text('Startup Times'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const StartupTimesPage()),
-                );
-              },
-            ),
-            ExpansionTile(
-              leading: const Icon(Icons.build),
-              title: const Text('Tools'),
-              childrenPadding: const EdgeInsets.only(left: 16),
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.alarm),
-                  title: const Text('Alarms'),
+            if (Config.isFeatureEnabled('changelog'))
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Changelog'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ChangelogPage()),
+                  );
+                },
+              ),
+            if (Config.isFeatureEnabled('app_logs'))
+              ValueListenableBuilder<bool>(
+                valueListenable: SyncService.instance.hasUnseenError,
+                builder: (context, syncError, _) => ListTile(
+                  leading: syncError
+                      ? _iconWithFailureDot(Icons.list_alt,
+                          dotKey: const Key('sync-error-dot'))
+                      : const Icon(Icons.list_alt),
+                  title: const Text('App Logs'),
                   onTap: () {
                     Navigator.pop(context);
-                    _openTool('alarms');
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                    );
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.timer),
-                  title: const Text('Countdown'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('countdown');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.favorite_border),
-                  title: const Text('Wishlist'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('wishlist');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.dashboard),
-                  title: const Text('Projects'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('projects');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.access_time),
-                  title: const Text('Chronize'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('chronize');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.insights),
-                  title: const Text('Productivity Stats'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('productivity_stats');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.query_stats),
-                  title: const Text('Usage Data'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('usage_data');
-                  },
-                ),
-                ListTile(
-                  leading: TestReportService.instance.hasFailures
-                      ? _iconWithFailureDot(Icons.fact_check)
-                      : const Icon(Icons.fact_check),
-                  title: const Text('Test Results'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openTool('test_results');
-                  },
-                ),
-              ],
-            ),
+              ),
+            if (Config.isFeatureEnabled('startup_times'))
+              ListTile(
+                leading: const Icon(Icons.show_chart),
+                title: const Text('Startup Times'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const StartupTimesPage()),
+                  );
+                },
+              ),
+            if (enabledTools.isNotEmpty)
+              ExpansionTile(
+                leading: const Icon(Icons.build),
+                title: const Text('Tools'),
+                childrenPadding: const EdgeInsets.only(left: 16),
+                children: [
+                  for (final tool in enabledTools)
+                    ListTile(
+                      leading: tool.key == 'test_results' &&
+                              TestReportService.instance.hasUnseenFailures
+                          ? _iconWithFailureDot(tool.icon)
+                          : Icon(tool.icon),
+                      title: Text(tool.label),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openTool(tool.key);
+                      },
+                    ),
+                ],
+              ),
           ],
         ),
       ),
@@ -2193,34 +2311,84 @@ class _HomePageState extends State<HomePage>
         leading: Builder(
           builder: (context) => IconButton(
             tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
-            icon: TestReportService.instance.hasFailures
+            icon: Config.showFailureDotOnMenu &&
+                    TestReportService.instance.hasUnseenFailures
                 ? _iconWithFailureDot(Icons.menu)
                 : const Icon(Icons.menu),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Search tasks',
-            border: InputBorder.none,
-            suffixIcon: _searchQuery.isEmpty
-                ? const Icon(Icons.search)
-                : IconButton(
-                    icon: const Icon(Icons.clear),
-                    tooltip: 'Clear search',
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  ),
-          ),
-          onChanged: (value) => setState(() => _searchQuery = value),
-        ),
+        title: Config.isFeatureEnabled('search')
+            ? TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search tasks',
+                  border: InputBorder.none,
+                  suffixIcon: _searchQuery.isEmpty
+                      ? const Icon(Icons.search)
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        ),
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
+              )
+            : const Text('BestToDo'),
         actions: [
+          ListenableBuilder(
+            listenable: StreakService.instance,
+            builder: (context, _) {
+              if (!Config.showStreak || !Config.isFeatureEnabled('streak')) {
+                return const SizedBox.shrink();
+              }
+              final streak =
+                  StreakService.instance.currentStreak(now: _currentDate);
+              final progress =
+                  StreakService.instance.flameProgress(now: _currentDate);
+              final theme = Theme.of(context);
+              return IconButton(
+                tooltip: streak > 0
+                    ? 'Streak: $streak day${streak == 1 ? '' : 's'}'
+                    : 'Start a streak: complete a task today',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StreakPage(
+                        onSettingsChanged: () {
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ),
+                  ).then((_) {
+                    if (mounted) setState(() {});
+                  });
+                },
+                icon: Badge(
+                  isLabelVisible: streak > 0,
+                  label: Text('$streak'),
+                  backgroundColor: flameColorFor(progress, theme),
+                  child: Icon(
+                    streak > 0
+                        ? Icons.local_fire_department
+                        : Icons.local_fire_department_outlined,
+                    size: flameSizeFor(progress),
+                    color: flameColorFor(progress, theme),
+                  ),
+                ),
+              );
+            },
+          ),
           ListenableBuilder(
             listenable: DiceTimerController.instance,
             builder: (context, _) {
+              if (!Config.isFeatureEnabled('dice_timer')) {
+                return const SizedBox.shrink();
+              }
               final active = DiceTimerController.instance.isActive;
               return IconButton(
                 icon: active
@@ -2236,22 +2404,23 @@ class _HomePageState extends State<HomePage>
               );
             },
           ),
-          IconButton(
-            icon: Icon(_scheduleView
-                ? Icons.format_list_bulleted
-                : Icons.calendar_month),
-            tooltip: _scheduleView ? 'List view' : 'Schedule view',
-            onPressed: () {
-              setState(() {
-                _scheduleView = !_scheduleView;
-              });
-              if (_scheduleView) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _scrollToScheduleAnchor(_tabController.index);
+          if (Config.isFeatureEnabled('schedule_view'))
+            IconButton(
+              icon: Icon(_scheduleView
+                  ? Icons.format_list_bulleted
+                  : Icons.calendar_month),
+              tooltip: _scheduleView ? 'List view' : 'Schedule view',
+              onPressed: () {
+                setState(() {
+                  _scheduleView = !_scheduleView;
                 });
-              }
-            },
-          ),
+                if (_scheduleView) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToScheduleAnchor(_tabController.index);
+                  });
+                }
+              },
+            ),
         ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(Config.isDev ? 72 : 48),

@@ -100,10 +100,19 @@ flutter {
 afterEvaluate {
     val createVersionedReleaseApk = tasks.register("createVersionedReleaseApk") {
         doLast {
-            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.57+27 -> 57)
-            val suffix = (flutter.versionName ?: "0.0.0")
-                .substringBefore("+")
-                .substringAfterLast(".")
+            // Full pubspec version: x.y.z+build (e.g. 0.1.117+87). versionName carries
+            // x.y.z, versionCode the build number, so recombine them.
+            val fullVersion =
+                "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"
+
+            // versionCode 1 means pubspec lost its `+build` suffix: the APK would be
+            // rejected as a downgrade on any device holding an earlier build.
+            if (flutter.versionCode == 1) {
+                logger.warn(
+                    "[apk-rename] WARNING: versionCode is 1 — pubspec.yaml `version:` is " +
+                        "missing its +build suffix. Fix it before shipping this APK."
+                )
+            }
 
             val apkCandidates = listOf(
                 rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
@@ -119,7 +128,7 @@ afterEvaluate {
                 return@doLast
             }
 
-            val renamedApk = File(sourceApk.parentFile, "${sourceApk.nameWithoutExtension}_${suffix}.apk")
+            val renamedApk = File(sourceApk.parentFile, "best_todo_${fullVersion}.apk")
             sourceApk.copyTo(renamedApk, overwrite = true)
             logger.lifecycle("[apk-rename] Created ${renamedApk.path}")
         }
@@ -132,6 +141,10 @@ afterEvaluate {
 
 dependencies {
     implementation("androidx.annotation:annotation:1.7.1")
+    // FileProvider for the in-app APK update install (MainActivity's
+    // besttodo/update channel). Transitively present anyway, pinned explicitly
+    // so the manifest's <provider> never breaks on a dependency shuffle.
+    implementation("androidx.core:core:1.13.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.10.3")

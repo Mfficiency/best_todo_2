@@ -1,5 +1,136 @@
 # Changelog
 
+## [0.1.142] - 2026-08-06
+- Fixed tapping the tasks home-screen widget showing a black screen when the app was already open in the background (only a force-close recovered it): the widget tap could start a second copy of the app in its own task instead of bringing the running one back to the front - widget taps now always return to the existing app, and a stray duplicate closes itself instead of sitting on a black launch window
+
+## [0.1.141] - 2026-08-06
+- New read-only Obsidian plugin (Tier 2 of the Obsidian integration, in `obsidian-plugin/`): a proper task view inside Obsidian rendering the synced `besttodo_tasks.json` - the six home tabs, checkboxes, due dates, label and project chips, open-first ordering, and an "as of ..." freshness line; it refreshes automatically when the sync file changes and never writes anything back
+
+## [0.1.140] - 2026-08-06
+- The app now asks for all its permissions up front (notifications, exact alarms, battery-optimization exemption, full-screen alarms, SMS) when you choose the full experience - "Use everything" on the welcome screen or turning simple mode off in Settings
+- The same one-pass permission check also runs on the first open after an app update, so a new version can never be quietly missing a permission it needs
+- Choosing simple mode keeps the welcome flow dialog-free: nothing is asked until you opt into the full experience or the app is updated
+
+## [0.1.139] - 2026-08-06
+- Fixed "Check for updates" always failing with a host-lookup error (SocketException: api.github.com) in release builds: the installed app was missing the Android internet permission, so it could not reach GitHub at all
+
+## [0.1.138] - 2026-08-06
+- Fixed a first launch on a new phone opening with the imported idea backlog instead of the three starter tasks - the starter list is seeded again, and now sits above the imported items
+
+## [0.1.137] - 2026-08-06
+- The red dot on the menu icon for failed tests is now opt-in: turn it on under Settings → Appearance → "Red dot for failed tests" (off by default)
+- Red dots now clear themselves once you have looked at the problem: opening Test Results acknowledges the failed run (the dot stays off until a newer run fails), and the App Logs dot already cleared on opening after a failed sync
+
+## [0.1.136] - 2026-08-06
+- Fixed the occasional black screen when opening the app that needed a force-close to recover: startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame - they now initialize right after it, with timeouts so a stuck one can't wedge the app
+- If reading settings ever fails at launch, the app now opens with defaults instead of not opening at all
+
+## [0.1.135] - 2026-08-06
+- Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
+- Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too
+- The Markdown file is one-way for now: it is overwritten on every sync, so edits made in Obsidian stay in Obsidian
+
+## [0.1.134] - 2026-08-06
+- Dice timer buttons now sit in a compact grid and the dial shrinks on small screens, so every control fits on one screen without scrolling
+
+## [0.1.133] - 2026-08-06
+- The app can now update itself: About → "Check for updates" looks up the newest release on GitHub, and one tap downloads the new APK (with a progress bar) and opens the Android installer — no store needed
+- The first in-app update asks for Android's one-time "allow installs from this app" permission; the page explains what to do and the Install button waits for you to come back
+- On desktop, web, or when a release ships without an APK, the button opens the release page in the browser instead
+- New for local builds: `PUBLISH_APK=1 sh tool/build.sh apk --release` (or `dart run tool/publish_apk.dart` after any release build) uploads the APK to a GitHub release — exactly where the in-app updater looks
+
+## [0.1.132] - 2026-08-06
+- Double-tap a task to open a little menu — its first (and for now only) entry starts a timer for that task
+- The timer is the same egg timer the dice uses, but it starts counting down the default 20 minutes right away; grabbing the dial still pauses and rewinds it, exactly like a dice-rolled timer
+- Double-tapping the task whose timer is already running returns to the countdown instead of restarting it
+
+## [0.1.131] - 2026-08-06
+- Synced mode: choose between fully offline (as before) and syncing your tasks to a folder of your choice — Settings → Sync & export, pick the folder once and you're set
+- The sync runs in the background every time you leave or quit the app, so it never slows down startup or gets in your way
+- App Logs got a "Sync" tab showing every sync: when it ran, how long it took and how many items it wrote — failures show up in red with the reason
+- If a sync fails (folder deleted, drive unplugged, ...), a little red dot appears on App Logs in the main menu; opening the page clears it, and the next successful sync does too
+- Sync writes are atomic: a crash or an unplugged drive mid-sync can never leave a half-written file behind
+
+## [0.1.130] - 2026-08-06
+- Settings has a new Backup section: choose a folder and the app writes a full backup of everything (tasks, settings, timers) there automatically - daily, weekly, or never
+- Daily backs up the first time you open the app each day, weekly once seven days have passed; a "Back up now" button writes one on demand and the section shows when the last backup ran
+- Each backup is a single timestamped file that the existing Import button can restore
+
+## [0.1.129] - 2026-08-05
+- Test Results now shows detail even when everything passes: an "All tests" section lists every test file with its own pass/fail/skip counts and time, and expanding a file shows each test with a green/red/grey mark and how long it took
+- Files with failures sort to the top, and the summary line now includes the total test time ("ran in 42.3 s")
+- The CI job summary gets the same per-file table, so the app and CI always tell the same story; older reports without per-test details say so instead of showing nothing
+
+## [0.1.128] - 2026-08-05
+- Home-screen task widget: tapping the progress line, or a task row next to its checkbox, now always opens the app on the task list - even if the app was left on settings or another page
+- Test Results now always shows the newest test run there is, whichever branch it came from — no more empty page because the branch you built from was not the one that last ran the tests
+- The results are packaged into every build, so the page works with no network at all: a fresh checkout, a release APK on a plane, or the app running in the browser all show real numbers
+- The page says how old the run is ("Ran 3 hours ago on dev"), where the numbers came from, and links straight to the CI run that produced them; refreshing pulls the latest and keeps it for the next offline start
+
+## [0.1.127] - 2026-08-05
+- Dice timer: a "Cancel timer" button ends a running, paused or ringing timer and drops its alarm with it — the task is left exactly as it was, neither done nor postponed
+- Cancelling returns to the home page with a "Timer cancelled" note and the dice goes back to offering a fresh roll; leaving the page with the back arrow still keeps the countdown running, as before
+
+## [0.1.126] - 2026-08-05
+- Introduction: the welcome slides are back — the app no longer opens straight on the simple/full mode question, the three intro screens run first and the mode choice is now their closing page
+- About → "Replay Introduction" now replays the whole thing, slides and the simple/full mode choice, instead of only the slides
+
+## [0.1.125] - 2026-08-05
+- Home-screen widget: a new setting lets you tick tasks off straight on the widget — Settings → Widget → "Check off tasks on the widget", off by default so the widget stays the plain text summary
+- With it on, the widget lists today's tasks as rows with a checkbox: tapping the box completes (or un-completes) the task without opening the app, tapping the task name opens it
+- Open tasks come first, finished ones stay underneath so a mis-tap is one tap away from being undone, and a "+N more" line shows what did not fit
+- Ticking a task off on the widget counts toward your streak and shows up in the app the moment you open it again
+
+## [0.1.124] - 2026-08-05
+- Productivity Stats: the item activity heatmap no longer washes out — a single freakishly busy hour used to leave every other slot the same pale shade
+- Colours now follow a logarithmic scale that tops out just above your normal range, so quiet, average and busy hours are told apart at a glance while the outlier simply maxes out
+- Each activity tab gained a legend showing which count each shade means, plus a note of the busiest slot
+
+## [0.1.123] - 2026-08-05
+- Settings: every section now folds away — tap a title (or its chevron) to open and close it, so you only see the part you came for
+- Settings: a "Collapse all" / "Expand all" button sits at the top of the page
+- Settings: "Mode & features" starts collapsed, and jumping to a section from a chip or from the search opens it for you
+
+## [0.1.122] - 2026-08-05
+- Dice timer: when the countdown ends and you are not on the timer page, it now rings like a real alarm — the whole screen, one button to stop it, even with the app closed or the phone locked
+- Stopping that alarm drops you straight back on the timer with Done, Postpone to tomorrow and +1/+5/+10 min ready
+- Your alert choice decides how loud it is: the melody at your volume, vibration only, or a quiet takeover — Silent still stays completely out of the way
+- Starting a timer asks once for the alarm permissions Android needs so the ring survives a closed app
+
+## [0.1.121] - 2026-08-05
+- Simple mode keeps the drawer's own pages: Deleted Items, About, Changelog, App Logs and Startup Times are all reachable again — simple mode only strips the tools and the extras off the task list
+
+## [0.1.120] - 2026-08-05
+- Dice timer settings: choose what happens at zero — the alarm melody (with its own melody and volume), vibration, a notification (the default) or completely silent, where the dial just shows 0:00
+- With notifications switched off, the default dice timer alert stays quiet too: no fallback sound, just 0:00 on the dial
+- An "Also vibrate" switch adds a buzz to the melody or notification alert, and the dial's pre-wound default length (20 min) is now yours to pick
+- Reach all of it from the new "Dice timer" settings section or the gear on the timer page itself, melody preview included
+
+## [0.1.119] - 2026-08-05
+- Changelog page: a new button switches to an update heatmap — a GitHub-style calendar of every release, greener the more releases that day
+- Tap any day in the heatmap to see exactly which versions shipped that day and what changed in them
+- The heatmap's month labels show the year whenever it changes (e.g. "Dec 2025" → "Jan 2026"), so a multi-year history stays readable
+
+## [0.1.118] - 2026-08-05
+- First launch now asks whether you want simple mode (just the to-do list) or full mode (everything) — you can switch any time in Settings
+- Simple mode keeps only the task list: no tools, no streak flame, no dice, no schedule view and no search — the drawer is down to Settings, Deleted Items and About
+- New Settings section "Mode & features": switch between simple and full mode, bring the welcome picker back, and in full mode pick exactly which features you want (each tool, streak, dice timer, schedule view, task search, deleted items, changelog, app logs, startup times, daily SMS report)
+- A feature you switch off disappears everywhere at once — drawer, app bar and its own settings section — and can no longer be the app's start page
+- Settings: tapping a section chip now always lands on that section — jumping backwards (or far down a long settings page) used to do nothing
+
+## [0.1.117] - 2026-08-05
+- SMS report: recipients can be switched off individually instead of deleted — paused contacts stay in the list and are skipped by the daily report.
+
+## [0.1.116] - 2026-08-05
+- Demo builds (Chrome) now start with a 50-day streak so the flame and streak page have history to show.
+
+## [0.1.115] - 2026-08-04
+- streak: a flame next to the dice tracks your daily completion streak — it grows and gets hotter every day you complete at least one task, reaching maximum fire after a year
+- streak: tapping the flame opens the streak page with a fun animated flame, fun stats (longest streak, best day, days until maximum fire, ...) and the streak settings
+- streak: completing the first task of the day plays a short flame celebration (can be turned off)
+- streak: existing completion history counts — your flame starts warm from day one
+- Settings → Streak: hide the streak, choose a 24h or 48h grace period (48h forgives one missed day), and enable an evening reminder (default 22:00) that nudges you when no task is done yet that day
+
 ## [0.1.114] - 2026-07-25
 - Local builds now pull the latest CI test report from GitHub so the in-app Test Results page shows real results offline
 

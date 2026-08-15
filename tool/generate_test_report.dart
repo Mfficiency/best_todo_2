@@ -11,13 +11,15 @@ import 'package:besttodo/models/test_report.dart';
 ///   flutter test --machine > machine.jsonl || true
 ///   dart run tool/generate_test_report.dart \
 ///     --input machine.jsonl --output assets/test_report.json \
-///     --commit <sha> --branch <branch> --version <x.y.z+build>
+///     --commit <sha> --branch <branch> --version <x.y.z+build> \
+///     --run-url <ci run url>
 void main(List<String> args) {
   String input = '';
   String output = 'assets/test_report.json';
   String commit = '';
   String branch = '';
   String version = '';
+  String runUrl = '';
 
   for (var i = 0; i + 1 < args.length; i += 2) {
     final value = args[i + 1];
@@ -37,6 +39,9 @@ void main(List<String> args) {
       case '--version':
         version = value;
         break;
+      case '--run-url':
+        runUrl = value;
+        break;
       default:
         stderr.writeln('Unknown option: ${args[i]}');
         exitCode = 64;
@@ -55,11 +60,13 @@ void main(List<String> args) {
     commit: commit,
     branch: branch,
     appVersion: version,
+    runUrl: runUrl,
     generatedAt: DateTime.now().toUtc(),
   );
 
+  File(output).parent.createSync(recursive: true);
   File(output).writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert(report.toJson()),
+    '${const JsonEncoder.withIndent('  ').convert(report.toJson())}\n',
   );
   stdout.writeln(
     'Wrote $output: ${report.passed} passed, ${report.failed} failed, '
