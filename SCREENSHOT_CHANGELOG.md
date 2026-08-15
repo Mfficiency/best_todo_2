@@ -1,3 +1,33 @@
+## 2026-08-15T16:31:11.452440Z | branch: dev | source: ee3160f
+
+- Folder: `docs/screenshots/home/20260815-163110-ee3160f`
+
+### Home Page
+![2026-08-15T16:31:11.452440Z - dev - home_page](docs/screenshots/home/20260815-163110-ee3160f/home_page.png)
+
+### Menu Open
+![2026-08-15T16:31:11.452440Z - dev - menu_open](docs/screenshots/home/20260815-163110-ee3160f/menu_open.png)
+
+### Project Board Page
+![2026-08-15T16:31:11.452440Z - dev - project_board_page](docs/screenshots/home/20260815-163110-ee3160f/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-15T16:31:11.452440Z - dev - project_edit_dialog](docs/screenshots/home/20260815-163110-ee3160f/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-15T16:31:11.452440Z - dev - projects_page](docs/screenshots/home/20260815-163110-ee3160f/projects_page.png)
+
+### Search Active
+![2026-08-15T16:31:11.452440Z - dev - search_active](docs/screenshots/home/20260815-163110-ee3160f/search_active.png)
+
+### Settings Page
+![2026-08-15T16:31:11.452440Z - dev - settings_page](docs/screenshots/home/20260815-163110-ee3160f/settings_page.png)
+
+### Your Stats Page
+![2026-08-15T16:31:11.452440Z - dev - your_stats_page](docs/screenshots/home/20260815-163110-ee3160f/your_stats_page.png)
+
+---
+
 ## 2026-08-15T16:06:26.389123Z | branch: dev | source: cb73fcc
 
 - Folder: `docs/screenshots/home/20260815-160625-cb73fcc`
