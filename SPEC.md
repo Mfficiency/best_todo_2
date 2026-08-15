@@ -1258,7 +1258,10 @@ Since 0.1.101 this import feeds the task list via the wishlist migration above (
 installs get the backlog as wish tasks on first `loadTaskList`).
 
 ### 10.7 The rest
-**App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
+**App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted). A
+copy button (app-bar) puts the current log on the clipboard, versioned and timestamped, for
+pasting into a bug report; an export button writes the same content to a timestamped `.txt`
+file in a user-picked folder (same shape as the other exports in the app).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer
