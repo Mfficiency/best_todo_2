@@ -154,9 +154,21 @@ dependencies {
 // home_widget 0.8.1 declares `androidx.glance:glance-appwidget:1.+`, which now
 // resolves to 1.3.0-alpha01 and demands compileSdk 37 + AGP 9.1.0. Pin to the
 // latest stable 1.1.x until we're ready to bump the Android toolchain.
+//
+// Same story one level down, and it broke the release build on 2026-08-15:
+// WorkManager came in unpinned and picked up the freshly published
+// `androidx.work:work-runtime-ktx:2.12.0-rc01`, which declares minSdk 24 —
+// the manifest merger then refused this app's minSdk 23 and every
+// `assembleRelease` failed at `:app:processReleaseMainManifest`, with no code
+// change of ours involved. Pinned to the last line that still supports 23, so
+// a new upstream pre-release can't take the build out again. Raising minSdk to
+// 24 would also fix it, but that drops Android 6 devices — a product decision,
+// not a build fix.
 configurations.all {
     resolutionStrategy {
         force("androidx.glance:glance-appwidget:1.1.1")
         force("androidx.glance:glance:1.1.1")
+        force("androidx.work:work-runtime:2.10.0")
+        force("androidx.work:work-runtime-ktx:2.10.0")
     }
 }
