@@ -55,9 +55,9 @@
              app offers BestToDo, which creates a task on Today from the
              shared text. A translucent trampoline (not MainActivity itself):
              the share sheet starts its target inside the sharing app's task,
-             and a second MainActivity there means a second Flutter engine —
-             the black-screen failure mode described above. ShareActivity
-             forwards the text into the app's real task and finishes. -->
+             and a second MainActivity there would mean a second Flutter
+             engine competing for the same app state. ShareActivity forwards
+             the text into the app's real task and finishes. -->
         <activity
             android:name=".ShareActivity"
             android:exported="true"

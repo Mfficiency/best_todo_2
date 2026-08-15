@@ -11,11 +11,10 @@ import android.os.Bundle
  *
  * Deliberately NOT a FlutterActivity and not MainActivity itself: the share
  * sheet starts its target inside the *sharing* app's task, and a second
- * MainActivity there means a second Flutter engine — the known
- * black-screen failure mode the manifest comments on MainActivity warn
- * about. Launching MainActivity explicitly with NEW_TASK re-fronts the one
- * existing app task (or cold-starts it) instead, and singleTop delivers the
- * text via onNewIntent.
+ * MainActivity there would mean a second Flutter engine competing for the
+ * same app state. Launching MainActivity explicitly with NEW_TASK re-fronts
+ * the one existing app task (or cold-starts it) instead, and singleTop
+ * delivers the text via onNewIntent.
  */
 class ShareActivity : Activity() {
 
