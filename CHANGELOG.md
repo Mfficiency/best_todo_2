@@ -5,7 +5,6 @@
 - **Features temporarily missing versus the previous `dev` tip (v0.1.156), to be re-implemented once the widget black-screen investigation is resolved** — each one is a real, already-designed feature, not speculative, just currently reverted out:
   - Dice timer: a "Cancel timer" button that ends a running/paused/ringing timer and drops its alarm without marking the task done or postponed (v0.1.127)
   - Test Results page: per-file/per-test pass-fail-skip detail instead of just a summary (v0.1.129)
-  - Synced mode: background task sync to a chosen folder on app quit, with its own App Logs "Sync" tab and a red-dot failure indicator (v0.1.131)
   - Double-tap a task to start a timer for it straight away, returning to an already-running one instead of restarting (v0.1.132)
   - In-app self-update: "Check for updates" on the About page downloads and installs the newest GitHub release APK directly (v0.1.133)
   - Dice timer buttons laid out in a compact grid so every control fits one screen (v0.1.134)
@@ -26,6 +25,11 @@
 - Settings has a new Backup section: choose a folder and the app writes a full backup of everything (tasks, settings, timers) there automatically - daily, weekly, or never
 - Daily backs up the first time you open the app each day, weekly once seven days have passed; a "Back up now" button writes one on demand and the section shows when the last backup ran
 - Each backup is a single timestamped file that the existing Import button can restore
+- Synced mode: choose between fully offline (as before) and syncing your tasks to a folder of your choice — Settings → Sync & export, pick the folder once and you're set
+- The sync runs in the background every time you leave or quit the app, so it never slows down startup or gets in your way
+- App Logs got a "Sync" tab showing every sync: when it ran, how long it took and how many items it wrote — failures show up in red with the reason
+- If a sync fails (folder deleted, drive unplugged, ...), a little red dot appears on App Logs in the main menu; opening the page clears it, and the next successful sync does too
+- Sync writes are atomic: a crash or an unplugged drive mid-sync can never leave a half-written file behind
 
 ## [0.1.129] - 2026-08-05
 - Test Results now shows detail even when everything passes: an "All tests" section lists every test file with its own pass/fail/skip counts and time, and expanding a file shows each test with a green/red/grey mark and how long it took

@@ -342,6 +342,15 @@ class Config {
   /// If true, times are displayed and picked in 24-hour notation.
   static bool use24HourFormat = true;
 
+  /// If true the app runs in *synced mode*: whenever it is left (backgrounded
+  /// or quit) the task list is written to [syncFolderPath] in the background.
+  /// Off (the default) keeps the app fully offline.
+  static bool syncEnabled = false;
+
+  /// Folder the background sync writes into; empty until the user picks one
+  /// in Settings → Sync & export.
+  static String syncFolderPath = '';
+
   /// Available date display formats; the first entry is the default.
   static const List<String> dateFormats = [
     'dd.MM.yy',
@@ -427,6 +436,8 @@ class Config {
       'diceTimerDefaultMinutes': diceTimerDefaultMinutes,
       'autoBackupFrequency': autoBackupFrequency,
       'autoBackupDirectory': autoBackupDirectory,
+      'syncEnabled': syncEnabled,
+      'syncFolderPath': syncFolderPath,
       'features': Map<String, bool>.from(featureEnabled),
     };
   }
@@ -502,6 +513,8 @@ class Config {
     }
     autoBackupDirectory =
         data['autoBackupDirectory'] as String? ?? autoBackupDirectory;
+    syncEnabled = data['syncEnabled'] ?? syncEnabled;
+    syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {
