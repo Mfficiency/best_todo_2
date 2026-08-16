@@ -11,6 +11,7 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../models/alarm.dart';
+import '../models/streak_reminder.dart' show maxStreakReminders;
 import 'alarm_diagnostics.dart';
 import 'alarm_fullscreen.dart';
 import 'alarm_ids.dart';
@@ -32,6 +33,12 @@ const String _alarmSilentChannelId = 'alarm_notifications_silent_v1';
 const String _alarmSilentChannelName = 'Alarms (silent, in-app sound)';
 const String _alarmSilentChannelDescription =
     'Alarm alerts whose sound is played by the app at the alarm\'s own volume';
+// Streak reminders set to "silent notification": no sound, no vibration. The
+// loud variant reuses the task-notification channel.
+const String _streakSilentChannelId = 'streak_reminders_silent_v1';
+const String _streakSilentChannelName = 'Streak reminders (silent)';
+const String _streakSilentChannelDescription =
+    'Streak reminders that arrive without sound or vibration';
 
 const String _snoozeAction = 'alarm_snooze';
 const String _dismissAction = 'alarm_dismiss';
@@ -109,6 +116,16 @@ Future<void> initialize() async {
           playSound: false,
           enableVibration: true,
           audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
+      );
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _streakSilentChannelId,
+          _streakSilentChannelName,
+          description: _streakSilentChannelDescription,
+          importance: Importance.defaultImportance,
+          playSound: false,
+          enableVibration: false,
         ),
       );
     } catch (e) {
@@ -1021,32 +1038,52 @@ Future<void> _showNow(String taskTitle) async {
   await _plugin.show(id, title, null, details);
 }
 
-/// Schedules the one-shot streak reminder on the task-notification channel.
+/// Schedules one streak reminder as a one-shot notification: with sound and
+/// vibration on the task-notification channel ([loud]), or silently on the
+/// streak channel.
+///
 /// Deliberately NOT on the alarm ladder: a nudge may be minutes late, so the
 /// inexact mode is enough and needs no exact-alarm permission. Everything is
 /// guarded so headless/test runs (no platform channels) stay silent.
-Future<void> scheduleStreakReminder({
+Future<void> scheduleStreakReminderSlot({
+  required int slot,
   required DateTime fireAt,
   required String body,
+  required bool loud,
 }) async {
+  if (slot < 0 || slot >= maxStreakReminders) return;
   try {
     final hasPermission = await _ensurePermission();
     if (!hasPermission) return;
     await _ensureTimezone();
     final when = tz.TZDateTime.from(fireAt, tz.local);
     if (!when.isAfter(tz.TZDateTime.now(tz.local))) return;
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channelId,
-        _channelName,
-        channelDescription: _channelDescription,
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
+    final details = loud
+        ? const NotificationDetails(
+            android: AndroidNotificationDetails(
+              _channelId,
+              _channelName,
+              channelDescription: _channelDescription,
+              importance: Importance.high,
+              priority: Priority.high,
+              enableVibration: true,
+            ),
+            iOS: DarwinNotificationDetails(),
+          )
+        : const NotificationDetails(
+            android: AndroidNotificationDetails(
+              _streakSilentChannelId,
+              _streakSilentChannelName,
+              channelDescription: _streakSilentChannelDescription,
+              importance: Importance.defaultImportance,
+              priority: Priority.defaultPriority,
+              playSound: false,
+              enableVibration: false,
+            ),
+            iOS: DarwinNotificationDetails(presentSound: false),
+          );
     await _plugin.zonedSchedule(
-      kStreakReminderNotificationId,
+      streakReminderNotificationId(slot),
       'Keep your streak going 🔥',
       body,
       when,
@@ -1058,9 +1095,14 @@ Future<void> scheduleStreakReminder({
   } catch (_) {}
 }
 
-Future<void> cancelStreakReminder() async {
+/// Drops every pending streak reminder, including the single one older
+/// versions scheduled under [kStreakReminderNotificationId].
+Future<void> cancelStreakReminders() async {
   try {
     await _plugin.cancel(kStreakReminderNotificationId);
+    for (var slot = 0; slot < maxStreakReminders; slot++) {
+      await _plugin.cancel(streakReminderNotificationId(slot));
+    }
   } catch (_) {}
 }
 

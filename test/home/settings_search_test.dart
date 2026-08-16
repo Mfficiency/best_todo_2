@@ -73,10 +73,10 @@ void main() {
     await tester.pump();
     expect(find.text('No settings match your search'), findsOneWidget);
 
-    // Close search restores the section chips and content.
+    // Close search restores the section chips and the (collapsed) sections.
     await tester.tap(find.byTooltip('Close search'));
     await tester.pumpAndSettle();
-    expect(find.text('Dark mode'), findsOneWidget);
+    expect(find.byTooltip('Expand Appearance'), findsOneWidget);
     expect(find.byTooltip('Search settings'), findsOneWidget);
   });
 }

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'models/streak_reminder.dart';
+
 class Config {
   static double defaultDelaySeconds = 5.0;
 
@@ -257,12 +259,35 @@ class Config {
   /// completed every calendar day, 48 tolerates one missed day in between.
   static int streakGraceHours = 24;
 
-  /// If true, a daily reminder fires at [streakReminderMinutes] when no task
-  /// has been completed yet that day.
+  /// The three daily streak challenges, keyed by `StreakKind.id` (kept as
+  /// plain strings here so `Config` stays free of Flutter imports):
+  ///  * `complete` — finish a task
+  ///  * `create` — create a task
+  ///  * `plan` — move a task to another day, or finish the whole day's list
+  static const List<String> streakKindKeys = ['complete', 'create', 'plan'];
+
+  /// Which streak challenges are active. All three by default; a challenge
+  /// that is switched off keeps its history but drops out of the flame cycle,
+  /// the streak page and the reminders.
+  static final Map<String, bool> streakKindEnabled = {
+    for (final key in streakKindKeys) key: true,
+  };
+
+  /// Whether streak challenge [key] is currently active.
+  static bool isStreakKindEnabled(String key) => streakKindEnabled[key] ?? true;
+
+  /// If true, the reminders in [streakReminders] are scheduled. The master
+  /// switch for the whole list.
   static bool streakReminderEnabled = false;
 
-  /// Time of day for the streak reminder in minutes since midnight.
+  /// Time of day of the first reminder, in minutes since midnight. Only used
+  /// as the default for a newly added reminder (and to migrate the single
+  /// reminder of older versions into [streakReminders]).
   static int streakReminderMinutes = 22 * 60;
+
+  /// Every "keep your streak alive" reminder the user configured: any number
+  /// of times of day, each silent or with sound and vibration.
+  static List<StreakReminder> streakReminders = [];
 
   /// If true, completing the first task of the day plays a short flame
   /// celebration animation.
@@ -426,6 +451,10 @@ class Config {
       'streakGraceHours': streakGraceHours,
       'streakReminderEnabled': streakReminderEnabled,
       'streakReminderMinutes': streakReminderMinutes,
+      'streakReminders': [
+        for (final reminder in streakReminders) reminder.toJson(),
+      ],
+      'streakKindEnabled': Map<String, bool>.from(streakKindEnabled),
       'streakCompletionAnimation': streakCompletionAnimation,
       'simpleMode': simpleMode,
       'modeChosen': modeChosen,
@@ -489,6 +518,25 @@ class Config {
     streakReminderMinutes =
         (data['streakReminderMinutes'] as num?)?.round().clamp(0, 1439) ??
             streakReminderMinutes;
+    final savedReminders = data['streakReminders'];
+    if (savedReminders is List) {
+      streakReminders = [
+        for (final entry in savedReminders)
+          if (entry is Map)
+            StreakReminder.fromJson(Map<String, dynamic>.from(entry)),
+      ].take(maxStreakReminders).toList();
+    } else if (streakReminderEnabled && streakReminders.isEmpty) {
+      // Settings written before the reminder list existed: carry the single
+      // reminder over so its time is not silently lost.
+      streakReminders = [StreakReminder(minutes: streakReminderMinutes)];
+    }
+    final savedStreakKinds = data['streakKindEnabled'];
+    if (savedStreakKinds is Map) {
+      for (final key in streakKindKeys) {
+        final value = savedStreakKinds[key];
+        if (value is bool) streakKindEnabled[key] = value;
+      }
+    }
     streakCompletionAnimation =
         data['streakCompletionAnimation'] ?? streakCompletionAnimation;
     simpleMode = data['simpleMode'] ?? simpleMode;

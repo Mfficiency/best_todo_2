@@ -5,6 +5,9 @@ import '../config.dart';
 import '../main.dart';
 import '../models/sms_recipient.dart';
 import '../models/sms_report_config.dart';
+import '../models/streak_kind.dart';
+import '../models/streak_reminder.dart';
+import '../models/sync_log_entry.dart';
 import '../services/auto_backup_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
@@ -75,10 +78,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
   int _activeSectionIndex = 0;
 
-  /// Sections whose body is hidden. Tapping a section title toggles it; the
-  /// "Mode & features" section (index 1) starts collapsed because it is the
-  /// longest one and is rarely changed after setup.
-  final Set<int> _collapsedSections = {1};
+  /// Sections whose body is hidden. Tapping a section title toggles it. Every
+  /// section starts collapsed so the page opens as a short list of headings
+  /// instead of a wall of switches; the chip row and the settings search both
+  /// expand the section they jump to.
+  final Set<int> _collapsedSections = {
+    for (var i = 0; i < 10; i++) i,
+  };
 
   static const double _tabsHeaderHeight = 60;
   static const double _sectionActivationOffset = 56;
@@ -120,8 +126,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Show streak', 5, 'flame fire hide daily habit'),
     _SettingsSearchEntry(
         'Streak grace period', 5, '24 48 hours flame miss day forgive'),
+    _SettingsSearchEntry('Active challenges', 5,
+        'streak flame finish create plan ahead move complete task daily'),
     _SettingsSearchEntry(
-        'Streak reminder', 5, 'flame notification evening nudge daily'),
+        'Streak reminders', 5, 'flame notification evening nudge daily times'),
+    _SettingsSearchEntry('Add reminder', 5,
+        'streak flame time notification sound vibration silent another'),
     _SettingsSearchEntry(
         'Streak celebration', 5, 'flame animation complete first task'),
     _SettingsSearchEntry('Alert at zero', 6,
@@ -187,7 +197,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showStreak = Config.showStreak;
   int _streakGraceHours = Config.streakGraceHours;
   bool _streakReminderEnabled = Config.streakReminderEnabled;
-  int _streakReminderMinutes = Config.streakReminderMinutes;
   bool _streakCompletionAnimation = Config.streakCompletionAnimation;
   bool _simpleMode = Config.simpleMode;
   String _autoBackupFrequency = Config.autoBackupFrequency;
@@ -222,7 +231,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _showStreak = Config.showStreak;
     _streakGraceHours = Config.streakGraceHours;
     _streakReminderEnabled = Config.streakReminderEnabled;
-    _streakReminderMinutes = Config.streakReminderMinutes;
     _streakCompletionAnimation = Config.streakCompletionAnimation;
     _simpleMode = Config.simpleMode;
     _autoBackupFrequency = Config.autoBackupFrequency;
@@ -738,21 +746,102 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _pickStreakReminderTime() async {
-    final current = _streakReminderMinutes;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
-        hour: current ~/ 60,
-        minute: current % 60,
-      ),
-    );
-    if (picked == null) return;
-    setState(() => _streakReminderMinutes = picked.hour * 60 + picked.minute);
-    Config.streakReminderMinutes = _streakReminderMinutes;
+  /// Persists a streak setting and lets the service re-arm its reminders.
+  Future<void> _applyStreakChange() async {
     await Config.save();
     StreakService.instance.settingsChanged();
     widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _pickStreakReminderTime(int index) async {
+    if (index < 0 || index >= Config.streakReminders.length) return;
+    final reminder = Config.streakReminders[index];
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: reminder.minutes ~/ 60,
+        minute: reminder.minutes % 60,
+      ),
+    );
+    if (picked == null) return;
+    setState(() => reminder.minutes = picked.hour * 60 + picked.minute);
+    // The first reminder's time doubles as the default for the next one.
+    Config.streakReminderMinutes = Config.streakReminders.first.minutes;
+    await _applyStreakChange();
+  }
+
+  /// Adds a reminder, defaulting to the last one's time plus an hour so two
+  /// taps don't produce two identical entries.
+  Future<void> _addStreakReminder() async {
+    if (Config.streakReminders.length >= maxStreakReminders) return;
+    final last = Config.streakReminders.isEmpty
+        ? Config.streakReminderMinutes
+        : Config.streakReminders.last.minutes + 60;
+    setState(() {
+      Config.streakReminders.add(StreakReminder(minutes: last % (24 * 60)));
+      _streakReminderEnabled = Config.streakReminderEnabled = true;
+    });
+    await _applyStreakChange();
+  }
+
+  Future<void> _removeStreakReminder(int index) async {
+    if (index < 0 || index >= Config.streakReminders.length) return;
+    setState(() => Config.streakReminders.removeAt(index));
+    await _applyStreakChange();
+  }
+
+  /// One configured reminder: its time (tap to change), how it announces
+  /// itself, an on/off switch and a delete button.
+  Widget _buildStreakReminderTile(int index, StreakReminder reminder) {
+    final theme = Theme.of(context);
+    return ListTile(
+      dense: true,
+      leading: IconButton(
+        tooltip: 'Reminder time',
+        icon: const Icon(Icons.schedule),
+        onPressed: () => _pickStreakReminderTime(index),
+      ),
+      title: InkWell(
+        onTap: () => _pickStreakReminderTime(index),
+        child: Text(
+          _formatHourMinute(reminder.minutes),
+          style: theme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.bold),
+        ),
+      ),
+      subtitle: Wrap(
+        spacing: 6,
+        children: [
+          for (final mode in StreakAlertMode.values)
+            ChoiceChip(
+              visualDensity: VisualDensity.compact,
+              label: Text(mode.label),
+              selected: reminder.mode == mode,
+              onSelected: (_) async {
+                setState(() => reminder.mode = mode);
+                await _applyStreakChange();
+              },
+            ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Switch(
+            value: reminder.enabled,
+            onChanged: (val) async {
+              setState(() => reminder.enabled = val);
+              await _applyStreakChange();
+            },
+          ),
+          IconButton(
+            tooltip: 'Remove reminder',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _removeStreakReminder(index),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Applies a simple/full mode change: the mode itself is one switch, but a
@@ -891,26 +980,66 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
         ),
+        const ListTile(
+          title: Text('Active challenges'),
+          subtitle: Text(
+              'The flame in the app bar cycles through the challenges you '
+              'keep on'),
+        ),
+        for (final kind in StreakKind.values)
+          SwitchListTile(
+            dense: true,
+            secondary: Icon(kind.icon, color: kind.warm),
+            title: Text(kind.label),
+            subtitle: Text(kind.description),
+            value: Config.isStreakKindEnabled(kind.id),
+            onChanged: (val) async {
+              setState(() => Config.streakKindEnabled[kind.id] = val);
+              await _applyStreakChange();
+            },
+          ),
         SwitchListTile(
-          title: const Text('Streak reminder'),
+          title: const Text('Streak reminders'),
           subtitle: const Text(
-              'Remind me in the evening when no task is done yet'),
+              'Nudge me at the times below while a challenge is still open'),
           value: _streakReminderEnabled,
           onChanged: (val) async {
-            setState(() => _streakReminderEnabled = val);
-            Config.streakReminderEnabled = val;
-            await Config.save();
-            StreakService.instance.settingsChanged();
-            widget.onSettingsChanged?.call();
+            setState(() {
+              _streakReminderEnabled = val;
+              Config.streakReminderEnabled = val;
+              // Turning them on without a single time configured would do
+              // nothing, so seed the list with the default evening nudge.
+              if (val && Config.streakReminders.isEmpty) {
+                Config.streakReminders
+                    .add(StreakReminder(minutes: Config.streakReminderMinutes));
+              }
+            });
+            await _applyStreakChange();
           },
         ),
-        if (_streakReminderEnabled)
-          ListTile(
-            title: const Text('Reminder time'),
-            subtitle: Text(_formatHourMinute(_streakReminderMinutes)),
-            trailing: const Icon(Icons.schedule),
-            onTap: _pickStreakReminderTime,
+        if (_streakReminderEnabled) ...[
+          for (var i = 0; i < Config.streakReminders.length; i++)
+            _buildStreakReminderTile(i, Config.streakReminders[i]),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  onPressed:
+                      Config.streakReminders.length >= maxStreakReminders
+                          ? null
+                          : _addStreakReminder,
+                  icon: const Icon(Icons.add_alarm),
+                  label: const Text('Add reminder'),
+                ),
+                const Spacer(),
+                if (Config.streakReminders.length >= maxStreakReminders)
+                  Text('$maxStreakReminders is the maximum',
+                      style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
           ),
+        ],
         SwitchListTile(
           title: const Text('Streak celebration'),
           subtitle: const Text(

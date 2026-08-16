@@ -13,7 +13,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip + corruption recovery/backup, alarm editor (top save), alarm ring page, item-linked reminders (`ReminderSyncService` + task-detail reminder section) |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
 | `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, its alert settings and its full-screen alarm ring (`dice_timer_alarm_test.dart`), wishlist items on the Future tab, simple/full mode + the feature switches (`simple_mode_test.dart`, `settings_features_test.dart`), collapsible settings sections (`settings_collapse_test.dart`), home-screen widget payload + checkbox toggles (`widget_checkboxes_test.dart`) |
-| `test/streaks/` | `flutter test test/streaks` | Daily completion streak: `StreakService` (grace periods, persistence, history seeding, fun stats), home-page flame icon + badge, celebration overlay, `StreakPage`, Streak settings section + search entries |
+| `test/streaks/` | `flutter test test/streaks` | Daily streaks: `StreakService` (grace periods, persistence, history seeding, fun stats), the three challenges — finish/create/plan — and their per-kind streaks, reminder list + migration (`streak_kinds_test.dart`), the cycling home-page flame + badge, celebration overlay, `StreakPage`, Streak settings section + search entries |
 | `test/sms/` | `flutter test test/sms` | SMS daily report: `SmsRecipient`/`SmsReportConfig` JSON round-trip, per-recipient enable flag + `activeRecipients` filtering, Settings recipient rows (pause switch, edit keeps the flag) |
 | `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`) |
@@ -33,7 +33,9 @@ Pick suites by what you touched, always including core:
   → core + **home** (+ **projects** for `task_tile.dart`, which renders project tags;
   + **streaks** for `home_page.dart`/`settings_page.dart`, which host the flame and
   its settings section)
-- `lib/services/streak_service.dart`, `lib/ui/streak_page.dart`,
+- `lib/services/streak_service.dart`, `lib/models/streak_kind.dart`,
+  `lib/models/streak_reminder.dart`, `lib/ui/streak_page.dart`,
+  `lib/ui/streak_flame_button.dart`, `lib/ui/streak_calendar_page.dart`,
   `lib/ui/streak_celebration.dart` → core + **streaks**
 - `lib/models/sms_*`, `lib/services/sms_report_*`, the SMS section of
   `lib/ui/settings_page.dart` → core + **sms** (+ **home**/**streaks**, which also

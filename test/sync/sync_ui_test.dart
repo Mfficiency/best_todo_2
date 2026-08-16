@@ -103,6 +103,20 @@ void main() {
     expect(marker, findsOneWidget, reason: 'HomePage never loaded the tasks');
   }
 
+  /// Settings sections all start collapsed, so a test that wants a setting
+  /// has to open its section first.
+  Future<void> openSection(WidgetTester tester, String title) async {
+    if (find.byTooltip('Collapse $title').evaluate().isNotEmpty) return;
+    // The section headers are built lazily, so the header has to be scrolled
+    // to before it can be tapped.
+    final header = find.byTooltip('Expand $title');
+    await tester.scrollUntilVisible(header, 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(header);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('a failed sync puts a red dot on the App Logs drawer entry',
       (tester) async {
     SyncService.instance.hasUnseenError.value = true;
@@ -139,6 +153,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     await settleIo(tester);
 
+    await openSection(tester, 'Sync & export');
     await tester.scrollUntilVisible(find.text('Synced mode'), 80,
         scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();

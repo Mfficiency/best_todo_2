@@ -86,6 +86,10 @@ void main() {
         await tester.pump();
       }
 
+      // Settings sections all start collapsed — open Appearance first.
+      await tester.tap(find.byTooltip('Expand Appearance'));
+      await tester.pumpAndSettle();
+
       final tile = find.widgetWithText(SwitchListTile, 'Minimalist mode');
       expect(tile, findsOneWidget);
       expect(tester.widget<SwitchListTile>(tile).value, isFalse);

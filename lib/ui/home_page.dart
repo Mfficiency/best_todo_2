@@ -43,7 +43,7 @@ import 'deleted_items_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
 import 'streak_celebration.dart';
-import 'streak_page.dart';
+import 'streak_flame_button.dart';
 import 'task_tile.dart';
 import 'test_results_page.dart';
 import 'usage_data_page.dart';
@@ -783,6 +783,7 @@ class _HomePageState extends State<HomePage>
   }
 
   void _trackTaskCreated(Task task) {
+    _recordStreakCreation(task);
     final dueDate = task.dueDate;
     if (dueDate == null || !_isSameDay(dueDate, _currentDate)) return;
     final stats = _getOrCreateDailyStats(_currentDate);
@@ -796,6 +797,7 @@ class _HomePageState extends State<HomePage>
 
   void _trackTaskMove(Task task, DateTime? oldDueDate, DateTime? newDueDate) {
     if (oldDueDate == null && newDueDate == null) return;
+    _recordStreakPlanning(task, oldDueDate, newDueDate);
     final currentDay = _dateOnly(_currentDate);
     final wasToday = oldDueDate != null && _isSameDay(oldDueDate, currentDay);
     final isToday = newDueDate != null && _isSameDay(newDueDate, currentDay);
@@ -850,6 +852,9 @@ class _HomePageState extends State<HomePage>
     if (task.isDone) {
       final firstOfDay =
           StreakService.instance.recordCompletion(_currentDate);
+      // Clearing the whole day's list is the second way to keep the planning
+      // streak (the first being moving a task to another day).
+      _recordStreakDayCleared();
       if (firstOfDay &&
           Config.showStreak &&
           Config.streakCompletionAnimation &&
@@ -860,6 +865,36 @@ class _HomePageState extends State<HomePage>
     } else {
       StreakService.instance.recordUncompletion(_currentDate);
     }
+  }
+
+  /// Feeds a new task into the "create a task every day" streak, whatever day
+  /// it is due on — the point is that the list keeps being fed.
+  void _recordStreakCreation(Task task) {
+    if (task.isWish || !Config.isFeatureEnabled('streak')) return;
+    StreakService.instance.recordCreation(_currentDate);
+  }
+
+  /// Feeds a rescheduled task into the "plan ahead" streak: moving something
+  /// to another day means the day was actually planned instead of ignored.
+  void _recordStreakPlanning(
+      Task task, DateTime? oldDueDate, DateTime? newDueDate) {
+    if (task.isWish || !Config.isFeatureEnabled('streak')) return;
+    if (oldDueDate != null &&
+        newDueDate != null &&
+        _isSameDay(oldDueDate, newDueDate)) {
+      return;
+    }
+    StreakService.instance.recordPlanning(_currentDate);
+  }
+
+  /// Keeps the planning streak when every task due today is done — finishing
+  /// the day's list counts as having dealt with the day. No open task (an
+  /// empty day) is not an achievement, so it does not count.
+  void _recordStreakDayCleared() {
+    if (!Config.isFeatureEnabled('streak')) return;
+    final todays = _tasksDueOn(_currentDate).where((t) => !t.isWish).toList();
+    if (todays.isEmpty || todays.any((t) => !t.isDone)) return;
+    StreakService.instance.recordPlanning(_currentDate);
   }
 
   void _addToDeletedTasks(Task task, {bool autoDeleted = false}) {
@@ -2291,48 +2326,10 @@ class _HomePageState extends State<HomePage>
               )
             : const Text('BestToDo'),
         actions: [
-          ListenableBuilder(
-            listenable: StreakService.instance,
-            builder: (context, _) {
-              if (!Config.showStreak || !Config.isFeatureEnabled('streak')) {
-                return const SizedBox.shrink();
-              }
-              final streak =
-                  StreakService.instance.currentStreak(now: _currentDate);
-              final progress =
-                  StreakService.instance.flameProgress(now: _currentDate);
-              final theme = Theme.of(context);
-              return IconButton(
-                tooltip: streak > 0
-                    ? 'Streak: $streak day${streak == 1 ? '' : 's'}'
-                    : 'Start a streak: complete a task today',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => StreakPage(
-                        onSettingsChanged: () {
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                    ),
-                  ).then((_) {
-                    if (mounted) setState(() {});
-                  });
-                },
-                icon: Badge(
-                  isLabelVisible: streak > 0,
-                  label: Text('$streak'),
-                  backgroundColor: flameColorFor(progress, theme),
-                  child: Icon(
-                    streak > 0
-                        ? Icons.local_fire_department
-                        : Icons.local_fire_department_outlined,
-                    size: flameSizeFor(progress),
-                    color: flameColorFor(progress, theme),
-                  ),
-                ),
-              );
+          StreakFlameButton(
+            now: _currentDate,
+            onSettingsChanged: () {
+              if (mounted) setState(() {});
             },
           ),
           ListenableBuilder(

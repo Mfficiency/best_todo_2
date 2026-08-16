@@ -22,10 +22,20 @@ const int kWatchdogIdOffset = 0x10000000;
 const int kTestAlarmNotificationId = 0x20000000;
 const int kTestAlarmWatchdogId = 0x20000001;
 
-/// Fixed id for the daily streak reminder notification. Lives in the same
-/// fixed-id space (0x20000000+) as the test alarm, above both dynamic alarm
-/// id spaces, so it can never collide with a real alarm or its watchdog.
+/// Fixed id of the single daily streak reminder as it was scheduled before
+/// the reminder list existed. Only cancelled nowadays, so an app updating from
+/// an older version does not keep a stale reminder pending forever.
 const int kStreakReminderNotificationId = 0x20000002;
+
+/// Fixed id range for the streak reminders: one slot per entry of the user's
+/// reminder list. Lives in the same fixed-id space (0x20000000+) as the test
+/// alarm, above both dynamic alarm id spaces, so it can never collide with a
+/// real alarm or its watchdog.
+const int kStreakReminderNotificationIdBase = 0x20000010;
+
+/// Notification id of reminder [slot] (0-based, < `maxStreakReminders`).
+int streakReminderNotificationId(int slot) =>
+    kStreakReminderNotificationIdBase + slot;
 
 /// Fixed ids for the dice timer's end-of-countdown alarm — the OS-scheduled
 /// ring that fires even when the app is closed. Same fixed-id space as the

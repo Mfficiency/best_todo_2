@@ -36,40 +36,43 @@ void main() {
     }
   }
 
-  testWidgets('sections collapse from their title, mode & features starts closed',
+  testWidgets('every section starts collapsed and opens from its title',
       (tester) async {
     await pumpSettings(tester);
 
-    // Appearance is open, Mode & features is not.
-    expect(find.text('Dark mode'), findsOneWidget);
+    // Nothing is expanded on arrival — the page is a list of headings.
+    expect(find.text('Dark mode'), findsNothing);
     expect(find.text('Simple mode'), findsNothing);
+    expect(find.byTooltip('Expand Appearance'), findsOneWidget);
     expect(find.byTooltip('Expand Mode & features'), findsOneWidget);
 
-    // Tapping the title (the chevron sits inside it) closes Appearance.
-    await tester.tap(find.byTooltip('Collapse Appearance'));
-    await tester.pumpAndSettle();
-    expect(find.text('Dark mode'), findsNothing);
-    expect(find.byTooltip('Expand Appearance'), findsOneWidget);
-
+    // Tapping the title (the chevron sits inside it) opens Appearance.
     await tester.tap(find.byTooltip('Expand Appearance'));
     await tester.pumpAndSettle();
     expect(find.text('Dark mode'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Collapse Appearance'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dark mode'), findsNothing);
   });
 
-  testWidgets('collapse all closes every section and turns into expand all',
+  testWidgets('expand all opens every section and turns into collapse all',
       (tester) async {
     await pumpSettings(tester);
 
-    await tester.tap(find.text('Collapse all'));
-    await tester.pumpAndSettle();
-    expect(find.text('Dark mode'), findsNothing);
-    expect(find.text('Widget progress line'), findsNothing);
+    // Everything starts collapsed, so the bar offers "Expand all".
     expect(find.text('Collapse all'), findsNothing);
 
     await tester.tap(find.text('Expand all'));
     await tester.pumpAndSettle();
     expect(find.text('Dark mode'), findsOneWidget);
     expect(find.text('Collapse all'), findsOneWidget);
+
+    await tester.tap(find.text('Collapse all'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dark mode'), findsNothing);
+    expect(find.text('Widget progress line'), findsNothing);
+    expect(find.text('Expand all'), findsOneWidget);
   });
 
   testWidgets('jumping to a collapsed section opens it', (tester) async {

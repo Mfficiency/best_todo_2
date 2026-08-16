@@ -2,12 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
+import 'package:besttodo/models/streak_kind.dart';
+import 'package:besttodo/models/streak_reminder.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/streak_service.dart';
 import 'package:besttodo/ui/home_page.dart';
 import 'package:besttodo/ui/settings_page.dart';
+import 'package:besttodo/ui/streak_flame_button.dart';
 import 'package:besttodo/ui/streak_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +37,10 @@ void main() {
     Config.showStreak = true;
     Config.streakGraceHours = 24;
     Config.streakReminderEnabled = false;
+    Config.streakReminders = [];
+    for (final key in Config.streakKindKeys) {
+      Config.streakKindEnabled[key] = true;
+    }
     // Off by default in tests so toggling tasks doesn't overlay the tree;
     // the celebration test switches it back on explicitly.
     Config.streakCompletionAnimation = false;
@@ -83,6 +90,14 @@ void main() {
     }
   }
 
+  /// The streak page stacks a challenge selector, a big flame and three cards;
+  /// a taller surface keeps the stats on screen so they can be tapped.
+  void enlarge(WidgetTester tester) {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
+
   Finder flameIcon() => find.byWidgetPredicate((w) =>
       w is Icon &&
       (w.icon == Icons.local_fire_department ||
@@ -95,8 +110,7 @@ void main() {
       (tester) async {
     await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
 
-    expect(find.byTooltip('Start a streak: complete a task today'),
-        findsOneWidget);
+    expect(find.byTooltip('Finish a task: no streak yet'), findsOneWidget);
     expect(find.byIcon(Icons.casino), findsOneWidget);
     expect(flameIcon(), findsOneWidget);
   });
@@ -115,7 +129,7 @@ void main() {
     await tester.tap(find.byType(Checkbox).first);
     await settleIo(tester);
 
-    expect(find.byTooltip('Streak: 1 day'), findsOneWidget);
+    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
     expect(find.text('1'), findsWidgets); // badge label
   });
 
@@ -139,13 +153,14 @@ void main() {
 
   testWidgets('tapping the flame opens the streak page with stats',
       (tester) async {
+    enlarge(tester);
     await pumpHome(
       tester,
       [Task(title: 'Solo task', dueDate: DateTime.now())],
       streak: {dayKeyAgo(1): 1, dayKeyAgo(0): 2},
     );
 
-    await tester.tap(find.byTooltip('Streak: 2 days'));
+    await tester.tap(find.byTooltip('Finish a task: 2-day streak'));
     // The streak page's flame flickers forever — never pumpAndSettle here.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -180,6 +195,7 @@ void main() {
 
   testWidgets('longest streak tile opens the yearly calendar with the range',
       (tester) async {
+    enlarge(tester);
     await tester.runAsync(() => seedStreakFile(
         {dayKeyAgo(3): 1, dayKeyAgo(2): 1, dayKeyAgo(1): 1}));
     await tester.runAsync(() => StreakService.instance.load());
@@ -214,16 +230,18 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets('settings has the Streak section with all four settings',
-      (tester) async {
+  /// Opens the settings page on the Streak section.
+  ///
+  /// Jumps via the section chip header instead of scrolling blindly (the
+  /// horizontal chip list is also a Scrollable, so `.first` is ambiguous).
+  /// The chip row itself scrolls horizontally: later sections sit off-screen
+  /// until it is dragged (scroll the chip row only — ensureVisible would also
+  /// move the settings list underneath it). Tapping the chip expands the
+  /// section, which — like every section — starts collapsed.
+  Future<void> openStreakSettings(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     await settleIo(tester);
 
-    // Jump via the section chip header instead of scrolling blindly (the
-    // horizontal chip list is also a Scrollable, so `.first` is ambiguous).
-    // The chip row itself scrolls horizontally: later sections sit off-screen
-    // until it is dragged (scroll the chip row only — ensureVisible would also
-    // move the settings list underneath it).
     final streakChip = find.widgetWithText(ChoiceChip, 'Streak');
     final chipRow = find
         .ancestor(
@@ -246,10 +264,16 @@ void main() {
     for (var i = 0; i < 25 && find.text('Show streak').evaluate().isEmpty; i++) {
       await tester.pumpAndSettle();
     }
+  }
+
+  testWidgets('settings has the Streak section with all its settings',
+      (tester) async {
+    await openStreakSettings(tester);
 
     expect(find.text('Show streak'), findsOneWidget);
     expect(find.text('Streak grace period'), findsOneWidget);
-    expect(find.text('Streak reminder'), findsOneWidget);
+    expect(find.text('Active challenges'), findsOneWidget);
+    expect(find.text('Streak reminders'), findsOneWidget);
     expect(find.text('Streak celebration'), findsOneWidget);
 
     // The grace period is a 24h/48h choice.
@@ -273,6 +297,161 @@ void main() {
     await tester.pump();
 
     expect(find.text('Show streak'), findsOneWidget);
-    expect(find.text('Streak reminder'), findsOneWidget);
+    expect(find.text('Streak reminders'), findsOneWidget);
+  });
+
+  testWidgets('the flame cycles through the active challenges',
+      (tester) async {
+    // The cycle is off under the test binding (a repeating timer would keep
+    // pumpAndSettle from ever settling), so ask for it explicitly and pump
+    // fixed frames.
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    await tester.runAsync(() => seedStreakFile({dayKeyAgo(0): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        appBar: null,
+        body: Row(children: [StreakFlameButton()]),
+      ),
+    ));
+    await tester.pump();
+    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Create a task: no streak yet'), findsOneWidget);
+
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Plan ahead: no streak yet'), findsOneWidget);
+
+    // ...and back around to the first one.
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+  });
+
+  testWidgets('a challenge switched off drops out of the flame',
+      (tester) async {
+    Config.streakKindEnabled['complete'] = false;
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    await tester.runAsync(() => seedStreakFile({dayKeyAgo(0): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Row(children: [StreakFlameButton()])),
+    ));
+    await tester.pump();
+
+    expect(find.byTooltip('Create a task: no streak yet'), findsOneWidget);
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Plan ahead: no streak yet'), findsOneWidget);
+    // The completion flame never comes around again.
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Create a task: no streak yet'), findsOneWidget);
+  });
+
+  testWidgets('adding a task keeps the create streak', (tester) async {
+    await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
+    expect(
+        StreakService.instance
+            .isDayDone(DateTime.now(), kind: StreakKind.create),
+        isFalse);
+
+    await tester.enterText(find.byType(TextField).first, 'Plan the week');
+    await tester.tap(find.byIcon(Icons.add).first);
+    await settleIo(tester);
+
+    expect(
+        StreakService.instance
+            .isDayDone(DateTime.now(), kind: StreakKind.create),
+        isTrue);
+  });
+
+  testWidgets('finishing the whole day keeps the plan-ahead streak',
+      (tester) async {
+    await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
+    expect(
+        StreakService.instance.isDayDone(DateTime.now(), kind: StreakKind.plan),
+        isFalse);
+
+    await tester.tap(find.byType(Checkbox).first);
+    await settleIo(tester);
+
+    // The day's only task is done — the day was dealt with.
+    expect(
+        StreakService.instance.isDayDone(DateTime.now(), kind: StreakKind.plan),
+        isTrue);
+  });
+
+  testWidgets('the streak page lists today per challenge and switches kind',
+      (tester) async {
+    enlarge(tester);
+    await tester.runAsync(() => seedStreakFile({dayKeyAgo(0): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+    await tester.pumpWidget(const MaterialApp(home: StreakPage()));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // The "Today" card names every active challenge with its state.
+    expect(find.text('Finish a task'), findsOneWidget);
+    expect(find.text('Create a task'), findsOneWidget);
+    expect(find.text('Plan ahead'), findsOneWidget);
+    expect(find.text('Open'), findsNWidgets(2));
+
+    // The page opens on the completion flame...
+    expect(find.text('1-day streak'), findsOneWidget);
+    expect(find.text('Days with a done task'), findsOneWidget);
+
+    // ...and the chips switch it to another challenge.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Create 0'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('No streak yet'), findsOneWidget);
+    expect(find.text('Days with a new task'), findsOneWidget);
+    expect(find.text('Add one task today to light the flame.'), findsOneWidget);
+  });
+
+  testWidgets('settings can turn a challenge off and manage reminders',
+      (tester) async {
+    enlarge(tester);
+    await openStreakSettings(tester);
+
+    // Every challenge starts on.
+    for (final label in ['Finish a task', 'Create a task', 'Plan ahead']) {
+      expect(find.widgetWithText(SwitchListTile, label), findsOneWidget);
+    }
+    await tester.ensureVisible(find.widgetWithText(SwitchListTile, 'Plan ahead'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Plan ahead'));
+    await settleIo(tester);
+    expect(Config.isStreakKindEnabled('plan'), isFalse);
+
+    // Reminders: switching them on seeds the default evening nudge.
+    await tester.ensureVisible(find.text('Streak reminders'));
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Streak reminders'));
+    await settleIo(tester);
+    expect(Config.streakReminders.length, 1);
+    expect(find.text('22:00'), findsOneWidget);
+    expect(find.text('Silent notification'), findsOneWidget);
+
+    // Any number of them can be added...
+    await tester.ensureVisible(find.text('Add reminder'));
+    await tester.tap(find.text('Add reminder'));
+    await settleIo(tester);
+    expect(Config.streakReminders.length, 2);
+    expect(find.text('23:00'), findsOneWidget);
+
+    // ...each with its own alert mode...
+    await tester.ensureVisible(find.text('Sound & vibration').first);
+    await tester.tap(find.text('Sound & vibration').first);
+    await settleIo(tester);
+    expect(Config.streakReminders.first.mode, StreakAlertMode.sound);
+
+    // ...and removed again.
+    await tester.ensureVisible(find.byTooltip('Remove reminder').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Remove reminder').first);
+    await settleIo(tester);
+    expect(Config.streakReminders.length, 1);
   });
 }

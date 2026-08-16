@@ -15,8 +15,38 @@
   - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
   - Two-APK rollback: every release build stages its APK plus the previous one, so About → "Go back to ..." can downgrade one version (v0.1.146)
   - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
-  - Three-way streak trio (finish/create-a-task/plan-ahead), per-streak reminders list, and the Settings collapse/search overhaul (v0.1.157 on the old line)
   - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
+- Three daily streaks instead of one: **finish a task** (the original), **create a task**, and **plan ahead** — a day counts for the last one when you move a task to another day or finish everything that was due today
+- The flame in the app bar now cycles through the three streaks, each in its own colour (orange for finishing, green for creating, blue for planning), with its day count and a grey flame for whatever is still open today
+- Tap the flame for the full picture: pick a streak with the new chips, see what is still open today per challenge, and get that streak's own stats and calendar
+- Settings → Streak: switch each of the three challenges on or off (all three are on by default)
+- Streak reminders are now a list — add as many times of day as you like, each either a silent notification or with sound and vibration, and each one can be switched off without losing its time
+- Reminders now say what is still open ("Still open today: create a task, plan ahead")
+- Settings opens with every section collapsed, so the page starts as a short list of headings; tapping a section, a chip or a search result opens it
+
+## [0.1.156] - 2026-08-15
+- Rebuilt the app from the v0.1.114 snapshot and re-applied every feature shipped since then **except** the ones below, all of which touched app startup or the widget/resume rendering path and were the source (or an artifact) of the recurring "widget tap re-fronts the app as a black screen" bug. Everything else from v0.1.115 through v0.1.155 is included: the daily streak (incl. the yearly calendar and 26 challenges), the Obsidian sync integration, dice timer + its alarm-style ring, mode picker (simple/full), permission up-front flow, Settings collapse/search, automatic + on-demand backup, folder sync with an Obsidian Markdown export, self-update from GitHub releases with one-version rollback, the Android share-sheet entry, Sync-now tile, clickable description links, and the App Logs copy/export-to-.txt buttons (rebuilt without the black-screen-specific Device tab and native log watcher, which were dropped along with the rest of the diagnostics)
+- **Skipped, on purpose** (see SPEC.md §3 and §8 for the restored behavior each one temporarily changed):
+  - **v0.1.136** — "Fixed the occasional black screen when opening the app... startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame." This deferred-first-frame rewrite of `main()` is the change most directly implicated in the bug reports that followed; this build keeps the original eager startup sequence instead
+  - **v0.1.142** — "Fixed tapping the tasks home-screen widget showing a black screen... widget taps now always return to the existing app, and a stray duplicate closes itself." This build keeps the original `android:taskAffinity=""` and does not add the duplicate-instance `finish()` check in `MainActivity`
+  - **v0.1.143** — switched the Android renderer from Impeller to Skia "to fix" the widget black screen; field testing later showed Skia was the actual cause. This build never opts out of Impeller in the first place
+  - **v0.1.147** — reverted 0.1.143's renderer switch back to Impeller (moot here, since 0.1.143 was never applied) but also added a forced repaint on every foreground resume
+  - **v0.1.149** — removed that forced repaint, having identified it as the real cause of a still-recurring black screen (also moot here, since it was never added)
+  - **v0.1.150, v0.1.151, v0.1.152** — progressively deeper widget-tap/black-screen diagnostics: a native (Android) log watcher, a render-scheduler heartbeat, and process/isolate-startup breadcrumbs
+  - **v0.1.155** — switched `MainActivity`'s render surface from `SurfaceView` to `TextureView` and added a render-surface heartbeat, the latest attempt at the same bug
+- Bumped straight to 0.1.156 (there is no 0.1.149-0.1.155 in this line's own history) so the version number stays ahead of `dev`'s highest released build
+
+## [0.1.148] - 2026-08-09
+- Settings → Sync & export got a "Sync now" tile: run a sync by hand instead of waiting for the next app quit, with the time and task count of the last sync shown right on the tile
+- Web links in descriptions are now clickable: URLs in wishlist items and on the task-details page open in the browser with a tap
+- The wishlist add/edit dialog now puts labels and the quick-priority buttons right under the title, with the description at the bottom - quicker to file a wish with just a title and a priority
+
+## [0.1.146] - 2026-08-08
+- Updates now come from the two APKs the repo keeps in `github_releases/`: "Check for updates" offers the newest build as before, and a second button goes one version back - handy when a fresh build misbehaves (Android blocks downgrades, so the older build may need the current version uninstalled first; export a backup before doing that)
+- Every release build now stages its APK into that folder and deletes the oldest one, so the app always has the latest build plus one to fall back to
+
+## [0.1.145] - 2026-08-08
+- BestToDo now appears in Android's share menu: share a link, selected text or an email address from any app and it instantly becomes a task on Today (first line as the title, the full shared text kept in the description)
 
 ## [0.1.144] - 2026-08-08
 - Tapping "Longest streak ever" on the streak page now opens a yearly streak calendar: all twelve months of a year with the longest streak highlighted in flame orange (grace days outlined), every other active day in light orange, and a header naming the streak's exact first and last day - browse other years with the arrows

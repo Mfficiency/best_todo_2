@@ -21,12 +21,14 @@ Future<bool> showAlarmNotification(
   return false;
 }
 
-Future<void> scheduleStreakReminder({
+Future<void> scheduleStreakReminderSlot({
+  required int slot,
   required DateTime fireAt,
   required String body,
+  required bool loud,
 }) async {}
 
-Future<void> cancelStreakReminder() async {}
+Future<void> cancelStreakReminders() async {}
 
 Future<void> scheduleDiceTimerAlarm({
   required DateTime fireAt,

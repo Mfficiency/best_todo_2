@@ -63,17 +63,29 @@ class NotificationService {
     return impl.showTaskNotification(taskTitle, delaySeconds: effectiveDelay);
   }
 
-  /// Schedules (replacing any previous) the one-shot daily streak reminder.
-  /// The streak service re-arms it on every app start, completion and
-  /// settings change, so a single pending schedule is always enough.
-  static Future<void> scheduleStreakReminder({
+  /// Schedules one of the user's streak reminders as a one-shot notification.
+  /// [slot] is its index in the reminder list and picks the fixed
+  /// notification id; [loud] chooses sound and vibration over a silent
+  /// notification. The streak service cancels every slot and re-arms them on
+  /// every app start, recorded event and settings change, so one pending
+  /// schedule per reminder is always enough.
+  static Future<void> scheduleStreakReminderSlot({
+    required int slot,
     required DateTime fireAt,
     required String body,
+    required bool loud,
   }) =>
-      impl.scheduleStreakReminder(fireAt: fireAt, body: body);
+      impl.scheduleStreakReminderSlot(
+        slot: slot,
+        fireAt: fireAt,
+        body: body,
+        loud: loud,
+      );
 
-  /// Cancels a pending streak reminder (streak hidden or reminders off).
-  static Future<void> cancelStreakReminder() => impl.cancelStreakReminder();
+  /// Cancels every pending streak reminder (streak hidden, reminders off, or
+  /// about to be re-armed), including the single reminder older versions
+  /// scheduled under its own id.
+  static Future<void> cancelStreakReminders() => impl.cancelStreakReminders();
 
   /// Arms the dice timer's end-of-countdown ring as a real OS alarm, so zero
   /// rings (full screen, insistent, stoppable with one button) even when the

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../config.dart';
+import '../models/streak_kind.dart';
 import '../services/streak_challenges.dart';
 import '../services/streak_service.dart';
 import '../utils/date_time_format.dart';
@@ -11,24 +12,25 @@ import 'streak_calendar_page.dart';
 import 'subpage_app_bar.dart';
 
 /// Flame colour for a streak progress between 0 (no streak, cold grey) and 1
-/// (maximum fire after a full year): orange → deep orange → red.
-Color flameColorFor(double progress, ThemeData theme) {
-  if (progress <= 0) return theme.disabledColor;
-  if (progress < 0.5) {
-    return Color.lerp(Colors.orange, Colors.deepOrange, progress * 2)!;
-  }
-  return Color.lerp(Colors.deepOrange, Colors.red.shade700, (progress - 0.5) * 2)!;
-}
+/// (maximum fire after a full year). Every challenge burns in its own hue —
+/// see [StreakKind.flameColor].
+Color flameColorFor(double progress, ThemeData theme,
+        {StreakKind kind = StreakKind.complete}) =>
+    kind.flameColor(progress, theme);
 
 /// Icon size for the home-page flame: grows with the streak.
 double flameSizeFor(double progress) => 22 + 8 * progress;
 
-/// The flame's detail page: a big animated flame, fun streak stats and the
-/// streak's settings.
+/// The flame's detail page: a big animated flame per challenge, today's open
+/// challenges, fun streak stats and the streak's settings.
 class StreakPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
 
-  const StreakPage({super.key, this.onSettingsChanged});
+  /// The challenge the page opens on — the one the home-page flame was
+  /// showing when it was tapped.
+  final StreakKind? initialKind;
+
+  const StreakPage({super.key, this.onSettingsChanged, this.initialKind});
 
   @override
   State<StreakPage> createState() => _StreakPageState();
@@ -37,12 +39,16 @@ class StreakPage extends StatefulWidget {
 class _StreakPageState extends State<StreakPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _flicker;
+  late StreakKind _kind;
 
   StreakService get _streak => StreakService.instance;
 
   @override
   void initState() {
     super.initState();
+    final enabled = _streak.enabledKinds;
+    _kind = widget.initialKind ??
+        (enabled.isEmpty ? StreakKind.complete : enabled.first);
     _flicker = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
@@ -66,6 +72,34 @@ class _StreakPageState extends State<StreakPage>
     if (streak < 240) return 'Wildfire';
     if (streak < StreakService.maxStreakDays) return 'Inferno';
     return 'MAXIMUM FIRE';
+  }
+
+  /// Stat labels for the fun-stats card, worded per challenge.
+  ({String activeDays, String events, String best, String average}) _statLabels(
+      StreakKind kind) {
+    switch (kind) {
+      case StreakKind.complete:
+        return (
+          activeDays: 'Days with a done task',
+          events: 'Tasks completed on those days',
+          best: 'tasks',
+          average: 'Average tasks per active day',
+        );
+      case StreakKind.create:
+        return (
+          activeDays: 'Days with a new task',
+          events: 'Tasks created on those days',
+          best: 'tasks',
+          average: 'Average new tasks per active day',
+        );
+      case StreakKind.plan:
+        return (
+          activeDays: 'Days you planned ahead',
+          events: 'Planning moves on those days',
+          best: 'moves',
+          average: 'Average planning moves per active day',
+        );
+    }
   }
 
   Widget _statTile(IconData icon, String title, String value,
@@ -125,8 +159,67 @@ class _StreakPageState extends State<StreakPage>
     );
   }
 
+  /// One selectable mini flame per active challenge — the page's tab row.
+  Widget _buildKindSelector(ThemeData theme, List<StreakKind> kinds) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final kind in kinds)
+          ChoiceChip(
+            selected: kind == _kind,
+            onSelected: (_) => setState(() => _kind = kind),
+            avatar: Icon(
+              _streak.currentStreak(kind: kind) > 0
+                  ? Icons.local_fire_department
+                  : Icons.local_fire_department_outlined,
+              color: kind.flameColor(_streak.flameProgress(kind: kind), theme),
+            ),
+            label: Text('${kind.short} ${_streak.currentStreak(kind: kind)}'),
+          ),
+      ],
+    );
+  }
+
+  /// What is still open today, per active challenge. The quickest answer to
+  /// "why is that flame grey?".
+  Widget _buildTodayCard(ThemeData theme, List<StreakKind> kinds) {
+    final today = DateTime.now();
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            child: Text(
+              'Today',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          for (final kind in kinds)
+            ListTile(
+              dense: true,
+              leading: Icon(
+                kind.icon,
+                color: kind.flameColor(_streak.flameProgress(kind: kind), theme),
+              ),
+              title: Text(kind.label),
+              subtitle: Text(kind.description),
+              trailing: _streak.isDayDone(today, kind: kind)
+                  ? Icon(Icons.check_circle, color: kind.warm)
+                  : Text('Open', style: theme.textTheme.bodySmall),
+              onTap: () => setState(() => _kind = kind),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFlame(ThemeData theme, int streak, double progress) {
-    final color = flameColorFor(progress, theme);
+    final color = _kind.flameColor(progress, theme);
     final size = 96 + 64 * progress;
     return AnimatedBuilder(
       animation: _flicker,
@@ -170,13 +263,15 @@ class _StreakPageState extends State<StreakPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final streak = _streak.currentStreak();
-    final progress = _streak.flameProgress();
-    final longest = _streak.longestStreak();
-    final activeDays = _streak.totalActiveDays();
-    final completions = _streak.totalCompletions();
-    final best = _streak.bestDay();
-    final start = _streak.currentStreakStart();
+    final kinds = _streak.enabledKinds;
+    final streak = _streak.currentStreak(kind: _kind);
+    final progress = _streak.flameProgress(kind: _kind);
+    final longest = _streak.longestStreak(kind: _kind);
+    final activeDays = _streak.totalActiveDays(kind: _kind);
+    final events = _streak.totalCompletions(kind: _kind);
+    final best = _streak.bestDay(kind: _kind);
+    final start = _streak.currentStreakStart(kind: _kind);
+    final labels = _statLabels(_kind);
     final daysToMax = StreakService.maxStreakDays - streak;
     final maxed = streak >= StreakService.maxStreakDays;
     final challenges = evaluateStreakChallenges(_streak);
@@ -210,25 +305,28 @@ class _StreakPageState extends State<StreakPage>
         builder: (context, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (kinds.length > 1) ...[
+              _buildKindSelector(theme, kinds),
+              const SizedBox(height: 8),
+            ],
             const SizedBox(height: 8),
             Center(child: _buildFlame(theme, streak, progress)),
             const SizedBox(height: 16),
             Center(
               child: Text(
-                streak > 0
-                    ? '$streak-day streak'
-                    : 'No streak yet',
+                streak > 0 ? '$streak-day streak' : 'No streak yet',
                 style: theme.textTheme.headlineSmall
                     ?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
             Center(
               child: Text(
-                _funLevelName(streak),
+                '${_kind.label} · ${_funLevelName(streak)}',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: flameColorFor(progress, theme),
+                  color: _kind.flameColor(progress, theme),
                   fontWeight: FontWeight.w600,
                 ),
+                textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 4),
@@ -238,7 +336,7 @@ class _StreakPageState extends State<StreakPage>
                     ? (maxed
                         ? 'The flame cannot burn any brighter. Legend. 🔥'
                         : '$daysToMax days until maximum fire')
-                    : 'Complete one task today to light the flame.',
+                    : _kind.callToAction,
                 style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -250,7 +348,7 @@ class _StreakPageState extends State<StreakPage>
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 10,
-                color: flameColorFor(max(progress, 0.05), theme),
+                color: _kind.flameColor(max(progress, 0.05), theme),
               ),
             ),
             const SizedBox(height: 4),
@@ -261,6 +359,10 @@ class _StreakPageState extends State<StreakPage>
               ),
             ),
             const SizedBox(height: 16),
+            if (kinds.isNotEmpty) ...[
+              _buildTodayCard(theme, kinds),
+              const SizedBox(height: 8),
+            ],
             Card(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,24 +384,22 @@ class _StreakPageState extends State<StreakPage>
                       onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const StreakCalendarPage()),
+                                builder: (_) =>
+                                    StreakCalendarPage(kind: _kind)),
                           )),
-                  _statTile(Icons.calendar_month, 'Days with a done task',
-                      '$activeDays'),
-                  _statTile(Icons.task_alt, 'Tasks completed on those days',
-                      '$completions'),
+                  _statTile(
+                      Icons.calendar_month, labels.activeDays, '$activeDays'),
+                  _statTile(_kind.icon, labels.events, '$events'),
                   if (best != null)
                     _statTile(
                         Icons.star,
-                        'Best day (${best.value} tasks)',
+                        'Best day (${best.value} ${labels.best})',
                         (DateTime.tryParse(best.key) != null)
                             ? formatTimerDate(DateTime.parse(best.key))
                             : best.key),
                   if (activeDays > 0)
-                    _statTile(
-                        Icons.local_fire_department,
-                        'Average tasks per active day',
-                        (completions / activeDays).toStringAsFixed(1)),
+                    _statTile(Icons.local_fire_department, labels.average,
+                        (events / activeDays).toStringAsFixed(1)),
                   const SizedBox(height: 8),
                 ],
               ),
@@ -344,7 +444,7 @@ class _StreakPageState extends State<StreakPage>
                   Config.streakGraceHours >= 48
                       ? 'Grace period: 48 hours — one missed day is forgiven. '
                           'Change it in the streak settings (gear icon above).'
-                      : 'Grace period: 24 hours — complete a task every day '
+                      : 'Grace period: 24 hours — meet the challenge every day '
                           'to keep the flame alive. Change it in the streak '
                           'settings (gear icon above).',
                   style: theme.textTheme.bodySmall,

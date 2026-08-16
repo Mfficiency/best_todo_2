@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/streak_kind.dart';
 import '../services/streak_service.dart';
 import '../utils/date_time_format.dart';
 import 'subpage_app_bar.dart';
@@ -13,7 +14,10 @@ const List<String> _monthNames = [
 /// (including grace days it survived) plus every other active day, with a
 /// header naming the streak's exact first and last day.
 class StreakCalendarPage extends StatefulWidget {
-  const StreakCalendarPage({super.key});
+  /// Which of the three streak challenges the calendar draws.
+  final StreakKind kind;
+
+  const StreakCalendarPage({super.key, this.kind = StreakKind.complete});
 
   @override
   State<StreakCalendarPage> createState() => _StreakCalendarPageState();
@@ -28,7 +32,7 @@ class _StreakCalendarPageState extends State<StreakCalendarPage> {
   @override
   void initState() {
     super.initState();
-    _range = _streak.longestStreakRange();
+    _range = _streak.longestStreakRange(kind: widget.kind);
     // Open on the year the longest streak started (it is what the user came
     // to see); fall back to the current year without any history.
     _year = _range?.start.year ?? DateTime.now().year;
@@ -61,13 +65,13 @@ class _StreakCalendarPageState extends State<StreakCalendarPage> {
 
   Widget _buildHeader(ThemeData theme) {
     final range = _range;
-    final longest = _streak.longestStreak();
+    final longest = _streak.longestStreak(kind: widget.kind);
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: range == null
             ? Text(
-                'No streak yet — complete one task today to light the flame.',
+                'No streak yet — ${widget.kind.callToAction}',
                 style: theme.textTheme.bodyMedium,
               )
             : Column(
@@ -76,7 +80,7 @@ class _StreakCalendarPageState extends State<StreakCalendarPage> {
                   Row(
                     children: [
                       Icon(Icons.emoji_events,
-                          color: Colors.deepOrange, size: 28),
+                          color: widget.kind.warm, size: 28),
                       const SizedBox(width: 8),
                       Text(
                         'Longest streak: $longest days',
@@ -129,20 +133,20 @@ class _StreakCalendarPageState extends State<StreakCalendarPage> {
     }
     for (var day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_year, month, day);
-      final active = _streak.isDayDone(date);
+      final active = _streak.isDayDone(date, kind: widget.kind);
       final inStreak = _inLongestStreak(date);
       Color? fill;
       Border? border;
       Color textColor = theme.colorScheme.onSurface.withValues(alpha: 0.6);
       if (inStreak && active) {
-        fill = Colors.deepOrange;
+        fill = widget.kind.warm;
         textColor = Colors.white;
       } else if (inStreak) {
         // A day the streak survived thanks to the 48h grace period.
-        border = Border.all(color: Colors.deepOrange, width: 1.5);
-        textColor = Colors.deepOrange;
+        border = Border.all(color: widget.kind.warm, width: 1.5);
+        textColor = widget.kind.warm;
       } else if (active) {
-        fill = Colors.orange.withValues(alpha: 0.35);
+        fill = widget.kind.cold.withValues(alpha: 0.35);
         textColor = theme.colorScheme.onSurface;
       }
       cells.add(Container(
@@ -201,10 +205,11 @@ class _StreakCalendarPageState extends State<StreakCalendarPage> {
             spacing: 12,
             runSpacing: 4,
             children: [
-              _legendDot(Colors.deepOrange, 'Longest streak'),
+              _legendDot(widget.kind.warm, 'Longest streak'),
               _legendDot(Colors.transparent, 'Grace day',
-                  border: Border.all(color: Colors.deepOrange, width: 1.5)),
-              _legendDot(Colors.orange.withValues(alpha: 0.35), 'Active day'),
+                  border: Border.all(color: widget.kind.warm, width: 1.5)),
+              _legendDot(
+                  widget.kind.cold.withValues(alpha: 0.35), 'Active day'),
             ],
           ),
           const SizedBox(height: 12),
