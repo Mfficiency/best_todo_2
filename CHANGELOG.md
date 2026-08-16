@@ -12,13 +12,17 @@
   - Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
   - Fix: "Check for updates" needs the Android INTERNET permission in release builds (v0.1.139)
   - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
-  - Read-only Obsidian plugin (Tier 2): a proper task view inside Obsidian rendering the synced task list (v0.1.141)
-  - Streak page: yearly calendar view + 26 Duolingo-style challenges, with completion times recorded to power them (v0.1.144)
   - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
   - Two-APK rollback: every release build stages its APK plus the previous one, so About → "Go back to ..." can downgrade one version (v0.1.146)
   - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
   - Three-way streak trio (finish/create-a-task/plan-ahead), per-streak reminders list, and the Settings collapse/search overhaul (v0.1.157 on the old line)
   - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
+
+## [0.1.144] - 2026-08-08
+- Tapping "Longest streak ever" on the streak page now opens a yearly streak calendar: all twelve months of a year with the longest streak highlighted in flame orange (grace days outlined), every other active day in light orange, and a header naming the streak's exact first and last day - browse other years with the arrows
+- The streak page got 26 Duolingo-style challenges with an earned counter and progress bars: time-of-day badges (complete a task before 8:00, before 6:00, after 22:00, over lunch), single-day counts (3/5/10/20 tasks in one day), streak lengths (7 up to 365 days), calendar patterns (weekend pair, a Monday, the 1st of a month, a full calendar month, a comeback after a broken streak) and lifetime totals (active days and completed tasks up to 1000)
+- Completion times are now recorded alongside the daily counts (from this version on), powering the time-of-day challenges; untoggling a task removes its time again
+
 ## [0.1.132] - 2026-08-06
 - Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
 - Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too

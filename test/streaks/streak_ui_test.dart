@@ -156,6 +156,55 @@ void main() {
     expect(find.byTooltip('Streak settings'), findsOneWidget);
   });
 
+  testWidgets('streak page lists the challenges with an earned count',
+      (tester) async {
+    // 7 active days ending today → Week of Fire (and more) earned.
+    await tester.runAsync(() => seedStreakFile(
+        {for (var back = 0; back < 7; back++) dayKeyAgo(back): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+    await tester.pumpWidget(const MaterialApp(home: StreakPage()));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.scrollUntilVisible(find.text('Challenges'), 150,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Challenges'), findsOneWidget);
+    expect(find.textContaining('/ 26 earned'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Week of Fire'), 150,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Week of Fire'), findsOneWidget);
+    expect(find.text('Keep a 7-day streak'), findsOneWidget);
+    // Earned challenges get the amber check mark.
+    expect(find.byIcon(Icons.check_circle), findsWidgets);
+  });
+
+  testWidgets('longest streak tile opens the yearly calendar with the range',
+      (tester) async {
+    await tester.runAsync(() => seedStreakFile(
+        {dayKeyAgo(3): 1, dayKeyAgo(2): 1, dayKeyAgo(1): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+    await tester.pumpWidget(const MaterialApp(home: StreakPage()));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.scrollUntilVisible(find.text('Longest streak ever'), 150,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Longest streak ever'));
+    // The calendar page has no infinite animation, but the streak page's
+    // flame below it does — pump fixed frames instead of settling.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Streak calendar'), findsOneWidget);
+    expect(find.text('Longest streak: 3 days'), findsOneWidget);
+    expect(find.textContaining('From '), findsOneWidget);
+    // The calendar opens on the year the longest streak started.
+    final startYear = StreakService.instance.longestStreakRange()!.start.year;
+    expect(find.text('$startYear'), findsOneWidget);
+    // All 12 months of the year are drawn.
+    expect(find.text('January'), findsOneWidget);
+    expect(find.text('December'), findsOneWidget);
+  });
+
   testWidgets('streak page without a streak invites lighting the flame',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: StreakPage()));

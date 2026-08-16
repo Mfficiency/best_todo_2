@@ -531,11 +531,14 @@ changed under the chip row.
 ### 4.5 Streak (the flame, 0.1.115)
 
 Daily-completion streak gamification. `StreakService` (ChangeNotifier singleton,
-`streak.json` via `SafeFile`) stores one JSON map `completionsByDay` of dayKey →
+`streak.json` via `SafeFile`) stores a JSON map `completionsByDay` of dayKey →
 completion **count** (counts, not booleans, so toggle+untoggle on the same day cancels
-out exactly and per-day stats are possible). `recordCompletion(when)` returns true on the
-day's **first** completion (the streak-kept moment); `recordUncompletion` decrements and
-removes the day at zero. Wish items never count. Hooked into both completion paths in
+out exactly and per-day stats are possible) plus, since 0.1.144, a parallel
+`minutesByDay` map of dayKey → minute-of-day list (one entry per live completion; seeded
+history has counts only) powering the time-of-day challenges. `recordCompletion(when)`
+returns true on the day's **first** completion (the streak-kept moment);
+`recordUncompletion` decrements, drops the **latest** recorded minute, and removes the
+day at zero. Wish items never count. Hooked into both completion paths in
 `home_page.dart` (`_recordStreakToggle`: tile checkbox + dice-timer "done"), using
 `_currentDate` so the dev date stepper works.
 
@@ -543,8 +546,9 @@ removes the day at zero. Wish items never count. Hooked into both completion pat
 in progress never breaks the streak. Grace (`Config.streakGraceHours`, 24 default / 48):
 24 = every calendar day needs ≥1 completion; 48 = a single missed day between active days
 is forgiven (`_allowedGap` 0/1 applied both when anchoring from today and while walking
-back). `longestStreak()` scans full history under the same rule. Flame maxes out at
-**365 days** (`flameProgress` = streak/365 clamped to 1).
+back). `longestStreak()` scans full history under the same rule; `longestStreakRange()`
+returns the same run's exact first/last day as a record (earliest run wins ties). Flame
+maxes out at **365 days** (`flameProgress` = streak/365 clamped to 1).
 
 **UI:** flame `IconButton` in the home app bar directly left of the dice
 (`ListenableBuilder` on the service; hidden when `Config.showStreak` false). Icon grows
@@ -556,6 +560,29 @@ stats card (streak start, longest ever, active days, total completions, best day
 per active day), gear action → Settings. First completion of the day plays a ~1.4 s
 self-removing overlay celebration (`showStreakCelebration`: flame pop + sparks + "Streak
 kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`).
+
+**Streak calendar (0.1.144):** the "Longest streak ever" stat tile is tappable
+("Tap to see it on the calendar") → `StreakCalendarPage`: header card naming the longest
+streak's exact first/last day (`formatTimerDate`), year selector (defaults to the year
+the longest streak started), legend, and all 12 months as compact Monday-first 7-column
+grids in a responsive `Wrap` (2–4 columns by width). Day cells: deep-orange filled =
+active day inside the longest streak, deep-orange outlined = grace day the streak
+survived, light orange = active day outside it.
+
+**Challenges (0.1.144):** `evaluateStreakChallenges(service)` in
+`lib/services/streak_challenges.dart` recomputes **26** Duolingo-style challenges from
+history on every build (nothing persisted, self-healing): First Spark (1st completion);
+time-of-day via `minutesByDay` — Early Bird (<8:00), Dawn Patrol (<6:00), Night Owl
+(≥22:00), Lunch Break Hero (12:00–14:00); best-day counts — Hat Trick 3 / High Five 5 /
+Perfect Ten 10 / Task Tornado 20; streak lengths (max of longest & current) — Week of
+Fire 7 / Fortnight Flame 14 / Monthly Blaze 30 / Quarter Inferno 90 / Half-Year Furnace
+180 / Eternal Flame 365; calendar patterns — Weekend Warrior (Sat + next-day Sun),
+Monday Hero, Fresh Start (1st of month), Full Month (every day of a calendar month),
+Comeback Kid (new active day after ≥2 missed days); totals — Explorer 10 / Regular 50 /
+Veteran 100 active days, Century Club 100 / Task Machine 500 / Task Legend 1000
+completions. Rendered on `StreakPage` below the stats card: "Challenges" card with
+"N / 26 earned" counter; earned tiles get an amber icon + check, unearned multi-step
+ones a thin deep-orange progress bar and "x/y" trailing text.
 
 **Seeding:** on first load without `streak.json` (`needsSeed`), backfilled from existing
 history — per day the **max** of daily-stats completion counts and `completedAt`
