@@ -1,0 +1,33 @@
+
+Building Windows application...                                    73.1s
+√ Built build\windows\x64\runner\Debug\BestToDo.exe
+::group::❌ capture home page screenshot (failed)
+ALARMLOG [WARN] FIRE | could not read notification launch details: LateInitializationError: Field '_instance@972271368' has not been initialized.
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      Iterable.first (dart:core/iterable.dart:645:7)
+#1      _FirstFinderMixin.filter (package:flutter_test/src/finders.dart:1340:28)
+#3      Iterable.isEmpty (dart:core/iterable.dart:542:33)
+#4      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2008:18)
+#5      WidgetController.getCenter (package:flutter_test/src/controller.dart:1861:12)
+#6      main.<anonymous closure> (file:///D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart:132:30)
+<asynchronous suspension>
+#7      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:193:15)
+<asynchronous suspension>
+#8      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1064:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 2 frames from dart:async-patch and package:stack_trace)
+
+The test description was:
+  capture home page screenshot
+════════════════════════════════════════════════════════════════════════════════════════════════════
+Test failed. See exception logs above.
+The test description was: capture home page screenshot
+
+::endgroup::
+
+::error::0 tests passed, 1 failed.
