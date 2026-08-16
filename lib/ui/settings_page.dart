@@ -1,8 +1,11 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../main.dart';
 import '../models/sms_recipient.dart';
 import '../models/sms_report_config.dart';
+import '../services/auto_backup_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
@@ -34,7 +37,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    9,
+    10,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -47,6 +50,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Dice timer',
     'SMS report',
     'Export',
+    'Backup',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -141,6 +145,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
     _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
     _SettingsSearchEntry('Import', 8, 'restore backup load json'),
+    _SettingsSearchEntry('Automatic backup', 9,
+        'daily weekly schedule export save everything off'),
+    _SettingsSearchEntry('Backup folder', 9, 'directory location path choose'),
+    _SettingsSearchEntry('Back up now', 9, 'manual backup export run'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -179,6 +187,9 @@ class _SettingsPageState extends State<SettingsPage> {
   int _streakReminderMinutes = Config.streakReminderMinutes;
   bool _streakCompletionAnimation = Config.streakCompletionAnimation;
   bool _simpleMode = Config.simpleMode;
+  String _autoBackupFrequency = Config.autoBackupFrequency;
+  String _autoBackupDirectory = Config.autoBackupDirectory;
+  DateTime? _lastAutoBackup;
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
@@ -209,6 +220,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _streakReminderMinutes = Config.streakReminderMinutes;
     _streakCompletionAnimation = Config.streakCompletionAnimation;
     _simpleMode = Config.simpleMode;
+    _autoBackupFrequency = Config.autoBackupFrequency;
+    _autoBackupDirectory = Config.autoBackupDirectory;
   }
 
   @override
@@ -216,6 +229,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _scrollController.addListener(_updateActiveSectionFromScroll);
     _loadSmsConfig();
+    _loadLastAutoBackup();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _updateActiveSectionFromScroll();
@@ -1186,6 +1200,122 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _loadLastAutoBackup() async {
+    final last = await AutoBackupService.lastRun();
+    if (!mounted) return;
+    setState(() => _lastAutoBackup = last);
+  }
+
+  Future<void> _pickBackupFolder() async {
+    final downloadsDir = await getDownloadsDirectory();
+    final directory = await getDirectoryPath(
+      initialDirectory: downloadsDir?.path,
+    );
+    if (directory == null) return;
+    setState(() => _autoBackupDirectory = directory);
+    Config.autoBackupDirectory = directory;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _setAutoBackupFrequency(String value) async {
+    setState(() => _autoBackupFrequency = value);
+    Config.autoBackupFrequency = value;
+    await Config.save();
+    // Turning the schedule on is the moment to ask for the folder; a fresh
+    // schedule with a folder writes its first backup right away instead of
+    // waiting for the next app start.
+    if (value != 'off' && Config.autoBackupDirectory.isEmpty) {
+      await _pickBackupFolder();
+    }
+    if (value != 'off' && Config.autoBackupDirectory.isNotEmpty) {
+      await AutoBackupService.maybeRun();
+      await _loadLastAutoBackup();
+    }
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _backupNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final file = await AutoBackupService.runNow();
+    await _loadLastAutoBackup();
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        file != null ? 'Backed up to ${file.path}' : 'Backup failed',
+      ),
+    ));
+  }
+
+  String _formatDateTime(DateTime dt) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} '
+        '${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  Widget _buildBackupSection() {
+    final folderChosen = _autoBackupDirectory.isNotEmpty;
+    return _buildSection(
+      index: 9,
+      title: 'Backup',
+      children: [
+        ListTile(
+          title: const Text('Automatic backup'),
+          subtitle: Text(switch (_autoBackupFrequency) {
+            'daily' =>
+              'Writes a full backup once a day when you open the app',
+            'weekly' =>
+              'Writes a full backup once a week when you open the app',
+            _ => 'No automatic backups',
+          }),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: SegmentedButton<String>(
+            segments: [
+              for (var i = 0; i < Config.autoBackupFrequencies.length; i++)
+                ButtonSegment(
+                  value: Config.autoBackupFrequencies[i],
+                  label: Text(Config.autoBackupFrequencyLabels[i]),
+                ),
+            ],
+            selected: {_autoBackupFrequency},
+            onSelectionChanged: (selection) =>
+                _setAutoBackupFrequency(selection.first),
+          ),
+        ),
+        ListTile(
+          title: const Text('Backup folder'),
+          subtitle: Text(
+            folderChosen ? _autoBackupDirectory : 'Not set — tap to choose',
+          ),
+          trailing: const Icon(Icons.folder_open),
+          onTap: _pickBackupFolder,
+        ),
+        ListTile(
+          enabled: folderChosen,
+          leading: const Icon(Icons.backup),
+          title: const Text('Back up now'),
+          subtitle: Text(
+            _lastAutoBackup == null
+                ? (folderChosen
+                    ? 'No backup yet'
+                    : 'Choose a backup folder first')
+                : 'Last backup: ${_formatDateTime(_lastAutoBackup!)}',
+          ),
+          onTap: folderChosen ? _backupNow : null,
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Text(
+            'Each backup is one timestamped file with everything — tasks, '
+            'settings and timers — and can be restored with Export → Import.',
+          ),
+        ),
+      ],
+    );
+  }
+
   List<_SettingsSearchEntry> get _searchResults {
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return const [];
@@ -1639,6 +1769,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (_isSectionVisible(6)) _buildDiceTimerSection(),
                   if (_isSectionVisible(7)) _buildSmsReportSection(),
                   _buildExportSection(),
+                  _buildBackupSection(),
                 ],
               ),
             ),
