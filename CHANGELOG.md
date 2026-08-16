@@ -8,7 +8,6 @@
   - Double-tap a task to start a timer for it straight away, returning to an already-running one instead of restarting (v0.1.132)
   - In-app self-update: "Check for updates" on the About page downloads and installs the newest GitHub release APK directly (v0.1.133)
   - Dice timer buttons laid out in a compact grid so every control fits one screen (v0.1.134)
-  - Synced mode also writes an Obsidian-friendly Markdown checklist (`besttodo_tasks.md`) alongside the JSON sync file (v0.1.135)
   - Opt-in red dot on the menu icon for failed tests, self-clearing once you've looked (v0.1.137)
   - Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
   - Fix: "Check for updates" needs the Android INTERNET permission in release builds (v0.1.139)
@@ -20,6 +19,10 @@
   - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
   - Three-way streak trio (finish/create-a-task/plan-ahead), per-streak reminders list, and the Settings collapse/search overhaul (v0.1.157 on the old line)
   - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
+## [0.1.132] - 2026-08-06
+- Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
+- Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too
+- The Markdown file is one-way for now: it is overwritten on every sync, so edits made in Obsidian stay in Obsidian
 
 ## [0.1.130] - 2026-08-06
 - Settings has a new Backup section: choose a folder and the app writes a full backup of everything (tasks, settings, timers) there automatically - daily, weekly, or never

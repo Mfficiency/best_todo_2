@@ -628,6 +628,19 @@ immediately; the "Sync folder" tile only shows while enabled). `SyncService`
 to `<folder>/besttodo_tasks.json` (`{sync_version: 1, synced_at, app_version,
 task_count, tasks[]}`) — **tasks only** for now.
 
+Since 0.1.132 every sync also writes `<folder>/besttodo_tasks.md`, an Obsidian-friendly
+Markdown companion (`SyncMarkdown.build` in `lib/services/sync_markdown.dart`, pure and
+unit-tested): a header comment marking the file auto-generated, `# BestToDo tasks`, a
+`Synced <yyyy-MM-dd HH:mm> · BestToDo <version> · N open / M total` line, then one `##`
+section per home tab (Today/Tomorrow/Day After Tomorrow/Next Week/Next Month/Future) —
+same bucketing and open-first/ranking sort as the tabs (`ItemViews.homeBucket`), deleted
+tasks excluded, empty sections skipped. Lines follow the Obsidian Tasks plugin format:
+`- [ ]`/`- [x]` + title (newlines flattened) + `📅 yyyy-MM-dd` due date (future-sentinel
+dates omitted) + `✅ yyyy-MM-dd` completion date. Point the sync folder into an Obsidian
+vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way: the
+file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
+the whole sync run (red history entry) like the JSON write.
+
 **Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
 forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
 hidden/paused/detached after a resume starts exactly one fire-and-forget sync
