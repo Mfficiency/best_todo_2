@@ -134,48 +134,6 @@ void main() {
     expect(service.longestStreak(), 5);
   });
 
-  test('longest streak range names the exact first and last day', () {
-    final service = StreakService.instance;
-    expect(service.longestStreakRange(), isNull);
-    // Runs: 5 days (10..6 days ago), gap, 2 days (2..1 days ago).
-    for (var back = 10; back >= 6; back--) {
-      service.recordCompletion(daysAgo(back));
-    }
-    service.recordCompletion(daysAgo(2));
-    service.recordCompletion(daysAgo(1));
-    final range = service.longestStreakRange()!;
-    expect(range.start, daysAgo(10));
-    expect(range.end, daysAgo(6));
-
-    // 48h grace bridges the middle gap when it is a single missed day.
-    StreakService.instance.resetForTest();
-    Config.streakGraceHours = 48;
-    service.recordCompletion(daysAgo(4));
-    service.recordCompletion(daysAgo(3));
-    service.recordCompletion(daysAgo(1));
-    final graced = service.longestStreakRange()!;
-    expect(graced.start, daysAgo(4));
-    expect(graced.end, daysAgo(1));
-  });
-
-  test('completion times persist and untoggle removes the latest one',
-      () async {
-    final service = StreakService.instance;
-    service.recordCompletion(DateTime(2026, 8, 4, 7, 30));
-    service.recordCompletion(DateTime(2026, 8, 4, 22, 15));
-    await service.saveNow();
-
-    service.resetForTest();
-    await service.load();
-    final key = StreakService.dayKey(day);
-    expect(service.minutesByDayView[key], [7 * 60 + 30, 22 * 60 + 15]);
-
-    service.recordUncompletion(DateTime(2026, 8, 4, 23, 0));
-    expect(service.minutesByDayView[key], [7 * 60 + 30]);
-    service.recordUncompletion(day);
-    expect(service.minutesByDayView.containsKey(key), isFalse);
-  });
-
   test('seedFromHistory merges daily stats and completedAt without doubles',
       () async {
     final service = StreakService.instance;

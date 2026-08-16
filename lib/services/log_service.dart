@@ -28,9 +28,4 @@ class LogService {
   static void clear() {
     logs.value = <String>[];
   }
-
-  /// Fresh state for tests.
-  static void resetForTest() {
-    logs.value = <String>[];
-  }
 }

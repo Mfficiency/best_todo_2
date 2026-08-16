@@ -17,11 +17,10 @@ import 'safe_file.dart';
 /// active days form the streak that the home-page flame visualizes; the flame
 /// reaches maximum fire after [maxStreakDays] days.
 ///
-/// Persistence is a JSON map of dayKey → completion count in `streak.json`
-/// (atomic via [SafeFile]), plus a parallel dayKey → minutes-of-day list for
-/// the time-of-day challenges. Counts, not booleans, so an accidental
-/// toggle-then-untoggle on the same day cancels out exactly and the stats
-/// page can show per-day totals.
+/// Persistence is a single JSON map of dayKey → completion count in
+/// `streak.json` (atomic via [SafeFile]). Counts, not booleans, so an
+/// accidental toggle-then-untoggle on the same day cancels out exactly and
+/// the stats page can show per-day totals.
 ///
 /// The grace period ([Config.streakGraceHours]) decides how forgiving the
 /// streak is: 24h means every calendar day needs a completion; 48h tolerates
@@ -38,11 +37,6 @@ class StreakService extends ChangeNotifier {
   static const int maxStreakDays = 365;
 
   final Map<String, int> _completionsByDay = {};
-
-  /// Minute-of-day (0..1439) of each completion, per day. Only populated from
-  /// live completions — seeded/backfilled history has counts but no times —
-  /// so time-of-day challenges start counting from the day the feature ships.
-  final Map<String, List<int>> _minutesByDay = {};
   bool _loaded = false;
   bool _hadFile = false;
 
@@ -75,19 +69,6 @@ class StreakService extends ChangeNotifier {
           byDay.forEach((key, value) {
             if (key is String && value is num && value > 0) {
               _completionsByDay[key] = value.round();
-            }
-          });
-        }
-        final minutes = data['minutesByDay'];
-        if (minutes is Map) {
-          minutes.forEach((key, value) {
-            if (key is String && value is List) {
-              final list = value
-                  .whereType<num>()
-                  .map((m) => m.round())
-                  .where((m) => m >= 0 && m < 24 * 60)
-                  .toList();
-              if (list.isNotEmpty) _minutesByDay[key] = list;
             }
           });
         }
@@ -162,7 +143,6 @@ class StreakService extends ChangeNotifier {
     final key = dayKey(when);
     final before = _completionsByDay[key] ?? 0;
     _completionsByDay[key] = before + 1;
-    (_minutesByDay[key] ??= []).add(when.hour * 60 + when.minute);
     unawaited(_save());
     notifyListeners();
     unawaited(syncReminder());
@@ -176,14 +156,8 @@ class StreakService extends ChangeNotifier {
     final before = _completionsByDay[key] ?? 0;
     if (before <= 1) {
       _completionsByDay.remove(key);
-      _minutesByDay.remove(key);
     } else {
       _completionsByDay[key] = before - 1;
-      // We can't know which completion was undone; dropping the latest keeps
-      // toggle + untoggle an exact no-op for the time-of-day challenges too.
-      final minutes = _minutesByDay[key];
-      if (minutes != null && minutes.isNotEmpty) minutes.removeLast();
-      if (minutes != null && minutes.isEmpty) _minutesByDay.remove(key);
     }
     unawaited(_save());
     notifyListeners();
@@ -265,49 +239,6 @@ class StreakService extends ChangeNotifier {
     return longest;
   }
 
-  /// First and last active day of the longest streak ever, under the current
-  /// grace setting, or null without any history. When several runs tie, the
-  /// earliest one wins (matching [longestStreak]'s scan order).
-  ({DateTime start, DateTime end})? longestStreakRange() {
-    final days = _completionsByDay.keys
-        .map((key) => DateTime.tryParse(key))
-        .whereType<DateTime>()
-        .toList()
-      ..sort();
-    if (days.isEmpty) return null;
-    final allowedGap = _allowedGap();
-    var bestStart = days.first;
-    var bestEnd = days.first;
-    var bestLen = 1;
-    var runStart = days.first;
-    var run = 1;
-    for (var i = 1; i < days.length; i++) {
-      final gap = days[i].difference(days[i - 1]).inDays - 1;
-      if (gap <= allowedGap) {
-        run++;
-      } else {
-        run = 1;
-        runStart = days[i];
-      }
-      if (run > bestLen) {
-        bestLen = run;
-        bestStart = runStart;
-        bestEnd = days[i];
-      }
-    }
-    return (start: bestStart, end: bestEnd);
-  }
-
-  /// Read-only view of the full history (dayKey → completion count) for the
-  /// streak calendar and the challenges.
-  Map<String, int> get completionsByDayView =>
-      Map.unmodifiable(_completionsByDay);
-
-  /// Read-only view of the recorded completion times (dayKey → minutes of
-  /// day) for the time-of-day challenges.
-  Map<String, List<int>> get minutesByDayView =>
-      Map.unmodifiable(_minutesByDay);
-
   /// Days on which at least one task was completed, ever.
   int totalActiveDays() => _completionsByDay.length;
 
@@ -364,11 +295,7 @@ class StreakService extends ChangeNotifier {
     try {
       final file = await _getFile();
       await SafeFile.writeString(
-          file,
-          jsonEncode({
-            'completionsByDay': _completionsByDay,
-            'minutesByDay': _minutesByDay,
-          }));
+          file, jsonEncode({'completionsByDay': _completionsByDay}));
     } catch (_) {}
   }
 
@@ -377,7 +304,6 @@ class StreakService extends ChangeNotifier {
 
   void resetForTest() {
     _completionsByDay.clear();
-    _minutesByDay.clear();
     _loaded = false;
     _hadFile = false;
   }

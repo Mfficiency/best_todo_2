@@ -20,11 +20,8 @@ import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
-import 'services/permission_flow.dart';
 import 'services/pre_update_backup.dart';
-import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
-import 'services/sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
@@ -163,12 +160,6 @@ Future<void> main() async {
     // migrations can take version-specific precautions. Same deferral.
     unawaited(Future<void>.delayed(const Duration(seconds: 3))
         .then((_) => PreUpdateBackup.recordCurrentVersion()));
-    // First open after an update: ask for every permission the app can use,
-    // so none is silently missing after new code shipped. Deferred a beat so
-    // the dialogs never compete with the first frame; a first-ever launch is
-    // skipped here (mode not chosen yet) — the mode picker settles it.
-    unawaited(Future<void>.delayed(const Duration(seconds: 1))
-        .then((_) => PermissionFlow.maybeRequestAfterUpdate()));
   });
 }
 
@@ -191,23 +182,14 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+class _MyAppState extends State<MyApp> {
   late bool _showIntro = widget.showIntro;
   late bool _showModePicker = widget.showModePicker;
   bool _alarmRingOpen = false;
 
-  /// Set once the tasks home-screen widget has opened the app: the root route
-  /// is then the home page for the rest of this run, whatever start page is
-  /// configured.
-  bool _openedFromTaskWidget = false;
-
   @override
   void initState() {
     super.initState();
-    // Synced mode writes the task list to the chosen folder whenever the app
-    // is left (backgrounded/quit). The observer only forwards lifecycle
-    // states; SyncService does nothing at startup, keeping launch untouched.
-    WidgetsBinding.instance.addObserver(this);
     // Full-screen alarm UI: when a ringing alarm opens the app (tap on the
     // notification, or its full-screen intent firing over the lock screen),
     // present the ring page. Covers both a warm app (callback) and a cold
@@ -233,21 +215,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           onError: (_) {},
         );
       } catch (_) {}
-      // Text shared into the app from other apps becomes a task on Today.
-      unawaited(ShareIntentService.instance.init().catchError((_) {}));
     }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     NotificationService.setOnAlarmRing(null);
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    SyncService.instance.onLifecycleChanged(state);
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
@@ -283,14 +257,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _handleWidgetClick(Uri? uri) async {
     if (uri == null) return;
     final id = uri.queryParameters['id'];
-    // Both widgets use `toggle` / `open` as hosts, so the scheme decides which
-    // one is talking before the host does.
-    if (uri.scheme == TaskWidgetService.scheme) {
-      // `toggle` never arrives here — checkbox taps are broadcasts handled by
-      // [alarmWidgetBackgroundCallback] in its own isolate.
-      if (uri.host == TaskWidgetService.hostOpen) _openTasks();
-      return;
-    }
     switch (uri.host) {
       case AlarmWidgetService.hostToggle:
         if (id != null && id.isNotEmpty) {
@@ -305,23 +271,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         _openAlarms();
         break;
     }
-  }
-
-  /// Brings the app to the task list after a tap on the tasks widget. The app
-  /// may have been left anywhere — settings, a project board, the alarms page —
-  /// so everything above the root route is popped, and [_openedFromTaskWidget]
-  /// makes that root the home page even when [Config.startPage] points
-  /// elsewhere (which also covers a cold start from the widget).
-  void _openTasks() {
-    if (mounted && !_openedFromTaskWidget) {
-      setState(() => _openedFromTaskWidget = true);
-    }
-    // A warm launch may not have a frame pending; without this the callback
-    // below would only run at the next unrelated rebuild.
-    WidgetsBinding.instance.scheduleFrame();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-    });
   }
 
   void _openAlarms({String? editUid}) {
@@ -371,9 +320,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Widget _initialPage() {
-    if (_openedFromTaskWidget) {
-      return HomePage(initialTabIndex: Config.startTabIndex);
-    }
     switch (Config.startPage) {
       case 'settings':
         return const SettingsPage();

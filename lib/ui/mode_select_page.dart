@@ -1,9 +1,6 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/material.dart';
 
 import '../config.dart';
-import '../services/permission_flow.dart';
 
 /// The chooser between the two ways to run the app: *simple mode* (the plain
 /// task list, nothing else) and *full mode* (every tool and extra), without a
@@ -17,15 +14,6 @@ class ModeSelectView extends StatelessWidget {
     Config.simpleMode = simple;
     Config.modeChosen = true;
     await Config.save();
-    if (simple) {
-      // No dialogs for the plain list; record the version so the next open
-      // is not treated as the first open after an update.
-      unawaited(PermissionFlow.markVersionHandled());
-    } else {
-      // The full experience: ask for every permission right away, over
-      // whatever page opens next.
-      unawaited(PermissionFlow.requestAll(trigger: 'full mode chosen'));
-    }
     onModeSelected();
   }
 

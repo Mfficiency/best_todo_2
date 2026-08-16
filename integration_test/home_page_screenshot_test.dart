@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 import 'package:besttodo/main.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
-import 'package:besttodo/ui/projects_page.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -129,28 +128,10 @@ void main() {
     await tester.tap(find.text('Projects'));
     await tester.pumpAndSettle();
 
-    // Scope both ends of the drag to the Projects page: the home page stays
-    // in the tree behind the pushed route, so an unscoped "Get milk" can
-    // resolve to the tile underneath, and "Project 1" also renders as a chip
-    // on every task the dev seed already assigned.
-    final projectsPage = find.byType(ProjectsPage);
-    final milkTile =
-        find.descendant(of: projectsPage, matching: find.text('Get milk'));
-    await tester.scrollUntilVisible(
-      milkTile,
-      80,
-      scrollable: find
-          .descendant(of: projectsPage, matching: find.byType(Scrollable))
-          .first,
-    );
-    final projectCard = find.descendant(
-      of: find.byType(DragTarget<Task>),
-      matching: find.text('Project 1'),
-    );
-
-    final drag = await tester.startGesture(tester.getCenter(milkTile));
+    final drag = await tester
+        .startGesture(tester.getCenter(find.text('Get milk').first));
     await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
-    await drag.moveTo(tester.getCenter(projectCard));
+    await drag.moveTo(tester.getCenter(find.text('Project 1')));
     await tester.pump();
     await drag.up();
     await tester.pumpAndSettle();
@@ -159,7 +140,10 @@ void main() {
     // Per-project Kanban board with the assigned card. Target the project
     // card via its DragTarget — after the assignment "Project 1" also appears
     // as a chip on the task row, whose ListTile owns an InkWell of its own.
-    await tester.tap(projectCard);
+    await tester.tap(find.descendant(
+      of: find.byType(DragTarget<Task>),
+      matching: find.text('Project 1'),
+    ));
     await tester.pumpAndSettle();
     await capture('project_board_page');
 

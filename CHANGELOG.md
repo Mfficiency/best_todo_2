@@ -1,104 +1,27 @@
 # Changelog
 
-## [0.1.156] - 2026-08-15
-- Rebuilt the app from the v0.1.114 snapshot and re-applied every feature shipped since then **except** the ones below, all of which touched app startup or the widget/resume rendering path and were the source (or an artifact) of the recurring "widget tap re-fronts the app as a black screen" bug. Everything else from v0.1.115 through v0.1.155 is included: the daily streak (incl. the yearly calendar and 26 challenges), the Obsidian sync integration, dice timer + its alarm-style ring, mode picker (simple/full), permission up-front flow, Settings collapse/search, automatic + on-demand backup, folder sync with an Obsidian Markdown export, self-update from GitHub releases with one-version rollback, the Android share-sheet entry, Sync-now tile, clickable description links, and the App Logs copy/export-to-.txt buttons (rebuilt without the black-screen-specific Device tab and native log watcher, which were dropped along with the rest of the diagnostics)
-- **Skipped, on purpose** (see SPEC.md §3 and §8 for the restored behavior each one temporarily changed):
-  - **v0.1.136** — "Fixed the occasional black screen when opening the app... startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame." This deferred-first-frame rewrite of `main()` is the change most directly implicated in the bug reports that followed; this build keeps the original eager startup sequence instead
-  - **v0.1.142** — "Fixed tapping the tasks home-screen widget showing a black screen... widget taps now always return to the existing app, and a stray duplicate closes itself." This build keeps the original `android:taskAffinity=""` and does not add the duplicate-instance `finish()` check in `MainActivity`
-  - **v0.1.143** — switched the Android renderer from Impeller to Skia "to fix" the widget black screen; field testing later showed Skia was the actual cause. This build never opts out of Impeller in the first place
-  - **v0.1.147** — reverted 0.1.143's renderer switch back to Impeller (moot here, since 0.1.143 was never applied) but also added a forced repaint on every foreground resume
-  - **v0.1.149** — removed that forced repaint, having identified it as the real cause of a still-recurring black screen (also moot here, since it was never added)
-  - **v0.1.150, v0.1.151, v0.1.152** — progressively deeper widget-tap/black-screen diagnostics: a native (Android) log watcher, a render-scheduler heartbeat, and process/isolate-startup breadcrumbs
-  - **v0.1.155** — switched `MainActivity`'s render surface from `SurfaceView` to `TextureView` and added a render-surface heartbeat, the latest attempt at the same bug
-- Bumped straight to 0.1.156 (there is no 0.1.149-0.1.155 in this line's own history) so the version number stays ahead of `dev`'s highest released build
-
-## [0.1.148] - 2026-08-09
-- Settings → Sync & export got a "Sync now" tile: run a sync by hand instead of waiting for the next app quit, with the time and task count of the last sync shown right on the tile
-- Web links in descriptions are now clickable: URLs in wishlist items and on the task-details page open in the browser with a tap
-- The wishlist add/edit dialog now puts labels and the quick-priority buttons right under the title, with the description at the bottom - quicker to file a wish with just a title and a priority
-
-## [0.1.146] - 2026-08-08
-- Updates now come from the two APKs the repo keeps in `github_releases/`: "Check for updates" offers the newest build as before, and a second button goes one version back - handy when a fresh build misbehaves (Android blocks downgrades, so the older build may need the current version uninstalled first; export a backup before doing that)
-- Every release build now stages its APK into that folder and deletes the oldest one, so the app always has the latest build plus one to fall back to
-
-## [0.1.145] - 2026-08-08
-- BestToDo now appears in Android's share menu: share a link, selected text or an email address from any app and it instantly becomes a task on Today (first line as the title, the full shared text kept in the description)
-
-## [0.1.144] - 2026-08-08
-- Tapping "Longest streak ever" on the streak page now opens a yearly streak calendar: all twelve months of a year with the longest streak highlighted in flame orange (grace days outlined), every other active day in light orange, and a header naming the streak's exact first and last day - browse other years with the arrows
-- The streak page got 26 Duolingo-style challenges with an earned counter and progress bars: time-of-day badges (complete a task before 8:00, before 6:00, after 22:00, over lunch), single-day counts (3/5/10/20 tasks in one day), streak lengths (7 up to 365 days), calendar patterns (weekend pair, a Monday, the 1st of a month, a full calendar month, a comeback after a broken streak) and lifetime totals (active days and completed tasks up to 1000)
-- Completion times are now recorded alongside the daily counts (from this version on), powering the time-of-day challenges; untoggling a task removes its time again
-
-## [0.1.142] - 2026-08-06
-- Fixed tapping the tasks home-screen widget showing a black screen when the app was already open in the background (only a force-close recovered it): the widget tap could start a second copy of the app in its own task instead of bringing the running one back to the front - widget taps now always return to the existing app, and a stray duplicate closes itself instead of sitting on a black launch window
-
-## [0.1.141] - 2026-08-06
-- New read-only Obsidian plugin (Tier 2 of the Obsidian integration, in `obsidian-plugin/`): a proper task view inside Obsidian rendering the synced `besttodo_tasks.json` - the six home tabs, checkboxes, due dates, label and project chips, open-first ordering, and an "as of ..." freshness line; it refreshes automatically when the sync file changes and never writes anything back
-
-## [0.1.140] - 2026-08-06
-- The app now asks for all its permissions up front (notifications, exact alarms, battery-optimization exemption, full-screen alarms, SMS) when you choose the full experience - "Use everything" on the welcome screen or turning simple mode off in Settings
-- The same one-pass permission check also runs on the first open after an app update, so a new version can never be quietly missing a permission it needs
-- Choosing simple mode keeps the welcome flow dialog-free: nothing is asked until you opt into the full experience or the app is updated
-
-## [0.1.139] - 2026-08-06
-- Fixed "Check for updates" always failing with a host-lookup error (SocketException: api.github.com) in release builds: the installed app was missing the Android internet permission, so it could not reach GitHub at all
-
-## [0.1.138] - 2026-08-06
-- Fixed a first launch on a new phone opening with the imported idea backlog instead of the three starter tasks - the starter list is seeded again, and now sits above the imported items
-
-## [0.1.137] - 2026-08-06
-- The red dot on the menu icon for failed tests is now opt-in: turn it on under Settings → Appearance → "Red dot for failed tests" (off by default)
-- Red dots now clear themselves once you have looked at the problem: opening Test Results acknowledges the failed run (the dot stays off until a newer run fails), and the App Logs dot already cleared on opening after a failed sync
-
-## [0.1.136] - 2026-08-06
-- Fixed the occasional black screen when opening the app that needed a force-close to recover: startup no longer waits on the notification, alarm and home-widget plugins before showing the first frame - they now initialize right after it, with timeouts so a stuck one can't wedge the app
-- If reading settings ever fails at launch, the app now opens with defaults instead of not opening at all
-
-## [0.1.135] - 2026-08-06
-- Synced mode now also writes an Obsidian-friendly Markdown checklist (besttodo_tasks.md) next to the JSON file - point your sync folder into an Obsidian vault and your tasks render as a native checklist, grouped by the same tabs as the app
-- Checkboxes and dates follow the Obsidian Tasks plugin format (📅 due date, ✅ completion date), so community plugins can query your list too
-- The Markdown file is one-way for now: it is overwritten on every sync, so edits made in Obsidian stay in Obsidian
-
-## [0.1.134] - 2026-08-06
-- Dice timer buttons now sit in a compact grid and the dial shrinks on small screens, so every control fits on one screen without scrolling
-
-## [0.1.133] - 2026-08-06
-- The app can now update itself: About → "Check for updates" looks up the newest release on GitHub, and one tap downloads the new APK (with a progress bar) and opens the Android installer — no store needed
-- The first in-app update asks for Android's one-time "allow installs from this app" permission; the page explains what to do and the Install button waits for you to come back
-- On desktop, web, or when a release ships without an APK, the button opens the release page in the browser instead
-- New for local builds: `PUBLISH_APK=1 sh tool/build.sh apk --release` (or `dart run tool/publish_apk.dart` after any release build) uploads the APK to a GitHub release — exactly where the in-app updater looks
-
-## [0.1.132] - 2026-08-06
-- Double-tap a task to open a little menu — its first (and for now only) entry starts a timer for that task
-- The timer is the same egg timer the dice uses, but it starts counting down the default 20 minutes right away; grabbing the dial still pauses and rewinds it, exactly like a dice-rolled timer
-- Double-tapping the task whose timer is already running returns to the countdown instead of restarting it
-
-## [0.1.131] - 2026-08-06
-- Synced mode: choose between fully offline (as before) and syncing your tasks to a folder of your choice — Settings → Sync & export, pick the folder once and you're set
-- The sync runs in the background every time you leave or quit the app, so it never slows down startup or gets in your way
-- App Logs got a "Sync" tab showing every sync: when it ran, how long it took and how many items it wrote — failures show up in red with the reason
-- If a sync fails (folder deleted, drive unplugged, ...), a little red dot appears on App Logs in the main menu; opening the page clears it, and the next successful sync does too
-- Sync writes are atomic: a crash or an unplugged drive mid-sync can never leave a half-written file behind
-
-## [0.1.130] - 2026-08-06
-- Settings has a new Backup section: choose a folder and the app writes a full backup of everything (tasks, settings, timers) there automatically - daily, weekly, or never
-- Daily backs up the first time you open the app each day, weekly once seven days have passed; a "Back up now" button writes one on demand and the section shows when the last backup ran
-- Each backup is a single timestamped file that the existing Import button can restore
-
-## [0.1.129] - 2026-08-05
-- Test Results now shows detail even when everything passes: an "All tests" section lists every test file with its own pass/fail/skip counts and time, and expanding a file shows each test with a green/red/grey mark and how long it took
-- Files with failures sort to the top, and the summary line now includes the total test time ("ran in 42.3 s")
-- The CI job summary gets the same per-file table, so the app and CI always tell the same story; older reports without per-test details say so instead of showing nothing
-
-## [0.1.128] - 2026-08-05
-- Home-screen task widget: tapping the progress line, or a task row next to its checkbox, now always opens the app on the task list - even if the app was left on settings or another page
-- Test Results now always shows the newest test run there is, whichever branch it came from — no more empty page because the branch you built from was not the one that last ran the tests
-- The results are packaged into every build, so the page works with no network at all: a fresh checkout, a release APK on a plane, or the app running in the browser all show real numbers
-- The page says how old the run is ("Ran 3 hours ago on dev"), where the numbers came from, and links straight to the CI run that produced them; refreshing pulls the latest and keeps it for the next offline start
-
-## [0.1.127] - 2026-08-05
-- Dice timer: a "Cancel timer" button ends a running, paused or ringing timer and drops its alarm with it — the task is left exactly as it was, neither done nor postponed
-- Cancelling returns to the home page with a "Timer cancelled" note and the dice goes back to offering a fresh roll; leaving the page with the back arrow still keeps the countdown running, as before
+## [0.1.157] - 2026-08-17
+- Reverted `dev` to the exact v0.1.126 code (the last build confirmed to open cleanly from the tasks widget every time). v0.1.128 through v0.1.156 introduced a recurring "widget tap re-fronts the app as a black screen" bug; every attempted fix since — including a rebuild that deliberately dropped the suspected culprits (see the old 0.1.156 entry below) — has reglitched on real-device re-test, most recently traced to a native heartbeat/view-walk the black-screen diagnostics themselves run on every app resume. Until that investigation lands a fix that survives repeated on-device testing, `dev` trades the features below for a widget tap that reliably works. See `testbuilds/README.md` on `fix/black-screen-restore` for the full bisect/rc history.
+- **Features temporarily missing versus the previous `dev` tip (v0.1.156), to be re-implemented once the widget black-screen investigation is resolved** — each one is a real, already-designed feature, not speculative, just currently reverted out:
+  - Dice timer: a "Cancel timer" button that ends a running/paused/ringing timer and drops its alarm without marking the task done or postponed (v0.1.127)
+  - Test Results page: per-file/per-test pass-fail-skip detail instead of just a summary (v0.1.129)
+  - Settings → Backup: scheduled full backups (daily/weekly/on-demand) to a chosen folder (v0.1.130)
+  - Synced mode: background task sync to a chosen folder on app quit, with its own App Logs "Sync" tab and a red-dot failure indicator (v0.1.131)
+  - Double-tap a task to start a timer for it straight away, returning to an already-running one instead of restarting (v0.1.132)
+  - In-app self-update: "Check for updates" on the About page downloads and installs the newest GitHub release APK directly (v0.1.133)
+  - Dice timer buttons laid out in a compact grid so every control fits one screen (v0.1.134)
+  - Synced mode also writes an Obsidian-friendly Markdown checklist (`besttodo_tasks.md`) alongside the JSON sync file (v0.1.135)
+  - Opt-in red dot on the menu icon for failed tests, self-clearing once you've looked (v0.1.137)
+  - Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
+  - Fix: "Check for updates" needs the Android INTERNET permission in release builds (v0.1.139)
+  - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
+  - Read-only Obsidian plugin (Tier 2): a proper task view inside Obsidian rendering the synced task list (v0.1.141)
+  - Streak page: yearly calendar view + 26 Duolingo-style challenges, with completion times recorded to power them (v0.1.144)
+  - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
+  - Two-APK rollback: every release build stages its APK plus the previous one, so About → "Go back to ..." can downgrade one version (v0.1.146)
+  - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
+  - Three-way streak trio (finish/create-a-task/plan-ahead), per-streak reminders list, and the Settings collapse/search overhaul (v0.1.157 on the old line)
+  - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
 
 ## [0.1.126] - 2026-08-05
 - Introduction: the welcome slides are back — the app no longer opens straight on the simple/full mode question, the three intro screens run first and the mode choice is now their closing page

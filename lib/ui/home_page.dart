@@ -14,17 +14,14 @@ import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
-import '../services/auto_backup_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
-import '../services/share_intent_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
-import '../services/sync_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
@@ -566,19 +563,7 @@ class _HomePageState extends State<HomePage>
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
     final loadedDailyStats = await _repository.loadDailyStats();
-    // A share-sheet task created while this load was reading the file can be
-    // in memory (via ShareIntentService's consumer) *and* in the read result
-    // (via its own save); keep the in-memory one only.
-    if (_tasks.isNotEmpty) {
-      final known = _tasks.map((t) => t.uid).toSet();
-      loaded.removeWhere((t) => known.contains(t.uid));
-    }
-    // A fresh install does not come back empty: the merge above turns the
-    // one-time Todo.md import into wish tasks. Only real (non-wish) tasks
-    // decide whether the starter list still has to be seeded — otherwise a
-    // first launch would silently skip it.
-    final isFirstLaunch = !loaded.any((t) => !t.isWish);
-    if (isFirstLaunch) {
+    if (loaded.isEmpty) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(
               title: t,
@@ -595,9 +580,6 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       );
-      // The imported wishes follow the starter tasks, so the Today list opens
-      // on them instead of on the old backlog.
-      _tasks.addAll(loaded);
       if (Config.isDev) {
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
@@ -623,7 +605,7 @@ class _HomePageState extends State<HomePage>
       // Fresh dev installs (and every web run, where nothing persists) also
       // get a visible item history, so the task-detail History timeline can
       // be tested immediately: Tools → Projects → open a board → tap a card.
-      if (isFirstLaunch) {
+      if (loaded.isEmpty) {
         _seedDevRangeTask();
         _seedDevWishItem();
         _seedDevItemHistory();
@@ -934,33 +916,20 @@ class _HomePageState extends State<HomePage>
     // Tasks ticked off on the home-screen widget are written to storage by the
     // widget's own isolate; on the way back into the app they are merged in.
     WidgetsBinding.instance.addObserver(this);
-    // Text shared into the app from other apps becomes a task on Today.
-    // Registering before _loadTasks means every share from here on goes
-    // through this page's in-memory list — never a second tasks.json writer.
-    ShareIntentService.instance.registerConsumer(_addSharedTask);
     // Lets the app shell reopen a live dice timer after its full-screen alarm
     // is stopped (see main.dart), with the task's actions ready.
     openRunningDiceTimer = _reopenRunningDiceTimer;
     // CI embeds its test results as a bundled asset; builds whose test run
-    // had unacknowledged failures get a red dot on the Test Results drawer
-    // entry — and on the hamburger icon itself when the "Red dot on menu"
-    // setting is on. Opening the Test Results page clears the dots.
+    // had failures get a red dot on the drawer icon (see TestResultsPage).
     TestReportService.instance.load().then((_) {
       if (mounted) setState(() {});
     });
-    // A sync failure from a previous run keeps its red dot on the App Logs
-    // drawer entry until acknowledged; lazy load, nothing blocks startup.
-    SyncService.instance.ensureLoaded();
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
     // Some tools (Chronize, Productivity Stats, ...) render the task data, so
     // the configured start tool is only opened once loading finished.
-    _loadTasks().then((_) {
-      _maybeOpenStartTool();
-      // A due automatic backup runs after startup, off the critical path.
-      unawaited(AutoBackupService.maybeRun());
-    });
+    _loadTasks().then((_) => _maybeOpenStartTool());
     _scheduleMidnightUpdate();
   }
 
@@ -1051,15 +1020,12 @@ class _HomePageState extends State<HomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_mergeWidgetCompletions());
-      // An app kept open across midnight still gets its scheduled backup.
-      unawaited(AutoBackupService.maybeRun());
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    ShareIntentService.instance.unregisterConsumer(_addSharedTask);
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {
       openRunningDiceTimer = null;
     }
@@ -1192,22 +1158,6 @@ class _HomePageState extends State<HomePage>
     _controller.clear();
     _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
-  }
-
-  /// Creates a task from text shared into the app (Android share sheet) —
-  /// always due today, whatever tab or view is open.
-  void _addSharedTask(String text) {
-    final task = ShareIntentService.buildTask(text);
-    task.listRanking = _listRankingForNewTask(
-      0,
-      addToTop: Config.addNewTasksToTop,
-    );
-    setState(() {
-      _tasks.add(task);
-    });
-    _trackTaskCreated(task);
-    _saveTasks();
-    LogService.add('HomePage._addSharedTask', 'Added shared task: ${task.title}');
   }
 
   /// Creates a task from the Chronize timeline at an explicit deadline
@@ -1497,40 +1447,6 @@ class _HomePageState extends State<HomePage>
           MaterialPageRoute(
             builder: (_) => DiceTimerPage(
               task: task,
-              onTaskDone: () => _completeTaskFromDice(task),
-              onTaskPostponed: () => _postponeTaskFromDice(task),
-            ),
-          ),
-        )
-        .then((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  /// Double-tap → "Start timer": opens the same egg-timer page the dice
-  /// uses, but for [task] specifically, with the countdown already running at
-  /// the default duration — grabbing the dial still pauses and rewinds it
-  /// like any dice timer. Double-tapping the task whose timer is already
-  /// live just returns to it; picking a different task replaces the old
-  /// timer, since the double tap is an explicit choice for this one.
-  void _startTaskTimer(Task task) {
-    final controller = DiceTimerController.instance;
-    if (controller.isActive && identical(controller.task, task)) {
-      LogService.add('HomePage._startTaskTimer',
-          'Returned to running timer for "${task.title}"');
-    } else {
-      controller.configure(task);
-      controller.releaseDial();
-      LogService.add(
-          'HomePage._startTaskTimer', 'Started timer for "${task.title}"');
-    }
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (_) => DiceTimerPage(
-              task: task,
-              caption: 'Timer for',
-              captionIcon: Icons.timer_outlined,
               onTaskDone: () => _completeTaskFromDice(task),
               onTaskPostponed: () => _postponeTaskFromDice(task),
             ),
@@ -2097,7 +2013,6 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
-      onStartTimer: () => _startTaskTimer(task),
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
@@ -2181,13 +2096,9 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
   ];
 
-  /// An icon overlaid with a small red dot, used on the Test Results entry —
-  /// and, when [Config.showFailureDotOnMenu] is on, the drawer/hamburger
-  /// icon — while the newest test run has unacknowledged failures, and (with
-  /// its own [dotKey]) on the App Logs entry after a failed sync. Every dot
-  /// clears itself once its page is opened.
-  Widget _iconWithFailureDot(IconData icon,
-      {Key dotKey = const Key('test-failure-dot')}) {
+  /// An icon overlaid with a small red dot, used on the drawer/hamburger
+  /// icon and the Test Results entry when this build's CI test run failed.
+  Widget _iconWithFailureDot(IconData icon) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -2196,7 +2107,7 @@ class _HomePageState extends State<HomePage>
           right: -2,
           top: -2,
           child: Container(
-            key: dotKey,
+            key: const Key('test-failure-dot'),
             width: 9,
             height: 9,
             decoration: BoxDecoration(
@@ -2286,21 +2197,15 @@ class _HomePageState extends State<HomePage>
                 },
               ),
             if (Config.isFeatureEnabled('app_logs'))
-              ValueListenableBuilder<bool>(
-                valueListenable: SyncService.instance.hasUnseenError,
-                builder: (context, syncError, _) => ListTile(
-                  leading: syncError
-                      ? _iconWithFailureDot(Icons.list_alt,
-                          dotKey: const Key('sync-error-dot'))
-                      : const Icon(Icons.list_alt),
-                  title: const Text('App Logs'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AppLogsPage()),
-                    );
-                  },
-                ),
+              ListTile(
+                leading: const Icon(Icons.list_alt),
+                title: const Text('App Logs'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                  );
+                },
               ),
             if (Config.isFeatureEnabled('startup_times'))
               ListTile(
@@ -2322,7 +2227,7 @@ class _HomePageState extends State<HomePage>
                   for (final tool in enabledTools)
                     ListTile(
                       leading: tool.key == 'test_results' &&
-                              TestReportService.instance.hasUnseenFailures
+                              TestReportService.instance.hasFailures
                           ? _iconWithFailureDot(tool.icon)
                           : Icon(tool.icon),
                       title: Text(tool.label),
@@ -2340,8 +2245,7 @@ class _HomePageState extends State<HomePage>
         leading: Builder(
           builder: (context) => IconButton(
             tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
-            icon: Config.showFailureDotOnMenu &&
-                    TestReportService.instance.hasUnseenFailures
+            icon: TestReportService.instance.hasFailures
                 ? _iconWithFailureDot(Icons.menu)
                 : const Icon(Icons.menu),
             onPressed: () => Scaffold.of(context).openDrawer(),

@@ -488,13 +488,6 @@ class DiceTimerPage extends StatefulWidget {
   /// The task the dice landed on.
   final Task task;
 
-  /// Line shown above the task title — "The dice picked" for a dice roll,
-  /// "Timer for" when the timer is started from the task list.
-  final String caption;
-
-  /// Icon next to [caption] (the dice for a roll, a timer otherwise).
-  final IconData captionIcon;
-
   /// Called when the user confirms the task is done at (or after) the ring.
   final VoidCallback onTaskDone;
 
@@ -511,8 +504,6 @@ class DiceTimerPage extends StatefulWidget {
     required this.onTaskDone,
     required this.onTaskPostponed,
     this.onRingAlert,
-    this.caption = 'The dice picked',
-    this.captionIcon = Icons.casino,
   }) : super(key: key);
 
   @override
@@ -562,20 +553,6 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
   void _finish(VoidCallback callback) {
     callback();
     _controller.clear();
-    Navigator.of(context).pop();
-  }
-
-  /// Throw the timer away without answering for the task: the countdown, any
-  /// ring and the OS-scheduled alarm all go, and the task is left exactly as it
-  /// was (not done, not postponed). Unlike leaving the page, nothing keeps
-  /// running in the background.
-  void _cancelTimer() {
-    LogService.add(
-        'DiceTimerPage._cancelTimer', 'Cancelled "${_controller.task?.title}"');
-    _controller.clear();
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Timer cancelled')));
     Navigator.of(context).pop();
   }
 
@@ -749,73 +726,54 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
         : OutlinedButton.icon(icon: icon, label: label, onPressed: onPressed);
   }
 
-  /// Shown from the moment there is a countdown to throw away; the muted
-  /// destructive styling keeps it clearly apart from Done/Postpone, which
-  /// answer for the task.
-  Widget _cancelButton(BuildContext context) => TextButton.icon(
-        icon: const Icon(Icons.timer_off_outlined),
-        label: const Text('Cancel timer'),
-        style: TextButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.error,
-        ),
-        onPressed: _cancelTimer,
-      );
-
   Widget _lockButton() => OutlinedButton.icon(
         icon: const Icon(Icons.lock_outline),
         label: const Text('Lock touch'),
         onPressed: () => setState(() => _locked = true),
       );
 
-  /// One grid row: [buttons] side by side, each stretched to an equal share.
-  Widget _buttonRow(List<Widget> buttons) => Row(
-        children: [
-          for (var i = 0; i < buttons.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(child: buttons[i]),
-          ],
-        ],
-      );
-
-  /// Buttons under the dial, laid out as a compact grid (two per row) so every
-  /// phase fits on one screen without scrolling. Done and Lock touch are
-  /// available from the start (even before the countdown begins); running adds
-  /// Pause, paused adds Resume, both add Cancel timer, and the ring swaps in
-  /// the finish/postpone/extend actions.
+  /// Buttons under the dial. Done and Lock touch are available from the start
+  /// (even before the countdown begins); running adds Pause, paused adds
+  /// Resume, and the ring swaps in the finish/postpone/extend actions.
   Widget _actions() {
     switch (_controller.phase) {
       case DiceTimerPhase.setting:
-        return _buttonRow([_doneButton(), _lockButton()]);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _doneButton(),
+            const SizedBox(height: 12),
+            _lockButton(),
+          ],
+        );
       case DiceTimerPhase.running:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buttonRow([
-              _doneButton(),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.pause),
-                label: const Text('Pause'),
-                onPressed: _controller.pause,
-              ),
-            ]),
-            const SizedBox(height: 8),
-            _buttonRow([_lockButton(), _cancelButton(context)]),
+            _doneButton(),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.pause),
+              label: const Text('Pause'),
+              onPressed: _controller.pause,
+            ),
+            const SizedBox(height: 12),
+            _lockButton(),
           ],
         );
       case DiceTimerPhase.paused:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buttonRow([
-              FilledButton.icon(
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Resume'),
-                onPressed: _controller.resume,
-              ),
-              _doneButton(filled: false),
-            ]),
-            const SizedBox(height: 8),
-            _buttonRow([_lockButton(), _cancelButton(context)]),
+            FilledButton.icon(
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Resume'),
+              onPressed: _controller.resume,
+            ),
+            const SizedBox(height: 12),
+            _doneButton(filled: false),
+            const SizedBox(height: 12),
+            _lockButton(),
           ],
         );
       case DiceTimerPhase.ringing:
@@ -870,26 +828,31 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
           child: Text('+$minutes min'),
         );
 
-    // Postpone keeps a row of its own — its label is too long to halve.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buttonRow([
-          FilledButton.icon(
-            icon: const Icon(Icons.check),
-            label: const Text('Done'),
-            onPressed: () => _finish(widget.onTaskDone),
-          ),
-          _cancelButton(context),
-        ]),
-        const SizedBox(height: 8),
+        FilledButton.icon(
+          icon: const Icon(Icons.check),
+          label: const Text('Done'),
+          onPressed: () => _finish(widget.onTaskDone),
+        ),
+        const SizedBox(height: 12),
         FilledButton.tonalIcon(
           icon: const Icon(Icons.update),
           label: const Text('Postpone to tomorrow'),
           onPressed: () => _finish(widget.onTaskPostponed),
         ),
-        const SizedBox(height: 8),
-        _buttonRow([addButton(1), addButton(5), addButton(10)]),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            addButton(1),
+            const SizedBox(width: 8),
+            addButton(5),
+            const SizedBox(width: 8),
+            addButton(10),
+          ],
+        ),
       ],
     );
   }
@@ -910,56 +873,43 @@ class _DiceTimerPageState extends State<DiceTimerPage> {
         ],
       ),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Everything around the dial (title, status line, the tallest
-            // action grid, paddings) needs roughly 340px; the dial gets what
-            // is left, within bounds, so the whole page — buttons included —
-            // fits on one screen. The scroll view stays only as a safety net
-            // for very short viewports (e.g. landscape phones).
-            final dialSize = constraints.maxHeight.isFinite
-                ? (constraints.maxHeight - 340).clamp(220.0, 280.0)
-                : 280.0;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(widget.captionIcon,
-                          color: theme.colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text(widget.caption, style: theme.textTheme.titleSmall),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.task.title,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox.square(
-                    dimension: dialSize,
-                    child: DiceTimerDial(
-                      value: _controller.remaining,
-                      maxMinutes: _maxMinutes,
-                      onDragStart: _controller.grabDial,
-                      onChanged: _controller.setRemaining,
-                      onDragEnd: _controller.releaseDial,
-                      center: _dialCenter(context),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _statusLine(context),
-                  const SizedBox(height: 16),
-                  _actions(),
+                  Icon(Icons.casino, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Text('The dice picked', style: theme.textTheme.titleSmall),
                 ],
               ),
-            );
-          },
+              const SizedBox(height: 4),
+              Text(
+                widget.task.title,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 24),
+              SizedBox.square(
+                dimension: 280,
+                child: DiceTimerDial(
+                  value: _controller.remaining,
+                  maxMinutes: _maxMinutes,
+                  onDragStart: _controller.grabDial,
+                  onChanged: _controller.setRemaining,
+                  onDragEnd: _controller.releaseDial,
+                  center: _dialCenter(context),
+                ),
+              ),
+              const SizedBox(height: 24),
+              _statusLine(context),
+              const SizedBox(height: 24),
+              _actions(),
+            ],
+          ),
         ),
       ),
     );

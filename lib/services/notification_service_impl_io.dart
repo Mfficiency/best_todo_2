@@ -56,21 +56,9 @@ Future<void> _ensureTimezone() async {
   _timezoneReady = true;
 }
 
-Future<void>? _initializing;
+Future<void> initialize() async {
+  if (_initialized) return;
 
-/// Idempotent and safe under concurrent calls: init now runs deferred after
-/// the first frame (main) and can race the launch-payload lookup in
-/// MyApp.initState or an early schedule — all callers must share one
-/// underlying init instead of double-running `_plugin.initialize`. A failed
-/// attempt clears the memo so the next caller retries.
-Future<void> initialize() {
-  if (_initialized) return Future<void>.value();
-  return _initializing ??= _doInitialize().whenComplete(() {
-    if (!_initialized) _initializing = null;
-  });
-}
-
-Future<void> _doInitialize() async {
   await _ensureTimezone();
 
   const settings = InitializationSettings(

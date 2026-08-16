@@ -260,69 +260,6 @@ void main() {
       expect(find.byType(DiceTimerPage), findsNothing);
     });
 
-    testWidgets(
-        'Cancel timer drops a running countdown without touching the task',
-        (tester) async {
-      var done = false;
-      var postponed = false;
-      await pumpDicePage(
-        tester,
-        task: Task(title: 'Rake the leaves'),
-        onDone: () => done = true,
-        onPostponed: () => postponed = true,
-        onRingAlert: (_) async {},
-      );
-
-      await windBackToFive(tester);
-      await tester.pump(const Duration(seconds: 30));
-      expect(find.text('4:30'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('Cancel timer'));
-      await tester.tap(find.text('Cancel timer'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(DiceTimerPage), findsNothing);
-      expect(find.text('Timer cancelled'), findsOneWidget);
-      expect(DiceTimerController.instance.isActive, isFalse);
-      expect(DiceTimerController.instance.task, isNull);
-      // The task itself is left alone: neither completed nor rescheduled.
-      expect(done, isFalse);
-      expect(postponed, isFalse);
-    });
-
-    testWidgets('Cancel timer is offered while paused and at the ring',
-        (tester) async {
-      await pumpDicePage(
-        tester,
-        task: Task(title: 'Sort the socks'),
-        onRingAlert: (_) async {},
-      );
-
-      // Not before the countdown starts — there is nothing to cancel yet.
-      expect(find.text('Cancel timer'), findsNothing);
-
-      await windBackToFive(tester);
-      expect(find.text('Cancel timer'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('Pause'));
-      await tester.tap(find.text('Pause'));
-      await tester.pump();
-      expect(find.text('Cancel timer'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('Resume'));
-      await tester.tap(find.text('Resume'));
-      await tester.pump();
-      await tester.pump(const Duration(minutes: 5, seconds: 1));
-      expect(find.text('Postpone to tomorrow'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('Cancel timer'));
-      await tester.tap(find.text('Cancel timer'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(DiceTimerPage), findsNothing);
-      expect(DiceTimerController.instance.isActive, isFalse);
-    });
-
     testWidgets('Lock touch blocks the screen until Unlock', (tester) async {
       var done = false;
       await pumpDicePage(
@@ -433,29 +370,6 @@ void main() {
       // Stop the still-running ticker before the test ends.
       DiceTimerController.instance.clear();
       await tester.pump();
-    });
-
-    testWidgets('cancelling the timer puts the dice back to rolling',
-        (tester) async {
-      await pumpHome(
-        tester,
-        [Task(title: 'Polish the kettle', dueDate: DateTime.now())],
-      );
-
-      await tester.tap(find.byTooltip('Roll a random task timer'));
-      await tester.pumpAndSettle();
-      await windBackToFive(tester);
-      expect(find.byTooltip('Return to the running task timer'), findsNothing);
-
-      await tester.ensureVisible(find.text('Cancel timer'));
-      await tester.tap(find.text('Cancel timer'));
-      await tester.pumpAndSettle();
-
-      // Back on the home page with no live timer: the dice offers a new roll
-      // and the task is still open.
-      expect(find.byType(DiceTimerPage), findsNothing);
-      expect(find.byTooltip('Roll a random task timer'), findsOneWidget);
-      expect(find.text('Polish the kettle'), findsOneWidget);
     });
   });
 }

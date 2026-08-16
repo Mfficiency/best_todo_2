@@ -4,13 +4,11 @@
 > app disappeared tomorrow, this file is what a human or AI needs to rebuild BestToDo from
 > zero and to understand *why* it is built the way it is. Part I is the functional/technical
 > specification (what to build). Part II is the complete development history (every step the
-> project took and why). `CHANGELOG.md` remains the authoritative per-version record; the
-> operational deep dives (rebuild order, testing, CI/automation, environment, principles,
-> the alarm reliability sessions) are indexed in `.claude/README.md`.
+> project took and why). `CHANGELOG.md` remains the authoritative per-version record;
+> `.claude/notes/alarm-work-spec.md` holds the deep-dive on the alarm reliability sessions.
 >
-> Part I is accurate as of version **0.1.134+106** (2026-08-06). Part II's narrated
-> history runs in detail through 0.1.91; every later version is covered feature-wise in
-> Part I and per-version in `CHANGELOG.md`.
+> Accurate as of version **0.1.88+58** (2026-07-07), commit history through the 0.1.88
+> full-screen alarm work.
 
 ---
 
@@ -83,18 +81,14 @@ Dependencies and why they exist:
 
 1. `StartupTimeService.start()` — stopwatch for the <1s cold-start budget.
 2. `WidgetsFlutterBinding.ensureInitialized()`.
-3. `await Config.load()` — reads `settings.json` so theme/tabs are right before
-   first frame.
-4. `await NotificationService.initialize()` — plugin + notification channels
-   (memoized: concurrent callers — e.g. `getAlarmLaunchPayload` in
-   `MyApp.initState` — share one underlying init).
-5. Non-web: `await SmsReportScheduler.applyFromConfig()` — restore the daily
-   SMS alarm chain.
-6. `await AlarmService.instance.load()` — load persisted alarms + reschedule
-   (memoized so the alarms page's own `load()` can't double-reschedule).
-7. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))` —
-   fire-and-forget, must not delay first frame.
-8. Home-widget setup (best-effort, wrapped in try/catch): `HomeWidget.setAppGroupId` +
+3. `await Config.load()` — reads `settings.json` so theme/tabs are right before first frame.
+4. `await NotificationService.initialize()` — plugin + notification channels.
+5. Non-web: `await SmsReportScheduler.applyFromConfig()` — restore the daily SMS alarm chain.
+6. `await AlarmService.instance.load()` — load persisted alarms.
+7. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))` — deliberately
+   NOT awaited; writing the diagnostics snapshot must never delay the first frame
+   (this fixed a black-screen-at-open bug, v0.1.85 era).
+8. Home-widget setup in try/catch: `HomeWidget.setAppGroupId` +
    `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
 9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
    (always skipped in dev builds); the mode question closes the intro, so an
@@ -104,14 +98,6 @@ Dependencies and why they exist:
     post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
     mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
     for asking the mode question again (Settings → Mode & features, §4.6).
-11. Also post-first-frame (fire-and-forget, deliberately deferred so they never
-    compete with the first frame or the home page's initial load):
-    - `ItemHistorySeeder.runOnce()` (3 s) — one-time journal backfill.
-    - `PreUpdateBackup.recordCurrentVersion()` (3 s).
-    - `PermissionFlow.maybeRequestAfterUpdate()` (1 s) — on the first open
-      after an app update, asks for **every** runtime permission in one pass
-      (§9); skipped while the mode picker has never been answered, because the
-      picker's full-mode choice runs the same flow itself.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
@@ -166,7 +152,6 @@ rollups.
 | `alarm_log.txt` | human-readable alarm pipeline log | ~400 KB → trim to 250 KB |
 | `item_events.jsonl` | append-only item history journal (one JSON event per line) | ~1 MB → keep newest 4000 |
 | `item_event_meta.json` | per-item last sequence number (`{uid: seq}`) | — |
-| `sync_log.json` | `{unseen_error, entries[]}` background-sync history (§4.7) | 100 entries |
 
 **Day rollover:** on load, if the calendar date changed since `last_opened.txt`, every
 `isDone` task gets `completedAt`/`deletedAt` backfilled, moves to the top of the deleted
@@ -182,18 +167,6 @@ folder with timestamped names. Tasks bundle is `export_version: 2` with `tasks`,
 Everything use `export_version: 1` (two version namespaces — intentional). Import
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
-
-**Automatic backup (0.1.130):** Settings → Backup schedules the Everything export
-(`AutoBackupService`, `lib/services/auto_backup_service.dart`): frequency off/daily/weekly
-(`Config.autoBackupFrequency`, default off) into a user-picked folder
-(`Config.autoBackupDirectory`), checked after the home page loads and on every app resume
-(`maybeRun`, cheap no-op when off). Daily = first check of each calendar day; weekly =
-≥ 7 days since the last run. The last successful run is stored in `last_auto_backup.txt`
-in the documents dir — deliberately *not* in settings.json, so importing an old settings
-export cannot fake a recent backup. Backups read straight from disk
-(`readTaskListRaw` etc., not the home page's in-memory list), are written as
-`besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
-The Backup section also offers a "Back up now" tile and shows the last backup time.
 
 ### 4.2b Item history journal (0.1.106)
 
@@ -354,75 +327,28 @@ spanning the top is always attached.
 Tools ▸ (Alarms, Countdown, Wishlist, Projects, Chronize, Productivity Stats,
 Usage Data, Test Results).
 
-**CI test report (0.1.96, moved to Tools + online in 0.1.99, branch-independent and
-packaged in 0.1.128):** the app always shows the **newest** test run it knows of, no
-matter which branch produced it or whether there is a network.
-
-*Storage.* `models/test_report.dart` (tolerant fromJson; also owns
-`fromMachineJsonLines`, the `flutter test --machine` parser, and `runUrl` = the CI run
-link) carries `appVersion` (`x.y.z+build` from pubspec at run time) plus
-`TestReport.newest(candidates)` — the single rule behind "latest": highest
-`generatedAt` wins, unavailable reports never win, a dated run beats an undated one.
-Since 0.1.129 the report also carries `suites`: one `TestSuiteResult` per test file
-(path trimmed to the repo-relative `test/…` / `integration_test/…` part, Windows
-backslashes normalized) holding a `TestCaseResult` per executed test — name, result
-(`passed`/`failed`/`skipped`) and `durationMs` (testDone − testStart machine
-timestamps; null when absent). Hidden bookkeeping entries are excluded, tests whose
-suite was never named group under an empty path, and per-suite/report durations sum
-only the known times (null when none). Reports without a `suites` key parse to an
-empty list, so pre-0.1.129 JSON stays valid everywhere.
-Three places hold a report:
-- `assets/test_report.json` — **packaged into every build** (Android, Windows, web,
-  debug or release) and committed, so a plain checkout of dev and
-  `flutter run -d chrome` show real results with no network and no build step.
-- `ci-reports` branch (orphan, no app code so it triggers no workflow):
-  `latest.json` = newest run across all branches, `branches/<branch>.json` = newest per
-  branch. Written by `tool/ci/publish_test_report.sh` (clone-or-create, newest-wins merge
-  through the sync tool, 3 push attempts, never fails a build).
-- `test_report_cache.json` in the app documents dir — the last report this install
-  fetched, so a later offline launch is not stuck with what the build shipped.
-
-*Tools.* `tool/generate_test_report.dart` (`--input machine.jsonl --commit/--branch/
---version/--run-url`) parses one run; `tool/sync_test_report.dart` decides what gets
-packaged, taking the newest of the file already at `--output`, each `--candidate`,
-`--candidate-machine` (a local `flutter test --machine` run, version read from pubspec)
-and `latest.json` unless `--no-fetch` — an unreachable network or missing file just keeps
-the existing report, so offline builds still package the last one they had.
-`tool/render_test_report_summary.dart` renders the CI job summary from the same JSON, so
-the summary and the app can never disagree.
-
-*Runtime.* `TestReportService` (singleton): `load` = newest of bundled + cached (no
-network, drives the red dot), `loadOnline` = `HttpClient` GET of `latest.json`
-(`onlineReportUrl`, all failures swallowed to an unavailable report, writes the disk cache
-on success, skipped on web), `loadForDisplay` = newest of online/cached/bundled with the
-layer it came from (`TestReportSource`, `sourceLabel`: "Fetched just now from CI" / "Last
-fetched results (offline)" / "Packaged with this build (offline)"); `setReportForTest`/
-`setCachedReportForTest`/`setOnlineReportForTest`/`refreshOnline`/`resetForTest`. The red
-failure dot uses the offline-best report loaded at startup, filtered through an
-acknowledgement marker (`hasUnseenFailures`): the Tools ▸ Test Results entry — and, only
-when the "Red dot for failed tests" Appearance setting (`Config.showFailureDotOnMenu`,
-default off) is on, the home app bar's custom hamburger `leading` (default "Open
-navigation menu" tooltip, opens the drawer via `Scaffold.of`) — carries a 9 px red dot
-(`Key('test-failure-dot')`). Opening the Test Results page calls `markSeen(displayed)`
-(unawaited): it records the newest acknowledged run date plus fingerprints
-(commit|date|counts) of the seen + offline-best reports in `test_report_seen.json`, so
-every dot disappears immediately and stays off across restarts until a run newer than
-anything acknowledged fails. `TestResultsPage` (a Tools page, `test_results` start-tool
-key) is a StatefulWidget with an app-bar refresh action: a version card (source label,
-"Ran 3 hours ago on dev" via `formatReportAge`, running vs tested version with a
-match/mismatch note, "Open CI run" when `runUrl` is set), a summary card
-(passed/failed/skipped/total plus "ran in 42.3 s" when durations are known, commit +
-branch + run time), one ExpansionTile per failed test with its error + stack trace,
-and — since 0.1.129 — an "All tests" section listing every suite as an ExpansionTile
-(monospace path, per-suite counts + time, failing files sorted first) whose children
-are one row per test: green check / red close / grey skip icon, name, and
-`formatTestDuration` ("340 ms" under a second, "2.1 s" above). Reports without suite
-detail show a "predates per-test details" note instead.
-`tool/render_test_report_summary.dart` mirrors the same detail as a per-suite
-markdown table (✅/❌, counts, time) in the CI job summary. `Config.resetVersionForTest()` clears the
-memoized version future so widget tests reload it per async zone. Page tests default every
-layer to "no data" in `setUp`: the disk-cache read is real file I/O and would never
-complete inside `testWidgets`' fake-async zone.
+**CI test report (0.1.96, moved to Tools + online in 0.1.99):** CI runs the tests and
+serializes the run into `assets/test_report.json` via `tool/generate_test_report.dart`
+(`--commit/--branch/--version`), which the APK bundles; the committed placeholder is
+`{"available": false}` so local/dev builds carry no bundled data (asset registered in
+pubspec). On push, `build-apk.yml` also commits that JSON to `docs/ci/test_report.json`
+so the app can fetch the latest results over the network (`build-apk` push trigger
+`paths-ignore`s `docs/ci/**` to avoid a self-triggering loop). `models/test_report.dart`
+(tolerant fromJson; also owns `fromMachineJsonLines`, the `flutter test --machine` parser)
+carries `appVersion` (`x.y.z+build` from pubspec at CI time). `TestReportService`
+(singleton; `load` = bundled asset, `loadOnline` = `HttpClient` GET of the dev
+`docs/ci/test_report.json` with all failures swallowed to an unavailable report,
+`loadForDisplay` = online-primary/bundled-fallback; `setReportForTest`/
+`setOnlineReportForTest`/`refreshOnline`/`resetForTest`). The red failure dot still uses
+the **bundled** report (`hasFailures`, loaded offline at startup): the home app bar's
+custom hamburger `leading` (default "Open navigation menu" tooltip, opens the drawer via
+`Scaffold.of`) and the Tools ▸ Test Results entry both carry a 9 px red dot
+(`Key('test-failure-dot')`). `TestResultsPage` (a Tools page, `test_results` start-tool
+key) is a StatefulWidget with an app-bar refresh action: a version card (running version
+vs tested version, match/mismatch note, online-vs-offline source), a summary card
+(passed/failed/skipped/total, commit + branch + run time), and one ExpansionTile per
+failed test with its error + stack trace. `Config.resetVersionForTest()` clears the
+memoized version future so widget tests reload it per async zone.
 
 **Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
 non-empty query narrows every tab and the schedule view to tasks whose title,
@@ -445,11 +371,7 @@ dial starts the countdown (a 1 s decrementing ticker, deliberately not wall-cloc
 tests can fake-pump it) and shows the remaining time, the percentage of the started duration
 still left (`DiceTimerController.percentLeft`, relative to `_total`), and the wall-clock end
 time ("Ends at 14:32"). Grabbing the dial mid-countdown (or mid-ring) pauses/silences and
-rounds up to whole minutes for rewinding. The page is sized to fit on one screen without
-scrolling: the action buttons sit in a compact grid (two per row — only "Postpone to
-tomorrow" keeps a full-width row, its label is too long to halve) and the dial diameter
-adapts to the viewport (`maxHeight - 340`, clamped to 220–280 px) via a `LayoutBuilder`,
-with a `SingleChildScrollView` kept only as a safety net for very short viewports.
+rounds up to whole minutes for rewinding.
 
 The live timer lives in **`DiceTimerController`** — a singleton `ChangeNotifier` that owns the
 ticker and state (task/phase/remaining/total/endAt), NOT the page's `State`. So leaving the
@@ -473,32 +395,6 @@ even if the page was left, though a mid-ring page exit silences melody and vibra
 moving to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** (stops the
 ring and restarts the countdown with that much time). With no open Today tasks (and no timer
 already running) the dice shows a "No open tasks for today" snackbar instead.
-
-**Cancel timer (0.1.127):** a muted-error `TextButton` in the action grid (beside Lock touch
-while running/paused, beside Done at the ring), shown in the running, paused and ringing
-phases (never on the untouched dial — there is nothing to cancel yet). It calls `DiceTimerController.clear()`, so the ticker, any melody/vibration and the
-OS-scheduled ring all stop, then pops the page with a "Timer cancelled" snackbar. This is the
-only exit that leaves the task untouched — Done and Postpone both answer for it, and plain
-back-navigation deliberately keeps the countdown alive.
-
-**Start timer from a task (0.1.132):** double-tapping a task tile opens a little
-bottom-sheet menu — for now a single "Start timer" entry (subtitle shows the default
-duration). The double tap is detected by hand inside the tile's `onTap` (two taps within
-`kDoubleTapTimeout`, the second one taking back the expansion toggle the first made) —
-deliberately NOT via `InkWell.onDoubleTap`, whose recognizer holds the gesture arena for
-the double-tap timeout on every tap in the tile, delaying the checkbox and expand-on-tap
-by ~300 ms and deadlocking fake-async widget tests (the streak checkbox test caught
-this). The menu only appears when `TaskTile.onStartTimer` is set (it is null in the
-standalone-tile tests). Picking "Start timer" calls
-`HomePage._startTaskTimer`, which — unlike a dice roll — `configure()`s
-`DiceTimerController` for *that* task and immediately `releaseDial()`s, so
-`DiceTimerPage` opens with the countdown already running at
-`Config.diceTimerDefaultMinutes`; the dial still pauses/rewinds it like any dice timer,
-and Done/Postpone/Cancel behave identically. The page header is parameterized for this
-(`DiceTimerPage.caption`/`captionIcon`: "Timer for" + `Icons.timer_outlined` here,
-"The dice picked" + `Icons.casino` by default). Double-tapping the task whose timer is
-already live reopens the running countdown; starting a timer for a different task
-replaces the old one — the double tap is an explicit choice for that task.
 
 **Dice timer settings (0.1.120):** `Config.diceTimerAlertMode` picks what zero does —
 `melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
@@ -561,11 +457,7 @@ tasks, 20 deleted tasks, and 14 days of stats (marker strings prevent re-seeding
 builds also spread 9 of the seeded future tasks across the three seed projects (one task
 per Kanban column in each project) so the Projects tool opens populated — including on
 desktop/web where storage may not persist; skipped as soon as any seeded task carries a
-`projectId`, so manual (re)assignments survive reloads. "First run" means *no non-wish
-task exists* (0.1.138): `loadItems()` merges the one-time Todo.md import into the task
-list as wishes, so a plain `isEmpty` check saw a fresh install as an existing one and
-skipped the starter tasks (and the dev range/history/reminder seeds) entirely. The starter
-tasks are inserted ahead of the imported wishes.
+`projectId`, so manual (re)assignments survive reloads.
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
 
@@ -574,9 +466,7 @@ monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pu
 only, transparent `surfaceTint`, no ink splashes, selected chips underlined via a
 `WidgetStateTextStyle` label instead of a colour fill; the orange/red/green swipe
 backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with dark
-mode), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
-marks the home hamburger icon while the newest test run has unacknowledged failures,
-see §4.3), 24-hour time (default on), date format (6 choices,
+mode), icon tabs, 24-hour time (default on), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, swipe-left-delete, default delay 0–10 s slider,
 start tab (simple mode hides the tool-related entries, see §4.6), default start page
 (`startTool`: the task list or any enabled tool — Alarms, Countdown,
@@ -586,8 +476,7 @@ wheel. Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes
 default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
-prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
-+ Sync now tile (§4.7), Export/Import buttons. `Config.applyMap` is defensive
+prod 300 s). SMS report: see §7. Export/Import buttons. `Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
 
@@ -628,14 +517,11 @@ changed under the chip row.
 ### 4.5 Streak (the flame, 0.1.115)
 
 Daily-completion streak gamification. `StreakService` (ChangeNotifier singleton,
-`streak.json` via `SafeFile`) stores a JSON map `completionsByDay` of dayKey →
+`streak.json` via `SafeFile`) stores one JSON map `completionsByDay` of dayKey →
 completion **count** (counts, not booleans, so toggle+untoggle on the same day cancels
-out exactly and per-day stats are possible) plus, since 0.1.144, a parallel
-`minutesByDay` map of dayKey → minute-of-day list (one entry per live completion; seeded
-history has counts only) powering the time-of-day challenges. `recordCompletion(when)`
-returns true on the day's **first** completion (the streak-kept moment);
-`recordUncompletion` decrements, drops the **latest** recorded minute, and removes the
-day at zero. Wish items never count. Hooked into both completion paths in
+out exactly and per-day stats are possible). `recordCompletion(when)` returns true on the
+day's **first** completion (the streak-kept moment); `recordUncompletion` decrements and
+removes the day at zero. Wish items never count. Hooked into both completion paths in
 `home_page.dart` (`_recordStreakToggle`: tile checkbox + dice-timer "done"), using
 `_currentDate` so the dev date stepper works.
 
@@ -643,9 +529,8 @@ day at zero. Wish items never count. Hooked into both completion paths in
 in progress never breaks the streak. Grace (`Config.streakGraceHours`, 24 default / 48):
 24 = every calendar day needs ≥1 completion; 48 = a single missed day between active days
 is forgiven (`_allowedGap` 0/1 applied both when anchoring from today and while walking
-back). `longestStreak()` scans full history under the same rule; `longestStreakRange()`
-returns the same run's exact first/last day as a record (earliest run wins ties). Flame
-maxes out at **365 days** (`flameProgress` = streak/365 clamped to 1).
+back). `longestStreak()` scans full history under the same rule. Flame maxes out at
+**365 days** (`flameProgress` = streak/365 clamped to 1).
 
 **UI:** flame `IconButton` in the home app bar directly left of the dice
 (`ListenableBuilder` on the service; hidden when `Config.showStreak` false). Icon grows
@@ -657,29 +542,6 @@ stats card (streak start, longest ever, active days, total completions, best day
 per active day), gear action → Settings. First completion of the day plays a ~1.4 s
 self-removing overlay celebration (`showStreakCelebration`: flame pop + sparks + "Streak
 kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`).
-
-**Streak calendar (0.1.144):** the "Longest streak ever" stat tile is tappable
-("Tap to see it on the calendar") → `StreakCalendarPage`: header card naming the longest
-streak's exact first/last day (`formatTimerDate`), year selector (defaults to the year
-the longest streak started), legend, and all 12 months as compact Monday-first 7-column
-grids in a responsive `Wrap` (2–4 columns by width). Day cells: deep-orange filled =
-active day inside the longest streak, deep-orange outlined = grace day the streak
-survived, light orange = active day outside it.
-
-**Challenges (0.1.144):** `evaluateStreakChallenges(service)` in
-`lib/services/streak_challenges.dart` recomputes **26** Duolingo-style challenges from
-history on every build (nothing persisted, self-healing): First Spark (1st completion);
-time-of-day via `minutesByDay` — Early Bird (<8:00), Dawn Patrol (<6:00), Night Owl
-(≥22:00), Lunch Break Hero (12:00–14:00); best-day counts — Hat Trick 3 / High Five 5 /
-Perfect Ten 10 / Task Tornado 20; streak lengths (max of longest & current) — Week of
-Fire 7 / Fortnight Flame 14 / Monthly Blaze 30 / Quarter Inferno 90 / Half-Year Furnace
-180 / Eternal Flame 365; calendar patterns — Weekend Warrior (Sat + next-day Sun),
-Monday Hero, Fresh Start (1st of month), Full Month (every day of a calendar month),
-Comeback Kid (new active day after ≥2 missed days); totals — Explorer 10 / Regular 50 /
-Veteran 100 active days, Century Club 100 / Task Machine 500 / Task Legend 1000
-completions. Rendered on `StreakPage` below the stats card: "Challenges" card with
-"N / 26 earned" counter; earned tiles get an amber icon + check, unearned multi-step
-ones a thin deep-orange progress bar and "x/y" trailing text.
 
 **Seeding:** on first load without `streak.json` (`needsSeed`), backfilled from existing
 history — per day the **max** of daily-stats completion counts and `completedAt`
@@ -741,80 +603,6 @@ the same via `_isEntryVisible` (start-in-schedule-view, Chronize hour wheel, def
 page). Feature labels are searchable (`_featureSearchEntries`). Turning off the tool that
 is the configured `startTool` resets it to `tasks` (`_dropUnavailableStartTool`), and the
 start-page dropdown only offers enabled tools.
-
-### 4.7 Synced mode — background folder sync on quit (0.1.131)
-
-The offline/synced choice: `Config.syncEnabled` (default **off** = fully offline) +
-`Config.syncFolderPath` (empty until picked), both in Settings → **Sync & export**
-("Synced mode" switch; enabling it with no folder opens the `getDirectoryPath` picker
-immediately; the "Sync folder" tile only shows while enabled; a "Sync now" tile below
-it (0.1.148) runs a manual sync — `SyncService.syncNow(trigger: 'manual')` — with a
-result snackbar, is disabled until a folder is chosen, and its subtitle shows the last
-run from the sync history, "Last sync: <time> (N tasks)" or "Last sync failed: <time>",
-live via the `entries` ValueNotifier). `SyncService`
-(`lib/services/sync_service.dart`, singleton with `resetForTest`) writes the task list
-to `<folder>/besttodo_tasks.json` (`{sync_version: 1, synced_at, app_version,
-task_count, tasks[]}`) — **tasks only** for now.
-
-Since 0.1.135 every sync also writes `<folder>/besttodo_tasks.md`, an Obsidian-friendly
-Markdown companion (`SyncMarkdown.build` in `lib/services/sync_markdown.dart`, pure and
-unit-tested): a header comment marking the file auto-generated, `# BestToDo tasks`, a
-`Synced <yyyy-MM-dd HH:mm> · BestToDo <version> · N open / M total` line, then one `##`
-section per home tab (Today/Tomorrow/Day After Tomorrow/Next Week/Next Month/Future) —
-same bucketing and open-first/ranking sort as the tabs (`ItemViews.homeBucket`), deleted
-tasks excluded, empty sections skipped. Lines follow the Obsidian Tasks plugin format:
-`- [ ]`/`- [x]` + title (newlines flattened) + `📅 yyyy-MM-dd` due date (future-sentinel
-dates omitted) + `✅ yyyy-MM-dd` completion date. Point the sync folder into an Obsidian
-vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way: the
-file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
-the whole sync run (red history entry) like the JSON write.
-
-Since 0.1.141 the repo also ships **Tier 2** of the Obsidian integration: a read-only
-Obsidian community plugin in the top-level `obsidian-plugin/` folder (TypeScript +
-esbuild, own npm package and CI job `obsidian_plugin.yml` — not part of the Flutter
-build). It renders `besttodo_tasks.json` as a custom `ItemView` (ribbon icon /
-"Open task view" command): the six home buckets, disabled checkbox + title + `📅` due
-date (sentinel omitted) + `✅` completion date + `🔁` recurring marker, label chip and a
-generic `📁 project` chip (the sync file carries no project names), open-first/ranking
-order, plus an "as of …" line showing `synced_at` + app version. It re-reads on
-Obsidian's file-change events (safe because the app's write is atomic), refuses unknown
-`sync_version` values with a friendly notice, and parses tasks as tolerantly as
-`Task.fromJson`. The contract lives in the pure module `obsidian-plugin/src/model.ts`
-(mirrors `ItemViews.inHomeBucket`, `sortTasks`, `Task.fromJson`) and is pinned by jest
-tests (`obsidian-plugin/test/model.test.ts`) mirroring `test/sync/sync_markdown_test
-.dart`. Strictly a viewer — it never writes. Tier 3 (two-way via a change journal)
-remains designed-only in `.claude/notes/obsidian-integration.md`.
-
-**Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
-forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
-hidden/paused/detached after a resume starts exactly one fire-and-forget sync
-(`_syncedThisBackground` latch, reset on `resumed`; hidden→paused→detached arriving in
-a row must not sync three times). Nothing runs at launch: the service is only touched
-at startup by a lazy `ensureLoaded()` (memoized read of `sync_log.json`) from the home
-page/App Logs, so first frame and load paths are untouched. The sync reads
-`readTaskListRaw()` (state already on disk — every mutation saves), so it needs no page
-state.
-
-**Graceful failure:** the write is atomic (`SafeFile`, tmp+rename — a reader or crash
-can never see a half-written file); every failure (no folder chosen, folder deleted,
-write denied) is caught and becomes a red history entry, never an exception. Overlapping
-runs are skipped (`_syncInFlight`).
-
-**Sync history (App Logs → "Sync" tab):** every run is a `SyncLogEntry` (at,
-durationMs, itemCount, success, message, trigger 'app quit'/'manual'), newest first,
-capped 100, persisted in `sync_log.json` and mirrored as a one-liner into `LogService`.
-The page has two tabs since 0.1.131: "Logs" (the live 24 h `LogService` list) and
-"Sync" (green check "Synced N items in M ms" / red error "Sync failed: reason", with
-timestamp · trigger subtitle).
-
-**Red dot:** a failed sync sets `hasUnseenError` (persisted as `unseen_error`), which
-puts a small red dot (Key `sync-error-dot`, same `_iconWithFailureDot` stack as the CI
-test-failure dot but its own key) on the drawer's App Logs entry via a
-`ValueListenableBuilder`. Opening App Logs calls `markErrorSeen()` (dot gone, entry
-stays); a later successful sync also clears it.
-
-Tests live in their own silo `test/sync/` (service round-trip/failures/lifecycle latch
-+ Sync tab, drawer dot, settings switch).
 
 ## 5. Alarm subsystem (the reliability showpiece)
 
@@ -986,21 +774,7 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
-  at midnight.
-  **Opening the app (0.1.128):** every tap that is not a checkbox — the progress line (all
-  three coloured bars carry their own handler; they sit above the text and are not part of
-  it), the root container, the summary text, a task row/title, the empty state and
-  "+N more" — launches `besttodotask://open` via `HomeWidgetLaunchIntent`. `main.dart`'s
-  `_handleWidgetClick` branches **on the scheme first** (both widgets use the hosts
-  `toggle`/`open`) and calls `_openTasks()`: it pops everything above the root route and
-  sets `_openedFromTaskWidget`, which makes `_initialPage()` return `HomePage` regardless
-  of `Config.startPage`. So the widget always lands on the task list, warm or cold, instead
-  of resuming on whatever subpage the app was left on. (RemoteViews only deliver single
-  clicks — there is no double-tap on a home-screen widget.)
-  **Warm re-front:** `MainActivity` uses `android:taskAffinity=""` (its own task,
-  separate from the launcher/other activities) with `launchMode="singleTop"`; a warm tap
-  re-fronts the running task via `onNewIntent` → `HomeWidget.widgetClicked`.
-  The whole payload is built by `TaskWidgetService.sync(tasks)`
+  at midnight. The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
   **Checkable rows (0.1.125, `Config.widgetCheckboxes`, default off):** with the setting on
@@ -1013,8 +787,7 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   `Config.load()` (the isolate has no settings) → `TaskWidgetService.toggleInStorage`:
   flips `isDone`/`completedAt` in `tasks.json`, records the streak (guarded — the reminder
   re-sync needs the notification plugin, which may be unavailable there) and re-syncs the
-  widget. The row (title + the space around it) and every non-row area open the task list
-  as above.
+  widget. The title and every non-row area still open the app.
   Because that isolate writes the file behind the app's back, `_HomePageState` is a
   `WidgetsBindingObserver`: on `resumed` it runs `_mergeWidgetCompletions`, which reloads
   storage and copies **only** the done state of changed uids into the in-memory list (plus
@@ -1032,30 +805,11 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 
 ## 9. Android platform config
 
-**Manifest permissions** (each exists for a reason): `INTERNET` (update check +
-APK download from GitHub releases — it must live in the **main** manifest; debug/profile
-get it implicitly from their own manifests, so its absence only breaks release builds,
-as every network call then fails with "Failed host lookup"), `POST_NOTIFICATIONS` (13+),
+**Manifest permissions** (each exists for a reason): `POST_NOTIFICATIONS` (13+),
 `SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
 `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
-`FOREGROUND_SERVICE`, `VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
-About page; the user still confirms every install).
-
-**Up-front permission flow** (`lib/services/permission_flow.dart`): every runtime
-permission is asked in one pass — notifications, exact alarms, the battery-optimization
-exemption and full-screen intent (via `NotificationService.ensureAlarmPermissions`, each
-logged to `alarm_log.txt`), then SMS — at the two moments the user expects the question:
-picking the **full experience** ("Use everything" on the mode picker, or turning simple
-mode off in Settings) and the **first open after an app update** (startup step 7, §3).
-A marker file `permissions_prompted_version.txt` holding the last handled
-`version+build` makes the after-update ask one-time per version; picking simple mode
-writes the marker without asking. At most one run per app session; individual features
-still re-check lazily as before (alarms/dice pages, enabling the SMS report).
-
-An `androidx.core.content.FileProvider`
-(authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
-dirs) shares the downloaded update APK with the system installer as a `content://` URI.
+`FOREGROUND_SERVICE`, `VIBRATE`.
 
 **Receivers/services:** android_alarm_manager_plus `AlarmService` +
 **`AlarmBroadcastReceiver`** (its absence was the original "SMS never sent" root cause —
@@ -1068,11 +822,7 @@ two widget providers.
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(23, flutter.minSdkVersion)` (androidx.work via home_widget needs 23); Java/Kotlin 11
 with core-library desugaring; glance pinned to 1.1.1 (home_widget 0.8.1 pulls `1.+` which
-would demand compileSdk 37); NDK 28.2.13676358. The root `android/build.gradle.kts`
-forces every plugin subproject to Java/Kotlin JVM target 11 (afterEvaluate +
-configureEach): home_widget 0.8.1 still compiles Kotlin at 1.8 while the androidx
-bytecode it inlines is built with JVM 11, which broke every release APK build from
-2026-07-28 until this override. **Signing:** `key.properties` if present,
+would demand compileSdk 37); NDK 28.2.13676358. **Signing:** `key.properties` if present,
 otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, password
 `android`) — deliberate, so every build (CI or local) is signed identically and updates
 install in place instead of failing with a signature mismatch. A Gradle task renames the
@@ -1091,36 +841,7 @@ late). Do not remove.
 **MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
 `FlutterActivity`: it sets show-when-locked/turn-screen-on when launched by an alarm's
 full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
-(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
-the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
-installer via the FileProvider (ACTION_VIEW, `application/vnd.android.package-archive`);
-when the one-time "install unknown apps" toggle is missing (O+,
-`canRequestPackageInstalls()` false) it opens that settings screen and returns
-`"needs-permission"` so the Dart side tells the user to grant it and retry.
-
-**Share-sheet task capture** (0.1.145): BestToDo appears in Android's share sheet
-for any `text/plain` ACTION_SEND (links, selected text, email addresses, ...) and turns
-the shared text into a task due **today**. `ShareActivity` — a translucent,
-non-Flutter trampoline (`excludeFromRecents`, `noHistory`) — receives the share,
-merges `EXTRA_SUBJECT` + `EXTRA_TEXT` (browsers put the page title in the subject;
-the subject is dropped when the text already contains it), and forwards the result
-to `MainActivity` with `FLAG_ACTIVITY_NEW_TASK`. It is deliberately not
-`MainActivity` itself: the share sheet starts its target inside the *sharing*
-app's task, and a second MainActivity there means a second Flutter engine — the
-black-screen failure mode §13 warns about. MainActivity queues the text
-(`pendingSharedTexts`) and pokes Dart over the `besttodo/share` channel; delivery
-is always **pull-with-clear** (`takeSharedTexts`), so a cold start (queue filled
-before the engine ran, drained by `ShareIntentService.init`) and a warm poke can
-never double-deliver. On the Dart side `ShareIntentService`
-(`lib/services/share_intent_service.dart`) builds the task — first non-empty line
-as title (capped at 120 chars), full text preserved in the description when it
-carries more, due date = today (18:00 via the usual deadline normalization) — and
-routes it: while a home page is alive it is the registered consumer and adds the
-task through its own in-memory list + `_saveTasks()` (no second `tasks.json`
-writer); without one (start page Settings/App Logs) texts wait 3 s for a home
-page, then are persisted directly through `ItemRepository`. The home page also
-drops just-loaded uids that are already in memory, closing the
-share-during-initial-load duplicate window. Tests: `test/share/`.
+(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI".
 
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
@@ -1273,20 +994,11 @@ mutates only the wish subset and always saves the whole list; HomePage reloads
 items first, then by priority label (`priority-high` > `priority-medium` >
 `priority-low` > none, stable within a group). Tiles look like home task tiles
 (checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
-archived by the normal new-day rollover). Tap opens the add/edit dialog — field order
-since 0.1.148: title, labels/tags with the quick-priority buttons right below (most
-wishes are a title plus a priority), description last (a `_WishEditDialog`
+archived by the normal new-day rollover). Tap opens the add/edit dialog (title,
+description, labels/tags with quick priority buttons — a `_WishEditDialog`
 StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
 recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
 exported_at, wishlist_items: [...]}`) remain.
-
-**Clickable URLs (0.1.148):** http/https URLs in descriptions are auto-linkified by
-`LinkifiedText` (`lib/utils/linkified_text.dart`): a StatefulWidget that renders
-`Text.rich` with underlined, primary-colored link spans (trailing sentence punctuation
-excluded), owns and disposes the spans' `TapGestureRecognizer`s, and opens links via
-`url_launcher` (`LaunchMode.externalApplication`; `onOpenLink` test hook). A link tap
-wins the gesture arena over the tile's own `onTap`, so it never opens the edit dialog.
-Used by the wish tile subtitle and by `TaskDetailPage` (description and note).
 
 **Swipes (0.1.101):** same gesture mechanics as `TaskTile` (drag with AnimatedSlide,
 100 px/500 velocity thresholds, directions honor `Config.swipeLeftDelete`, GestureDetector
@@ -1322,10 +1034,7 @@ Since 0.1.101 this import feeds the task list via the wishlist migration above (
 installs get the backlog as wish tasks on first `loadTaskList`).
 
 ### 10.7 The rest
-**App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted). A
-copy button (app-bar) puts the current log on the clipboard, versioned and timestamped, for
-pasting into a bug report; an export button writes the same content to a timestamped `.txt`
-file in a user-picked folder (same shape as the other exports in the app).
+**App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer
@@ -1355,60 +1064,20 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
   dropped by accident.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
-  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) →
-  `dart run tool/stage_local_release.dart` for an APK build → optionally
-  `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
-- **Kept builds in the repo (0.1.146):** `tool/stage_local_release.dart` copies the built
-  APK to `github_releases/best_todo_<x.y.z+build>.apk` and deletes everything but the
-  newest two (`--keep`, `--dir`, `--apk`, `--dry-run`; ordering by the numeric name
-  components, non-APK files such as the folder README never touched). Committing that
-  folder is what publishes a build: the app reads it over plain HTTPS, so the newest APK
-  is the update and the one next to it is the rollback.
-- **In-app updates (0.1.133):** `tool/publish_apk.dart` uploads a locally built release APK
-  to a GitHub release — tag `v<x.y.z>-<build>` (git tags can't carry `+`), name
-  `BestToDo <x.y.z>+<build>`, asset `BestToDo-<x.y.z>+<build>.apk`, body = the newest
-  CHANGELOG section; token from `GITHUB_TOKEN`/`GH_TOKEN` or `gh auth token`; re-running
-  for the same version reuses the release and replaces the asset. The app side
-  (`lib/services/update_service.dart`, singleton `UpdateService.instance` with an
-  injectable `fetchOverride` for tests) maps a tag back to `x.y.z+build` and compares
-  numeric components (unparseable versions — 'unknown' in tests — compare as all-zero).
-  The About page's "Check for updates" section then walks check → "Version x available" →
-  download to the temp dir with a progress bar → hand to the installer over the
-  `besttodo/update` channel (§9); a `needs-permission` reply keeps an "Install update"
-  button up for the retry after granting. Web/desktop or a release without an APK asset
-  falls back to opening the release page in the browser.
-- **Update source + rollback (0.1.146):** `checkReleases()` reads the repo folder first —
-  `contents/github_releases?ref=dev` (unauthenticated; `dev` is where every build lands
-  first, and the API's `download_url` is already percent-encoded, which matters because
-  the file names carry `+`). Versions come from the file names
-  (`best_todo_0.1.143+115.apk`, also the `BestToDo-…` asset spelling), newest first, so
-  the result is an `UpdateCheck` of `latest` + `previous`; when the folder is missing or
-  holds no APK it falls back to `releases/latest` (single build, no rollback). The About
-  page shows "Download & install" for `latest` and "Go back to <version>" for
-  `UpdateCheck.rollback` — `previous` unless that is the running version — in both the
-  update-available and up-to-date states. The rollback warns that Android blocks
-  downgrades for non-debuggable builds, so the install may need an uninstall first.
+  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
-  - `build-apk.yml` (push/PR main+staging+dev, manual; `contents: write`, push trigger
-    `paths-ignore`s `assets/test_report.json` + `docs/ci/**`): runs `flutter test --machine`
-    **non-blocking** (a failing test run does not stop the build) into
-    `build/ci/test_report.json`, then `dart run tool/sync_test_report.dart --candidate …`
-    packages the newest run known — this build's own, or a newer one another branch already
-    published — into `assets/test_report.json`, so an APK cut from **any** branch carries
-    the latest results with no network on the device. On push it shares the run through
-    `tool/ci/publish_test_report.sh`. Then builds the release APK, uploads artifact
-    `besttodo-<version>` (30-day retention), adds a download link to the job summary
-    (see §4.3).
-  - `flutter_test.yml` (main/staging/dev, same `paths-ignore`; `contents: write`): one
-    `flutter test --machine --coverage` run feeds everything — `generate_test_report.dart`
-    for the JSON, `render_test_report_summary.dart` for the PASS/FAIL job summary +
-    artifact (report JSON and machine stream uploaded with it), `sync_test_report.dart` to
-    package the newest run, `publish_test_report.sh` to publish it to `ci-reports`. On
-    **dev only** it commits the packaged `assets/test_report.json` (plus a
-    `docs/ci/test_report.json` copy for app versions before 0.1.128 that still fetch it)
-    with `[skip-screenshot-changelog]`, rebase-retried 3×. dev is the single writer so
-    dev → staging → main merges carry the report along instead of conflicting on it. Fails
-    the job on test failure.
+  - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
+    `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
+    failing test run does not stop the build) and embeds the parsed results into the APK
+    as `assets/test_report.json` via `dart run tool/generate_test_report.dart --input …
+    --commit … --branch … --version …`. On push events it also commits that JSON to
+    `docs/ci/test_report.json` (`[skip-screenshot-changelog]`) so the app can pull the
+    latest results online. Then builds the release APK, uploads artifact
+    `besttodo-<version>` (30-day retention), adds a download link to the job summary. The
+    app surfaces the bundled report as a red dot on the drawer icon and shows the
+    online-primary/bundled-fallback report on the Tools ▸ Test Results page (see §4.3).
+  - `flutter_test.yml` (main/staging/dev): `flutter test --coverage`, parses results into a
+    PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
     integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
     search-active, projects page, project board, project edit dialog) into
@@ -1428,8 +1097,7 @@ suites it can affect (see `test/README.md` for the file→suite map): `core/`
 deadline normalization, app-boot + build-gate smoke tests — always run),
 `alarms/` (alarm model/storage, editor, ring page), `projects/` (model,
 service, projects page, board, tile tags), `home/` (search, drawer, tile
-description editing), `update/` (in-app update check + About page update
-section + publish-tool helpers), `tools/` (export/import + analytics, usage data,
+description editing), `tools/` (export/import + analytics, usage data,
 startup-times page, countdown model, chronize). Plain `flutter test` still
 runs the full suite and is what CI uses; `tool/build.sh` gates builds on
 `test/core/build_smoke_test.dart`.
@@ -1452,9 +1120,8 @@ active-day tracking (highlight follows scroll, back-to-top arrow, add-to-highlig
 end to end). CI test report & settings search (0.1.96): `TestReport` tolerant fromJson /
 toJson round-trip and the `--machine` output parser (hidden/skipped handling, error
 capture, garbage tolerance), Test Results page states (failures + expandable errors, all
-green, no bundled report), home red dot on the hamburger (opt-in setting) + drawer entry
-navigation (its absence when green/unavailable/by default on the hamburger, and its
-clearing once Test Results is opened), settings search (toggle, title + keyword matching,
+green, no bundled report), home red dot on the hamburger + drawer entry navigation (and
+its absence when green/unavailable), settings search (toggle, title + keyword matching,
 section subtitle, no-match message, jump-to-section, close restoring chips). Simple mode &
 features (0.1.118, `test/home/simple_mode_test.dart` + `settings_features_test.dart`):
 home page in simple mode (no dice/flame/schedule/search, drawer down to Settings + Deleted
