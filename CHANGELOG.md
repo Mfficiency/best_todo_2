@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.157] - 2026-08-17
+- Reverted `dev` to the exact v0.1.126 code (the last build confirmed to open cleanly from the tasks widget every time). v0.1.128 through v0.1.156 introduced a recurring "widget tap re-fronts the app as a black screen" bug; every attempted fix since — including a rebuild that deliberately dropped the suspected culprits (see the old 0.1.156 entry below) — has reglitched on real-device re-test, most recently traced to a native heartbeat/view-walk the black-screen diagnostics themselves run on every app resume. Until that investigation lands a fix that survives repeated on-device testing, `dev` trades the features below for a widget tap that reliably works. See `testbuilds/README.md` on `fix/black-screen-restore` for the full bisect/rc history.
+- **Features temporarily missing versus the previous `dev` tip (v0.1.156), to be re-implemented once the widget black-screen investigation is resolved** — each one is a real, already-designed feature, not speculative, just currently reverted out:
+  - Dice timer: a "Cancel timer" button that ends a running/paused/ringing timer and drops its alarm without marking the task done or postponed (v0.1.127)
+  - Test Results page: per-file/per-test pass-fail-skip detail instead of just a summary (v0.1.129)
+  - Settings → Backup: scheduled full backups (daily/weekly/on-demand) to a chosen folder (v0.1.130)
+  - Synced mode: background task sync to a chosen folder on app quit, with its own App Logs "Sync" tab and a red-dot failure indicator (v0.1.131)
+  - Double-tap a task to start a timer for it straight away, returning to an already-running one instead of restarting (v0.1.132)
+  - In-app self-update: "Check for updates" on the About page downloads and installs the newest GitHub release APK directly (v0.1.133)
+  - Dice timer buttons laid out in a compact grid so every control fits one screen (v0.1.134)
+  - Synced mode also writes an Obsidian-friendly Markdown checklist (`besttodo_tasks.md`) alongside the JSON sync file (v0.1.135)
+  - Opt-in red dot on the menu icon for failed tests, self-clearing once you've looked (v0.1.137)
+  - Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
+  - Fix: "Check for updates" needs the Android INTERNET permission in release builds (v0.1.139)
+  - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
+  - Read-only Obsidian plugin (Tier 2): a proper task view inside Obsidian rendering the synced task list (v0.1.141)
+  - Streak page: yearly calendar view + 26 Duolingo-style challenges, with completion times recorded to power them (v0.1.144)
+  - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
+  - Two-APK rollback: every release build stages its APK plus the previous one, so About → "Go back to ..." can downgrade one version (v0.1.146)
+  - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
+  - Three-way streak trio (finish/create-a-task/plan-ahead), per-streak reminders list, and the Settings collapse/search overhaul (v0.1.157 on the old line)
+  - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
+
 ## [0.1.126] - 2026-08-05
 - Introduction: the welcome slides are back — the app no longer opens straight on the simple/full mode question, the three intro screens run first and the mode choice is now their closing page
 - About → "Replay Introduction" now replays the whole thing, slides and the simple/full mode choice, instead of only the slides
