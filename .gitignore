@@ -124,3 +124,7 @@ app.*.symbols
 docs/exports/*
 # CI report store working copy (tool/ci/publish_test_report.sh)
 .ci-reports/
+
+# Black-screen bisect scratch builds (fix/black-screen-restore only; not part
+# of dev's own history, see testbuilds/README.md on that branch).
+testbuilds/
