@@ -20,14 +20,35 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
 
+    // Texts shared into the app (see ShareActivity), waiting for the Dart
+    // side to collect them. On a cold start the queue fills before the
+    // Flutter engine runs; ShareIntentService drains it once initialized.
+    private val pendingSharedTexts = ArrayDeque<String>()
+    private var shareChannel: MethodChannel? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         showOverLockScreenIfAlarmLaunch(intent)
+        queueSharedText(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         showOverLockScreenIfAlarmLaunch(intent)
+        queueSharedText(intent)
+    }
+
+    // Queues text forwarded by ShareActivity and pokes the Dart side. When
+    // the poke arrives before ShareIntentService registered its handler
+    // (cold start), it is simply lost — the service's own initial
+    // takeSharedTexts pull drains the queue instead, so nothing is dropped
+    // and nothing is delivered twice (delivery is always pull-with-clear).
+    private fun queueSharedText(intent: Intent?) {
+        if (intent?.action != ShareActivity.ACTION_SHARED_TEXT) return
+        val shared = intent.getStringExtra(ShareActivity.EXTRA_SHARED_TEXT)
+        if (shared.isNullOrBlank()) return
+        pendingSharedTexts.add(shared)
+        shareChannel?.invokeMethod("sharedTextsPending", null)
     }
 
     // When an alarm notification's full-screen intent launches (or re-fronts)
@@ -208,6 +229,24 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 else -> result.notImplemented()
+            }
+        }
+        shareChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/share",
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    // Hands over every queued shared text and empties the
+                    // queue in the same step, so a text can never be
+                    // delivered twice.
+                    "takeSharedTexts" -> {
+                        val texts = pendingSharedTexts.toList()
+                        pendingSharedTexts.clear()
+                        result.success(texts)
+                    }
+                    else -> result.notImplemented()
+                }
             }
         }
     }

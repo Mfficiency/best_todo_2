@@ -51,6 +51,25 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Share-sheet entry: sharing text/links/email addresses from any
+             app offers BestToDo, which creates a task on Today from the
+             shared text. A translucent trampoline (not MainActivity itself):
+             the share sheet starts its target inside the sharing app's task,
+             and a second MainActivity there would mean a second Flutter
+             engine. ShareActivity forwards the text into the app's real
+             task and finishes. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

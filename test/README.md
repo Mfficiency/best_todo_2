@@ -17,6 +17,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/sms/` | `flutter test test/sms` | SMS daily report: `SmsRecipient`/`SmsReportConfig` JSON round-trip, per-recipient enable flag + `activeRecipients` filtering, Settings recipient rows (pause switch, edit keeps the flag) |
 | `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile + "Sync now" manual run |
 | `test/update/` | `flutter test test/update` | In-app updates: `UpdateService` version parsing/comparison and the `github_releases/` folder listing (newest + rollback), the About page's check → download → install flow and its "Go back to ..." button, `tool/publish_apk.dart` release naming, `tool/stage_local_release.dart` keep-the-newest-two staging |
+| `test/share/` | `flutter test test/share` | Share-sheet task creation (`ShareIntentService`): shared text → task-due-today mapping (title/description split, truncation), consumer routing/queueing between the home page and the direct-to-storage fallback, the platform-channel pull |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`), failure-dot acknowledgement (`test_report_service_test.dart`) |
 
 ## Which suites to run
@@ -46,6 +47,9 @@ Pick suites by what you touched, always including core:
   `lib/ui/app_logs_page.dart`, the Sync & export section of
   `lib/ui/settings_page.dart` → core + **sync** (+ **home**, which also pumps the
   settings page and drawer)
+- `lib/services/share_intent_service.dart`, `ShareActivity.kt`, the share
+  wiring in `MainActivity.kt` → core + **share** (+ **home**, which registers
+  the consumer)
 - `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,
   export/import, `lib/ui/startup_times_page.dart`, `lib/ui/chronize_page.dart`,
   `lib/ui/changelog_page.dart`,
