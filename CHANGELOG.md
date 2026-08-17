@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.231] - 2026-08-17
+- Changelog text is now selectable (both the plain view and the update-heatmap day details), so you can copy entries out
+- Android share-sheet entry is back: share a link, selected text or an email address from any app and it becomes a task on Today (first line as the title, the full shared text kept in the description) — re-implemented on the current code (ShareActivity is a translucent trampoline, not a second MainActivity, so it doesn't touch the widget black-screen investigation)
+
 ## [0.1.230] - 2026-08-17
 - Ten of the features that went missing in the v0.1.157 revert are back, all of them re-implemented on the current code and none of them touching the widget/rendering path that the black-screen investigation is still about:
 - Dice timer: a "Cancel timer" button ends a running, paused or ringing timer and drops its alarm with it — the task is left exactly as it was, neither done nor postponed (originally v0.1.127)
@@ -14,7 +18,6 @@
 - Fix: "Check for updates" needs the Android INTERNET permission, which release builds did not declare — debug builds get it for free, which is why this only ever failed on a real release APK (v0.1.139)
 - **Still missing versus the old `dev` tip (v0.1.156)**, each a real, already-designed feature waiting on the widget black-screen investigation or on its own port:
   - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
-  - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
   - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
 
 ## [0.1.229] - 2026-08-17
@@ -47,7 +50,6 @@
   - Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
   - Fix: "Check for updates" needs the Android INTERNET permission in release builds (v0.1.139)
   - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
-  - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
   - Two-APK rollback: every release build stages its APK plus the previous one, so About → "Go back to ..." can downgrade one version (v0.1.146)
   - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
   - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
