@@ -9,6 +9,7 @@ import '../models/task.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
+import '../utils/linkified_text.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -306,7 +307,7 @@ class _TaskTileState extends State<TaskTile>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (task.isWish && task.description.isNotEmpty)
-              Text(task.description),
+              LinkifiedText(task.description),
             Wrap(
               spacing: 4,
               runSpacing: 2,
@@ -371,7 +372,7 @@ class _TaskTileState extends State<TaskTile>
         value: widget.task.isDone,
         onChanged: (_) => setState(() => widget.onToggle()),
       ),
-      title: Text(
+      title: LinkifiedText(
         widget.task.title,
         style: TextStyle(
           decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
@@ -701,8 +702,8 @@ class _TaskTileState extends State<TaskTile>
           final swipedRight = _dragOffset > threshold || velocity > 500;
           final swipedLeft = _dragOffset < -threshold || velocity < -500;
           if (_optionMode != null) {
-            final originalWasRight =
-                widget.swipeLeftDelete == (_optionMode == _SwipeOptionMode.move);
+            final originalWasRight = widget.swipeLeftDelete ==
+                (_optionMode == _SwipeOptionMode.move);
             if ((originalWasRight && swipedLeft) ||
                 (!originalWasRight && swipedRight)) {
               _closeOptions();

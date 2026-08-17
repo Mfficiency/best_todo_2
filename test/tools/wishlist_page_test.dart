@@ -273,4 +273,36 @@ void main() {
     expect(topY, lessThan(mediumY));
     expect(mediumY, lessThan(noneY));
   });
+
+  testWidgets('sort menu can order wishes by newest first', (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Older wish',
+          createdAt: DateTime(2026, 8, 1),
+          isWish: true,
+        ),
+        Task(
+          title: 'Newer wish',
+          createdAt: DateTime(2026, 8, 15),
+          isWish: true,
+        ),
+      ],
+      marker: 'Older wish',
+    );
+
+    var olderY = tester.getTopLeft(find.text('Older wish')).dy;
+    var newerY = tester.getTopLeft(find.text('Newer wish')).dy;
+    expect(olderY, lessThan(newerY));
+
+    await tester.tap(find.byTooltip('Sort wishlist'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Newest'));
+    await tester.pumpAndSettle();
+
+    olderY = tester.getTopLeft(find.text('Older wish')).dy;
+    newerY = tester.getTopLeft(find.text('Newer wish')).dy;
+    expect(newerY, lessThan(olderY));
+  });
 }

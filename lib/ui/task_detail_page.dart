@@ -36,7 +36,7 @@ class TaskDetailPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          Text(
+          LinkifiedText(
             task.title,
             style: Theme.of(context).textTheme.titleLarge,
           ),
@@ -171,8 +171,7 @@ class TaskLabelLine extends StatelessWidget {
 /// journal file is never touched during app startup or list rendering.
 class TaskHistorySection extends StatelessWidget {
   final String taskUid;
-  const TaskHistorySection({Key? key, required this.taskUid})
-      : super(key: key);
+  const TaskHistorySection({Key? key, required this.taskUid}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -248,8 +247,7 @@ String describeItemEvent(ItemEvent event) {
     case ItemEvent.typeRestored:
       return 'Restored${suffix()}';
     case ItemEvent.typeStatusChanged:
-      return (changeTo('isDone') == true ? 'Completed' : 'Reopened') +
-          suffix();
+      return (changeTo('isDone') == true ? 'Completed' : 'Reopened') + suffix();
     case ItemEvent.typeScheduled:
       final due = changeTo('dueDate');
       if (due is String && due.isNotEmpty) {

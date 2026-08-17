@@ -9,12 +9,24 @@ import 'package:url_launcher/url_launcher.dart';
 class LinkifiedText extends StatefulWidget {
   final String text;
   final TextStyle? style;
+  final int? maxLines;
+  final TextOverflow? overflow;
+  final TextAlign? textAlign;
+  final bool? softWrap;
 
   /// Test/override hook; defaults to launching the URL externally.
   final void Function(Uri uri)? onOpenLink;
 
-  const LinkifiedText(this.text, {Key? key, this.style, this.onOpenLink})
-      : super(key: key);
+  const LinkifiedText(
+    this.text, {
+    Key? key,
+    this.style,
+    this.maxLines,
+    this.overflow,
+    this.textAlign,
+    this.softWrap,
+    this.onOpenLink,
+  }) : super(key: key);
 
   @override
   State<LinkifiedText> createState() => _LinkifiedTextState();
@@ -73,20 +85,36 @@ class _LinkifiedTextState extends State<LinkifiedText> {
       }
       final recognizer = TapGestureRecognizer()..onTap = () => _open(url);
       _recognizers.add(recognizer);
+      final linkStyle = (widget.style ?? const TextStyle()).copyWith(
+        color: Theme.of(context).colorScheme.primary,
+        decoration: TextDecoration.underline,
+      );
       spans.add(TextSpan(
         text: url,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.primary,
-          decoration: TextDecoration.underline,
-        ),
+        style: linkStyle,
         recognizer: recognizer,
       ));
       index = match.start + url.length;
     }
-    if (spans.isEmpty) return Text(text, style: widget.style);
+    if (spans.isEmpty) {
+      return Text(
+        text,
+        style: widget.style,
+        maxLines: widget.maxLines,
+        overflow: widget.overflow,
+        textAlign: widget.textAlign,
+        softWrap: widget.softWrap,
+      );
+    }
     if (index < text.length) {
       spans.add(TextSpan(text: text.substring(index)));
     }
-    return Text.rich(TextSpan(style: widget.style, children: spans));
+    return Text.rich(
+      TextSpan(style: widget.style, children: spans),
+      maxLines: widget.maxLines,
+      overflow: widget.overflow,
+      textAlign: widget.textAlign,
+      softWrap: widget.softWrap,
+    );
   }
 }

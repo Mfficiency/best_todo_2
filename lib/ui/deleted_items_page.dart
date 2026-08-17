@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
@@ -48,8 +49,8 @@ class DeletedItemsPage extends StatelessWidget {
               tooltip: 'Delete permanently',
               onPressed: () => onDeletePermanently(task),
             ),
-            title: Text(task.title),
-            subtitle: Text(subtitle),
+            title: LinkifiedText(task.title),
+            subtitle: LinkifiedText(subtitle),
             isThreeLine: task.description.isNotEmpty,
             onTap: () {
               Navigator.of(context).push(

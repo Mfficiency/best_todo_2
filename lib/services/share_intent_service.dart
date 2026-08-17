@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import '../models/task.dart';
+import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
 import 'item_repository.dart';
 import 'log_service.dart';
@@ -29,6 +30,7 @@ class ShareIntentService {
   static final ShareIntentService instance = ShareIntentService._();
 
   static const MethodChannel _channel = MethodChannel('besttodo/share');
+  static const String sharedLabel = 'shared';
 
   /// How long a shared text waits for a home page to register before it is
   /// written to storage directly. Overridable so tests don't sleep.
@@ -132,6 +134,7 @@ class ShareIntentService {
     return Task(
       title: title,
       description: title == trimmed ? '' : trimmed,
+      label: joinLabelTokens(<String>[sharedLabel]),
       createdAt: timestamp,
       dueDate: DateTime(timestamp.year, timestamp.month, timestamp.day),
     );

@@ -15,6 +15,8 @@ import '../services/item_views.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 
+enum _WishlistSortOrder { priority, newest, oldest, title }
+
 /// Priority labels a wishlist item can carry inside [Task.label], ordered
 /// from lowest to highest.
 const List<String> wishPriorityLabels = <String>[
@@ -52,9 +54,8 @@ void setWishPriority(Task task, String priorityLabel) {
 /// Raises [task]'s priority one step: none → low → medium → high (capped).
 void bumpWishPriority(Task task) {
   final rank = wishPriorityRank(task);
-  final next = rank >= wishPriorityLabels.length
-      ? wishPriorityLabels.length - 1
-      : rank;
+  final next =
+      rank >= wishPriorityLabels.length ? wishPriorityLabels.length - 1 : rank;
   setWishPriority(task, wishPriorityLabels[next]);
 }
 
@@ -80,6 +81,7 @@ class _WishlistPageState extends State<WishlistPage> {
   /// but always persists the whole list.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
+  _WishlistSortOrder _sortOrder = _WishlistSortOrder.priority;
 
   @override
   void initState() {
@@ -111,8 +113,44 @@ class _WishlistPageState extends State<WishlistPage> {
 
   Future<void> _save() => _repository.saveItems(_tasks);
 
+  int _compareCreatedAt(Task a, Task b, {required bool newestFirst}) {
+    final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return newestFirst
+        ? bCreated.compareTo(aCreated)
+        : aCreated.compareTo(bCreated);
+  }
+
+  int _compareBySortOrder(Task a, Task b) {
+    switch (_sortOrder) {
+      case _WishlistSortOrder.priority:
+        final byPriority = wishPriorityRank(b) - wishPriorityRank(a);
+        if (byPriority != 0) return byPriority;
+        return 0;
+      case _WishlistSortOrder.newest:
+        return _compareCreatedAt(a, b, newestFirst: true);
+      case _WishlistSortOrder.oldest:
+        return _compareCreatedAt(a, b, newestFirst: false);
+      case _WishlistSortOrder.title:
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    }
+  }
+
+  String _sortLabel(_WishlistSortOrder order) {
+    switch (order) {
+      case _WishlistSortOrder.priority:
+        return 'Priority';
+      case _WishlistSortOrder.newest:
+        return 'Newest';
+      case _WishlistSortOrder.oldest:
+        return 'Oldest';
+      case _WishlistSortOrder.title:
+        return 'Title';
+    }
+  }
+
   /// Wishlist items sorted like a to-do list: open items before done ones,
-  /// higher priority first, otherwise keeping their list order.
+  /// then by the selected helper sort, otherwise keeping their list order.
   List<Task> _wishes() {
     final wishes = ItemViews.wishlist(_tasks);
     final order = <String, int>{
@@ -120,8 +158,8 @@ class _WishlistPageState extends State<WishlistPage> {
     };
     wishes.sort((a, b) {
       if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-      final byPriority = wishPriorityRank(b) - wishPriorityRank(a);
-      if (byPriority != 0) return byPriority;
+      final bySelectedSort = _compareBySortOrder(a, b);
+      if (bySelectedSort != 0) return bySelectedSort;
       return order[a.uid]!.compareTo(order[b.uid]!);
     });
     return wishes;
@@ -307,6 +345,28 @@ class _WishlistPageState extends State<WishlistPage> {
         context,
         title: 'Wishlist',
         actions: [
+          PopupMenuButton<_WishlistSortOrder>(
+            tooltip: 'Sort wishlist',
+            icon: const Icon(Icons.sort),
+            initialValue: _sortOrder,
+            onSelected: (value) => setState(() => _sortOrder = value),
+            itemBuilder: (context) => [
+              for (final order in _WishlistSortOrder.values)
+                PopupMenuItem(
+                  value: order,
+                  child: Row(
+                    children: [
+                      if (order == _sortOrder)
+                        const Icon(Icons.check, size: 18)
+                      else
+                        const SizedBox(width: 18),
+                      const SizedBox(width: 8),
+                      Text(_sortLabel(order)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             tooltip: 'Export wishlist',
             onPressed: wishes.isEmpty ? null : _exportAllItems,
@@ -674,8 +734,7 @@ class _WishTileState extends State<_WishTile>
                       for (final priority in wishPriorityLabels.reversed)
                         TextButton(
                           onPressed: () => _selectPriority(priority),
-                          child:
-                              Text(priority.replaceFirst('priority-', '')),
+                          child: Text(priority.replaceFirst('priority-', '')),
                         ),
                     ],
                   ),

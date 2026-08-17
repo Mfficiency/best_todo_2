@@ -42,6 +42,7 @@ void main() {
       );
       expect(task.title, 'https://example.com/article');
       expect(task.description, '');
+      expect(task.label, ShareIntentService.sharedLabel);
       expect(task.dueDate, DateTime(2026, 8, 8));
       expect(task.createdAt, now);
       expect(task.isDone, false);
@@ -57,8 +58,7 @@ void main() {
     });
 
     test('surrounding whitespace and blank leading lines are dropped', () {
-      final task =
-          ShareIntentService.buildTask('  \n\n  mail@example.com  \n');
+      final task = ShareIntentService.buildTask('  \n\n  mail@example.com  \n');
       expect(task.title, 'mail@example.com');
       expect(task.description, '');
     });
@@ -122,7 +122,8 @@ void main() {
     });
   });
 
-  test('without a consumer, shared text is persisted to storage after the '
+  test(
+      'without a consumer, shared text is persisted to storage after the '
       'flush delay', () async {
     ShareIntentService.flushDelay = Duration.zero;
     ShareIntentService.instance.handleSharedText('shared into storage');
@@ -145,6 +146,7 @@ void main() {
 
     final saved = shared.single;
     expect(saved.isWish, false);
+    expect(saved.label, ShareIntentService.sharedLabel);
     final now = DateTime.now();
     expect(saved.dueDate!.year, now.year);
     expect(saved.dueDate!.month, now.month);
