@@ -82,6 +82,9 @@ const List<ShippedWish> shippedWishes = <ShippedWish>[
       'Built: Settings → Tasks → "New tasks go to" pins quick-added tasks to a list; the add row names the target (SPEC 4.3).'),
   ShippedWish('wish-quick-item-reminder', '0.1.233',
       'Built: the Notify bell on an expanded task asks when — in 5 minutes, 20 minutes, 1 hour, or the default delay (SPEC 4.3).'),
+  // 0.1.234 — built for this release.
+  ShippedWish('wish-extra-productivity-stats', '0.1.234',
+      'Built: Productivity Stats → Fun stats — most productive weekday and hour, the planning hour, the weekday you postpone the most, plus a dozen more all-time numbers (SPEC 10.3).'),
 ];
 
 /// The registry keyed by uid.

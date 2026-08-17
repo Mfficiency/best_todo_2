@@ -36,6 +36,26 @@ const _notifyDelayOptions = <_NotifyDelayOption>[
   _NotifyDelayOption('1 hour', 60 * 60),
 ];
 
+/// Snooze-style delays offered by the double-tap menu — the "not now, but
+/// don't let me forget" answer, without expanding the tile for the bell.
+const _doubleTapReminderOptions = <_NotifyDelayOption>[
+  _NotifyDelayOption('5 minutes', 5 * 60),
+  _NotifyDelayOption('10 minutes', 10 * 60),
+  _NotifyDelayOption('20 minutes', 20 * 60),
+];
+
+/// What the double-tap menu was asked for: the egg timer, or a reminder in
+/// [reminder]'s time from now.
+class _DoubleTapAction {
+  final _NotifyDelayOption? reminder;
+
+  const _DoubleTapAction.startTimer() : reminder = null;
+  const _DoubleTapAction.remindIn(_NotifyDelayOption option)
+      : reminder = option;
+
+  bool get isTimer => reminder == null;
+}
+
 const _deleteSwipeWeekdayOptions = <_WeekdaySwipeOption>[
   _WeekdaySwipeOption('Fri', DateTime.friday),
   _WeekdaySwipeOption('Sat', DateTime.saturday),
@@ -209,43 +229,63 @@ class _TaskTileState extends State<TaskTile>
     _toggleExpanded();
   }
 
-  /// Little menu shown on a double tap. For now it holds a single action:
-  /// starting the egg timer (the dice one) for this task.
+  /// Little menu shown on a double tap: start the egg timer (the dice one)
+  /// for this task, or be reminded about it in a few minutes.
   Future<void> _showDoubleTapMenu() async {
     final minutes = Config.diceTimerDefaultMinutes.clamp(1, 60);
-    final start = await showModalBottomSheet<bool>(
+    final action = await showModalBottomSheet<_DoubleTapAction>(
       context: context,
       showDragHandle: true,
+      // Five rows do not fit the default 9/16-of-the-screen sheet on a short
+      // screen: let it size to its content (and scroll if even that is too
+      // much) instead of overflowing.
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                widget.task.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(sheetContext)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  widget.task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(sheetContext)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.timer_outlined),
-              title: const Text('Start timer'),
-              subtitle: Text('Counts down $minutes min — '
-                  'turn the dial to change it'),
-              onTap: () => Navigator.of(sheetContext).pop(true),
-            ),
-            const SizedBox(height: 12),
-          ],
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: const Text('Start timer'),
+                subtitle: Text('Counts down $minutes min — '
+                    'turn the dial to change it'),
+                onTap: () => Navigator.of(sheetContext)
+                    .pop(const _DoubleTapAction.startTimer()),
+              ),
+              const Divider(height: 1),
+              for (final option in _doubleTapReminderOptions)
+                ListTile(
+                  leading: const Icon(Icons.notifications_none),
+                  title: Text('Remind me in ${option.label}'),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(_DoubleTapAction.remindIn(option)),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );
-    if (start == true) widget.onStartTimer?.call();
+    if (action == null || !mounted) return;
+    if (action.isTimer) {
+      widget.onStartTimer?.call();
+      return;
+    }
+    await _scheduleReminder(action.reminder!);
   }
 
   /// "in 05:00" for the configured default delay, so the sheet's last entry
@@ -310,13 +350,26 @@ class _TaskTileState extends State<TaskTile>
       ),
     );
     if (picked == null || !mounted) return;
+    await _scheduleReminder(picked);
+  }
+
+  /// Schedules [option]'s reminder for this task and reports back in a
+  /// snackbar. Shared by the Notify bell and the double-tap menu.
+  Future<void> _scheduleReminder(_NotifyDelayOption option) async {
+    if (!Config.enableNotifications) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enable notifications in Settings first')),
+      );
+      return;
+    }
     final sent = await NotificationService.showTaskNotification(
       widget.task.title,
-      delaySeconds: picked.seconds,
+      delaySeconds: option.seconds,
     );
     if (!mounted) return;
     if (sent) {
-      final when = picked.seconds == 0 ? 'now' : 'in ${picked.label}';
+      final when = option.seconds == 0 ? 'now' : 'in ${option.label}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Notification scheduled $when')),
       );

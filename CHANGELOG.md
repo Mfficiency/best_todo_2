@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.234] - 2026-08-17
+- Streak challenges you have already earned now collect at the bottom of the list, under an "Earned" divider, so the card opens on what is still left to chase
+- Productivity Stats gained a "Fun stats" section at the bottom: items completed and created, completion rate, busiest day, golden hour, favourite weekday, early-bird and night-owl finishes, weekend share, fastest finish, longest wait, oldest open item and how often things were postponed
+- Double-tapping a task now also offers "Remind me in 5 / 10 / 20 minutes" next to "Start timer" — it only sends a notification, the task's own due date stays where it is
+- The wishlist item asking for extra productivity stats ("when is the most productive day / time, which day do I postpone the most") ticks itself off with this release
+
 ## [0.1.233] - 2026-08-17
 - The menu now opens with a Home entry: it closes whatever tool page you are on, clears an active search and takes you back to your start tab
 - New tasks no longer have to land in the list you happen to be looking at: Settings → Tasks → "New tasks go to" pins them to one bucket (Today, Future, …), so an idea typed on Today can go straight to Future. The add row then names its target ("Add task · Future") so nothing disappears unexpectedly; the schedule view still adds to the day you highlighted

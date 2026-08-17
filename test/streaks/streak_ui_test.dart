@@ -193,6 +193,26 @@ void main() {
     expect(find.byIcon(Icons.check_circle), findsWidgets);
   });
 
+  testWidgets('earned challenges sink below the ones still to play for',
+      (tester) async {
+    // 7 days with one completion each: the streak-length challenges up to
+    // Week of Fire are earned, the per-day-count ones (Perfect Ten) are not.
+    await tester.runAsync(() => seedStreakFile(
+        {for (var back = 0; back < 7; back++) dayKeyAgo(back): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+    await tester.pumpWidget(const MaterialApp(home: StreakPage()));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.scrollUntilVisible(find.text('Challenges'), 150,
+        scrollable: find.byType(Scrollable).first);
+
+    // The card is one list child, so every tile in it is laid out — the
+    // off-screen ones included, which is exactly what the order is about.
+    final header = tester.getTopLeft(find.text('Earned')).dy;
+    expect(tester.getTopLeft(find.text('Perfect Ten')).dy, lessThan(header));
+    expect(tester.getTopLeft(find.text('Week of Fire')).dy, greaterThan(header));
+  });
+
   testWidgets('longest streak tile opens the yearly calendar with the range',
       (tester) async {
     enlarge(tester);

@@ -459,8 +459,10 @@ only exit that leaves the task untouched — Done and Postpone both answer for i
 back-navigation deliberately keeps the countdown alive.
 
 **Start timer from a task (0.1.132):** double-tapping a task tile opens a little
-bottom-sheet menu — for now a single "Start timer" entry (subtitle shows the default
-duration). The double tap is detected by hand inside the tile's `onTap` (two taps within
+bottom-sheet menu — "Start timer" (subtitle shows the default duration), a divider, and
+since 0.1.234 three snooze entries "Remind me in 5 / 10 / 20 minutes". The sheet is
+`isScrollControlled` so five rows size to their content instead of overflowing the
+default 9/16-height sheet on a short screen. The double tap is detected by hand inside the tile's `onTap` (two taps within
 `kDoubleTapTimeout`, the second one taking back the expansion toggle the first made) —
 deliberately NOT via `InkWell.onDoubleTap`, whose recognizer holds the gesture arena for
 the double-tap timeout on every tap in the tile, delaying the checkbox and expand-on-tap
@@ -475,7 +477,12 @@ and Done/Postpone/Cancel behave identically. The page header is parameterized fo
 (`DiceTimerPage.caption`/`captionIcon`: "Timer for" + `Icons.timer_outlined` here,
 "The dice picked" + `Icons.casino` by default). Double-tapping the task whose timer is
 already live reopens the running countdown; starting a timer for a different task
-replaces the old one — the double tap is an explicit choice for that task.
+replaces the old one — the double tap is an explicit choice for that task. The reminder
+entries go through `_TaskTileState._scheduleReminder` — the same helper the expanded
+tile's Notify bell uses (§ notifications): `NotificationService.showTaskNotification`
+with the picked delay, quiet-hours shifting included, a "Notification scheduled in 10
+minutes" snackbar, and "Enable notifications in Settings first" when they are off. The
+task's own due date is never touched.
 
 **Dice timer settings (0.1.120):** `Config.diceTimerAlertMode` picks what zero does —
 `melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
@@ -702,7 +709,10 @@ Comeback Kid (new active day after ≥2 missed days); totals — Explorer 10 / R
 Veteran 100 active days, Century Club 100 / Task Machine 500 / Task Legend 1000
 completions. Rendered on `StreakPage` below the stats card: "Challenges" card with
 "N / 26 earned" counter; earned tiles get an amber icon + check, unearned multi-step
-ones a thin deep-orange progress bar and "x/y" trailing text.
+ones a thin deep-orange progress bar and "x/y" trailing text. **Order (0.1.234):** still
+open first (evaluation order within the group), then an amber "Earned" divider header
+(only when both groups exist), then the earned ones — the card opens on what is left to
+chase rather than on a wall of check marks.
 
 **Seeding:** on first load without `streak.json` (`needsSeed`), backfilled from existing
 history — completions per day the **max** of daily-stats counts and `completedAt`
@@ -1190,7 +1200,7 @@ re-sorts by `approximateSeconds` descending (months/years use average lengths �
 ordering only, never placement).
 
 ### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
-Three sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
+Four sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
 (title says "Completed" — historical mislabel; buckets 0/1/2/3/4+ in blue shades, tap for
 snackbar, auto-scrolls to newest); (b) 365 daily stacked bars from `DailyTaskStats` —
 five segments: moved-from-start (red 0xFFD84343), completed-from-start (dark green
@@ -1198,7 +1208,23 @@ five segments: moved-from-start (red 0xFFD84343), completed-from-start (dark gre
 not-completed-from-created (light grey); weekend tint/bold; unit height
 `(180/total).clamp(3,16)`; (c) item-activity heatmap, last 31 days, 24h × 7 weekdays,
 tabs Created/Completed/Moved/Deleted/Combined, primary-color lerp 0.18→0.92, with a peak
-sentence ("Most items are completed on Monday between 09:00-10:00.").
+sentence ("Most items are completed on Monday between 09:00-10:00."); (d) **Fun stats
+(0.1.234)** — an all-time trivia list at the very bottom, computed on the fly from the
+deduped `tasks` + `deletedItems` union (by uid) plus `dailyStatsByDay`, no new storage:
+items completed, items ever created, completion rate, busiest day (count + date), days
+with something done (with the average per day), golden hour (modal `completedAt` hour,
+`_hourRangeLabel`), favourite weekday, planning hour (modal `createdAt` hour — when
+things get written down), early-bird (<08:00) and night-owl (≥22:00 or <05:00) finishes,
+weekend share, fastest finish / longest wait (min and max `completedAt − createdAt`,
+negatives skipped, task title as subtitle), oldest open item (earliest `createdAt` among
+live undone tasks), times postponed (Σ `movedFromOpeningTaskIds ∩ openingTaskIds` over
+all days), most-postponed weekday (the same sum bucketed by the day key's weekday) and
+open right now. Together these answer the backlog wish `wish-extra-productivity-stats`
+(most productive day/time, when planning happens, which day gets postponed most), which
+the shipped-wish registry ticks off in 0.1.234. Rows whose
+input is missing are dropped; a completely empty history shows "Complete a few items and
+the trivia shows up here." instead of a column of zeroes. Durations are deliberately
+rough (`s` → `min` → `h` → `days` → `weeks`).
 
 The item-activity cell shading is **outlier-resistant** (`_ActivityScale`, 0.1.124): the
 ramp saturates at the Tukey upper fence of the non-empty cells

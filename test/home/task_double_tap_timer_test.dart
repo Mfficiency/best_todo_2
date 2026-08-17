@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
@@ -120,6 +121,32 @@ void main() {
 
     DiceTimerController.instance.clear();
     await tester.pump();
+  });
+
+  testWidgets('the double-tap menu also offers a 5 / 10 / 20 minute reminder',
+      (tester) async {
+    final notificationsWere = Config.enableNotifications;
+    Config.enableNotifications = false;
+    addTearDown(() => Config.enableNotifications = notificationsWere);
+    await pumpHome(
+      tester,
+      [Task(title: 'Call the plumber', dueDate: DateTime.now())],
+    );
+
+    await doubleTap(tester, find.text('Call the plumber'));
+
+    expect(find.text('Remind me in 5 minutes'), findsOneWidget);
+    expect(find.text('Remind me in 10 minutes'), findsOneWidget);
+    expect(find.text('Remind me in 20 minutes'), findsOneWidget);
+
+    // Picking one closes the sheet and schedules the reminder — with
+    // notifications switched off it points at Settings instead.
+    await tester.tap(find.text('Remind me in 10 minutes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Remind me in 10 minutes'), findsNothing);
+    expect(find.byType(DiceTimerPage), findsNothing);
+    expect(find.text('Enable notifications in Settings first'), findsOneWidget);
   });
 
   testWidgets('dismissing the menu starts nothing', (tester) async {
