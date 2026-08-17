@@ -10,6 +10,10 @@ final RegExp _tokenSeparator = RegExp(r'[,\s]+');
 /// (see `wishlist_migration.dart`).
 const String legacyImportToken = 'old';
 
+/// Label token the app stamps on a wishlist item it completed by itself,
+/// because the feature behind it shipped (see `wishlist_shipped.dart`).
+const String autoCompletedToken = 'autocompleted';
+
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[
   'priority-low',
@@ -36,6 +40,8 @@ String joinLabelTokens(Iterable<String> tokens) => tokens.join(', ');
 String labelKindFor(String token) {
   final lower = token.toLowerCase();
   if (priorityTokens.contains(lower)) return Label.kindPriority;
-  if (lower == legacyImportToken) return Label.kindSystem;
+  if (lower == legacyImportToken || lower == autoCompletedToken) {
+    return Label.kindSystem;
+  }
   return Label.kindTag;
 }

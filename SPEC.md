@@ -1302,6 +1302,43 @@ items stick, and the import is skipped entirely (no flag, no write) when an exis
 Since 0.1.101 this import feeds the task list via the wishlist migration above (fresh
 installs get the backlog as wish tasks on first `loadTaskList`).
 
+**Stable backlog uids + auto-completion (0.1.232):** every `LegacyTodoItem` now carries
+a hand-assigned permanent id (`wish-<slug>`, e.g. `wish-calendar-view`) used verbatim as
+the imported `Task.uid`, so a backlog entry is addressable from source. That makes the
+shipped-wish registry possible (`lib/services/wishlist_shipped.dart`): a
+`const List<ShippedWish>` of `(uid, version, note)` naming the backlog entries whose
+feature has actually been built. `applyShippedWishes(tasks)` — called by `loadTaskList()`
+after the wishlist migration, saving only when it changed something — ticks each matching
+**wish** task done, stamps `completedAt`, appends the `autocompleted` tag to its labels
+and `"Auto-completed in v<x.y.z>. <note>"` to its `note`. So the workflow for a wishlist
+feature is *build it, then add one line to `shippedWishes`*; the app does the bookkeeping
+on every install at next launch.
+
+Rules that keep it safe:
+- **Tag-guarded, so it runs exactly once per item.** An item already carrying
+  `autocompleted` is skipped entirely — re-opening or un-ticking a wish by hand sticks,
+  and the note is never appended twice. An item the user had already ticked off keeps
+  its own `completedAt`.
+- **Only backlog items match.** A user's own wish gets a random uuid, which is never in
+  the registry.
+- **Existing installs are re-identified first.** `backfillLegacyWishUids(tasks)` maps
+  0.1.100–0.1.231 imports (random uuids) onto their stable id by normalized title,
+  restricted to items carrying the `old` import token so a user's same-titled item keeps
+  its uid, and never taking a uid another item in the list already holds. It runs in
+  `loadTaskList()` **before** `_journalBaseline` is snapshotted — re-identifying an item
+  is bookkeeping, and a uid swap seen by the journal diff would read as delete + create —
+  and again in `loadWishlist()` so an item still parked in the legacy file dedupes
+  against its migrated twin by uid.
+- `autocompleted` is classified `Label.kindSystem` by `labelKindFor` (like `old`).
+- Auto-completed wishes are archived by the normal new-day rollover, exactly like
+  manually ticked ones; the sweep runs before the shipped pass, so a freshly
+  auto-completed wish stays visible for the rest of the day.
+
+The 0.1.232 registry seeds twelve entries whose features shipped long before the
+mechanism existed (calendar view ×2, Chronize, the Wishlist tab itself, Productivity
+Stats, Startup Times, simple/advanced/pro mode ×3, the manual GitHub APK action, the
+automatic test workflow, the screenshot integration tests).
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line

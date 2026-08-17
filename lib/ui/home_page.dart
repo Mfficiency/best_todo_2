@@ -28,6 +28,7 @@ import '../services/sync_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
+import '../services/wishlist_shipped.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
@@ -314,6 +315,7 @@ class _HomePageState extends State<HomePage>
     return [
       for (final legacy in legacyTodoWishlistItems)
         Task(
+          uid: legacy.uid,
           title: legacy.title,
           description: legacy.description,
           label: legacyTodoImportLabel,
@@ -614,7 +616,12 @@ class _HomePageState extends State<HomePage>
     // flag is already spent (so nothing else repopulates it). Runs only when
     // no wishes exist, keeping it idempotent across loads.
     if (Config.isDev && !_tasks.any((t) => t.isWish)) {
-      _tasks.addAll(_buildDevWishlistSeed());
+      final seeded = _buildDevWishlistSeed();
+      // The seed lands after loadTaskList already ran its shipped-wish pass,
+      // so apply it here too — otherwise a dev install shows the backlog
+      // untagged until the next launch.
+      applyShippedWishes(seeded);
+      _tasks.addAll(seeded);
     }
     // Prepopulate the Projects tool in dev builds so the cards/boards have
     // data to drag around right away.

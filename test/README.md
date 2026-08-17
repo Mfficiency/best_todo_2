@@ -18,7 +18,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile + "Sync now" manual run |
 | `test/update/` | `flutter test test/update` | In-app updates: `UpdateService` version parsing/comparison and the `github_releases/` folder listing (newest + rollback), the About page's check → download → install flow and its "Go back to ..." button, `tool/publish_apk.dart` release naming, `tool/stage_local_release.dart` keep-the-newest-two staging |
 | `test/share/` | `flutter test test/share` | Share-sheet task creation (`ShareIntentService`): shared text → task-due-today mapping (title/description split, truncation), consumer routing/queueing between the home page and the direct-to-storage fallback, the platform-channel pull |
-| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`), failure-dot acknowledgement (`test_report_service_test.dart`) |
+| `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, stable backlog uids + shipped-wish auto-completion (`wishlist_autocomplete_test.dart`), wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`), failure-dot acknowledgement (`test_report_service_test.dart`) |
 
 ## Which suites to run
 
@@ -55,7 +55,8 @@ Pick suites by what you touched, always including core:
   `lib/ui/changelog_page.dart`,
   `lib/models/countdown_timer.dart`, `lib/models/test_report.dart`,
   `lib/services/test_report_service.dart`, `lib/ui/test_results_page.dart`,
-  `lib/services/wishlist_migration.dart`, `lib/ui/wishlist_page.dart`,
+  `lib/services/wishlist_migration.dart`, `lib/services/wishlist_shipped.dart`,
+  `lib/ui/wishlist_page.dart`,
   `lib/ui/your_stats_page.dart`,
   `tool/generate_test_report.dart` → core + **tools**
 - `lib/services/update_service.dart`, `lib/ui/about_page.dart`,
