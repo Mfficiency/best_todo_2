@@ -1,3 +1,33 @@
+## 2026-08-17T20:11:33.332265Z | branch: staging | source: 8ce3994
+
+- Folder: `docs/screenshots/home/20260817-201132-8ce3994`
+
+### Home Page
+![2026-08-17T20:11:33.332265Z - staging - home_page](docs/screenshots/home/20260817-201132-8ce3994/home_page.png)
+
+### Menu Open
+![2026-08-17T20:11:33.332265Z - staging - menu_open](docs/screenshots/home/20260817-201132-8ce3994/menu_open.png)
+
+### Project Board Page
+![2026-08-17T20:11:33.332265Z - staging - project_board_page](docs/screenshots/home/20260817-201132-8ce3994/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-17T20:11:33.332265Z - staging - project_edit_dialog](docs/screenshots/home/20260817-201132-8ce3994/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-17T20:11:33.332265Z - staging - projects_page](docs/screenshots/home/20260817-201132-8ce3994/projects_page.png)
+
+### Search Active
+![2026-08-17T20:11:33.332265Z - staging - search_active](docs/screenshots/home/20260817-201132-8ce3994/search_active.png)
+
+### Settings Page
+![2026-08-17T20:11:33.332265Z - staging - settings_page](docs/screenshots/home/20260817-201132-8ce3994/settings_page.png)
+
+### Your Stats Page
+![2026-08-17T20:11:33.332265Z - staging - your_stats_page](docs/screenshots/home/20260817-201132-8ce3994/your_stats_page.png)
+
+---
+
 ## 2026-08-17T19:53:47.464968Z | branch: dev | source: 88b2d0e
 
 - Folder: `docs/screenshots/home/20260817-195346-88b2d0e`
