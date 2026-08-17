@@ -61,6 +61,11 @@
   white-space: nowrap;
 }
 
+.besttodo-pending {
+  color: var(--text-accent);
+  font-style: italic;
+}
+
 .besttodo-error,
 .besttodo-empty {
   color: var(--text-muted);
