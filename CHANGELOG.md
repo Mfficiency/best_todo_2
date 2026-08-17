@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.228] - 2026-08-17
+- No code change from 0.1.157 below — bumped straight to 0.1.228 so this build installs over the `fix/black-screen-restore` bisect APKs already on a test phone (the highest of those, rc11, is versionCode 227) without needing an uninstall first. Same reason 0.1.156 jumped its own gap; see that entry's note.
+
 ## [0.1.157] - 2026-08-17
 - Reverted `dev` to the exact v0.1.126 code (the last build confirmed to open cleanly from the tasks widget every time), then re-implemented every feature below that has nothing to do with the widget/rendering path. v0.1.128 through v0.1.156 introduced a recurring "widget tap re-fronts the app as a black screen" bug; every attempted fix since — including a rebuild that deliberately dropped the suspected culprits (see the old 0.1.156 entry below) — has reglitched on real-device re-test, most recently traced to a native heartbeat/view-walk the black-screen diagnostics themselves run on every app resume. Until that investigation lands a fix that survives repeated on-device testing, `dev` goes without the widget-tap fix itself in exchange for a widget tap that reliably works. See `testbuilds/README.md` on `fix/black-screen-restore` for the full bisect/rc history.
 - Settings has a new Backup section: choose a folder and the app writes a full backup of everything (tasks, settings, timers) there automatically - daily, weekly, or never; a "Back up now" button writes one on demand
