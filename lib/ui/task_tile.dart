@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -8,6 +9,7 @@ import '../models/task.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
+import '../utils/linkified_text.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -16,6 +18,42 @@ class _WeekdaySwipeOption {
   final int weekday;
 
   const _WeekdaySwipeOption(this.label, this.weekday);
+}
+
+/// One entry of the Notify bell's delay sheet. [label] doubles as the "in …"
+/// part of the confirmation snackbar.
+class _NotifyDelayOption {
+  final String label;
+  final int seconds;
+
+  const _NotifyDelayOption(this.label, this.seconds);
+}
+
+/// Quick delays offered by the Notify bell, next to the configured default.
+const _notifyDelayOptions = <_NotifyDelayOption>[
+  _NotifyDelayOption('5 minutes', 5 * 60),
+  _NotifyDelayOption('20 minutes', 20 * 60),
+  _NotifyDelayOption('1 hour', 60 * 60),
+];
+
+/// Snooze-style delays offered by the double-tap menu — the "not now, but
+/// don't let me forget" answer, without expanding the tile for the bell.
+const _doubleTapReminderOptions = <_NotifyDelayOption>[
+  _NotifyDelayOption('5 minutes', 5 * 60),
+  _NotifyDelayOption('10 minutes', 10 * 60),
+  _NotifyDelayOption('20 minutes', 20 * 60),
+];
+
+/// What the double-tap menu was asked for: the egg timer, or a reminder in
+/// [reminder]'s time from now.
+class _DoubleTapAction {
+  final _NotifyDelayOption? reminder;
+
+  const _DoubleTapAction.startTimer() : reminder = null;
+  const _DoubleTapAction.remindIn(_NotifyDelayOption option)
+      : reminder = option;
+
+  bool get isTimer => reminder == null;
 }
 
 const _deleteSwipeWeekdayOptions = <_WeekdaySwipeOption>[
@@ -36,6 +74,10 @@ class TaskTile extends StatefulWidget {
   final void Function(DateTime? oldDueDate, DateTime? newDueDate)?
       onDueDateChanged;
   final VoidCallback? onRecurringChanged;
+
+  /// Called when "Start timer" is picked from the double-tap menu. When null
+  /// double taps do nothing (each tap just toggles the expansion).
+  final VoidCallback? onStartTimer;
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
@@ -51,6 +93,7 @@ class TaskTile extends StatefulWidget {
     required this.onDelete,
     this.onDueDateChanged,
     this.onRecurringChanged,
+    this.onStartTimer,
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
@@ -162,6 +205,100 @@ class _TaskTileState extends State<TaskTile>
     setState(() => _expanded = !_expanded);
   }
 
+  /// Wall-clock moment of the previous tap, for the hand-rolled double-tap
+  /// detection in [_handleTap]. A real `onDoubleTap` recognizer would hold
+  /// the gesture arena for the double-tap timeout on EVERY tap in the tile —
+  /// delaying the checkbox and the expand-on-tap by ~300 ms (and deadlocking
+  /// fake-async widget tests, which don't advance that timer).
+  DateTime? _lastTapAt;
+
+  void _handleTap() {
+    final now = DateTime.now();
+    final last = _lastTapAt;
+    _lastTapAt = now;
+    if (widget.onStartTimer != null &&
+        last != null &&
+        now.difference(last) < kDoubleTapTimeout) {
+      _lastTapAt = null;
+      // Second tap of a double tap: take back the expansion toggle the first
+      // tap made, then show the menu.
+      _toggleExpanded();
+      _showDoubleTapMenu();
+      return;
+    }
+    _toggleExpanded();
+  }
+
+  /// Little menu shown on a double tap: start the egg timer (the dice one)
+  /// for this task, or be reminded about it in a few minutes.
+  Future<void> _showDoubleTapMenu() async {
+    final minutes = Config.diceTimerDefaultMinutes.clamp(1, 60);
+    final action = await showModalBottomSheet<_DoubleTapAction>(
+      context: context,
+      showDragHandle: true,
+      // Five rows do not fit the default 9/16-of-the-screen sheet on a short
+      // screen: let it size to its content (and scroll if even that is too
+      // much) instead of overflowing.
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  widget.task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(sheetContext)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: const Text('Start timer'),
+                subtitle: Text('Counts down $minutes min — '
+                    'turn the dial to change it'),
+                onTap: () => Navigator.of(sheetContext)
+                    .pop(const _DoubleTapAction.startTimer()),
+              ),
+              const Divider(height: 1),
+              for (final option in _doubleTapReminderOptions)
+                ListTile(
+                  leading: const Icon(Icons.notifications_none),
+                  title: Text('Remind me in ${option.label}'),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(_DoubleTapAction.remindIn(option)),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    if (action.isTimer) {
+      widget.onStartTimer?.call();
+      return;
+    }
+    await _scheduleReminder(action.reminder!);
+  }
+
+  /// "in 05:00" for the configured default delay, so the sheet's last entry
+  /// shows what tapping it will do.
+  String _clockDelay(int seconds) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final rest = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$rest';
+  }
+
+  /// The Notify bell: asks *when* first. Picking 5 / 20 / 60 minutes reminds
+  /// about this task later without touching its due date; the last entry keeps
+  /// the one-tap behaviour of the configured default delay.
   Future<void> _sendTaskNotification() async {
     if (!Config.enableNotifications) {
       if (!mounted) return;
@@ -170,16 +307,69 @@ class _TaskTileState extends State<TaskTile>
       );
       return;
     }
-    final delaySeconds = Config.defaultNotificationDelaySeconds;
+    final defaultSeconds = Config.defaultNotificationDelaySeconds;
+    final picked = await showModalBottomSheet<_NotifyDelayOption>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Notify me about "${widget.task.title}"',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(sheetContext)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            for (final option in _notifyDelayOptions)
+              ListTile(
+                leading: const Icon(Icons.notifications_none),
+                title: Text('In ${option.label}'),
+                onTap: () => Navigator.of(sheetContext).pop(option),
+              ),
+            ListTile(
+              leading: const Icon(Icons.schedule),
+              title: const Text('Default delay'),
+              subtitle: Text(defaultSeconds == 0
+                  ? 'Right away'
+                  : 'In ${_clockDelay(defaultSeconds)} — set in Settings'),
+              onTap: () => Navigator.of(sheetContext).pop(
+                _NotifyDelayOption(_clockDelay(defaultSeconds), defaultSeconds),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await _scheduleReminder(picked);
+  }
+
+  /// Schedules [option]'s reminder for this task and reports back in a
+  /// snackbar. Shared by the Notify bell and the double-tap menu.
+  Future<void> _scheduleReminder(_NotifyDelayOption option) async {
+    if (!Config.enableNotifications) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enable notifications in Settings first')),
+      );
+      return;
+    }
     final sent = await NotificationService.showTaskNotification(
       widget.task.title,
-      delaySeconds: delaySeconds,
+      delaySeconds: option.seconds,
     );
     if (!mounted) return;
     if (sent) {
-      final minutes = (delaySeconds ~/ 60).toString().padLeft(2, '0');
-      final seconds = (delaySeconds % 60).toString().padLeft(2, '0');
-      final when = delaySeconds == 0 ? 'now' : 'in $minutes:$seconds';
+      final when = option.seconds == 0 ? 'now' : 'in ${option.label}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Notification scheduled $when')),
       );
@@ -237,7 +427,7 @@ class _TaskTileState extends State<TaskTile>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (task.isWish && task.description.isNotEmpty)
-              Text(task.description),
+              LinkifiedText(task.description),
             Wrap(
               spacing: 4,
               runSpacing: 2,
@@ -302,7 +492,7 @@ class _TaskTileState extends State<TaskTile>
         value: widget.task.isDone,
         onChanged: (_) => setState(() => widget.onToggle()),
       ),
-      title: Text(
+      title: LinkifiedText(
         widget.task.title,
         style: TextStyle(
           decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
@@ -365,7 +555,7 @@ class _TaskTileState extends State<TaskTile>
     );
 
     Widget content = InkWell(
-      onTap: _toggleExpanded,
+      onTap: _handleTap,
       child: Column(
         children: [
           stackTile,
@@ -632,8 +822,8 @@ class _TaskTileState extends State<TaskTile>
           final swipedRight = _dragOffset > threshold || velocity > 500;
           final swipedLeft = _dragOffset < -threshold || velocity < -500;
           if (_optionMode != null) {
-            final originalWasRight =
-                widget.swipeLeftDelete == (_optionMode == _SwipeOptionMode.move);
+            final originalWasRight = widget.swipeLeftDelete ==
+                (_optionMode == _SwipeOptionMode.move);
             if ((originalWasRight && swipedLeft) ||
                 (!originalWasRight && swipedRight)) {
               _closeOptions();

@@ -120,6 +120,26 @@ class _StreakPageState extends State<StreakPage>
     );
   }
 
+  /// Divider between the still-open challenges and the earned ones.
+  Widget _challengeGroupHeader(ThemeData theme, String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: Colors.amber.shade700,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Divider(color: theme.dividerColor)),
+        ],
+      ),
+    );
+  }
+
   Widget _challengeTile(StreakChallenge challenge) {
     final theme = Theme.of(context);
     final earned = challenge.earned;
@@ -275,7 +295,11 @@ class _StreakPageState extends State<StreakPage>
     final daysToMax = StreakService.maxStreakDays - streak;
     final maxed = streak >= StreakService.maxStreakDays;
     final challenges = evaluateStreakChallenges(_streak);
-    final earnedChallenges = challenges.where((c) => c.earned).length;
+    // What is still to play for goes first; the trophies collect at the
+    // bottom, so the list opens on the next thing to chase instead of on a
+    // wall of check marks.
+    final openChallenges = challenges.where((c) => !c.earned).toList();
+    final earnedChallenges = challenges.where((c) => c.earned).toList();
 
     return Scaffold(
       appBar: buildSubpageAppBar(
@@ -421,7 +445,8 @@ class _StreakPageState extends State<StreakPage>
                           ),
                         ),
                         Text(
-                          '$earnedChallenges / ${challenges.length} earned',
+                          '${earnedChallenges.length} / ${challenges.length} '
+                          'earned',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: Colors.amber.shade700,
                             fontWeight: FontWeight.w600,
@@ -430,7 +455,11 @@ class _StreakPageState extends State<StreakPage>
                       ],
                     ),
                   ),
-                  for (final challenge in challenges)
+                  for (final challenge in openChallenges)
+                    _challengeTile(challenge),
+                  if (openChallenges.isNotEmpty && earnedChallenges.isNotEmpty)
+                    _challengeGroupHeader(theme, 'Earned'),
+                  for (final challenge in earnedChallenges)
                     _challengeTile(challenge),
                   const SizedBox(height: 8),
                 ],

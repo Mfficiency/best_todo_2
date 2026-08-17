@@ -13,6 +13,7 @@ import 'pre_update_backup.dart';
 import 'reminder_sync_service.dart';
 import 'safe_file.dart';
 import 'wishlist_migration.dart';
+import 'wishlist_shipped.dart';
 
 class TaskImportBundle {
   final List<Task> tasks;
@@ -197,6 +198,10 @@ class StorageService {
       final tasks =
           await SafeFile.readWithRecovery(file, _parseTaskArray) ?? <Task>[];
       _ensureUniqueIds(tasks);
+      // Give pre-0.1.232 backlog imports their stable uid before the journal
+      // baseline is taken: re-identifying an item is bookkeeping, and the
+      // journal diff would otherwise read the uid swap as delete + create.
+      final backfilled = backfillLegacyWishUids(tasks);
       // Baseline for the journal is the state as it was on disk, set before
       // the rollover sweep below so swept tasks produce `deleted` events.
       _journalBaseline = _snapshotOf(tasks);
@@ -212,9 +217,12 @@ class StorageService {
           await saveDeletedTaskList(deletedTasks);
         }
         tasks.removeWhere((t) => t.isDone);
-        await saveTaskList(tasks);
       }
+      if (isNewDay || backfilled) await saveTaskList(tasks);
       await _migrateWishlistIntoTasks(tasks);
+      // Wishes whose feature has since been built tick themselves off. Real
+      // history (done + labelled), so this save is journalled normally.
+      if (applyShippedWishes(tasks)) await saveTaskList(tasks);
       return tasks;
     } catch (_) {
       return <Task>[];
@@ -261,6 +269,9 @@ class StorageService {
             .map((e) => Task.fromJson(e as Map<String, dynamic>))
             .toList();
         _ensureUniqueIds(items);
+        // Stable uids here too, so an item still parked in the legacy file
+        // dedupes against its already-migrated twin by uid.
+        if (backfillLegacyWishUids(items)) await saveWishlist(items);
       } else {
         items = <Task>[];
       }
@@ -291,6 +302,9 @@ class StorageService {
           continue;
         }
         added.add(Task(
+          // The backlog's stable uid, so the shipped-wish registry can tick
+          // this item off once its feature is built.
+          uid: legacy.uid,
           title: legacy.title,
           description: legacy.description,
           label: legacyTodoImportLabel,

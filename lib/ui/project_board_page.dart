@@ -4,6 +4,7 @@ import '../models/project.dart';
 import '../models/task.dart';
 import '../services/item_views.dart';
 import '../services/project_service.dart';
+import '../utils/linkified_text.dart';
 import 'adaptive_draggable.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
@@ -99,7 +100,7 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
+                child: LinkifiedText(
                   _project.description,
                   style: Theme.of(context)
                       .textTheme
@@ -128,7 +129,8 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
   Widget _buildColumn(_KanbanColumn column) {
     final tasks = _tasksForStatus(column.status);
     return DragTarget<Task>(
-      onWillAccept: (task) => task != null && task.kanbanStatus != column.status,
+      onWillAccept: (task) =>
+          task != null && task.kanbanStatus != column.status,
       onAccept: (task) => _moveTask(task, column.status),
       builder: (context, candidate, rejected) {
         final highlighted = candidate.isNotEmpty;
@@ -145,7 +147,8 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
                 child: Text(
                   '${column.title} (${tasks.length})',
                   textAlign: TextAlign.center,
@@ -195,7 +198,7 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
           child: Row(
             children: [
               Expanded(
-                child: Text(
+                child: LinkifiedText(
                   task.title,
                   style: const TextStyle(fontSize: 13),
                 ),

@@ -1,0 +1,10 @@
+{
+  "id": "besttodo-tasks",
+  "name": "BestToDo Tasks",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Read-only viewer for a BestToDo synced task list (besttodo_tasks.json): the six home tabs, checkboxes, due dates and label chips, refreshed whenever the file changes.",
+  "author": "BestToDo",
+  "authorUrl": "https://github.com/Mfficiency/best_todo_2",
+  "isDesktopOnly": false
+}

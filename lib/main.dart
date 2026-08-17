@@ -21,6 +21,7 @@ import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
+import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
 import 'services/task_widget_service.dart';
@@ -220,6 +221,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           onError: (_) {},
         );
       } catch (_) {}
+      // Text shared into the app from other apps becomes a task on Today.
+      unawaited(ShareIntentService.instance.init().catchError((_) {}));
     }
   }
 

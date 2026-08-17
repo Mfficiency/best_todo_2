@@ -151,6 +151,84 @@ void main() {
     expect(find.text('Failed tests'), findsNothing);
   });
 
+  testWidgets('lists every suite and its tests even when all of them pass',
+      (tester) async {
+    TestReportService.instance.setOnlineReportForTest(TestReport(
+      available: true,
+      passed: 3,
+      suites: [
+        TestSuiteResult(path: 'test/core/task_test.dart', tests: [
+          TestCaseResult(name: 'adds numbers', result: 'passed', durationMs: 240),
+          TestCaseResult(name: 'buckets by due date', result: 'passed', durationMs: 1100),
+        ]),
+        TestSuiteResult(path: 'test/home/home_test.dart', tests: [
+          TestCaseResult(name: 'renders the drawer', result: 'passed', durationMs: 60),
+        ]),
+      ],
+    ));
+
+    await pumpPage(tester);
+
+    expect(find.text('All tests'), findsOneWidget);
+    expect(find.text('test/core/task_test.dart'), findsOneWidget);
+    expect(find.text('test/home/home_test.dart'), findsOneWidget);
+    expect(find.text('2 passed · 1.3 s'), findsOneWidget); // suite scoreboard
+    expect(
+      find.text('3 passed · 0 failed · 0 skipped · 3 total · ran in 1.4 s'),
+      findsOneWidget,
+    );
+
+    // Individual tests only appear once their suite is expanded.
+    expect(find.text('adds numbers'), findsNothing);
+    await tester.tap(find.text('test/core/task_test.dart'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    expect(find.text('adds numbers'), findsOneWidget);
+    expect(find.text('buckets by due date'), findsOneWidget);
+    expect(find.text('240 ms'), findsOneWidget);
+    expect(find.text('1.1 s'), findsOneWidget);
+  });
+
+  testWidgets('sorts a failing suite above the green ones', (tester) async {
+    TestReportService.instance.setOnlineReportForTest(TestReport(
+      available: true,
+      passed: 1,
+      failed: 1,
+      suites: [
+        TestSuiteResult(path: 'test/a_test.dart', tests: [
+          TestCaseResult(name: 'green', result: 'passed'),
+        ]),
+        TestSuiteResult(path: 'test/z_test.dart', tests: [
+          TestCaseResult(name: 'red', result: 'failed'),
+        ]),
+      ],
+    ));
+
+    await pumpPage(tester);
+
+    final aOffset = tester.getTopLeft(find.text('test/a_test.dart'));
+    final zOffset = tester.getTopLeft(find.text('test/z_test.dart'));
+    expect(zOffset.dy, lessThan(aOffset.dy));
+    expect(find.text('0 passed · 1 failed'), findsOneWidget);
+  });
+
+  testWidgets('explains when an older report has no per-test details',
+      (tester) async {
+    TestReportService.instance.setOnlineReportForTest(TestReport(
+      available: true,
+      passed: 43,
+    ));
+
+    await pumpPage(tester);
+
+    expect(find.text('All tests'), findsNothing);
+    expect(
+      find.textContaining('predates per-test details'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('explains when neither online nor bundled report is available',
       (tester) async {
     TestReportService.instance.setReportForTest(TestReport(available: false));
@@ -158,5 +236,14 @@ void main() {
     await pumpPage(tester);
 
     expect(find.textContaining('no report was bundled'), findsOneWidget);
+  });
+
+  group('formatTestDuration', () {
+    test('milliseconds under a second, one-decimal seconds above', () {
+      expect(formatTestDuration(0), '0 ms');
+      expect(formatTestDuration(999), '999 ms');
+      expect(formatTestDuration(1000), '1.0 s');
+      expect(formatTestDuration(61540), '61.5 s');
+    });
   });
 }
