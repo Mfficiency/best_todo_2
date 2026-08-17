@@ -2,6 +2,7 @@
 
 ## [0.1.232] - 2026-08-17
 - Wishlist items now have permanent ids, so the app can tick them off itself: when a feature from the wishlist is actually built, the matching item completes on next launch, gets an "autocompleted" tag and a note saying which release delivered it — twelve already-built ideas (calendar view, Chronize, the Wishlist tab, Productivity Stats, Startup Times, simple/pro mode, the GitHub build and test workflows, the screenshot tests) are ticked off in this release
+- Wishes you added yourself can be ticked off the same way, not just the ones imported from the old backlog — "autodetect URLs and make clickable" is the first, completed by the clickable links that landed in v0.1.148
 
 ## [0.1.231] - 2026-08-17
 - Changelog text is now selectable (both the plain view and the update-heatmap day details), so you can copy entries out

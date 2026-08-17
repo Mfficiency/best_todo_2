@@ -43,10 +43,20 @@ void main() {
           isTrue);
     });
 
-    test('every shipped wish points at a real backlog entry', () {
+    test('every shipped wish points at a backlog entry or a real uuid', () {
+      // A registry entry addresses either a shared backlog id or the uuid of
+      // a hand-added wish on one install; a typo in either is silent (the
+      // item simply never gets ticked off), so pin the shapes down here.
+      final uuid = RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
       for (final shipped in shippedWishes) {
-        expect(legacyTodoItemsByUid.containsKey(shipped.uid), isTrue,
-            reason: '${shipped.uid} is not a backlog id');
+        final known = legacyTodoItemsByUid.containsKey(shipped.uid);
+        expect(known || uuid.hasMatch(shipped.uid), isTrue,
+            reason: '${shipped.uid} is neither a backlog id nor a uuid');
+        if (!known) {
+          expect(shipped.uid.startsWith(legacyTodoUidPrefix), isFalse,
+              reason: '${shipped.uid} looks like a backlog id but is not one');
+        }
       }
       // No uid listed twice, which would make the "which release" note
       // ambiguous.

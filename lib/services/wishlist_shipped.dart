@@ -20,9 +20,15 @@ import 'wishlist_migration.dart';
 /// structured-label registry classifies as a system label.
 const String autoCompletedLabel = autoCompletedToken;
 
-/// One built wish: which backlog entry, and which release delivered it.
+/// One built wish: which wishlist item, and which release delivered it.
 class ShippedWish {
-  /// A [LegacyTodoItem.uid].
+  /// The item to tick off. Either a [LegacyTodoItem.uid] (`wish-<slug>`,
+  /// which every install shares because the backlog import assigns it) or the
+  /// raw uuid of a wish the user added themselves — those are minted per
+  /// install, so such an entry only ever matches on the device that created
+  /// it, which is exactly what is wanted: it is that user's own idea. Uuids
+  /// survive the wishlist's JSON export/import, so the match also survives a
+  /// reinstall restored from a backup.
   final String uid;
 
   /// App version whose install auto-completes the wish. This is the release
@@ -65,6 +71,10 @@ const List<ShippedWish> shippedWishes = <ShippedWish>[
       'Built: .github/workflows/flutter_test.yml runs the suite on every push.'),
   ShippedWish('wish-screenshot-integration-tests', '0.1.232',
       'Built: integration_test/home_page_screenshot_test.dart + the screenshot-changelog workflow.'),
+  // 0.1.232 — hand-added wishes (uuids read from the owner's wishlist export,
+  // so they match on that install only).
+  ShippedWish('0a534906-5444-4b9d-a8d2-ddb9f114bb96', '0.1.232',
+      'Built in v0.1.148: LinkifiedText auto-detects http/https URLs (no manual marking) and makes them tappable on every item surface — home tile title and description, task detail, wishlist, projects, board cards, deleted items, Chronize.'),
 ];
 
 /// The registry keyed by uid.

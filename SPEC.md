@@ -1319,8 +1319,13 @@ Rules that keep it safe:
   `autocompleted` is skipped entirely — re-opening or un-ticking a wish by hand sticks,
   and the note is never appended twice. An item the user had already ticked off keeps
   its own `completedAt`.
-- **Only backlog items match.** A user's own wish gets a random uuid, which is never in
-  the registry.
+- **Two kinds of registry id.** A `wish-<slug>` id is shared by every install (the
+  backlog import assigns it). A raw uuid addresses a wish the *user* added themselves —
+  those are minted per install, so the entry only ever matches on the device that
+  created that idea, which is the point: it is that user's own wish. Uuids survive the
+  wishlist JSON export/import, so the match also survives a reinstall from a backup.
+  `wishlist_autocomplete_test.dart` pins both shapes down, because a typo in either is
+  silent (the item simply never gets ticked off).
 - **Existing installs are re-identified first.** `backfillLegacyWishUids(tasks)` maps
   0.1.100–0.1.231 imports (random uuids) onto their stable id by normalized title,
   restricted to items carrying the `old` import token so a user's same-titled item keeps
