@@ -814,11 +814,11 @@ vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way
 file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
 the whole sync run (red history entry) like the JSON write.
 
-Since 0.1.141 the repo also ships **Tier 2** of the Obsidian integration: a read-only
+Since 0.1.141 the repo also ships **Tier 2** of the Obsidian integration: an
 Obsidian community plugin in the top-level `obsidian-plugin/` folder (TypeScript +
 esbuild, own npm package and CI job `obsidian_plugin.yml` — not part of the Flutter
 build). It renders `besttodo_tasks.json` as a custom `ItemView` (ribbon icon /
-"Open task view" command): the six home buckets, disabled checkbox + title + `📅` due
+"Open task view" command): the six home buckets, checkbox + title + `📅` due
 date (sentinel omitted) + `✅` completion date + `🔁` recurring marker, label chip and a
 generic `📁 project` chip (the sync file carries no project names), open-first/ranking
 order, plus an "as of …" line showing `synced_at` + app version. It re-reads on
@@ -827,8 +827,35 @@ Obsidian's file-change events (safe because the app's write is atomic), refuses 
 `Task.fromJson`. The contract lives in the pure module `obsidian-plugin/src/model.ts`
 (mirrors `ItemViews.inHomeBucket`, `sortTasks`, `Task.fromJson`) and is pinned by jest
 tests (`obsidian-plugin/test/model.test.ts`) mirroring `test/sync/sync_markdown_test
-.dart`. Strictly a viewer — it never writes. Tier 3 (two-way via a change journal)
-remains designed-only in `.claude/notes/obsidian-integration.md`.
+.dart`.
+
+Since 0.1.235 the repo also ships **Tier 3**: two-way sync via a change journal, so
+checking a task off (or back on) in Obsidian flows back to the phone. The plugin's
+checkbox is no longer disabled — a tap appends a `complete`/`reopen` operation to
+`besttodo_changes.json`, written next to the sync file (`BestToDoPlugin.appendChangeOp`,
+`obsidian-plugin/src/main.ts`), instead of editing `besttodo_tasks.json`/`.md`
+directly (the app overwrites both on every sync, so a direct edit would be clobbered).
+The view updates optimistically and shows a "syncing…" chip on the task
+(`BestToDoView.pending` in `obsidian-plugin/src/view.ts`) until a subsequent
+file-change event confirms the app picked up the change.
+
+On the app side, `SyncService.onLifecycleChanged` triggers `SyncImportService
+.importPending()` (`lib/services/sync_import_service.dart`) on every **resume** —
+the mirror of the quit-time sync trigger. It reads `besttodo_changes.json`, applies
+ops by `uid` with last-writer-wins conflict rules (idempotent/monotonic
+`complete`/`reopen` against `Task.completedAt`; date-field `edit`s arbitrated against
+`Task.rescheduledAt`; `delete` as a `Task.deletedAt` tombstone, never a hard delete;
+`create` idempotent by the `uid` it brings), truncates the journal to an empty
+envelope (never deletes the file), and re-runs `SyncService.syncNow` so both sides
+converge. Failures (malformed journal, unknown `journal_version`, folder gone) land as
+red entries in the same App Logs "Sync" history as a regular sync
+(`SyncService.recordEntry`), never as an exception — same fail-soft contract as the
+rest of synced mode. The op vocabulary also carries `edit`/`create`/`delete` for a
+future richer write surface; only the checkbox (`complete`/`reopen`) is wired up on the
+plugin side today. Conflict rules and failure-mode rationale are recorded in
+`.claude/notes/obsidian-integration.md`; tests: `test/sync/sync_import_service_test
+.dart` (Dart) and the "change journal" describe block in `obsidian-plugin/test/model
+.test.ts` (TypeScript).
 
 **Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
 forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first

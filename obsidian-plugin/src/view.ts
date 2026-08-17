@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
 import {
   SECTION_TITLES,
   SyncContractError,
@@ -8,19 +8,33 @@ import {
   formatDate,
   formatDateTime,
   isFutureSentinel,
+  makeToggleOp,
 } from "./model";
 import type BestToDoPlugin from "./main";
 
 export const VIEW_TYPE_BESTTODO = "besttodo-tasks";
 
 /**
- * The read-only task view: the six home buckets, checkbox + title + due
- * date, label/project chips, open-first ordering, and an "as of …" line so
- * the user can see how fresh the data is (the file only updates when the
- * app is backgrounded). It never writes anything — checkboxes are disabled.
+ * The task view: the six home buckets, checkbox + title + due date,
+ * label/project chips, open-first ordering, and an "as of …" line so the
+ * user can see how fresh the data is (the file only updates when the app is
+ * backgrounded). Tier 2 was strictly read-only; Tier 3 makes the checkbox
+ * live — a tap appends a complete/reopen op to the change journal, updates
+ * the view optimistically, and shows a "syncing…" chip until a refreshed
+ * `besttodo_tasks.json` confirms the app picked it up (on its next resume).
  */
 export class BestToDoView extends ItemView {
   private plugin: BestToDoPlugin;
+
+  /** uid → the isDone value a checkbox tap is waiting to see confirmed by a
+   * fresh read of the sync file. Cleared once the file agrees, so a pending
+   * marker never outlives its own op. */
+  private pending = new Map<string, boolean>();
+
+  /** The last successfully parsed sync file, so a checkbox tap can
+   * re-render optimistically without waiting on a fresh (and, right after
+   * the tap, still stale) read of besttodo_tasks.json. */
+  private lastFile: SyncFile | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: BestToDoPlugin) {
     super(leaf);
@@ -55,6 +69,15 @@ export class BestToDoView extends ItemView {
     } catch (error) {
       this.renderError(container, error);
       return;
+    }
+    this.lastFile = file;
+    // A pending tap is confirmed once the freshly read file agrees with it;
+    // an unconfirmed one (the app hasn't resumed yet) keeps its "syncing…"
+    // marker across this refresh.
+    for (const task of file.tasks) {
+      if (this.pending.get(task.uid) === task.isDone) {
+        this.pending.delete(task.uid);
+      }
     }
     this.renderFile(container, file);
   }
@@ -115,19 +138,31 @@ export class BestToDoView extends ItemView {
   }
 
   private renderTask(list: HTMLElement, task: SyncTask): void {
+    const isPending = this.pending.has(task.uid);
+    const effectiveDone = isPending ? this.pending.get(task.uid)! : task.isDone;
     const row = list.createEl("div", {
-      cls: task.isDone ? "besttodo-task is-done" : "besttodo-task",
+      cls: effectiveDone ? "besttodo-task is-done" : "besttodo-task",
     });
     const checkbox = row.createEl("input", {
       cls: "besttodo-checkbox",
       type: "checkbox",
     });
-    checkbox.checked = task.isDone;
-    // Strictly a viewer (Tier 2): the checkbox is state, not a control.
-    checkbox.disabled = true;
+    checkbox.checked = effectiveDone;
+    // A tap already in flight can't be retapped until it's confirmed —
+    // avoids appending a second, redundant op for the same toggle.
+    checkbox.disabled = isPending;
+    checkbox.addEventListener("change", () => {
+      void this.toggleTask(task);
+    });
 
     const body = row.createEl("div", { cls: "besttodo-task-body" });
     body.createEl("span", { cls: "besttodo-title", text: task.title });
+    if (isPending) {
+      body.createEl("span", {
+        cls: "besttodo-chip besttodo-pending",
+        text: "syncing…",
+      });
+    }
 
     const due = task.dueDate;
     if (due !== null && !isFutureSentinel(due)) {
@@ -157,6 +192,34 @@ export class BestToDoView extends ItemView {
       });
       chip.setAttribute("title", task.projectId);
     }
+  }
+
+  /** Appends the checkbox's op to the change journal, marks the task
+   * pending, and re-renders immediately from the last known file — the sync
+   * file itself won't reflect the change until the app next resumes. Reverts
+   * on failure (journal folder gone, vault write denied) with a Notice. */
+  private async toggleTask(task: SyncTask): Promise<void> {
+    this.pending.set(task.uid, !task.isDone);
+    this.renderFromCache();
+    try {
+      await this.plugin.appendChangeOp(makeToggleOp(task, new Date()));
+    } catch (error) {
+      this.pending.delete(task.uid);
+      this.renderFromCache();
+      new Notice(
+        `Could not record the change: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  private renderFromCache(): void {
+    if (this.lastFile === null) return;
+    const container = this.contentEl;
+    container.empty();
+    container.addClass("besttodo-view");
+    this.renderFile(container, this.lastFile);
   }
 
   async onClose(): Promise<void> {
