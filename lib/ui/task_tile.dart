@@ -20,6 +20,22 @@ class _WeekdaySwipeOption {
   const _WeekdaySwipeOption(this.label, this.weekday);
 }
 
+/// One entry of the Notify bell's delay sheet. [label] doubles as the "in …"
+/// part of the confirmation snackbar.
+class _NotifyDelayOption {
+  final String label;
+  final int seconds;
+
+  const _NotifyDelayOption(this.label, this.seconds);
+}
+
+/// Quick delays offered by the Notify bell, next to the configured default.
+const _notifyDelayOptions = <_NotifyDelayOption>[
+  _NotifyDelayOption('5 minutes', 5 * 60),
+  _NotifyDelayOption('20 minutes', 20 * 60),
+  _NotifyDelayOption('1 hour', 60 * 60),
+];
+
 const _deleteSwipeWeekdayOptions = <_WeekdaySwipeOption>[
   _WeekdaySwipeOption('Fri', DateTime.friday),
   _WeekdaySwipeOption('Sat', DateTime.saturday),
@@ -232,6 +248,17 @@ class _TaskTileState extends State<TaskTile>
     if (start == true) widget.onStartTimer?.call();
   }
 
+  /// "in 05:00" for the configured default delay, so the sheet's last entry
+  /// shows what tapping it will do.
+  String _clockDelay(int seconds) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final rest = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$rest';
+  }
+
+  /// The Notify bell: asks *when* first. Picking 5 / 20 / 60 minutes reminds
+  /// about this task later without touching its due date; the last entry keeps
+  /// the one-tap behaviour of the configured default delay.
   Future<void> _sendTaskNotification() async {
     if (!Config.enableNotifications) {
       if (!mounted) return;
@@ -240,16 +267,56 @@ class _TaskTileState extends State<TaskTile>
       );
       return;
     }
-    final delaySeconds = Config.defaultNotificationDelaySeconds;
+    final defaultSeconds = Config.defaultNotificationDelaySeconds;
+    final picked = await showModalBottomSheet<_NotifyDelayOption>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Notify me about "${widget.task.title}"',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(sheetContext)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            for (final option in _notifyDelayOptions)
+              ListTile(
+                leading: const Icon(Icons.notifications_none),
+                title: Text('In ${option.label}'),
+                onTap: () => Navigator.of(sheetContext).pop(option),
+              ),
+            ListTile(
+              leading: const Icon(Icons.schedule),
+              title: const Text('Default delay'),
+              subtitle: Text(defaultSeconds == 0
+                  ? 'Right away'
+                  : 'In ${_clockDelay(defaultSeconds)} — set in Settings'),
+              onTap: () => Navigator.of(sheetContext).pop(
+                _NotifyDelayOption(_clockDelay(defaultSeconds), defaultSeconds),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
     final sent = await NotificationService.showTaskNotification(
       widget.task.title,
-      delaySeconds: delaySeconds,
+      delaySeconds: picked.seconds,
     );
     if (!mounted) return;
     if (sent) {
-      final minutes = (delaySeconds ~/ 60).toString().padLeft(2, '0');
-      final seconds = (delaySeconds % 60).toString().padLeft(2, '0');
-      final when = delaySeconds == 0 ? 'now' : 'in $minutes:$seconds';
+      final when = picked.seconds == 0 ? 'now' : 'in ${picked.label}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Notification scheduled $when')),
       );

@@ -371,6 +371,17 @@ class Config {
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
 
+  /// Value of [defaultAddTabIndex] meaning "whichever tab is open".
+  static const int addToCurrentTab = -1;
+
+  /// Which home tab a task typed into the add-task row lands in:
+  /// [addToCurrentTab] (the default) files it under the tab you are looking
+  /// at, an index into [tabs] pins every quick-added task to that bucket — so
+  /// an idea typed while Today is open can still go straight to Future. The
+  /// schedule view's active day beats this, because there the day is picked
+  /// explicitly.
+  static int defaultAddTabIndex = addToCurrentTab;
+
   /// If true, times are displayed and picked in 24-hour notation.
   static bool use24HourFormat = true;
 
@@ -449,6 +460,7 @@ class Config {
       'showWidgetProgressLine': showWidgetProgressLine,
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
+      'defaultAddTabIndex': defaultAddTabIndex,
       'use24HourFormat': use24HourFormat,
       'dateFormat': dateFormat,
       'defaultDelaySeconds': defaultDelaySeconds,
@@ -504,6 +516,10 @@ class Config {
         data['showWidgetProgressLine'] ?? showWidgetProgressLine;
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    defaultAddTabIndex = (data['defaultAddTabIndex'] as num?)
+            ?.round()
+            .clamp(addToCurrentTab, tabs.length - 1) ??
+        defaultAddTabIndex;
     use24HourFormat = data['use24HourFormat'] ?? use24HourFormat;
     final savedDateFormat = data['dateFormat'] as String?;
     if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {

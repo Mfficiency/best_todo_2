@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.233] - 2026-08-17
+- The menu now opens with a Home entry: it closes whatever tool page you are on, clears an active search and takes you back to your start tab
+- New tasks no longer have to land in the list you happen to be looking at: Settings → Tasks → "New tasks go to" pins them to one bucket (Today, Future, …), so an idea typed on Today can go straight to Future. The add row then names its target ("Add task · Future") so nothing disappears unexpectedly; the schedule view still adds to the day you highlighted
+- The Notify bell on an opened task now asks when: in 5 minutes, 20 minutes, 1 hour, or the default delay from Settings. It only reminds you — the task's own due date stays where it is
+- Three more wishlist items tick themselves off with this release: "add home to menu", "Default due bucket" and "have a way to sent a notification about that item in 5- 20 or 60 minutes"
+
 ## [0.1.232] - 2026-08-17
 - Wishlist items now have permanent ids, so the app can tick them off itself: when a feature from the wishlist is actually built, the matching item completes on next launch, gets an "autocompleted" tag and a note saying which release delivered it — twelve already-built ideas (calendar view, Chronize, the Wishlist tab, Productivity Stats, Startup Times, simple/pro mode, the GitHub build and test workflows, the screenshot tests) are ticked off in this release
 - Wishes you added yourself can be ticked off the same way, not just the ones imported from the old backlog — "autodetect URLs and make clickable" is the first, completed by the clickable links that landed in v0.1.148

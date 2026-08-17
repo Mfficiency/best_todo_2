@@ -286,7 +286,14 @@ order, clamped 23:59) so same-day tasks never share a time. Chronize sets
 `hasExplicitTime = true` to opt out.
 
 **Adding:** add-task row at the top of each list; new tasks go to the top (ranking min−1)
-by default (`Config.addNewTasksToTop`, default true).
+by default (`Config.addNewTasksToTop`, default true). Which *bucket* they land in is
+`Config.defaultAddTabIndex` (0.1.233): `addToCurrentTab` (−1, the default) files them under
+the open tab, an index 0–5 pins every quick-added task to that bucket, so an idea typed
+while Today is open can go straight to Future. `_addTargetTabIndex()` resolves it (falling
+back to the open tab for an out-of-range value) and the add row's label names the target
+whenever it is not simply the list you are looking at — "Add task · Future" — because a
+task silently appearing in another tab reads as a bug. The schedule view's active day still
+wins over the pinned bucket (there the day is picked explicitly).
 
 **Swipe gestures** (the heart of the app):
 - Android/web: custom `GestureDetector` swipe in `TaskTile` (threshold 100 px or velocity
@@ -313,9 +320,18 @@ Moving/rescheduling a child detaches it (clears parent linkage). Regenerated aft
 import, and any parent edit.
 
 **Inline editing:** tapping a tile expands it — title/description/note/label fields,
-due-date picker, recurring switch (+interval/end for parents), a Notify bell (schedules a
-task notification after `defaultNotificationDelaySeconds`), collapse button. Edits persist
-on change/focus loss.
+due-date picker, recurring switch (+interval/end for parents), a Notify bell, collapse
+button. Edits persist on change/focus loss.
+
+**Notify bell (delay sheet 0.1.233):** the bell asks *when* first — a modal sheet headed
+`Notify me about "<title>"` offering In 5 minutes / In 20 minutes / In 1 hour
+(`_notifyDelayOptions`) plus "Default delay", which keeps the old behaviour of
+`Config.defaultNotificationDelaySeconds` and shows it as `In 05:00 — set in Settings`.
+Picking one schedules a task notification (quiet hours still shift it, see §6) and
+confirms with "Notification scheduled in 5 minutes"; dismissing the sheet schedules
+nothing. The task's due date is never touched — this is a reminder, not a reschedule.
+With notifications off the bell skips the sheet and shows "Enable notifications in
+Settings first".
 
 **Schedule view:** app-bar toggle swaps the tabbed lists for one long day-grouped list
 (`ScheduleView`); tabs become scroll anchors; overdue rolls up under Today; each day
@@ -336,9 +352,13 @@ offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback
 build; sections scrolled out of view are unmounted, which is fine because the section
 spanning the top is always attached.
 
-**Drawer:** Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
+**Drawer:** Home, Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
 Tools ▸ (Alarms, Countdown, Wishlist, Projects, Chronize, Productivity Stats,
-Usage Data, Test Results).
+Usage Data, Test Results). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
+the home route, clear an active search, and return to the start tab
+(`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
+schedule-view feature is on) — so it always lands on the same familiar screen rather than
+just closing the drawer.
 
 **CI test report (0.1.96, moved to Tools + online in 0.1.99):** CI runs the tests and
 serializes the run into `assets/test_report.json` via `tool/generate_test_report.dart`
@@ -534,7 +554,8 @@ backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with d
 mode), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
 marks the home hamburger icon while the newest test run has unacknowledged failures,
 see §4.3), 24-hour time (default on), date format (6 choices,
-default `dd.MM.yy`). Tasks: add-to-top, swipe-left-delete, default delay 0–10 s slider,
+default `dd.MM.yy`). Tasks: add-to-top, "New tasks go to" (`defaultAddTabIndex`, default
+"Current tab", see §4.3), swipe-left-delete, default delay 0–10 s slider,
 start tab (simple mode hides the tool-related entries, see §4.6), default start page
 (`startTool`: the task list or any enabled tool — Alarms, Countdown,
 Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
@@ -1475,7 +1496,12 @@ per-feature hiding of drawer tools and app-bar actions, the mode
 picker storing and persisting its choice, `isFeatureEnabled` semantics + `features`
 round-trip, and the Settings side (feature switches searchable, feature-owned sections
 disappearing, the simple-mode switch persisting). Both suites restore `Config` in
-`tearDown` — the flags are global statics. Widget tests that
+`tearDown` — the flags are global statics. Quick-add & reminders (0.1.233,
+`test/home/home_default_add_bucket_test.dart`, `home_drawer_home_entry_test.dart`,
+`task_tile_notify_delay_test.dart`): the default bucket (open tab by default, a pinned
+Future bucket labelling the add row and persisting the 2300 sentinel), the drawer's Home
+entry (search dropped, start tab restored) and the Notify bell's delay sheet (the four
+options, dismissal scheduling nothing, the notifications-off path). Widget tests that
 touch persistence use a `_FakePathProvider` + temp dir. Caveat: real file I/O awaited
 inside `testWidgets` hangs until the 10-min per-test timeout (the fake-async zone never
 services dart:io completions — locally and on CI) — such tests wrap I/O in

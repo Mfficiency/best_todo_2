@@ -116,6 +116,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry(
         'Show the mode picker again', 1, 'simple full first start choose'),
     _SettingsSearchEntry('Add new tasks at top', 2, 'bottom order insert'),
+    _SettingsSearchEntry('New tasks go to', 2,
+        'default list bucket target tab today future someday quick add'),
     _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
     _SettingsSearchEntry('Default delay', 2, 'undo seconds snackbar'),
     _SettingsSearchEntry('Start page', 2, 'tab launch open today'),
@@ -190,6 +192,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
+  int _defaultAddTabIndex = Config.defaultAddTabIndex;
   bool _use24HourFormat = Config.use24HourFormat;
   String _dateFormat = Config.dateFormat;
   int _startTabIndex = Config.startTabIndex;
@@ -225,6 +228,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
+    _defaultAddTabIndex = Config.defaultAddTabIndex;
     _use24HourFormat = Config.use24HourFormat;
     _dateFormat = Config.dateFormat;
     _startTabIndex = Config.startTabIndex;
@@ -1816,6 +1820,39 @@ class _SettingsPageState extends State<SettingsPage> {
                           await Config.save();
                           widget.onSettingsChanged?.call();
                         },
+                      ),
+                      ListTile(
+                        title: const Text('New tasks go to'),
+                        subtitle: const Text(
+                            'Which list a task typed in the add row lands in '
+                            '(the schedule view still uses its active day)'),
+                        trailing: DropdownButton<int>(
+                          value: _defaultAddTabIndex,
+                          items: [
+                            const DropdownMenuItem<int>(
+                              value: Config.addToCurrentTab,
+                              child: Text('Current tab'),
+                            ),
+                            for (var index = 0;
+                                index < Config.tabs.length;
+                                index++)
+                              DropdownMenuItem<int>(
+                                value: index,
+                                child: Text(
+                                  Config.tabs[index]
+                                      .replaceAll('\n', ' ')
+                                      .trim(),
+                                ),
+                              ),
+                          ],
+                          onChanged: (val) async {
+                            if (val == null) return;
+                            setState(() => _defaultAddTabIndex = val);
+                            Config.defaultAddTabIndex = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
                       ),
                       SwitchListTile(
                         title: const Text('Swipe left to delete'),

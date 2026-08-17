@@ -25,6 +25,7 @@ void main() {
     Config.useIconTabs = true;
     Config.enableNotifications = true;
     Config.addNewTasksToTop = true;
+    Config.defaultAddTabIndex = 5;
     Config.defaultDelaySeconds = 7.5;
     Config.use24HourFormat = false;
     Config.dateFormat = 'yyyy-MM-dd';
@@ -39,6 +40,7 @@ void main() {
     Config.useIconTabs = false;
     Config.enableNotifications = false;
     Config.addNewTasksToTop = false;
+    Config.defaultAddTabIndex = Config.addToCurrentTab;
     Config.defaultDelaySeconds = 5.0;
     Config.use24HourFormat = true;
     Config.dateFormat = Config.dateFormats.first;
@@ -53,14 +55,32 @@ void main() {
     expect(Config.useIconTabs, isTrue);
     expect(Config.enableNotifications, isTrue);
     expect(Config.addNewTasksToTop, isTrue);
+    expect(Config.defaultAddTabIndex, 5);
     expect(Config.defaultDelaySeconds, 7.5);
     expect(Config.use24HourFormat, isFalse);
     expect(Config.dateFormat, 'yyyy-MM-dd');
     expect(Config.startTool, 'productivity_stats');
     expect(Config.showFailureDotOnMenu, isTrue);
 
-    // Restore the default (off) so other tests see a clean config.
+    // Restore the defaults so other tests see a clean config.
     Config.showFailureDotOnMenu = false;
+    Config.defaultAddTabIndex = Config.addToCurrentTab;
+  });
+
+  test('out-of-range default add buckets are clamped on load', () {
+    Config.applyMap({'defaultAddTabIndex': 99});
+    expect(Config.defaultAddTabIndex, Config.tabs.length - 1);
+
+    Config.applyMap({'defaultAddTabIndex': -7});
+    expect(Config.defaultAddTabIndex, Config.addToCurrentTab);
+
+    // Settings written before the option existed keep the current value.
+    Config.defaultAddTabIndex = 2;
+    Config.applyMap({});
+    expect(Config.defaultAddTabIndex, 2);
+
+    // Restore the default so other tests see a clean config.
+    Config.defaultAddTabIndex = Config.addToCurrentTab;
   });
 
   test('unknown startTool values are ignored on load', () {

@@ -75,6 +75,13 @@ const List<ShippedWish> shippedWishes = <ShippedWish>[
   // so they match on that install only).
   ShippedWish('0a534906-5444-4b9d-a8d2-ddb9f114bb96', '0.1.232',
       'Built in v0.1.148: LinkifiedText auto-detects http/https URLs (no manual marking) and makes them tappable on every item surface — home tile title and description, task detail, wishlist, projects, board cards, deleted items, Chronize.'),
+  // 0.1.233 — built for this release.
+  ShippedWish('wish-home-in-menu', '0.1.233',
+      'Built: the drawer opens with a Home entry that closes any tool page, drops an active search and returns to the start tab (SPEC 4.3).'),
+  ShippedWish('wish-default-due-bucket', '0.1.233',
+      'Built: Settings → Tasks → "New tasks go to" pins quick-added tasks to a list; the add row names the target (SPEC 4.3).'),
+  ShippedWish('wish-quick-item-reminder', '0.1.233',
+      'Built: the Notify bell on an expanded task asks when — in 5 minutes, 20 minutes, 1 hour, or the default delay (SPEC 4.3).'),
 ];
 
 /// The registry keyed by uid.

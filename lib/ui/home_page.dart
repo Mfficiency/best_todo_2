@@ -1210,13 +1210,23 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  /// Tab a task typed into the add-task row belongs to: the bucket pinned in
+  /// Settings ("New tasks go to"), or the tab currently open when that is left
+  /// at "Current tab".
+  int _addTargetTabIndex() {
+    final pinned = Config.defaultAddTabIndex;
+    if (pinned < 0 || pinned >= Config.tabs.length) return _tabController.index;
+    return pinned;
+  }
+
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
     // In schedule view new tasks land on the highlighted (active) day; in
-    // list mode they go to the current tab's bucket.
+    // list mode they go to the default bucket (the current tab unless one is
+    // pinned in Settings).
     final dueDate = _scheduleView && _scheduleActiveDate != null
         ? _scheduleActiveDate!
-        : _dueDateForTab(_tabController.index);
+        : _dueDateForTab(_addTargetTabIndex());
     final rankingTabIndex = _tabIndexForDueDate(dueDate);
     final task = Task(
       title: title,
@@ -1616,6 +1626,27 @@ class _HomePageState extends State<HomePage>
     _saveTasks();
     LogService.add('HomePage._postponeTaskFromDice',
         'Postponed "${task.title}" to tomorrow');
+  }
+
+  /// The drawer's Home entry: back to the start screen. Any tool or subpage
+  /// stacked on top of the home page is popped, an active search is dropped
+  /// and the list returns to the tab (and view) the app opens on, so "Home"
+  /// always lands on the same familiar screen.
+  void _goHome() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    setState(() {
+      if (_searchQuery.isNotEmpty) {
+        _searchController.clear();
+        _searchQuery = '';
+      }
+      _scheduleView = Config.isFeatureEnabled('schedule_view') &&
+          Config.startInScheduleView;
+    });
+    final startTab = Config.startTabIndex.clamp(0, Config.tabs.length - 1);
+    if (_tabController.index != startTab) {
+      _tabController.animateTo(startTab);
+    }
+    LogService.add('HomePage._goHome', 'Returned to the home screen');
   }
 
   void _updateSettings() {
@@ -2079,9 +2110,19 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildAddTaskRow() {
     final activeDate = _scheduleView ? _scheduleActiveDate : null;
-    final label = activeDate == null
-        ? 'Add task'
-        : 'Add task · ${_scheduleDayLabel(activeDate)}';
+    // The label names the target whenever it is not simply "the list you are
+    // looking at": the schedule view's active day, or the bucket pinned in
+    // Settings — otherwise a task typed in Today would silently appear in
+    // another tab.
+    final pinnedTab =
+        activeDate == null && Config.defaultAddTabIndex != Config.addToCurrentTab
+            ? _addTargetTabIndex()
+            : null;
+    final label = activeDate != null
+        ? 'Add task · ${_scheduleDayLabel(activeDate)}'
+        : pinnedTab != null
+            ? 'Add task · ${Config.tabs[pinnedTab].replaceAll('\n', ' ').trim()}'
+            : 'Add task';
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
@@ -2270,6 +2311,14 @@ class _HomePageState extends State<HomePage>
                   fontSize: 18,
                 ),
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.home),
+              title: const Text('Home'),
+              onTap: () {
+                Navigator.pop(context);
+                _goHome();
+              },
             ),
             ListTile(
               leading: const Icon(Icons.settings),

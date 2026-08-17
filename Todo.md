@@ -20,18 +20,15 @@
 
 - Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
 - Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).
-- Default due bucket: When creating a task quickly, choose default target list (Today vs Future).
 - Confirmation toggles: Per-action confirmations: delete, clear completed, move all.
 - Sort mode per list: Manual only vs by created time / priority / due date.
 - Settings onepager, click on top tabs to scroll down
 - improve integration test with screenshots
 - improve recurring tasks
-- add home to menu
 - on the start screen, have 3 buttons, populate with example data or start fresh or import previous data
 - 1 working automatic test when building or pushing
 - add a simplified mode
 - delete all, select before delete
-- have a way to sent a notification about that item in 5- 20 or 60 minutes
 - extra stats, when is the most productive day. When is the most productive time? When is the time where I plan the most? Which day do I postpone the most? All those kinds of variants 
 - add an advanced mode switch in the menu that hides a lot of the settings for the non-advanced users.
 - settings for green progress bar to be green when 3 or less tasks are left, orange when 4 tasks are left and red when 5 or more tasks are left. to change the colors and the thresholds.
@@ -41,6 +38,9 @@
 - add a language selection somewhere.
 
 ### DONE
+- add home to menu
+- Default due bucket: When creating a task quickly, choose default target list (Today vs Future).
+- have a way to sent a notification about that item in 5- 20 or 60 minutes
 - cancel swipe, when you swiped one way you can cancel the action by swiping the other way
 - Notification quiet hours: Suppress notifications in a time range, plus weekday/weekend override.
 - Start page: Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
