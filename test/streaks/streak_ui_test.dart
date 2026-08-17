@@ -351,6 +351,61 @@ void main() {
     expect(find.byTooltip('Create a task: no streak yet'), findsOneWidget);
   });
 
+  testWidgets('a day still open keeps the flame grey and pulsing white',
+      (tester) async {
+    // The pulse is a repeating animation — off under the test binding for the
+    // same reason the cycle is, so ask for it explicitly and pump frames.
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    Config.streakKindEnabled['create'] = false;
+    Config.streakKindEnabled['plan'] = false;
+    // Yesterday counted, today has not happened yet.
+    await tester.runAsync(() => seedStreakFile({dayKeyAgo(1): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Row(children: [StreakFlameButton()])),
+    ));
+    await tester.pump();
+
+    expect(find.byTooltip('Finish a task: 1-day streak — still open today'),
+        findsOneWidget);
+    // Unlit: the outlined flame in the theme's disabled grey...
+    expect(find.byIcon(Icons.local_fire_department_outlined), findsOneWidget);
+    Color flameColor() => tester
+        .widget<Icon>(find.byIcon(Icons.local_fire_department_outlined))
+        .color!;
+    final grey = flameColor();
+    expect(grey, ThemeData().disabledColor);
+
+    // ...that breathes towards white and back.
+    await tester.pump(StreakFlameButton.pulseInterval ~/ 2);
+    final lit = flameColor();
+    expect(lit.computeLuminance(), greaterThan(grey.computeLuminance()));
+
+    // Another one and a half breaths lands back at the start of the cycle.
+    await tester.pump(StreakFlameButton.pulseInterval * 3 ~/ 2);
+    expect(flameColor().computeLuminance(), lessThan(lit.computeLuminance()));
+  });
+
+  testWidgets('doing the day\'s action lights the greyed-out flame',
+      (tester) async {
+    await pumpHome(
+      tester,
+      [Task(title: 'Solo task', dueDate: DateTime.now())],
+      streak: {dayKeyAgo(1): 1},
+    );
+
+    expect(find.byIcon(Icons.local_fire_department_outlined), findsOneWidget);
+    await tester.tap(find.byType(Checkbox).first);
+    await settleIo(tester);
+
+    expect(find.byTooltip('Finish a task: 2-day streak'), findsOneWidget);
+    expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
+    expect(tester.widget<Icon>(find.byIcon(Icons.local_fire_department)).color,
+        isNot(ThemeData().disabledColor));
+  });
+
   testWidgets('adding a task keeps the create streak', (tester) async {
     await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
     expect(

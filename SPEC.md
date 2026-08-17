@@ -580,12 +580,17 @@ directly left of the dice (`ListenableBuilder` on the service; hidden when
 `Config.showStreak` is false or every challenge is switched off). It **cycles** through
 the active challenges every 2.4 s (`Timer.periodic` + `AnimatedSwitcher` fade/scale keyed
 by kind), showing that kind's colour, `Badge` count and tooltip ("Finish a task: 3-day
-streak" / "Create a task: no streak yet"); the icon grows 22→30 px with progress and is
-outlined + grey while the streak is 0. Tapping opens `StreakPage` on the kind currently
-shown. **The cycle is disabled under the test bindings** (a repeating timer means
-`pumpAndSettle` never settles, and it also keeps screenshot runs deterministic) — the
-check is `WidgetsBinding.instance.runtimeType` containing "Test";
-`StreakFlameButton.debugForceCycle` re-enables it for the test that covers the cycling.
+streak" / "Create a task: no streak yet"); the icon grows 22→30 px with progress.
+**Unlit until the day is done (0.1.229):** the flame burns in the kind's colour only when
+`isDayDone(today, kind:)` — a streak still riding on yesterday (or on the grace day) shows
+the *outlined* icon in `theme.disabledColor`, the `Badge` (still counting the streak at
+risk) greys with it, and the tooltip gains "— still open today". That grey icon **pulses**:
+a 900 ms repeat-reverse controller lerps it grey → white and scales it 1.0 → 1.12, so an
+unfinished challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind
+currently shown. **Cycle and pulse are both disabled under the test bindings** (a repeating
+timer/animation means `pumpAndSettle` never settles, and it also keeps screenshot runs
+deterministic) — the check is `WidgetsBinding.instance.runtimeType` containing "Test";
+`StreakFlameButton.debugForceCycle` re-enables both for the tests that cover them.
 
 `StreakPage`: a `ChoiceChip` row (one mini flame per active challenge, "Finish 3") when
 more than one is on, big flickering flame in the selected kind's colour (700 ms
