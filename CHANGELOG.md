@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.230] - 2026-08-17
+- Ten of the features that went missing in the v0.1.157 revert are back, all of them re-implemented on the current code and none of them touching the widget/rendering path that the black-screen investigation is still about:
+- Dice timer: a "Cancel timer" button ends a running, paused or ringing timer and drops its alarm with it — the task is left exactly as it was, neither done nor postponed (originally v0.1.127)
+- Dice timer buttons sit in a compact grid so every control fits on one screen without scrolling (v0.1.134)
+- Double-tap a task to start a timer for it straight away; double-tapping the task whose timer is already running returns to that countdown instead of restarting it (v0.1.132)
+- Test Results now lists every test file and every test in it — pass, fail or skip, with per-test times — instead of only the totals; failing files sort to the top (v0.1.129)
+- In-app self-update: "Check for updates" on the About page downloads the newest release APK and hands it to Android's installer, no browser detour (v0.1.133)
+- Two-APK rollback: every release build stages its APK plus the previous one in `github_releases/`, so About also offers "Go back to ..." when a fresh build misbehaves (v0.1.146)
+- Opt-in red dot on the menu icon when the latest test run failed, off by default and self-clearing once you have opened Test Results (v0.1.137)
+- Settings → Sync & export got a "Sync now" tile showing the time and task count of the last sync; URLs in wishlist items and task descriptions are clickable; the wishlist dialog puts labels and quick-priority right under the title, description last (v0.1.148)
+- Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
+- Fix: "Check for updates" needs the Android INTERNET permission, which release builds did not declare — debug builds get it for free, which is why this only ever failed on a real release APK (v0.1.139)
+- **Still missing versus the old `dev` tip (v0.1.156)**, each a real, already-designed feature waiting on the widget black-screen investigation or on its own port:
+  - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
+  - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
+  - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
+
 ## [0.1.229] - 2026-08-17
 - Streak flame: a challenge you have not done yet today stays grey and outlined and pulses white, so an unfinished day catches the eye.
 

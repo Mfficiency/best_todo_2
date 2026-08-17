@@ -8,6 +8,7 @@ import '../services/item_repository.dart';
 import '../services/label_service.dart';
 import '../services/reminder_sync_service.dart';
 import '../utils/label_utils.dart';
+import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 
 class TaskDetailPage extends StatelessWidget {
@@ -41,11 +42,11 @@ class TaskDetailPage extends StatelessWidget {
           ),
           if (task.description.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(task.description),
+            LinkifiedText(task.description),
           ],
           if (task.note.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('Note: ${task.note}'),
+            LinkifiedText('Note: ${task.note}'),
           ],
           if (task.label.isNotEmpty) ...[
             const SizedBox(height: 8),

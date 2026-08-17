@@ -12,6 +12,7 @@ import '../config.dart';
 import '../models/task.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
+import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 
 /// Priority labels a wishlist item can carry inside [Task.label], ordered
@@ -413,11 +414,9 @@ class _WishEditDialogState extends State<_WishEditDialog> {
               decoration: const InputDecoration(labelText: 'Title'),
               textInputAction: TextInputAction.next,
             ),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: 3,
-            ),
+            // Labels and their priority shortcuts sit right under the title —
+            // most wishes are a title plus a priority; the description is the
+            // exception and lives at the bottom.
             TextField(
               controller: _labelController,
               decoration: const InputDecoration(
@@ -448,6 +447,12 @@ class _WishEditDialogState extends State<_WishEditDialog> {
                     child: Text(priority.replaceFirst('priority-', '')),
                   ),
               ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(labelText: 'Description'),
+              maxLines: 3,
             ),
           ],
         ),
@@ -606,7 +611,7 @@ class _WishTileState extends State<_WishTile>
               children: [
                 if (widget.item.description.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(widget.item.description),
+                  LinkifiedText(widget.item.description),
                 ],
                 if (labels.isNotEmpty) ...[
                   const SizedBox(height: 8),

@@ -230,6 +230,13 @@ class Config {
   /// If true, the app uses a dark color scheme.
   static bool darkMode = false;
 
+  /// If true, the hamburger menu icon on the home page carries a small red
+  /// dot while the newest known test run has failures the user has not looked
+  /// at yet. Off by default so the home screen stays calm; the Test Results
+  /// entry in the drawer's Tools section always shows the dot until the
+  /// results are opened.
+  static bool showFailureDotOnMenu = false;
+
   /// If true, the app uses the minimalist look: a monochrome ink-on-paper
   /// theme with no accent colours, flat surfaces and underlines instead of
   /// filled highlights. Combines with [darkMode] for a dark monochrome look.
@@ -430,6 +437,7 @@ class Config {
     return {
       'swipeLeftDelete': swipeLeftDelete,
       'darkMode': darkMode,
+      'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
       'enableNotifications': enableNotifications,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
@@ -474,6 +482,8 @@ class Config {
   static void applyMap(Map<String, dynamic> data) {
     swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
     darkMode = data['darkMode'] ?? darkMode;
+    showFailureDotOnMenu =
+        data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     defaultNotificationDelaySeconds =
