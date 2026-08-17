@@ -1,0 +1,71 @@
+/* BestToDo Tasks — read-only task view */
+
+.besttodo-view {
+  padding: var(--size-4-2);
+}
+
+.besttodo-header {
+  margin-bottom: var(--size-4-3);
+}
+
+.besttodo-counts {
+  font-weight: var(--font-semibold);
+}
+
+.besttodo-synced-at {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.besttodo-section-title {
+  margin: var(--size-4-3) 0 var(--size-4-1) 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: var(--size-2-1);
+}
+
+.besttodo-task {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+  padding: var(--size-2-1) 0;
+}
+
+.besttodo-task.is-done .besttodo-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.besttodo-checkbox {
+  flex-shrink: 0;
+}
+
+.besttodo-task-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--size-2-2);
+}
+
+.besttodo-date {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.besttodo-chip {
+  background-color: var(--background-modifier-hover);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 0 var(--size-2-2);
+  white-space: nowrap;
+}
+
+.besttodo-error,
+.besttodo-empty {
+  color: var(--text-muted);
+}
+
+.besttodo-error {
+  color: var(--text-error);
+}

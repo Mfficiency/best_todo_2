@@ -1,36 +1,22 @@
 ## After MVP
 ### TODO
-- add a setting to enable or disable people you are sending it to, so you dont just have to delete  there number
 - full testing suite, only merge if all test are complete
-- calendar view
-- build on github: have a manual action to build the apk on github so i can work remotely
 - ios mode
 - receiving sms to send you back the task list, so if my friend sends me : "tasks" it automatically sends back todays tasks
 - send emails
 - send in app to each other
 - add more settings to controll the days of the week on the swiping motion and different icons and the cancel color etc
 - search function should also be able to show when you type a date and it should show items from the dates around it as well, it should prioritize the tiltel but also look in the description
-- have extra function for the countdown timer "when is"
-  - this will show you the closest round numbers, when they fall and the option to send you a reminder
-- add another tool just as a test the "chronize" tool
-  - it list all the tasks from the task list but on a 24hr calendar view and on the right hand side you have 3 sliders, one for the hour, day and month, so you can scroll the list for fine detail, hour roller for going 3 days in one top to bottom scroll, 15 days in a top to bottom scroll and 12 months in a top to bottom scroll.
 - add a sync function with google calendars
 - add clever filter functions to sort and filter all the timers and events
 - add optional week numbers to the date selectors everythere
 
-- Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
 - Auto-delete completed tasks: Optional cleanup rule (e.g., after 7/30 days).
 - Confirmation toggles: Per-action confirmations: delete, clear completed, move all.
 - Sort mode per list: Manual only vs by created time / priority / due date.
-- Settings onepager, click on top tabs to scroll down
-- improve integration test with screenshots
 - improve recurring tasks
 - on the start screen, have 3 buttons, populate with example data or start fresh or import previous data
-- 1 working automatic test when building or pushing
-- add a simplified mode
 - delete all, select before delete
-- extra stats, when is the most productive day. When is the most productive time? When is the time where I plan the most? Which day do I postpone the most? All those kinds of variants 
-- add an advanced mode switch in the menu that hides a lot of the settings for the non-advanced users.
 - settings for green progress bar to be green when 3 or less tasks are left, orange when 4 tasks are left and red when 5 or more tasks are left. to change the colors and the thresholds.
 - Make icons even bigger?
 - show in daily stats a different color if you have cleared tasks from a future date.
@@ -38,6 +24,20 @@
 - add a language selection somewhere.
 
 ### DONE
+- add a setting to enable or disable people you are sending it to, so you dont just have to delete  there number
+- calendar view
+- build on github: have a manual action to build the apk on github so i can work remotely
+- have extra function for the countdown timer "when is"
+  - this will show you the closest round numbers, when they fall and the option to send you a reminder
+- add another tool just as a test the "chronize" tool
+  - it list all the tasks from the task list but on a 24hr calendar view and on the right hand side you have 3 sliders, one for the hour, day and month, so you can scroll the list for fine detail, hour roller for going 3 days in one top to bottom scroll, 15 days in a top to bottom scroll and 12 months in a top to bottom scroll.
+- Completed task behavior: Auto-hide completed tasks after X time, or show them grouped at bottom.
+- Settings onepager, click on top tabs to scroll down
+- improve integration test with screenshots
+- 1 working automatic test when building or pushing
+- add a simplified mode
+- extra stats, when is the most productive day. When is the most productive time? When is the time where I plan the most? Which day do I postpone the most? All those kinds of variants 
+- add an advanced mode switch in the menu that hides a lot of the settings for the non-advanced users.
 - add home to menu
 - Default due bucket: When creating a task quickly, choose default target list (Today vs Future).
 - have a way to sent a notification about that item in 5- 20 or 60 minutes
@@ -52,34 +52,37 @@
 - So I want, on the page of my stats, another tab where I can just have, for each day, a graph. I want to see how many tasks I had at the beginning of the day, at the end of the day, and how many were completed at the end of the day.so it will be a vertical bar of blocks, the hight of the bar is total amount of tasks. a red block is a task that was there in the beginning of the day but moved to another date, dark green is a task that was there in the beginning of the day and got completed, dark grey is a task that was there in the beginning of the day and did not get completed. light green is a task that wasn't there in the beginning of the day (so was created during the day) and got completed, light grey is a task that wasn't there in the beginning of the day and did not get completed. so every day has the day of the month under it  
 
 ## Later
+### TODO
 - add logo in banners etc
 - link to google calendar
 - add video to youtube channel
 - add story and vision to about page
 - add to f-droid store if possible
 - add to galaxy store if possible
-- update startup times
 - web version
 - add to apple store (much later)
 - make header like google mail 2 menus with search in the middle
 - make a menu on the top right with sorting options
 - make it an option that the menu is always visible on the left but only the icons
-- add setting pro mode
-	- easy mode is default and it hides certain settings
 - filter on labels
-- complete a tab statistics
 - sliver app bar and floating
 - have selectable text everyhere
-- make a tab wishlist
 - bulk edit (also for labels)
 - encrypt the local db
 - add a web version to your own server
 - automatic backup to any cloud service
-- make calendar view
 - ask feedback sanja
 - let user chose a time for the deadline
 - daily notification of tasks due today
 - reports on what you did
+
+### DONE
+- update startup times
+- add setting pro mode
+	- easy mode is default and it hides certain settings
+- complete a tab statistics
+- make a tab wishlist
+- make calendar view
 
 ## MVP
 ### TODO
