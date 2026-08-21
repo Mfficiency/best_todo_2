@@ -6,6 +6,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
@@ -234,6 +235,23 @@ class _WishlistPageState extends State<WishlistPage> {
     );
   }
 
+  /// The plain-text form of a wishlist item put on the clipboard: the title,
+  /// then its description and labels on their own lines when it has any.
+  static String clipboardText(Task item) {
+    final lines = <String>[item.title];
+    if (item.description.trim().isNotEmpty) lines.add(item.description.trim());
+    if (item.label.trim().isNotEmpty) lines.add(item.label.trim());
+    return lines.join('\n');
+  }
+
+  Future<void> _copyItem(Task item) async {
+    await Clipboard.setData(ClipboardData(text: clipboardText(item)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Copied "${item.title}"')));
+  }
+
   List<String> _labelsFromText(String text) => text
       .split(RegExp(r'[,\s]+'))
       .map((label) => label.trim())
@@ -402,6 +420,7 @@ class _WishlistPageState extends State<WishlistPage> {
                       item: item,
                       onToggle: () => _toggleDone(item),
                       onEdit: () => _editItem(item),
+                      onCopy: () => _copyItem(item),
                       onExport: () => _exportItem(item),
                       onDelete: () => _deleteItem(item),
                       onBumpPriority: () => _bumpPriority(item),
@@ -549,6 +568,7 @@ class _WishTile extends StatefulWidget {
   final Task item;
   final VoidCallback onToggle;
   final VoidCallback onEdit;
+  final VoidCallback onCopy;
   final VoidCallback onExport;
   final VoidCallback onDelete;
   final VoidCallback onBumpPriority;
@@ -559,6 +579,7 @@ class _WishTile extends StatefulWidget {
     required this.item,
     required this.onToggle,
     required this.onEdit,
+    required this.onCopy,
     required this.onExport,
     required this.onDelete,
     required this.onBumpPriority,
@@ -707,6 +728,11 @@ class _WishTileState extends State<_WishTile>
               onPressed: widget.onDelete,
             ),
           ],
+          IconButton(
+            tooltip: 'Copy wishlist item',
+            icon: const Icon(Icons.copy_outlined),
+            onPressed: widget.onCopy,
+          ),
           IconButton(
             tooltip: 'Export wishlist item',
             icon: const Icon(Icons.ios_share_outlined),

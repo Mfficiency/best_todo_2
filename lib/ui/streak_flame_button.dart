@@ -16,6 +16,11 @@ import 'streak_page.dart';
 /// A challenge whose action has not happened yet today burns grey and outlined
 /// no matter how long the streak is, and pulses towards white so the open day
 /// catches the eye instead of blending into the app bar.
+///
+/// Once every active challenge is done for the day the cycling stops: the
+/// button settles on one steady red flame badged with the longest of the
+/// streaks, so a finished day reads at a glance instead of flickering through
+/// three identical "done" flames.
 class StreakFlameButton extends StatefulWidget {
   /// The "today" the streaks are evaluated against (the home page's dev date
   /// arrows move it).
@@ -39,6 +44,9 @@ class StreakFlameButton extends StatefulWidget {
   /// keeps the screenshot runs deterministic). The tests that cover the
   /// cycling and the pulse set this to true and pump fixed frames.
   static bool debugForceCycle = false;
+
+  /// The steady flame shown once every active challenge is done for the day.
+  static const Color allDoneColor = Color(0xFFD32F2F); // red 700
 
   @override
   State<StreakFlameButton> createState() => _StreakFlameButtonState();
@@ -136,19 +144,37 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
         // Every challenge switched off leaves nothing to show.
         if (kinds.isEmpty) return const SizedBox.shrink();
 
-        final kind = kinds[_index % kinds.length];
+        final theme = Theme.of(context);
+        final today = widget.now ?? DateTime.now();
+        // Nothing left open today: stop hopping and burn one steady red flame
+        // carrying the best of the streaks. A single active challenge keeps
+        // its own colour — there is no cycle to collapse.
+        final allDone = kinds.length > 1 &&
+            kinds.every((kind) => _streak.isDayDone(today, kind: kind));
+
+        final kind = allDone
+            ? kinds.reduce((best, kind) =>
+                _streak.currentStreak(kind: kind, now: widget.now) >
+                        _streak.currentStreak(kind: best, now: widget.now)
+                    ? kind
+                    : best)
+            : kinds[_index % kinds.length];
         final streak = _streak.currentStreak(kind: kind, now: widget.now);
         final progress = _streak.flameProgress(kind: kind, now: widget.now);
-        final theme = Theme.of(context);
-        final doneToday =
-            _streak.isDayDone(widget.now ?? DateTime.now(), kind: kind);
+        final doneToday = allDone || _streak.isDayDone(today, kind: kind);
         // The flame is only lit once today's action happened; a streak that is
         // still riding on yesterday stays grey (and pulses) until it does.
-        final color =
-            doneToday ? kind.flameColor(progress, theme) : theme.disabledColor;
+        final color = allDone
+            ? StreakFlameButton.allDoneColor
+            : doneToday
+                ? kind.flameColor(progress, theme)
+                : theme.disabledColor;
 
         return IconButton(
-          tooltip: _tooltip(kind, streak, doneToday),
+          tooltip: allDone
+              ? 'All ${kinds.length} challenges done today — '
+                  '$streak-day streak'
+              : _tooltip(kind, streak, doneToday),
           onPressed: () => _openStreakPage(kind),
           icon: AnimatedSwitcher(
             duration: const Duration(milliseconds: 350),
@@ -157,8 +183,9 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
               child: ScaleTransition(scale: animation, child: child),
             ),
             child: Badge(
-              // Keyed by challenge so the switcher cross-fades on every hop.
-              key: ValueKey(kind),
+              // Keyed by challenge so the switcher cross-fades on every hop;
+              // the all-done flame keeps one key so it never cross-fades.
+              key: allDone ? const ValueKey('all-done') : ValueKey(kind),
               isLabelVisible: streak > 0,
               label: Text('$streak'),
               backgroundColor: color,

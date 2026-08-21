@@ -6,6 +6,7 @@ import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/wishlist_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:url_launcher_platform_interface/link.dart';
@@ -106,6 +107,43 @@ void main() {
     expect(find.byType(Checkbox), findsOneWidget);
     // ...but never surface anything date-related.
     expect(find.textContaining('Due'), findsNothing);
+  });
+
+  testWidgets('the copy button puts the item on the clipboard',
+      (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add(call.arguments['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'For stargazing weekends',
+          label: 'gift',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    // Every item carries its own copy button, not just the selected one.
+    await tester.tap(find.byTooltip('Copy wishlist item'));
+    await tester.pump();
+
+    expect(copied,
+        ['Buy a telescope\nFor stargazing weekends\ngift']);
+    expect(find.text('Copied "Buy a telescope"'), findsOneWidget);
   });
 
   testWidgets('priority swipe shows shortcuts; picking one sets the label',
