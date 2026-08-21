@@ -572,7 +572,8 @@ default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
 prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
-+ Sync now tile (§4.7), Export/Import buttons. `Config.applyMap` is defensive
++ Sync now tile (§4.7), Export/Import buttons. Todoist sync: enable switch + API token
+field (§4.8). `Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
 
@@ -894,6 +895,66 @@ stays); a later successful sync also clears it.
 
 Tests live in their own silo `test/sync/` (service round-trip/failures/lifecycle latch
 + Sync tab, drawer dot, settings switch).
+
+### 4.8 Todoist sync — two-way sync with a Todoist account (0.1.237, API v1 since 0.1.238)
+
+`Config.todoistSyncEnabled` (default **off**) + `Config.todoistApiToken` (plain text,
+same as every other setting — the app has no secret-storage layer), both in Settings →
+**Todoist sync**. `TodoistSyncService` (`lib/services/todoist_sync_service.dart`,
+singleton with `resetForTest`) mirrors `SyncService`'s shape (lifecycle-triggered
+background run via the same `onLifecycleChanged` latch, a manual "Sync now", a
+`SyncLogEntry` history in `todoist_sync_log.json` — App Logs gained a third "Todoist" tab,
+and its `hasUnseenError` ORs into the same drawer red dot as the folder sync) but writes
+**both directions** against Todoist's unified API v1
+(`https://api.todoist.com/api/v1`, `lib/services/todoist_api_client.dart`, `http` package,
+injectable client for tests). The old REST v2 (`rest/v2`) and Sync v9 (`sync/v9`)
+endpoints Todoist previously offered are sunset and now return a deprecation notice
+instead of data — `tasks`/`projects` GET responses on v1 are also cursor-paginated
+(`{"results": [...], "next_cursor": ...}` rather than a bare array), which
+`TodoistApiClient._fetchAllPages` walks to completion.
+
+**Scope:** wishlist items and recurring tasks (parents and generated instances) are
+excluded — Todoist's own recurrence engine has no clean mapping onto this app's
+generated-instance model, so those stay local-only.
+
+**No live diff, so fingerprints:** the API has no per-task "updated at" and no
+completed-task endpoint, so a run can't diff against a timestamp. `TodoistSyncMapEntry`
+(`lib/models/todoist_sync_map_entry.dart`) persists, per synced task
+(`todoist_sync_state.json`: task entries + the local-project→Todoist-project id map), a
+fingerprint of each side's fields as of the last successful sync; a run recomputes both
+current fingerprints and compares. **Conflict rule: local wins** — a task changed on both
+sides pushes the local edit and overwrites the Todoist-side one. A task's disappearance
+from Todoist's active-task list (the only "done" signal the API gives) is always treated
+as a completion, never a delete, so the ambiguity never loses data.
+
+**Fields with no Todoist equivalent** — `Task.note`, `Task.label`, the project/Kanban
+assignment, `uid` for relinking — round-trip through a trailer appended to Todoist's
+`description` field (`lib/services/todoist_metadata_codec.dart`): the task's own
+description text, then a `⸻ BestToDo sync — generated, do not edit below this line ⸻`
+separator, human-readable `Project:`/`Label:`/`Note:` lines (visible if you open the task
+in Todoist), then one `sync-data: {...}` JSON line, which is what parsing actually reads
+back. A description with no such trailer is a plain Todoist-native task.
+
+**Algorithm** (`TodoistSyncService._runSync`, five passes over one fetch of Todoist's
+active tasks + projects): (1) a locally-vanished synced task (completed-and-rolled-over
+or deleted) closes or deletes its Todoist counterpart; (2) a still-open-locally task now
+marked done closes it; (3) every other open local task creates (new), or pushes/pulls an
+edit by fingerprint diff (conflict → local wins); (4) a Todoist task with no local mapping
+is pulled in as a new local task (an embedded `uid` matching an existing local task
+relinks instead of duplicating — recovers from a lost/reset state file); (5) a mapped task
+that silently vanished from Todoist's active list is marked done locally. Projects are
+matched by name (case-insensitive) or created on first push; an unmapped Todoist project
+on a pulled task leaves the local task unassigned rather than importing the project.
+Due dates: `hasExplicitTime` tasks are pushed via `due_datetime` (UTC); date-only tasks via
+`due_date`. On pull, v1's `due.date` is a single field holding either a bare date or a full
+datetime string — a `T` in it tells them apart; date-only tasks default to 18:00
+(matching `applyDefaultDeadlineTimes`).
+
+Tests live in `test/sync/`: `todoist_metadata_codec_test.dart` (pure trailer round-trip),
+`todoist_api_client_test.dart` (`http.testing.MockClient`), `todoist_sync_service_test.dart`
+(a small in-memory fake Todoist backend routed through `MockClient`, covering push/pull/
+conflict/completion/deletion/project-mapping/lifecycle-latch), plus the Settings section
+and combined drawer-dot coverage in `sync_ui_test.dart`.
 
 ## 5. Alarm subsystem (the reliability showpiece)
 
@@ -1260,7 +1321,7 @@ input is missing are dropped; a completely empty history shows "Complete a few i
 the trivia shows up here." instead of a column of zeroes. Durations are deliberately
 rough (`s` → `min` → `h` → `days` → `weeks`).
 
-Since 0.1.237, any row backed by concrete items or days is **tappable** (a trailing
+Since 0.1.239, any row backed by concrete items or days is **tappable** (a trailing
 chevron marks it — `_funStatTile`'s `details` param, empty list = plain row, e.g. "Open
 right now" and "Items ever created" stay non-interactive): tapping opens a
 `DraggableScrollableSheet` (`_showStatDetails`) listing each item's title (or day, for
@@ -1477,7 +1538,7 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   on success, `dart run tool/append_build_time.dart` → rename artifacts with the version
   (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart`
   for an APK build → optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
-- **Local build time (0.1.238):** `tool/append_build_time.dart` writes/updates a
+- **Local build time (0.1.240):** `tool/append_build_time.dart` writes/updates a
   `- Local build: yyyy-mm-dd HH:MM` bullet inside the *newest* CHANGELOG.md section
   (`withBuildTimeNote`: replaces the existing line for that version on a repeat build
   instead of piling one up per build; inserted right after that section's other entries).

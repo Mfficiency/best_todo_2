@@ -8,11 +8,15 @@ import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/sync_service.dart';
 import 'package:besttodo/services/test_report_service.dart';
+import 'package:besttodo/services/todoist_api_client.dart';
+import 'package:besttodo/services/todoist_sync_service.dart';
 import 'package:besttodo/ui/app_logs_page.dart';
 import 'package:besttodo/ui/home_page.dart';
 import 'package:besttodo/ui/settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 class _FakePathProvider extends PathProviderPlatform {
@@ -27,9 +31,15 @@ void main() {
   setUp(() async {
     final tempDir = await Directory.systemTemp.createTemp('sync_ui');
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    // Opts out of the one-time Todo.md → wishlist import loadTaskList runs
+    // on first load — dozens of chained real-IO hops that otherwise make
+    // fixed-round settleIo loops in these tests unreliable.
+    await File('${tempDir.path}/${StorageService.wishlistImportFlagFileName}')
+        .writeAsString('done');
     StorageService.resetJournalBaselineForTest();
     ProjectService.instance.resetForTest();
     SyncService.resetForTest();
+    TodoistSyncService.resetForTest();
     TestReportService.instance.resetForTest();
     TestReportService.instance
         .setOnlineReportForTest(TestReport(available: false));
@@ -38,7 +48,10 @@ void main() {
   tearDown(() {
     Config.syncEnabled = false;
     Config.syncFolderPath = '';
+    Config.todoistSyncEnabled = false;
+    Config.todoistApiToken = '';
     SyncService.resetForTest();
+    TodoistSyncService.resetForTest();
     TestReportService.instance.resetForTest();
   });
 
@@ -207,5 +220,91 @@ void main() {
     Config.syncEnabled = false;
     await tester.runAsync(Config.load);
     expect(Config.syncEnabled, isTrue);
+  });
+
+  testWidgets(
+      'the Todoist sync switch reveals the token field and persists both',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    await settleIo(tester);
+
+    await openSection(tester, 'Todoist sync');
+    await tester.scrollUntilVisible(find.text('Enable Todoist sync'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'API token'), findsNothing);
+    await tester.tap(find.text('Enable Todoist sync'));
+    await settleIo(tester);
+
+    expect(Config.todoistSyncEnabled, isTrue);
+    await tester.scrollUntilVisible(
+        find.widgetWithText(TextField, 'API token'), 80,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.widgetWithText(TextField, 'API token'), findsOneWidget);
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'API token'), 'my-secret-token');
+    await tester.tap(find.text('Save token'));
+    await settleIo(tester);
+
+    expect(Config.todoistApiToken, 'my-secret-token');
+
+    // Both settings were persisted, not just flipped in memory.
+    Config.todoistSyncEnabled = false;
+    Config.todoistApiToken = '';
+    await tester.runAsync(Config.load);
+    expect(Config.todoistSyncEnabled, isTrue);
+    expect(Config.todoistApiToken, 'my-secret-token');
+  });
+
+  testWidgets('Sync now runs a Todoist sync and shows the result',
+      (tester) async {
+    TodoistSyncService.instance.apiClientFactory = (token) =>
+        TodoistApiClient(
+          apiToken: token,
+          client: MockClient((request) async {
+            if (request.url.path.endsWith('/tasks') &&
+                request.method == 'GET') {
+              return http.Response('{"results": [], "next_cursor": null}', 200);
+            }
+            if (request.url.path.endsWith('/projects') &&
+                request.method == 'GET') {
+              return http.Response('{"results": [], "next_cursor": null}', 200);
+            }
+            return http.Response('not found', 404);
+          }),
+        );
+    Config.todoistSyncEnabled = true;
+    Config.todoistApiToken = 'token';
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    await settleIo(tester);
+    await openSection(tester, 'Todoist sync');
+    await tester.scrollUntilVisible(find.text('Sync now'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Sync now'));
+    await settleIo(tester);
+
+    expect(find.textContaining('Never synced yet'), findsNothing);
+    // "0 change(s)" appears both in the status line and in the result
+    // snackbar, so match the status line specifically by its own prefix.
+    expect(find.textContaining('Last synced'), findsOneWidget);
+  });
+
+  testWidgets('a failed Todoist sync also lights the App Logs drawer dot',
+      (tester) async {
+    TodoistSyncService.instance.hasUnseenError.value = true;
+
+    await pumpHomeUntilLoaded(tester);
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('App Logs'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('sync-error-dot')), findsOneWidget);
   });
 }

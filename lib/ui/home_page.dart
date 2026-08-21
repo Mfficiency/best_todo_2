@@ -25,6 +25,7 @@ import '../services/share_intent_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
 import '../services/sync_service.dart';
+import '../services/todoist_sync_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
@@ -993,6 +994,7 @@ class _HomePageState extends State<HomePage>
     // A sync failure from a previous run keeps its red dot on the App Logs
     // drawer entry until acknowledged; lazy load, nothing blocks startup.
     SyncService.instance.ensureLoaded();
+    TodoistSyncService.instance.ensureLoaded();
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
@@ -2379,16 +2381,22 @@ class _HomePageState extends State<HomePage>
             if (Config.isFeatureEnabled('app_logs'))
               ValueListenableBuilder<bool>(
                 valueListenable: SyncService.instance.hasUnseenError,
-                builder: (context, syncError, _) => ListTile(
-                  leading: syncError
-                      ? _iconWithFailureDot(Icons.list_alt,
-                          dotKey: const Key('sync-error-dot'))
-                      : const Icon(Icons.list_alt),
-                  title: const Text('App Logs'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                builder: (context, syncError, _) => ValueListenableBuilder<bool>(
+                  valueListenable: TodoistSyncService.instance.hasUnseenError,
+                  builder: (context, todoistError, __) {
+                    final hasError = syncError || todoistError;
+                    return ListTile(
+                      leading: hasError
+                          ? _iconWithFailureDot(Icons.list_alt,
+                              dotKey: const Key('sync-error-dot'))
+                          : const Icon(Icons.list_alt),
+                      title: const Text('App Logs'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                        );
+                      },
                     );
                   },
                 ),

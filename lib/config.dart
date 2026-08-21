@@ -425,6 +425,16 @@ class Config {
   /// Folder the automatic backup writes into; empty until the user picks one.
   static String autoBackupDirectory = '';
 
+  /// If true, tasks are kept in sync both ways with a Todoist account (see
+  /// `TodoistSyncService`). Off by default; enabling without a token set is a
+  /// no-op until one is entered in Settings → Todoist sync.
+  static bool todoistSyncEnabled = false;
+
+  /// Todoist personal API token ("Integrations" tab of Todoist Settings).
+  /// Stored in plain text alongside the rest of the app's settings, matching
+  /// every other value in this file — the app has no secret-storage layer.
+  static String todoistApiToken = '';
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -487,6 +497,8 @@ class Config {
       'autoBackupDirectory': autoBackupDirectory,
       'syncEnabled': syncEnabled,
       'syncFolderPath': syncFolderPath,
+      'todoistSyncEnabled': todoistSyncEnabled,
+      'todoistApiToken': todoistApiToken,
       'features': Map<String, bool>.from(featureEnabled),
     };
   }
@@ -589,6 +601,8 @@ class Config {
         data['autoBackupDirectory'] as String? ?? autoBackupDirectory;
     syncEnabled = data['syncEnabled'] ?? syncEnabled;
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
+    todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
+    todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {
