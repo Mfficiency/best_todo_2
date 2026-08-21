@@ -137,6 +137,19 @@ class TodoistApiClient {
     _decode(response);
   }
 
+  /// Moves a task to a different project. Unlike other fields, a task's
+  /// project can't be changed through [updateTask] — v1 (like the REST v2
+  /// and Sync APIs before it) only accepts a project reassignment through
+  /// this dedicated endpoint.
+  Future<void> moveTask(String taskId, {required String projectId}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/tasks/$taskId/move'),
+      headers: _headers,
+      body: jsonEncode({'project_id': projectId}),
+    );
+    _decode(response);
+  }
+
   Future<void> closeTask(String taskId) async {
     final response = await _client
         .post(Uri.parse('$baseUrl/tasks/$taskId/close'), headers: _headers);

@@ -35,6 +35,12 @@ class _FakeTodoist {
 
   String _newId() => '${_nextId++}';
 
+  String seedInboxProject() {
+    final id = _newId();
+    projects[id] = {'id': id, 'name': 'Inbox', 'is_inbox_project': true};
+    return id;
+  }
+
   String seedTask({
     required String content,
     String description = '',
@@ -121,6 +127,15 @@ class _FakeTodoist {
         RegExp(r'^/api/v1/tasks/([^/]+)/reopen$').firstMatch(path);
     if (method == 'POST' && reopenMatch != null) {
       return http.Response('', 204);
+    }
+    final moveMatch = RegExp(r'^/api/v1/tasks/([^/]+)/move$').firstMatch(path);
+    if (method == 'POST' && moveMatch != null) {
+      final id = moveMatch.group(1)!;
+      final existing = tasks[id];
+      if (existing == null) return http.Response('', 404);
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      existing['project_id'] = body['project_id'];
+      return _json(existing);
     }
     final idMatch = RegExp(r'^/api/v1/tasks/([^/]+)$').firstMatch(path);
     if (method == 'POST' && idMatch != null) {
@@ -312,15 +327,166 @@ void main() {
     expect(reloaded.single.description, 'local edit');
   });
 
-  test('wishlist and recurring tasks are never synced', () async {
+  test('recurring tasks are never synced', () async {
     await StorageService().saveTaskList([
-      Task(title: 'Someday', isWish: true),
       Task(title: 'Repeats', isRecurring: true, dueDate: DateTime.now()),
     ]);
 
     final entry = await TodoistSyncService.instance.syncNow();
     expect(entry!.itemCount, 0);
     expect(fake.tasks, isEmpty);
+  });
+
+  test('a wishlist item pushes into a dedicated Wishlist Todoist project',
+      () async {
+    await StorageService()
+        .saveTaskList([Task(title: 'Someday', isWish: true)]);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+
+    expect(entry!.itemCount, 1);
+    expect(fake.projects.values.single['name'], 'Wishlist');
+    final remote = fake.tasks.values.single;
+    expect(remote['project_id'], fake.projects.keys.single);
+
+    // A second sync with nothing changed is a true no-op.
+    final second = await TodoistSyncService.instance.syncNow();
+    expect(second!.itemCount, 0);
+  });
+
+  test(
+      'an undated, unprojected task pushes into a dedicated Future Todoist '
+      'project', () async {
+    await StorageService().saveTaskList([Task(title: 'Someday, maybe')]);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+
+    expect(entry!.itemCount, 1);
+    expect(fake.projects.values.single['name'], 'Future');
+    final remote = fake.tasks.values.single;
+    expect(remote['project_id'], fake.projects.keys.single);
+
+    final second = await TodoistSyncService.instance.syncNow();
+    expect(second!.itemCount, 0);
+  });
+
+  test('a dated or projected task never lands in Wishlist or Future',
+      () async {
+    await StorageService().saveTaskList([
+      Task(title: 'Due today', dueDate: DateTime.now()),
+    ]);
+
+    await TodoistSyncService.instance.syncNow();
+
+    expect(fake.projects, isEmpty);
+    expect(fake.tasks.values.single['project_id'], isNull);
+  });
+
+  test('the wishlist flag wins over a Kanban project assignment, and '
+      'toggling it off actually moves the Todoist task', () async {
+    await ProjectService.instance
+        .upsert(const Project(id: 'p1', name: 'Launch'));
+    await StorageService()
+        .saveTaskList([Task(title: 'Ship', projectId: 'p1', isWish: true)]);
+
+    await TodoistSyncService.instance.syncNow();
+    expect(fake.projects.values.single['name'], 'Wishlist');
+    final taskId = fake.tasks.keys.single;
+
+    final tasks = await StorageService().loadTaskList();
+    tasks.single.isWish = false;
+    await StorageService().saveTaskList(tasks);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final launchProjectId =
+        fake.projects.values.firstWhere((p) => p['name'] == 'Launch')['id'];
+    // The move actually happened on the Todoist side, not just in local
+    // bookkeeping — updateTask alone can't reassign a task's project.
+    expect(fake.tasks[taskId]!['project_id'], launchProjectId);
+  });
+
+  test('a task leaving the wishlist with no other project moves back to '
+      'Todoist Inbox', () async {
+    final inboxId = fake.seedInboxProject();
+    await StorageService().saveTaskList([Task(title: 'Ship', isWish: true)]);
+    await TodoistSyncService.instance.syncNow();
+    expect(fake.projects.values.firstWhere((p) => p['name'] == 'Wishlist'),
+        isNotNull);
+    final taskId = fake.tasks.keys.single;
+
+    final tasks = await StorageService().loadTaskList();
+    tasks.single.isWish = false;
+    tasks.single.dueDate = DateTime.now();
+    await StorageService().saveTaskList(tasks);
+
+    await TodoistSyncService.instance.syncNow();
+
+    expect(fake.tasks[taskId]!['project_id'], inboxId);
+  });
+
+  test(
+      'a task already synced to Inbox before this app routed undated tasks '
+      'to Future moves there once the mapping is recomputed', () async {
+    const uid = 'legacy-undated-uid';
+    final remoteId = fake.seedTask(content: 'Old undated task');
+    // Simulate a sync map entry written by a version of this app with no
+    // Future-project routing: pushed to Inbox (todoistProjectId: null), its
+    // fingerprint computed without the project key this app now folds in —
+    // any stale value forces the next run to treat it as locally changed.
+    final stateFile = File('${docsDir.path}/todoist_sync_state.json');
+    await stateFile.writeAsString(jsonEncode({
+      'taskEntries': [
+        {
+          'localUid': uid,
+          'todoistId': remoteId,
+          'localFingerprint': 'stale',
+          'remoteFingerprint': 'stale',
+          'syncedAt': DateTime.now().toIso8601String(),
+        }
+      ],
+      'projectMap': <String, dynamic>{},
+    }));
+    await StorageService()
+        .saveTaskList([Task(uid: uid, title: 'Old undated task')]);
+
+    await TodoistSyncService.instance.syncNow();
+
+    final futureProjectId =
+        fake.projects.values.firstWhere((p) => p['name'] == 'Future')['id'];
+    expect(fake.tasks[remoteId]!['project_id'], futureProjectId);
+  });
+
+  test('a task pulled from the Wishlist Todoist project becomes a local '
+      'wishlist item', () async {
+    const wishlistProjectId = 'remote-wishlist-project';
+    fake.projects[wishlistProjectId] = {
+      'id': wishlistProjectId,
+      'name': 'Wishlist',
+    };
+    fake.seedTask(
+        content: 'From Todoist wishlist', projectId: wishlistProjectId);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    final pulled = tasks.firstWhere((t) => t.title == 'From Todoist wishlist');
+    expect(pulled.isWish, isTrue);
+    expect(pulled.projectId, isNull);
+  });
+
+  test('a task pulled from the Future Todoist project stays unassigned '
+      'locally, not flagged as a wishlist item', () async {
+    const futureProjectId = 'remote-future-project';
+    fake.projects[futureProjectId] = {'id': futureProjectId, 'name': 'Future'};
+    fake.seedTask(content: 'From Todoist future', projectId: futureProjectId);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    final pulled = tasks.firstWhere((t) => t.title == 'From Todoist future');
+    expect(pulled.isWish, isFalse);
+    expect(pulled.projectId, isNull);
   });
 
   test(

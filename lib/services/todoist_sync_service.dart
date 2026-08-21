@@ -41,10 +41,17 @@ import 'todoist_metadata_codec.dart';
 ///
 /// Fields with no Todoist equivalent — [Task.note], [Task.label], the
 /// project/Kanban assignment — round-trip through a trailer appended to
-/// Todoist's `description` field; see [TodoistMetadataCodec]. Wishlist items
-/// and recurring tasks (parents and generated instances) are out of scope —
-/// Todoist's own recurrence engine has no clean mapping to this app's
-/// generated-instance model, so those stay local-only.
+/// Todoist's `description` field; see [TodoistMetadataCodec]. Recurring
+/// tasks (parents and generated instances) are out of scope — Todoist's own
+/// recurrence engine has no clean mapping to this app's generated-instance
+/// model, so those stay local-only.
+///
+/// Wishlist items sync like any other task, but always land in a dedicated
+/// **Wishlist** Todoist project (created on first push) regardless of any
+/// local Kanban project — see [_targetProjectKey]. Likewise, any other
+/// unprojected task with no due date (the Future tab bucket) lands in a
+/// dedicated **Future** Todoist project. Pulling a task back out of either
+/// project restores the matching local state (`isWish`, unassigned).
 class TodoistSyncService {
   TodoistSyncService._();
   static TodoistSyncService instance = TodoistSyncService._();
@@ -223,11 +230,11 @@ class TodoistSyncService {
     final deletedLocal = await ItemRepository.instance.loadDeletedItems();
     final deletedByUid = {for (final t in deletedLocal) t.uid: t};
 
-    // Wishlist items and recurring tasks (parents and generated instances)
-    // are out of scope — see the class doc.
+    // Recurring tasks (parents and generated instances) are out of scope —
+    // see the class doc. Wishlist items are in scope (routed to the
+    // Wishlist project below).
     final syncable = allLocal
-        .where((t) =>
-            !t.isWish && !t.isRecurring && t.recurrenceParentUid == null)
+        .where((t) => !t.isRecurring && t.recurrenceParentUid == null)
         .toList();
     final syncableByUid = {for (final t in syncable) t.uid: t};
 
@@ -242,6 +249,27 @@ class TodoistSyncService {
     final todoistToLocalProject = {
       for (final e in _projectMap.entries) e.value: e.key,
     };
+    // Recognize a Todoist project literally named "Wishlist"/"Future" even
+    // before this app has cached it in _projectMap (a fresh install, a reset
+    // state file, or another device having pushed there first) — mirrors
+    // the name-based reuse _todoistProjectFor does on push. putIfAbsent so
+    // this never overrides a real Kanban project this app already mapped to
+    // that same Todoist project id.
+    final wishlistId = remoteProjectNameToId['wishlist'];
+    if (wishlistId != null) {
+      todoistToLocalProject.putIfAbsent(wishlistId, () => _wishlistProjectKey);
+    }
+    final futureId = remoteProjectNameToId['future'];
+    if (futureId != null) {
+      todoistToLocalProject.putIfAbsent(futureId, () => _futureProjectKey);
+    }
+    // Needed to move a task back to "no project": Inbox is a real project on
+    // Todoist's side (with its own id), unlike this app's null projectId.
+    final inboxProject = remoteProjects
+        .cast<Map<String, dynamic>?>()
+        .firstWhere((p) => p?['is_inbox_project'] == true, orElse: () => null);
+    final inboxProjectId =
+        inboxProject == null ? null : _idOf(inboxProject['id']);
 
     final entriesAtStart = List<TodoistSyncMapEntry>.of(_taskMap);
     final mapByUidStart = {for (final e in entriesAtStart) e.localUid: e};
@@ -296,7 +324,7 @@ class TodoistSyncService {
       if (entry == null) {
         final todoistProjectId = await _todoistProjectFor(
           client,
-          task.projectId,
+          task,
           projectsById,
           remoteProjectNameToId,
         );
@@ -313,7 +341,7 @@ class TodoistSyncService {
         _taskMap.add(TodoistSyncMapEntry(
           localUid: task.uid,
           todoistId: id,
-          localProjectId: task.projectId,
+          localProjectId: _targetProjectKey(task),
           todoistProjectId: todoistProjectId,
           localFingerprint: localFp,
           remoteFingerprint: _remoteFingerprintForLocal(task, payload.dueKey),
@@ -343,10 +371,21 @@ class TodoistSyncService {
       if (localChanged) {
         final todoistProjectId = await _todoistProjectFor(
           client,
-          task.projectId,
+          task,
           projectsById,
           remoteProjectNameToId,
         );
+        // updateTask can't move a task between projects (see its doc) — an
+        // actual reassignment (e.g. a task toggling in/out of the wishlist,
+        // or an undated task now routed to the Future project) needs the
+        // dedicated move endpoint. Moving "to no project" means Inbox, a
+        // real project on Todoist's side.
+        if (todoistProjectId != entry.todoistProjectId) {
+          final destination = todoistProjectId ?? inboxProjectId;
+          if (destination != null) {
+            await client.moveTask(entry.todoistId, projectId: destination);
+          }
+        }
         final payload = _buildRemotePayload(task, projectsById);
         await client.updateTask(
           entry.todoistId,
@@ -358,7 +397,7 @@ class TodoistSyncService {
           labels: payload.labels,
         );
         entry.todoistProjectId = todoistProjectId;
-        entry.localProjectId = task.projectId;
+        entry.localProjectId = _targetProjectKey(task);
         entry.localFingerprint = localFp;
         entry.remoteFingerprint = _remoteFingerprintForLocal(
           task,
@@ -370,7 +409,7 @@ class TodoistSyncService {
         _applyRemoteToLocal(task, remoteTask, todoistToLocalProject);
         entry.localFingerprint = _localFingerprint(task);
         entry.remoteFingerprint = remoteFp;
-        entry.localProjectId = task.projectId;
+        entry.localProjectId = _targetProjectKey(task);
         entry.syncedAt = now;
         changeCount++;
       }
@@ -396,7 +435,7 @@ class TodoistSyncService {
         _taskMap.add(TodoistSyncMapEntry(
           localUid: embeddedUid,
           todoistId: id,
-          localProjectId: task.projectId,
+          localProjectId: _targetProjectKey(task),
           todoistProjectId: remoteTask['project_id'] == null
               ? null
               : _idOf(remoteTask['project_id']),
@@ -417,7 +456,7 @@ class TodoistSyncService {
       _taskMap.add(TodoistSyncMapEntry(
         localUid: newTask.uid,
         todoistId: id,
-        localProjectId: newTask.projectId,
+        localProjectId: _targetProjectKey(newTask),
         todoistProjectId: remoteTask['project_id'] == null
             ? null
             : _idOf(remoteTask['project_id']),
@@ -455,24 +494,48 @@ class TodoistSyncService {
     return changeCount;
   }
 
+  /// Key [_projectMap] is cached under for wishlist tasks — never a real
+  /// [Project.id] (those are uuids), so it can't collide with one.
+  static const String _wishlistProjectKey = '__wishlist__';
+
+  /// Same, for an unprojected task with no due date (the Future tab bucket).
+  static const String _futureProjectKey = '__future__';
+
+  /// Which Todoist project a task should live in: its own Kanban project if
+  /// it has one, else the dedicated Wishlist/Future project, else none
+  /// (Todoist Inbox). See the class doc.
+  String? _targetProjectKey(Task task) {
+    if (task.isWish) return _wishlistProjectKey;
+    if (task.projectId != null) return task.projectId;
+    if (Task.isFutureBucketDue(task.dueDate)) return _futureProjectKey;
+    return null;
+  }
+
+  String _projectNameForKey(String key, Map<String, Project> projectsById) {
+    if (key == _wishlistProjectKey) return 'Wishlist';
+    if (key == _futureProjectKey) return 'Future';
+    return projectsById[key]?.name ?? key;
+  }
+
   Future<String?> _todoistProjectFor(
     TodoistApiClient client,
-    String? localProjectId,
+    Task task,
     Map<String, Project> projectsById,
     Map<String, String> remoteProjectNameToId,
   ) async {
-    if (localProjectId == null) return null;
-    final cached = _projectMap[localProjectId];
+    final key = _targetProjectKey(task);
+    if (key == null) return null;
+    final cached = _projectMap[key];
     if (cached != null) return cached;
-    final name = projectsById[localProjectId]?.name ?? localProjectId;
+    final name = _projectNameForKey(key, projectsById);
     final existingId = remoteProjectNameToId[name.toLowerCase()];
     if (existingId != null) {
-      _projectMap[localProjectId] = existingId;
+      _projectMap[key] = existingId;
       return existingId;
     }
     final created = await client.createProject(name);
     final id = _idOf(created['id']);
-    _projectMap[localProjectId] = id;
+    _projectMap[key] = id;
     remoteProjectNameToId[name.toLowerCase()] = id;
     return id;
   }
@@ -501,11 +564,21 @@ class TodoistSyncService {
         : _idOf(remoteTask['project_id']);
     if (remoteProjectId == null) {
       task.projectId = null;
+      task.isWish = false;
     } else {
       final mapped = todoistToLocalProject[remoteProjectId];
+      if (mapped == _wishlistProjectKey) {
+        task.projectId = null;
+        task.isWish = true;
+      } else if (mapped == _futureProjectKey) {
+        task.projectId = null;
+        task.isWish = false;
+      } else if (mapped != null) {
+        task.projectId = mapped;
+        task.isWish = false;
+      }
       // An unmapped Todoist project (one this app didn't create) leaves the
-      // task's existing project assignment alone.
-      if (mapped != null) task.projectId = mapped;
+      // task's existing project assignment and wishlist status alone.
     }
     _applyRemoteDue(task, remoteTask['due']);
   }
@@ -551,14 +624,18 @@ class TodoistSyncService {
     final remoteProjectId = remoteTask['project_id'] == null
         ? null
         : _idOf(remoteTask['project_id']);
+    final mapped =
+        remoteProjectId == null ? null : todoistToLocalProject[remoteProjectId];
     final task = Task(
       title: remoteTask['content'] as String? ?? '',
       description: parts.visible,
       note: meta?['note'] as String? ?? '',
       label: meta?['label'] as String? ?? _labelsFromRemote(remoteTask),
       createdAt: DateTime.now(),
-      projectId:
-          remoteProjectId == null ? null : todoistToLocalProject[remoteProjectId],
+      projectId: (mapped == _wishlistProjectKey || mapped == _futureProjectKey)
+          ? null
+          : mapped,
+      isWish: mapped == _wishlistProjectKey,
       kanbanStatus: meta?['kanbanStatus'] as String? ?? Task.kanbanTodo,
     );
     _applyRemoteDue(task, remoteTask['due']);
@@ -606,10 +683,10 @@ class TodoistSyncService {
         task.description.trim(),
         task.note.trim(),
         task.label.trim(),
-        task.projectId ?? '',
+        _targetProjectKey(task) ?? '',
         task.kanbanStatus,
         _dueKeyFromLocal(task),
-      ].join(' ');
+      ].join(' ');
 
   /// Only the fields a Todoist-side edit can actually change — drives the
   /// pull decision. Computed identically from either side so the two are
@@ -631,15 +708,15 @@ class TodoistSyncService {
       parts.visible,
       _dueKeyFromRemote(remoteTask['due']),
       projectId ?? '',
-    ].join(' ');
+    ].join(' ');
   }
 
   String _remoteFingerprintForLocal(Task task, String dueKey) => [
         task.title,
         task.description.trim(),
         dueKey,
-        task.projectId ?? '',
-      ].join(' ');
+        _targetProjectKey(task) ?? '',
+      ].join(' ');
 
   _RemotePayload _buildRemotePayload(Task task, Map<String, Project> projectsById) {
     final project = task.projectId != null ? projectsById[task.projectId] : null;
