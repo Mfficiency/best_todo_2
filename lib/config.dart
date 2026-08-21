@@ -230,6 +230,13 @@ class Config {
   /// If true, the app uses a dark color scheme.
   static bool darkMode = false;
 
+  /// If true, the hamburger menu icon on the home page carries a small red
+  /// dot while the newest known test run has failures the user has not looked
+  /// at yet. Off by default so the home screen stays calm; the Test Results
+  /// entry in the drawer's Tools section always shows the dot until the
+  /// results are opened.
+  static bool showFailureDotOnMenu = false;
+
   /// If true, the app uses the minimalist look: a monochrome ink-on-paper
   /// theme with no accent colours, flat surfaces and underlines instead of
   /// filled highlights. Combines with [darkMode] for a dark monochrome look.
@@ -364,6 +371,17 @@ class Config {
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
 
+  /// Value of [defaultAddTabIndex] meaning "whichever tab is open".
+  static const int addToCurrentTab = -1;
+
+  /// Which home tab a task typed into the add-task row lands in:
+  /// [addToCurrentTab] (the default) files it under the tab you are looking
+  /// at, an index into [tabs] pins every quick-added task to that bucket — so
+  /// an idea typed while Today is open can still go straight to Future. The
+  /// schedule view's active day beats this, because there the day is picked
+  /// explicitly.
+  static int defaultAddTabIndex = addToCurrentTab;
+
   /// If true, times are displayed and picked in 24-hour notation.
   static bool use24HourFormat = true;
 
@@ -440,6 +458,7 @@ class Config {
     return {
       'swipeLeftDelete': swipeLeftDelete,
       'darkMode': darkMode,
+      'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
       'enableNotifications': enableNotifications,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
@@ -451,6 +470,7 @@ class Config {
       'showWidgetProgressLine': showWidgetProgressLine,
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
+      'defaultAddTabIndex': defaultAddTabIndex,
       'use24HourFormat': use24HourFormat,
       'dateFormat': dateFormat,
       'defaultDelaySeconds': defaultDelaySeconds,
@@ -486,6 +506,8 @@ class Config {
   static void applyMap(Map<String, dynamic> data) {
     swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
     darkMode = data['darkMode'] ?? darkMode;
+    showFailureDotOnMenu =
+        data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     defaultNotificationDelaySeconds =
@@ -506,6 +528,10 @@ class Config {
         data['showWidgetProgressLine'] ?? showWidgetProgressLine;
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    defaultAddTabIndex = (data['defaultAddTabIndex'] as num?)
+            ?.round()
+            .clamp(addToCurrentTab, tabs.length - 1) ??
+        defaultAddTabIndex;
     use24HourFormat = data['use24HourFormat'] ?? use24HourFormat;
     final savedDateFormat = data['dateFormat'] as String?;
     if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {

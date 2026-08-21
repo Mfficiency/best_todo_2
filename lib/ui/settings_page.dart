@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +15,7 @@ import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
 import '../services/streak_service.dart';
+import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
 import 'dice_timer_settings.dart';
@@ -107,6 +110,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Minimalist mode', 0,
         'theme monochrome serene calm plain simple no colours colors underline'),
     _SettingsSearchEntry('Use tab icons', 0, 'tabs labels home'),
+    _SettingsSearchEntry('Red dot for failed tests', 0,
+        'menu hamburger drawer badge notification ci test results dot'),
     _SettingsSearchEntry('24-hour time', 0, 'clock am pm 12-hour format'),
     _SettingsSearchEntry('Date format', 0, 'display day month year'),
     _SettingsSearchEntry(
@@ -114,6 +119,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry(
         'Show the mode picker again', 1, 'simple full first start choose'),
     _SettingsSearchEntry('Add new tasks at top', 2, 'bottom order insert'),
+    _SettingsSearchEntry('New tasks go to', 2,
+        'default list bucket target tab today future someday quick add'),
     _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
     _SettingsSearchEntry('Default delay', 2, 'undo seconds snackbar'),
     _SettingsSearchEntry('Start page', 2, 'tab launch open today'),
@@ -157,6 +164,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Synced mode', 8,
         'sync offline folder background quit backup automatic tasks'),
     _SettingsSearchEntry('Sync folder', 8, 'sync directory location choose'),
+    _SettingsSearchEntry('Sync now', 8, 'sync manual run last synced'),
     _SettingsSearchEntry('Export Tasks', 8, 'backup save json'),
     _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
     _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
@@ -187,9 +195,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _darkMode = Config.darkMode;
   bool _minimalistMode = Config.minimalistMode;
   bool _useIconTabs = Config.useIconTabs;
+  bool _showFailureDotOnMenu = Config.showFailureDotOnMenu;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
+  int _defaultAddTabIndex = Config.defaultAddTabIndex;
   bool _use24HourFormat = Config.use24HourFormat;
   String _dateFormat = Config.dateFormat;
   int _startTabIndex = Config.startTabIndex;
@@ -228,9 +238,11 @@ class _SettingsPageState extends State<SettingsPage> {
     _darkMode = Config.darkMode;
     _minimalistMode = Config.minimalistMode;
     _useIconTabs = Config.useIconTabs;
+    _showFailureDotOnMenu = Config.showFailureDotOnMenu;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
+    _defaultAddTabIndex = Config.defaultAddTabIndex;
     _use24HourFormat = Config.use24HourFormat;
     _dateFormat = Config.dateFormat;
     _startTabIndex = Config.startTabIndex;
@@ -261,6 +273,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _scrollController.addListener(_updateActiveSectionFromScroll);
     _loadSmsConfig();
     _loadLastAutoBackup();
+    // Lazy, fire-and-forget: the "Sync now" tile shows the last sync from the
+    // persisted history once it arrives.
+    unawaited(SyncService.instance.ensureLoaded());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _updateActiveSectionFromScroll();
@@ -1346,6 +1361,30 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.folder_open),
             onTap: _pickSyncFolder,
           ),
+        if (_syncEnabled)
+          ValueListenableBuilder<List<SyncLogEntry>>(
+            valueListenable: SyncService.instance.entries,
+            builder: (context, entries, _) {
+              final folderChosen = _syncFolderPath.trim().isNotEmpty;
+              final last = entries.isEmpty ? null : entries.first;
+              return ListTile(
+                enabled: folderChosen,
+                leading: const Icon(Icons.sync),
+                title: const Text('Sync now'),
+                subtitle: Text(
+                  last == null
+                      ? (folderChosen
+                          ? 'No sync yet'
+                          : 'Choose a sync folder first')
+                      : last.success
+                          ? 'Last sync: ${_formatDateTime(last.at)} '
+                              '(${last.itemCount} tasks)'
+                          : 'Last sync failed: ${_formatDateTime(last.at)}',
+                ),
+                onTap: folderChosen ? _syncNow : null,
+              );
+            },
+          ),
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -1394,6 +1433,20 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _syncNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final entry = await SyncService.instance.syncNow();
+    if (!mounted || entry == null) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        entry.success
+            ? 'Synced ${entry.itemCount} '
+                '${entry.itemCount == 1 ? 'task' : 'tasks'}'
+            : 'Sync failed: ${entry.message}',
+      ),
+    ));
   }
 
   Future<void> _loadLastAutoBackup() async {
@@ -1935,6 +1988,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                       SwitchListTile(
+                        title: const Text('Red dot for failed tests'),
+                        subtitle: const Text(
+                            'Mark the menu icon with a red dot while the '
+                            'newest test run has failures you have not '
+                            'looked at yet'),
+                        value: _showFailureDotOnMenu,
+                        onChanged: (val) async {
+                          setState(() => _showFailureDotOnMenu = val);
+                          Config.showFailureDotOnMenu = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      SwitchListTile(
                         title: const Text('24-hour time'),
                         subtitle: const Text(
                             'Turn off for 12-hour AM/PM time'),
@@ -1985,6 +2052,39 @@ class _SettingsPageState extends State<SettingsPage> {
                           await Config.save();
                           widget.onSettingsChanged?.call();
                         },
+                      ),
+                      ListTile(
+                        title: const Text('New tasks go to'),
+                        subtitle: const Text(
+                            'Which list a task typed in the add row lands in '
+                            '(the schedule view still uses its active day)'),
+                        trailing: DropdownButton<int>(
+                          value: _defaultAddTabIndex,
+                          items: [
+                            const DropdownMenuItem<int>(
+                              value: Config.addToCurrentTab,
+                              child: Text('Current tab'),
+                            ),
+                            for (var index = 0;
+                                index < Config.tabs.length;
+                                index++)
+                              DropdownMenuItem<int>(
+                                value: index,
+                                child: Text(
+                                  Config.tabs[index]
+                                      .replaceAll('\n', ' ')
+                                      .trim(),
+                                ),
+                              ),
+                          ],
+                          onChanged: (val) async {
+                            if (val == null) return;
+                            setState(() => _defaultAddTabIndex = val);
+                            Config.defaultAddTabIndex = val;
+                            await Config.save();
+                            widget.onSettingsChanged?.call();
+                          },
+                        ),
                       ),
                       SwitchListTile(
                         title: const Text('Swipe left to delete'),
