@@ -23,7 +23,7 @@ class _FakePathProvider extends PathProviderPlatform {
   Future<String?> getApplicationDocumentsPath() async => path;
 }
 
-/// A minimal in-memory stand-in for the Todoist REST API v2, routed through
+/// A minimal in-memory stand-in for Todoist's unified API v1, routed through
 /// `http.testing.MockClient` so `TodoistSyncService` talks to it exactly as
 /// it would talk to the real API. Only active tasks are tracked — closing a
 /// task removes it, matching the real API having no completed-task listing.
@@ -54,12 +54,15 @@ class _FakeTodoist {
     return id;
   }
 
+  // v1's `due` has a single `date` field (unlike REST v2's separate
+  // `date`/`datetime` keys) that holds either a bare date or a full
+  // datetime string — see `TodoistSyncService._applyRemoteDue`.
   Map<String, dynamic>? _dueFromBody(Map<String, dynamic> body) {
     if (body['due_datetime'] != null) {
-      return {'date': null, 'datetime': body['due_datetime']};
+      return {'date': body['due_datetime'], 'string': ''};
     }
     if (body['due_date'] != null) {
-      return {'date': body['due_date'], 'datetime': null};
+      return {'date': body['due_date'], 'string': ''};
     }
     return null;
   }
@@ -78,13 +81,14 @@ class _FakeTodoist {
     final path = request.url.path;
     final method = request.method;
 
-    if (method == 'GET' && path == '/rest/v2/tasks') {
-      return _json(tasks.values.toList());
+    if (method == 'GET' && path == '/api/v1/tasks') {
+      return _json({'results': tasks.values.toList(), 'next_cursor': null});
     }
-    if (method == 'GET' && path == '/rest/v2/projects') {
-      return _json(projects.values.toList());
+    if (method == 'GET' && path == '/api/v1/projects') {
+      return _json(
+          {'results': projects.values.toList(), 'next_cursor': null});
     }
-    if (method == 'POST' && path == '/rest/v2/tasks') {
+    if (method == 'POST' && path == '/api/v1/tasks') {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       final id = _newId();
       final task = <String, dynamic>{
@@ -98,7 +102,7 @@ class _FakeTodoist {
       tasks[id] = task;
       return _json(task);
     }
-    if (method == 'POST' && path == '/rest/v2/projects') {
+    if (method == 'POST' && path == '/api/v1/projects') {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       final id = _newId();
       final project = <String, dynamic>{'id': id, 'name': body['name']};
@@ -106,7 +110,7 @@ class _FakeTodoist {
       return _json(project);
     }
     final closeMatch =
-        RegExp(r'^/rest/v2/tasks/([^/]+)/close$').firstMatch(path);
+        RegExp(r'^/api/v1/tasks/([^/]+)/close$').firstMatch(path);
     if (method == 'POST' && closeMatch != null) {
       final id = closeMatch.group(1)!;
       if (!tasks.containsKey(id)) return http.Response('', 404);
@@ -114,11 +118,11 @@ class _FakeTodoist {
       return http.Response('', 204);
     }
     final reopenMatch =
-        RegExp(r'^/rest/v2/tasks/([^/]+)/reopen$').firstMatch(path);
+        RegExp(r'^/api/v1/tasks/([^/]+)/reopen$').firstMatch(path);
     if (method == 'POST' && reopenMatch != null) {
       return http.Response('', 204);
     }
-    final idMatch = RegExp(r'^/rest/v2/tasks/([^/]+)$').firstMatch(path);
+    final idMatch = RegExp(r'^/api/v1/tasks/([^/]+)$').firstMatch(path);
     if (method == 'POST' && idMatch != null) {
       final id = idMatch.group(1)!;
       final existing = tasks[id];
@@ -334,15 +338,14 @@ void main() {
     await TodoistSyncService.instance.syncNow();
 
     final timed = fake.tasks.values.firstWhere((t) => t['content'] == 'Timed');
-    expect(timed['due']['datetime'], isNotNull);
+    expect(timed['due']['date'], contains('T'));
     final dateOnly =
         fake.tasks.values.firstWhere((t) => t['content'] == 'DateOnly');
     expect(dateOnly['due']['date'], '2026-09-02');
-    expect(dateOnly['due']['datetime'], isNull);
 
     fake.seedTask(
       content: 'PulledDated',
-      due: {'date': '2026-09-05', 'datetime': null},
+      due: {'date': '2026-09-05'},
     );
     await TodoistSyncService.instance.syncNow();
     final tasks = await ItemRepository.instance.loadItems();

@@ -266,11 +266,11 @@ void main() {
           client: MockClient((request) async {
             if (request.url.path.endsWith('/tasks') &&
                 request.method == 'GET') {
-              return http.Response('[]', 200);
+              return http.Response('{"results": [], "next_cursor": null}', 200);
             }
             if (request.url.path.endsWith('/projects') &&
                 request.method == 'GET') {
-              return http.Response('[]', 200);
+              return http.Response('{"results": [], "next_cursor": null}', 200);
             }
             return http.Response('not found', 404);
           }),

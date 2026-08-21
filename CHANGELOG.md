@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.238] - 2026-08-21
+- Todoist sync: fixed against Todoist's unified API v1 after the old REST v2/Sync v9 endpoints were sunset — the sync tab was failing with an endpoint-deprecated error. Also fixes reading Todoist due dates/times (their new API merged the separate date/datetime fields into one) and pages through more than one page of tasks or projects instead of silently stopping at the first.
+
 ## [0.1.237] - 2026-08-21
 - Todoist sync: Settings → **Todoist sync** — a switch and an API token field keep your tasks synced both ways with a Todoist account. New/edited/completed/deleted tasks push to Todoist; tasks created, edited or completed in Todoist pull back in. "Test connection" and "Sync now" buttons, plus a status line showing the last run
 - Fields Todoist has no room for — note, label, project and Kanban stage — are appended to the synced Todoist task's description as a readable summary so nothing is lost round-tripping; editing the description text above that summary in either app stays in sync

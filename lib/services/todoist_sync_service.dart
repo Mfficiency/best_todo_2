@@ -35,7 +35,7 @@ import 'todoist_metadata_codec.dart';
 /// fingerprints and compares them against the stored ones. **Conflict rule:
 /// local wins** — if a task changed on both sides between runs, the local
 /// edit is pushed and the Todoist-side edit is overwritten. A task's
-/// disappearance from Todoist's active-task list (the only signal REST v2
+/// disappearance from Todoist's active-task list (the only signal the API
 /// gives for "done") is treated as a completion, never a delete, so no data
 /// is ever lost on that ambiguity.
 ///
@@ -433,7 +433,7 @@ class TodoistSyncService {
     }
 
     // --- 5: Todoist-side completions of tasks still open locally. --------
-    // A task's disappearance from the active list is Todoist REST v2's only
+    // A task's disappearance from the active list is Todoist's only
     // signal here — it can mean completed *or* deleted, and treating it as
     // "done" rather than "gone" never loses data on that ambiguity.
     for (final entry in entriesAtStart) {
@@ -516,17 +516,19 @@ class TodoistSyncService {
       task.dueDate = null;
       return;
     }
-    final datetime = due['datetime'] as String?;
-    if (datetime != null) {
-      final parsed = DateTime.tryParse(datetime);
+    // Unlike REST v2's separate `date`/`datetime` keys, v1's `due.date` is a
+    // single field holding either a bare date ("2026-09-01") or a full
+    // datetime ("2026-09-01T14:30:00[Z]") — a "T" tells them apart.
+    final dateStr = due['date'] as String?;
+    if (dateStr != null && dateStr.contains('T')) {
+      final parsed = DateTime.tryParse(dateStr);
       if (parsed != null) {
         task.hasExplicitTime = true;
         task.dueDate = parsed.toLocal();
         return;
       }
     }
-    final date = due['date'] as String?;
-    final parsed = date != null ? DateTime.tryParse(date) : null;
+    final parsed = dateStr != null ? DateTime.tryParse(dateStr) : null;
     if (parsed != null) {
       task.hasExplicitTime = false;
       // Date-only tasks default to 18:00, matching new tasks created in-app
@@ -583,14 +585,14 @@ class TodoistSyncService {
 
   String _dueKeyFromRemote(dynamic due) {
     if (due is! Map) return '';
-    final datetime = due['datetime'] as String?;
-    if (datetime != null) {
-      final parsed = DateTime.tryParse(datetime);
+    final dateStr = due['date'] as String?;
+    if (dateStr != null && dateStr.contains('T')) {
+      final parsed = DateTime.tryParse(dateStr);
       if (parsed != null) {
         return parsed.toUtc().toIso8601String().substring(0, 16);
       }
     }
-    return due['date'] as String? ?? '';
+    return dateStr ?? '';
   }
 
   String _isoDate(DateTime d) =>

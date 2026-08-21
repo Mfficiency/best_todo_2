@@ -14,11 +14,13 @@ class TodoistApiException implements Exception {
   String toString() => 'TodoistApiException($statusCode): $message';
 }
 
-/// Thin wrapper over the Todoist REST API v2 (`api.todoist.com/rest/v2`).
+/// Thin wrapper over Todoist's unified API v1 (`api.todoist.com/api/v1`) —
+/// the old REST v2 (`rest/v2`) and Sync v9 (`sync/v9`) endpoints were
+/// sunset, and now respond with a deprecation notice instead of data.
 /// Takes an [http.Client] so tests can substitute `http.testing.MockClient`
 /// instead of hitting the network.
 class TodoistApiClient {
-  static const String baseUrl = 'https://api.todoist.com/rest/v2';
+  static const String baseUrl = 'https://api.todoist.com/api/v1';
 
   final String apiToken;
   final http.Client _client;
@@ -42,16 +44,31 @@ class TodoistApiClient {
     return jsonDecode(response.body);
   }
 
-  /// A cheap authenticated call used to validate a token before it's saved.
-  Future<List<Map<String, dynamic>>> fetchProjects() async {
-    final response =
-        await _client.get(Uri.parse('$baseUrl/projects'), headers: _headers);
-    final data = _decode(response);
-    return (data as List? ?? const [])
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+  /// v1 list endpoints (`tasks`, `projects`) return one cursor-paginated
+  /// page at a time as `{"results": [...], "next_cursor": ...}`, unlike REST
+  /// v2's bare array — this walks every page and returns the combined list.
+  Future<List<Map<String, dynamic>>> _fetchAllPages(String path) async {
+    final results = <Map<String, dynamic>>[];
+    String? cursor;
+    while (true) {
+      final uri = Uri.parse('$baseUrl/$path').replace(
+        queryParameters: cursor == null ? null : {'cursor': cursor},
+      );
+      final response = await _client.get(uri, headers: _headers);
+      final data = _decode(response);
+      final page = data is Map ? Map<String, dynamic>.from(data) : const {};
+      results.addAll((page['results'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e)));
+      cursor = page['next_cursor'] as String?;
+      if (cursor == null) break;
+    }
+    return results;
   }
+
+  /// A cheap authenticated call used to validate a token before it's saved.
+  Future<List<Map<String, dynamic>>> fetchProjects() =>
+      _fetchAllPages('projects');
 
   Future<Map<String, dynamic>> createProject(String name) async {
     final response = await _client.post(
@@ -62,19 +79,12 @@ class TodoistApiClient {
     return Map<String, dynamic>.from(_decode(response) as Map);
   }
 
-  /// All active (open) tasks. Todoist's REST API has no endpoint for
-  /// completed tasks, so a task's disappearance from this list is how
+  /// All active (open) tasks. Todoist's API has no endpoint for completed
+  /// tasks, so a task's disappearance from this list is how
   /// completion/deletion on the Todoist side is detected — see
   /// `TodoistSyncService`.
-  Future<List<Map<String, dynamic>>> fetchActiveTasks() async {
-    final response =
-        await _client.get(Uri.parse('$baseUrl/tasks'), headers: _headers);
-    final data = _decode(response);
-    return (data as List? ?? const [])
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-  }
+  Future<List<Map<String, dynamic>>> fetchActiveTasks() =>
+      _fetchAllPages('tasks');
 
   Future<Map<String, dynamic>> createTask({
     required String content,

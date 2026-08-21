@@ -14,10 +14,13 @@ void main() {
         client: MockClient((request) async {
           captured = request;
           return http.Response(
-            jsonEncode([
-              {'id': '1', 'content': 'A'},
-              {'id': '2', 'content': 'B'},
-            ]),
+            jsonEncode({
+              'results': [
+                {'id': '1', 'content': 'A'},
+                {'id': '2', 'content': 'B'},
+              ],
+              'next_cursor': null,
+            }),
             200,
           );
         }),
@@ -29,6 +32,42 @@ void main() {
       expect(captured!.url.toString(), '${TodoistApiClient.baseUrl}/tasks');
       expect(tasks.length, 2);
       expect(tasks[0]['content'], 'A');
+    });
+
+    test('walks every cursor page of a paginated list response', () async {
+      final requestedCursors = <String?>[];
+      final client = TodoistApiClient(
+        apiToken: 't',
+        client: MockClient((request) async {
+          final cursor = request.url.queryParameters['cursor'];
+          requestedCursors.add(cursor);
+          if (cursor == null) {
+            return http.Response(
+              jsonEncode({
+                'results': [
+                  {'id': '1', 'content': 'A'},
+                ],
+                'next_cursor': 'page2',
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'results': [
+                {'id': '2', 'content': 'B'},
+              ],
+              'next_cursor': null,
+            }),
+            200,
+          );
+        }),
+      );
+
+      final tasks = await client.fetchActiveTasks();
+
+      expect(requestedCursors, [null, 'page2']);
+      expect(tasks.map((t) => t['content']), ['A', 'B']);
     });
 
     test('a non-2xx response throws TodoistApiException with the status code',
@@ -124,7 +163,7 @@ void main() {
       await client.closeTask('5');
       await client.reopenTask('5');
 
-      expect(calledPaths, ['/rest/v2/tasks/5/close', '/rest/v2/tasks/5/reopen']);
+      expect(calledPaths, ['/api/v1/tasks/5/close', '/api/v1/tasks/5/reopen']);
     });
   });
 }
