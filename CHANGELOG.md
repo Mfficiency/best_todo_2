@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.238] - 2026-08-21
+- Local builds (`tool/build.sh`) now note when they finished as a "Local build" line in the changelog, so the Changelog page shows the previous build's build time
+
 ## [0.1.237] - 2026-08-21
 - Fun stats on the Productivity Stats page are now tappable: each one that's backed by real items (completions, postponements, etc.) opens a sheet listing which items made it up and the day/time it happened
 

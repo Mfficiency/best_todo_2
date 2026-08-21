@@ -1474,9 +1474,17 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
   dropped by accident.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
-  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) →
-  `dart run tool/stage_local_release.dart` for an APK build → optionally
-  `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+  on success, `dart run tool/append_build_time.dart` → rename artifacts with the version
+  (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart`
+  for an APK build → optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+- **Local build time (0.1.238):** `tool/append_build_time.dart` writes/updates a
+  `- Local build: yyyy-mm-dd HH:MM` bullet inside the *newest* CHANGELOG.md section
+  (`withBuildTimeNote`: replaces the existing line for that version on a repeat build
+  instead of piling one up per build; inserted right after that section's other entries).
+  Runs after `flutter build`, which already bundled CHANGELOG.md as an asset for *this*
+  build — so a build only ever shows the previous build's timestamp on the Changelog page,
+  never its own; that's expected, not a bug. No-ops (prints, doesn't touch the file) when
+  CHANGELOG.md has no `## [version] - date` heading yet.
 - **Kept builds in the repo (0.1.146):** `tool/stage_local_release.dart` copies the built
   APK to `github_releases/best_todo_<x.y.z+build>.apk` and deletes everything but the
   newest two (`--keep`, `--dir`, `--apk`, `--dry-run`; ordering by the numeric name
