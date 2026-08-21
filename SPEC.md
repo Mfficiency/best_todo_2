@@ -1260,6 +1260,18 @@ input is missing are dropped; a completely empty history shows "Complete a few i
 the trivia shows up here." instead of a column of zeroes. Durations are deliberately
 rough (`s` → `min` → `h` → `days` → `weeks`).
 
+Since 0.1.237, any row backed by concrete items or days is **tappable** (a trailing
+chevron marks it — `_funStatTile`'s `details` param, empty list = plain row, e.g. "Open
+right now" and "Items ever created" stay non-interactive): tapping opens a
+`DraggableScrollableSheet` (`_showStatDetails`) listing each item's title (or day, for
+day-bucketed stats like busiest day / days with something done / times postponed / most
+postponed on) against the weekday + date + time it happened
+(`_weekdayDateTime`, e.g. "Mon, 2026-08-10 · 14:32"), newest first. Fastest finish /
+longest wait / oldest open item show a two-row created→completed breakdown instead of a
+list, since there is only ever one task behind them. All detail lists are recomputed on
+tap from the same in-memory `tasks`/`deletedItems`/`dailyStatsByDay` the tile numbers
+already come from — no new storage or state.
+
 The item-activity cell shading is **outlier-resistant** (`_ActivityScale`, 0.1.124): the
 ramp saturates at the Tukey upper fence of the non-empty cells
 (`cap = clamp(max(q3+1, q3 + 1.5·IQR), 1, maxCount)`) and counts are compressed

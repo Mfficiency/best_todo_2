@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.237] - 2026-08-21
+- Fun stats on the Productivity Stats page are now tappable: each one that's backed by real items (completions, postponements, etc.) opens a sheet listing which items made it up and the day/time it happened
+
 ## [0.1.236] - 2026-08-21
 - Every wishlist item now has a copy button that puts its title, description and labels on the clipboard
 - The app-bar flame stops cycling once all three daily challenges are done for the day: it settles on one steady red flame showing the highest of the streak counts
