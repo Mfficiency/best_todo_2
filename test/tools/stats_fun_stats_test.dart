@@ -117,6 +117,72 @@ void main() {
         findsOneWidget);
   });
 
+  testWidgets(
+      'tapping a fun stat opens a sheet listing the items behind it',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final day = DateTime.now().subtract(const Duration(days: 3));
+    DateTime at(int hour, [int minute = 0]) =>
+        DateTime(day.year, day.month, day.day, hour, minute);
+
+    final tasks = <Task>[
+      Task(
+        title: 'Feed the zebra',
+        createdAt: at(6),
+        completedAt: at(6, 30),
+        isDone: true,
+      ),
+      Task(
+        title: 'Water plants',
+        createdAt: at(5),
+        completedAt: at(9),
+        isDone: true,
+      ),
+    ];
+
+    await tester.pumpWidget(_wrap(tasks));
+    await tester.pumpAndSettle();
+    await scrollToFunStats(tester);
+
+    final itemsCompletedTile =
+        find.widgetWithText(ListTile, 'Items completed');
+    await tester.ensureVisible(itemsCompletedTile);
+    await tester.pumpAndSettle();
+    await tester.tap(itemsCompletedTile);
+    await tester.pumpAndSettle();
+
+    // The sheet names both completed items and when each finished.
+    final sheet = find.byType(DraggableScrollableSheet);
+    expect(sheet, findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.text('Feed the zebra')),
+        findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.text('Water plants')),
+        findsOneWidget);
+  });
+
+  testWidgets('a stat with nothing behind it stays a plain row',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_wrap(
+      [Task(title: 'Anything', createdAt: DateTime.now())],
+    ));
+    await tester.pumpAndSettle();
+    await scrollToFunStats(tester);
+
+    // Nothing has ever completed, so 'Open right now' carries no detail
+    // list and tapping it must not open a sheet.
+    final openNowTile = find.widgetWithText(ListTile, 'Open right now');
+    await tester.ensureVisible(openNowTile);
+    await tester.pumpAndSettle();
+    await tester.tap(openNowTile);
+    await tester.pumpAndSettle();
+    expect(find.byType(DraggableScrollableSheet), findsNothing);
+  });
+
   testWidgets('postponed items are counted from the daily stats',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1000, 2000));

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.240] - 2026-08-21
+- Local builds (`tool/build.sh`) now note when they finished as a "Local build" line in the changelog, so the Changelog page shows the previous build's build time
+
+## [0.1.239] - 2026-08-21
+- Fun stats on the Productivity Stats page are now tappable: each one that's backed by real items (completions, postponements, etc.) opens a sheet listing which items made it up and the day/time it happened
+
 ## [0.1.238] - 2026-08-21
 - Todoist sync: fixed against Todoist's unified API v1 after the old REST v2/Sync v9 endpoints were sunset — the sync tab was failing with an endpoint-deprecated error. Also fixes reading Todoist due dates/times (their new API merged the separate date/datetime fields into one) and pages through more than one page of tasks or projects instead of silently stopping at the first.
 
