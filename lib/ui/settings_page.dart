@@ -13,6 +13,8 @@ import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
 import '../services/streak_service.dart';
+import '../services/todoist_api_client.dart';
+import '../services/todoist_sync_service.dart';
 import 'dice_timer_settings.dart';
 import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
@@ -40,7 +42,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    10,
+    11,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -54,6 +56,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'SMS report',
     'Sync & export',
     'Backup',
+    'Todoist sync',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -83,7 +86,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
   final Set<int> _collapsedSections = {
-    for (var i = 0; i < 10; i++) i,
+    for (var i = 0; i < 11; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
@@ -162,6 +165,10 @@ class _SettingsPageState extends State<SettingsPage> {
         'daily weekly schedule export save everything off'),
     _SettingsSearchEntry('Backup folder', 9, 'directory location path choose'),
     _SettingsSearchEntry('Back up now', 9, 'manual backup export run'),
+    _SettingsSearchEntry('Enable Todoist sync', 10,
+        'two-way api key token integration'),
+    _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
+    _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -204,6 +211,13 @@ class _SettingsPageState extends State<SettingsPage> {
   DateTime? _lastAutoBackup;
   bool _syncEnabled = Config.syncEnabled;
   String _syncFolderPath = Config.syncFolderPath;
+  bool _todoistSyncEnabled = Config.todoistSyncEnabled;
+  final TextEditingController _todoistTokenController =
+      TextEditingController(text: Config.todoistApiToken);
+  bool _todoistTokenObscured = true;
+  bool _todoistTesting = false;
+  String? _todoistTestResult;
+  bool _todoistTestSucceeded = false;
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
@@ -237,6 +251,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _autoBackupDirectory = Config.autoBackupDirectory;
     _syncEnabled = Config.syncEnabled;
     _syncFolderPath = Config.syncFolderPath;
+    _todoistSyncEnabled = Config.todoistSyncEnabled;
+    _todoistTokenController.text = Config.todoistApiToken;
   }
 
   @override
@@ -1496,6 +1512,221 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _setTodoistSyncEnabled(bool value) async {
+    setState(() => _todoistSyncEnabled = value);
+    Config.todoistSyncEnabled = value;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _persistTodoistToken() async {
+    Config.todoistApiToken = _todoistTokenController.text.trim();
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _saveTodoistToken() async {
+    await _persistTodoistToken();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Todoist token saved')),
+    );
+  }
+
+  Future<void> _testTodoistConnection() async {
+    final token = _todoistTokenController.text.trim();
+    if (token.isEmpty) {
+      setState(() {
+        _todoistTestResult = 'Enter an API token first';
+        _todoistTestSucceeded = false;
+      });
+      return;
+    }
+    setState(() {
+      _todoistTesting = true;
+      _todoistTestResult = null;
+    });
+    try {
+      await TodoistSyncService.instance.testConnection(token);
+      if (!mounted) return;
+      setState(() {
+        _todoistTestResult = 'Connected';
+        _todoistTestSucceeded = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _todoistTestResult = e is TodoistApiException
+            ? (e.statusCode == 401 ? 'Invalid API token' : e.message)
+            : e.toString();
+        _todoistTestSucceeded = false;
+      });
+    } finally {
+      if (mounted) setState(() => _todoistTesting = false);
+    }
+  }
+
+  Future<void> _syncTodoistNow() async {
+    await _persistTodoistToken();
+    final entry = await TodoistSyncService.instance.syncNow(trigger: 'manual');
+    if (!mounted) return;
+    widget.onSettingsChanged?.call();
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    if (entry == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Turn on Todoist sync and enter a token first'),
+      ));
+      return;
+    }
+    messenger.showSnackBar(SnackBar(
+      content: Text(entry.success
+          ? 'Synced ${entry.itemCount} change(s) with Todoist'
+          : 'Todoist sync failed: ${entry.message}'),
+    ));
+  }
+
+  Widget _buildTodoistSyncSection() {
+    return _buildSection(
+      index: 10,
+      title: 'Todoist sync',
+      children: [
+        SwitchListTile(
+          title: const Text('Enable Todoist sync'),
+          subtitle: const Text(
+              'Keeps tasks in sync both ways with a Todoist account. '
+              'Wishlist items and recurring tasks stay local-only.'),
+          value: _todoistSyncEnabled,
+          onChanged: _setTodoistSyncEnabled,
+        ),
+        if (_todoistSyncEnabled) ...[
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              'API token',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(
+              'From Todoist → Settings → Integrations → Developer.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _todoistTokenController,
+              obscureText: _todoistTokenObscured,
+              decoration: InputDecoration(
+                labelText: 'API token',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  tooltip: _todoistTokenObscured ? 'Show token' : 'Hide token',
+                  icon: Icon(_todoistTokenObscured
+                      ? Icons.visibility
+                      : Icons.visibility_off),
+                  onPressed: () => setState(
+                      () => _todoistTokenObscured = !_todoistTokenObscured),
+                ),
+              ),
+              onSubmitted: (_) => _saveTodoistToken(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _saveTodoistToken,
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save token'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _todoistTesting ? null : _testTodoistConnection,
+                  icon: _todoistTesting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.wifi_tethering),
+                  label: const Text('Test connection'),
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: TodoistSyncService.instance.syncing,
+                  builder: (context, syncing, _) => FilledButton.icon(
+                    onPressed: syncing ? null : _syncTodoistNow,
+                    icon: syncing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.sync),
+                    label: const Text('Sync now'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_todoistTestResult != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text(
+                _todoistTestResult!,
+                style: TextStyle(
+                  color: _todoistTestSucceeded
+                      ? Colors.green
+                      : Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+          const Divider(height: 1),
+          ValueListenableBuilder<List<SyncLogEntry>>(
+            valueListenable: TodoistSyncService.instance.entries,
+            builder: (context, entries, _) {
+              final last = entries.isEmpty ? null : entries.first;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text(
+                  last == null
+                      ? 'Never synced yet'
+                      : last.success
+                          ? 'Last synced ${_formatDateTime(last.at)} — '
+                              '${last.itemCount} change(s)'
+                          : 'Last sync failed (${_formatDateTime(last.at)}): '
+                              '${last.message}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: (last != null && !last.success)
+                            ? Theme.of(context).colorScheme.error
+                            : null,
+                      ),
+                ),
+              );
+            },
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Text(
+              'Fields Todoist has no room for — note, label, project and '
+              'Kanban stage — are appended to the Todoist task\'s '
+              'description so nothing is lost round-tripping. Editing that '
+              'trailer by hand in Todoist is not recommended; editing the '
+              'text above it is fine and syncs back as the task\'s '
+              'description. Conflicting edits on both sides favor the '
+              'BestToDo side.',
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   List<_SettingsSearchEntry> get _searchResults {
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return const [];
@@ -1597,6 +1828,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _scrollController.dispose();
     _smsTemplateController.dispose();
     _searchController.dispose();
+    _todoistTokenController.dispose();
     super.dispose();
   }
 
@@ -1950,6 +2182,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (_isSectionVisible(7)) _buildSmsReportSection(),
                   _buildExportSection(),
                   _buildBackupSection(),
+                  _buildTodoistSyncSection(),
                 ],
               ),
             ),

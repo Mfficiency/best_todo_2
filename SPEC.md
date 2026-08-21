@@ -490,7 +490,8 @@ default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
 prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
-(§4.7), Export/Import buttons. `Config.applyMap` is defensive
+(§4.7), Export/Import buttons. Todoist sync: enable switch + API token field (§4.8).
+`Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
 
@@ -766,6 +767,59 @@ stays); a later successful sync also clears it.
 
 Tests live in their own silo `test/sync/` (service round-trip/failures/lifecycle latch
 + Sync tab, drawer dot, settings switch).
+
+### 4.8 Todoist sync — two-way sync with a Todoist account (0.1.229)
+
+`Config.todoistSyncEnabled` (default **off**) + `Config.todoistApiToken` (plain text,
+same as every other setting — the app has no secret-storage layer), both in Settings →
+**Todoist sync**. `TodoistSyncService` (`lib/services/todoist_sync_service.dart`,
+singleton with `resetForTest`) mirrors `SyncService`'s shape (lifecycle-triggered
+background run via the same `onLifecycleChanged` latch, a manual "Sync now", a
+`SyncLogEntry` history in `todoist_sync_log.json` — App Logs gained a third "Todoist" tab,
+and its `hasUnseenError` ORs into the same drawer red dot as the folder sync) but writes
+**both directions** against the Todoist REST API v2 (`lib/services/todoist_api_client.dart`,
+`http` package, injectable client for tests).
+
+**Scope:** wishlist items and recurring tasks (parents and generated instances) are
+excluded — Todoist's own recurrence engine has no clean mapping onto this app's
+generated-instance model, so those stay local-only.
+
+**No live diff, so fingerprints:** the REST API has no per-task "updated at" and no
+completed-task endpoint, so a run can't diff against a timestamp. `TodoistSyncMapEntry`
+(`lib/models/todoist_sync_map_entry.dart`) persists, per synced task
+(`todoist_sync_state.json`: task entries + the local-project→Todoist-project id map), a
+fingerprint of each side's fields as of the last successful sync; a run recomputes both
+current fingerprints and compares. **Conflict rule: local wins** — a task changed on both
+sides pushes the local edit and overwrites the Todoist-side one. A task's disappearance
+from Todoist's active-task list (the only "done" signal REST v2 gives) is always treated
+as a completion, never a delete, so the ambiguity never loses data.
+
+**Fields with no Todoist equivalent** — `Task.note`, `Task.label`, the project/Kanban
+assignment, `uid` for relinking — round-trip through a trailer appended to Todoist's
+`description` field (`lib/services/todoist_metadata_codec.dart`): the task's own
+description text, then a `⸻ BestToDo sync — generated, do not edit below this line ⸻`
+separator, human-readable `Project:`/`Label:`/`Note:` lines (visible if you open the task
+in Todoist), then one `sync-data: {...}` JSON line, which is what parsing actually reads
+back. A description with no such trailer is a plain Todoist-native task.
+
+**Algorithm** (`TodoistSyncService._runSync`, five passes over one fetch of Todoist's
+active tasks + projects): (1) a locally-vanished synced task (completed-and-rolled-over
+or deleted) closes or deletes its Todoist counterpart; (2) a still-open-locally task now
+marked done closes it; (3) every other open local task creates (new), or pushes/pulls an
+edit by fingerprint diff (conflict → local wins); (4) a Todoist task with no local mapping
+is pulled in as a new local task (an embedded `uid` matching an existing local task
+relinks instead of duplicating — recovers from a lost/reset state file); (5) a mapped task
+that silently vanished from Todoist's active list is marked done locally. Projects are
+matched by name (case-insensitive) or created on first push; an unmapped Todoist project
+on a pulled task leaves the local task unassigned rather than importing the project.
+Due dates: `hasExplicitTime` tasks map to Todoist's `due_datetime` (UTC); date-only tasks
+map to `due_date` and default to 18:00 on pull (matching `applyDefaultDeadlineTimes`).
+
+Tests live in `test/sync/`: `todoist_metadata_codec_test.dart` (pure trailer round-trip),
+`todoist_api_client_test.dart` (`http.testing.MockClient`), `todoist_sync_service_test.dart`
+(a small in-memory fake Todoist backend routed through `MockClient`, covering push/pull/
+conflict/completion/deletion/project-mapping/lifecycle-latch), plus the Settings section
+and combined drawer-dot coverage in `sync_ui_test.dart`.
 
 ## 5. Alarm subsystem (the reliability showpiece)
 

@@ -15,7 +15,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, its alert settings and its full-screen alarm ring (`dice_timer_alarm_test.dart`), wishlist items on the Future tab, simple/full mode + the feature switches (`simple_mode_test.dart`, `settings_features_test.dart`), collapsible settings sections (`settings_collapse_test.dart`), home-screen widget payload + checkbox toggles (`widget_checkboxes_test.dart`) |
 | `test/streaks/` | `flutter test test/streaks` | Daily streaks: `StreakService` (grace periods, persistence, history seeding, fun stats), the three challenges — finish/create/plan — and their per-kind streaks, reminder list + migration (`streak_kinds_test.dart`), the cycling home-page flame + badge, celebration overlay, `StreakPage`, Streak settings section + search entries |
 | `test/sms/` | `flutter test test/sms` | SMS daily report: `SmsRecipient`/`SmsReportConfig` JSON round-trip, per-recipient enable flag + `activeRecipients` filtering, Settings recipient rows (pause switch, edit keeps the flag) |
-| `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile |
+| `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile. Todoist sync: `TodoistMetadataCodec` trailer round-trip, `TodoistApiClient` request/response handling (`http.testing.MockClient`), `TodoistSyncService` push/pull/conflict/completion/deletion/project-mapping/lifecycle-latch against a small in-memory fake Todoist backend, Settings "Todoist sync" section (switch, token field, Sync now) + its App Logs "Todoist" tab + combined drawer dot |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`) |
 
 ## Which suites to run
@@ -41,8 +41,10 @@ Pick suites by what you touched, always including core:
   `lib/ui/settings_page.dart` → core + **sms** (+ **home**/**streaks**, which also
   pump the settings page)
 - `lib/services/sync_service.dart`, `lib/services/sync_markdown.dart`,
-  `lib/models/sync_log_entry.dart`,
-  `lib/ui/app_logs_page.dart`, the Sync & export section of
+  `lib/services/todoist_sync_service.dart`, `lib/services/todoist_api_client.dart`,
+  `lib/services/todoist_metadata_codec.dart`, `lib/models/sync_log_entry.dart`,
+  `lib/models/todoist_sync_map_entry.dart`,
+  `lib/ui/app_logs_page.dart`, the Sync & export / Todoist sync sections of
   `lib/ui/settings_page.dart` → core + **sync** (+ **home**, which also pumps the
   settings page and drawer)
 - `lib/services/usage_data_service.dart`, `lib/services/startup_time_service.dart`,

@@ -23,6 +23,7 @@ import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
+import 'services/todoist_sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
@@ -233,6 +234,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
+    TodoistSyncService.instance.onLifecycleChanged(state);
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
