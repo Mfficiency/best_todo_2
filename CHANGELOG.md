@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.236] - 2026-08-21
+- Every wishlist item now has a copy button that puts its title, description and labels on the clipboard
+- The app-bar flame stops cycling once all three daily challenges are done for the day: it settles on one steady red flame showing the highest of the streak counts
+
 ## [0.1.235] - 2026-08-17
 - Tier 3 of the Obsidian integration ships: checking a task off in Obsidian now flows back to the phone on its next resume, via a change journal (besttodo_changes.json) the app applies with last-writer-wins conflict rules
 

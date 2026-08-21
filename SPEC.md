@@ -669,7 +669,14 @@ the *outlined* icon in `theme.disabledColor`, the `Badge` (still counting the st
 risk) greys with it, and the tooltip gains "— still open today". That grey icon **pulses**:
 a 900 ms repeat-reverse controller lerps it grey → white and scales it 1.0 → 1.12, so an
 unfinished challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind
-currently shown. **Cycle and pulse are both disabled under the test bindings** (a repeating
+currently shown.
+**All challenges done settles the flame (0.1.236):** once every active challenge is done
+today (and more than one is on), the cycling collapses into a single **steady red**
+(`StreakFlameButton.allDoneColor` = `0xFFD32F2F`, red 700) lit flame badged with the
+**highest** of the streak counts, keyed `'all-done'` so the switcher stops cross-fading;
+the tooltip becomes "All 3 challenges done today — 5-day streak" and tapping opens
+`StreakPage` on the kind that owns that highest streak. A single active challenge keeps
+its own colour (there is no cycle to collapse). **Cycle and pulse are both disabled under the test bindings** (a repeating
 timer/animation means `pumpAndSettle` never settles, and it also keeps screenshot runs
 deterministic) — the check is `WidgetsBinding.instance.runtimeType` containing "Test";
 `StreakFlameButton.debugForceCycle` re-enables both for the tests that cover them.
@@ -1334,6 +1341,12 @@ wishes are a title plus a priority), description last (a `_WishEditDialog`
 StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
 recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
 exported_at, wishlist_items: [...]}`) remain.
+
+**Copy to clipboard (0.1.236):** every wish tile carries a "Copy wishlist item" button
+(`Icons.copy_outlined`, left of the export button) that puts the plain-text item on the
+clipboard via `_WishlistPageState.clipboardText` — title, then description, then labels,
+each on its own line, empty parts skipped — and confirms with a `Copied "<title>"`
+snackbar.
 
 **Clickable URLs (0.1.148):** http/https URLs in descriptions are auto-linkified by
 `LinkifiedText` (`lib/utils/linkified_text.dart`): a StatefulWidget that renders
