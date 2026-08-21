@@ -1,10 +1,14 @@
 # Changelog
 
-## [0.1.236] - 2026-08-21
+## [0.1.237] - 2026-08-21
 - Todoist sync: Settings → **Todoist sync** — a switch and an API token field keep your tasks synced both ways with a Todoist account. New/edited/completed/deleted tasks push to Todoist; tasks created, edited or completed in Todoist pull back in. "Test connection" and "Sync now" buttons, plus a status line showing the last run
 - Fields Todoist has no room for — note, label, project and Kanban stage — are appended to the synced Todoist task's description as a readable summary so nothing is lost round-tripping; editing the description text above that summary in either app stays in sync
 - Wishlist items and recurring tasks stay local-only (Todoist's recurrence engine doesn't map cleanly onto this app's recurring-task model)
 - Runs in the background whenever you leave the app (same trigger as Synced mode) with its own App Logs "Todoist" tab; a failed sync lights the same drawer red dot as the folder sync
+
+## [0.1.236] - 2026-08-21
+- Every wishlist item now has a copy button that puts its title, description and labels on the clipboard
+- The app-bar flame stops cycling once all three daily challenges are done for the day: it settles on one steady red flame showing the highest of the streak counts
 
 ## [0.1.235] - 2026-08-17
 - Tier 3 of the Obsidian integration ships: checking a task off in Obsidian now flows back to the phone on its next resume, via a change journal (besttodo_changes.json) the app applies with last-writer-wins conflict rules
