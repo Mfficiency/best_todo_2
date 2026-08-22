@@ -930,8 +930,13 @@ background run via the same `onLifecycleChanged` latch, a manual "Sync now", a
 and its `hasUnseenError` ORs into the same drawer red dot as the folder sync) but writes
 **both directions** against Todoist's unified API v1
 (`https://api.todoist.com/api/v1`, `lib/services/todoist_api_client.dart`, `http` package,
-injectable client for tests). The old REST v2 (`rest/v2`) and Sync v9 (`sync/v9`)
-endpoints Todoist previously offered are sunset and now return a deprecation notice
+injectable client for tests). Pulling down on the home page's task list
+(`RefreshIndicator` around the tab/schedule body, `HomePage._pullToRefreshSync`) also runs
+`syncNow(trigger: 'pull_to_refresh')` and reloads tasks from storage afterwards — a no-op
+(no snackbar) when Todoist sync is off or unconfigured, same as any other trigger
+otherwise; the same `SyncLogEntry` history and drawer dot apply. The old REST v2 (`rest/v2`)
+and Sync v9 (`sync/v9`) endpoints Todoist previously offered are sunset and now return a
+deprecation notice
 instead of data — `tasks`/`projects` GET responses on v1 are also cursor-paginated
 (`{"results": [...], "next_cursor": ...}` rather than a bare array), which
 `TodoistApiClient._fetchAllPages` walks to completion.
