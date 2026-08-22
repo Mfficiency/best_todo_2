@@ -1,6 +1,7 @@
 # Changelog
 
 ## [0.1.249] - 2026-08-22
+- Windows portable EXE builds now run automatically after a successful GitHub APK build, checking out the same commit that produced the APK; the manual "Build Windows Portable Exe" action is still available for one-off rebuilds.
 - Auto-tagging got smarter: instead of one keyword per tag, each tag now has a whole group of words that trigger it (e.g. "fitness" fires on gym, workout, exercise, cardio, yoga, jogging, running, training or stretch) — seeded with 12 starter categories (work, bike, fitness, health, shopping, finance, travel, home, family, food, study, tech) curated from online thesaurus data. Settings → Auto-tag rules now edits a tag plus its whole word group in one dialog. Still on by default.
 
 ## [0.1.248] - 2026-08-22

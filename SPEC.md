@@ -1673,15 +1673,16 @@ in App Logs → Todoist — onboarding has already finished by then.
     one section per PNG found, so new captures need no CI edits. Loop protection:
     paths-ignore on its own outputs, skips actor `github-actions[bot]`, and its commit
     message carries `[skip-screenshot-changelog]`.
-  - `build-windows-exe.yml` (manual `workflow_dispatch` only, 0.1.242): Windows
-    runner (same `windows-2022` pin as `screenshot_changelog.yml`, for the same
-    VS-2022-CMake-generator reason) runs `flutter build windows --release`, zips
-    the `build/windows/x64/runner/Release` folder as
+  - `build-windows-exe.yml` (`workflow_dispatch` + successful `Build APK`
+    `workflow_run`, 0.1.250): Windows runner (same `windows-2022` pin as
+    `screenshot_changelog.yml`, for the same VS-2022-CMake-generator reason)
+    runs `flutter build windows --release`, zips the
+    `build/windows/x64/runner/Release` folder as
     `BestToDo-<version>-portable-win64.zip` and uploads it as a build artifact
     (30-day retention). "Portable" = unzip and run `BestToDo.exe`, no installer,
-    no admin rights; works on Windows 10 and 11 (x64). Not wired into the
-    push-triggered flow — the Android APK is the auto-built/published artifact
-    (`build-apk.yml`); a Windows build is heavier and asked for on demand.
+    no admin rights; works on Windows 10 and 11 (x64). APK-triggered runs check
+    out `github.event.workflow_run.head_sha`, so the EXE is built from the same
+    commit as the APK that triggered it.
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
   `staging` → `main`. Releases are built from dev after a version bump.
 
