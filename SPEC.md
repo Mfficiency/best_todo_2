@@ -913,9 +913,19 @@ instead of data — `tasks`/`projects` GET responses on v1 are also cursor-pagin
 (`{"results": [...], "next_cursor": ...}` rather than a bare array), which
 `TodoistApiClient._fetchAllPages` walks to completion.
 
-**Scope:** wishlist items and recurring tasks (parents and generated instances) are
-excluded — Todoist's own recurrence engine has no clean mapping onto this app's
-generated-instance model, so those stay local-only.
+**Scope:** recurring tasks (parents and generated instances) are excluded —
+Todoist's own recurrence engine has no clean mapping onto this app's
+generated-instance model, so those stay local-only. Everything else syncs,
+including wishlist items: a task's `label` free-text round-trips as real
+Todoist labels (auto-created on push), and `_targetProjectKey` routes it to a
+Todoist project — its own Kanban project if it has one, else a dedicated
+**Wishlist** project for `isWish` tasks, else a dedicated **Future** project
+for any other unprojected task with no due date (the Future tab bucket,
+including the schedule view's `Task.futureBucketMarker` sentinel date), else
+Todoist's Inbox. Both dedicated projects are created on first push and cached
+in `todoist_sync_state.json`'s project map like any other. Pulling a task back
+out of either project restores the matching local state (`isWish: true`/
+unassigned, or just unassigned).
 
 **No live diff, so fingerprints:** the API has no per-task "updated at" and no
 completed-task endpoint, so a run can't diff against a timestamp. `TodoistSyncMapEntry`

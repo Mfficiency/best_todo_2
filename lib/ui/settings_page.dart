@@ -1646,8 +1646,9 @@ class _SettingsPageState extends State<SettingsPage> {
         SwitchListTile(
           title: const Text('Enable Todoist sync'),
           subtitle: const Text(
-              'Keeps tasks in sync both ways with a Todoist account. '
-              'Wishlist items and recurring tasks stay local-only.'),
+              'Keeps tasks in sync both ways with a Todoist account, including '
+              'labels, wishlist items (a Wishlist project) and undated tasks '
+              '(a Future project). Recurring tasks stay local-only.'),
           value: _todoistSyncEnabled,
           onChanged: _setTodoistSyncEnabled,
         ),

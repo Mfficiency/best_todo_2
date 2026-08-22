@@ -117,7 +117,7 @@ class _HomePageState extends State<HomePage>
   int _lastTabIndex = 0;
 
   static const int _futureTabIndex = 5;
-  static final DateTime _futureDueDate = DateTime(2300, 1, 1);
+  static final DateTime _futureDueDate = Task.futureBucketMarker;
 
   /// Day offsets for each non-future tab.
   static const List<int> _offsetDays = [0, 1, 2, 7, 30];
