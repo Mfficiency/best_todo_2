@@ -61,7 +61,7 @@ class ScheduleView extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<ScheduleView> createState() => _ScheduleViewState();
+  State<ScheduleView> createState() => ScheduleViewState();
 }
 
 /// Identity + target date of one top-level section of the schedule list.
@@ -71,7 +71,7 @@ class _SectionSpec {
   const _SectionSpec(this.id, this.date);
 }
 
-class _ScheduleViewState extends State<ScheduleView> {
+class ScheduleViewState extends State<ScheduleView> {
   /// A section whose top edge sits at or above this offset (relative to the
   /// list's top edge) can be the active one; the bottom-most such section
   /// wins, i.e. the section currently spanning the top of the viewport.
@@ -80,11 +80,18 @@ class _ScheduleViewState extends State<ScheduleView> {
   /// Scroll offset after which the back-to-top arrow is shown.
   static const double _backToTopThreshold = 300.0;
 
+  static const String _nextWeekEmptyId = 'next-week-empty';
+  static const String _nextMonthEmptyId = 'next-month-empty';
+  static const String _somedayId = 'someday';
+
   final Map<String, GlobalKey> _sectionKeys = {};
   final GlobalKey _listKey = GlobalKey();
   List<_SectionSpec> _sections = const [];
   String? _activeSectionId;
   bool _showBackToTop = false;
+
+  /// Section id each tab index scrolls to, refreshed on every build.
+  Map<int, String> _tabAnchorSectionId = const {};
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
   bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
@@ -183,6 +190,59 @@ class _ScheduleViewState extends State<ScheduleView> {
     final active = best;
     setState(() => _activeSectionId = active.id);
     widget.onActiveDateChanged?.call(active.date);
+  }
+
+  /// Scrolls so the section a tab anchors to sits at the top of the list.
+  ///
+  /// The list only builds the sections near the current scroll position (the
+  /// rest are virtualized out), so a tab far from the current position has
+  /// no [GlobalKey.currentContext] yet and [Scrollable.ensureVisible] has
+  /// nothing to target. When that happens, binary-search the scroll offset —
+  /// jumping, letting a frame lay out, then checking which section is now on
+  /// top — until the target section is close enough to be built, then hand
+  /// off to ensureVisible for the final smooth scroll.
+  Future<void> scrollToSection(int tabIndex) async {
+    if (_tryEnsureVisible(tabIndex)) return;
+    if (!widget.scrollController.hasClients) return;
+
+    final targetId = _tabAnchorSectionId[tabIndex];
+    if (targetId == null) return;
+    final targetPos = _sections.indexWhere((s) => s.id == targetId);
+    if (targetPos == -1) return;
+
+    final position = widget.scrollController.position;
+    var lo = 0.0;
+    var hi = position.maxScrollExtent;
+    for (var i = 0; i < 12 && hi - lo > 2; i++) {
+      final mid = (lo + hi) / 2;
+      widget.scrollController.jumpTo(mid);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      _updateActiveSection();
+      if (_tryEnsureVisible(tabIndex)) return;
+      final activePos = _sections.indexWhere((s) => s.id == _activeSectionId);
+      if (activePos == -1) continue;
+      if (activePos < targetPos) {
+        lo = mid;
+      } else if (activePos > targetPos) {
+        hi = mid;
+      } else {
+        break;
+      }
+    }
+    _tryEnsureVisible(tabIndex);
+  }
+
+  bool _tryEnsureVisible(int tabIndex) {
+    final ctx = widget.tabAnchorKeys[tabIndex]?.currentContext;
+    if (ctx == null) return false;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+      alignment: 0.0,
+    );
+    return true;
   }
 
   void _scrollToTop() {
@@ -314,15 +374,14 @@ class _ScheduleViewState extends State<ScheduleView> {
     // Next week range — always render the range header as an anchor for
     // tab 3. When the range has day sections the header is grouped with the
     // first one; when empty it forms its own section targeting today +7.
-    const nextWeekEmptyId = 'next-week-empty';
     final nextWeekHeader = _RangeHeader(
       key: widget.tabAnchorKeys[3],
       text: 'Next week',
-      isActive: _activeSectionId == nextWeekEmptyId,
+      isActive: _activeSectionId == _nextWeekEmptyId,
     );
     if (nextWeekKeys.isEmpty) {
       addSection(
-        _SectionSpec(nextWeekEmptyId, today.add(const Duration(days: 7))),
+        _SectionSpec(_nextWeekEmptyId, today.add(const Duration(days: 7))),
         [nextWeekHeader, const _EmptyDayPlaceholder()],
       );
     } else {
@@ -333,15 +392,14 @@ class _ScheduleViewState extends State<ScheduleView> {
     }
 
     // Next month range — same shape, targeting today +30 when empty.
-    const nextMonthEmptyId = 'next-month-empty';
     final nextMonthHeader = _RangeHeader(
       key: widget.tabAnchorKeys[4],
       text: 'Next month',
-      isActive: _activeSectionId == nextMonthEmptyId,
+      isActive: _activeSectionId == _nextMonthEmptyId,
     );
     if (nextMonthKeys.isEmpty) {
       addSection(
-        _SectionSpec(nextMonthEmptyId, today.add(const Duration(days: 30))),
+        _SectionSpec(_nextMonthEmptyId, today.add(const Duration(days: 30))),
         [nextMonthHeader, const _EmptyDayPlaceholder()],
       );
     } else {
@@ -352,13 +410,12 @@ class _ScheduleViewState extends State<ScheduleView> {
     }
 
     // Someday — always rendered so tab 5 has a reliable anchor.
-    const somedayId = 'someday';
-    addSection(_SectionSpec(somedayId, ScheduleView.futureBucketDate), [
+    addSection(_SectionSpec(_somedayId, ScheduleView.futureBucketDate), [
       _DayHeader(
         key: widget.tabAnchorKeys[5],
         text: 'Someday',
         isToday: false,
-        isActive: _activeSectionId == somedayId,
+        isActive: _activeSectionId == _somedayId,
       ),
       if (someday.isEmpty)
         const _EmptyDayPlaceholder()
@@ -368,6 +425,14 @@ class _ScheduleViewState extends State<ScheduleView> {
 
     _sections = specs;
     _sectionKeys.removeWhere((id, _) => !specs.any((s) => s.id == id));
+    _tabAnchorSectionId = {
+      0: todayKey,
+      1: tomorrowKey,
+      2: dayAfterKey,
+      3: nextWeekKeys.isEmpty ? _nextWeekEmptyId : nextWeekKeys.first,
+      4: nextMonthKeys.isEmpty ? _nextMonthEmptyId : nextMonthKeys.first,
+      5: _somedayId,
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) => _updateActiveSection());
 
     return Column(

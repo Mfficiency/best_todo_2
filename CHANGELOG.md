@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.229] - 2026-08-22
+- Fix: tapping a schedule-view section tab that's scrolled far offscreen now actually scrolls to it (was a silent no-op)
+
 ## [0.1.228] - 2026-08-17
 - No code change from 0.1.157 below — bumped straight to 0.1.228 so this build installs over the `fix/black-screen-restore` bisect APKs already on a test phone (the highest of those, rc11, is versionCode 227) without needing an uninstall first. Same reason 0.1.156 jumped its own gap; see that entry's note.
 
