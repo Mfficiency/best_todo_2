@@ -353,7 +353,16 @@ class Config {
   static int diceTimerDefaultMinutes = 20;
 
   /// Dial lengths offered as the pre-wound default (one dial turn = 60 min).
-  static const List<int> diceTimerLengthOptions = [5, 10, 15, 20, 25, 30, 45, 60];
+  static const List<int> diceTimerLengthOptions = [
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    45,
+    60
+  ];
 
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
@@ -511,8 +520,7 @@ class Config {
   static void applyMap(Map<String, dynamic> data) {
     swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
     darkMode = data['darkMode'] ?? darkMode;
-    showFailureDotOnMenu =
-        data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
+    showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     defaultNotificationDelaySeconds =
@@ -543,8 +551,8 @@ class Config {
     if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {
       dateFormat = savedDateFormat;
     }
-    defaultDelaySeconds =
-        (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
+    defaultDelaySeconds = (data['defaultDelaySeconds'] as num?)?.toDouble() ??
+        defaultDelaySeconds;
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
@@ -586,15 +594,15 @@ class Config {
     simpleMode = data['simpleMode'] ?? simpleMode;
     modeChosen = data['modeChosen'] ?? modeChosen;
     final savedAlertMode = data['diceTimerAlertMode'] as String?;
-    if (savedAlertMode != null && diceTimerAlertModes.contains(savedAlertMode)) {
+    if (savedAlertMode != null &&
+        diceTimerAlertModes.contains(savedAlertMode)) {
       diceTimerAlertMode = savedAlertMode;
     }
     diceTimerMelody = data['diceTimerMelody'] as String? ?? diceTimerMelody;
     diceTimerVolume =
         (data['diceTimerVolume'] as num?)?.toDouble().clamp(0.0, 1.0) ??
             diceTimerVolume;
-    diceTimerAlsoVibrate =
-        data['diceTimerAlsoVibrate'] ?? diceTimerAlsoVibrate;
+    diceTimerAlsoVibrate = data['diceTimerAlsoVibrate'] ?? diceTimerAlsoVibrate;
     diceTimerDefaultMinutes =
         (data['diceTimerDefaultMinutes'] as num?)?.round().clamp(1, 60) ??
             diceTimerDefaultMinutes;

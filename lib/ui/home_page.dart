@@ -239,7 +239,8 @@ class _HomePageState extends State<HomePage>
     const dayOffsets = <int>[1, 2, 4, 7, 9, 11];
     final seeded = <Task>[];
     for (var i = 0; i < titles.length; i++) {
-      final deletedAt = now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
+      final deletedAt =
+          now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
       seeded.add(
         Task(
           title: titles[i],
@@ -881,8 +882,7 @@ class _HomePageState extends State<HomePage>
     if (task.isWish || task.isDone == wasDone) return;
     if (!Config.isFeatureEnabled('streak')) return;
     if (task.isDone) {
-      final firstOfDay =
-          StreakService.instance.recordCompletion(_currentDate);
+      final firstOfDay = StreakService.instance.recordCompletion(_currentDate);
       // Clearing the whole day's list is the second way to keep the planning
       // streak (the first being moving a task to another day).
       _recordStreakDayCleared();
@@ -890,8 +890,8 @@ class _HomePageState extends State<HomePage>
           Config.showStreak &&
           Config.streakCompletionAnimation &&
           mounted) {
-        showStreakCelebration(context,
-            StreakService.instance.currentStreak(now: _currentDate));
+        showStreakCelebration(
+            context, StreakService.instance.currentStreak(now: _currentDate));
       }
     } else {
       StreakService.instance.recordUncompletion(_currentDate);
@@ -1382,9 +1382,9 @@ class _HomePageState extends State<HomePage>
     if (task == null) return;
     final controller = _controllerForTask(task);
     final isRight = key == LogicalKeyboardKey.arrowRight;
-    final directionIsMove = isRight ? Config.swipeLeftDelete : !Config.swipeLeftDelete;
-    final sameOpenMenu =
-        (directionIsMove && controller.hasMoveOptions) ||
+    final directionIsMove =
+        isRight ? Config.swipeLeftDelete : !Config.swipeLeftDelete;
+    final sameOpenMenu = (directionIsMove && controller.hasMoveOptions) ||
         (!directionIsMove && controller.hasDeleteOptions);
     if (controller.hasOptions) {
       if (sameOpenMenu) {
@@ -1507,7 +1507,8 @@ class _HomePageState extends State<HomePage>
     });
     _trackTaskCreated(task);
     _saveTasks();
-    LogService.add('HomePage._addSharedTask', 'Added shared task: ${task.title}');
+    LogService.add(
+        'HomePage._addSharedTask', 'Added shared task: ${task.title}');
   }
 
   /// Creates a task from the Chronize timeline at an explicit deadline
@@ -1548,7 +1549,8 @@ class _HomePageState extends State<HomePage>
     _addToDeletedTasks(task);
     _saveTasks();
     _saveDeletedTasks();
-    LogService.add('HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
+    LogService.add(
+        'HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -1794,14 +1796,14 @@ class _HomePageState extends State<HomePage>
     }
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
-            builder: (_) => DiceTimerPage(
-              task: task,
-              onTaskDone: () => _completeTaskFromDice(task),
-              onTaskPostponed: () => _postponeTaskFromDice(task),
-            ),
-          ),
-        )
+      MaterialPageRoute(
+        builder: (_) => DiceTimerPage(
+          task: task,
+          onTaskDone: () => _completeTaskFromDice(task),
+          onTaskPostponed: () => _postponeTaskFromDice(task),
+        ),
+      ),
+    )
         .then((_) {
       if (mounted) setState(() {});
     });
@@ -1826,16 +1828,16 @@ class _HomePageState extends State<HomePage>
     }
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
-            builder: (_) => DiceTimerPage(
-              task: task,
-              caption: 'Timer for',
-              captionIcon: Icons.timer_outlined,
-              onTaskDone: () => _completeTaskFromDice(task),
-              onTaskPostponed: () => _postponeTaskFromDice(task),
-            ),
-          ),
-        )
+      MaterialPageRoute(
+        builder: (_) => DiceTimerPage(
+          task: task,
+          caption: 'Timer for',
+          captionIcon: Icons.timer_outlined,
+          onTaskDone: () => _completeTaskFromDice(task),
+          onTaskPostponed: () => _postponeTaskFromDice(task),
+        ),
+      ),
+    )
         .then((_) {
       if (mounted) setState(() {});
     });
@@ -2065,8 +2067,7 @@ class _HomePageState extends State<HomePage>
         deletedTasks: _deletedTasks,
         dailyStatsByDay: _dailyStatsByDay,
       ),
-      'countdown_timers':
-          (timers ?? []).map((t) => t.toJson()).toList(),
+      'countdown_timers': (timers ?? []).map((t) => t.toJson()).toList(),
     };
     final file = File(path);
     await file.writeAsString(jsonEncode(payload), flush: true);
@@ -2083,9 +2084,8 @@ class _HomePageState extends State<HomePage>
       final decoded = jsonDecode(await File(picked.path).readAsString())
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
-      final settings = settingsRaw is Map
-          ? Map<String, dynamic>.from(settingsRaw)
-          : decoded;
+      final settings =
+          settingsRaw is Map ? Map<String, dynamic>.from(settingsRaw) : decoded;
       Config.applyMap(settings);
       await Config.save();
       _updateSettings();
@@ -2350,8 +2350,18 @@ class _HomePageState extends State<HomePage>
     if (diff <= 0) return 'Today';
     if (diff == 1) return 'Tomorrow';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}';
   }
@@ -2363,10 +2373,10 @@ class _HomePageState extends State<HomePage>
     // looking at": the schedule view's active day, or the bucket pinned in
     // Settings — otherwise a task typed in Today would silently appear in
     // another tab.
-    final pinnedTab =
-        activeDate == null && Config.defaultAddTabIndex != Config.addToCurrentTab
-            ? _addTargetTabIndex()
-            : null;
+    final pinnedTab = activeDate == null &&
+            Config.defaultAddTabIndex != Config.addToCurrentTab
+        ? _addTargetTabIndex()
+        : null;
     final label = activeDate != null
         ? 'Add task · ${_scheduleDayLabel(activeDate)}'
         : pinnedTab != null
@@ -2629,7 +2639,8 @@ class _HomePageState extends State<HomePage>
             if (Config.isFeatureEnabled('app_logs'))
               ValueListenableBuilder<bool>(
                 valueListenable: SyncService.instance.hasUnseenError,
-                builder: (context, syncError, _) => ValueListenableBuilder<bool>(
+                builder: (context, syncError, _) =>
+                    ValueListenableBuilder<bool>(
                   valueListenable: TodoistSyncService.instance.hasUnseenError,
                   builder: (context, todoistError, __) {
                     final hasError = syncError || todoistError;
@@ -2642,7 +2653,8 @@ class _HomePageState extends State<HomePage>
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                          MaterialPageRoute(
+                              builder: (_) => const AppLogsPage()),
                         );
                       },
                     );

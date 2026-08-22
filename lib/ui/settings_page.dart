@@ -83,6 +83,7 @@ class _SettingsPageState extends State<SettingsPage> {
         return true;
     }
   }
+
   int _activeSectionIndex = 0;
 
   /// Sections whose body is hidden. Tapping a section title toggles it. Every
@@ -178,8 +179,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'daily weekly schedule export save everything off'),
     _SettingsSearchEntry('Backup folder', 9, 'directory location path choose'),
     _SettingsSearchEntry('Back up now', 9, 'manual backup export run'),
-    _SettingsSearchEntry('Enable Todoist sync', 10,
-        'two-way api key token integration'),
+    _SettingsSearchEntry(
+        'Enable Todoist sync', 10, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
   ];
@@ -720,9 +721,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     Tooltip(
-                      message: collapsed
-                          ? 'Expand $title'
-                          : 'Collapse $title',
+                      message: collapsed ? 'Expand $title' : 'Collapse $title',
                       child: AnimatedRotation(
                         turns: collapsed ? 0 : 0.5,
                         duration: const Duration(milliseconds: 180),
@@ -934,8 +933,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         ListTile(
           title: const Text('Show the mode picker again'),
-          subtitle: const Text(
-              'Choose simple or full mode on the welcome screen'),
+          subtitle:
+              const Text('Choose simple or full mode on the welcome screen'),
           trailing: const Icon(Icons.restart_alt),
           onTap: () => MyApp.of(context)?.restartModePicker(),
         ),
@@ -1020,9 +1019,9 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const ListTile(
           title: Text('Active challenges'),
-          subtitle: Text(
-              'The flame in the app bar cycles through the challenges you '
-              'keep on'),
+          subtitle:
+              Text('The flame in the app bar cycles through the challenges you '
+                  'keep on'),
         ),
         for (final kind in StreakKind.values)
           SwitchListTile(
@@ -1063,10 +1062,9 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Row(
               children: [
                 TextButton.icon(
-                  onPressed:
-                      Config.streakReminders.length >= maxStreakReminders
-                          ? null
-                          : _addStreakReminder,
+                  onPressed: Config.streakReminders.length >= maxStreakReminders
+                      ? null
+                      : _addStreakReminder,
                   icon: const Icon(Icons.add_alarm),
                   label: const Text('Add reminder'),
                 ),
@@ -1229,13 +1227,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Tooltip(
-                    message: r.enabled
-                        ? 'Disable recipient'
-                        : 'Enable recipient',
+                    message:
+                        r.enabled ? 'Disable recipient' : 'Enable recipient',
                     child: Switch(
                       value: r.enabled,
-                      materialTapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       onChanged: (value) => _toggleSmsRecipient(i, value),
                     ),
                   ),
@@ -1243,8 +1239,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     tooltip: 'Edit recipient',
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.edit),
-                    onPressed: () =>
-                        _editSmsRecipient(existing: r, index: i),
+                    onPressed: () => _editSmsRecipient(existing: r, index: i),
                   ),
                   IconButton(
                     tooltip: 'Remove recipient',
@@ -1335,8 +1330,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _pickSyncFolder() async {
     final current = _syncFolderPath.trim();
-    final picked =
-        await getDirectoryPath(initialDirectory: current.isEmpty ? null : current);
+    final picked = await getDirectoryPath(
+        initialDirectory: current.isEmpty ? null : current);
     if (picked == null) return;
     setState(() => _syncFolderPath = picked);
     Config.syncFolderPath = picked;
@@ -1518,8 +1513,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ListTile(
           title: const Text('Automatic backup'),
           subtitle: Text(switch (_autoBackupFrequency) {
-            'daily' =>
-              'Writes a full backup once a day when you open the app',
+            'daily' => 'Writes a full backup once a day when you open the app',
             'weekly' =>
               'Writes a full backup once a week when you open the app',
             _ => 'No automatic backups',
@@ -1819,6 +1813,10 @@ class _SettingsPageState extends State<SettingsPage> {
     if (entry.title == 'Default start page') {
       return !Config.simpleMode;
     }
+    if (entry.title == 'Desktop keyboard shortcuts' ||
+        entry.title == 'Save new task shortcut') {
+      return _showDesktopShortcutSettings(context);
+    }
     return true;
   }
 
@@ -2024,345 +2022,351 @@ class _SettingsPageState extends State<SettingsPage> {
                 showSearchResults
                     ? _buildSearchResultTiles()
                     : [
-                  _buildCollapseAllBar(),
-                  _buildSection(
-                    index: 0,
-                    title: 'Appearance',
-                    children: [
-                      SwitchListTile(
-                        title: const Text('Dark mode'),
-                        value: _darkMode,
-                        onChanged: (val) async {
-                          setState(() => _darkMode = val);
-                          Config.darkMode = val;
-                          await Config.save();
-                          MyApp.of(context)?.updateTheme();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('Minimalist mode'),
-                        subtitle: const Text(
-                            'Calm monochrome look: no colours, underlines '
-                            'instead of highlights'),
-                        value: _minimalistMode,
-                        onChanged: (val) async {
-                          setState(() => _minimalistMode = val);
-                          Config.minimalistMode = val;
-                          await Config.save();
-                          MyApp.of(context)?.updateTheme();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('Use tab icons'),
-                        subtitle: const Text(
-                            'Show icons instead of text labels on the home screen'),
-                        value: _useIconTabs,
-                        onChanged: (val) async {
-                          setState(() => _useIconTabs = val);
-                          Config.useIconTabs = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('Red dot for failed tests'),
-                        subtitle: const Text(
-                            'Mark the menu icon with a red dot while the '
-                            'newest test run has failures you have not '
-                            'looked at yet'),
-                        value: _showFailureDotOnMenu,
-                        onChanged: (val) async {
-                          setState(() => _showFailureDotOnMenu = val);
-                          Config.showFailureDotOnMenu = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('24-hour time'),
-                        subtitle: const Text(
-                            'Turn off for 12-hour AM/PM time'),
-                        value: _use24HourFormat,
-                        onChanged: (val) async {
-                          setState(() => _use24HourFormat = val);
-                          Config.use24HourFormat = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      ListTile(
-                        title: const Text('Date format'),
-                        trailing: DropdownButton<String>(
-                          value: _dateFormat,
-                          items: Config.dateFormats
-                              .map(
-                                (f) => DropdownMenuItem<String>(
-                                  value: f,
-                                  child: Text(f.toLowerCase()),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) async {
-                            if (val == null) return;
-                            setState(() => _dateFormat = val);
-                            Config.dateFormat = val;
-                            await Config.save();
-                            widget.onSettingsChanged?.call();
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  _buildModeFeaturesSection(),
-                  _buildSection(
-                    index: 2,
-                    title: 'Tasks',
-                    children: [
-                      SwitchListTile(
-                        title: const Text('Add new tasks at top'),
-                        subtitle: const Text(
-                            'Turn off to add new tasks at the bottom'),
-                        value: _addNewTasksToTop,
-                        onChanged: (val) async {
-                          setState(() => _addNewTasksToTop = val);
-                          Config.addNewTasksToTop = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      ListTile(
-                        title: const Text('New tasks go to'),
-                        subtitle: const Text(
-                            'Which list a task typed in the add row lands in '
-                            '(the schedule view still uses its active day)'),
-                        trailing: DropdownButton<int>(
-                          value: _defaultAddTabIndex,
-                          items: [
-                            const DropdownMenuItem<int>(
-                              value: Config.addToCurrentTab,
-                              child: Text('Current tab'),
+                        _buildCollapseAllBar(),
+                        _buildSection(
+                          index: 0,
+                          title: 'Appearance',
+                          children: [
+                            SwitchListTile(
+                              title: const Text('Dark mode'),
+                              value: _darkMode,
+                              onChanged: (val) async {
+                                setState(() => _darkMode = val);
+                                Config.darkMode = val;
+                                await Config.save();
+                                MyApp.of(context)?.updateTheme();
+                                widget.onSettingsChanged?.call();
+                              },
                             ),
-                            for (var index = 0;
-                                index < Config.tabs.length;
-                                index++)
-                              DropdownMenuItem<int>(
-                                value: index,
-                                child: Text(
-                                  Config.tabs[index]
-                                      .replaceAll('\n', ' ')
-                                      .trim(),
+                            SwitchListTile(
+                              title: const Text('Minimalist mode'),
+                              subtitle: const Text(
+                                  'Calm monochrome look: no colours, underlines '
+                                  'instead of highlights'),
+                              value: _minimalistMode,
+                              onChanged: (val) async {
+                                setState(() => _minimalistMode = val);
+                                Config.minimalistMode = val;
+                                await Config.save();
+                                MyApp.of(context)?.updateTheme();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            SwitchListTile(
+                              title: const Text('Use tab icons'),
+                              subtitle: const Text(
+                                  'Show icons instead of text labels on the home screen'),
+                              value: _useIconTabs,
+                              onChanged: (val) async {
+                                setState(() => _useIconTabs = val);
+                                Config.useIconTabs = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            SwitchListTile(
+                              title: const Text('Red dot for failed tests'),
+                              subtitle: const Text(
+                                  'Mark the menu icon with a red dot while the '
+                                  'newest test run has failures you have not '
+                                  'looked at yet'),
+                              value: _showFailureDotOnMenu,
+                              onChanged: (val) async {
+                                setState(() => _showFailureDotOnMenu = val);
+                                Config.showFailureDotOnMenu = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            SwitchListTile(
+                              title: const Text('24-hour time'),
+                              subtitle:
+                                  const Text('Turn off for 12-hour AM/PM time'),
+                              value: _use24HourFormat,
+                              onChanged: (val) async {
+                                setState(() => _use24HourFormat = val);
+                                Config.use24HourFormat = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            ListTile(
+                              title: const Text('Date format'),
+                              trailing: DropdownButton<String>(
+                                value: _dateFormat,
+                                items: Config.dateFormats
+                                    .map(
+                                      (f) => DropdownMenuItem<String>(
+                                        value: f,
+                                        child: Text(f.toLowerCase()),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  setState(() => _dateFormat = val);
+                                  Config.dateFormat = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        _buildModeFeaturesSection(),
+                        _buildSection(
+                          index: 2,
+                          title: 'Tasks',
+                          children: [
+                            SwitchListTile(
+                              title: const Text('Add new tasks at top'),
+                              subtitle: const Text(
+                                  'Turn off to add new tasks at the bottom'),
+                              value: _addNewTasksToTop,
+                              onChanged: (val) async {
+                                setState(() => _addNewTasksToTop = val);
+                                Config.addNewTasksToTop = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            if (_showDesktopShortcutSettings(context))
+                              ..._buildDesktopShortcutSettings(),
+                            ListTile(
+                              title: const Text('New tasks go to'),
+                              subtitle: const Text(
+                                  'Which list a task typed in the add row lands in '
+                                  '(the schedule view still uses its active day)'),
+                              trailing: DropdownButton<int>(
+                                value: _defaultAddTabIndex,
+                                items: [
+                                  const DropdownMenuItem<int>(
+                                    value: Config.addToCurrentTab,
+                                    child: Text('Current tab'),
+                                  ),
+                                  for (var index = 0;
+                                      index < Config.tabs.length;
+                                      index++)
+                                    DropdownMenuItem<int>(
+                                      value: index,
+                                      child: Text(
+                                        Config.tabs[index]
+                                            .replaceAll('\n', ' ')
+                                            .trim(),
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  setState(() => _defaultAddTabIndex = val);
+                                  Config.defaultAddTabIndex = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
+                            ),
+                            SwitchListTile(
+                              title: const Text('Swipe left to delete'),
+                              subtitle: const Text(
+                                  'Turn off to swipe right to delete and left to move'),
+                              value: _swipeLeftDelete,
+                              onChanged: (val) async {
+                                setState(() => _swipeLeftDelete = val);
+                                Config.swipeLeftDelete = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            ListTile(
+                              title: Text(
+                                'Default delay (${_defaultDelaySeconds.toStringAsFixed(1)}s)',
+                              ),
+                              subtitle: Slider(
+                                value: _defaultDelaySeconds,
+                                min: 0,
+                                max: 10,
+                                divisions: 100,
+                                onChanged: (val) async {
+                                  final newVal = (val * 10).round() / 10;
+                                  setState(() => _defaultDelaySeconds = newVal);
+                                  Config.defaultDelaySeconds = newVal;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
+                            ),
+                            ListTile(
+                              title: const Text('Start page'),
+                              subtitle: const Text(
+                                  'Open this tab when launching the app'),
+                              trailing: DropdownButton<int>(
+                                value: _startTabIndex,
+                                items: List.generate(
+                                  Config.tabs.length,
+                                  (index) => DropdownMenuItem<int>(
+                                    value: index,
+                                    child: Text(
+                                      Config.tabs[index]
+                                          .replaceAll('\n', ' ')
+                                          .trim(),
+                                    ),
+                                  ),
                                 ),
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  setState(() => _startTabIndex = val);
+                                  Config.startTabIndex = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
+                            ),
+                            if (!_simpleMode)
+                              ListTile(
+                                title: const Text('Default start page'),
+                                subtitle: const Text(
+                                    'Open the task list or one of the tools when '
+                                    'launching the app'),
+                                trailing: DropdownButton<String>(
+                                  value: _startToolChoices.contains(_startTool)
+                                      ? _startTool
+                                      : _startToolChoices.first,
+                                  items: [
+                                    for (final tool in _startToolChoices)
+                                      DropdownMenuItem<String>(
+                                        value: tool,
+                                        child: Text(Config.startToolLabels[
+                                            Config.startToolOptions
+                                                .indexOf(tool)]),
+                                      ),
+                                  ],
+                                  onChanged: (val) async {
+                                    if (val == null) return;
+                                    setState(() => _startTool = val);
+                                    Config.startTool = val;
+                                    await Config.save();
+                                    widget.onSettingsChanged?.call();
+                                  },
+                                ),
+                              ),
+                            if (Config.isFeatureEnabled('schedule_view'))
+                              SwitchListTile(
+                                title: const Text('Start in schedule view'),
+                                subtitle: const Text(
+                                    'Open the calendar / schedule view on launch instead of the tab list'),
+                                value: _startInScheduleView,
+                                onChanged: (val) async {
+                                  setState(() => _startInScheduleView = val);
+                                  Config.startInScheduleView = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
+                            if (Config.isFeatureEnabled('chronize'))
+                              SwitchListTile(
+                                title: const Text('Chronize: show hour wheel'),
+                                subtitle: const Text(
+                                    'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
+                                value: _chronizeShowHourWheel,
+                                onChanged: (val) async {
+                                  setState(() => _chronizeShowHourWheel = val);
+                                  Config.chronizeShowHourWheel = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
                               ),
                           ],
-                          onChanged: (val) async {
-                            if (val == null) return;
-                            setState(() => _defaultAddTabIndex = val);
-                            Config.defaultAddTabIndex = val;
-                            await Config.save();
-                            widget.onSettingsChanged?.call();
-                          },
                         ),
-                      ),
-                      SwitchListTile(
-                        title: const Text('Swipe left to delete'),
-                        subtitle: const Text(
-                            'Turn off to swipe right to delete and left to move'),
-                        value: _swipeLeftDelete,
-                        onChanged: (val) async {
-                          setState(() => _swipeLeftDelete = val);
-                          Config.swipeLeftDelete = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      ListTile(
-                        title: Text(
-                          'Default delay (${_defaultDelaySeconds.toStringAsFixed(1)}s)',
-                        ),
-                        subtitle: Slider(
-                          value: _defaultDelaySeconds,
-                          min: 0,
-                          max: 10,
-                          divisions: 100,
-                          onChanged: (val) async {
-                            final newVal = (val * 10).round() / 10;
-                            setState(() => _defaultDelaySeconds = newVal);
-                            Config.defaultDelaySeconds = newVal;
-                            await Config.save();
-                            widget.onSettingsChanged?.call();
-                          },
-                        ),
-                      ),
-                      ListTile(
-                        title: const Text('Start page'),
-                        subtitle:
-                            const Text('Open this tab when launching the app'),
-                        trailing: DropdownButton<int>(
-                          value: _startTabIndex,
-                          items: List.generate(
-                            Config.tabs.length,
-                            (index) => DropdownMenuItem<int>(
-                              value: index,
-                              child: Text(
-                                Config.tabs[index].replaceAll('\n', ' ').trim(),
-                              ),
+                        _buildSection(
+                          index: 3,
+                          title: 'Widget',
+                          children: [
+                            SwitchListTile(
+                              title: const Text('Widget progress line'),
+                              subtitle: const Text(
+                                  'Show completion line on the home widget'),
+                              value: _showWidgetProgressLine,
+                              onChanged: (val) async {
+                                setState(() => _showWidgetProgressLine = val);
+                                Config.showWidgetProgressLine = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
                             ),
-                          ),
-                          onChanged: (val) async {
-                            if (val == null) return;
-                            setState(() => _startTabIndex = val);
-                            Config.startTabIndex = val;
-                            await Config.save();
-                            widget.onSettingsChanged?.call();
-                          },
+                            SwitchListTile(
+                              title:
+                                  const Text('Check off tasks on the widget'),
+                              subtitle: const Text(
+                                  'Show today\'s tasks as rows with a checkbox — '
+                                  'tapping one completes it without opening the app'),
+                              value: _widgetCheckboxes,
+                              onChanged: (val) async {
+                                setState(() => _widgetCheckboxes = val);
+                                Config.widgetCheckboxes = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                          ],
                         ),
-                      ),
-                      if (!_simpleMode)
-                        ListTile(
-                          title: const Text('Default start page'),
-                          subtitle: const Text(
-                              'Open the task list or one of the tools when '
-                              'launching the app'),
-                          trailing: DropdownButton<String>(
-                            value: _startToolChoices.contains(_startTool)
-                                ? _startTool
-                                : _startToolChoices.first,
-                            items: [
-                              for (final tool in _startToolChoices)
-                                DropdownMenuItem<String>(
-                                  value: tool,
-                                  child: Text(Config.startToolLabels[
-                                      Config.startToolOptions.indexOf(tool)]),
-                                ),
-                            ],
-                            onChanged: (val) async {
-                              if (val == null) return;
-                              setState(() => _startTool = val);
-                              Config.startTool = val;
-                              await Config.save();
-                              widget.onSettingsChanged?.call();
-                            },
-                          ),
+                        _buildSection(
+                          index: 4,
+                          title: 'Notifications',
+                          children: [
+                            SwitchListTile(
+                              title: const Text('Enable notifications'),
+                              value: _notifications,
+                              onChanged: (val) async {
+                                setState(() => _notifications = val);
+                                Config.enableNotifications = val;
+                                await Config.save();
+                              },
+                            ),
+                            SwitchListTile(
+                              title: const Text('Quiet hours'),
+                              subtitle: const Text(
+                                  'Delay notifications until quiet hours end'),
+                              value: _quietHoursEnabled,
+                              onChanged: (val) async {
+                                setState(() => _quietHoursEnabled = val);
+                                Config.quietHoursEnabled = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            if (_quietHoursEnabled)
+                              ListTile(
+                                title: const Text('Quiet hours start'),
+                                subtitle: Text(
+                                    _formatHourMinute(_quietHoursStartMinutes)),
+                                trailing: const Icon(Icons.schedule),
+                                onTap: () => _pickQuietHour(isStart: true),
+                              ),
+                            if (_quietHoursEnabled)
+                              ListTile(
+                                title: const Text('Quiet hours end'),
+                                subtitle: Text(
+                                    _formatHourMinute(_quietHoursEndMinutes)),
+                                trailing: const Icon(Icons.schedule),
+                                onTap: () => _pickQuietHour(isStart: false),
+                              ),
+                            ListTile(
+                              title: const Text('Default notification delay'),
+                              subtitle: Text(
+                                'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
+                              ),
+                              trailing: const Icon(Icons.edit),
+                              onTap: _editNotificationDelay,
+                            ),
+                          ],
                         ),
-                      if (Config.isFeatureEnabled('schedule_view'))
-                        SwitchListTile(
-                          title: const Text('Start in schedule view'),
-                          subtitle: const Text(
-                              'Open the calendar / schedule view on launch instead of the tab list'),
-                          value: _startInScheduleView,
-                          onChanged: (val) async {
-                            setState(() => _startInScheduleView = val);
-                            Config.startInScheduleView = val;
-                            await Config.save();
-                            widget.onSettingsChanged?.call();
-                          },
-                        ),
-                      if (Config.isFeatureEnabled('chronize'))
-                        SwitchListTile(
-                          title: const Text('Chronize: show hour wheel'),
-                          subtitle: const Text(
-                              'Add the hour scroll wheel to the Chronize tool (off gives the timeline more room)'),
-                          value: _chronizeShowHourWheel,
-                          onChanged: (val) async {
-                            setState(() => _chronizeShowHourWheel = val);
-                            Config.chronizeShowHourWheel = val;
-                            await Config.save();
-                            widget.onSettingsChanged?.call();
-                          },
-                        ),
-                    ],
-                  ),
-                  _buildSection(
-                    index: 3,
-                    title: 'Widget',
-                    children: [
-                      SwitchListTile(
-                        title: const Text('Widget progress line'),
-                        subtitle: const Text(
-                            'Show completion line on the home widget'),
-                        value: _showWidgetProgressLine,
-                        onChanged: (val) async {
-                          setState(() => _showWidgetProgressLine = val);
-                          Config.showWidgetProgressLine = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('Check off tasks on the widget'),
-                        subtitle: const Text(
-                            'Show today\'s tasks as rows with a checkbox — '
-                            'tapping one completes it without opening the app'),
-                        value: _widgetCheckboxes,
-                        onChanged: (val) async {
-                          setState(() => _widgetCheckboxes = val);
-                          Config.widgetCheckboxes = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                    ],
-                  ),
-                  _buildSection(
-                    index: 4,
-                    title: 'Notifications',
-                    children: [
-                      SwitchListTile(
-                        title: const Text('Enable notifications'),
-                        value: _notifications,
-                        onChanged: (val) async {
-                          setState(() => _notifications = val);
-                          Config.enableNotifications = val;
-                          await Config.save();
-                        },
-                      ),
-                      SwitchListTile(
-                        title: const Text('Quiet hours'),
-                        subtitle: const Text(
-                            'Delay notifications until quiet hours end'),
-                        value: _quietHoursEnabled,
-                        onChanged: (val) async {
-                          setState(() => _quietHoursEnabled = val);
-                          Config.quietHoursEnabled = val;
-                          await Config.save();
-                          widget.onSettingsChanged?.call();
-                        },
-                      ),
-                      if (_quietHoursEnabled)
-                        ListTile(
-                          title: const Text('Quiet hours start'),
-                          subtitle:
-                              Text(_formatHourMinute(_quietHoursStartMinutes)),
-                          trailing: const Icon(Icons.schedule),
-                          onTap: () => _pickQuietHour(isStart: true),
-                        ),
-                      if (_quietHoursEnabled)
-                        ListTile(
-                          title: const Text('Quiet hours end'),
-                          subtitle:
-                              Text(_formatHourMinute(_quietHoursEndMinutes)),
-                          trailing: const Icon(Icons.schedule),
-                          onTap: () => _pickQuietHour(isStart: false),
-                        ),
-                      ListTile(
-                        title: const Text('Default notification delay'),
-                        subtitle: Text(
-                          'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
-                        ),
-                        trailing: const Icon(Icons.edit),
-                        onTap: _editNotificationDelay,
-                      ),
-                    ],
-                  ),
-                  if (_isSectionVisible(5)) _buildStreakSection(),
-                  if (_isSectionVisible(6)) _buildDiceTimerSection(),
-                  if (_isSectionVisible(7)) _buildSmsReportSection(),
-                  _buildExportSection(),
-                  _buildBackupSection(),
-                  _buildTodoistSyncSection(),
-                ],
+                        if (_isSectionVisible(5)) _buildStreakSection(),
+                        if (_isSectionVisible(6)) _buildDiceTimerSection(),
+                        if (_isSectionVisible(7)) _buildSmsReportSection(),
+                        _buildExportSection(),
+                        _buildBackupSection(),
+                        _buildTodoistSyncSection(),
+                      ],
               ),
             ),
           ),

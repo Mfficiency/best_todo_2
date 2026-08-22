@@ -265,8 +265,7 @@ class _TaskTileState extends State<TaskTile>
     if (mode == null || count == 0) return;
     setState(() {
       _optionSelectionIndex = (_optionSelectionIndex + 1) % count;
-      _optionStartedFromKeyboard =
-          _optionStartedFromKeyboard || fromKeyboard;
+      _optionStartedFromKeyboard = _optionStartedFromKeyboard || fromKeyboard;
     });
     _restartOptionTimer(mode);
   }
@@ -284,9 +283,9 @@ class _TaskTileState extends State<TaskTile>
     } else if (selectedIndex == 0) {
       widget.onDelete();
     } else {
-      final option = _deleteSwipeWeekdayOptions[
-          (selectedIndex - 1).clamp(0, _deleteSwipeWeekdayOptions.length - 1)
-              .toInt()];
+      final option = _deleteSwipeWeekdayOptions[(selectedIndex - 1)
+          .clamp(0, _deleteSwipeWeekdayOptions.length - 1)
+          .toInt()];
       widget.onMoveToWeekday?.call(option.weekday);
     }
     if (shouldAdvanceFocus) widget.onKeyboardActionCommitted?.call();
