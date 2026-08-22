@@ -937,28 +937,39 @@ sides pushes the local edit and overwrites the Todoist-side one. A task's disapp
 from Todoist's active-task list (the only "done" signal the API gives) is always treated
 as a completion, never a delete, so the ambiguity never loses data.
 
-**Fields with no Todoist equivalent** — `Task.note`, `Task.label`, the project/Kanban
-assignment, `uid` for relinking — round-trip through a trailer appended to Todoist's
-`description` field (`lib/services/todoist_metadata_codec.dart`): the task's own
-description text, then a `⸻ BestToDo sync — generated, do not edit below this line ⸻`
-separator, human-readable `Project:`/`Label:`/`Note:` lines (visible if you open the task
-in Todoist), then one `sync-data: {...}` JSON line, which is what parsing actually reads
-back. A description with no such trailer is a plain Todoist-native task.
+**Fields with no Todoist equivalent** — `Task.note`, the project/Kanban assignment, `uid`
+for relinking — round-trip through a trailer appended to Todoist's `description` field
+(`lib/services/todoist_metadata_codec.dart`): the task's own description text, then a
+`⸻ BestToDo sync — generated, do not edit below this line ⸻` separator, human-readable
+`Project:`/`Label:`/`Note:` lines (visible if you open the task in Todoist), then one
+`sync-data: {...}` JSON line, which is what parsing actually reads back. A description
+with no such trailer is a plain Todoist-native task. `Task.label` is pushed into the
+trailer's `Label:` summary line too (for readability in the Todoist app), but is **not**
+read back from it — Todoist's native `labels` array is the only source of truth on pull,
+so a label added/removed via Todoist's own label UI (which never touches the description)
+is picked up. Label fingerprints (both push- and pull-side) compare the token *set*
+case-insensitively, order-independent, so re-ordering labels on either side isn't treated
+as a change.
 
-**Algorithm** (`TodoistSyncService._runSync`, five passes over one fetch of Todoist's
-active tasks + projects): (1) a locally-vanished synced task (completed-and-rolled-over
-or deleted) closes or deletes its Todoist counterpart; (2) a still-open-locally task now
-marked done closes it; (3) every other open local task creates (new), or pushes/pulls an
-edit by fingerprint diff (conflict → local wins); (4) a Todoist task with no local mapping
-is pulled in as a new local task (an embedded `uid` matching an existing local task
-relinks instead of duplicating — recovers from a lost/reset state file); (5) a mapped task
-that silently vanished from Todoist's active list is marked done locally. Projects are
-matched by name (case-insensitive) or created on first push; an unmapped Todoist project
-on a pulled task leaves the local task unassigned rather than importing the project.
-Due dates: `hasExplicitTime` tasks are pushed via `due_datetime` (UTC); date-only tasks via
-`due_date`. On pull, v1's `due.date` is a single field holding either a bare date or a full
-datetime string — a `T` in it tells them apart; date-only tasks default to 18:00
-(matching `applyDefaultDeadlineTimes`).
+**Algorithm** (`TodoistSyncService._runSync`, six passes over one fetch of Todoist's
+active tasks + projects): (0) every Kanban project already mapped in `_projectMap` has its
+name reconciled against Todoist's, fingerprinted the same local-wins way as tasks (baseline
+in `todoist_sync_state.json`'s `projectNameMap`, seeded rather than pushed the first time a
+mapping is seen so a pre-existing mapping doesn't look like a rename); (1) a locally-vanished
+synced task (completed-and-rolled-over or deleted) closes or deletes its Todoist
+counterpart; (2) a still-open-locally task now marked done closes it; (3) every other open
+local task creates (new), or pushes/pulls an edit by fingerprint diff (conflict → local
+wins); (4) a Todoist task with no local mapping is pulled in as a new local task (an
+embedded `uid` matching an existing local task relinks instead of duplicating — recovers
+from a lost/reset state file); (5) a mapped task that silently vanished from Todoist's
+active list is marked done locally. Projects are matched by name (case-insensitive) or
+created on first push; an unmapped Todoist project on a pulled task leaves the local task
+unassigned rather than importing the project. The Wishlist/Future dedicated projects are
+exempt from name-sync (pass 0) — they're app infrastructure, not user projects. Due dates:
+`hasExplicitTime` tasks are pushed via `due_datetime` (UTC); date-only tasks via `due_date`.
+On pull, v1's `due.date` is a single field holding either a bare date or a full datetime
+string — a `T` in it tells them apart; date-only tasks default to 18:00 (matching
+`applyDefaultDeadlineTimes`).
 
 Tests live in `test/sync/`: `todoist_metadata_codec_test.dart` (pure trailer round-trip),
 `todoist_api_client_test.dart` (`http.testing.MockClient`), `todoist_sync_service_test.dart`

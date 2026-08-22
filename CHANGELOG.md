@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.242] - 2026-08-22
+- Todoist sync: fixed label sync for real this time — pull now trusts Todoist's native `labels` field instead of a stale copy cached in the task description, so a label added or removed in Todoist's own UI actually shows up in BestToDo (and label fingerprinting is now order/case-insensitive, so pure re-ordering never causes a spurious sync). Also added Kanban project name sync: renaming a project on either side now renames it on the other (conflict rule matches everything else — local wins if both sides changed).
+
 ## [0.1.241] - 2026-08-21
 - Todoist sync: labels now round-trip both ways as real Todoist labels (already worked, now covered end-to-end), wishlist items sync into a dedicated "Wishlist" Todoist project, and undated/unprojected tasks (the Future tab) sync into a dedicated "Future" project. Reassigning a task's Todoist project on an already-synced task (e.g. toggling wishlist status) now actually moves it there instead of only updating local bookkeeping.
 - Local build: 2026-08-22 06:17

@@ -115,6 +115,16 @@ class _FakeTodoist {
       projects[id] = project;
       return _json(project);
     }
+    final projectIdMatch =
+        RegExp(r'^/api/v1/projects/([^/]+)$').firstMatch(path);
+    if (method == 'POST' && projectIdMatch != null) {
+      final id = projectIdMatch.group(1)!;
+      final existing = projects[id];
+      if (existing == null) return http.Response('', 404);
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      existing['name'] = body['name'] ?? existing['name'];
+      return _json(existing);
+    }
     final closeMatch =
         RegExp(r'^/api/v1/tasks/([^/]+)/close$').firstMatch(path);
     if (method == 'POST' && closeMatch != null) {
@@ -229,6 +239,42 @@ void main() {
     final second = await TodoistSyncService.instance.syncNow();
     expect(second!.itemCount, 0);
     expect(fake.tasks.length, 1);
+  });
+
+  test('a label added on the Todoist side (native labels, not the '
+      'description trailer) is pulled into the local task', () async {
+    await StorageService().saveTaskList([
+      Task(title: 'Write report', label: 'work'),
+    ]);
+    await TodoistSyncService.instance.syncNow();
+    final remoteId = fake.tasks.keys.single;
+
+    // Simulate editing the task's labels directly in Todoist's own UI: only
+    // the native `labels` field changes, never the description trailer.
+    fake.tasks[remoteId]!['labels'] = ['work', 'urgent'];
+    final second = await TodoistSyncService.instance.syncNow();
+
+    expect(second!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    final pulled = tasks.firstWhere((t) => t.title == 'Write report');
+    expect(pulled.label, 'work, urgent');
+  });
+
+  test('a label removed on the Todoist side is pulled into the local task',
+      () async {
+    await StorageService().saveTaskList([
+      Task(title: 'Write report', label: 'work, urgent'),
+    ]);
+    await TodoistSyncService.instance.syncNow();
+    final remoteId = fake.tasks.keys.single;
+
+    fake.tasks[remoteId]!['labels'] = ['work'];
+    final second = await TodoistSyncService.instance.syncNow();
+
+    expect(second!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    final pulled = tasks.firstWhere((t) => t.title == 'Write report');
+    expect(pulled.label, 'work');
   });
 
   test('the sync mapping survives a restart (no duplicate is created)',
@@ -532,6 +578,66 @@ void main() {
     expect(fake.projects.values.single['name'], 'Launch');
     final remoteTask = fake.tasks.values.single;
     expect(remoteTask['project_id'], fake.projects.keys.single);
+  });
+
+  test('renaming a Kanban project locally renames its Todoist project',
+      () async {
+    await ProjectService.instance
+        .upsert(const Project(id: 'p1', name: 'Launch'));
+    await StorageService()
+        .saveTaskList([Task(title: 'Ship', projectId: 'p1')]);
+    await TodoistSyncService.instance.syncNow();
+    final remoteProjectId = fake.projects.keys.single;
+
+    await ProjectService.instance
+        .upsert(const Project(id: 'p1', name: 'Launch v2'));
+    final second = await TodoistSyncService.instance.syncNow();
+
+    expect(second!.itemCount, 1);
+    expect(fake.projects[remoteProjectId]!['name'], 'Launch v2');
+  });
+
+  test('renaming a Todoist project pulls the new name into the matching '
+      'Kanban project', () async {
+    await ProjectService.instance
+        .upsert(const Project(id: 'p1', name: 'Launch'));
+    await StorageService()
+        .saveTaskList([Task(title: 'Ship', projectId: 'p1')]);
+    await TodoistSyncService.instance.syncNow();
+    final remoteProjectId = fake.projects.keys.single;
+
+    fake.projects[remoteProjectId]!['name'] = 'Launch (renamed in Todoist)';
+    final second = await TodoistSyncService.instance.syncNow();
+
+    expect(second!.itemCount, 1);
+    expect(ProjectService.instance.byId('p1')!.name,
+        'Launch (renamed in Todoist)');
+  });
+
+  test('a project mapping that predates name-sync adopts the local name as '
+      'its baseline instead of pushing a spurious rename', () async {
+    await ProjectService.instance
+        .upsert(const Project(id: 'p1', name: 'Launch'));
+    await StorageService()
+        .saveTaskList([Task(title: 'Ship', projectId: 'p1')]);
+    await TodoistSyncService.instance.syncNow();
+    final remoteProjectId = fake.projects.keys.single;
+
+    // Wipe just the state file's baseline, as if it came from a build before
+    // project-name sync existed: the mapping survives, but with no synced
+    // name recorded yet.
+    final stateFile = File('${docsDir.path}/todoist_sync_state.json');
+    final state = jsonDecode(await stateFile.readAsString()) as Map;
+    state.remove('projectNameMap');
+    await stateFile.writeAsString(jsonEncode(state));
+    TodoistSyncService.resetForTest();
+    TodoistSyncService.instance.apiClientFactory =
+        (token) => TodoistApiClient(apiToken: token, client: fake.client);
+
+    final second = await TodoistSyncService.instance.syncNow();
+
+    expect(second!.itemCount, 0);
+    expect(fake.projects[remoteProjectId]!['name'], 'Launch');
   });
 
   test('an API failure records a failed sync entry and lights the flag',

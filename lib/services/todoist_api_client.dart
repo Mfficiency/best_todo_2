@@ -79,6 +79,16 @@ class TodoistApiClient {
     return Map<String, dynamic>.from(_decode(response) as Map);
   }
 
+  /// Renames an existing Todoist project.
+  Future<void> updateProject(String projectId, {required String name}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/projects/$projectId'),
+      headers: _headers,
+      body: jsonEncode({'name': name}),
+    );
+    _decode(response);
+  }
+
   /// All active (open) tasks. Todoist's API has no endpoint for completed
   /// tasks, so a task's disappearance from this list is how
   /// completion/deletion on the Todoist side is detected — see

@@ -10,6 +10,7 @@ import '../models/project.dart';
 import '../models/sync_log_entry.dart';
 import '../models/task.dart';
 import '../models/todoist_sync_map_entry.dart';
+import '../utils/label_utils.dart';
 import 'item_repository.dart';
 import 'log_service.dart';
 import 'project_service.dart';
@@ -39,9 +40,14 @@ import 'todoist_metadata_codec.dart';
 /// gives for "done") is treated as a completion, never a delete, so no data
 /// is ever lost on that ambiguity.
 ///
-/// Fields with no Todoist equivalent — [Task.note], [Task.label], the
-/// project/Kanban assignment — round-trip through a trailer appended to
-/// Todoist's `description` field; see [TodoistMetadataCodec]. Recurring
+/// Fields with no Todoist equivalent — [Task.note], the project/Kanban
+/// assignment — round-trip through a trailer appended to Todoist's
+/// `description` field; see [TodoistMetadataCodec]. [Task.label] instead
+/// maps onto Todoist's own native labels, which is the single source of
+/// truth for it in both directions (see [_labelsFromRemote],
+/// [_applyRemoteToLocal]) — the trailer only echoes it for human
+/// readability in the Todoist app. A Kanban project's *name* is kept in
+/// sync too, independent of its tasks — see [_syncProjectNames]. Recurring
 /// tasks (parents and generated instances) are out of scope — Todoist's own
 /// recurrence engine has no clean mapping to this app's generated-instance
 /// model, so those stay local-only.
@@ -67,6 +73,12 @@ class TodoistSyncService {
 
   List<TodoistSyncMapEntry> _taskMap = <TodoistSyncMapEntry>[];
   Map<String, String> _projectMap = <String, String>{};
+
+  /// Last-known-synced name for each real Kanban project in [_projectMap]
+  /// (never the Wishlist/Future sentinel keys) — the baseline a project-name
+  /// sync pass diffs both sides against, mirroring how [TodoistSyncMapEntry]
+  /// fingerprints drive task sync. See [_syncProjectNames].
+  Map<String, String> _projectNameMap = <String, String>{};
 
   Future<void>? _loadFuture;
   bool _syncInFlight = false;
@@ -117,6 +129,10 @@ class TodoistSyncService {
         final rawProjectMap = data['projectMap'];
         if (rawProjectMap is Map) {
           _projectMap = Map<String, String>.from(rawProjectMap);
+        }
+        final rawProjectNameMap = data['projectNameMap'];
+        if (rawProjectNameMap is Map) {
+          _projectNameMap = Map<String, String>.from(rawProjectNameMap);
         }
       }
     } catch (_) {
@@ -222,7 +238,7 @@ class TodoistSyncService {
 
   Future<int> _runSync(TodoistApiClient client) async {
     await ProjectService.instance.load();
-    final projectsById = {
+    var projectsById = {
       for (final p in ProjectService.instance.list) p.id: p,
     };
 
@@ -277,6 +293,14 @@ class TodoistSyncService {
     final removedUids = <String>{};
     var changeCount = 0;
     final now = DateTime.now();
+
+    // --- 0: Kanban project renames, either direction. ---------------------
+    changeCount +=
+        await _syncProjectNames(client, projectsById, remoteProjects);
+    // A pulled rename above updates ProjectService in place; refresh the
+    // lookup so the task steps below (project-name trailers, fingerprints)
+    // see it rather than the pre-rename snapshot.
+    projectsById = {for (final p in ProjectService.instance.list) p.id: p};
 
     // --- 1: local task no longer active (completed-and-rolled-over, or
     // deleted) -> reconcile on the Todoist side. --------------------------
@@ -531,13 +555,63 @@ class TodoistSyncService {
     final existingId = remoteProjectNameToId[name.toLowerCase()];
     if (existingId != null) {
       _projectMap[key] = existingId;
+      if (key != _wishlistProjectKey && key != _futureProjectKey) {
+        _projectNameMap[key] = name;
+      }
       return existingId;
     }
     final created = await client.createProject(name);
     final id = _idOf(created['id']);
     _projectMap[key] = id;
+    if (key != _wishlistProjectKey && key != _futureProjectKey) {
+      _projectNameMap[key] = name;
+    }
     remoteProjectNameToId[name.toLowerCase()] = id;
     return id;
+  }
+
+  /// Reconciles a real Kanban project's name against its Todoist counterpart
+  /// (never the Wishlist/Future sentinel projects, which aren't user-renamed
+  /// as such). Same conflict rule as tasks: **local wins** if both sides
+  /// changed since the baseline in [_projectNameMap]. A project whose
+  /// mapping predates this feature (no baseline yet) just adopts its current
+  /// local name as the baseline, without pushing — it starts tracking from
+  /// here rather than assuming either side "changed".
+  Future<int> _syncProjectNames(
+    TodoistApiClient client,
+    Map<String, Project> projectsById,
+    List<Map<String, dynamic>> remoteProjects,
+  ) async {
+    final remoteById = {for (final p in remoteProjects) _idOf(p['id']): p};
+    var changeCount = 0;
+    for (final mapEntry in _projectMap.entries) {
+      final key = mapEntry.key;
+      if (key == _wishlistProjectKey || key == _futureProjectKey) continue;
+      final project = projectsById[key];
+      if (project == null) continue; // local project deleted
+      final remoteProject = remoteById[mapEntry.value];
+      if (remoteProject == null) continue; // gone on Todoist; next push recreates it
+      final remoteName = remoteProject['name'] as String? ?? '';
+      final lastName = _projectNameMap[key];
+      if (lastName == null) {
+        _projectNameMap[key] = project.name;
+        continue;
+      }
+      final localChanged = project.name != lastName;
+      final remoteChanged = remoteName != lastName;
+      if (localChanged) {
+        if (project.name != remoteName) {
+          await client.updateProject(mapEntry.value, name: project.name);
+        }
+        _projectNameMap[key] = project.name;
+        changeCount++;
+      } else if (remoteChanged) {
+        await ProjectService.instance.upsert(project.copyWith(name: remoteName));
+        _projectNameMap[key] = remoteName;
+        changeCount++;
+      }
+    }
+    return changeCount;
   }
 
   void _applyRemoteToLocal(
@@ -553,12 +627,14 @@ class TodoistSyncService {
     final meta = parts.meta;
     if (meta != null) {
       task.note = meta['note'] as String? ?? '';
-      task.label = meta['label'] as String? ?? task.label;
       final kanban = meta['kanbanStatus'] as String?;
       if (kanban != null) task.kanbanStatus = kanban;
-    } else {
-      task.label = _labelsFromRemote(remoteTask);
     }
+    // Todoist's native `labels` field is the source of truth, not the
+    // `label` key in the description trailer (a snapshot from whenever this
+    // app last pushed) — otherwise a label added/removed via Todoist's own
+    // label UI, which never touches the description, is invisible here.
+    task.label = _labelsFromRemote(remoteTask);
     final remoteProjectId = remoteTask['project_id'] == null
         ? null
         : _idOf(remoteTask['project_id']);
@@ -630,7 +706,7 @@ class TodoistSyncService {
       title: remoteTask['content'] as String? ?? '',
       description: parts.visible,
       note: meta?['note'] as String? ?? '',
-      label: meta?['label'] as String? ?? _labelsFromRemote(remoteTask),
+      label: _labelsFromRemote(remoteTask),
       createdAt: DateTime.now(),
       projectId: (mapped == _wishlistProjectKey || mapped == _futureProjectKey)
           ? null
@@ -677,12 +753,21 @@ class TodoistSyncService {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
+  /// Normalizes a label token string (order/case/whitespace don't matter) so
+  /// it's comparable across BestToDo's free-text field and Todoist's native
+  /// `labels` array regardless of which order either side lists them in.
+  String _labelKey(String label) {
+    final tokens = splitLabelTokens(label)
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return tokens.map((t) => t.toLowerCase()).join(',');
+  }
+
   /// Everything pushed to Todoist for [task] — drives the push decision.
   String _localFingerprint(Task task) => [
         task.title,
         task.description.trim(),
         task.note.trim(),
-        task.label.trim(),
+        _labelKey(task.label),
         _targetProjectKey(task) ?? '',
         task.kanbanStatus,
         _dueKeyFromLocal(task),
@@ -708,6 +793,7 @@ class TodoistSyncService {
       parts.visible,
       _dueKeyFromRemote(remoteTask['due']),
       projectId ?? '',
+      _labelKey(_labelsFromRemote(remoteTask)),
     ].join(' ');
   }
 
@@ -716,6 +802,7 @@ class TodoistSyncService {
         task.description.trim(),
         dueKey,
         _targetProjectKey(task) ?? '',
+        _labelKey(task.label),
       ].join(' ');
 
   _RemotePayload _buildRemotePayload(Task task, Map<String, Project> projectsById) {
@@ -742,12 +829,7 @@ class TodoistSyncService {
         dueDate = _isoDate(due);
       }
     }
-    final labels = task.label.trim().isEmpty
-        ? const <String>[]
-        : task.label
-            .split(RegExp(r'[,\s]+'))
-            .where((s) => s.isNotEmpty)
-            .toList();
+    final labels = splitLabelTokens(task.label);
     return _RemotePayload(
       description: description,
       dueDate: dueDate,
@@ -810,6 +892,7 @@ class TodoistSyncService {
         jsonEncode(<String, dynamic>{
           'taskEntries': [for (final e in _taskMap) e.toJson()],
           'projectMap': _projectMap,
+          'projectNameMap': _projectNameMap,
         }),
       );
     } catch (_) {

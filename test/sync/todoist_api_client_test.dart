@@ -150,6 +150,24 @@ void main() {
       expect(path, endsWith('/tasks/42'));
     });
 
+    test('updateProject posts the new name to the project id', () async {
+      http.Request? captured;
+      final client = TodoistApiClient(
+        apiToken: 't',
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response('', 204);
+        }),
+      );
+
+      await client.updateProject('11', name: 'Renamed');
+
+      final body = jsonDecode(captured!.body) as Map<String, dynamic>;
+      expect(captured!.method, 'POST');
+      expect(captured!.url.path, endsWith('/projects/11'));
+      expect(body['name'], 'Renamed');
+    });
+
     test('closeTask and reopenTask hit their sub-paths', () async {
       final calledPaths = <String>[];
       final client = TodoistApiClient(
