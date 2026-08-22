@@ -575,4 +575,97 @@ void main() {
     expect(service.pendingQuitSync, isNull);
     expect(service.entries.value, isEmpty);
   });
+
+  group('startFirstLaunchImport (first-launch desktop import)', () {
+    String isoDate(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+
+    test('is a no-op when disabled or without a token', () async {
+      Config.todoistSyncEnabled = false;
+      expect(await TodoistSyncService.instance.startFirstLaunchImport(),
+          isNull);
+
+      Config.todoistSyncEnabled = true;
+      Config.todoistApiToken = '';
+      expect(await TodoistSyncService.instance.startFirstLaunchImport(),
+          isNull);
+    });
+
+    test(
+        "loads today's (and overdue) tasks synchronously, and the rest "
+        'finishes in the background', () async {
+      final today = DateTime.now();
+      final yesterday = today.subtract(const Duration(days: 1));
+      final nextWeek = today.add(const Duration(days: 7));
+      fake.seedTask(content: 'Due today', due: {'date': isoDate(today)});
+      fake.seedTask(content: 'Overdue', due: {'date': isoDate(yesterday)});
+      fake.seedTask(content: 'Next week', due: {'date': isoDate(nextWeek)});
+      fake.seedTask(content: 'Someday'); // no due date -> Future bucket
+
+      final result = await TodoistSyncService.instance.startFirstLaunchImport();
+      expect(result, isNotNull);
+      expect(result!.todayCount, 2);
+
+      // Today's tasks are already on disk — the caller can open the home
+      // screen right now — but the rest hasn't landed yet.
+      final afterPhaseOne = await ItemRepository.instance.loadItems();
+      expect(afterPhaseOne.map((t) => t.title).toSet(),
+          {'Due today', 'Overdue'});
+      expect(TodoistSyncService.instance.syncing.value, isTrue);
+
+      final entry = await result.finishInBackground();
+      expect(entry!.success, isTrue);
+      expect(entry.itemCount, 4);
+      expect(TodoistSyncService.instance.syncing.value, isFalse);
+
+      final afterPhaseTwo = await ItemRepository.instance.loadItems();
+      expect(afterPhaseTwo.map((t) => t.title).toSet(),
+          {'Due today', 'Overdue', 'Next week', 'Someday'});
+      expect(
+        afterPhaseTwo.firstWhere((t) => t.title == 'Someday').dueDate,
+        isNull,
+      );
+    });
+
+    test('a task added locally while the background phase runs survives it',
+        () async {
+      fake.seedTask(content: 'Due today', due: {'date': isoDate(DateTime.now())});
+      fake.seedTask(content: 'Later',
+          due: {'date': isoDate(DateTime.now().add(const Duration(days: 3)))});
+
+      final result = await TodoistSyncService.instance.startFirstLaunchImport();
+      // Simulates the user adding a task while exploring the home screen,
+      // before the background phase has saved anything of its own yet.
+      final duringImport = await ItemRepository.instance.loadItems();
+      duringImport.add(Task(title: 'Added while importing'));
+      await ItemRepository.instance.saveItems(duringImport);
+
+      await result!.finishInBackground();
+
+      final finalTasks = await ItemRepository.instance.loadItems();
+      expect(finalTasks.map((t) => t.title).toSet(),
+          {'Due today', 'Later', 'Added while importing'});
+    });
+
+    test('an API failure surfaces to the caller and is logged', () async {
+      fake.failAuth = true;
+
+      await expectLater(
+        TodoistSyncService.instance.startFirstLaunchImport(),
+        throwsA(isA<TodoistApiException>()),
+      );
+
+      expect(TodoistSyncService.instance.syncing.value, isFalse);
+      final logged = TodoistSyncService.instance.entries.value.single;
+      expect(logged.success, isFalse);
+      expect(logged.trigger, 'first_launch_import');
+
+      // The in-flight guard was released on failure — a later import isn't
+      // permanently blocked.
+      fake.failAuth = false;
+      expect(await TodoistSyncService.instance.startFirstLaunchImport(),
+          isNotNull);
+    });
+  });
 }

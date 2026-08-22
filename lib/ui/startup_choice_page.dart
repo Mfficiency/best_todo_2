@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -6,9 +8,12 @@ import '../services/todoist_sync_service.dart';
 
 /// Shown once, right after onboarding finishes on a brand-new install
 /// (never for an upgrade of an existing install — see the backfill logic in
-/// `main()`): choose between an empty task list and pulling everything in
-/// from a Todoist account via the existing two-way sync
-/// ([TodoistSyncService]).
+/// `main()`): choose between an empty task list and pulling in an existing
+/// Todoist account via [TodoistSyncService.startFirstLaunchImport] — today's
+/// (and overdue) tasks are pulled synchronously so onboarding can finish and
+/// the home screen open right away, with everything else finishing in the
+/// background (a banner on the home page tracks it via the same `syncing`
+/// notifier Settings → Todoist sync already uses for its own spinner).
 class StartupChoicePage extends StatelessWidget {
   final VoidCallback onFinished;
   const StartupChoicePage({super.key, required this.onFinished});
@@ -170,12 +175,15 @@ class _TodoistImportDialogState extends State<_TodoistImportDialog> {
       Config.todoistApiToken = token;
       Config.todoistSyncEnabled = true;
       await Config.save();
-      final entry =
-          await TodoistSyncService.instance.syncNow(trigger: 'initial import');
+      final result = await TodoistSyncService.instance.startFirstLaunchImport();
+      // Everything past today keeps pulling in behind onboarding — fired and
+      // forgotten, same as the desktop-only chooser this replaced.
+      if (result != null) unawaited(result.finishInBackground());
       if (!mounted) return;
       Navigator.of(context).pop(_TodoistImportResult(
-        entry != null && entry.success
-            ? 'Imported ${entry.itemCount} task(s) from Todoist'
+        result != null
+            ? "Imported ${result.todayCount} of today's task(s) from "
+                'Todoist — the rest is syncing in the background'
             : 'Connected to Todoist, but the first sync failed — '
                 'retry from Settings → Todoist sync.',
       ));
