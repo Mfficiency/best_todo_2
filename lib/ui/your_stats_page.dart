@@ -825,6 +825,426 @@ class _YourStatsPageState extends State<YourStatsPage>
     );
   }
 
+  /// One line of the fun-stats list: icon, what it is, the number. When
+  /// [details] is non-empty the tile is tappable and opens a sheet listing
+  /// which items (and when) made that number up.
+  Widget _funStatTile(
+    IconData icon,
+    String title,
+    String value, {
+    String? subtitle,
+    List<_StatDetailEntry> details = const <_StatDetailEntry>[],
+  }) {
+    final tappable = details.isNotEmpty;
+    return ListTile(
+      dense: true,
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: subtitle == null ? null : Text(subtitle),
+      onTap: tappable ? () => _showStatDetails(title, details) : null,
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 140),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            if (tappable) ...[
+              const SizedBox(width: 2),
+              Icon(Icons.chevron_right,
+                  size: 18, color: Theme.of(context).colorScheme.outline),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "Mon, 2026-08-10 · 14:32" — used inside the fun-stats detail sheets so
+  /// tapping a number shows the day of week/month it happened on.
+  String _weekdayDateTime(DateTime date) {
+    final local = date.toLocal();
+    final weekday = _weekdayName(local.weekday - 1).substring(0, 3);
+    final time = '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+    return '$weekday, ${_formatDate(local)} · $time';
+  }
+
+  /// Bottom sheet listing the items (or days) behind a fun-stat number.
+  void _showStatDetails(String title, List<_StatDetailEntry> entries) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.55,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          builder: (sheetContext, scrollController) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(title,
+                      style: Theme.of(sheetContext).textTheme.titleLarge),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: entries.length,
+                    itemBuilder: (itemContext, index) {
+                      final entry = entries[index];
+                      return ListTile(
+                        dense: true,
+                        title: Text(entry.label),
+                        trailing: Text(
+                          entry.detail,
+                          style: Theme.of(itemContext).textTheme.bodySmall,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Tasks with a `completedAt`, newest first, labelled with when they
+  /// finished — the "which item made this number" list for done-based stats.
+  List<_StatDetailEntry> _completedEntries(Iterable<Task> tasks) {
+    final sorted = tasks.toList()
+      ..sort((a, b) => b.completedAt!.compareTo(a.completedAt!));
+    return sorted
+        .map((t) => _StatDetailEntry(t.title, _weekdayDateTime(t.completedAt!)))
+        .toList();
+  }
+
+  /// Same idea but keyed off `createdAt`, for planning-side stats.
+  List<_StatDetailEntry> _createdEntries(Iterable<Task> tasks) {
+    final sorted = tasks.toList()
+      ..sort((a, b) => b.createdAt!.compareTo(a.createdAt!));
+    return sorted
+        .map((t) => _StatDetailEntry(t.title, _weekdayDateTime(t.createdAt!)))
+        .toList();
+  }
+
+  /// Day-bucketed counts (busiest day, postponed-by-day) as detail rows,
+  /// busiest first.
+  List<_StatDetailEntry> _dayCountEntries(
+      Map<DateTime, int> byDay, String suffix) {
+    final entries = byDay.entries.where((e) => e.value > 0).toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        return byCount != 0 ? byCount : b.key.compareTo(a.key);
+      });
+    return entries
+        .map((e) => _StatDetailEntry(
+              '${_weekdayName(_dateOnly(e.key).weekday - 1)}, '
+                  '${_formatDate(e.key)}',
+              '${e.value} $suffix',
+            ))
+        .toList();
+  }
+
+  /// "3 min", "5 h", "2 days" — rough is the point, these are for fun.
+  String _roughDuration(Duration d) {
+    if (d.inMinutes < 1) return '${d.inSeconds} s';
+    if (d.inHours < 1) return '${d.inMinutes} min';
+    if (d.inDays < 1) return '${d.inHours} h';
+    if (d.inDays < 14) return '${d.inDays} days';
+    return '${(d.inDays / 7).round()} weeks';
+  }
+
+  /// Index of the biggest entry in [counts], or null when they are all zero.
+  int? _peakIndex(List<int> counts) {
+    var best = 0;
+    int? index;
+    for (var i = 0; i < counts.length; i++) {
+      if (counts[i] > best) {
+        best = counts[i];
+        index = i;
+      }
+    }
+    return index;
+  }
+
+  /// All-time trivia about your items: the numbers that are fun rather than
+  /// actionable, which is why they sit at the very bottom of the page.
+  Widget _buildFunStatsSection() {
+    final tasks = _allTasksForActivity();
+    final completed = tasks.where((t) => t.completedAt != null).toList();
+    final createdCount = tasks.where((t) => t.createdAt != null).length;
+
+    final completionsByDay = <DateTime, int>{};
+    final byHour = List<int>.filled(24, 0);
+    final byWeekday = List<int>.filled(7, 0);
+    var earlyBird = 0;
+    var nightOwl = 0;
+    var weekendDone = 0;
+    for (final task in completed) {
+      final at = task.completedAt!.toLocal();
+      final day = _dateOnly(at);
+      completionsByDay[day] = (completionsByDay[day] ?? 0) + 1;
+      byHour[at.hour] += 1;
+      byWeekday[at.weekday - 1] += 1;
+      if (at.hour < 8) earlyBird += 1;
+      if (at.hour >= 22 || at.hour < 5) nightOwl += 1;
+      if (_isWeekend(at)) weekendDone += 1;
+    }
+
+    // Turnaround: how long an item waited between being written down and
+    // being ticked off. Only items that carry both timestamps can play.
+    MapEntry<Duration, Task>? fastest;
+    MapEntry<Duration, Task>? slowest;
+    for (final task in completed) {
+      final createdAt = task.createdAt;
+      if (createdAt == null) continue;
+      final waited = task.completedAt!.difference(createdAt);
+      if (waited.isNegative) continue;
+      if (fastest == null || waited < fastest.key) {
+        fastest = MapEntry(waited, task);
+      }
+      if (slowest == null || waited > slowest.key) {
+        slowest = MapEntry(waited, task);
+      }
+    }
+
+    // The item that has been waiting the longest and is still not done.
+    Task? oldestOpen;
+    for (final task in widget.tasks) {
+      if (task.isDone || task.deletedAt != null || task.createdAt == null) {
+        continue;
+      }
+      if (oldestOpen == null ||
+          task.createdAt!.isBefore(oldestOpen.createdAt!)) {
+        oldestOpen = task;
+      }
+    }
+
+    // When things get written down — the planning half of the day.
+    final createdByHour = List<int>.filled(24, 0);
+    for (final task in tasks) {
+      final at = task.createdAt?.toLocal();
+      if (at != null) createdByHour[at.hour] += 1;
+    }
+
+    // Every time an item due that day was pushed to another one, and the
+    // weekday that happens on most.
+    var postponed = 0;
+    final postponedByWeekday = List<int>.filled(7, 0);
+    final postponedByDay = <DateTime, int>{};
+    for (final entry in widget.dailyStatsByDay.entries) {
+      final stats = entry.value;
+      final moved = _intersectionCount(
+          stats.movedFromOpeningTaskIds, stats.openingTaskIds);
+      if (moved == 0) continue;
+      postponed += moved;
+      final day = DateTime.tryParse(entry.key);
+      if (day != null) {
+        postponedByWeekday[day.weekday - 1] += moved;
+        postponedByDay[day] = (postponedByDay[day] ?? 0) + moved;
+      }
+    }
+
+    final openNow = widget.tasks.where((t) => !t.isDone).length;
+    final activeDays = completionsByDay.length;
+    final busiest = completionsByDay.entries.isEmpty
+        ? null
+        : completionsByDay.entries
+            .reduce((a, b) => b.value > a.value ? b : a);
+    final peakHour = _peakIndex(byHour);
+    final peakWeekday = _peakIndex(byWeekday);
+    final peakPlanningHour = _peakIndex(createdByHour);
+    final peakPostponeDay = _peakIndex(postponedByWeekday);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Text(
+              'Fun stats',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          if (completed.isEmpty && createdCount == 0)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
+              child: Text('Complete a few items and the trivia shows up here.'),
+            )
+          else ...[
+            _funStatTile(
+              Icons.check_circle_outline,
+              'Items completed',
+              '${completed.length}',
+              details: _completedEntries(completed),
+            ),
+            _funStatTile(
+                Icons.edit_note, 'Items ever created', '$createdCount'),
+            if (createdCount > 0)
+              _funStatTile(
+                Icons.percent,
+                'Completion rate',
+                '${(completed.length * 100 / createdCount).round()}%',
+                subtitle: 'Of everything you wrote down',
+              ),
+            if (busiest != null)
+              _funStatTile(
+                Icons.local_fire_department,
+                'Busiest day',
+                '${busiest.value}',
+                subtitle: _formatDate(busiest.key),
+                details: _completedEntries(completed.where(
+                    (t) => _dateOnly(t.completedAt!) == busiest.key)),
+              ),
+            if (activeDays > 0)
+              _funStatTile(
+                Icons.calendar_month,
+                'Days with something done',
+                '$activeDays',
+                subtitle: 'Averaging '
+                    '${(completed.length / activeDays).toStringAsFixed(1)} '
+                    'per day',
+                details: _dayCountEntries(completionsByDay, 'completed'),
+              ),
+            if (peakHour != null)
+              _funStatTile(
+                Icons.schedule,
+                'Golden hour',
+                '${byHour[peakHour]}',
+                subtitle: 'Most items finish ${_hourRangeLabel(peakHour)}',
+                details: _completedEntries(completed
+                    .where((t) => t.completedAt!.toLocal().hour == peakHour)),
+              ),
+            if (peakWeekday != null)
+              _funStatTile(
+                Icons.event_available,
+                'Favourite weekday',
+                '${byWeekday[peakWeekday]}',
+                subtitle: '${_weekdayName(peakWeekday)} is your best day',
+                details: _completedEntries(completed.where((t) =>
+                    t.completedAt!.toLocal().weekday - 1 == peakWeekday)),
+              ),
+            if (peakPlanningHour != null)
+              _funStatTile(
+                Icons.edit_calendar,
+                'Planning hour',
+                '${createdByHour[peakPlanningHour]}',
+                subtitle: 'Most items get written down '
+                    '${_hourRangeLabel(peakPlanningHour)}',
+                details: _createdEntries(tasks.where((t) =>
+                    t.createdAt != null &&
+                    t.createdAt!.toLocal().hour == peakPlanningHour)),
+              ),
+            if (earlyBird > 0)
+              _funStatTile(
+                Icons.wb_twilight,
+                'Early bird finishes',
+                '$earlyBird',
+                subtitle: 'Done before 08:00',
+                details: _completedEntries(
+                    completed.where((t) => t.completedAt!.toLocal().hour < 8)),
+              ),
+            if (nightOwl > 0)
+              _funStatTile(
+                Icons.nights_stay,
+                'Night owl finishes',
+                '$nightOwl',
+                subtitle: 'Done after 22:00 or before 05:00',
+                details: _completedEntries(completed.where((t) {
+                  final hour = t.completedAt!.toLocal().hour;
+                  return hour >= 22 || hour < 5;
+                })),
+              ),
+            if (completed.isNotEmpty)
+              _funStatTile(
+                Icons.weekend,
+                'Weekend share',
+                '${(weekendDone * 100 / completed.length).round()}%',
+                subtitle: '$weekendDone finished on a Saturday or Sunday',
+                details: _completedEntries(
+                    completed.where((t) => _isWeekend(t.completedAt!.toLocal()))),
+              ),
+            if (fastest != null)
+              _funStatTile(
+                Icons.bolt,
+                'Fastest finish',
+                _roughDuration(fastest.key),
+                subtitle: fastest.value.title,
+                details: [
+                  _StatDetailEntry('Created', _weekdayDateTime(fastest.value.createdAt!)),
+                  _StatDetailEntry(
+                      'Completed', _weekdayDateTime(fastest.value.completedAt!)),
+                ],
+              ),
+            if (slowest != null)
+              _funStatTile(
+                Icons.hourglass_bottom,
+                'Longest wait',
+                _roughDuration(slowest.key),
+                subtitle: slowest.value.title,
+                details: [
+                  _StatDetailEntry('Created', _weekdayDateTime(slowest.value.createdAt!)),
+                  _StatDetailEntry(
+                      'Completed', _weekdayDateTime(slowest.value.completedAt!)),
+                ],
+              ),
+            if (oldestOpen != null)
+              _funStatTile(
+                Icons.elderly,
+                'Oldest open item',
+                _roughDuration(
+                    DateTime.now().difference(oldestOpen.createdAt!)),
+                subtitle: oldestOpen.title,
+                details: [
+                  _StatDetailEntry(
+                      'Created', _weekdayDateTime(oldestOpen.createdAt!)),
+                ],
+              ),
+            if (postponed > 0)
+              _funStatTile(
+                Icons.next_plan,
+                'Times postponed',
+                '$postponed',
+                subtitle: 'Items moved off the day they were due',
+                details: _dayCountEntries(postponedByDay, 'postponed'),
+              ),
+            if (peakPostponeDay != null)
+              _funStatTile(
+                Icons.snooze,
+                'Most postponed on',
+                '${postponedByWeekday[peakPostponeDay]}',
+                subtitle: '${_weekdayName(peakPostponeDay)} is when things '
+                    'get pushed',
+                details: _dayCountEntries(
+                    Map.fromEntries(postponedByDay.entries.where(
+                        (e) => e.key.weekday - 1 == peakPostponeDay)),
+                    'postponed'),
+              ),
+            _funStatTile(Icons.inbox, 'Open right now', '$openNow'),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -864,6 +1284,8 @@ class _YourStatsPageState extends State<YourStatsPage>
           _buildDailyBarsTab(),
           const Divider(height: 1),
           _buildItemActivityHeatmapSection(),
+          const Divider(height: 1),
+          _buildFunStatsSection(),
         ],
       ),
     );
@@ -933,4 +1355,13 @@ class _ActivityScale {
     stops.add(cap);
     return stops.toList()..sort();
   }
+}
+
+/// One row of a fun-stat detail sheet: what it was ([label], usually the
+/// item's title or a day) and when/how much ([detail]).
+class _StatDetailEntry {
+  final String label;
+  final String detail;
+
+  const _StatDetailEntry(this.label, this.detail);
 }

@@ -67,6 +67,21 @@ class Task {
   /// project) and, lacking a due date, buckets into the Future tab.
   bool isWish;
 
+  /// Sentinel due date the schedule view's "move to" tab picker uses to
+  /// place a task in the Future tab explicitly, without leaving it fully
+  /// undated. Exposed here (rather than kept private to the home page) so
+  /// other layers — e.g. Todoist sync's Future-project routing — recognize
+  /// the same bucket.
+  static final DateTime futureBucketMarker = DateTime(2300, 1, 1);
+
+  /// True for a null due date or [futureBucketMarker] — i.e. [due] belongs
+  /// to the Future tab bucket.
+  static bool isFutureBucketDue(DateTime? due) =>
+      due == null ||
+      (due.year == futureBucketMarker.year &&
+          due.month == futureBucketMarker.month &&
+          due.day == futureBucketMarker.day);
+
   /// Id of the project this task is assigned to, or null if unassigned.
   String? projectId;
 

@@ -230,6 +230,13 @@ class Config {
   /// If true, the app uses a dark color scheme.
   static bool darkMode = false;
 
+  /// If true, the hamburger menu icon on the home page carries a small red
+  /// dot while the newest known test run has failures the user has not looked
+  /// at yet. Off by default so the home screen stays calm; the Test Results
+  /// entry in the drawer's Tools section always shows the dot until the
+  /// results are opened.
+  static bool showFailureDotOnMenu = false;
+
   /// If true, the app uses the minimalist look: a monochrome ink-on-paper
   /// theme with no accent colours, flat surfaces and underlines instead of
   /// filled highlights. Combines with [darkMode] for a dark monochrome look.
@@ -346,7 +353,16 @@ class Config {
   static int diceTimerDefaultMinutes = 20;
 
   /// Dial lengths offered as the pre-wound default (one dial turn = 60 min).
-  static const List<int> diceTimerLengthOptions = [5, 10, 15, 20, 25, 30, 45, 60];
+  static const List<int> diceTimerLengthOptions = [
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    45,
+    60
+  ];
 
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
@@ -367,6 +383,21 @@ class Config {
   /// If true, new items are scanned against the auto-tag service's keyword
   /// rules and any matched tags are appended to their label on creation.
   static bool autoTagEnabled = true;
+
+  /// If true, Enter saves the add-task field. When false, the add-task field
+  /// accepts multiple lines and Ctrl+Enter saves it.
+  static bool enterSavesNewTask = true;
+
+  /// Value of [defaultAddTabIndex] meaning "whichever tab is open".
+  static const int addToCurrentTab = -1;
+
+  /// Which home tab a task typed into the add-task row lands in:
+  /// [addToCurrentTab] (the default) files it under the tab you are looking
+  /// at, an index into [tabs] pins every quick-added task to that bucket — so
+  /// an idea typed while Today is open can still go straight to Future. The
+  /// schedule view's active day beats this, because there the day is picked
+  /// explicitly.
+  static int defaultAddTabIndex = addToCurrentTab;
 
   /// If true, times are displayed and picked in 24-hour notation.
   static bool use24HourFormat = true;
@@ -411,6 +442,16 @@ class Config {
   /// Folder the automatic backup writes into; empty until the user picks one.
   static String autoBackupDirectory = '';
 
+  /// If true, tasks are kept in sync both ways with a Todoist account (see
+  /// `TodoistSyncService`). Off by default; enabling without a token set is a
+  /// no-op until one is entered in Settings → Todoist sync.
+  static bool todoistSyncEnabled = false;
+
+  /// Todoist personal API token ("Integrations" tab of Todoist Settings).
+  /// Stored in plain text alongside the rest of the app's settings, matching
+  /// every other value in this file — the app has no secret-storage layer.
+  static String todoistApiToken = '';
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -434,6 +475,7 @@ class Config {
     return {
       'swipeLeftDelete': swipeLeftDelete,
       'darkMode': darkMode,
+      'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
       'enableNotifications': enableNotifications,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
@@ -446,6 +488,8 @@ class Config {
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
       'autoTagEnabled': autoTagEnabled,
+      'enterSavesNewTask': enterSavesNewTask,
+      'defaultAddTabIndex': defaultAddTabIndex,
       'use24HourFormat': use24HourFormat,
       'dateFormat': dateFormat,
       'defaultDelaySeconds': defaultDelaySeconds,
@@ -472,6 +516,8 @@ class Config {
       'autoBackupDirectory': autoBackupDirectory,
       'syncEnabled': syncEnabled,
       'syncFolderPath': syncFolderPath,
+      'todoistSyncEnabled': todoistSyncEnabled,
+      'todoistApiToken': todoistApiToken,
       'features': Map<String, bool>.from(featureEnabled),
     };
   }
@@ -479,6 +525,7 @@ class Config {
   static void applyMap(Map<String, dynamic> data) {
     swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
     darkMode = data['darkMode'] ?? darkMode;
+    showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     defaultNotificationDelaySeconds =
@@ -500,13 +547,18 @@ class Config {
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
     autoTagEnabled = data['autoTagEnabled'] ?? autoTagEnabled;
+    enterSavesNewTask = data['enterSavesNewTask'] ?? enterSavesNewTask;
+    defaultAddTabIndex = (data['defaultAddTabIndex'] as num?)
+            ?.round()
+            .clamp(addToCurrentTab, tabs.length - 1) ??
+        defaultAddTabIndex;
     use24HourFormat = data['use24HourFormat'] ?? use24HourFormat;
     final savedDateFormat = data['dateFormat'] as String?;
     if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {
       dateFormat = savedDateFormat;
     }
-    defaultDelaySeconds =
-        (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
+    defaultDelaySeconds = (data['defaultDelaySeconds'] as num?)?.toDouble() ??
+        defaultDelaySeconds;
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
@@ -548,15 +600,15 @@ class Config {
     simpleMode = data['simpleMode'] ?? simpleMode;
     modeChosen = data['modeChosen'] ?? modeChosen;
     final savedAlertMode = data['diceTimerAlertMode'] as String?;
-    if (savedAlertMode != null && diceTimerAlertModes.contains(savedAlertMode)) {
+    if (savedAlertMode != null &&
+        diceTimerAlertModes.contains(savedAlertMode)) {
       diceTimerAlertMode = savedAlertMode;
     }
     diceTimerMelody = data['diceTimerMelody'] as String? ?? diceTimerMelody;
     diceTimerVolume =
         (data['diceTimerVolume'] as num?)?.toDouble().clamp(0.0, 1.0) ??
             diceTimerVolume;
-    diceTimerAlsoVibrate =
-        data['diceTimerAlsoVibrate'] ?? diceTimerAlsoVibrate;
+    diceTimerAlsoVibrate = data['diceTimerAlsoVibrate'] ?? diceTimerAlsoVibrate;
     diceTimerDefaultMinutes =
         (data['diceTimerDefaultMinutes'] as num?)?.round().clamp(1, 60) ??
             diceTimerDefaultMinutes;
@@ -569,6 +621,8 @@ class Config {
         data['autoBackupDirectory'] as String? ?? autoBackupDirectory;
     syncEnabled = data['syncEnabled'] ?? syncEnabled;
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
+    todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
+    todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {

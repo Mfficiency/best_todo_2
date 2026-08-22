@@ -6,6 +6,7 @@ import 'dart:math' show Random;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -22,12 +23,15 @@ import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
+import '../services/share_intent_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
 import '../services/sync_service.dart';
+import '../services/todoist_sync_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
+import '../services/wishlist_shipped.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
@@ -90,6 +94,12 @@ class _HomePageState extends State<HomePage>
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _homeKeyboardFocusNode =
+      FocusNode(debugLabel: 'Home keyboard shortcuts');
+  final FocusNode _addTaskFocusNode = FocusNode(debugLabel: 'Add task');
+  final FocusNode _searchFocusNode = FocusNode(debugLabel: 'Task search');
+  final Map<String, TaskTileController> _taskTileControllers = {};
+  String? _focusedTaskUid;
 
   /// Picks which of today's tasks the dice timer lands on.
   final Random _diceRandom = Random();
@@ -115,7 +125,7 @@ class _HomePageState extends State<HomePage>
   int _lastTabIndex = 0;
 
   static const int _futureTabIndex = 5;
-  static final DateTime _futureDueDate = DateTime(2300, 1, 1);
+  static final DateTime _futureDueDate = Task.futureBucketMarker;
 
   /// Day offsets for each non-future tab.
   static const List<int> _offsetDays = [0, 1, 2, 7, 30];
@@ -230,7 +240,8 @@ class _HomePageState extends State<HomePage>
     const dayOffsets = <int>[1, 2, 4, 7, 9, 11];
     final seeded = <Task>[];
     for (var i = 0; i < titles.length; i++) {
-      final deletedAt = now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
+      final deletedAt =
+          now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
       seeded.add(
         Task(
           title: titles[i],
@@ -314,6 +325,7 @@ class _HomePageState extends State<HomePage>
     return [
       for (final legacy in legacyTodoWishlistItems)
         Task(
+          uid: legacy.uid,
           title: legacy.title,
           description: legacy.description,
           label: legacyTodoImportLabel,
@@ -566,7 +578,19 @@ class _HomePageState extends State<HomePage>
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
     final loadedDailyStats = await _repository.loadDailyStats();
-    if (loaded.isEmpty) {
+    // A share-sheet task created while this load was reading the file can be
+    // in memory (via ShareIntentService's consumer) *and* in the read result
+    // (via its own save); keep the in-memory one only.
+    if (_tasks.isNotEmpty) {
+      final known = _tasks.map((t) => t.uid).toSet();
+      loaded.removeWhere((t) => known.contains(t.uid));
+    }
+    // A fresh install does not come back empty: the merge above turns the
+    // one-time Todo.md import into wish tasks. Only real (non-wish) tasks
+    // decide whether the starter list still has to be seeded — otherwise a
+    // first launch would silently skip it.
+    final isFirstLaunch = !loaded.any((t) => !t.isWish);
+    if (isFirstLaunch) {
       _tasks.addAll(
         Config.initialTasks.map((t) => Task(
               title: t,
@@ -583,6 +607,9 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       );
+      // The imported wishes follow the starter tasks, so the Today list opens
+      // on them instead of on the old backlog.
+      _tasks.addAll(loaded);
       if (Config.isDev) {
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
@@ -599,7 +626,12 @@ class _HomePageState extends State<HomePage>
     // flag is already spent (so nothing else repopulates it). Runs only when
     // no wishes exist, keeping it idempotent across loads.
     if (Config.isDev && !_tasks.any((t) => t.isWish)) {
-      _tasks.addAll(_buildDevWishlistSeed());
+      final seeded = _buildDevWishlistSeed();
+      // The seed lands after loadTaskList already ran its shipped-wish pass,
+      // so apply it here too — otherwise a dev install shows the backlog
+      // untagged until the next launch.
+      applyShippedWishes(seeded);
+      _tasks.addAll(seeded);
     }
     // Prepopulate the Projects tool in dev builds so the cards/boards have
     // data to drag around right away.
@@ -608,7 +640,7 @@ class _HomePageState extends State<HomePage>
       // Fresh dev installs (and every web run, where nothing persists) also
       // get a visible item history, so the task-detail History timeline can
       // be tested immediately: Tools → Projects → open a board → tap a card.
-      if (loaded.isEmpty) {
+      if (isFirstLaunch) {
         _seedDevRangeTask();
         _seedDevWishItem();
         _seedDevItemHistory();
@@ -851,8 +883,7 @@ class _HomePageState extends State<HomePage>
     if (task.isWish || task.isDone == wasDone) return;
     if (!Config.isFeatureEnabled('streak')) return;
     if (task.isDone) {
-      final firstOfDay =
-          StreakService.instance.recordCompletion(_currentDate);
+      final firstOfDay = StreakService.instance.recordCompletion(_currentDate);
       // Clearing the whole day's list is the second way to keep the planning
       // streak (the first being moving a task to another day).
       _recordStreakDayCleared();
@@ -860,8 +891,8 @@ class _HomePageState extends State<HomePage>
           Config.showStreak &&
           Config.streakCompletionAnimation &&
           mounted) {
-        showStreakCelebration(context,
-            StreakService.instance.currentStreak(now: _currentDate));
+        showStreakCelebration(
+            context, StreakService.instance.currentStreak(now: _currentDate));
       }
     } else {
       StreakService.instance.recordUncompletion(_currentDate);
@@ -954,17 +985,24 @@ class _HomePageState extends State<HomePage>
     // Tasks ticked off on the home-screen widget are written to storage by the
     // widget's own isolate; on the way back into the app they are merged in.
     WidgetsBinding.instance.addObserver(this);
+    // Text shared into the app from other apps becomes a task on Today.
+    // Registering before _loadTasks means every share from here on goes
+    // through this page's in-memory list — never a second tasks.json writer.
+    ShareIntentService.instance.registerConsumer(_addSharedTask);
     // Lets the app shell reopen a live dice timer after its full-screen alarm
     // is stopped (see main.dart), with the task's actions ready.
     openRunningDiceTimer = _reopenRunningDiceTimer;
     // CI embeds its test results as a bundled asset; builds whose test run
-    // had failures get a red dot on the drawer icon (see TestResultsPage).
+    // had unacknowledged failures get a red dot on the Test Results drawer
+    // entry — and on the hamburger icon itself when the "Red dot on menu"
+    // setting is on. Opening the Test Results page clears the dots.
     TestReportService.instance.load().then((_) {
       if (mounted) setState(() {});
     });
     // A sync failure from a previous run keeps its red dot on the App Logs
     // drawer entry until acknowledged; lazy load, nothing blocks startup.
     SyncService.instance.ensureLoaded();
+    TodoistSyncService.instance.ensureLoaded();
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
@@ -1076,9 +1114,13 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ShareIntentService.instance.unregisterConsumer(_addSharedTask);
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {
       openRunningDiceTimer = null;
     }
+    _homeKeyboardFocusNode.dispose();
+    _addTaskFocusNode.dispose();
+    _searchFocusNode.dispose();
     _tabController.dispose();
     _controller.dispose();
     _searchController.dispose();
@@ -1184,13 +1226,23 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  /// Tab a task typed into the add-task row belongs to: the bucket pinned in
+  /// Settings ("New tasks go to"), or the tab currently open when that is left
+  /// at "Current tab".
+  int _addTargetTabIndex() {
+    final pinned = Config.defaultAddTabIndex;
+    if (pinned < 0 || pinned >= Config.tabs.length) return _tabController.index;
+    return pinned;
+  }
+
   void _addTask(String title) {
     if (title.trim().isEmpty) return;
     // In schedule view new tasks land on the highlighted (active) day; in
-    // list mode they go to the current tab's bucket.
+    // list mode they go to the default bucket (the current tab unless one is
+    // pinned in Settings).
     final dueDate = _scheduleView && _scheduleActiveDate != null
         ? _scheduleActiveDate!
-        : _dueDateForTab(_tabController.index);
+        : _dueDateForTab(_addTargetTabIndex());
     final rankingTabIndex = _tabIndexForDueDate(dueDate);
     final task = Task(
       title: title,
@@ -1209,6 +1261,259 @@ class _HomePageState extends State<HomePage>
     _controller.clear();
     _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
+  }
+
+  bool _isDesktopShortcutsEnabled(BuildContext context) {
+    final platform = defaultTargetPlatform;
+    final desktopPlatform = kIsWeb ||
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
+    return desktopPlatform && MediaQuery.of(context).size.width >= 700;
+  }
+
+  bool get _primaryFocusIsTextInput {
+    final context = FocusManager.instance.primaryFocus?.context;
+    return context != null && context.widget is EditableText;
+  }
+
+  TaskTileController _controllerForTask(Task task) {
+    return _taskTileControllers.putIfAbsent(
+      task.uid,
+      TaskTileController.new,
+    );
+  }
+
+  List<Task> _keyboardTasks() => _tasksForTab(_tabController.index);
+
+  int _focusedTaskIndex(List<Task> tasks) {
+    final uid = _focusedTaskUid;
+    if (uid == null) return -1;
+    return tasks.indexWhere((task) => task.uid == uid);
+  }
+
+  Task? _focusedTask() {
+    final tasks = _keyboardTasks();
+    final index = _focusedTaskIndex(tasks);
+    if (index < 0) return null;
+    return tasks[index];
+  }
+
+  Task? _ensureFocusedTask() {
+    final tasks = _keyboardTasks();
+    if (tasks.isEmpty) {
+      if (_focusedTaskUid != null) setState(() => _focusedTaskUid = null);
+      return null;
+    }
+    final currentIndex = _focusedTaskIndex(tasks);
+    if (currentIndex >= 0) return tasks[currentIndex];
+    setState(() => _focusedTaskUid = tasks.first.uid);
+    return tasks.first;
+  }
+
+  void _moveFocusedTask(int delta) {
+    final tasks = _keyboardTasks();
+    if (tasks.isEmpty) {
+      setState(() => _focusedTaskUid = null);
+      return;
+    }
+    final currentIndex = _focusedTaskIndex(tasks);
+    final nextIndex = currentIndex < 0
+        ? (delta > 0 ? 0 : tasks.length - 1)
+        : (currentIndex + delta).clamp(0, tasks.length - 1);
+    setState(() => _focusedTaskUid = tasks[nextIndex].uid);
+    _homeKeyboardFocusNode.requestFocus();
+  }
+
+  void _focusAfterKeyboardAction(int pageIndex, int originalIndex) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final tasks = _tasksForTab(pageIndex);
+      setState(() {
+        if (tasks.isEmpty) {
+          _focusedTaskUid = null;
+        } else {
+          final nextIndex = originalIndex.clamp(0, tasks.length - 1);
+          _focusedTaskUid = tasks[nextIndex].uid;
+        }
+      });
+      _homeKeyboardFocusNode.requestFocus();
+    });
+  }
+
+  void _toggleTask(Task task) {
+    final wasDone = task.isDone;
+    setState(() {
+      task.toggleDone();
+      task.completedAt = task.isDone ? DateTime.now() : null;
+    });
+    _trackTaskDoneState(task, wasDone);
+    _recordStreakToggle(task, wasDone);
+    _saveTasks();
+  }
+
+  Future<void> _openSettingsPage() {
+    return Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          onSettingsChanged: _updateSettings,
+          onExportTasksRequested: _exportTasks,
+          onExportSettingsRequested: _exportSettingsOnly,
+          onExportEverythingRequested: _exportEverything,
+          onImportRequested: _importAutoDetect,
+        ),
+      ),
+    );
+  }
+
+  void _focusSearch() {
+    if (!Config.isFeatureEnabled('search')) return;
+    _searchFocusNode.requestFocus();
+  }
+
+  void _focusAddTask() {
+    _addTaskFocusNode.requestFocus();
+  }
+
+  void _openFocusedTask() {
+    final task = _ensureFocusedTask();
+    if (task == null) return;
+    _controllerForTask(task).open();
+    _homeKeyboardFocusNode.requestFocus();
+  }
+
+  void _handleSideArrow(LogicalKeyboardKey key) {
+    final task = _ensureFocusedTask();
+    if (task == null) return;
+    final controller = _controllerForTask(task);
+    final isRight = key == LogicalKeyboardKey.arrowRight;
+    final directionIsMove =
+        isRight ? Config.swipeLeftDelete : !Config.swipeLeftDelete;
+    final sameOpenMenu = (directionIsMove && controller.hasMoveOptions) ||
+        (!directionIsMove && controller.hasDeleteOptions);
+    if (controller.hasOptions) {
+      if (sameOpenMenu) {
+        controller.stepOptions();
+      } else {
+        controller.closeOptions();
+      }
+      return;
+    }
+    if (directionIsMove) {
+      controller.startMoveOptions();
+    } else {
+      controller.startDeleteOptions();
+    }
+  }
+
+  KeyEventResult _handleAddTaskKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final enterPressed = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    final ctrlPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final shiftPressed = HardwareKeyboard.instance.isShiftPressed;
+    if (Config.enterSavesNewTask &&
+        enterPressed &&
+        !ctrlPressed &&
+        !shiftPressed) {
+      _addTask(_controller.text);
+      return KeyEventResult.handled;
+    }
+    if (!Config.enterSavesNewTask && ctrlPressed && enterPressed) {
+      _addTask(_controller.text);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _handleHomeKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (!_isDesktopShortcutsEnabled(context)) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+    final ctrlPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+
+    if (ctrlPressed && key == LogicalKeyboardKey.comma) {
+      _openSettingsPage();
+      return KeyEventResult.handled;
+    }
+    if (ctrlPressed && key == LogicalKeyboardKey.keyF) {
+      _focusSearch();
+      return KeyEventResult.handled;
+    }
+    if (ctrlPressed && key == LogicalKeyboardKey.keyN) {
+      _focusAddTask();
+      return KeyEventResult.handled;
+    }
+
+    if (_primaryFocusIsTextInput) {
+      if (key == LogicalKeyboardKey.escape) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        _homeKeyboardFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    switch (key) {
+      case LogicalKeyboardKey.arrowUp:
+        _moveFocusedTask(-1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowDown:
+        _moveFocusedTask(1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowRight:
+      case LogicalKeyboardKey.arrowLeft:
+        _handleSideArrow(key);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.enter:
+        final task = _focusedTask();
+        final controller = task == null ? null : _controllerForTask(task);
+        if (controller?.hasOptions ?? false) {
+          controller!.confirmOptions();
+        } else {
+          _openFocusedTask();
+        }
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.space:
+        final task = _ensureFocusedTask();
+        if (task != null) _toggleTask(task);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.delete:
+        final tasks = _keyboardTasks();
+        final index = _focusedTaskIndex(tasks);
+        if (index >= 0) _deleteTask(_tabController.index, index);
+        _focusAfterKeyboardAction(_tabController.index, index);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.escape:
+        final task = _focusedTask();
+        _taskTileControllers[task?.uid]?.closeOptions();
+        return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Creates a task from text shared into the app (Android share sheet) —
+  /// always due today, whatever tab or view is open.
+  void _addSharedTask(String text) {
+    final task = ShareIntentService.buildTask(text);
+    task.listRanking = _listRankingForNewTask(
+      0,
+      addToTop: Config.addNewTasksToTop,
+    );
+    setState(() {
+      _tasks.add(task);
+    });
+    _trackTaskCreated(task);
+    _saveTasks();
+    LogService.add(
+        'HomePage._addSharedTask', 'Added shared task: ${task.title}');
   }
 
   /// Creates a task from the Chronize timeline at an explicit deadline
@@ -1251,7 +1556,8 @@ class _HomePageState extends State<HomePage>
     _addToDeletedTasks(task);
     _saveTasks();
     _saveDeletedTasks();
-    LogService.add('HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
+    LogService.add(
+        'HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -1497,14 +1803,48 @@ class _HomePageState extends State<HomePage>
     }
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
-            builder: (_) => DiceTimerPage(
-              task: task,
-              onTaskDone: () => _completeTaskFromDice(task),
-              onTaskPostponed: () => _postponeTaskFromDice(task),
-            ),
-          ),
-        )
+      MaterialPageRoute(
+        builder: (_) => DiceTimerPage(
+          task: task,
+          onTaskDone: () => _completeTaskFromDice(task),
+          onTaskPostponed: () => _postponeTaskFromDice(task),
+        ),
+      ),
+    )
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// Double-tap → "Start timer": opens the same egg-timer page the dice
+  /// uses, but for [task] specifically, with the countdown already running at
+  /// the default duration — grabbing the dial still pauses and rewinds it
+  /// like any dice timer. Double-tapping the task whose timer is already
+  /// live just returns to it; picking a different task replaces the old
+  /// timer, since the double tap is an explicit choice for this one.
+  void _startTaskTimer(Task task) {
+    final controller = DiceTimerController.instance;
+    if (controller.isActive && identical(controller.task, task)) {
+      LogService.add('HomePage._startTaskTimer',
+          'Returned to running timer for "${task.title}"');
+    } else {
+      controller.configure(task);
+      controller.releaseDial();
+      LogService.add(
+          'HomePage._startTaskTimer', 'Started timer for "${task.title}"');
+    }
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(
+        builder: (_) => DiceTimerPage(
+          task: task,
+          caption: 'Timer for',
+          captionIcon: Icons.timer_outlined,
+          onTaskDone: () => _completeTaskFromDice(task),
+          onTaskPostponed: () => _postponeTaskFromDice(task),
+        ),
+      ),
+    )
         .then((_) {
       if (mounted) setState(() {});
     });
@@ -1543,6 +1883,27 @@ class _HomePageState extends State<HomePage>
     _saveTasks();
     LogService.add('HomePage._postponeTaskFromDice',
         'Postponed "${task.title}" to tomorrow');
+  }
+
+  /// The drawer's Home entry: back to the start screen. Any tool or subpage
+  /// stacked on top of the home page is popped, an active search is dropped
+  /// and the list returns to the tab (and view) the app opens on, so "Home"
+  /// always lands on the same familiar screen.
+  void _goHome() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    setState(() {
+      if (_searchQuery.isNotEmpty) {
+        _searchController.clear();
+        _searchQuery = '';
+      }
+      _scheduleView = Config.isFeatureEnabled('schedule_view') &&
+          Config.startInScheduleView;
+    });
+    final startTab = Config.startTabIndex.clamp(0, Config.tabs.length - 1);
+    if (_tabController.index != startTab) {
+      _tabController.animateTo(startTab);
+    }
+    LogService.add('HomePage._goHome', 'Returned to the home screen');
   }
 
   void _updateSettings() {
@@ -1713,8 +2074,7 @@ class _HomePageState extends State<HomePage>
         deletedTasks: _deletedTasks,
         dailyStatsByDay: _dailyStatsByDay,
       ),
-      'countdown_timers':
-          (timers ?? []).map((t) => t.toJson()).toList(),
+      'countdown_timers': (timers ?? []).map((t) => t.toJson()).toList(),
     };
     final file = File(path);
     await file.writeAsString(jsonEncode(payload), flush: true);
@@ -1731,9 +2091,8 @@ class _HomePageState extends State<HomePage>
       final decoded = jsonDecode(await File(picked.path).readAsString())
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
-      final settings = settingsRaw is Map
-          ? Map<String, dynamic>.from(settingsRaw)
-          : decoded;
+      final settings =
+          settingsRaw is Map ? Map<String, dynamic>.from(settingsRaw) : decoded;
       Config.applyMap(settings);
       await Config.save();
       _updateSettings();
@@ -1998,26 +2357,59 @@ class _HomePageState extends State<HomePage>
     if (diff <= 0) return 'Today';
     if (diff == 1) return 'Tomorrow';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}';
   }
 
   Widget _buildAddTaskRow() {
+    final desktopShortcuts = _isDesktopShortcutsEnabled(context);
     final activeDate = _scheduleView ? _scheduleActiveDate : null;
-    final label = activeDate == null
-        ? 'Add task'
-        : 'Add task · ${_scheduleDayLabel(activeDate)}';
+    // The label names the target whenever it is not simply "the list you are
+    // looking at": the schedule view's active day, or the bucket pinned in
+    // Settings — otherwise a task typed in Today would silently appear in
+    // another tab.
+    final pinnedTab = activeDate == null &&
+            Config.defaultAddTabIndex != Config.addToCurrentTab
+        ? _addTargetTabIndex()
+        : null;
+    final label = activeDate != null
+        ? 'Add task · ${_scheduleDayLabel(activeDate)}'
+        : pinnedTab != null
+            ? 'Add task · ${Config.tabs[pinnedTab].replaceAll('\n', ' ').trim()}'
+            : 'Add task';
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(labelText: label),
-              onSubmitted: _addTask,
+            child: Focus(
+              onKeyEvent: _handleAddTaskKeyEvent,
+              child: TextField(
+                controller: _controller,
+                focusNode: _addTaskFocusNode,
+                decoration: InputDecoration(labelText: label),
+                keyboardType: desktopShortcuts
+                    ? TextInputType.multiline
+                    : TextInputType.text,
+                minLines: 1,
+                maxLines: desktopShortcuts ? null : 1,
+                textInputAction: desktopShortcuts
+                    ? TextInputAction.newline
+                    : TextInputAction.done,
+                onSubmitted: desktopShortcuts ? null : _addTask,
+              ),
             ),
           ),
           IconButton(
@@ -2036,16 +2428,7 @@ class _HomePageState extends State<HomePage>
       key: usesCustomSwipe ? ValueKey(task.uid) : null,
       task: task,
       onChanged: _saveTasks,
-      onToggle: () {
-        final wasDone = task.isDone;
-        setState(() {
-          task.toggleDone();
-          task.completedAt = task.isDone ? DateTime.now() : null;
-        });
-        _trackTaskDoneState(task, wasDone);
-        _recordStreakToggle(task, wasDone);
-        _saveTasks();
-      },
+      onToggle: () => _toggleTask(task),
       onDueDateChanged: (oldDueDate, newDueDate) {
         setState(() {
           if (task.recurrenceParentUid != null) {
@@ -2066,6 +2449,7 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
+      onStartTimer: () => _startTaskTimer(task),
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
@@ -2074,6 +2458,14 @@ class _HomePageState extends State<HomePage>
       pageIndex: pageIndex,
       showSwipeButton: !isAndroid,
       swipeLeftDelete: Config.swipeLeftDelete,
+      controller: _controllerForTask(task),
+      keyboardFocused: _focusedTaskUid == task.uid,
+      onFocusRequested: () {
+        setState(() => _focusedTaskUid = task.uid);
+        _homeKeyboardFocusNode.requestFocus();
+      },
+      onKeyboardActionCommitted: () =>
+          _focusAfterKeyboardAction(pageIndex, indexInTab),
     );
     if (usesCustomSwipe) return tile;
     return Dismissible(
@@ -2149,9 +2541,11 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
   ];
 
-  /// An icon overlaid with a small red dot, used on the drawer/hamburger
-  /// icon and the Test Results entry when this build's CI test run failed,
-  /// and (with its own [dotKey]) on the App Logs entry after a failed sync.
+  /// An icon overlaid with a small red dot, used on the Test Results entry —
+  /// and, when [Config.showFailureDotOnMenu] is on, the drawer/hamburger
+  /// icon — while the newest test run has unacknowledged failures, and (with
+  /// its own [dotKey]) on the App Logs entry after a failed sync. Every dot
+  /// clears itself once its page is opened.
   Widget _iconWithFailureDot(IconData icon,
       {Key dotKey = const Key('test-failure-dot')}) {
     return Stack(
@@ -2179,7 +2573,7 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     final enabledTools =
         _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
-    return Scaffold(
+    final scaffold = Scaffold(
       key: homeScaffoldKey,
       drawer: Drawer(
         child: ListView(
@@ -2196,21 +2590,19 @@ class _HomePageState extends State<HomePage>
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.home),
+              title: const Text('Home'),
+              onTap: () {
+                Navigator.pop(context);
+                _goHome();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SettingsPage(
-                      onSettingsChanged: _updateSettings,
-                      onExportTasksRequested: _exportTasks,
-                      onExportSettingsRequested: _exportSettingsOnly,
-                      onExportEverythingRequested: _exportEverything,
-                      onImportRequested: _importAutoDetect,
-                    ),
-                  ),
-                );
+                _openSettingsPage();
               },
             ),
             if (Config.isFeatureEnabled('deleted_items'))
@@ -2254,16 +2646,24 @@ class _HomePageState extends State<HomePage>
             if (Config.isFeatureEnabled('app_logs'))
               ValueListenableBuilder<bool>(
                 valueListenable: SyncService.instance.hasUnseenError,
-                builder: (context, syncError, _) => ListTile(
-                  leading: syncError
-                      ? _iconWithFailureDot(Icons.list_alt,
-                          dotKey: const Key('sync-error-dot'))
-                      : const Icon(Icons.list_alt),
-                  title: const Text('App Logs'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                builder: (context, syncError, _) =>
+                    ValueListenableBuilder<bool>(
+                  valueListenable: TodoistSyncService.instance.hasUnseenError,
+                  builder: (context, todoistError, __) {
+                    final hasError = syncError || todoistError;
+                    return ListTile(
+                      leading: hasError
+                          ? _iconWithFailureDot(Icons.list_alt,
+                              dotKey: const Key('sync-error-dot'))
+                          : const Icon(Icons.list_alt),
+                      title: const Text('App Logs'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const AppLogsPage()),
+                        );
+                      },
                     );
                   },
                 ),
@@ -2288,7 +2688,7 @@ class _HomePageState extends State<HomePage>
                   for (final tool in enabledTools)
                     ListTile(
                       leading: tool.key == 'test_results' &&
-                              TestReportService.instance.hasFailures
+                              TestReportService.instance.hasUnseenFailures
                           ? _iconWithFailureDot(tool.icon)
                           : Icon(tool.icon),
                       title: Text(tool.label),
@@ -2306,7 +2706,8 @@ class _HomePageState extends State<HomePage>
         leading: Builder(
           builder: (context) => IconButton(
             tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
-            icon: TestReportService.instance.hasFailures
+            icon: Config.showFailureDotOnMenu &&
+                    TestReportService.instance.hasUnseenFailures
                 ? _iconWithFailureDot(Icons.menu)
                 : const Icon(Icons.menu),
             onPressed: () => Scaffold.of(context).openDrawer(),
@@ -2315,6 +2716,7 @@ class _HomePageState extends State<HomePage>
         title: Config.isFeatureEnabled('search')
             ? TextField(
                 controller: _searchController,
+                focusNode: _searchFocusNode,
                 decoration: InputDecoration(
                   hintText: 'Search tasks',
                   border: InputBorder.none,
@@ -2430,12 +2832,62 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       ),
-      body: _scheduleView
-          ? _buildScheduleBody()
-          : TabBarView(
-              controller: _tabController,
-              children: List.generate(Config.tabs.length, _buildTaskList),
-            ),
+      body: Column(
+        children: [
+          // Shown only while the first-launch Todoist import is still
+          // pulling in everything past today (see IntroPage's import
+          // chooser) — `syncing` otherwise only flips on for the brief
+          // duration of a manual/quit-time sync, which has its own spinner
+          // in Settings and is never visible here in practice.
+          ValueListenableBuilder<bool>(
+            valueListenable: TodoistSyncService.instance.syncing,
+            builder: (context, syncing, _) {
+              if (!syncing) return const SizedBox.shrink();
+              return Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Importing the rest of your tasks from Todoist…',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: _scheduleView
+                ? _buildScheduleBody()
+                : TabBarView(
+                    controller: _tabController,
+                    children: List.generate(Config.tabs.length, _buildTaskList),
+                  ),
+          ),
+        ],
+      ),
+    );
+    return Focus(
+      focusNode: _homeKeyboardFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleHomeKeyEvent,
+      child: scaffold,
     );
   }
 }

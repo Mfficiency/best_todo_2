@@ -1,0 +1,10 @@
+{
+  "id": "besttodo-tasks",
+  "name": "BestToDo Tasks",
+  "version": "0.2.0",
+  "minAppVersion": "1.0.0",
+  "description": "Viewer and checkbox sync for a BestToDo synced task list (besttodo_tasks.json): the six home tabs, due dates and label chips, refreshed whenever the file changes. Ticking a task off flows back to the phone on its next resume.",
+  "author": "BestToDo",
+  "authorUrl": "https://github.com/Mfficiency/best_todo_2",
+  "isDesktopOnly": false
+}

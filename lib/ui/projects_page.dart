@@ -4,6 +4,7 @@ import '../models/project.dart';
 import '../models/task.dart';
 import '../services/item_views.dart';
 import '../services/project_service.dart';
+import '../utils/linkified_text.dart';
 import 'adaptive_draggable.dart';
 import 'project_board_page.dart';
 import 'subpage_app_bar.dart';
@@ -127,7 +128,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
       child: ListTile(
         dense: true,
         leading: const Icon(Icons.drag_indicator),
-        title: Text(task.title),
+        title: LinkifiedText(task.title),
         trailing: project == null
             ? null
             : Chip(
@@ -230,7 +231,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                   ),
                   if (project.description.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    Text(
+                    LinkifiedText(
                       project.description,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
