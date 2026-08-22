@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'models/streak_goal.dart';
 import 'models/streak_reminder.dart';
 
 class Config {
@@ -298,6 +299,12 @@ class Config {
   /// runs. Only applied when [isDev] and no streak history exists yet.
   static const int devSeedStreakDays = 50;
 
+  /// User-defined goals for the customizable flames (`create` = green, `plan`
+  /// = blue), keyed by `StreakKind.id`. A flame with no entry here stays cold
+  /// and unlit until the user sets a goal for it in the streak settings —
+  /// there is no built-in default behaviour for these two slots any more.
+  static Map<String, StreakGoal> streakGoals = {};
+
   /// How the dice timer announces that the countdown hit zero. The keys are
   /// persisted, so keep them stable:
   ///  * `melody` — plays [diceTimerMelody] at [diceTimerVolume], like an alarm
@@ -455,6 +462,9 @@ class Config {
         for (final reminder in streakReminders) reminder.toJson(),
       ],
       'streakKindEnabled': Map<String, bool>.from(streakKindEnabled),
+      'streakGoals': {
+        for (final entry in streakGoals.entries) entry.key: entry.value.toJson(),
+      },
       'streakCompletionAnimation': streakCompletionAnimation,
       'simpleMode': simpleMode,
       'modeChosen': modeChosen,
@@ -536,6 +546,15 @@ class Config {
         final value = savedStreakKinds[key];
         if (value is bool) streakKindEnabled[key] = value;
       }
+    }
+    final savedStreakGoals = data['streakGoals'];
+    if (savedStreakGoals is Map) {
+      streakGoals = {
+        for (final entry in savedStreakGoals.entries)
+          if (entry.value is Map)
+            entry.key as String:
+                StreakGoal.fromJson(Map<String, dynamic>.from(entry.value)),
+      };
     }
     streakCompletionAnimation =
         data['streakCompletionAnimation'] ?? streakCompletionAnimation;

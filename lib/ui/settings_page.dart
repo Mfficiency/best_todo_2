@@ -12,9 +12,11 @@ import '../services/auto_backup_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
+import '../services/streak_flame_display.dart';
 import '../services/streak_service.dart';
 import 'dice_timer_settings.dart';
 import 'sms_report_log_page.dart';
+import 'streak_goal_dialog.dart';
 import 'subpage_app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -753,6 +755,42 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  /// Row under a customizable flame's toggle: shows its configured goal (or
+  /// invites setting one) and opens [StreakGoalDialog] on tap.
+  Widget _buildStreakGoalTile(StreakKind kind) {
+    final info = streakFlameInfo(kind);
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.only(left: 40, right: 16),
+      title: Text(
+        info.configured ? info.title : 'No goal set',
+        style: !info.configured
+            ? TextStyle(color: Theme.of(context).disabledColor)
+            : null,
+      ),
+      subtitle: Text(info.missing
+          ? 'Its target was deleted — pick a new goal'
+          : (info.configured
+              ? info.description
+              : 'Choose a recurring task or project to track')),
+      trailing: TextButton(
+        onPressed: () => _openStreakGoalDialog(kind),
+        child: Text(info.configured ? 'Change' : 'Set goal'),
+      ),
+    );
+  }
+
+  Future<void> _openStreakGoalDialog(StreakKind kind) async {
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => StreakGoalDialog(kind: kind),
+    );
+    if (changed == true && mounted) {
+      setState(() {});
+      widget.onSettingsChanged?.call();
+    }
+  }
+
   Future<void> _pickStreakReminderTime(int index) async {
     if (index < 0 || index >= Config.streakReminders.length) return;
     final reminder = Config.streakReminders[index];
@@ -986,18 +1024,20 @@ class _SettingsPageState extends State<SettingsPage> {
               'The flame in the app bar cycles through the challenges you '
               'keep on'),
         ),
-        for (final kind in StreakKind.values)
+        for (final kind in StreakKind.values) ...[
           SwitchListTile(
             dense: true,
             secondary: Icon(kind.icon, color: kind.warm),
-            title: Text(kind.label),
-            subtitle: Text(kind.description),
+            title: Text(streakFlameInfo(kind).title),
+            subtitle: Text(streakFlameInfo(kind).description),
             value: Config.isStreakKindEnabled(kind.id),
             onChanged: (val) async {
               setState(() => Config.streakKindEnabled[kind.id] = val);
               await _applyStreakChange();
             },
           ),
+          if (kind != StreakKind.complete) _buildStreakGoalTile(kind),
+        ],
         SwitchListTile(
           title: const Text('Streak reminders'),
           subtitle: const Text(

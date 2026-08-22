@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/streak_kind.dart';
 import '../services/streak_challenges.dart';
+import '../services/streak_flame_display.dart';
 import '../services/streak_service.dart';
 import '../utils/date_time_format.dart';
 import 'settings_page.dart';
@@ -86,18 +87,12 @@ class _StreakPageState extends State<StreakPage>
           average: 'Average tasks per active day',
         );
       case StreakKind.create:
-        return (
-          activeDays: 'Days with a new task',
-          events: 'Tasks created on those days',
-          best: 'tasks',
-          average: 'Average new tasks per active day',
-        );
       case StreakKind.plan:
         return (
-          activeDays: 'Days you planned ahead',
-          events: 'Planning moves on those days',
-          best: 'moves',
-          average: 'Average planning moves per active day',
+          activeDays: 'Days the goal was met',
+          events: 'Completions on those days',
+          best: 'completions',
+          average: 'Average completions per active day',
         );
     }
   }
@@ -176,7 +171,8 @@ class _StreakPageState extends State<StreakPage>
                   : Icons.local_fire_department_outlined,
               color: kind.flameColor(_streak.flameProgress(kind: kind), theme),
             ),
-            label: Text('${kind.short} ${_streak.currentStreak(kind: kind)}'),
+            label: Text(
+                '${streakFlameInfo(kind).short} ${_streak.currentStreak(kind: kind)}'),
           ),
       ],
     );
@@ -198,23 +194,31 @@ class _StreakPageState extends State<StreakPage>
                   ?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
-          for (final kind in kinds)
-            ListTile(
-              dense: true,
-              leading: Icon(
-                kind.icon,
-                color: kind.flameColor(_streak.flameProgress(kind: kind), theme),
-              ),
-              title: Text(kind.label),
-              subtitle: Text(kind.description),
-              trailing: _streak.isDayDone(today, kind: kind)
-                  ? Icon(Icons.check_circle, color: kind.warm)
-                  : Text('Open', style: theme.textTheme.bodySmall),
-              onTap: () => setState(() => _kind = kind),
-            ),
+          for (final kind in kinds) _buildTodayTile(theme, kind, today),
           const SizedBox(height: 8),
         ],
       ),
+    );
+  }
+
+  Widget _buildTodayTile(ThemeData theme, StreakKind kind, DateTime today) {
+    final info = streakFlameInfo(kind);
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        kind.icon,
+        color: kind.flameColor(_streak.flameProgress(kind: kind), theme),
+      ),
+      title: Text(info.title),
+      subtitle: Text(info.description),
+      trailing: !info.configured
+          ? Text('Not set', style: theme.textTheme.bodySmall)
+          : info.missing
+              ? Icon(Icons.error_outline, color: theme.colorScheme.error)
+              : (_streak.isDayDone(today, kind: kind)
+                  ? Icon(Icons.check_circle, color: kind.warm)
+                  : Text('Open', style: theme.textTheme.bodySmall)),
+      onTap: () => setState(() => _kind = kind),
     );
   }
 
@@ -272,6 +276,7 @@ class _StreakPageState extends State<StreakPage>
     final best = _streak.bestDay(kind: _kind);
     final start = _streak.currentStreakStart(kind: _kind);
     final labels = _statLabels(_kind);
+    final info = streakFlameInfo(_kind);
     final daysToMax = StreakService.maxStreakDays - streak;
     final maxed = streak >= StreakService.maxStreakDays;
     final challenges = evaluateStreakChallenges(_streak);
@@ -321,7 +326,7 @@ class _StreakPageState extends State<StreakPage>
             ),
             Center(
               child: Text(
-                '${_kind.label} · ${_funLevelName(streak)}',
+                '${info.title} · ${_funLevelName(streak)}',
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: _kind.flameColor(progress, theme),
                   fontWeight: FontWeight.w600,
@@ -336,7 +341,7 @@ class _StreakPageState extends State<StreakPage>
                     ? (maxed
                         ? 'The flame cannot burn any brighter. Legend. 🔥'
                         : '$daysToMax days until maximum fire')
-                    : _kind.callToAction,
+                    : info.callToAction,
                 style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),

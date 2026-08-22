@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.229] - 2026-08-22
+- The green and blue flames are now configurable goals instead of a fixed "create a task"/"plan ahead" rule: pick a recurring task or a project in Settings → Streak, and that flame lights the day a matching task is completed
+- Each configurable flame gets its own title (pre-filled from the task/project name, editable) and shows a "no goal set" state until you choose one, or a "goal missing" prompt if its task/project is later deleted
+- The orange "finish a task" flame is unchanged; the old fixed create/plan behaviour is retired in favour of goals you set yourself
+
 ## [0.1.228] - 2026-08-17
 - No code change from 0.1.157 below — bumped straight to 0.1.228 so this build installs over the `fix/black-screen-restore` bisect APKs already on a test phone (the highest of those, rc11, is versionCode 227) without needing an uninstall first. Same reason 0.1.156 jumped its own gap; see that entry's note.
 

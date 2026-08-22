@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/streak_kind.dart';
+import '../services/streak_flame_display.dart';
 import '../services/streak_service.dart';
 import 'streak_page.dart';
 
@@ -59,9 +60,13 @@ class _StreakFlameButtonState extends State<StreakFlameButton> {
     super.dispose();
   }
 
-  String _tooltip(StreakKind kind, int streak) => streak > 0
-      ? '${kind.label}: $streak-day streak'
-      : '${kind.label}: no streak yet';
+  String _tooltip(StreakKind kind, int streak) {
+    final info = streakFlameInfo(kind);
+    if (!info.configured) return info.title;
+    return streak > 0
+        ? '${info.short}: $streak-day streak'
+        : '${info.short}: no streak yet';
+  }
 
   void _openStreakPage(StreakKind kind) {
     Navigator.push(
