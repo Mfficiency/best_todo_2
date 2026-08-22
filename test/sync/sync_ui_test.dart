@@ -307,4 +307,46 @@ void main() {
 
     expect(find.byKey(const Key('sync-error-dot')), findsOneWidget);
   });
+
+  testWidgets(
+      'pulling down on the home page task list runs a Todoist sync and '
+      'reloads the list', (tester) async {
+    TodoistSyncService.instance.apiClientFactory = (token) =>
+        TodoistApiClient(
+          apiToken: token,
+          client: MockClient((request) async {
+            if (request.url.path.endsWith('/tasks') &&
+                request.method == 'GET') {
+              return http.Response('{"results": [], "next_cursor": null}', 200);
+            }
+            if (request.url.path.endsWith('/projects') &&
+                request.method == 'GET') {
+              return http.Response('{"results": [], "next_cursor": null}', 200);
+            }
+            if (request.url.path.endsWith('/tasks') &&
+                request.method == 'POST') {
+              // "Alpha" (seeded by pumpHomeUntilLoaded, due today, no
+              // project) pushes as a brand-new Todoist task — only the id
+              // in the response is read back.
+              return http.Response('{"id": "999"}', 200);
+            }
+            return http.Response('not found', 404);
+          }),
+        );
+    Config.todoistSyncEnabled = true;
+    Config.todoistApiToken = 'token';
+
+    await pumpHomeUntilLoaded(tester);
+
+    await tester.fling(
+        find.byType(RefreshIndicator), const Offset(0.0, 300.0), 1000.0);
+    await tester.pump();
+    await settleIo(tester);
+    await tester.pumpAndSettle();
+
+    expect(TodoistSyncService.instance.entries.value, isNotEmpty);
+    expect(TodoistSyncService.instance.entries.value.first.trigger,
+        'pull_to_refresh');
+    expect(find.textContaining('Synced 1 change'), findsOneWidget);
+  });
 }
