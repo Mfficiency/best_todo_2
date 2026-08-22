@@ -2297,8 +2297,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             ListTile(
                               leading: const Icon(Icons.sell_outlined),
                               title: const Text('Auto-tag rules'),
-                              subtitle:
-                                  const Text('Edit the keyword → tag dictionary'),
+                              subtitle: const Text(
+                                  'Edit which groups of words add which tag'),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.249] - 2026-08-22
+- Auto-tagging got smarter: instead of one keyword per tag, each tag now has a whole group of words that trigger it (e.g. "fitness" fires on gym, workout, exercise, cardio, yoga, jogging, running, training or stretch) — seeded with 12 starter categories (work, bike, fitness, health, shopping, finance, travel, home, family, food, study, tech) curated from online thesaurus data. Settings → Auto-tag rules now edits a tag plus its whole word group in one dialog. Still on by default.
+
 ## [0.1.248] - 2026-08-22
 - Fixed Todoist sync so a pull (a new task added in Todoist, a label/edit picked up from there, a completion) actually shows up in the app: the Home page's task list is now reloaded from storage after returning from Settings (where "Sync now" lives) and after the app resumes from a quit-triggered background sync, instead of only updating on-disk data that a stale in-memory list never picked up until a full app restart.
 

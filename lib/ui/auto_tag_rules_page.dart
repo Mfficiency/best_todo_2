@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../models/auto_tag_rule.dart';
+import '../models/auto_tag_group.dart';
 import '../services/auto_tag_service.dart';
+import '../utils/label_utils.dart';
 import 'subpage_app_bar.dart';
 
 /// Settings > Tasks > Auto-tag rules. Lets the user view/add/edit/delete the
-/// keyword → tag dictionary [AutoTagService] matches new item titles against.
+/// tag -> group-of-words dictionary [AutoTagService] matches new item titles
+/// against — e.g. the "fitness" tag firing on "gym", "workout" or "cardio".
 class AutoTagRulesPage extends StatefulWidget {
   const AutoTagRulesPage({Key? key}) : super(key: key);
 
@@ -14,16 +16,16 @@ class AutoTagRulesPage extends StatefulWidget {
 }
 
 class _AutoTagRulesPageState extends State<AutoTagRulesPage> {
-  Future<void> _addOrEditRule([int? index]) async {
-    final rules = AutoTagService.instance.list;
-    final result = await showDialog<AutoTagRule>(
+  Future<void> _addOrEditGroup([int? index]) async {
+    final groups = AutoTagService.instance.list;
+    final result = await showDialog<AutoTagGroup>(
       context: context,
-      builder: (context) => _AutoTagRuleDialog(
-        rule: index == null ? null : rules[index],
+      builder: (context) => _AutoTagGroupDialog(
+        group: index == null ? null : groups[index],
       ),
     );
     if (result == null) return;
-    final next = [...rules];
+    final next = [...groups];
     if (index == null) {
       next.add(result);
     } else {
@@ -33,7 +35,7 @@ class _AutoTagRulesPageState extends State<AutoTagRulesPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _deleteRule(int index) async {
+  Future<void> _deleteGroup(int index) async {
     final next = [...AutoTagService.instance.list]..removeAt(index);
     await AutoTagService.instance.save(next);
     if (mounted) setState(() {});
@@ -44,37 +46,38 @@ class _AutoTagRulesPageState extends State<AutoTagRulesPage> {
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Auto-tag rules'),
       floatingActionButton: FloatingActionButton(
-        tooltip: 'Add rule',
-        onPressed: () => _addOrEditRule(),
+        tooltip: 'Add tag',
+        onPressed: () => _addOrEditGroup(),
         child: const Icon(Icons.add),
       ),
-      body: ValueListenableBuilder<List<AutoTagRule>>(
-        valueListenable: AutoTagService.instance.rules,
-        builder: (context, rules, _) {
-          if (rules.isEmpty) {
+      body: ValueListenableBuilder<List<AutoTagGroup>>(
+        valueListenable: AutoTagService.instance.groups,
+        builder: (context, groups, _) {
+          if (groups.isEmpty) {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Text(
-                  'No auto-tag rules yet. Tap + to add one: a keyword and '
-                  'the tag it should add to a new task\'s title.',
+                  'No auto-tag rules yet. Tap + to add one: a tag and the '
+                  'group of words that should add it to a new task\'s title.',
                   textAlign: TextAlign.center,
                 ),
               ),
             );
           }
           return ListView.builder(
-            itemCount: rules.length,
+            itemCount: groups.length,
             itemBuilder: (context, index) {
-              final rule = rules[index];
+              final group = groups[index];
               return ListTile(
                 leading: const Icon(Icons.sell_outlined),
-                title: Text('"${rule.keyword}" → ${rule.tag}'),
-                onTap: () => _addOrEditRule(index),
+                title: Text(group.tag),
+                subtitle: Text(group.keywords.join(', ')),
+                onTap: () => _addOrEditGroup(index),
                 trailing: IconButton(
-                  tooltip: 'Delete rule',
+                  tooltip: 'Delete tag',
                   icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _deleteRule(index),
+                  onPressed: () => _deleteGroup(index),
                 ),
               );
             },
@@ -85,56 +88,59 @@ class _AutoTagRulesPageState extends State<AutoTagRulesPage> {
   }
 }
 
-class _AutoTagRuleDialog extends StatefulWidget {
-  final AutoTagRule? rule;
+class _AutoTagGroupDialog extends StatefulWidget {
+  final AutoTagGroup? group;
 
-  const _AutoTagRuleDialog({this.rule});
+  const _AutoTagGroupDialog({this.group});
 
   @override
-  State<_AutoTagRuleDialog> createState() => _AutoTagRuleDialogState();
+  State<_AutoTagGroupDialog> createState() => _AutoTagGroupDialogState();
 }
 
-class _AutoTagRuleDialogState extends State<_AutoTagRuleDialog> {
-  late final TextEditingController _keywordController =
-      TextEditingController(text: widget.rule?.keyword ?? '');
+class _AutoTagGroupDialogState extends State<_AutoTagGroupDialog> {
   late final TextEditingController _tagController =
-      TextEditingController(text: widget.rule?.tag ?? '');
+      TextEditingController(text: widget.group?.tag ?? '');
+  late final TextEditingController _keywordsController =
+      TextEditingController(text: (widget.group?.keywords ?? []).join(', '));
 
   @override
   void dispose() {
-    _keywordController.dispose();
     _tagController.dispose();
+    _keywordsController.dispose();
     super.dispose();
   }
 
   void _save() {
-    final keyword = _keywordController.text.trim();
     final tag = _tagController.text.trim();
-    if (keyword.isEmpty || tag.isEmpty) {
+    final keywords = splitLabelTokens(_keywordsController.text);
+    if (tag.isEmpty || keywords.isEmpty) {
       Navigator.of(context).pop();
       return;
     }
-    Navigator.of(context).pop(AutoTagRule(keyword: keyword, tag: tag));
+    Navigator.of(context).pop(AutoTagGroup(tag: tag, keywords: keywords));
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.rule == null ? 'Add auto-tag rule' : 'Edit rule'),
+      title: Text(widget.group == null ? 'Add auto-tag rule' : 'Edit rule'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
-            controller: _keywordController,
+            controller: _tagController,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Keyword',
-              helperText: 'Matched as a whole word in the title',
-            ),
+            decoration: const InputDecoration(labelText: 'Tag to add'),
           ),
           TextField(
-            controller: _tagController,
-            decoration: const InputDecoration(labelText: 'Tag to add'),
+            controller: _keywordsController,
+            decoration: const InputDecoration(
+              labelText: 'Words',
+              helperText: 'Comma or space separated; any one of them '
+                  'matches as a whole word in the title',
+            ),
+            keyboardType: TextInputType.multiline,
+            maxLines: null,
           ),
         ],
       ),

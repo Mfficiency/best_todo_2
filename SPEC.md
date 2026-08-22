@@ -275,22 +275,31 @@ when all tokens are known, nothing loads at startup). Kinds derive from the toke
 `priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
 tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
 
-### 4.2e Auto-tagging (0.1.229)
+### 4.2e Auto-tagging (0.1.229, grouped dictionary 0.1.249)
 
-`AutoTagRule` (`lib/models/auto_tag_rule.dart`: keyword, tag) + `AutoTagService`
+`AutoTagGroup` (`lib/models/auto_tag_group.dart`: tag, `keywords` list) + `AutoTagService`
 (`auto_tag_rules.json`, ValueNotifier singleton, `lib/services/auto_tag_service.dart`) —
-a small user-editable keyword → tag dictionary, seeded with a handful of generic starters
-(work/meeting/email → work, bike/cycling → bike, gym/workout → health, groceries/shopping
-→ shopping) on first run, same load-seeds-and-persists / write-on-save shape as
-`ProjectService`. `withAutoTags(title, label)` is the one entry point: when
-`Config.autoTagEnabled` (default true) is on, it whole-word case-insensitively matches
-`title` against the rules and appends any matched tags to `label` (deduped against tokens
+a user-editable tag → group-of-words dictionary, e.g. the `fitness` tag fires on any of
+`gym`/`workout`/`exercise`/`cardio`/`yoga`/`jogging`/`running`/`training`/`stretch`. Seeded
+with 12 starter groups (work, bike, fitness, health, shopping, finance, travel, home,
+family, food, study, tech) on first run, same load-seeds-and-persists / write-on-save
+shape as `ProjectService`; the starter word groups were curated from online thesaurus
+results (thesaurus.com, Merriam-Webster, WordHippo, relatedwords.io — via `WebSearch`)
+trimmed to common, everyday words. `withAutoTags(title, label)` is the one entry point:
+when `Config.autoTagEnabled` (default **true**) is on, `tagsFor` whole-word
+case-insensitively matches `title` against every group's keywords and every group with a
+hit contributes its tag; matched tags are appended to `label` (deduped against tokens
 already present via `label_utils`), a no-op otherwise. Called from the home page's
 `_addTask`/`_addTaskFromChronize` and the Wishlist page's new-item flow — edits never
-re-tag. Settings → Tasks has the on/off switch ("Auto-tag new items") and an "Auto-tag
-rules" entry point (`AutoTagRulesPage`) to add/edit/delete rules. Deliberately dumb today
-(fixed dictionary, no NLP); the plan is to later swap the matching for an on-device LLM
-without touching callers, which only ever see the resulting tag list.
+re-tag. `AutoTagGroup.fromJson` also accepts the original one-keyword-per-tag shape
+(`keyword` singular) from before groups existed, and `AutoTagService._normalize` (run on
+every load/save) merges any groups sharing a tag and dedupes their keywords, so old data
+and hand-edited duplicates both collapse into one clean group per tag. Settings → Tasks
+has the on/off switch ("Auto-tag new items") and an "Auto-tag rules" entry point
+(`AutoTagRulesPage`) to add/rename/delete a tag and edit its whole word group (comma/space
+separated) in one dialog. Deliberately dumb today (a fixed dictionary, no real NLP); the
+plan is to later swap the matching in `tagsFor` for an on-device LLM without touching
+callers, which only ever see the resulting tag list.
 
 ### 4.3 Home page UX
 

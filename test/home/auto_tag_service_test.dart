@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
-import 'package:besttodo/models/auto_tag_rule.dart';
+import 'package:besttodo/models/auto_tag_group.dart';
 import 'package:besttodo/services/auto_tag_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -27,10 +27,12 @@ void main() {
 
   File rulesFile() => File('${tempDir.path}/auto_tag_rules.json');
 
-  test('first load seeds the default rules and persists them', () async {
+  test('first load seeds the default groups and persists them', () async {
     await AutoTagService.instance.load();
 
     expect(AutoTagService.instance.list, isNotEmpty);
+    expect(AutoTagService.instance.list.every((g) => g.keywords.isNotEmpty),
+        isTrue);
     expect(await rulesFile().exists(), isTrue);
     final data = jsonDecode(await rulesFile().readAsString()) as List;
     expect(data.length, AutoTagService.instance.list.length);
@@ -49,11 +51,23 @@ void main() {
         contains('work'));
   });
 
-  test('tagsFor deduplicates when several keywords map to the same tag',
+  test('a tag fires on any word in its group, not just one', () async {
+    await AutoTagService.instance.load();
+
+    // "gym", "workout" and "cardio" are different words in the same
+    // "fitness" group.
+    expect(AutoTagService.instance.tagsFor('Hit the gym'), contains('fitness'));
+    expect(
+        AutoTagService.instance.tagsFor('Evening workout'), contains('fitness'));
+    expect(
+        AutoTagService.instance.tagsFor('Cardio day'), contains('fitness'));
+  });
+
+  test('tagsFor only adds a tag once even if several of its words match',
       () async {
     await AutoTagService.instance.load();
 
-    // Both "work" and "meeting" map to the "work" tag by default.
+    // Both "work" and "meeting" belong to the "work" group.
     final tags = AutoTagService.instance.tagsFor('Work meeting at 3pm');
     expect(tags.where((t) => t == 'work').length, 1);
   });
@@ -72,7 +86,7 @@ void main() {
     expect(AutoTagService.instance.withAutoTags('Fix my bike', 'Bike, urgent'),
         'Bike, urgent');
     // No match leaves the label untouched.
-    expect(AutoTagService.instance.withAutoTags('Buy milk', 'errand'),
+    expect(AutoTagService.instance.withAutoTags('Feed the fish', 'errand'),
         'errand');
   });
 
@@ -83,21 +97,65 @@ void main() {
     expect(AutoTagService.instance.withAutoTags('Fix my bike', ''), '');
   });
 
-  test('save persists a user-edited rule set and survives a reload',
+  test('save persists a user-edited dictionary and survives a reload',
       () async {
     await AutoTagService.instance.load();
 
-    await AutoTagService.instance
-        .save([AutoTagRule(keyword: 'lemon', tag: 'kitchen')]);
+    await AutoTagService.instance.save(
+        [AutoTagGroup(tag: 'kitchen', keywords: ['lemon', 'lime'])]);
     expect(AutoTagService.instance.tagsFor('Buy lemon'), contains('kitchen'));
+    expect(AutoTagService.instance.tagsFor('Buy lime'), contains('kitchen'));
 
     AutoTagService.instance.resetForTest();
     await AutoTagService.instance.load();
     expect(AutoTagService.instance.list.length, 1);
-    expect(AutoTagService.instance.list.first.keyword, 'lemon');
+    expect(AutoTagService.instance.list.first.tag, 'kitchen');
+    expect(AutoTagService.instance.list.first.keywords,
+        containsAll(['lemon', 'lime']));
   });
 
-  test('a corrupt rules file keeps the in-memory default rules', () async {
+  test('save merges groups that share a tag and dedupes their keywords',
+      () async {
+    await AutoTagService.instance.load();
+
+    await AutoTagService.instance.save([
+      AutoTagGroup(tag: 'kitchen', keywords: ['lemon']),
+      AutoTagGroup(tag: 'Kitchen', keywords: ['lemon', 'lime']),
+    ]);
+
+    expect(AutoTagService.instance.list.length, 1);
+    expect(AutoTagService.instance.list.first.keywords, ['lemon', 'lime']);
+  });
+
+  test('save drops groups left with an empty tag or no keywords', () async {
+    await AutoTagService.instance.load();
+
+    await AutoTagService.instance.save([
+      AutoTagGroup(tag: '', keywords: ['lemon']),
+      AutoTagGroup(tag: 'kitchen', keywords: []),
+      AutoTagGroup(tag: 'valid', keywords: ['lemon']),
+    ]);
+
+    expect(AutoTagService.instance.list.length, 1);
+    expect(AutoTagService.instance.list.first.tag, 'valid');
+  });
+
+  test('a legacy one-keyword-per-tag file (pre-groups) still loads',
+      () async {
+    await rulesFile().create(recursive: true);
+    await rulesFile().writeAsString(jsonEncode([
+      {'keyword': 'lemon', 'tag': 'kitchen'},
+      {'keyword': 'lime', 'tag': 'kitchen'},
+    ]));
+
+    await AutoTagService.instance.load();
+    expect(AutoTagService.instance.list.length, 1);
+    expect(AutoTagService.instance.list.first.tag, 'kitchen');
+    expect(AutoTagService.instance.list.first.keywords,
+        containsAll(['lemon', 'lime']));
+  });
+
+  test('a corrupt rules file keeps the in-memory default groups', () async {
     await rulesFile().create(recursive: true);
     await rulesFile().writeAsString('not json');
 
@@ -108,11 +166,11 @@ void main() {
   test('load only reads the file once per session', () async {
     await AutoTagService.instance.load();
     await AutoTagService.instance
-        .save([AutoTagRule(keyword: 'lemon', tag: 'kitchen')]);
+        .save([AutoTagGroup(tag: 'kitchen', keywords: ['lemon'])]);
 
     await rulesFile().writeAsString('garbage');
     await AutoTagService.instance.load();
     expect(AutoTagService.instance.list.length, 1);
-    expect(AutoTagService.instance.list.first.keyword, 'lemon');
+    expect(AutoTagService.instance.list.first.tag, 'kitchen');
   });
 }

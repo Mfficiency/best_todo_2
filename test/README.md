@@ -61,7 +61,7 @@ Pick suites by what you touched, always including core:
   `lib/ui/wishlist_page.dart`,
   `lib/ui/your_stats_page.dart`,
   `tool/generate_test_report.dart` → core + **tools**
-- `lib/models/auto_tag_rule.dart`, `lib/services/auto_tag_service.dart`,
+- `lib/models/auto_tag_group.dart`, `lib/services/auto_tag_service.dart`,
   `lib/ui/auto_tag_rules_page.dart` → core + **home** (+ **tools**, since
   `wishlist_page.dart` also calls into it)
 - `lib/services/update_service.dart`, `lib/ui/about_page.dart`,

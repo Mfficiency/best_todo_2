@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
-import 'package:besttodo/models/auto_tag_rule.dart';
+import 'package:besttodo/models/auto_tag_group.dart';
 import 'package:besttodo/services/auto_tag_service.dart';
 import 'package:besttodo/ui/auto_tag_rules_page.dart';
 import 'package:besttodo/ui/settings_page.dart';
@@ -66,7 +66,8 @@ void main() {
     expect(find.byType(AutoTagRulesPage), findsOneWidget);
   });
 
-  testWidgets('Auto-tag rules page adds and deletes a rule', (tester) async {
+  testWidgets('Auto-tag rules page adds and deletes a tag group',
+      (tester) async {
     await AutoTagService.instance.save([]);
     await tester.pumpWidget(
         const MaterialApp(home: AutoTagRulesPage()));
@@ -74,21 +75,23 @@ void main() {
 
     expect(find.textContaining('No auto-tag rules yet'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Add rule'));
+    await tester.tap(find.byTooltip('Add tag'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Keyword'), 'lemon');
     await tester.enterText(
         find.widgetWithText(TextField, 'Tag to add'), 'kitchen');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Words'), 'lemon, lime');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
-    expect(find.text('"lemon" → kitchen'), findsOneWidget);
+    expect(find.text('kitchen'), findsOneWidget);
+    expect(find.text('lemon, lime'), findsOneWidget);
     expect(AutoTagService.instance.list.single,
-        isA<AutoTagRule>()
-            .having((r) => r.keyword, 'keyword', 'lemon')
-            .having((r) => r.tag, 'tag', 'kitchen'));
+        isA<AutoTagGroup>()
+            .having((g) => g.tag, 'tag', 'kitchen')
+            .having((g) => g.keywords, 'keywords', ['lemon', 'lime']));
 
-    await tester.tap(find.byTooltip('Delete rule'));
+    await tester.tap(find.byTooltip('Delete tag'));
     await tester.pumpAndSettle();
     expect(find.textContaining('No auto-tag rules yet'), findsOneWidget);
     expect(AutoTagService.instance.list, isEmpty);
