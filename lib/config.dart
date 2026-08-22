@@ -364,6 +364,10 @@ class Config {
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
 
+  /// If true, new items are scanned against the auto-tag service's keyword
+  /// rules and any matched tags are appended to their label on creation.
+  static bool autoTagEnabled = true;
+
   /// If true, times are displayed and picked in 24-hour notation.
   static bool use24HourFormat = true;
 
@@ -441,6 +445,7 @@ class Config {
       'showWidgetProgressLine': showWidgetProgressLine,
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
+      'autoTagEnabled': autoTagEnabled,
       'use24HourFormat': use24HourFormat,
       'dateFormat': dateFormat,
       'defaultDelaySeconds': defaultDelaySeconds,
@@ -494,6 +499,7 @@ class Config {
         data['showWidgetProgressLine'] ?? showWidgetProgressLine;
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    autoTagEnabled = data['autoTagEnabled'] ?? autoTagEnabled;
     use24HourFormat = data['use24HourFormat'] ?? use24HourFormat;
     final savedDateFormat = data['dateFormat'] as String?;
     if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {

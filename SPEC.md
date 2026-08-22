@@ -270,6 +270,23 @@ when all tokens are known, nothing loads at startup). Kinds derive from the toke
 `priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
 tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
 
+### 4.2e Auto-tagging (0.1.229)
+
+`AutoTagRule` (`lib/models/auto_tag_rule.dart`: keyword, tag) + `AutoTagService`
+(`auto_tag_rules.json`, ValueNotifier singleton, `lib/services/auto_tag_service.dart`) —
+a small user-editable keyword → tag dictionary, seeded with a handful of generic starters
+(work/meeting/email → work, bike/cycling → bike, gym/workout → health, groceries/shopping
+→ shopping) on first run, same load-seeds-and-persists / write-on-save shape as
+`ProjectService`. `withAutoTags(title, label)` is the one entry point: when
+`Config.autoTagEnabled` (default true) is on, it whole-word case-insensitively matches
+`title` against the rules and appends any matched tags to `label` (deduped against tokens
+already present via `label_utils`), a no-op otherwise. Called from the home page's
+`_addTask`/`_addTaskFromChronize` and the Wishlist page's new-item flow — edits never
+re-tag. Settings → Tasks has the on/off switch ("Auto-tag new items") and an "Auto-tag
+rules" entry point (`AutoTagRulesPage`) to add/edit/delete rules. Deliberately dumb today
+(fixed dictionary, no NLP); the plan is to later swap the matching for an on-device LLM
+without touching callers, which only ever see the resulting tag list.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next
@@ -485,7 +502,8 @@ start tab (simple mode hides the tool-related entries, see §4.6), default start
 (`startTool`: the task list or any enabled tool — Alarms, Countdown,
 Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
 list after loading, so back lands on the tasks), start in schedule view, Chronize hour
-wheel. Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes`,
+wheel, "Auto-tag new items" (`autoTagEnabled`, default on) + an "Auto-tag rules" entry
+point to edit the keyword dictionary (§4.2e). Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes`,
 default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /

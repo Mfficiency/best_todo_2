@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../services/auto_tag_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import 'subpage_app_bar.dart';
@@ -226,7 +227,8 @@ class _WishlistPageState extends State<WishlistPage> {
           Task(
             title: result.title,
             description: result.description,
-            label: result.label,
+            label: AutoTagService.instance.withAutoTags(
+                result.title, result.label),
             createdAt: DateTime.now(),
             isWish: true,
           ),

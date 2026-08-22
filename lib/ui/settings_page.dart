@@ -13,6 +13,7 @@ import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
 import '../services/streak_service.dart';
+import 'auto_tag_rules_page.dart';
 import 'dice_timer_settings.dart';
 import 'sms_report_log_page.dart';
 import 'subpage_app_bar.dart';
@@ -117,6 +118,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Default start page', 2, 'tool launch open tasks'),
     _SettingsSearchEntry('Start in schedule view', 2, 'calendar launch'),
     _SettingsSearchEntry('Chronize: show hour wheel', 2, 'timeline scroll'),
+    _SettingsSearchEntry(
+        'Auto-tag new items', 2, 'tags labels keywords automatic'),
+    _SettingsSearchEntry(
+        'Auto-tag rules', 2, 'tags labels keywords dictionary work bike'),
     _SettingsSearchEntry('Widget progress line', 3, 'home screen completion'),
     _SettingsSearchEntry('Check off tasks on the widget', 3,
         'home screen checkbox tick complete done interactive'),
@@ -183,6 +188,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
+  bool _autoTagEnabled = Config.autoTagEnabled;
   bool _use24HourFormat = Config.use24HourFormat;
   String _dateFormat = Config.dateFormat;
   int _startTabIndex = Config.startTabIndex;
@@ -217,6 +223,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
+    _autoTagEnabled = Config.autoTagEnabled;
     _use24HourFormat = Config.use24HourFormat;
     _dateFormat = Config.dateFormat;
     _startTabIndex = Config.startTabIndex;
@@ -1861,6 +1868,30 @@ class _SettingsPageState extends State<SettingsPage> {
                             widget.onSettingsChanged?.call();
                           },
                         ),
+                      SwitchListTile(
+                        title: const Text('Auto-tag new items'),
+                        subtitle: const Text(
+                            'Add tags to new tasks/wishes automatically based on keywords in the title'),
+                        value: _autoTagEnabled,
+                        onChanged: (val) async {
+                          setState(() => _autoTagEnabled = val);
+                          Config.autoTagEnabled = val;
+                          await Config.save();
+                          widget.onSettingsChanged?.call();
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.sell_outlined),
+                        title: const Text('Auto-tag rules'),
+                        subtitle: const Text(
+                            'Edit the keyword → tag dictionary'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AutoTagRulesPage(),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   _buildSection(

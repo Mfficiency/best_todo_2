@@ -15,6 +15,7 @@ import '../models/item_event.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
 import '../services/auto_backup_service.dart';
+import '../services/auto_tag_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -967,6 +968,9 @@ class _HomePageState extends State<HomePage>
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
+    // Auto-tag rules are needed synchronously the moment a task is created,
+    // so load them eagerly too rather than on first use.
+    AutoTagService.instance.load();
     // Some tools (Chronize, Productivity Stats, ...) render the task data, so
     // the configured start tool is only opened once loading finished.
     _loadTasks().then((_) {
@@ -1190,6 +1194,7 @@ class _HomePageState extends State<HomePage>
     final rankingTabIndex = _tabIndexForDueDate(dueDate);
     final task = Task(
       title: title,
+      label: AutoTagService.instance.withAutoTags(title, ''),
       createdAt: DateTime.now(),
       dueDate: dueDate,
       listRanking: _listRankingForNewTask(
@@ -1210,8 +1215,10 @@ class _HomePageState extends State<HomePage>
   /// (date + time), preserving the chosen time of day.
   void _addTaskFromChronize(String title, DateTime dueDate) {
     if (title.trim().isEmpty) return;
+    final trimmedTitle = title.trim();
     final task = Task(
-      title: title.trim(),
+      title: trimmedTitle,
+      label: AutoTagService.instance.withAutoTags(trimmedTitle, ''),
       createdAt: DateTime.now(),
       dueDate: dueDate,
       hasExplicitTime: true,

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.229] - 2026-08-22
+- New tasks and wishlist items can be auto-tagged: a small editable keyword → tag dictionary (Settings → Tasks → Auto-tag rules) scans the title on creation and adds any matching tags to the label automatically, with a handful of starter rules (work, bike, gym, shopping, ...) and an on/off switch ("Auto-tag new items")
+
 ## [0.1.228] - 2026-08-17
 - No code change from 0.1.157 below — bumped straight to 0.1.228 so this build installs over the `fix/black-screen-restore` bisect APKs already on a test phone (the highest of those, rc11, is versionCode 227) without needing an uninstall first. Same reason 0.1.156 jumped its own gap; see that entry's note.
 
