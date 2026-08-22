@@ -93,10 +93,15 @@ Dependencies and why they exist:
 9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
    (always skipped in dev builds); the mode question closes the intro, so an
    unanswered mode brings the whole welcome flow back rather than the chooser
-   alone.
-10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
-    post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
-    mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
+   alone. `showStartupChoice` = `!startup_choice_made`, a separate one-time
+   flag (0.1.242) decoupled from `intro_shown` so it survives being
+   interrupted mid-onboarding; on an install where `intro_shown` was already
+   true the very first time this flag is read, it backfills to "already
+   answered" so nobody upgrading from an older build is asked it.
+10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen,
+    showStartupChoice))`; post-frame → `StartupTimeService.record()`.
+    `MyApp.home`: intro (slides + mode choice) → startup choice (fresh
+    install only) → `_initialPage()`. The standalone `ModeSelectPage` is only
     for asking the mode question again (Settings → Mode & features, §4.6).
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
@@ -1537,6 +1542,19 @@ its last page — the dots count 4, the last page has no Next button so the mode
 question cannot be skipped, and picking a mode is what ends the intro. Shown once
 (`intro_shown` + `Config.modeChosen`), replayable from About, skipped in dev.
 
+**Startup choice** (`startup_choice_page.dart`, 0.1.242): shown once, right after
+the intro/mode picker finish on a brand-new install (§3 step 9's `showStartupChoice`;
+never shown again after "Replay Introduction" — only the intro's own two flags are
+cleared there). Two cards: **Start fresh** finishes onboarding immediately with an
+empty list; **Import from Todoist** opens a dialog for a Todoist API token
+(`TodoistSyncService.testConnection`), and on success saves it (`Config.todoistApiToken`,
+`Config.todoistSyncEnabled = true`) and runs one `TodoistSyncService.syncNow(trigger:
+'initial import')` pull before finishing onboarding — the same two-way sync used by
+Settings → Todoist sync (§4.8), so nothing new was built for the pull path. A failed
+first sync (bad token aside — that blocks with an inline error and keeps the dialog
+open) still finishes onboarding; the app just shows 0 tasks until the user retries from
+Settings.
+
 ## 11. Build, versioning, CI
 
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z[+build]> ["changelog entry"]`
@@ -1607,6 +1625,15 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
     one section per PNG found, so new captures need no CI edits. Loop protection:
     paths-ignore on its own outputs, skips actor `github-actions[bot]`, and its commit
     message carries `[skip-screenshot-changelog]`.
+  - `build-windows-exe.yml` (manual `workflow_dispatch` only, 0.1.242): Windows
+    runner (same `windows-2022` pin as `screenshot_changelog.yml`, for the same
+    VS-2022-CMake-generator reason) runs `flutter build windows --release`, zips
+    the `build/windows/x64/runner/Release` folder as
+    `BestToDo-<version>-portable-win64.zip` and uploads it as a build artifact
+    (30-day retention). "Portable" = unzip and run `BestToDo.exe`, no installer,
+    no admin rights; works on Windows 10 and 11 (x64). Not wired into the
+    push-triggered flow — the Android APK is the auto-built/published artifact
+    (`build-apk.yml`); a Windows build is heavier and asked for on demand.
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
   `staging` → `main`. Releases are built from dev after a version bump.
 

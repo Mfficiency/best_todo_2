@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.242] - 2026-08-22
+- A brand-new install now asks whether to start with an empty task list or import straight from a Todoist account (Settings → Todoist sync also still works any time later); added a manual "Build Windows Portable Exe" GitHub Actions workflow that packages a zip with BestToDo.exe and its dependencies — no installer needed, runs on Windows 10 and 11.
+
 ## [0.1.241] - 2026-08-21
 - Todoist sync: labels now round-trip both ways as real Todoist labels (already worked, now covered end-to-end), wishlist items sync into a dedicated "Wishlist" Todoist project, and undated/unprojected tasks (the Future tab) sync into a dedicated "Future" project. Reassigning a task's Todoist project on an already-synced task (e.g. toggling wishlist status) now actually moves it there instead of only updating local bookkeeping.
 
