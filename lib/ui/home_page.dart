@@ -37,7 +37,7 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'alarms_page.dart';
 import 'app_logs_page.dart';
-import 'calendar_view_page.dart' show ScheduleView;
+import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
@@ -122,6 +122,8 @@ class _HomePageState extends State<HomePage>
   final Map<int, GlobalKey> _scheduleTabAnchors = {
     for (var i = 0; i < 6; i++) i: GlobalKey(),
   };
+  final GlobalKey<ScheduleViewState> _scheduleViewKey =
+      GlobalKey<ScheduleViewState>();
   int _lastTabIndex = 0;
 
   static const int _futureTabIndex = 5;
@@ -1234,15 +1236,7 @@ class _HomePageState extends State<HomePage>
   }
 
   void _scrollToScheduleAnchor(int tabIndex) {
-    final key = _scheduleTabAnchors[tabIndex];
-    final ctx = key?.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(
-      ctx,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
-      alignment: 0.0,
-    );
+    _scheduleViewKey.currentState?.scrollToSection(tabIndex);
   }
 
   void _scheduleMidnightUpdate() {
@@ -2556,6 +2550,7 @@ class _HomePageState extends State<HomePage>
         ? _tasks
         : _tasks.where((t) => _matchesSearch(t, query)).toList();
     return ScheduleView(
+      key: _scheduleViewKey,
       tasks: visibleTasks,
       currentDate: _currentDate,
       scrollController: _scheduleScrollController,
