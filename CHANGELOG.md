@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.247] - 2026-08-22
+- Fixed Todoist sync so a pull (a new task added in Todoist, a label/edit picked up from there, a completion) actually shows up in the app: the Home page's task list is now reloaded from storage after returning from Settings (where "Sync now" lives) and after the app resumes from a quit-triggered background sync, instead of only updating on-disk data that a stale in-memory list never picked up until a full app restart.
+
 ## [0.1.246] - 2026-08-22
 - Fixed a real bug where a Todoist sync run that failed partway through (a dropped/rate-limited API call, a disk write hiccup) could leave the sync bookkeeping out of step with what was actually saved, causing the *next* sync to mistake a just-added Todoist task for one you'd deleted locally — and delete it back on Todoist. A failed sync now rolls its bookkeeping back cleanly instead of carrying stray state into the next run.
 

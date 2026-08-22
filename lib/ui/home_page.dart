@@ -1105,10 +1105,22 @@ class _HomePageState extends State<HomePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_mergeWidgetCompletions());
+      unawaited(_onResumed());
       // An app kept open across midnight still gets its scheduled backup.
       unawaited(AutoBackupService.maybeRun());
     }
+  }
+
+  /// Backgrounding the app (pause/hidden/detached) is also what triggers the
+  /// Todoist quit-sync (see `TodoistSyncService.onLifecycleChanged`) — if it
+  /// finished before the app came back, its pulls already sit in storage but
+  /// this page's in-memory `_tasks` doesn't know yet. Reload first so
+  /// `_mergeWidgetCompletions` (which can itself re-save `_tasks`) compares
+  /// against that fresh copy instead of overwriting a pulled task it never
+  /// saw.
+  Future<void> _onResumed() async {
+    await _reloadTasksFromStorage();
+    await _mergeWidgetCompletions();
   }
 
   @override
@@ -1353,7 +1365,8 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _openSettingsPage() {
-    return Navigator.of(context).push(
+    return Navigator.of(context)
+        .push(
       MaterialPageRoute(
         builder: (_) => SettingsPage(
           onSettingsChanged: _updateSettings,
@@ -1363,7 +1376,15 @@ class _HomePageState extends State<HomePage>
           onImportRequested: _importAutoDetect,
         ),
       ),
-    );
+    )
+        .then((_) {
+      // Settings is where Todoist "Sync now" lives — a pull there (a new
+      // task, a label/edit picked up from Todoist) writes straight to
+      // storage but never touches this page's in-memory _tasks. Without
+      // this, a pulled task stays invisible until the app is fully
+      // restarted, even though the sync itself succeeded.
+      if (mounted) _reloadTasksFromStorage();
+    });
   }
 
   void _focusSearch() {
