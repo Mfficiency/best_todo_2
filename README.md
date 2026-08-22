@@ -10,6 +10,8 @@
 1. less than 0.5 seconds cold startup
 2. it must not be possible in less clicks/steps
 3. open source
+4. The app serves the user—not the other way around.
+
 
 ## 🚀 MVP Features
 - Add task: description, note, labels
