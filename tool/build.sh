@@ -18,6 +18,16 @@ VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
 
 # Build using Flutter with any arguments passed to this script.
 flutter build "$@"
+BUILD_STATUS=$?
+
+# Record when this build finished in CHANGELOG.md (a "- Local build: <time>"
+# line in the newest version's section, updated in place on repeat builds).
+# CHANGELOG.md is bundled as an app asset by the `flutter build` above, so
+# this build's own asset already froze the old text -- only the *next* build
+# will show this timestamp. That's expected.
+if [ "$BUILD_STATUS" -eq 0 ]; then
+  dart run tool/append_build_time.dart
+fi
 
 # Helper to rename a file if it exists.
 rename_if_exists() {

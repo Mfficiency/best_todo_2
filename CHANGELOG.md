@@ -1,9 +1,98 @@
 # Changelog
 
-## [0.1.229] - 2026-08-22
+## [0.1.250] - 2026-08-22
 - The green and blue flames are now configurable goals instead of a fixed "create a task"/"plan ahead" rule: pick a recurring task or a project in Settings → Streak, and that flame lights the day a matching task is completed
 - Each configurable flame gets its own title (pre-filled from the task/project name, editable) and shows a "no goal set" state until you choose one, or a "goal missing" prompt if its task/project is later deleted
 - The orange "finish a task" flame is unchanged; the old fixed create/plan behaviour is retired in favour of goals you set yourself
+
+## [0.1.249] - 2026-08-22
+- Auto-tagging got smarter: instead of one keyword per tag, each tag now has a whole group of words that trigger it (e.g. "fitness" fires on gym, workout, exercise, cardio, yoga, jogging, running, training or stretch) — seeded with 12 starter categories (work, bike, fitness, health, shopping, finance, travel, home, family, food, study, tech) curated from online thesaurus data. Settings → Auto-tag rules now edits a tag plus its whole word group in one dialog. Still on by default.
+
+## [0.1.248] - 2026-08-22
+- Fixed Todoist sync so a pull (a new task added in Todoist, a label/edit picked up from there, a completion) actually shows up in the app: the Home page's task list is now reloaded from storage after returning from Settings (where "Sync now" lives) and after the app resumes from a quit-triggered background sync, instead of only updating on-disk data that a stale in-memory list never picked up until a full app restart.
+
+## [0.1.247] - 2026-08-22
+- Pulling down on the home page's task list now runs a Todoist sync (two-way, same as the manual "Sync now" button) and reloads the list with whatever it pulled down; a no-op if Todoist sync isn't enabled.
+
+## [0.1.246] - 2026-08-22
+- Fixed a real bug where a Todoist sync run that failed partway through (a dropped/rate-limited API call, a disk write hiccup) could leave the sync bookkeeping out of step with what was actually saved, causing the *next* sync to mistake a just-added Todoist task for one you'd deleted locally — and delete it back on Todoist. A failed sync now rolls its bookkeeping back cleanly instead of carrying stray state into the next run.
+
+## [0.1.245] - 2026-08-22
+- New tasks and wishlist items can be auto-tagged: a small editable keyword → tag dictionary (Settings → Tasks → Auto-tag rules) scans the title on creation and adds any matching tags to the label automatically, with a handful of starter rules (work, bike, gym, shopping, ...) and an on/off switch ("Auto-tag new items")
+
+## [0.1.244] - 2026-08-22
+- Todoist sync: fixed label sync for real this time — pull now trusts Todoist's native `labels` field instead of a stale copy cached in the task description, so a label added or removed in Todoist's own UI actually shows up in BestToDo (and label fingerprinting is now order/case-insensitive, so pure re-ordering never causes a spurious sync). Also added Kanban project name sync: renaming a project on either side now renames it on the other (conflict rule matches everything else — local wins if both sides changed).
+
+## [0.1.243] - 2026-08-22
+- Todoist import (onboarding "Import from Todoist") now loads today's (and overdue) tasks first so the home screen opens right away, and finishes pulling everything else in the background — with a banner on the home page while it does. Web favicon now uses a crisper, correctly-sized copy of the real BestToDo logo.
+
+## [0.1.242] - 2026-08-22
+- A brand-new install now asks whether to start with an empty task list or import straight from a Todoist account (Settings → Todoist sync also still works any time later); added a manual "Build Windows Portable Exe" GitHub Actions workflow that packages a zip with BestToDo.exe and its dependencies — no installer needed, runs on Windows 10 and 11.
+
+## [0.1.241] - 2026-08-21
+- Todoist sync: labels now round-trip both ways as real Todoist labels (already worked, now covered end-to-end), wishlist items sync into a dedicated "Wishlist" Todoist project, and undated/unprojected tasks (the Future tab) sync into a dedicated "Future" project. Reassigning a task's Todoist project on an already-synced task (e.g. toggling wishlist status) now actually moves it there instead of only updating local bookkeeping.
+- Local build: 2026-08-22 06:17
+
+## [0.1.240] - 2026-08-21
+- Local builds (`tool/build.sh`) now note when they finished as a "Local build" line in the changelog, so the Changelog page shows the previous build's build time
+
+## [0.1.239] - 2026-08-21
+- Fun stats on the Productivity Stats page are now tappable: each one that's backed by real items (completions, postponements, etc.) opens a sheet listing which items made it up and the day/time it happened
+
+## [0.1.238] - 2026-08-21
+- Todoist sync: fixed against Todoist's unified API v1 after the old REST v2/Sync v9 endpoints were sunset — the sync tab was failing with an endpoint-deprecated error. Also fixes reading Todoist due dates/times (their new API merged the separate date/datetime fields into one) and pages through more than one page of tasks or projects instead of silently stopping at the first.
+
+## [0.1.237] - 2026-08-21
+- Todoist sync: Settings → **Todoist sync** — a switch and an API token field keep your tasks synced both ways with a Todoist account. New/edited/completed/deleted tasks push to Todoist; tasks created, edited or completed in Todoist pull back in. "Test connection" and "Sync now" buttons, plus a status line showing the last run
+- Fields Todoist has no room for — note, label, project and Kanban stage — are appended to the synced Todoist task's description as a readable summary so nothing is lost round-tripping; editing the description text above that summary in either app stays in sync
+- Wishlist items and recurring tasks stay local-only (Todoist's recurrence engine doesn't map cleanly onto this app's recurring-task model)
+- Runs in the background whenever you leave the app (same trigger as Synced mode) with its own App Logs "Todoist" tab; a failed sync lights the same drawer red dot as the folder sync
+
+## [0.1.236] - 2026-08-21
+- Every wishlist item now has a copy button that puts its title, description and labels on the clipboard
+- The app-bar flame stops cycling once all three daily challenges are done for the day: it settles on one steady red flame showing the highest of the streak counts
+
+## [0.1.235] - 2026-08-17
+- Tier 3 of the Obsidian integration ships: checking a task off in Obsidian now flows back to the phone on its next resume, via a change journal (besttodo_changes.json) the app applies with last-writer-wins conflict rules
+
+## [0.1.234] - 2026-08-17
+- Streak challenges you have already earned now collect at the bottom of the list, under an "Earned" divider, so the card opens on what is still left to chase
+- Productivity Stats gained a "Fun stats" section at the bottom: items completed and created, completion rate, busiest day, golden hour, favourite weekday, early-bird and night-owl finishes, weekend share, fastest finish, longest wait, oldest open item and how often things were postponed
+- Double-tapping a task now also offers "Remind me in 5 / 10 / 20 minutes" next to "Start timer" — it only sends a notification, the task's own due date stays where it is
+- The wishlist item asking for extra productivity stats ("when is the most productive day / time, which day do I postpone the most") ticks itself off with this release
+
+## [0.1.233] - 2026-08-17
+- The menu now opens with a Home entry: it closes whatever tool page you are on, clears an active search and takes you back to your start tab
+- New tasks no longer have to land in the list you happen to be looking at: Settings → Tasks → "New tasks go to" pins them to one bucket (Today, Future, …), so an idea typed on Today can go straight to Future. The add row then names its target ("Add task · Future") so nothing disappears unexpectedly; the schedule view still adds to the day you highlighted
+- The Notify bell on an opened task now asks when: in 5 minutes, 20 minutes, 1 hour, or the default delay from Settings. It only reminds you — the task's own due date stays where it is
+- Three more wishlist items tick themselves off with this release: "add home to menu", "Default due bucket" and "have a way to sent a notification about that item in 5- 20 or 60 minutes"
+
+## [0.1.232] - 2026-08-17
+- Wishlist items now have permanent ids, so the app can tick them off itself: when a feature from the wishlist is actually built, the matching item completes on next launch, gets an "autocompleted" tag and a note saying which release delivered it — twelve already-built ideas (calendar view, Chronize, the Wishlist tab, Productivity Stats, Startup Times, simple/pro mode, the GitHub build and test workflows, the screenshot tests) are ticked off in this release
+- Wishes you added yourself can be ticked off the same way, not just the ones imported from the old backlog — "autodetect URLs and make clickable" is the first, completed by the clickable links that landed in v0.1.148
+
+## [0.1.231] - 2026-08-17
+- Changelog text is now selectable (both the plain view and the update-heatmap day details), so you can copy entries out
+- Android share-sheet entry is back: share a link, selected text or an email address from any app and it becomes a task on Today (first line as the title, the full shared text kept in the description) — re-implemented on the current code (ShareActivity is a translucent trampoline, not a second MainActivity, so it doesn't touch the widget black-screen investigation)
+
+## [0.1.230] - 2026-08-17
+- Ten of the features that went missing in the v0.1.157 revert are back, all of them re-implemented on the current code and none of them touching the widget/rendering path that the black-screen investigation is still about:
+- Dice timer: a "Cancel timer" button ends a running, paused or ringing timer and drops its alarm with it — the task is left exactly as it was, neither done nor postponed (originally v0.1.127)
+- Dice timer buttons sit in a compact grid so every control fits on one screen without scrolling (v0.1.134)
+- Double-tap a task to start a timer for it straight away; double-tapping the task whose timer is already running returns to that countdown instead of restarting it (v0.1.132)
+- Test Results now lists every test file and every test in it — pass, fail or skip, with per-test times — instead of only the totals; failing files sort to the top (v0.1.129)
+- In-app self-update: "Check for updates" on the About page downloads the newest release APK and hands it to Android's installer, no browser detour (v0.1.133)
+- Two-APK rollback: every release build stages its APK plus the previous one in `github_releases/`, so About also offers "Go back to ..." when a fresh build misbehaves (v0.1.146)
+- Opt-in red dot on the menu icon when the latest test run failed, off by default and self-clearing once you have opened Test Results (v0.1.137)
+- Settings → Sync & export got a "Sync now" tile showing the time and task count of the last sync; URLs in wishlist items and task descriptions are clickable; the wishlist dialog puts labels and quick-priority right under the title, description last (v0.1.148)
+- Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
+- Fix: "Check for updates" needs the Android INTERNET permission, which release builds did not declare — debug builds get it for free, which is why this only ever failed on a real release APK (v0.1.139)
+- **Still missing versus the old `dev` tip (v0.1.156)**, each a real, already-designed feature waiting on the widget black-screen investigation or on its own port:
+  - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
+  - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
+
+## [0.1.229] - 2026-08-17
+- Streak flame: a challenge you have not done yet today stays grey and outlined and pulses white, so an unfinished day catches the eye.
 
 ## [0.1.228] - 2026-08-17
 - No code change from 0.1.157 below — bumped straight to 0.1.228 so this build installs over the `fix/black-screen-restore` bisect APKs already on a test phone (the highest of those, rc11, is versionCode 227) without needing an uninstall first. Same reason 0.1.156 jumped its own gap; see that entry's note.
@@ -32,7 +121,6 @@
   - Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
   - Fix: "Check for updates" needs the Android INTERNET permission in release builds (v0.1.139)
   - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
-  - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
   - Two-APK rollback: every release build stages its APK plus the previous one, so About → "Go back to ..." can downgrade one version (v0.1.146)
   - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
   - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is

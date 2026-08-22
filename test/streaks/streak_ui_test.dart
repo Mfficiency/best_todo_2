@@ -197,6 +197,26 @@ void main() {
     expect(find.byIcon(Icons.check_circle), findsWidgets);
   });
 
+  testWidgets('earned challenges sink below the ones still to play for',
+      (tester) async {
+    // 7 days with one completion each: the streak-length challenges up to
+    // Week of Fire are earned, the per-day-count ones (Perfect Ten) are not.
+    await tester.runAsync(() => seedStreakFile(
+        {for (var back = 0; back < 7; back++) dayKeyAgo(back): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+    await tester.pumpWidget(const MaterialApp(home: StreakPage()));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.scrollUntilVisible(find.text('Challenges'), 150,
+        scrollable: find.byType(Scrollable).first);
+
+    // The card is one list child, so every tile in it is laid out — the
+    // off-screen ones included, which is exactly what the order is about.
+    final header = tester.getTopLeft(find.text('Earned')).dy;
+    expect(tester.getTopLeft(find.text('Perfect Ten')).dy, lessThan(header));
+    expect(tester.getTopLeft(find.text('Week of Fire')).dy, greaterThan(header));
+  });
+
   testWidgets('longest streak tile opens the yearly calendar with the range',
       (tester) async {
     enlarge(tester);
@@ -336,6 +356,85 @@ void main() {
     expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
   });
 
+  testWidgets('all three challenges done settles on one steady red flame',
+      (tester) async {
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    // create/plan only count toward "all done" once they have a goal
+    // configured — otherwise they would block it forever.
+    Config.streakGoals['create'] = StreakGoal(
+        target: StreakGoalTarget.task, targetId: 'exercise', title: 'Exercise');
+    Config.streakGoals['plan'] = StreakGoal(
+        target: StreakGoalTarget.project, targetId: 'project_1', title: 'Health');
+    addTearDown(() => Config.streakGoals.clear());
+    // Every challenge done today, with different streak lengths behind them.
+    await tester.runAsync(() => File('$tempPath/streak.json').writeAsString(
+          jsonEncode({
+            'completionsByDay': {dayKeyAgo(0): 1, dayKeyAgo(1): 1},
+            'createsByDay': {dayKeyAgo(0): 1},
+            'planByDay': {dayKeyAgo(0): 1},
+          }),
+        ));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Row(children: [StreakFlameButton()])),
+    ));
+    await tester.pump();
+
+    // One flame badged with the highest of the three counts (2, not 1)...
+    expect(find.byTooltip('All 3 challenges done today — 2-day streak'),
+        findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    // ...lit, steady red...
+    expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
+    expect(
+      tester
+          .widget<Icon>(find.byIcon(Icons.local_fire_department))
+          .color,
+      StreakFlameButton.allDoneColor,
+    );
+
+    // ...and it no longer cycles through the per-challenge flames.
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('All 3 challenges done today — 2-day streak'),
+        findsOneWidget);
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('All 3 challenges done today — 2-day streak'),
+        findsOneWidget);
+  });
+
+  testWidgets('one challenge still open keeps the flame cycling',
+      (tester) async {
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    Config.streakGoals['create'] = StreakGoal(
+        target: StreakGoalTarget.task, targetId: 'exercise', title: 'Exercise');
+    Config.streakGoals['plan'] = StreakGoal(
+        target: StreakGoalTarget.project, targetId: 'project_1', title: 'Health');
+    addTearDown(() => Config.streakGoals.clear());
+    await tester.runAsync(() => File('$tempPath/streak.json').writeAsString(
+          jsonEncode({
+            'completionsByDay': {dayKeyAgo(0): 1},
+            'createsByDay': {dayKeyAgo(0): 1},
+            // 'planByDay' left empty: Health's goal has not fired today, so
+            // the day is not all-done and the cycle keeps hopping.
+          }),
+        ));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Row(children: [StreakFlameButton()])),
+    ));
+    await tester.pump();
+
+    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Exercise: 1-day streak'), findsOneWidget);
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Health: no streak yet'), findsOneWidget);
+  });
+
   testWidgets('a challenge switched off drops out of the flame',
       (tester) async {
     Config.streakKindEnabled['complete'] = false;
@@ -355,6 +454,61 @@ void main() {
     // The completion flame never comes around again.
     await tester.pump(StreakFlameButton.cycleInterval);
     expect(find.byTooltip('Create · no goal set'), findsOneWidget);
+  });
+
+  testWidgets('a day still open keeps the flame grey and pulsing white',
+      (tester) async {
+    // The pulse is a repeating animation — off under the test binding for the
+    // same reason the cycle is, so ask for it explicitly and pump frames.
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    Config.streakKindEnabled['create'] = false;
+    Config.streakKindEnabled['plan'] = false;
+    // Yesterday counted, today has not happened yet.
+    await tester.runAsync(() => seedStreakFile({dayKeyAgo(1): 1}));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Row(children: [StreakFlameButton()])),
+    ));
+    await tester.pump();
+
+    expect(find.byTooltip('Finish a task: 1-day streak — still open today'),
+        findsOneWidget);
+    // Unlit: the outlined flame in the theme's disabled grey...
+    expect(find.byIcon(Icons.local_fire_department_outlined), findsOneWidget);
+    Color flameColor() => tester
+        .widget<Icon>(find.byIcon(Icons.local_fire_department_outlined))
+        .color!;
+    final grey = flameColor();
+    expect(grey, ThemeData().disabledColor);
+
+    // ...that breathes towards white and back.
+    await tester.pump(StreakFlameButton.pulseInterval ~/ 2);
+    final lit = flameColor();
+    expect(lit.computeLuminance(), greaterThan(grey.computeLuminance()));
+
+    // Another one and a half breaths lands back at the start of the cycle.
+    await tester.pump(StreakFlameButton.pulseInterval * 3 ~/ 2);
+    expect(flameColor().computeLuminance(), lessThan(lit.computeLuminance()));
+  });
+
+  testWidgets('doing the day\'s action lights the greyed-out flame',
+      (tester) async {
+    await pumpHome(
+      tester,
+      [Task(title: 'Solo task', dueDate: DateTime.now())],
+      streak: {dayKeyAgo(1): 1},
+    );
+
+    expect(find.byIcon(Icons.local_fire_department_outlined), findsOneWidget);
+    await tester.tap(find.byType(Checkbox).first);
+    await settleIo(tester);
+
+    expect(find.byTooltip('Finish a task: 2-day streak'), findsOneWidget);
+    expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
+    expect(tester.widget<Icon>(find.byIcon(Icons.local_fire_department)).color,
+        isNot(ThemeData().disabledColor));
   });
 
   testWidgets(

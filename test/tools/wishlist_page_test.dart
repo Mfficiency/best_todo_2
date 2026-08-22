@@ -6,8 +6,11 @@ import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/wishlist_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:url_launcher_platform_interface/link.dart';
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.path);
@@ -15,6 +18,19 @@ class _FakePathProvider extends PathProviderPlatform {
 
   @override
   Future<String?> getApplicationDocumentsPath() async => path;
+}
+
+class _FakeUrlLauncher extends UrlLauncherPlatform {
+  final List<String> launched = <String>[];
+
+  @override
+  LinkDelegate? get linkDelegate => null;
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) async {
+    launched.add(url);
+    return true;
+  }
 }
 
 void main() {
@@ -91,6 +107,43 @@ void main() {
     expect(find.byType(Checkbox), findsOneWidget);
     // ...but never surface anything date-related.
     expect(find.textContaining('Due'), findsNothing);
+  });
+
+  testWidgets('the copy button puts the item on the clipboard',
+      (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add(call.arguments['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'For stargazing weekends',
+          label: 'gift',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    // Every item carries its own copy button, not just the selected one.
+    await tester.tap(find.byTooltip('Copy wishlist item'));
+    await tester.pump();
+
+    expect(copied,
+        ['Buy a telescope\nFor stargazing weekends\ngift']);
+    expect(find.text('Copied "Buy a telescope"'), findsOneWidget);
   });
 
   testWidgets('priority swipe shows shortcuts; picking one sets the label',
@@ -191,6 +244,56 @@ void main() {
     await tester.pump(Config.delayDuration + const Duration(seconds: 1));
   });
 
+  testWidgets('add dialog puts labels and quick priority above description',
+      (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Buy a telescope', isWish: true)],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.tap(find.byTooltip('Add wishlist item'));
+    await tester.pumpAndSettle();
+
+    final titleY = tester.getTopLeft(find.text('Title')).dy;
+    final labelsY = tester.getTopLeft(find.text('Labels / tags')).dy;
+    final quickY = tester.getTopLeft(find.text('Quick priority')).dy;
+    final descriptionY = tester.getTopLeft(find.text('Description')).dy;
+    expect(titleY, lessThan(labelsY));
+    expect(labelsY, lessThan(quickY));
+    expect(quickY, lessThan(descriptionY));
+  });
+
+  testWidgets('a URL in the description opens externally, not the edit dialog',
+      (tester) async {
+    final launcher = _FakeUrlLauncher();
+    UrlLauncherPlatform.instance = launcher;
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'compare models at https://example.com/scopes first',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    await tester
+        .tapOnText(find.textRange.ofSubstring('https://example.com/scopes'));
+    await tester.pump();
+
+    // The link's recognizer wins the gesture arena over the tile's onTap.
+    expect(launcher.launched, ['https://example.com/scopes']);
+    expect(find.text('Edit wishlist item'), findsNothing);
+
+    // A tap elsewhere on the tile still opens the edit dialog.
+    await tester.tap(find.text('Buy a telescope'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit wishlist item'), findsOneWidget);
+  });
+
   testWidgets('wishes are ordered by priority', (tester) async {
     await pumpWishlist(
       tester,
@@ -207,5 +310,37 @@ void main() {
     final noneY = tester.getTopLeft(find.text('No priority wish')).dy;
     expect(topY, lessThan(mediumY));
     expect(mediumY, lessThan(noneY));
+  });
+
+  testWidgets('sort menu can order wishes by newest first', (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Older wish',
+          createdAt: DateTime(2026, 8, 1),
+          isWish: true,
+        ),
+        Task(
+          title: 'Newer wish',
+          createdAt: DateTime(2026, 8, 15),
+          isWish: true,
+        ),
+      ],
+      marker: 'Older wish',
+    );
+
+    var olderY = tester.getTopLeft(find.text('Older wish')).dy;
+    var newerY = tester.getTopLeft(find.text('Newer wish')).dy;
+    expect(olderY, lessThan(newerY));
+
+    await tester.tap(find.byTooltip('Sort wishlist'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Newest'));
+    await tester.pumpAndSettle();
+
+    olderY = tester.getTopLeft(find.text('Older wish')).dy;
+    newerY = tester.getTopLeft(find.text('Newer wish')).dy;
+    expect(newerY, lessThan(olderY));
   });
 }

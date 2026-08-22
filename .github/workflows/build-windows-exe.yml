@@ -1,0 +1,77 @@
+name: Build Windows Portable Exe
+
+# Manual only: a Windows desktop build is a separate, heavier artifact from
+# the Android APK (built/published automatically by build-apk.yml on every
+# push) and isn't needed on every commit. Run it from the Actions tab when a
+# fresh portable build is wanted.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows portable zip
+    # windows-latest moved to an image with Visual Studio 2026 (June 2026).
+    # Flutter <3.35 only knows the VS 2022 CMake generator (VS 18 falls back
+    # to the VS 2019 generator, which fails), so pin the VS 2022 image — same
+    # pin as screenshot_changelog.yml.
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Keep in sync with flutter_test.yml / screenshot_changelog.yml.
+          flutter-version: '3.29.2'
+          channel: 'stable'
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Read app version
+        id: appver
+        shell: bash
+        run: echo "version=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      # "Portable" here means: no installer, no registry writes, no admin
+      # rights — just the Release folder (exe + bundled DLLs + flutter_assets)
+      # zipped up so it can be unzipped and run in place on Windows 10 or 11
+      # (both supported targets of Flutter's Win32 desktop embedder).
+      - name: Package portable zip
+        id: package
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.appver.outputs.version }}"
+          $releaseDir = "build/windows/x64/runner/Release"
+          $stageName = "BestToDo-$ver-portable-win64"
+          $stageDir = "build/windows/$stageName"
+          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+          Copy-Item "$releaseDir/*" $stageDir -Recurse
+          $zipPath = "build/windows/$stageName.zip"
+          Compress-Archive -Path $stageDir -DestinationPath $zipPath -Force
+          "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "zip_name=$stageName.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Add download link to summary
+        shell: bash
+        run: |
+          echo "### Windows portable build" >> "$GITHUB_STEP_SUMMARY"
+          echo "Unzip ${{ steps.package.outputs.zip_name }} anywhere and run BestToDo.exe — no installer needed. Works on Windows 10 and 11 (x64)." >> "$GITHUB_STEP_SUMMARY"

@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
 
 import '../models/test_report.dart';
 
@@ -40,8 +42,16 @@ class TestReportService {
   static const String onlineReportUrl =
       'https://raw.githubusercontent.com/Mfficiency/best_todo_2/dev/docs/ci/test_report.json';
 
+  static const String _seenFileName = 'test_report_seen.json';
+
   TestReport? _report;
   Future<TestReport>? _loadFuture;
+
+  /// Acknowledgement state for the red failure dot: the newest run date the
+  /// user has looked at on the Test Results page, plus fingerprints of the
+  /// exact reports they saw (so undated reports can be acknowledged too).
+  DateTime? _seenGeneratedAt;
+  final Set<String> _seenFingerprints = <String>{};
 
   Future<TestReport>? _onlineFuture;
   TestReport? _onlineOverrideForTest;
@@ -55,6 +65,16 @@ class TestReportService {
   /// fast and offline.
   bool get hasFailures => _report?.hasFailures ?? false;
 
+  /// Whether the report bundled with this build has failing tests the user has
+  /// not looked at yet. Drives the red dots on the drawer icon and the Test
+  /// Results entry: opening the Test Results page calls [markSeen], which
+  /// switches this off until a newer failing run shows up.
+  bool get hasUnseenFailures {
+    final report = _report;
+    if (report == null || !report.hasFailures) return false;
+    return !_isSeen(report);
+  }
+
   Future<TestReport> load() => _loadFuture ??= _load();
 
   Future<TestReport> _load() async {
@@ -64,7 +84,84 @@ class TestReportService {
     } catch (_) {
       _report = TestReport(available: false);
     }
+    await _loadSeen();
     return _report!;
+  }
+
+  /// A report identity that survives a JSON round-trip, so acknowledging a
+  /// report also acknowledges the same run re-read from disk on a later
+  /// launch. Dated reports are additionally covered by [_seenGeneratedAt].
+  String _fingerprint(TestReport report) =>
+      '${report.commit}|${report.generatedAt?.toIso8601String() ?? ''}'
+      '|${report.passed}|${report.failed}|${report.skipped}';
+
+  bool _isSeen(TestReport report) {
+    if (_seenFingerprints.contains(_fingerprint(report))) return true;
+    final date = report.generatedAt;
+    final seenUpTo = _seenGeneratedAt;
+    return date != null && seenUpTo != null && !date.isAfter(seenUpTo);
+  }
+
+  /// Acknowledges [report] (the one the Test Results page just displayed) and
+  /// the bundled report driving the red dot. In-memory state updates
+  /// synchronously so the UI redraws without the dot right away; the marker
+  /// is persisted best-effort so the dot stays off across restarts — until a
+  /// run newer than anything acknowledged fails again.
+  Future<void> markSeen(TestReport report) {
+    var changed = false;
+    for (final r in [report, _report]) {
+      if (r == null || !r.available) continue;
+      final date = r.generatedAt;
+      if (date != null &&
+          (_seenGeneratedAt == null || date.isAfter(_seenGeneratedAt!))) {
+        _seenGeneratedAt = date;
+        changed = true;
+      }
+      if (_seenFingerprints.add(_fingerprint(r))) changed = true;
+    }
+    return changed ? _writeSeen() : Future.value();
+  }
+
+  Future<void> _loadSeen() async {
+    if (kIsWeb) return;
+    try {
+      final file = await _docFile(_seenFileName);
+      if (file == null || !await file.exists()) return;
+      final data =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      _seenGeneratedAt = DateTime.tryParse(data['generatedAt'] as String? ?? '');
+      final prints = data['fingerprints'];
+      if (prints is List) _seenFingerprints.addAll(prints.whereType<String>());
+    } catch (_) {
+      // Unreadable marker just means the dot reappears until re-acknowledged.
+    }
+  }
+
+  Future<void> _writeSeen() async {
+    if (kIsWeb) return;
+    try {
+      final file = await _docFile(_seenFileName);
+      await file?.writeAsString(
+        jsonEncode({
+          'generatedAt': _seenGeneratedAt?.toIso8601String(),
+          // Bounded: only the last few distinct reports need remembering.
+          'fingerprints': _seenFingerprints.toList().reversed.take(12).toList(),
+        }),
+        flush: true,
+      );
+    } catch (_) {
+      // Persisting the acknowledgement is a convenience; a failed write only
+      // means the dot comes back on the next launch.
+    }
+  }
+
+  Future<File?> _docFile(String name) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      return File('${dir.path}/$name');
+    } catch (_) {
+      return null; // No file system (web) or path_provider unavailable.
+    }
   }
 
   /// Fetches the latest CI test report published online (see [onlineReportUrl]).
@@ -115,9 +212,12 @@ class TestReportService {
 
   /// Injects a bundled report so widget tests can exercise the UI without a
   /// bundled asset.
+  /// Reading the acknowledgement marker is part of a real [load], so the
+  /// injected report goes through it too — that is what lets a test assert the
+  /// dot stays off across a "restart".
   void setReportForTest(TestReport report) {
     _report = report;
-    _loadFuture = Future.value(report);
+    _loadFuture = _loadSeen().then((_) => report);
   }
 
   /// Injects (or, with null, disables) the online report so widget tests never
@@ -134,5 +234,7 @@ class TestReportService {
     _onlineFuture = null;
     _onlineOverridden = false;
     _onlineOverrideForTest = null;
+    _seenGeneratedAt = null;
+    _seenFingerprints.clear();
   }
 }
