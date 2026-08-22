@@ -6,6 +6,9 @@ name: Build Windows Portable Exe
 # fresh portable build is wanted.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - dev
 
 permissions:
   contents: read
