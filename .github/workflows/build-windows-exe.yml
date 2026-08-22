@@ -1,11 +1,14 @@
 name: Build Windows Portable Exe
 
-# Manual only: a Windows desktop build is a separate, heavier artifact from
-# the Android APK (built/published automatically by build-apk.yml on every
-# push) and isn't needed on every commit. Run it from the Actions tab when a
-# fresh portable build is wanted.
+# Runs after a successful APK workflow so every pushed local release build also
+# gets a portable Windows artifact. It can still be run manually from Actions
+# when a fresh zip is wanted without cutting an APK.
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build APK"]
+    types: [completed]
+    branches: [main, staging, dev]
 
 permissions:
   contents: read
@@ -13,6 +16,7 @@ permissions:
 jobs:
   build:
     name: Build Windows portable zip
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     # windows-latest moved to an image with Visual Studio 2026 (June 2026).
     # Flutter <3.35 only knows the VS 2022 CMake generator (VS 18 falls back
     # to the VS 2019 generator, which fails), so pin the VS 2022 image — same
@@ -21,6 +25,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # For APK-triggered runs, build exactly the same commit that produced
+          # the APK. Manual runs fall back to the selected workflow ref.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

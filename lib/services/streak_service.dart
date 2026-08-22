@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/daily_task_stats.dart';
+import '../models/streak_goal.dart';
 import '../models/streak_kind.dart';
 import '../models/streak_reminder.dart';
 import '../models/task.dart';
@@ -15,11 +16,13 @@ import 'notification_service.dart';
 import 'safe_file.dart';
 
 /// Tracks the daily streaks: for every [StreakKind] a calendar day counts as
-/// "active" once its challenge was met — a task completed ([StreakKind.complete]),
-/// a task created ([StreakKind.create]) or the day actually planned
-/// ([StreakKind.plan]: a task moved to another day, or the whole day's list
-/// finished). Consecutive active days form the streak each flame visualizes;
-/// a flame reaches maximum fire after [maxStreakDays] days.
+/// "active" once its challenge was met. [StreakKind.complete] is fixed: any
+/// task completed. [StreakKind.create] and [StreakKind.plan] (the green and
+/// blue flames) are user-configured goals instead — see [StreakGoal] and
+/// [Config.streakGoals] — met when a task matching the chosen recurring task
+/// or project is completed; unconfigured, they simply stay cold. Consecutive
+/// active days form the streak each flame visualizes; a flame reaches
+/// maximum fire after [maxStreakDays] days.
 ///
 /// Persistence is a JSON map of dayKey → count per kind in `streak.json`
 /// (atomic via [SafeFile]), plus a parallel dayKey → minutes-of-day list of the
@@ -63,7 +66,36 @@ class StreakService extends ChangeNotifier {
   /// Whether reminders may still be pending with the OS (see [syncReminder]).
   bool _remindersArmed = true;
 
+  /// uids of every task currently on the list (kept in sync by the home page
+  /// via [syncKnownTasks]), so a configured goal whose target task was
+  /// deleted can be told apart from one that just has not fired yet today.
+  Set<String> _knownTaskUids = {};
+
   Map<String, int> _days(StreakKind kind) => _byKind[kind]!;
+
+  /// Refreshes the set of task uids a task-targeted [StreakGoal] can match
+  /// against. Cheap to call on every build: a no-op (no listener churn) once
+  /// the set has already settled.
+  void syncKnownTasks(Iterable<Task> tasks) {
+    final uids = tasks.map((t) => t.uid).toSet();
+    if (uids.length == _knownTaskUids.length &&
+        uids.every(_knownTaskUids.contains)) {
+      return;
+    }
+    _knownTaskUids = uids;
+    notifyListeners();
+  }
+
+  /// True when [kind]'s configured goal points at a task that no longer
+  /// exists among the tasks last reported to [syncKnownTasks] — the flame
+  /// should show a "goal missing" prompt instead of its usual streak. A
+  /// project-targeted goal is checked by the caller against [ProjectService]
+  /// directly. False for an unconfigured flame (that is just cold).
+  bool isGoalMissing(StreakKind kind) {
+    final goal = Config.streakGoals[kind.id];
+    if (goal == null || goal.target != StreakGoalTarget.task) return false;
+    return !_knownTaskUids.contains(goal.targetId);
+  }
 
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -133,8 +165,10 @@ class StreakService extends ChangeNotifier {
 
   /// One-time backfill from data that predates the streak feature: the daily
   /// task stats (completions per day) and the tasks themselves (including
-  /// deleted ones), which carry a `completedAt`, a `createdAt` and a
-  /// `movedAt`/`rescheduledAt` timestamp. Per day and kind the larger of the
+  /// deleted ones), which carry a `completedAt` timestamp. The `create` and
+  /// `plan` kinds are user-configured goals now (see [StreakGoal]) with no
+  /// fixed app-wide meaning, so there is nothing generic to backfill for them
+  /// — they simply start cold and unconfigured. Per day the larger of the
   /// available counts wins so nothing is double-counted.
   void seedFromHistory({
     required Iterable<Task> tasks,
@@ -147,8 +181,6 @@ class StreakService extends ChangeNotifier {
       if (count > 0 && day.isNotEmpty) fromStats[day] = count;
     });
     final fromTasks = <String, int>{};
-    final creates = <String, int>{};
-    final plans = <String, int>{};
     for (final task in tasks) {
       if (task.isWish) continue;
       final completedAt = task.completedAt;
@@ -156,23 +188,11 @@ class StreakService extends ChangeNotifier {
         final key = dayKey(completedAt);
         fromTasks[key] = (fromTasks[key] ?? 0) + 1;
       }
-      final createdAt = task.createdAt;
-      if (createdAt != null) {
-        final key = dayKey(createdAt);
-        creates[key] = (creates[key] ?? 0) + 1;
-      }
-      final movedAt = task.movedAt ?? task.rescheduledAt;
-      if (movedAt != null) {
-        final key = dayKey(movedAt);
-        plans[key] = (plans[key] ?? 0) + 1;
-      }
     }
     for (final key in {...fromStats.keys, ...fromTasks.keys}) {
       final count = max(fromStats[key] ?? 0, fromTasks[key] ?? 0);
       if (count > 0) _mergeDay(StreakKind.complete, key, count);
     }
-    creates.forEach((key, count) => _mergeDay(StreakKind.create, key, count));
-    plans.forEach((key, count) => _mergeDay(StreakKind.plan, key, count));
     _hadFile = true;
     unawaited(_save());
     notifyListeners();
@@ -184,25 +204,19 @@ class StreakService extends ChangeNotifier {
   }
 
   /// Dev/demo-only backfill: marks the last [days] calendar days (ending on
-  /// [now]) as active so the flames start at a presentable streak. Existing
-  /// counts win where they are larger, so this only fills gaps — call it
-  /// after [seedFromHistory] and only while [needsSeed] was true, otherwise
-  /// it would paper over a genuinely broken streak while testing. The three
-  /// kinds get different lengths so the cycling flame shows off three
-  /// different colours and sizes.
+  /// [now]) as active for the `complete` kind so the flame starts at a
+  /// presentable streak. Existing counts win where they are larger, so this
+  /// only fills gaps — call it after [seedFromHistory] and only while
+  /// [needsSeed] was true, otherwise it would paper over a genuinely broken
+  /// streak while testing. The `create`/`plan` kinds are user-configured
+  /// goals with no fixed meaning, so there is nothing to seed for them.
   void seedDevStreak({int days = Config.devSeedStreakDays, DateTime? now}) {
     if (days <= 0) return;
     final today = _dateOnly(now ?? DateTime.now());
-    final lengths = {
-      StreakKind.complete: days,
-      StreakKind.create: (days * 2) ~/ 3,
-      StreakKind.plan: days ~/ 2,
-    };
-    lengths.forEach((kind, length) {
-      for (var back = 0; back < length; back++) {
-        _mergeDay(kind, dayKey(today.subtract(Duration(days: back))), 1);
-      }
-    });
+    for (var back = 0; back < days; back++) {
+      _mergeDay(
+          StreakKind.complete, dayKey(today.subtract(Duration(days: back))), 1);
+    }
     _hadFile = true;
     unawaited(_save());
     notifyListeners();
@@ -228,34 +242,34 @@ class StreakService extends ChangeNotifier {
   /// Records a task completion (see [record]).
   bool recordCompletion(DateTime when) => record(StreakKind.complete, when);
 
-  /// Records a task creation.
-  bool recordCreation(DateTime when) => record(StreakKind.create, when);
-
-  /// Records a planning move: a task pushed to another day, or the whole day's
-  /// list finished. Only the first such event of the day is stored, so
-  /// re-checking "everything done" on every toggle cannot inflate the count.
-  bool recordPlanning(DateTime when) {
-    if (isDayDone(when, kind: StreakKind.plan)) return false;
-    return record(StreakKind.plan, when);
+  /// Records that a user-configured goal (the `create`/`plan` flame slots,
+  /// see [StreakGoal]) was met on [when] — only the first such event of the
+  /// day is stored, so re-checking a day's goal on every toggle cannot
+  /// inflate the count.
+  bool recordGoal(StreakKind kind, DateTime when) {
+    if (isDayDone(when, kind: kind)) return false;
+    return record(kind, when);
   }
 
-  /// Reverts one completion (task un-toggled). At zero the day stops counting
-  /// toward the streak, so toggle + untoggle cancel out exactly. Creations and
-  /// planning moves are not revertible — they already happened.
-  void recordUncompletion(DateTime when) {
+  /// Reverts one event of [kind] (task un-toggled). At zero the day stops
+  /// counting toward the streak, so toggle + untoggle cancel out exactly.
+  void recordUncompletion(DateTime when, {StreakKind kind = StreakKind.complete}) {
     final key = dayKey(when);
-    final days = _days(StreakKind.complete);
+    final days = _days(kind);
     final before = days[key] ?? 0;
     if (before <= 1) {
       days.remove(key);
-      _minutesByDay.remove(key);
+      if (kind == StreakKind.complete) _minutesByDay.remove(key);
     } else {
       days[key] = before - 1;
-      // We can't know which completion was undone; dropping the latest keeps
-      // toggle + untoggle an exact no-op for the time-of-day challenges too.
-      final minutes = _minutesByDay[key];
-      if (minutes != null && minutes.isNotEmpty) minutes.removeLast();
-      if (minutes != null && minutes.isEmpty) _minutesByDay.remove(key);
+      if (kind == StreakKind.complete) {
+        // We can't know which completion was undone; dropping the latest
+        // keeps toggle + untoggle an exact no-op for the time-of-day
+        // challenges too.
+        final minutes = _minutesByDay[key];
+        if (minutes != null && minutes.isNotEmpty) minutes.removeLast();
+        if (minutes != null && minutes.isEmpty) _minutesByDay.remove(key);
+      }
     }
     unawaited(_save());
     notifyListeners();
@@ -443,9 +457,15 @@ class StreakService extends ChangeNotifier {
       var fireAt =
           today.add(Duration(minutes: reminder.minutes.clamp(0, 1439)));
       // A time already past, or a day whose challenges are all met, moves the
-      // nudge to tomorrow.
+      // nudge to tomorrow. An unconfigured create/plan slot has no challenge
+      // to meet, so it does not block the "all done" shortcut.
+      final trackedKinds = kinds
+          .where((kind) =>
+              kind == StreakKind.complete || Config.streakGoals.containsKey(kind.id))
+          .toList();
       if (!fireAt.isAfter(current) ||
-          kinds.every((kind) => isDayDone(current, kind: kind))) {
+          (trackedKinds.isNotEmpty &&
+              trackedKinds.every((kind) => isDayDone(current, kind: kind)))) {
         fireAt = fireAt.add(const Duration(days: 1));
       }
       await NotificationService.scheduleStreakReminderSlot(
@@ -459,8 +479,13 @@ class StreakService extends ChangeNotifier {
 
   /// The reminder text for [day]: what is still open, plus the streak that is
   /// on the line. Public so the settings preview and the tests can show it.
+  /// An unconfigured `create`/`plan` slot has nothing to nudge about, so it is
+  /// left out — only a kind with a real challenge behind it can be "open".
   String reminderBody(DateTime day, {List<StreakKind>? kinds}) {
-    final active = kinds ?? enabledKinds;
+    final active = (kinds ?? enabledKinds)
+        .where((kind) =>
+            kind == StreakKind.complete || Config.streakGoals.containsKey(kind.id))
+        .toList();
     final pending =
         active.where((kind) => !isDayDone(day, kind: kind)).toList();
     if (pending.isEmpty) {
@@ -468,7 +493,12 @@ class StreakService extends ChangeNotifier {
     }
     final best = active.fold<int>(
         0, (top, kind) => max(top, currentStreak(kind: kind, now: day)));
-    final list = pending.map((kind) => kind.label.toLowerCase()).join(', ');
+    final list = pending
+        .map((kind) => (kind == StreakKind.complete
+                ? kind.label
+                : Config.streakGoals[kind.id]!.title)
+            .toLowerCase())
+        .join(', ');
     final open = 'Still open today: $list.';
     return best > 0 ? '$open Keep your $best-day streak alive.' : open;
   }
@@ -501,6 +531,7 @@ class StreakService extends ChangeNotifier {
       _days(kind).clear();
     }
     _minutesByDay.clear();
+    _knownTaskUids = {};
     _loaded = false;
     _hadFile = false;
   }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/streak_kind.dart';
+import '../services/streak_flame_display.dart';
 import '../services/streak_service.dart';
 import 'streak_page.dart';
 
@@ -86,8 +87,10 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
   }
 
   String _tooltip(StreakKind kind, int streak, bool doneToday) {
-    if (streak <= 0) return '${kind.label}: no streak yet';
-    final streakText = '${kind.label}: $streak-day streak';
+    final info = streakFlameInfo(kind);
+    if (!info.configured) return info.title;
+    if (streak <= 0) return '${info.short}: no streak yet';
+    final streakText = '${info.short}: $streak-day streak';
     return doneToday ? streakText : '$streakText — still open today';
   }
 
@@ -146,14 +149,23 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
 
         final theme = Theme.of(context);
         final today = widget.now ?? DateTime.now();
+        // Only kinds with an actual challenge behind them can complete the
+        // day: `complete` always is one, but an unconfigured create/plan slot
+        // (see StreakGoal) never records anything, so it would otherwise
+        // block "all done" forever.
+        final trackedKinds = kinds
+            .where((kind) =>
+                kind == StreakKind.complete ||
+                Config.streakGoals.containsKey(kind.id))
+            .toList();
         // Nothing left open today: stop hopping and burn one steady red flame
-        // carrying the best of the streaks. A single active challenge keeps
+        // carrying the best of the streaks. A single tracked challenge keeps
         // its own colour — there is no cycle to collapse.
-        final allDone = kinds.length > 1 &&
-            kinds.every((kind) => _streak.isDayDone(today, kind: kind));
+        final allDone = trackedKinds.length > 1 &&
+            trackedKinds.every((kind) => _streak.isDayDone(today, kind: kind));
 
         final kind = allDone
-            ? kinds.reduce((best, kind) =>
+            ? trackedKinds.reduce((best, kind) =>
                 _streak.currentStreak(kind: kind, now: widget.now) >
                         _streak.currentStreak(kind: best, now: widget.now)
                     ? kind
@@ -172,7 +184,7 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
 
         return IconButton(
           tooltip: allDone
-              ? 'All ${kinds.length} challenges done today — '
+              ? 'All ${trackedKinds.length} challenges done today — '
                   '$streak-day streak'
               : _tooltip(kind, streak, doneToday),
           onPressed: () => _openStreakPage(kind),
