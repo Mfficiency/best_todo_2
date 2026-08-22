@@ -640,6 +640,36 @@ void main() {
     expect(fake.projects[remoteProjectId]!['name'], 'Launch');
   });
 
+  test(
+      'a run that fails after pulling a new Todoist task does not delete '
+      'that task on the next (successful) run', () async {
+    // Simulates any flaky failure late in a run (a disk write error here,
+    // but a rate-limited/dropped API call has the same effect in
+    // production): the pulled task was processed into the in-memory sync
+    // map before the failure, but never actually saved locally.
+    fake.seedTask(content: 'Added on Todoist');
+
+    final notADir = File('${docsDir.path}/not_a_dir');
+    await notADir.writeAsString('x');
+    PathProviderPlatform.instance = _FakePathProvider(notADir.path);
+
+    final failed = await TodoistSyncService.instance.syncNow();
+    expect(failed!.success, isFalse);
+
+    // Restore a working documents dir and retry, as the user would by
+    // opening the app again or hitting "Sync now".
+    PathProviderPlatform.instance = _FakePathProvider(docsDir.path);
+    final entry = await TodoistSyncService.instance.syncNow();
+
+    expect(entry!.success, isTrue);
+    // A stray sync-map entry from the failed run would make this run see
+    // "the local task is gone" and delete it on Todoist instead of pulling
+    // it in cleanly.
+    expect(fake.tasks.length, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks.single.title, 'Added on Todoist');
+  });
+
   test('an API failure records a failed sync entry and lights the flag',
       () async {
     fake.failAuth = true;

@@ -390,7 +390,34 @@ class TodoistSyncService {
   // The sync algorithm.
   // ---------------------------------------------------------------------
 
+  /// Wraps [_runSyncBody] with a rollback: [_taskMap], [_projectMap] and
+  /// [_projectNameMap] are mutated in place as a run progresses, but only
+  /// persisted (alongside the matching local task list) once every step has
+  /// succeeded. Without this wrapper, a run that throws partway through
+  /// (a single flaky/rate-limited API call is enough) leaves those maps
+  /// holding entries — e.g. for a task just pulled in from Todoist — whose
+  /// local-side counterpart was never actually saved. The next run would
+  /// then read that as "the local task is gone", which it never was, and
+  /// delete the still-wanted task back on Todoist. Rolling the maps back to
+  /// their pre-run snapshot on any failure keeps a failed run from poisoning
+  /// the one after it.
   Future<int> _runSync(TodoistApiClient client) async {
+    final taskMapBackup = [
+      for (final e in _taskMap) TodoistSyncMapEntry.fromJson(e.toJson()),
+    ];
+    final projectMapBackup = Map<String, String>.from(_projectMap);
+    final projectNameMapBackup = Map<String, String>.from(_projectNameMap);
+    try {
+      return await _runSyncBody(client);
+    } catch (_) {
+      _taskMap = taskMapBackup;
+      _projectMap = projectMapBackup;
+      _projectNameMap = projectNameMapBackup;
+      rethrow;
+    }
+  }
+
+  Future<int> _runSyncBody(TodoistApiClient client) async {
     await ProjectService.instance.load();
     var projectsById = {
       for (final p in ProjectService.instance.list) p.id: p,

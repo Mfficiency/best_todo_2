@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.246] - 2026-08-22
+- Fixed a real bug where a Todoist sync run that failed partway through (a dropped/rate-limited API call, a disk write hiccup) could leave the sync bookkeeping out of step with what was actually saved, causing the *next* sync to mistake a just-added Todoist task for one you'd deleted locally — and delete it back on Todoist. A failed sync now rolls its bookkeeping back cleanly instead of carrying stray state into the next run.
+
 ## [0.1.245] - 2026-08-22
 - New tasks and wishlist items can be auto-tagged: a small editable keyword → tag dictionary (Settings → Tasks → Auto-tag rules) scans the title on creation and adds any matching tags to the label automatically, with a handful of starter rules (work, bike, gym, shopping, ...) and an on/off switch ("Auto-tag new items")
 
