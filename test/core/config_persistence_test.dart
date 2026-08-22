@@ -25,6 +25,7 @@ void main() {
     Config.useIconTabs = true;
     Config.enableNotifications = true;
     Config.addNewTasksToTop = true;
+    Config.enterSavesNewTask = false;
     Config.defaultAddTabIndex = 5;
     Config.defaultDelaySeconds = 7.5;
     Config.use24HourFormat = false;
@@ -40,6 +41,7 @@ void main() {
     Config.useIconTabs = false;
     Config.enableNotifications = false;
     Config.addNewTasksToTop = false;
+    Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
     Config.defaultDelaySeconds = 5.0;
     Config.use24HourFormat = true;
@@ -55,6 +57,7 @@ void main() {
     expect(Config.useIconTabs, isTrue);
     expect(Config.enableNotifications, isTrue);
     expect(Config.addNewTasksToTop, isTrue);
+    expect(Config.enterSavesNewTask, isFalse);
     expect(Config.defaultAddTabIndex, 5);
     expect(Config.defaultDelaySeconds, 7.5);
     expect(Config.use24HourFormat, isFalse);
@@ -64,6 +67,7 @@ void main() {
 
     // Restore the defaults so other tests see a clean config.
     Config.showFailureDotOnMenu = false;
+    Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
   });
 
@@ -95,4 +99,3 @@ void main() {
     Config.startTool = 'tasks';
   });
 }
-

@@ -6,6 +6,7 @@ import 'dart:math' show Random;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -92,6 +93,12 @@ class _HomePageState extends State<HomePage>
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _homeKeyboardFocusNode =
+      FocusNode(debugLabel: 'Home keyboard shortcuts');
+  final FocusNode _addTaskFocusNode = FocusNode(debugLabel: 'Add task');
+  final FocusNode _searchFocusNode = FocusNode(debugLabel: 'Task search');
+  final Map<String, TaskTileController> _taskTileControllers = {};
+  String? _focusedTaskUid;
 
   /// Picks which of today's tasks the dice timer lands on.
   final Random _diceRandom = Random();
@@ -232,7 +239,8 @@ class _HomePageState extends State<HomePage>
     const dayOffsets = <int>[1, 2, 4, 7, 9, 11];
     final seeded = <Task>[];
     for (var i = 0; i < titles.length; i++) {
-      final deletedAt = now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
+      final deletedAt =
+          now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
       seeded.add(
         Task(
           title: titles[i],
@@ -874,8 +882,7 @@ class _HomePageState extends State<HomePage>
     if (task.isWish || task.isDone == wasDone) return;
     if (!Config.isFeatureEnabled('streak')) return;
     if (task.isDone) {
-      final firstOfDay =
-          StreakService.instance.recordCompletion(_currentDate);
+      final firstOfDay = StreakService.instance.recordCompletion(_currentDate);
       // Clearing the whole day's list is the second way to keep the planning
       // streak (the first being moving a task to another day).
       _recordStreakDayCleared();
@@ -883,8 +890,8 @@ class _HomePageState extends State<HomePage>
           Config.showStreak &&
           Config.streakCompletionAnimation &&
           mounted) {
-        showStreakCelebration(context,
-            StreakService.instance.currentStreak(now: _currentDate));
+        showStreakCelebration(
+            context, StreakService.instance.currentStreak(now: _currentDate));
       }
     } else {
       StreakService.instance.recordUncompletion(_currentDate);
@@ -1107,6 +1114,9 @@ class _HomePageState extends State<HomePage>
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {
       openRunningDiceTimer = null;
     }
+    _homeKeyboardFocusNode.dispose();
+    _addTaskFocusNode.dispose();
+    _searchFocusNode.dispose();
     _tabController.dispose();
     _controller.dispose();
     _searchController.dispose();
@@ -1248,6 +1258,242 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._addTask', 'Added task: $title');
   }
 
+  bool _isDesktopShortcutsEnabled(BuildContext context) {
+    final platform = defaultTargetPlatform;
+    final desktopPlatform = kIsWeb ||
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
+    return desktopPlatform && MediaQuery.of(context).size.width >= 700;
+  }
+
+  bool get _primaryFocusIsTextInput {
+    final context = FocusManager.instance.primaryFocus?.context;
+    return context != null && context.widget is EditableText;
+  }
+
+  TaskTileController _controllerForTask(Task task) {
+    return _taskTileControllers.putIfAbsent(
+      task.uid,
+      TaskTileController.new,
+    );
+  }
+
+  List<Task> _keyboardTasks() => _tasksForTab(_tabController.index);
+
+  int _focusedTaskIndex(List<Task> tasks) {
+    final uid = _focusedTaskUid;
+    if (uid == null) return -1;
+    return tasks.indexWhere((task) => task.uid == uid);
+  }
+
+  Task? _focusedTask() {
+    final tasks = _keyboardTasks();
+    final index = _focusedTaskIndex(tasks);
+    if (index < 0) return null;
+    return tasks[index];
+  }
+
+  Task? _ensureFocusedTask() {
+    final tasks = _keyboardTasks();
+    if (tasks.isEmpty) {
+      if (_focusedTaskUid != null) setState(() => _focusedTaskUid = null);
+      return null;
+    }
+    final currentIndex = _focusedTaskIndex(tasks);
+    if (currentIndex >= 0) return tasks[currentIndex];
+    setState(() => _focusedTaskUid = tasks.first.uid);
+    return tasks.first;
+  }
+
+  void _moveFocusedTask(int delta) {
+    final tasks = _keyboardTasks();
+    if (tasks.isEmpty) {
+      setState(() => _focusedTaskUid = null);
+      return;
+    }
+    final currentIndex = _focusedTaskIndex(tasks);
+    final nextIndex = currentIndex < 0
+        ? (delta > 0 ? 0 : tasks.length - 1)
+        : (currentIndex + delta).clamp(0, tasks.length - 1);
+    setState(() => _focusedTaskUid = tasks[nextIndex].uid);
+    _homeKeyboardFocusNode.requestFocus();
+  }
+
+  void _focusAfterKeyboardAction(int pageIndex, int originalIndex) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final tasks = _tasksForTab(pageIndex);
+      setState(() {
+        if (tasks.isEmpty) {
+          _focusedTaskUid = null;
+        } else {
+          final nextIndex = originalIndex.clamp(0, tasks.length - 1);
+          _focusedTaskUid = tasks[nextIndex].uid;
+        }
+      });
+      _homeKeyboardFocusNode.requestFocus();
+    });
+  }
+
+  void _toggleTask(Task task) {
+    final wasDone = task.isDone;
+    setState(() {
+      task.toggleDone();
+      task.completedAt = task.isDone ? DateTime.now() : null;
+    });
+    _trackTaskDoneState(task, wasDone);
+    _recordStreakToggle(task, wasDone);
+    _saveTasks();
+  }
+
+  Future<void> _openSettingsPage() {
+    return Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          onSettingsChanged: _updateSettings,
+          onExportTasksRequested: _exportTasks,
+          onExportSettingsRequested: _exportSettingsOnly,
+          onExportEverythingRequested: _exportEverything,
+          onImportRequested: _importAutoDetect,
+        ),
+      ),
+    );
+  }
+
+  void _focusSearch() {
+    if (!Config.isFeatureEnabled('search')) return;
+    _searchFocusNode.requestFocus();
+  }
+
+  void _focusAddTask() {
+    _addTaskFocusNode.requestFocus();
+  }
+
+  void _openFocusedTask() {
+    final task = _ensureFocusedTask();
+    if (task == null) return;
+    _controllerForTask(task).open();
+    _homeKeyboardFocusNode.requestFocus();
+  }
+
+  void _handleSideArrow(LogicalKeyboardKey key) {
+    final task = _ensureFocusedTask();
+    if (task == null) return;
+    final controller = _controllerForTask(task);
+    final isRight = key == LogicalKeyboardKey.arrowRight;
+    final directionIsMove =
+        isRight ? Config.swipeLeftDelete : !Config.swipeLeftDelete;
+    final sameOpenMenu = (directionIsMove && controller.hasMoveOptions) ||
+        (!directionIsMove && controller.hasDeleteOptions);
+    if (controller.hasOptions) {
+      if (sameOpenMenu) {
+        controller.stepOptions();
+      } else {
+        controller.closeOptions();
+      }
+      return;
+    }
+    if (directionIsMove) {
+      controller.startMoveOptions();
+    } else {
+      controller.startDeleteOptions();
+    }
+  }
+
+  KeyEventResult _handleAddTaskKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final enterPressed = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    final ctrlPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final shiftPressed = HardwareKeyboard.instance.isShiftPressed;
+    if (Config.enterSavesNewTask &&
+        enterPressed &&
+        !ctrlPressed &&
+        !shiftPressed) {
+      _addTask(_controller.text);
+      return KeyEventResult.handled;
+    }
+    if (!Config.enterSavesNewTask && ctrlPressed && enterPressed) {
+      _addTask(_controller.text);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _handleHomeKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (!_isDesktopShortcutsEnabled(context)) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+    final ctrlPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+
+    if (ctrlPressed && key == LogicalKeyboardKey.comma) {
+      _openSettingsPage();
+      return KeyEventResult.handled;
+    }
+    if (ctrlPressed && key == LogicalKeyboardKey.keyF) {
+      _focusSearch();
+      return KeyEventResult.handled;
+    }
+    if (ctrlPressed && key == LogicalKeyboardKey.keyN) {
+      _focusAddTask();
+      return KeyEventResult.handled;
+    }
+
+    if (_primaryFocusIsTextInput) {
+      if (key == LogicalKeyboardKey.escape) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        _homeKeyboardFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    switch (key) {
+      case LogicalKeyboardKey.arrowUp:
+        _moveFocusedTask(-1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowDown:
+        _moveFocusedTask(1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowRight:
+      case LogicalKeyboardKey.arrowLeft:
+        _handleSideArrow(key);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.enter:
+        final task = _focusedTask();
+        final controller = task == null ? null : _controllerForTask(task);
+        if (controller?.hasOptions ?? false) {
+          controller!.confirmOptions();
+        } else {
+          _openFocusedTask();
+        }
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.space:
+        final task = _ensureFocusedTask();
+        if (task != null) _toggleTask(task);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.delete:
+        final tasks = _keyboardTasks();
+        final index = _focusedTaskIndex(tasks);
+        if (index >= 0) _deleteTask(_tabController.index, index);
+        _focusAfterKeyboardAction(_tabController.index, index);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.escape:
+        final task = _focusedTask();
+        _taskTileControllers[task?.uid]?.closeOptions();
+        return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   /// Creates a task from text shared into the app (Android share sheet) —
   /// always due today, whatever tab or view is open.
   void _addSharedTask(String text) {
@@ -1261,7 +1507,8 @@ class _HomePageState extends State<HomePage>
     });
     _trackTaskCreated(task);
     _saveTasks();
-    LogService.add('HomePage._addSharedTask', 'Added shared task: ${task.title}');
+    LogService.add(
+        'HomePage._addSharedTask', 'Added shared task: ${task.title}');
   }
 
   /// Creates a task from the Chronize timeline at an explicit deadline
@@ -1302,7 +1549,8 @@ class _HomePageState extends State<HomePage>
     _addToDeletedTasks(task);
     _saveTasks();
     _saveDeletedTasks();
-    LogService.add('HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
+    LogService.add(
+        'HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -1548,14 +1796,14 @@ class _HomePageState extends State<HomePage>
     }
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
-            builder: (_) => DiceTimerPage(
-              task: task,
-              onTaskDone: () => _completeTaskFromDice(task),
-              onTaskPostponed: () => _postponeTaskFromDice(task),
-            ),
-          ),
-        )
+      MaterialPageRoute(
+        builder: (_) => DiceTimerPage(
+          task: task,
+          onTaskDone: () => _completeTaskFromDice(task),
+          onTaskPostponed: () => _postponeTaskFromDice(task),
+        ),
+      ),
+    )
         .then((_) {
       if (mounted) setState(() {});
     });
@@ -1580,16 +1828,16 @@ class _HomePageState extends State<HomePage>
     }
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
-            builder: (_) => DiceTimerPage(
-              task: task,
-              caption: 'Timer for',
-              captionIcon: Icons.timer_outlined,
-              onTaskDone: () => _completeTaskFromDice(task),
-              onTaskPostponed: () => _postponeTaskFromDice(task),
-            ),
-          ),
-        )
+      MaterialPageRoute(
+        builder: (_) => DiceTimerPage(
+          task: task,
+          caption: 'Timer for',
+          captionIcon: Icons.timer_outlined,
+          onTaskDone: () => _completeTaskFromDice(task),
+          onTaskPostponed: () => _postponeTaskFromDice(task),
+        ),
+      ),
+    )
         .then((_) {
       if (mounted) setState(() {});
     });
@@ -1819,8 +2067,7 @@ class _HomePageState extends State<HomePage>
         deletedTasks: _deletedTasks,
         dailyStatsByDay: _dailyStatsByDay,
       ),
-      'countdown_timers':
-          (timers ?? []).map((t) => t.toJson()).toList(),
+      'countdown_timers': (timers ?? []).map((t) => t.toJson()).toList(),
     };
     final file = File(path);
     await file.writeAsString(jsonEncode(payload), flush: true);
@@ -1837,9 +2084,8 @@ class _HomePageState extends State<HomePage>
       final decoded = jsonDecode(await File(picked.path).readAsString())
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
-      final settings = settingsRaw is Map
-          ? Map<String, dynamic>.from(settingsRaw)
-          : decoded;
+      final settings =
+          settingsRaw is Map ? Map<String, dynamic>.from(settingsRaw) : decoded;
       Config.applyMap(settings);
       await Config.save();
       _updateSettings();
@@ -2104,22 +2350,33 @@ class _HomePageState extends State<HomePage>
     if (diff <= 0) return 'Today';
     if (diff == 1) return 'Tomorrow';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}';
   }
 
   Widget _buildAddTaskRow() {
+    final desktopShortcuts = _isDesktopShortcutsEnabled(context);
     final activeDate = _scheduleView ? _scheduleActiveDate : null;
     // The label names the target whenever it is not simply "the list you are
     // looking at": the schedule view's active day, or the bucket pinned in
     // Settings — otherwise a task typed in Today would silently appear in
     // another tab.
-    final pinnedTab =
-        activeDate == null && Config.defaultAddTabIndex != Config.addToCurrentTab
-            ? _addTargetTabIndex()
-            : null;
+    final pinnedTab = activeDate == null &&
+            Config.defaultAddTabIndex != Config.addToCurrentTab
+        ? _addTargetTabIndex()
+        : null;
     final label = activeDate != null
         ? 'Add task · ${_scheduleDayLabel(activeDate)}'
         : pinnedTab != null
@@ -2130,10 +2387,22 @@ class _HomePageState extends State<HomePage>
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(labelText: label),
-              onSubmitted: _addTask,
+            child: Focus(
+              onKeyEvent: _handleAddTaskKeyEvent,
+              child: TextField(
+                controller: _controller,
+                focusNode: _addTaskFocusNode,
+                decoration: InputDecoration(labelText: label),
+                keyboardType: desktopShortcuts
+                    ? TextInputType.multiline
+                    : TextInputType.text,
+                minLines: 1,
+                maxLines: desktopShortcuts ? null : 1,
+                textInputAction: desktopShortcuts
+                    ? TextInputAction.newline
+                    : TextInputAction.done,
+                onSubmitted: desktopShortcuts ? null : _addTask,
+              ),
             ),
           ),
           IconButton(
@@ -2152,16 +2421,7 @@ class _HomePageState extends State<HomePage>
       key: usesCustomSwipe ? ValueKey(task.uid) : null,
       task: task,
       onChanged: _saveTasks,
-      onToggle: () {
-        final wasDone = task.isDone;
-        setState(() {
-          task.toggleDone();
-          task.completedAt = task.isDone ? DateTime.now() : null;
-        });
-        _trackTaskDoneState(task, wasDone);
-        _recordStreakToggle(task, wasDone);
-        _saveTasks();
-      },
+      onToggle: () => _toggleTask(task),
       onDueDateChanged: (oldDueDate, newDueDate) {
         setState(() {
           if (task.recurrenceParentUid != null) {
@@ -2191,6 +2451,14 @@ class _HomePageState extends State<HomePage>
       pageIndex: pageIndex,
       showSwipeButton: !isAndroid,
       swipeLeftDelete: Config.swipeLeftDelete,
+      controller: _controllerForTask(task),
+      keyboardFocused: _focusedTaskUid == task.uid,
+      onFocusRequested: () {
+        setState(() => _focusedTaskUid = task.uid);
+        _homeKeyboardFocusNode.requestFocus();
+      },
+      onKeyboardActionCommitted: () =>
+          _focusAfterKeyboardAction(pageIndex, indexInTab),
     );
     if (usesCustomSwipe) return tile;
     return Dismissible(
@@ -2298,7 +2566,7 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     final enabledTools =
         _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
-    return Scaffold(
+    final scaffold = Scaffold(
       key: homeScaffoldKey,
       drawer: Drawer(
         child: ListView(
@@ -2327,17 +2595,7 @@ class _HomePageState extends State<HomePage>
               title: const Text('Settings'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SettingsPage(
-                      onSettingsChanged: _updateSettings,
-                      onExportTasksRequested: _exportTasks,
-                      onExportSettingsRequested: _exportSettingsOnly,
-                      onExportEverythingRequested: _exportEverything,
-                      onImportRequested: _importAutoDetect,
-                    ),
-                  ),
-                );
+                _openSettingsPage();
               },
             ),
             if (Config.isFeatureEnabled('deleted_items'))
@@ -2381,7 +2639,8 @@ class _HomePageState extends State<HomePage>
             if (Config.isFeatureEnabled('app_logs'))
               ValueListenableBuilder<bool>(
                 valueListenable: SyncService.instance.hasUnseenError,
-                builder: (context, syncError, _) => ValueListenableBuilder<bool>(
+                builder: (context, syncError, _) =>
+                    ValueListenableBuilder<bool>(
                   valueListenable: TodoistSyncService.instance.hasUnseenError,
                   builder: (context, todoistError, __) {
                     final hasError = syncError || todoistError;
@@ -2394,7 +2653,8 @@ class _HomePageState extends State<HomePage>
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                          MaterialPageRoute(
+                              builder: (_) => const AppLogsPage()),
                         );
                       },
                     );
@@ -2449,6 +2709,7 @@ class _HomePageState extends State<HomePage>
         title: Config.isFeatureEnabled('search')
             ? TextField(
                 controller: _searchController,
+                focusNode: _searchFocusNode,
                 decoration: InputDecoration(
                   hintText: 'Search tasks',
                   border: InputBorder.none,
@@ -2570,6 +2831,12 @@ class _HomePageState extends State<HomePage>
               controller: _tabController,
               children: List.generate(Config.tabs.length, _buildTaskList),
             ),
+    );
+    return Focus(
+      focusNode: _homeKeyboardFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleHomeKeyEvent,
+      child: scaffold,
     );
   }
 }
