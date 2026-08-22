@@ -371,6 +371,10 @@ class Config {
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
 
+  /// If true, Enter saves the add-task field. When false, the add-task field
+  /// accepts multiple lines and Ctrl+Enter saves it.
+  static bool enterSavesNewTask = true;
+
   /// Value of [defaultAddTabIndex] meaning "whichever tab is open".
   static const int addToCurrentTab = -1;
 
@@ -470,6 +474,7 @@ class Config {
       'showWidgetProgressLine': showWidgetProgressLine,
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
+      'enterSavesNewTask': enterSavesNewTask,
       'defaultAddTabIndex': defaultAddTabIndex,
       'use24HourFormat': use24HourFormat,
       'dateFormat': dateFormat,
@@ -528,6 +533,7 @@ class Config {
         data['showWidgetProgressLine'] ?? showWidgetProgressLine;
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    enterSavesNewTask = data['enterSavesNewTask'] ?? enterSavesNewTask;
     defaultAddTabIndex = (data['defaultAddTabIndex'] as num?)
             ?.round()
             .clamp(addToCurrentTab, tabs.length - 1) ??

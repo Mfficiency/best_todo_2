@@ -81,6 +81,10 @@ class TaskTile extends StatefulWidget {
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
+  final TaskTileController? controller;
+  final bool keyboardFocused;
+  final VoidCallback? onFocusRequested;
+  final VoidCallback? onKeyboardActionCommitted;
 
   const TaskTile({
     Key? key,
@@ -97,10 +101,37 @@ class TaskTile extends StatefulWidget {
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
+    this.controller,
+    this.keyboardFocused = false,
+    this.onFocusRequested,
+    this.onKeyboardActionCommitted,
   }) : super(key: key);
 
   @override
   State<TaskTile> createState() => _TaskTileState();
+}
+
+class TaskTileController {
+  _TaskTileState? _state;
+
+  bool get hasOptions => _state?._optionMode != null;
+  bool get hasMoveOptions => _state?._optionMode == _SwipeOptionMode.move;
+  bool get hasDeleteOptions => _state?._optionMode == _SwipeOptionMode.delete;
+
+  void _attach(_TaskTileState state) {
+    _state = state;
+  }
+
+  void _detach(_TaskTileState state) {
+    if (_state == state) _state = null;
+  }
+
+  void open() => _state?._openExpanded();
+  void startMoveOptions() => _state?._startMoveOptions(fromKeyboard: true);
+  void startDeleteOptions() => _state?._startDeleteOptions(fromKeyboard: true);
+  void stepOptions() => _state?._stepOptionSelection(fromKeyboard: true);
+  void confirmOptions() => _state?._commitSelectedOption(advanceFocus: true);
+  void closeOptions() => _state?._closeOptions();
 }
 
 class _TaskTileState extends State<TaskTile>
@@ -117,6 +148,8 @@ class _TaskTileState extends State<TaskTile>
   late final List<int> _destinations;
   double _dragOffset = 0;
   bool _dragging = false;
+  int _optionSelectionIndex = 0;
+  bool _optionStartedFromKeyboard = false;
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -133,7 +166,17 @@ class _TaskTileState extends State<TaskTile>
     );
     _destinations = List<int>.generate(Config.tabs.length, (i) => i)
       ..remove(widget.pageIndex);
+    widget.controller?._attach(this);
     _checkEmulator();
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(this);
+      widget.controller?._attach(this);
+    }
   }
 
   Future<void> _checkEmulator() async {
@@ -155,35 +198,42 @@ class _TaskTileState extends State<TaskTile>
     if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
-  void _startOptions(_SwipeOptionMode mode) {
-    setState(() => _optionMode = mode);
+  void _startOptions(_SwipeOptionMode mode, {bool fromKeyboard = false}) {
+    setState(() {
+      _optionMode = mode;
+      _optionSelectionIndex = 0;
+      _optionStartedFromKeyboard = fromKeyboard;
+    });
+    _restartOptionTimer(mode);
+  }
+
+  void _restartOptionTimer(_SwipeOptionMode mode) {
     _timer?.cancel();
     _progressController.reset();
     _progressController.forward();
     _timer = Timer(Config.delayDuration, () {
       if (!mounted || _optionMode != mode) return;
-      _progressController.stop();
-      setState(() => _optionMode = null);
-      if (mode == _SwipeOptionMode.move) {
-        widget.onMoveNext();
-      } else {
-        widget.onDelete();
-      }
+      _commitSelectedOption();
     });
   }
 
-  void _startMoveOptions() {
-    _startOptions(_SwipeOptionMode.move);
+  void _startMoveOptions({bool fromKeyboard = false}) {
+    _startOptions(_SwipeOptionMode.move, fromKeyboard: fromKeyboard);
   }
 
-  void _startDeleteOptions() {
-    _startOptions(_SwipeOptionMode.delete);
+  void _startDeleteOptions({bool fromKeyboard = false}) {
+    _startOptions(_SwipeOptionMode.delete, fromKeyboard: fromKeyboard);
   }
 
   void _closeOptions() {
     _timer?.cancel();
     _progressController.stop();
-    if (mounted) setState(() => _optionMode = null);
+    if (mounted) {
+      setState(() {
+        _optionMode = null;
+        _optionStartedFromKeyboard = false;
+      });
+    }
   }
 
   void _selectMove(int dest) {
@@ -201,6 +251,52 @@ class _TaskTileState extends State<TaskTile>
     widget.onMoveToWeekday?.call(weekday);
   }
 
+  int get _optionCount {
+    if (_optionMode == _SwipeOptionMode.move) return _destinations.length;
+    if (_optionMode == _SwipeOptionMode.delete) {
+      return 1 + _deleteSwipeWeekdayOptions.length;
+    }
+    return 0;
+  }
+
+  void _stepOptionSelection({bool fromKeyboard = false}) {
+    final mode = _optionMode;
+    final count = _optionCount;
+    if (mode == null || count == 0) return;
+    setState(() {
+      _optionSelectionIndex = (_optionSelectionIndex + 1) % count;
+      _optionStartedFromKeyboard =
+          _optionStartedFromKeyboard || fromKeyboard;
+    });
+    _restartOptionTimer(mode);
+  }
+
+  void _commitSelectedOption({bool advanceFocus = false}) {
+    final mode = _optionMode;
+    if (mode == null) return;
+    final shouldAdvanceFocus = advanceFocus || _optionStartedFromKeyboard;
+    final selectedIndex = _optionSelectionIndex;
+    _closeOptions();
+    if (mode == _SwipeOptionMode.move) {
+      final dest = _destinations[
+          selectedIndex.clamp(0, _destinations.length - 1).toInt()];
+      widget.onMove(dest);
+    } else if (selectedIndex == 0) {
+      widget.onDelete();
+    } else {
+      final option = _deleteSwipeWeekdayOptions[
+          (selectedIndex - 1).clamp(0, _deleteSwipeWeekdayOptions.length - 1)
+              .toInt()];
+      widget.onMoveToWeekday?.call(option.weekday);
+    }
+    if (shouldAdvanceFocus) widget.onKeyboardActionCommitted?.call();
+  }
+
+  void _openExpanded() {
+    if (_expanded) return;
+    setState(() => _expanded = true);
+  }
+
   void _toggleExpanded() {
     setState(() => _expanded = !_expanded);
   }
@@ -213,6 +309,7 @@ class _TaskTileState extends State<TaskTile>
   DateTime? _lastTapAt;
 
   void _handleTap() {
+    widget.onFocusRequested?.call();
     final now = DateTime.now();
     final last = _lastTapAt;
     _lastTapAt = now;
@@ -383,6 +480,7 @@ class _TaskTileState extends State<TaskTile>
   @override
   void dispose() {
     _timer?.cancel();
+    widget.controller?._detach(this);
     _titleController.dispose();
     _descController.dispose();
     _noteController.dispose();
@@ -483,6 +581,16 @@ class _TaskTileState extends State<TaskTile>
       ],
     );
 
+    final scheme = Theme.of(context).colorScheme;
+
+    ButtonStyle? optionStyle(int index) {
+      if (index != _optionSelectionIndex) return null;
+      return TextButton.styleFrom(
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
+      );
+    }
+
     final listTile = ListTile(
       contentPadding: isAndroid
           ? EdgeInsets.zero
@@ -518,20 +626,26 @@ class _TaskTileState extends State<TaskTile>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_optionMode == _SwipeOptionMode.move)
-                        for (var dest in _destinations)
+                        for (var i = 0; i < _destinations.length; i++)
                           TextButton(
-                            onPressed: () => _selectMove(dest),
-                            child: Text(Config.tabs[dest]),
+                            style: optionStyle(i),
+                            onPressed: () => _selectMove(_destinations[i]),
+                            child: Text(Config.tabs[_destinations[i]]),
                           ),
                       if (_optionMode == _SwipeOptionMode.delete) ...[
                         TextButton(
+                          style: optionStyle(0),
                           onPressed: _selectDelete,
                           child: const Text('Delete'),
                         ),
-                        for (final option in _deleteSwipeWeekdayOptions)
+                        for (var i = 0;
+                            i < _deleteSwipeWeekdayOptions.length;
+                            i++)
                           TextButton(
-                            onPressed: () => _selectWeekday(option.weekday),
-                            child: Text(option.label),
+                            style: optionStyle(i + 1),
+                            onPressed: () => _selectWeekday(
+                                _deleteSwipeWeekdayOptions[i].weekday),
+                            child: Text(_deleteSwipeWeekdayOptions[i].label),
                           ),
                       ],
                     ],
@@ -846,6 +960,16 @@ class _TaskTileState extends State<TaskTile>
             _dragOffset = 0;
           });
         },
+        child: content,
+      );
+    }
+
+    if (widget.keyboardFocused) {
+      content = DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: scheme.primary, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: content,
       );
     }

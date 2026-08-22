@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../config.dart';
@@ -119,6 +120,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry(
         'Show the mode picker again', 1, 'simple full first start choose'),
     _SettingsSearchEntry('Add new tasks at top', 2, 'bottom order insert'),
+    _SettingsSearchEntry('Desktop keyboard shortcuts', 2,
+        'hotkeys ctrl enter arrows keyboard windows'),
+    _SettingsSearchEntry('Save new task shortcut', 2,
+        'enter ctrl enter multiline keyboard shortcuts'),
     _SettingsSearchEntry('New tasks go to', 2,
         'default list bucket target tab today future someday quick add'),
     _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
@@ -199,6 +204,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
   bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
+  bool _enterSavesNewTask = Config.enterSavesNewTask;
   int _defaultAddTabIndex = Config.defaultAddTabIndex;
   bool _use24HourFormat = Config.use24HourFormat;
   String _dateFormat = Config.dateFormat;
@@ -242,6 +248,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _showWidgetProgressLine = Config.showWidgetProgressLine;
     _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
+    _enterSavesNewTask = Config.enterSavesNewTask;
     _defaultAddTabIndex = Config.defaultAddTabIndex;
     _use24HourFormat = Config.use24HourFormat;
     _dateFormat = Config.dateFormat;
@@ -1874,6 +1881,77 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () => _openSearchResult(e),
             ))
         .toList();
+  }
+
+  bool _showDesktopShortcutSettings(BuildContext context) {
+    final platform = defaultTargetPlatform;
+    final desktopPlatform = kIsWeb ||
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
+    return desktopPlatform && MediaQuery.of(context).size.width >= 700;
+  }
+
+  Widget _shortcutRow(String keys, String action) {
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      title: Text(action),
+      trailing: Text(
+        keys,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  List<Widget> _buildDesktopShortcutSettings() {
+    return [
+      const Divider(height: 24),
+      ListTile(
+        leading: const Icon(Icons.keyboard),
+        title: const Text('Desktop keyboard shortcuts'),
+        subtitle: const Text('Windows-style shortcuts for the task list'),
+      ),
+      ListTile(
+        title: const Text('Save new task shortcut'),
+        subtitle: Text(_enterSavesNewTask
+            ? 'Enter saves. Shift+Enter inserts a new line.'
+            : 'Enter adds a new line. Ctrl+Enter saves.'),
+        trailing: DropdownButton<bool>(
+          value: _enterSavesNewTask,
+          items: const [
+            DropdownMenuItem<bool>(
+              value: true,
+              child: Text('Enter'),
+            ),
+            DropdownMenuItem<bool>(
+              value: false,
+              child: Text('Ctrl+Enter'),
+            ),
+          ],
+          onChanged: (val) async {
+            if (val == null) return;
+            setState(() => _enterSavesNewTask = val);
+            Config.enterSavesNewTask = val;
+            await Config.save();
+            widget.onSettingsChanged?.call();
+          },
+        ),
+      ),
+      _shortcutRow('Ctrl+N', 'Focus the new-task field'),
+      _shortcutRow('Enter', 'Open the focused task'),
+      _shortcutRow('Up / Down', 'Move task focus through the list'),
+      _shortcutRow('Right / Left', 'Open the matching swipe action menu'),
+      _shortcutRow('Right / Left again', 'Select the next swipe action'),
+      _shortcutRow('Enter', 'Confirm the selected swipe action'),
+      _shortcutRow('${Config.defaultDelaySeconds.toStringAsFixed(1)}s',
+          'Auto-confirm the selected swipe action'),
+      _shortcutRow('Space', 'Toggle the focused task complete'),
+      _shortcutRow('Delete', 'Delete the focused task'),
+      _shortcutRow('Ctrl+F', 'Focus task search'),
+      _shortcutRow('Ctrl+,', 'Open settings'),
+      _shortcutRow('Esc', 'Cancel the open menu or leave text input'),
+    ];
   }
 
   @override
