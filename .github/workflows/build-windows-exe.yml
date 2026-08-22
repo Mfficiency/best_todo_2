@@ -4,15 +4,8 @@ name: Build Windows Portable Exe
 # the Android APK (built/published automatically by build-apk.yml on every
 # push) and isn't needed on every commit. Run it from the Actions tab when a
 # fresh portable build is wanted.
-#
-# TEMPORARY: also push-triggered on this feature branch so the very first
-# build can run at all — workflow_dispatch can't target a workflow file the
-# Actions API hasn't seen on the default branch yet. Remove this `push:`
-# block once merged to dev; workflow_dispatch keeps working from there.
 on:
   workflow_dispatch:
-  push:
-    branches: [ claude/windows-exe-todoist-import-7sxvcy ]
 
 permissions:
   contents: read
