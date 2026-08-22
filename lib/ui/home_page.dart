@@ -1091,6 +1091,24 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  /// Pull-to-refresh on the task list: runs a two-way Todoist sync (a no-op
+  /// if Todoist sync isn't enabled/configured) and reloads from storage so
+  /// anything it pulled down shows up immediately.
+  Future<void> _pullToRefreshSync() async {
+    final entry = await TodoistSyncService.instance.syncNow(
+      trigger: 'pull_to_refresh',
+    );
+    await _reloadTasksFromStorage();
+    if (!mounted || entry == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(entry.success
+            ? 'Synced ${entry.itemCount} change(s) with Todoist'
+            : 'Todoist sync failed: ${entry.message}'),
+      ));
+  }
+
   /// Opens the tool configured as the default start page (if any) on top of
   /// the task list, so backing out of it lands on the tasks as usual.
   void _maybeOpenStartTool() {
@@ -2487,8 +2505,18 @@ class _HomePageState extends State<HomePage>
         _buildAddTaskRow(),
         Expanded(
           child: tasks.isEmpty && pageIndex == 0
-              ? const Center(child: Text('No tasks for today'))
+              ? LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
+                      child: const Center(child: Text('No tasks for today')),
+                    ),
+                  ),
+                )
               : ReorderableListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: tasks.length,
                   onReorder: (oldIndex, newIndex) =>
                       _reorderTask(pageIndex, oldIndex, newIndex),
@@ -2873,12 +2901,16 @@ class _HomePageState extends State<HomePage>
             },
           ),
           Expanded(
-            child: _scheduleView
-                ? _buildScheduleBody()
-                : TabBarView(
-                    controller: _tabController,
-                    children: List.generate(Config.tabs.length, _buildTaskList),
-                  ),
+            child: RefreshIndicator(
+              onRefresh: _pullToRefreshSync,
+              child: _scheduleView
+                  ? _buildScheduleBody()
+                  : TabBarView(
+                      controller: _tabController,
+                      children:
+                          List.generate(Config.tabs.length, _buildTaskList),
+                    ),
+            ),
           ),
         ],
       ),
