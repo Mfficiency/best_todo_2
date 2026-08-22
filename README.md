@@ -7,7 +7,7 @@
 > reasoning behind each step. Written so a human or AI can rebuild the app from zero.
 
 ## Fundamentals
-1. less than 1 second cold startup
+1. less than 0.5 seconds cold startup
 2. it must not be possible in less clicks/steps
 3. open source
 
@@ -16,7 +16,7 @@
 - Tasks default to today
 - Swipe right: reschedule to tomorrow, 2d, next week, next month
 - Local DB: Hive or Isar
-- <1s cold startup
+- <0.5s cold startup
 - Unit and widget test coverage
 
 ## 🛠️ Getting Started
