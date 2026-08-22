@@ -1,3 +1,33 @@
+## 2026-08-22T12:17:06.551762Z | branch: dev | source: 9f722a3
+
+- Folder: `docs/screenshots/home/20260822-121705-9f722a3`
+
+### Home Page
+![2026-08-22T12:17:06.551762Z - dev - home_page](docs/screenshots/home/20260822-121705-9f722a3/home_page.png)
+
+### Menu Open
+![2026-08-22T12:17:06.551762Z - dev - menu_open](docs/screenshots/home/20260822-121705-9f722a3/menu_open.png)
+
+### Project Board Page
+![2026-08-22T12:17:06.551762Z - dev - project_board_page](docs/screenshots/home/20260822-121705-9f722a3/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T12:17:06.551762Z - dev - project_edit_dialog](docs/screenshots/home/20260822-121705-9f722a3/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T12:17:06.551762Z - dev - projects_page](docs/screenshots/home/20260822-121705-9f722a3/projects_page.png)
+
+### Search Active
+![2026-08-22T12:17:06.551762Z - dev - search_active](docs/screenshots/home/20260822-121705-9f722a3/search_active.png)
+
+### Settings Page
+![2026-08-22T12:17:06.551762Z - dev - settings_page](docs/screenshots/home/20260822-121705-9f722a3/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T12:17:06.551762Z - dev - your_stats_page](docs/screenshots/home/20260822-121705-9f722a3/your_stats_page.png)
+
+---
+
 ## 2026-08-22T11:59:14.253477Z | branch: dev | source: cea75bb
 
 - Folder: `docs/screenshots/home/20260822-115913-cea75bb`
