@@ -1,6 +1,7 @@
 import 'package:home_widget/home_widget.dart';
 
 import '../config.dart';
+import '../models/streak_kind.dart';
 import '../models/task.dart';
 import 'storage_service.dart';
 import 'streak_service.dart';
@@ -141,8 +142,20 @@ class TaskWidgetService {
         await StreakService.instance.load();
         if (task.isDone) {
           StreakService.instance.recordCompletion(at);
+          for (final kind in const [StreakKind.create, StreakKind.plan]) {
+            final goal = Config.streakGoals[kind.id];
+            if (goal != null && goal.matches(task)) {
+              StreakService.instance.recordGoal(kind, at);
+            }
+          }
         } else {
           StreakService.instance.recordUncompletion(at);
+          for (final kind in const [StreakKind.create, StreakKind.plan]) {
+            final goal = Config.streakGoals[kind.id];
+            if (goal != null && goal.matches(task)) {
+              StreakService.instance.recordUncompletion(at, kind: kind);
+            }
+          }
         }
         await StreakService.instance.saveNow();
       } catch (_) {}

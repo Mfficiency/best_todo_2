@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.250] - 2026-08-22
+- The green and blue flames are now configurable goals instead of a fixed "create a task"/"plan ahead" rule: pick a recurring task or a project in Settings → Streak, and that flame lights the day a matching task is completed
+- Each configurable flame gets its own title (pre-filled from the task/project name, editable) and shows a "no goal set" state until you choose one, or a "goal missing" prompt if its task/project is later deleted
+- The orange "finish a task" flame is unchanged; the old fixed create/plan behaviour is retired in favour of goals you set yourself
+
 ## [0.1.249] - 2026-08-22
 - Windows portable EXE builds now run automatically after a successful GitHub APK build, checking out the same commit that produced the APK; the manual "Build Windows Portable Exe" action is still available for one-off rebuilds.
 - Auto-tagging got smarter: instead of one keyword per tag, each tag now has a whole group of words that trigger it (e.g. "fitness" fires on gym, workout, exercise, cardio, yoga, jogging, running, training or stretch) — seeded with 12 starter categories (work, bike, fitness, health, shopping, finance, travel, home, family, food, study, tech) curated from online thesaurus data. Settings → Auto-tag rules now edits a tag plus its whole word group in one dialog. Still on by default.

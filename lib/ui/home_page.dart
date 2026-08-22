@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
+import '../models/streak_kind.dart';
 import '../models/task.dart';
 import '../services/alarm_service.dart';
 import '../services/auto_backup_service.dart';
@@ -816,7 +817,6 @@ class _HomePageState extends State<HomePage>
   }
 
   void _trackTaskCreated(Task task) {
-    _recordStreakCreation(task);
     final dueDate = task.dueDate;
     if (dueDate == null || !_isSameDay(dueDate, _currentDate)) return;
     final stats = _getOrCreateDailyStats(_currentDate);
@@ -830,7 +830,6 @@ class _HomePageState extends State<HomePage>
 
   void _trackTaskMove(Task task, DateTime? oldDueDate, DateTime? newDueDate) {
     if (oldDueDate == null && newDueDate == null) return;
-    _recordStreakPlanning(task, oldDueDate, newDueDate);
     final currentDay = _dateOnly(_currentDate);
     final wasToday = oldDueDate != null && _isSameDay(oldDueDate, currentDay);
     final isToday = newDueDate != null && _isSameDay(newDueDate, currentDay);
@@ -883,10 +882,9 @@ class _HomePageState extends State<HomePage>
     if (task.isWish || task.isDone == wasDone) return;
     if (!Config.isFeatureEnabled('streak')) return;
     if (task.isDone) {
-      final firstOfDay = StreakService.instance.recordCompletion(_currentDate);
-      // Clearing the whole day's list is the second way to keep the planning
-      // streak (the first being moving a task to another day).
-      _recordStreakDayCleared();
+      final firstOfDay =
+          StreakService.instance.recordCompletion(_currentDate);
+      _recordGoalCompletion(task);
       if (firstOfDay &&
           Config.showStreak &&
           Config.streakCompletionAnimation &&
@@ -896,37 +894,33 @@ class _HomePageState extends State<HomePage>
       }
     } else {
       StreakService.instance.recordUncompletion(_currentDate);
+      _recordGoalUncompletion(task);
     }
   }
 
-  /// Feeds a new task into the "create a task every day" streak, whatever day
-  /// it is due on — the point is that the list keeps being fed.
-  void _recordStreakCreation(Task task) {
-    if (task.isWish || !Config.isFeatureEnabled('streak')) return;
-    StreakService.instance.recordCreation(_currentDate);
-  }
-
-  /// Feeds a rescheduled task into the "plan ahead" streak: moving something
-  /// to another day means the day was actually planned instead of ignored.
-  void _recordStreakPlanning(
-      Task task, DateTime? oldDueDate, DateTime? newDueDate) {
-    if (task.isWish || !Config.isFeatureEnabled('streak')) return;
-    if (oldDueDate != null &&
-        newDueDate != null &&
-        _isSameDay(oldDueDate, newDueDate)) {
-      return;
+  /// Feeds a task completion into the user-configured goals of the
+  /// customizable flames (green = [StreakKind.create], blue =
+  /// [StreakKind.plan] — see [StreakGoal]). A flame with no goal configured
+  /// simply has nothing to match against and stays cold.
+  void _recordGoalCompletion(Task task) {
+    for (final kind in const [StreakKind.create, StreakKind.plan]) {
+      final goal = Config.streakGoals[kind.id];
+      if (goal != null && goal.matches(task)) {
+        StreakService.instance.recordGoal(kind, _currentDate);
+      }
     }
-    StreakService.instance.recordPlanning(_currentDate);
   }
 
-  /// Keeps the planning streak when every task due today is done — finishing
-  /// the day's list counts as having dealt with the day. No open task (an
-  /// empty day) is not an achievement, so it does not count.
-  void _recordStreakDayCleared() {
-    if (!Config.isFeatureEnabled('streak')) return;
-    final todays = _tasksDueOn(_currentDate).where((t) => !t.isWish).toList();
-    if (todays.isEmpty || todays.any((t) => !t.isDone)) return;
-    StreakService.instance.recordPlanning(_currentDate);
+  /// Reverts a task's contribution to a configured goal when it is
+  /// un-toggled, mirroring [StreakService.recordUncompletion] for the
+  /// `complete` flame.
+  void _recordGoalUncompletion(Task task) {
+    for (final kind in const [StreakKind.create, StreakKind.plan]) {
+      final goal = Config.streakGoals[kind.id];
+      if (goal != null && goal.matches(task)) {
+        StreakService.instance.recordUncompletion(_currentDate, kind: kind);
+      }
+    }
   }
 
   void _addToDeletedTasks(Task task, {bool autoDeleted = false}) {
@@ -2620,6 +2614,9 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    // Keeps configured flame goals (see StreakGoal) able to tell a deleted
+    // target task apart from one that just has not fired yet today.
+    StreakService.instance.syncKnownTasks(_tasks);
     final enabledTools =
         _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
     final scaffold = Scaffold(

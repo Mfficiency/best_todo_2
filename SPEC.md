@@ -645,16 +645,29 @@ must open its section first (tap `Expand <section>` or jump via its chip). `_jum
 toggles re-run `_updateActiveSectionFromScroll` on the next frame because the list height
 changed under the chip row.
 
-### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157)
+### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157; unlit-until-done
+pulse 0.1.229; configurable goals 0.1.250)
 
-Daily streak gamification with **three** challenges (`StreakKind` in
+Daily streak gamification with **three** flames (`StreakKind` in
 `lib/models/streak_kind.dart`; the ids are persisted, so keep them stable):
 
 | kind | id | day counts when | flame colours (cold → warm → hot) |
 | --- | --- | --- | --- |
 | Finish a task | `complete` | ≥1 non-wish task completed | orange → deep orange → red |
-| Create a task | `create` | ≥1 non-wish task created (any due date) | light green → green → teal |
-| Plan ahead | `plan` | a task moved to another day **or** the whole day's list finished | light blue → indigo → purple |
+| Create (green) | `create` | a task matching its configured goal is completed | light green → green → teal |
+| Plan (blue) | `plan` | a task matching its configured goal is completed | light blue → indigo → purple |
+
+`complete` is fixed. The green (`create`) and blue (`plan`) slots are **user-configured
+goals** since 0.1.250 (`StreakGoal` in `lib/models/streak_goal.dart`, persisted in
+`Config.streakGoals` — a `Map<String, StreakGoal>` keyed by kind id): each goal picks a
+`target` (`StreakGoalTarget.task` — one specific recurring task, matched by its own uid
+**or** its generated instances' `recurrenceParentUid` — or `StreakGoalTarget.project` —
+any task filed under a chosen project, matched by `projectId`) plus a `title` shown on
+the flame instead of a fixed label (pre-filled from the task/project name when the goal
+is set in the picker dialog, freely editable afterwards). `StreakGoal.matches(Task)`
+implements the match. A slot with no entry in `Config.streakGoals` has **no built-in
+default any more** — it just stays cold until configured (`streakFlameInfo` in
+`lib/services/streak_flame_display.dart`, see below).
 
 `StreakService` (ChangeNotifier singleton, `streak.json` via `SafeFile`) stores one
 dayKey → **count** map per kind — `completionsByDay` (the original key, kept so old files
@@ -663,24 +676,33 @@ load unchanged), `createsByDay`, `planByDay` — plus, since 0.1.144, a parallel
 history has counts only) powering the time-of-day challenges. Counts, not booleans, so
 toggle+untoggle on the same day cancels out exactly and per-day stats are possible.
 `record(kind, when)` returns true on that kind's **first** event of the day (the
-streak-kept moment); `recordCompletion`/`recordCreation` wrap it, and `recordPlanning`
-stores at most one event per day (re-checking "everything done" on every toggle must not
-inflate the count). `recordUncompletion` decrements the completion map, drops the
-**latest** recorded minute, and removes the day at zero — creations and planning moves
-already happened and are never reverted. Every read API (`currentStreak`, `isDayDone`,
-`longestStreak`, `bestDay`, `flameProgress`, …) takes an optional `kind:` that defaults
-to `StreakKind.complete`, so older call sites and tests keep their meaning.
-`enabledKinds` filters by `Config.streakKindEnabled` (all three on by default; the
-switches live in Settings → Streak → "Active challenges").
+streak-kept moment); `recordCompletion` wraps it for `complete`, and `recordGoal(kind,
+when)` is the equivalent for a configured `create`/`plan` goal — at most one event per
+day (re-checking a task's matches on every toggle must not inflate the count).
+`recordUncompletion(when, {kind})` (generalized in 0.1.250 — used to be `complete`-only)
+decrements that kind's map, drops the **latest** recorded minute only for `complete` (the
+other two never tracked times), and removes the day at zero. Every read API
+(`currentStreak`, `isDayDone`, `longestStreak`, `bestDay`, `flameProgress`, …) takes an
+optional `kind:` that defaults to `StreakKind.complete`, so older call sites and tests
+keep their meaning. `enabledKinds` filters by `Config.streakKindEnabled` (all three on by
+default; the switches live in Settings → Streak → "Active challenges" — this is
+independent of whether a `create`/`plan` slot has a goal configured).
+`StreakService.syncKnownTasks(tasks)` (called every `HomePage.build()`) tracks which task
+uids currently exist so `isGoalMissing(kind)` can tell a task-targeted goal whose task was
+deleted apart from one that simply has not fired today; a project-targeted goal is
+checked directly against `ProjectService.instance.byId(goal.targetId)` by the display
+layer instead (no service-to-service dependency needed for that case).
 
 Wish items never count. Hooks in `home_page.dart`, all using `_currentDate` so the dev
-date stepper works: `_recordStreakToggle` (tile checkbox + dice-timer "done") →
-completion, plus `_recordStreakDayCleared` when every task due today is done (an empty
-day is not an achievement and does not count); `_recordStreakCreation` from
-`_trackTaskCreated` (add row, shared text, Chronize); `_recordStreakPlanning` from
-`_trackTaskMove` whenever a task's day actually changes. The home-screen widget's
-checkbox (`task_widget_service.dart`) records completions only — it runs in a background
-isolate without the task list.
+date stepper works: `_recordStreakToggle` (tile checkbox + dice-timer "done") → completion
+plus `_recordGoalCompletion`/`_recordGoalUncompletion`, which check the toggled task
+against `Config.streakGoals['create']`/`['plan']` (`StreakGoal.matches`) and call
+`recordGoal`/`recordUncompletion(kind: …)` on a match. The home-screen widget's checkbox
+(`task_widget_service.dart`) mirrors the same goal-matching inline since it runs in a
+background isolate without the home page's hooks. The old fixed "any task created" /
+"a task moved or the day cleared" defaults (and their `_recordStreakCreation`/
+`_recordStreakPlanning`/`_recordStreakDayCleared` hooks) were retired in 0.1.250 —
+`_trackTaskCreated`/`_trackTaskMove` no longer touch the streak at all.
 
 **Streak semantics:** consecutive active days ending today or later-graced; a day still
 in progress never breaks the streak. Grace (`Config.streakGraceHours`, 24 default / 48):
@@ -690,41 +712,81 @@ back). `longestStreak()` scans full history under the same rule; `longestStreakR
 returns the same run's exact first/last day as a record (earliest run wins ties). Flame
 maxes out at **365 days** (`flameProgress` = streak/365 clamped to 1).
 
+**Display layer (0.1.250):** `streakFlameInfo(kind)` in
+`lib/services/streak_flame_display.dart` is the single place every flame's `short`
+(chip/tooltip label), `title`, `description` and `callToAction` come from — `StreakPage`,
+`StreakFlameButton` and the Settings "Active challenges" rows all call it instead of
+reading `StreakKind`'s constants directly. `complete` always returns the fixed enum text.
+For `create`/`plan` it returns one of three states: **unconfigured** (no
+`Config.streakGoals` entry — `short`/title fall back to the kind's own short name, e.g.
+"Create · no goal set", description invites setting one, `configured: false`);
+**missing** (a goal is configured but `StreakService.isGoalMissing(kind)` — task target —
+or `ProjectService.instance.byId(goal.targetId) == null` — project target — is true;
+shows the goal's title with a "was deleted" description, `missing: true`); or **active**
+(goal resolved fine — title/description/callToAction all built from `goal.title`, e.g.
+"Complete 'Exercise' every day"). An unconfigured or missing slot never has anything
+recorded against it, so its flame naturally renders cold (`flameColor` at progress 0 is
+already grey) with no special-casing needed in the colour/size math.
+
+**Goal picker (0.1.250):** `StreakGoalDialog` (`lib/ui/streak_goal_dialog.dart`, own
+`StatefulWidget` owning its `TextEditingController` per the `_ProjectEditDialog`
+convention) is opened from a "Set goal"/"Change" row under each of the `create`/`plan`
+switches in Settings → Streak → "Active challenges". A `SegmentedButton` picks
+`StreakGoalTarget.task` (a `DropdownButton` of recurring tasks — `isRecurring &&
+recurrenceParentUid == null`, loaded via `StorageService().readTaskListRaw()` so it never
+fights the home page's in-memory list/rollover) or `.project` (a dropdown of
+`ProjectService.instance.list`); picking an option auto-fills the title field with its
+name (only while the field still matches the last auto-fill, so a hand-typed title is
+never clobbered) and the field stays freely editable. Save writes
+`Config.streakGoals[kind.id]`, `Config.save()`s and calls
+`StreakService.instance.settingsChanged()`; "Remove goal" clears that entry — both close
+the dialog and the Settings page picks up the change via its own `setState`.
+
 **UI:** `StreakFlameButton` (`lib/ui/streak_flame_button.dart`) in the home app bar
 directly left of the dice (`ListenableBuilder` on the service; hidden when
 `Config.showStreak` is false or every challenge is switched off). It **cycles** through
 the active challenges every 2.4 s (`Timer.periodic` + `AnimatedSwitcher` fade/scale keyed
-by kind), showing that kind's colour, `Badge` count and tooltip ("Finish a task: 3-day
-streak" / "Create a task: no streak yet"); the icon grows 22→30 px with progress.
+by kind), showing that kind's colour, `Badge` count and a `streakFlameInfo`-built tooltip
+("Finish a task: 3-day streak" / "Create · no goal set" / "Exercise: 5-day streak"); the
+icon grows 22→30 px with progress.
 **Unlit until the day is done (0.1.229):** the flame burns in the kind's colour only when
 `isDayDone(today, kind:)` — a streak still riding on yesterday (or on the grace day) shows
 the *outlined* icon in `theme.disabledColor`, the `Badge` (still counting the streak at
-risk) greys with it, and the tooltip gains "— still open today". That grey icon **pulses**:
-a 900 ms repeat-reverse controller lerps it grey → white and scales it 1.0 → 1.12, so an
-unfinished challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind
-currently shown.
-**All challenges done settles the flame (0.1.236):** once every active challenge is done
-today (and more than one is on), the cycling collapses into a single **steady red**
+risk) greys with it, and the tooltip gains "— still open today" (an unconfigured
+`create`/`plan` slot short-circuits before any of this — `streakFlameInfo`'s `title` is
+shown as-is with no streak/done state at all). That grey icon **pulses**: a 900 ms
+repeat-reverse controller lerps it grey → white and scales it 1.0 → 1.12, so an unfinished
+challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind currently shown.
+**All challenges done settles the flame (0.1.236; goal-aware since 0.1.250):** once every
+*tracked* kind is done today (`complete`, plus `create`/`plan` only once a goal is
+configured — an unconfigured slot is excluded so it can't block this forever — and more
+than one tracked kind is on), the cycling collapses into a single **steady red**
 (`StreakFlameButton.allDoneColor` = `0xFFD32F2F`, red 700) lit flame badged with the
 **highest** of the streak counts, keyed `'all-done'` so the switcher stops cross-fading;
 the tooltip becomes "All 3 challenges done today — 5-day streak" and tapping opens
-`StreakPage` on the kind that owns that highest streak. A single active challenge keeps
-its own colour (there is no cycle to collapse). **Cycle and pulse are both disabled under the test bindings** (a repeating
-timer/animation means `pumpAndSettle` never settles, and it also keeps screenshot runs
-deterministic) — the check is `WidgetsBinding.instance.runtimeType` containing "Test";
-`StreakFlameButton.debugForceCycle` re-enables both for the tests that cover them.
+`StreakPage` on the kind that owns that highest streak. A single tracked challenge keeps
+its own colour (there is no cycle to collapse) — the cycle itself still hops through every
+*enabled* kind, tracked or not, so an unconfigured slot's "no goal set" placeholder is
+still shown in its turn. **Cycle and pulse are both disabled under the test bindings** (a
+repeating timer/animation means `pumpAndSettle` never settles, and it also keeps
+screenshot runs deterministic) — the check is `WidgetsBinding.instance.runtimeType`
+containing "Test"; `StreakFlameButton.debugForceCycle` re-enables both for the tests that
+cover them.
 
 `StreakPage`: a `ChoiceChip` row (one mini flame per active challenge, "Finish 3") when
 more than one is on, big flickering flame in the selected kind's colour (700 ms
 repeat-reverse controller — **never `pumpAndSettle` this page in tests**, it never
 settles; scale/sway/glow scale with progress), fun level names ("First spark" →
 "MAXIMUM FIRE"), progress bar to a full year, a "Today" card listing every active
-challenge with its description and a check mark or "Open" (tap a row to select it), a
-stats card worded per kind (streak start, longest ever, active days, total events, best
-day, average per active day), and a gear action → Settings. First completion of the day
-plays a ~1.4 s
+challenge via `streakFlameInfo` with a check mark, "Open", "Not set" (unconfigured) or an
+error icon (goal missing) trailing (tap a row to select it), a stats card worded per kind
+(streak start, longest ever, active days, total events, best day, average per active
+day — `create`/`plan` use generic "the goal was met" wording since there is no fixed
+challenge behind them any more), and a gear action → Settings. First completion of the
+day plays a ~1.4 s
 self-removing overlay celebration (`showStreakCelebration`: flame pop + sparks + "Streak
-kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`).
+kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`) — tied only
+to the `complete` flame, not to a goal completion.
 
 **Streak calendar (0.1.144):** the "Longest streak ever" stat tile is tappable
 ("Tap to see it on the calendar") → `StreakCalendarPage`: header card naming the longest
@@ -754,16 +816,17 @@ open first (evaluation order within the group), then an amber "Earned" divider h
 (only when both groups exist), then the earned ones — the card opens on what is left to
 chase rather than on a wall of check marks.
 
-**Seeding:** on first load without `streak.json` (`needsSeed`), backfilled from existing
-history — completions per day the **max** of daily-stats counts and `completedAt`
-timestamps on live+deleted tasks (so nothing double-counts and long-time users start
-warm), creations from `createdAt` and planning days from `movedAt ?? rescheduledAt`.
-(In dev builds the seeded demo daily-stats produce a pre-lit flame; tests write an empty
-`streak.json` up front to opt out.) Dev/demo builds then also run `seedDevStreak()`, which
-fills the last `Config.devSeedStreakDays` (**50**) days back from today — complete = 50,
-create = ⅔, plan = ½ of that, so the cycling flame shows three different colours and
-sizes — max-merged, so real counts survive. It runs only inside the `needsSeed` branch,
-so a dev install's real streak is never papered over.
+**Seeding:** on first load without `streak.json` (`needsSeed`), only the `complete` kind
+is backfilled from existing history — completions per day the **max** of daily-stats
+counts and `completedAt` timestamps on live+deleted tasks (so nothing double-counts and
+long-time users start warm). `create`/`plan` are user-configured goals with no fixed
+app-wide meaning (0.1.250), so there is nothing generic to backfill for them — they start
+cold and unconfigured for everyone, new install or not. (In dev builds the seeded demo
+daily-stats produce a pre-lit `complete` flame; tests write an empty `streak.json` up
+front to opt out.) Dev/demo builds then also run `seedDevStreak()`, which fills the last
+`Config.devSeedStreakDays` (**50**) days back from today for `complete` only — max-merged,
+so real counts survive. It runs only inside the `needsSeed` branch, so a dev install's
+real streak is never papered over.
 
 **Reminders (list since 0.1.157):** `Config.streakReminderEnabled` is the master switch
 (default off) and `Config.streakReminders` holds up to `maxStreakReminders` (**24**)
@@ -775,13 +838,17 @@ every slot and re-arms one **one-shot** `zonedSchedule` per enabled reminder (id
 `kStreakReminderNotificationIdBase = 0x20000010` + slot, plus the legacy
 `kStreakReminderNotificationId = 0x20000002` which is only ever cancelled;
 `inexactAllowWhileIdle` — deliberately NOT the alarm ladder, no exact-alarm permission
-needed) for today's time, or tomorrow when the time has passed or every active challenge
-is already met. The body names what is still open ("Still open today: create a task, plan
-ahead. Keep your 5-day streak alive.", `reminderBody`). Re-synced on every app start,
-recorded event and settings change; cancelled when reminders are off, the streak is
-hidden, or no challenge is active. Settings live in a searchable "Streak" Settings
+needed) for today's time, or tomorrow when the time has passed or every *tracked* kind is
+already met — an unconfigured `create`/`plan` slot is excluded from that check (0.1.250;
+it has no challenge to meet, so it must not block the "everything done" shortcut). The
+body names what is still open, skipping unconfigured slots and naming a configured goal
+by its own title ("Still open today: finish a task, exercise. Keep your 5-day streak
+alive.", `reminderBody`). Re-synced on every app start, recorded event and settings
+change; cancelled when reminders are off, the streak is hidden, or no challenge is active.
+Settings live in a searchable "Streak" Settings
 section: show/hide, 24h/48h `SegmentedButton`, "Active challenges" (one switch per
-`StreakKind`), "Streak reminders" (master switch, one row per reminder with time picker,
+`StreakKind`, plus a "Set goal"/"Change" row under `create`/`plan` opening
+`StreakGoalDialog`), "Streak reminders" (master switch, one row per reminder with time picker,
 alert-mode chips, on/off switch and delete, plus "Add reminder" — new entries default to
 the last time + 1 h), celebration toggle.
 
