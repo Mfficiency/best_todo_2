@@ -2825,12 +2825,56 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       ),
-      body: _scheduleView
-          ? _buildScheduleBody()
-          : TabBarView(
-              controller: _tabController,
-              children: List.generate(Config.tabs.length, _buildTaskList),
-            ),
+      body: Column(
+        children: [
+          // Shown only while the first-launch Todoist import is still
+          // pulling in everything past today (see IntroPage's import
+          // chooser) — `syncing` otherwise only flips on for the brief
+          // duration of a manual/quit-time sync, which has its own spinner
+          // in Settings and is never visible here in practice.
+          ValueListenableBuilder<bool>(
+            valueListenable: TodoistSyncService.instance.syncing,
+            builder: (context, syncing, _) {
+              if (!syncing) return const SizedBox.shrink();
+              return Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Importing the rest of your tasks from Todoist…',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: _scheduleView
+                ? _buildScheduleBody()
+                : TabBarView(
+                    controller: _tabController,
+                    children: List.generate(Config.tabs.length, _buildTaskList),
+                  ),
+          ),
+        ],
+      ),
     );
     return Focus(
       focusNode: _homeKeyboardFocusNode,
