@@ -216,6 +216,160 @@ class TodoistSyncService {
     }
   }
 
+  /// First-launch import (desktop "Import from Todoist" chooser, before any
+  /// local task exists): pulls just today's (and overdue) tasks synchronously
+  /// so the caller can open the home screen right away, then returns a
+  /// closure that pulls everything else in the background — [syncing] stays
+  /// true until that closure finishes, so the home page can show a "still
+  /// importing" indicator. Pure pull, no push and no conflict resolution
+  /// (there is nothing local yet to conflict with); [syncNow] takes over for
+  /// every run after this one. Returns null when disabled, no token, or a
+  /// sync is already running; throws on a network/API failure so the caller
+  /// can show it before the home screen opens.
+  Future<TodoistFirstImport?> startFirstLaunchImport() async {
+    if (!Config.todoistSyncEnabled) return null;
+    final token = Config.todoistApiToken.trim();
+    if (token.isEmpty) return null;
+    if (_syncInFlight) return null;
+    _syncInFlight = true;
+    syncing.value = true;
+    await ensureLoaded();
+    final stopwatch = Stopwatch()..start();
+    final client = _newClient(token);
+    List<Map<String, dynamic>> remoteTasks;
+    List<Map<String, dynamic>> remoteProjects;
+    try {
+      remoteTasks = await client.fetchActiveTasks();
+      remoteProjects = await client.fetchProjects();
+    } catch (e) {
+      _syncInFlight = false;
+      syncing.value = false;
+      await _record(SyncLogEntry(
+        at: DateTime.now(),
+        durationMs: stopwatch.elapsedMilliseconds,
+        itemCount: 0,
+        success: false,
+        message: e is TodoistApiException ? e.message : e.toString(),
+        trigger: 'first_launch_import',
+      ));
+      rethrow;
+    } finally {
+      client.close();
+    }
+
+    final remoteProjectNameToId = {
+      for (final p in remoteProjects)
+        (p['name'] as String? ?? '').toLowerCase(): _idOf(p['id']),
+    };
+    // Same recognition as `_runSync` — see its comment.
+    final todoistToLocalProject = <String, String>{
+      for (final e in _projectMap.entries) e.value: e.key,
+    };
+    final wishlistId = remoteProjectNameToId['wishlist'];
+    if (wishlistId != null) {
+      todoistToLocalProject.putIfAbsent(
+          wishlistId, () => _wishlistProjectKey);
+    }
+    final futureId = remoteProjectNameToId['future'];
+    if (futureId != null) {
+      todoistToLocalProject.putIfAbsent(futureId, () => _futureProjectKey);
+    }
+
+    final todayRemote = <Map<String, dynamic>>[];
+    final restRemote = <Map<String, dynamic>>[];
+    for (final t in remoteTasks) {
+      (_isTodayOrOverdueRemote(t) ? todayRemote : restRemote).add(t);
+    }
+
+    final now = DateTime.now();
+    List<Task> pull(List<Map<String, dynamic>> remote) {
+      final pulled = <Task>[];
+      for (final r in remote) {
+        final id = _idOf(r['id']);
+        if (_taskMap.any((e) => e.todoistId == id)) continue;
+        final task = _taskFromRemote(r, todoistToLocalProject);
+        pulled.add(task);
+        _taskMap.add(TodoistSyncMapEntry(
+          localUid: task.uid,
+          todoistId: id,
+          localProjectId: _targetProjectKey(task),
+          todoistProjectId:
+              r['project_id'] == null ? null : _idOf(r['project_id']),
+          localFingerprint: _localFingerprint(task),
+          remoteFingerprint:
+              _remoteFingerprintForRemote(r, todoistToLocalProject),
+          syncedAt: now,
+        ));
+      }
+      return pulled;
+    }
+
+    final existing = await ItemRepository.instance.loadItems();
+    final todayLocal = pull(todayRemote);
+    existing.addAll(todayLocal);
+    await ItemRepository.instance.saveItems(existing);
+    await _persistState();
+
+    Future<SyncLogEntry?> finish() async {
+      try {
+        final restLocal = pull(restRemote);
+        if (restLocal.isNotEmpty) {
+          final current = await ItemRepository.instance.loadItems();
+          current.addAll(restLocal);
+          await ItemRepository.instance.saveItems(current);
+        }
+        await _persistState();
+        stopwatch.stop();
+        final entry = SyncLogEntry(
+          at: DateTime.now(),
+          durationMs: stopwatch.elapsedMilliseconds,
+          itemCount: todayLocal.length + restLocal.length,
+          success: true,
+          trigger: 'first_launch_import',
+        );
+        await _record(entry);
+        return entry;
+      } catch (e) {
+        stopwatch.stop();
+        final entry = SyncLogEntry(
+          at: DateTime.now(),
+          durationMs: stopwatch.elapsedMilliseconds,
+          itemCount: todayLocal.length,
+          success: false,
+          message: e is TodoistApiException ? e.message : e.toString(),
+          trigger: 'first_launch_import',
+        );
+        await _record(entry);
+        return entry;
+      } finally {
+        _syncInFlight = false;
+        syncing.value = false;
+      }
+    }
+
+    return TodoistFirstImport(
+      todayCount: todayLocal.length,
+      finishInBackground: finish,
+    );
+  }
+
+  /// "Today" here means the same bucket as the home page's Today tab: any
+  /// due date on or before today, including overdue. An undated task belongs
+  /// to the Future tab instead, so it is never "today".
+  bool _isTodayOrOverdueRemote(Map<String, dynamic> remoteTask) {
+    final due = remoteTask['due'];
+    if (due is! Map) return false;
+    final dateStr = due['date'] as String?;
+    if (dateStr == null) return false;
+    final parsed = DateTime.tryParse(dateStr);
+    if (parsed == null) return false;
+    final local = dateStr.contains('T') ? parsed.toLocal() : parsed;
+    final today = DateTime.now();
+    final dueDay = DateTime(local.year, local.month, local.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    return !dueDay.isAfter(todayDay);
+  }
+
   // ---------------------------------------------------------------------
   // The sync algorithm.
   // ---------------------------------------------------------------------
@@ -821,6 +975,20 @@ class TodoistSyncService {
   static void resetForTest() {
     instance = TodoistSyncService._();
   }
+}
+
+/// Result of [TodoistSyncService.startFirstLaunchImport]: today's tasks are
+/// already saved by the time this is returned, so the caller can open the
+/// home screen immediately; [finishInBackground] pulls everything else and
+/// should be fired and forgotten (or awaited in tests).
+class TodoistFirstImport {
+  final int todayCount;
+  final Future<SyncLogEntry?> Function() finishInBackground;
+
+  TodoistFirstImport({
+    required this.todayCount,
+    required this.finishInBackground,
+  });
 }
 
 class _RemotePayload {

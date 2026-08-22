@@ -121,11 +121,28 @@ void main() {
     expect(finished, isFalse);
   });
 
-  testWidgets('a valid token pulls tasks in and finishes onboarding',
-      (tester) async {
+  testWidgets(
+      "a valid token pulls in today's tasks and finishes onboarding without "
+      "waiting for the rest — TodoistSyncService.startFirstLaunchImport's "
+      'background phase is covered deterministically at the service level '
+      'in test/sync/todoist_sync_service_test.dart', (tester) async {
+    final today = DateTime.now();
+    final isoToday = '${today.year.toString().padLeft(4, '0')}-'
+        '${today.month.toString().padLeft(2, '0')}-'
+        '${today.day.toString().padLeft(2, '0')}';
     fake.tasks['1'] = {
       'id': '1',
       'content': 'Buy milk',
+      'description': '',
+      'project_id': null,
+      'labels': <String>[],
+      'due': {'date': isoToday}, // today -> lands in the synchronous phase
+    };
+    // Undated -> Future bucket, only pulled in by the background phase —
+    // deliberately not asserted on here (see the test name).
+    fake.tasks['2'] = {
+      'id': '2',
+      'content': 'Someday',
       'description': '',
       'project_id': null,
       'labels': <String>[],
@@ -149,7 +166,11 @@ void main() {
     expect(finished, isTrue);
     expect(Config.todoistSyncEnabled, isTrue);
     expect(Config.todoistApiToken, 'tok-123');
-    expect(find.text('Imported 1 task(s) from Todoist'), findsOneWidget);
+    expect(
+      find.text("Imported 1 of today's task(s) from Todoist — the rest is "
+          'syncing in the background'),
+      findsOneWidget,
+    );
 
     final tasks = await tester.runAsync(() => StorageService().loadTaskList());
     expect(tasks!.map((t) => t.title), contains('Buy milk'));

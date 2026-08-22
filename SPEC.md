@@ -1542,18 +1542,23 @@ its last page — the dots count 4, the last page has no Next button so the mode
 question cannot be skipped, and picking a mode is what ends the intro. Shown once
 (`intro_shown` + `Config.modeChosen`), replayable from About, skipped in dev.
 
-**Startup choice** (`startup_choice_page.dart`, 0.1.242): shown once, right after
-the intro/mode picker finish on a brand-new install (§3 step 9's `showStartupChoice`;
-never shown again after "Replay Introduction" — only the intro's own two flags are
-cleared there). Two cards: **Start fresh** finishes onboarding immediately with an
-empty list; **Import from Todoist** opens a dialog for a Todoist API token
-(`TodoistSyncService.testConnection`), and on success saves it (`Config.todoistApiToken`,
-`Config.todoistSyncEnabled = true`) and runs one `TodoistSyncService.syncNow(trigger:
-'initial import')` pull before finishing onboarding — the same two-way sync used by
-Settings → Todoist sync (§4.8), so nothing new was built for the pull path. A failed
-first sync (bad token aside — that blocks with an inline error and keeps the dialog
-open) still finishes onboarding; the app just shows 0 tasks until the user retries from
-Settings.
+**Startup choice** (`startup_choice_page.dart`, 0.1.242; today-first import 0.1.243):
+shown once, right after the intro/mode picker finish on a brand-new install (§3 step
+9's `showStartupChoice`; never shown again after "Replay Introduction" — only the
+intro's own two flags are cleared there). Two cards: **Start fresh** finishes
+onboarding immediately with an empty list; **Import from Todoist** opens a dialog for
+a Todoist API token (`TodoistSyncService.testConnection`), and on success saves it
+(`Config.todoistApiToken`, `Config.todoistSyncEnabled = true`) and calls
+`TodoistSyncService.startFirstLaunchImport()` — a pull-only, first-launch-shaped
+variant of the regular two-way `syncNow()` (§4.8): it pulls just today's (and overdue)
+tasks synchronously so the dialog can close and onboarding finish right away, and
+returns a `finishInBackground()` closure — fired and forgotten — that pulls everything
+else while the user is already on the home page exploring. `syncing` (the same
+`ValueNotifier` the Settings page spinner uses) stays true until that finishes,
+driving a slim "Importing the rest of your tasks from Todoist…" banner atop the home
+page's tab view. A failed *first* connection (bad token) blocks with an inline error
+and keeps the dialog open; once connected, a background-phase failure only shows up
+in App Logs → Todoist — onboarding has already finished by then.
 
 ## 11. Build, versioning, CI
 

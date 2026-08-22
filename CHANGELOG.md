@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.243] - 2026-08-22
+- Todoist import (onboarding "Import from Todoist") now loads today's (and overdue) tasks first so the home screen opens right away, and finishes pulling everything else in the background — with a banner on the home page while it does. Web favicon now uses a crisper, correctly-sized copy of the real BestToDo logo.
+
 ## [0.1.242] - 2026-08-22
 - A brand-new install now asks whether to start with an empty task list or import straight from a Todoist account (Settings → Todoist sync also still works any time later); added a manual "Build Windows Portable Exe" GitHub Actions workflow that packages a zip with BestToDo.exe and its dependencies — no installer needed, runs on Windows 10 and 11.
 
