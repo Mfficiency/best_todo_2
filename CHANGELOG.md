@@ -2,6 +2,7 @@
 
 ## [0.1.241] - 2026-08-21
 - Todoist sync: labels now round-trip both ways as real Todoist labels (already worked, now covered end-to-end), wishlist items sync into a dedicated "Wishlist" Todoist project, and undated/unprojected tasks (the Future tab) sync into a dedicated "Future" project. Reassigning a task's Todoist project on an already-synced task (e.g. toggling wishlist status) now actually moves it there instead of only updating local bookkeeping.
+- Local build: 2026-08-22 06:17
 
 ## [0.1.240] - 2026-08-21
 - Local builds (`tool/build.sh`) now note when they finished as a "Local build" line in the changelog, so the Changelog page shows the previous build's build time
