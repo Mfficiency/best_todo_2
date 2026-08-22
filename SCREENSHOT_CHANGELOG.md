@@ -1,3 +1,33 @@
+## 2026-08-22T14:48:18.709238Z | branch: dev | source: 48abdbb
+
+- Folder: `docs/screenshots/home/20260822-144817-48abdbb`
+
+### Home Page
+![2026-08-22T14:48:18.709238Z - dev - home_page](docs/screenshots/home/20260822-144817-48abdbb/home_page.png)
+
+### Menu Open
+![2026-08-22T14:48:18.709238Z - dev - menu_open](docs/screenshots/home/20260822-144817-48abdbb/menu_open.png)
+
+### Project Board Page
+![2026-08-22T14:48:18.709238Z - dev - project_board_page](docs/screenshots/home/20260822-144817-48abdbb/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T14:48:18.709238Z - dev - project_edit_dialog](docs/screenshots/home/20260822-144817-48abdbb/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T14:48:18.709238Z - dev - projects_page](docs/screenshots/home/20260822-144817-48abdbb/projects_page.png)
+
+### Search Active
+![2026-08-22T14:48:18.709238Z - dev - search_active](docs/screenshots/home/20260822-144817-48abdbb/search_active.png)
+
+### Settings Page
+![2026-08-22T14:48:18.709238Z - dev - settings_page](docs/screenshots/home/20260822-144817-48abdbb/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T14:48:18.709238Z - dev - your_stats_page](docs/screenshots/home/20260822-144817-48abdbb/your_stats_page.png)
+
+---
+
 ## 2026-08-22T12:17:06.551762Z | branch: dev | source: 9f722a3
 
 - Folder: `docs/screenshots/home/20260822-121705-9f722a3`
