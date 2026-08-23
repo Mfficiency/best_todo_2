@@ -16,6 +16,12 @@ file is the short operational guide.
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
 - Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+- Build everything + ship: `sh tool/build.sh all --release` (alias for
+  `sh tool/build_all.sh --release`) builds the APK **and** the Windows exe,
+  stages the APK into `github_releases/`, then commits and pushes the current
+  branch so the app can download it. Switches: `SYNC=0` (no git), `PUSH=0`
+  (commit only), `WINDOWS=0`/`ANDROID=0` (one target), `REQUIRE_WINDOWS=1`
+  (a failing Windows build aborts instead of warning).
 - Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
   `github_releases/` and deletes the older ones; commit the folder — the app's About page
