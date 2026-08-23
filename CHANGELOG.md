@@ -2,6 +2,7 @@
 
 ## [0.1.260] - 2026-08-23
 - The Waiting for Approval tag is now a single tag, "Waiting_for_approval", instead of one tag per word — tasks pulled from Todoist are gated properly again, and approving a task strips the tag on the Todoist side too. Tasks still carrying the old "waiting-for-approval" spelling stay gated and get cleaned up on approval.
+- Local build: 2026-08-23 19:09
 
 ## [0.1.259] - 2026-08-23
 - Wishlist tiles are decluttered: the per-item share, copy, export, swipe and select icons are gone — those actions now live behind the swipe gestures (swipe right for Share/Copy/Export, swipe left to select). Only the release-group picker stays on the tile.
