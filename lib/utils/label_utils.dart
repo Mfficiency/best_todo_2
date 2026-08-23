@@ -14,6 +14,14 @@ const String legacyImportToken = 'old';
 /// because the feature behind it shipped (see `wishlist_shipped.dart`).
 const String autoCompletedToken = 'autocompleted';
 
+/// Label token stamped on every task newly pulled in from Todoist (see
+/// `TodoistSyncService._taskFromRemote`). Keeps it out of every list —
+/// home tabs, wishlist, project boards — until a human approves or denies
+/// it in the Waiting for Approval view (`waiting_approval_page.dart`):
+/// approving strips the token (making the task visible wherever it belongs),
+/// denying deletes the task outright.
+const String waitingApprovalToken = 'waiting-for-approval';
+
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[
   'priority-low',
@@ -51,8 +59,27 @@ String joinLabelTokens(Iterable<String> tokens) => tokens.join(', ');
 String labelKindFor(String token) {
   final lower = token.toLowerCase();
   if (priorityTokens.contains(lower)) return Label.kindPriority;
-  if (lower == legacyImportToken || lower == autoCompletedToken) {
+  if (lower == legacyImportToken ||
+      lower == autoCompletedToken ||
+      lower == waitingApprovalToken) {
     return Label.kindSystem;
   }
   return Label.kindTag;
+}
+
+/// Whether [label]'s tokens include [token] (case-insensitive).
+bool labelHasToken(String label, String token) {
+  final lower = token.toLowerCase();
+  return splitLabelTokens(label).any((t) => t.toLowerCase() == lower);
+}
+
+/// Adds [token] to [label] if not already present.
+String addLabelToken(String label, String token) =>
+    joinLabelTokens(splitLabelTokens('$label $token'));
+
+/// Removes [token] from [label], preserving the others' order.
+String removeLabelToken(String label, String token) {
+  final lower = token.toLowerCase();
+  return joinLabelTokens(
+      splitLabelTokens(label).where((t) => t.toLowerCase() != lower));
 }

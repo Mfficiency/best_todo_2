@@ -5,10 +5,12 @@ import 'package:besttodo/config.dart';
 import 'package:besttodo/models/project.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/item_repository.dart';
+import 'package:besttodo/services/item_views.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/todoist_api_client.dart';
 import 'package:besttodo/services/todoist_sync_service.dart';
+import 'package:besttodo/utils/label_utils.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -332,7 +334,8 @@ void main() {
     expect(fake.tasks, isEmpty);
   });
 
-  test('a task created in Todoist is pulled into the local list', () async {
+  test('a task created in Todoist is pulled into the local list, tagged '
+      'waiting for approval', () async {
     fake.seedTask(content: 'From Todoist', description: 'entered on the go');
 
     final entry = await TodoistSyncService.instance.syncNow();
@@ -341,6 +344,36 @@ void main() {
     final tasks = await ItemRepository.instance.loadItems();
     expect(tasks.single.title, 'From Todoist');
     expect(tasks.single.description, 'entered on the go');
+    // The Waiting for Approval view is the only place it shows up in until a
+    // human approves or denies it — see ItemViews.
+    expect(tasks.single.label, contains('waiting-for-approval'));
+    expect(ItemViews.homeBucket(tasks, 0, DateTime.now()), isEmpty);
+    expect(ItemViews.waitingApproval(tasks).single.title, 'From Todoist');
+
+    // Nothing extra is pushed back to Todoist just for the added local tag —
+    // its own fingerprint baseline already accounts for it.
+    final second = await TodoistSyncService.instance.syncNow();
+    expect(second!.itemCount, 0);
+    expect(fake.tasks.values.single['labels'], isEmpty);
+  });
+
+  test('approving a pending task removes the tag and the removal syncs back '
+      'to Todoist', () async {
+    fake.seedTask(content: 'From Todoist');
+    await TodoistSyncService.instance.syncNow();
+    final remoteId = fake.tasks.keys.single;
+
+    final tasks = await ItemRepository.instance.loadItems();
+    tasks.single.label = removeLabelToken(
+        tasks.single.label, waitingApprovalToken);
+    await ItemRepository.instance.saveItems(tasks);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    expect(fake.tasks[remoteId]!['labels'], isEmpty);
+    final reloaded = await ItemRepository.instance.loadItems();
+    expect(reloaded.single.label, isEmpty);
+    expect(ItemViews.waitingApproval(reloaded), isEmpty);
   });
 
   test('a task completed in Todoist is marked done locally', () async {
@@ -762,6 +795,11 @@ void main() {
         afterPhaseTwo.firstWhere((t) => t.title == 'Someday').dueDate,
         isNull,
       );
+      // Every task pulled by the first-launch import is "created with the
+      // Todoist workflow" too, so it starts out waiting for approval.
+      expect(afterPhaseTwo.every((t) => t.label.contains('waiting-for-approval')),
+          isTrue);
+      expect(ItemViews.waitingApproval(afterPhaseTwo), hasLength(4));
     });
 
     test('a task added locally while the background phase runs survives it',

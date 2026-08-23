@@ -36,7 +36,32 @@ void main() {
       expect(labelKindFor('priority-high'), Label.kindPriority);
       expect(labelKindFor('Priority-Low'), Label.kindPriority);
       expect(labelKindFor('old'), Label.kindSystem);
+      expect(labelKindFor('waiting-for-approval'), Label.kindSystem);
       expect(labelKindFor('urgent'), Label.kindTag);
+    });
+
+    test('labelHasToken matches case-insensitively', () {
+      expect(labelHasToken('work, Waiting-For-Approval', waitingApprovalToken),
+          isTrue);
+      expect(labelHasToken('work, urgent', waitingApprovalToken), isFalse);
+      expect(labelHasToken('', waitingApprovalToken), isFalse);
+    });
+
+    test('addLabelToken adds once and is idempotent', () {
+      expect(addLabelToken('work', waitingApprovalToken),
+          'work, waiting-for-approval');
+      expect(
+          addLabelToken('work, waiting-for-approval', waitingApprovalToken),
+          'work, waiting-for-approval');
+      expect(addLabelToken('', waitingApprovalToken), 'waiting-for-approval');
+    });
+
+    test('removeLabelToken drops only the matching token', () {
+      expect(
+          removeLabelToken('work, Waiting-For-Approval, urgent',
+              waitingApprovalToken),
+          'work, urgent');
+      expect(removeLabelToken('work', waitingApprovalToken), 'work');
     });
   });
 

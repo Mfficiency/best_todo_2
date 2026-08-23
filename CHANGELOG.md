@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.256] - 2026-08-23
+- Tasks pulled in from Todoist now arrive tagged "Waiting for Approval" and stay out of every list (Today, projects, wishlist) until reviewed in the new Waiting for Approval view (menu, under About) — approve to release it into its normal spot, or deny to delete it.
+
 ## [0.1.255] - 2026-08-23
 - Editing a task or wishlist item's labels is now a ClickUp/Sheets-style picker instead of a raw text field: current labels show as removable chips, and an "Add label" chip opens a searchable list of every label you've used, checkbox-toggled, with typing a new name offering to create and add it on the spot
 
