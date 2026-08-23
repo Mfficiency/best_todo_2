@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.259] - 2026-08-23
+- Wishlist tiles are decluttered: the per-item share, copy, export, swipe and select icons are gone — those actions now live behind the swipe gestures (swipe right for Share/Copy/Export, swipe left to select). Only the release-group picker stays on the tile.
+- Local build: 2026-08-23 18:51
+
 ## [0.1.258] - 2026-08-23
 - Wishlist swipe actions redesigned: swipe right for Share/Copy shortcuts (default: move the item back one release step), swipe left to multi-select items and copy them as a "build these" prompt for Claude, or bulk-delete them.
 - Local build: 2026-08-23 18:33
