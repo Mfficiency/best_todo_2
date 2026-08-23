@@ -92,6 +92,15 @@ else
     git push origin "$BRANCH"
     echo "    pushed $BRANCH to origin"
   fi
+
+  # The rebase above checks out the pre-commit tree for a moment, which
+  # re-creates the APK stage_local_release.dart had just pruned -- now
+  # untracked, so it lingers as ~60MB of dead weight and makes the summary
+  # below claim it is still staged. Anything untracked in here after the
+  # commit is by definition a pruned build, so drop it again.
+  for stale in $(git ls-files --others --exclude-standard github_releases); do
+    rm -f "$stale" && echo "    removed pruned leftover $stale"
+  done
 fi
 
 # --- Summary ------------------------------------------------------------

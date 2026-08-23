@@ -11,8 +11,10 @@ if [ "$1" = "all" ]; then
   exec sh tool/build_all.sh "$@"
 fi
 
-# Update version numbers in pubspec.yaml and other files.
-dart run tool/bump_version.dart
+# No version bump here: tool/bump_version.dart requires an explicit
+# `<version> [changelog entry]` (see the "bump, sync and build" workflow), so
+# calling it argument-less only printed its usage line on every build. Bump
+# first, then build:  dart run tool/bump_version.dart 0.1.258 "what changed"
 
 # Pull the latest CI test report from GitHub into assets/test_report.json so
 # this local build bundles real test results the app can show offline. Network
