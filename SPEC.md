@@ -1522,7 +1522,10 @@ list — exactly like opening a project — showing only tasks flagged `Task.isW
 everything else; they are undated (`dueDate == null`), which alone buckets them into
 the Future tab (`_tasksForTab` sends null-due tasks to the future bucket), where they
 render as full, editable task tiles whose `TaskTile` subtitle shows the description, a
-small "wish" tag and the task's own labels as tags. The schedule view groups undated
+small "wish" tag and the task's own labels as tags. Label tags are not wish-only: from
+0.1.252 `TaskTile._buildSubtitle` renders every label token on any task (plain,
+project-assigned or wish), so a task tagged `urgent` shows that tag in the home list;
+the subtitle is still null when a task has no project, no wish flag and no labels. The schedule view groups undated
 tasks under "Someday". The home search matches them like any task. So: the item
 overview (home) shows all items with all properties/tags; the Wishlist shows only wish
 items and never anything date-related.

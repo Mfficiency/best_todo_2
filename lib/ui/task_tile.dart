@@ -505,17 +505,17 @@ class _TaskTileState extends State<TaskTile>
 
   /// Small tags shown under the title: "Project 1" / "To-Do" for a task
   /// assigned to a project (listens to the project list so renames update
-  /// everywhere), plus "wish" and the task's own labels for wishlist items —
-  /// so the main list shows every property a wish carries. Returns null when
-  /// there is nothing to show.
+  /// everywhere), "wish" for wishlist items, plus every label the task
+  /// carries — so the main list shows the task's properties whatever kind of
+  /// task it is. Returns null when there is nothing to show.
   Widget? _buildSubtitle() {
     final task = widget.task;
-    if (task.projectId == null && !task.isWish) return null;
     final labels = task.label
         .split(RegExp(r'[,\s]+'))
         .map((label) => label.trim())
         .where((label) => label.isNotEmpty)
         .toList();
+    if (task.projectId == null && !task.isWish && labels.isEmpty) return null;
     return ValueListenableBuilder<List<Project>>(
       valueListenable: ProjectService.instance.projects,
       builder: (context, _, __) => Padding(
@@ -533,10 +533,8 @@ class _TaskTileState extends State<TaskTile>
                   _tag(ProjectService.instance.nameOf(task.projectId)),
                   _tag(ProjectService.stageLabel(task.kanbanStatus)),
                 ],
-                if (task.isWish) ...[
-                  _tag('wish'),
-                  for (final label in labels) _tag(label),
-                ],
+                if (task.isWish) _tag('wish'),
+                for (final label in labels) _tag(label),
               ],
             ),
           ],

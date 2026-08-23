@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.252] - 2026-08-23
+- Labels now show as tags on every task in the home list, not just wishlist items — a task tagged "urgent" or "priority-high" shows that tag under its title wherever it appears
+
 ## [0.1.251] - 2026-08-22
 - Fix: tapping a schedule-view section tab that's scrolled far offscreen now actually scrolls to it (was a silent no-op)
 
