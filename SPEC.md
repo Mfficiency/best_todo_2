@@ -1552,6 +1552,44 @@ clipboard via `_WishlistPageState.clipboardText` — title, then description, th
 each on its own line, empty parts skipped — and confirms with a `Copied "<title>"`
 snackbar.
 
+**Release grouping (0.1.254):** the wishlist is sectioned like the home page's due-date
+tabs, top to bottom: **Newly implemented**, **Next release**, **Soon**, **Backlog**
+(`WishReleaseGroup` in `wishlist_page.dart`). An empty non-"Next release" section is
+skipped entirely; "Next release" always renders (even at 0) since it carries the
+"Propose for next" button. Membership is decided purely by tags, via
+`wishReleaseGroupOf(task, currentVersion)`:
+- **Newly implemented** is automatic and not user-settable: it's the shipped-wish
+  registry (`wishlist_shipped.dart`) restricted to the app's *own running version* —
+  `shippedWishesByUid[task.uid]?.version == currentVersion` — so a backlog item that
+  auto-completed this release shows here, and drops back to its tag-based group the
+  moment the next version ships (`currentVersion` comes from `Config.version`, loaded
+  async in `initState`; blank until then, which no registry version ever matches).
+- **Next release** / **Soon** follow the `release-next` / `release-soon` label tokens
+  (`releaseNextToken`/`releaseSoonToken`/`releaseGroupTokens` in `label_utils.dart`,
+  ordinary `Label.kindTag` tokens — no new label kind). Anything left over, including
+  a task whose shipped-version match has expired, is **Backlog**.
+- `setWishReleaseGroup(task, group)` rewrites just the release tag (keeping every other
+  label), mirroring `setWishPriority`; moving to Backlog or Newly-implemented just
+  strips `release-next`/`release-soon`.
+
+Every tile except a "Newly implemented" one carries a "Move to release group" icon
+button (`Icons.drive_file_move_outline`, a `PopupMenuButton` next to Copy) offering
+Next release / Soon / Backlog with a checkmark on the current group — same shape as the
+sort menu. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
+native labels (§ Sync), tagging an item `release-next` in Todoist (by hand, or via
+"Propose for next" below) moves it here on the next sync, with no extra plumbing.
+
+**"Propose for next" (0.1.254):** a `TextButton.icon` (`Icons.auto_awesome`) on the
+"Next release" section header. There is no in-app model call — it copies
+`proposeForNextPrompt(...)` to the clipboard: an instruction for Claude to review the
+Todoist backlog, tag roughly 3 items `release-next` and a few more `release-soon`
+(the "~3 items per release" target is a guideline in the prompt text, not an enforced
+cap), plus a snapshot of every open, non-"Newly implemented" Backlog/Soon item
+(`- <title> [<tags>]`) so Claude has titles and existing tags without cross-referencing
+anything first. The user pastes the prompt into a Claude session with Todoist access;
+BestToDo picks up the resulting tag changes on its next Todoist sync. Confirms with a
+snackbar reminding the user to sync after pasting.
+
 **Clickable URLs (0.1.148):** http/https URLs in descriptions are auto-linkified by
 `LinkifiedText` (`lib/utils/linkified_text.dart`): a StatefulWidget that renders
 `Text.rich` with underlined, primary-colored link spans (trailing sentence punctuation
