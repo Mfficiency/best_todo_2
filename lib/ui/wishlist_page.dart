@@ -17,6 +17,7 @@ import '../services/item_views.dart';
 import '../services/wishlist_shipped.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
+import 'label_picker.dart';
 import 'subpage_app_bar.dart';
 
 enum _WishlistSortOrder { priority, newest, oldest, title }
@@ -661,7 +662,7 @@ class _WishEditDialog extends StatefulWidget {
 class _WishEditDialogState extends State<_WishEditDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
-  late final TextEditingController _labelController;
+  late String _label;
 
   @override
   void initState() {
@@ -669,14 +670,13 @@ class _WishEditDialogState extends State<_WishEditDialog> {
     _titleController = TextEditingController(text: widget.item?.title ?? '');
     _descriptionController =
         TextEditingController(text: widget.item?.description ?? '');
-    _labelController = TextEditingController(text: widget.item?.label ?? '');
+    _label = widget.item?.label ?? '';
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _labelController.dispose();
     super.dispose();
   }
 
@@ -698,12 +698,10 @@ class _WishEditDialogState extends State<_WishEditDialog> {
             // Labels and their priority shortcuts sit right under the title —
             // most wishes are a title plus a priority; the description is the
             // exception and lives at the bottom.
-            TextField(
-              controller: _labelController,
-              decoration: const InputDecoration(
-                labelText: 'Labels / tags',
-                hintText: 'priority-high, gift, someday',
-              ),
+            LabelPickerField(
+              value: _label,
+              fieldLabel: 'Labels / tags',
+              onChanged: (v) => setState(() => _label = v),
             ),
             const SizedBox(height: 12),
             Align(
@@ -719,12 +717,9 @@ class _WishEditDialogState extends State<_WishEditDialog> {
               children: [
                 for (final priority in wishPriorityLabels)
                   OutlinedButton(
-                    onPressed: () {
-                      _labelController.text = widget.labelTextWithPriority(
-                        _labelController.text,
-                        priority,
-                      );
-                    },
+                    onPressed: () => setState(() {
+                      _label = widget.labelTextWithPriority(_label, priority);
+                    }),
                     child: Text(priority.replaceFirst('priority-', '')),
                   ),
               ],
@@ -750,7 +745,7 @@ class _WishEditDialogState extends State<_WishEditDialog> {
             Navigator.of(context).pop(_WishEditResult(
               title,
               _descriptionController.text.trim(),
-              _labelController.text.trim(),
+              _label.trim(),
             ));
           },
           child: const Text('Save'),
