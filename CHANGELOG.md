@@ -3,6 +3,7 @@
 ## [0.1.261] - 2026-08-23
 - Wishlist swipe options: the countdown before the default action (moving an item back one release step) is now 8 seconds instead of the app-wide 5, each Share/Copy/Export button now shows its icon next to its label, and a Delete button was added so a single wish can be deleted straight from the swipe panel.
 - Fix: tasks still waiting for Todoist approval could leak into the home page's schedule (calendar) view, which built its list straight from the raw task list instead of going through the same filter as the tab list view.
+- Local build: 2026-08-23 21:09
 
 ## [0.1.260] - 2026-08-23
 - The Waiting for Approval tag is now a single tag, "Waiting_for_approval", instead of one tag per word — tasks pulled from Todoist are gated properly again, and approving a task strips the tag on the Todoist side too. Tasks still carrying the old "waiting-for-approval" spelling stay gated and get cleaned up on approval.
