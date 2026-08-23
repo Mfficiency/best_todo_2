@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.1.257+257
+version: 0.1.258+258
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -29,6 +29,7 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^4.1.0
   http: ^1.2.2
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:
