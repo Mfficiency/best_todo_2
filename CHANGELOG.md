@@ -2,6 +2,7 @@
 
 ## [0.1.258] - 2026-08-23
 - Wishlist swipe actions redesigned: swipe right for Share/Copy shortcuts (default: move the item back one release step), swipe left to multi-select items and copy them as a "build these" prompt for Claude, or bulk-delete them.
+- Local build: 2026-08-23 18:33
 
 ## [0.1.257] - 2026-08-23
 - Fix: the Windows exe kept showing the old default icon after rebuilding — the app icon .ico was already correct, but Ninja had no way to know Runner.rc depended on it, so incremental Windows builds never re-embedded a changed icon. A clean/first Windows build after this fix picks it up.
