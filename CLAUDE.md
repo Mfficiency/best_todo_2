@@ -17,20 +17,23 @@ file is the short operational guide.
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
 - Release APK: `flutter build apk --release` (signed with the committed debug keystore)
 - Build everything + ship: `sh tool/build.sh all --release` (alias for
-  `sh tool/build_all.sh --release`) builds the APK **and** the Windows exe,
-  stages the APK into `github_releases/`, then commits and pushes the current
-  branch so the app can download it. Switches: `SYNC=0` (no git), `PUSH=0`
-  (commit only), `WINDOWS=0`/`ANDROID=0` (one target), `REQUIRE_WINDOWS=1`
-  (a failing Windows build aborts instead of warning).
+  `sh tool/build_all.sh --release`), or on Windows without Git Bash/WSL:
+  `powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release`.
+  Builds the APK **and** the Windows exe, stages the APK into `github_releases/`,
+  then commits and pushes the current branch so the app can download it.
+  Switches: `SYNC=0` (no git), `PUSH=0` (commit only), `WINDOWS=0`/`ANDROID=0`
+  (one target), `REQUIRE_WINDOWS=1` (a failing Windows build aborts instead of
+  warning).
 - Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
   `github_releases/` and deletes the older ones; commit the folder — the app's About page
   downloads the newest from there ("Download & install") and the other one for
   "Go back to <version>" (`UpdateService.releasesRef` = the `dev` branch)
-- Local build time: `tool/build.sh` runs `dart run tool/append_build_time.dart` after a
-  successful `flutter build`, writing/updating a "Local build: <time>" line in the newest
-  CHANGELOG.md entry. Since CHANGELOG.md is bundled as an asset by that same build, the
-  Changelog page only ever shows the *previous* build's time — expected, not a bug.
+- Local build time: `tool/build.sh`/`tool/build.ps1` runs
+  `dart run tool/append_build_time.dart` after a successful `flutter build`,
+  writing/updating a "Local build: <time>" line in the newest CHANGELOG.md entry.
+  Since CHANGELOG.md is bundled as an asset by that same build, the Changelog page
+  only ever shows the *previous* build's time — expected, not a bug.
 - Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
   (or `PUBLISH_APK=1 sh tool/build.sh apk --release` to build + publish). Creates
   release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk`; the About

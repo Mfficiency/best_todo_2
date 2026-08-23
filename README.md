@@ -56,6 +56,13 @@ dart run tool/bump_version.dart 0.1.59+29 "swipe both ways"
 bash tool/build.sh apk
 ```
 
+On Windows without Git Bash or WSL, run the native PowerShell wrapper from
+`cmd.exe`:
+
+```bat
+powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release
+```
+
 For example `bash tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.
 
