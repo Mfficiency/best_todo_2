@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -684,7 +683,7 @@ class _WishlistPageState extends State<WishlistPage> {
                     padding: EdgeInsets.all(24),
                     child: Text(
                       'No wishlist items yet. Add ideas here; swipe right to '
-                      'share/copy, swipe left to select.',
+                      'share/copy/export, swipe left to select.',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -894,7 +893,7 @@ class _WishEditDialogState extends State<_WishEditDialog> {
 
 /// A wishlist item rendered like a home-page task tile (checkbox, title,
 /// labels — never a due date) with the wishlist swipe actions: swiping
-/// toward the options side opens Share/Copy shortcuts and moves the item
+/// toward the options side opens Share/Copy/Export shortcuts and moves the item
 /// back one release step ([WishlistPage]'s [regressWishReleaseGroup]) when
 /// the countdown runs out; swiping toward the other side starts multi-select
 /// ([onStartSelection])/toggles it ([onToggleSelected]) instead of deleting —
@@ -939,7 +938,6 @@ class _WishTile extends StatefulWidget {
 class _WishTileState extends State<_WishTile>
     with SingleTickerProviderStateMixin {
   bool _optionsOpen = false;
-  bool _isEmulator = false;
   Timer? _timer;
   late final AnimationController _progressController;
   double _dragOffset = 0;
@@ -952,26 +950,6 @@ class _WishTileState extends State<_WishTile>
       vsync: this,
       duration: Config.delayDuration,
     );
-    _checkEmulator();
-  }
-
-  Future<void> _checkEmulator() async {
-    final plugin = DeviceInfoPlugin();
-    var isEmulator = true;
-    try {
-      if (kIsWeb) {
-        isEmulator = true;
-      } else if (defaultTargetPlatform == TargetPlatform.android) {
-        final androidInfo = await plugin.androidInfo;
-        isEmulator = !androidInfo.isPhysicalDevice;
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        final iosInfo = await plugin.iosInfo;
-        isEmulator = !iosInfo.isPhysicalDevice;
-      }
-    } catch (_) {
-      isEmulator = true;
-    }
-    if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
   @override
@@ -1008,6 +986,11 @@ class _WishTileState extends State<_WishTile>
   void _copy() {
     _closeOptions();
     widget.onCopy();
+  }
+
+  void _export() {
+    _closeOptions();
+    widget.onExport();
   }
 
   List<String> _labels() => widget.item.label
@@ -1069,65 +1052,37 @@ class _WishTileState extends State<_WishTile>
               ],
             ),
       onTap: widget.selecting ? widget.onToggleSelected : widget.onEdit,
-      trailing: widget.selecting
+      // No per-item action icons: share/copy/export live behind the swipe
+      // options overlay and selection starts with a swipe, so the only
+      // trailing control left is the release-group picker (which has no
+      // swipe equivalent — swiping only steps an item back one group).
+      trailing: widget.selecting ||
+              widget.releaseGroup == WishReleaseGroup.newlyImplemented
           ? null
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_isEmulator) ...[
-                  IconButton(
-                    icon: const Icon(Icons.swipe),
-                    tooltip: 'Wishlist swipe options',
-                    onPressed: _startSwipeOptions,
+          : PopupMenuButton<WishReleaseGroup>(
+              tooltip: 'Move to release group',
+              icon: const Icon(Icons.drive_file_move_outline),
+              initialValue: widget.releaseGroup,
+              onSelected: widget.onSetReleaseGroup,
+              itemBuilder: (context) => [
+                for (final group in const [
+                  WishReleaseGroup.nextRelease,
+                  WishReleaseGroup.soon,
+                  WishReleaseGroup.backlog,
+                ])
+                  PopupMenuItem(
+                    value: group,
+                    child: Row(
+                      children: [
+                        if (group == widget.releaseGroup)
+                          const Icon(Icons.check, size: 18)
+                        else
+                          const SizedBox(width: 18),
+                        const SizedBox(width: 8),
+                        Text(wishReleaseGroupTitle(group)),
+                      ],
+                    ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.checklist),
-                    tooltip: 'Select',
-                    onPressed: widget.onStartSelection,
-                  ),
-                ],
-                if (widget.releaseGroup != WishReleaseGroup.newlyImplemented)
-                  PopupMenuButton<WishReleaseGroup>(
-                    tooltip: 'Move to release group',
-                    icon: const Icon(Icons.drive_file_move_outline),
-                    initialValue: widget.releaseGroup,
-                    onSelected: widget.onSetReleaseGroup,
-                    itemBuilder: (context) => [
-                      for (final group in const [
-                        WishReleaseGroup.nextRelease,
-                        WishReleaseGroup.soon,
-                        WishReleaseGroup.backlog,
-                      ])
-                        PopupMenuItem(
-                          value: group,
-                          child: Row(
-                            children: [
-                              if (group == widget.releaseGroup)
-                                const Icon(Icons.check, size: 18)
-                              else
-                                const SizedBox(width: 18),
-                              const SizedBox(width: 8),
-                              Text(wishReleaseGroupTitle(group)),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                IconButton(
-                  tooltip: 'Share wishlist item',
-                  icon: const Icon(Icons.share_outlined),
-                  onPressed: widget.onShare,
-                ),
-                IconButton(
-                  tooltip: 'Copy wishlist item',
-                  icon: const Icon(Icons.copy_outlined),
-                  onPressed: widget.onCopy,
-                ),
-                IconButton(
-                  tooltip: 'Export wishlist item',
-                  icon: const Icon(Icons.ios_share_outlined),
-                  onPressed: widget.onExport,
-                ),
               ],
             ),
     );
@@ -1154,6 +1109,10 @@ class _WishTileState extends State<_WishTile>
                       TextButton(
                         onPressed: _copy,
                         child: const Text('Copy'),
+                      ),
+                      TextButton(
+                        onPressed: _export,
+                        child: const Text('Export'),
                       ),
                     ],
                   ),

@@ -1556,11 +1556,11 @@ StatefulWidget owning its controllers); edits mutate the task in place so uid/pr
 recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
 exported_at, wishlist_items: [...]}`) remain.
 
-**Copy to clipboard (0.1.236):** every wish tile carries a "Copy wishlist item" button
-(`Icons.copy_outlined`, left of the export button) that puts the plain-text item on the
-clipboard via `_WishlistPageState.clipboardText` — title, then description, then labels,
-each on its own line, empty parts skipped — and confirms with a `Copied "<title>"`
-snackbar.
+**Copy to clipboard (0.1.236, moved behind the swipe panel 0.1.259):** "Copy" puts the
+plain-text item on the clipboard via `_WishlistPageState.clipboardText` — title, then
+description, then labels, each on its own line, empty parts skipped — and confirms with a
+`Copied "<title>"` snackbar. Since 0.1.259 it lives only in the options-swipe panel; the
+per-tile `Icons.copy_outlined` button is gone.
 
 **Release grouping (0.1.254):** the wishlist is sectioned like the home page's due-date
 tabs, top to bottom: **Newly implemented**, **Next release**, **Soon**, **Backlog**
@@ -1583,9 +1583,10 @@ skipped entirely; "Next release" always renders (even at 0) since it carries the
   strips `release-next`/`release-soon`.
 
 Every tile except a "Newly implemented" one carries a "Move to release group" icon
-button (`Icons.drive_file_move_outline`, a `PopupMenuButton` next to Copy) offering
-Next release / Soon / Backlog with a checkmark on the current group — same shape as the
-sort menu. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
+button (`Icons.drive_file_move_outline`, a `PopupMenuButton`) offering Next release /
+Soon / Backlog with a checkmark on the current group — same shape as the sort menu.
+Since 0.1.259 it is the tile's *only* trailing control (see Swipes below): the swipe
+default only steps an item back one group, so an explicit picker has no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
 native labels (§ Sync), tagging an item `release-next` in Todoist (by hand, or via
 "Propose for next" below) moves it here on the next sync, with no extra plumbing.
 
@@ -1608,16 +1609,16 @@ excluded), owns and disposes the spans' `TapGestureRecognizer`s, and opens links
 wins the gesture arena over the tile's own `onTap`, so it never opens the edit dialog.
 Used by the wish tile subtitle and by `TaskDetailPage` (description and note).
 
-**Swipes (0.1.101, redesigned 0.1.258):** same gesture mechanics as `TaskTile` (drag
-with AnimatedSlide, 100 px/500 velocity thresholds, directions honor
-`Config.swipeLeftDelete`, GestureDetector on Android/web, emulator/desktop fallback
-buttons), but the two swipe directions no longer prioritize/delete:
+**Swipes (0.1.101, redesigned 0.1.258, sole entry point 0.1.259):** same gesture
+mechanics as `TaskTile` (drag with AnimatedSlide, 100 px/500 velocity thresholds,
+directions honor `Config.swipeLeftDelete`, GestureDetector on Android/web), but the two
+swipe directions no longer prioritize/delete:
 
-- **Options swipe** (right by default) opens a Share/Copy shortcut row with the
+- **Options swipe** (right by default) opens a Share/Copy/Export shortcut row with the
   `Config.delayDuration` countdown bar. "Share" calls `SharePlus.instance.share`
-  (`share_plus`) with `clipboardText(item)`, summoning the OS share sheet; "Copy" is the
-  same clipboard copy as the "Copy wishlist item" trailing button. Letting the countdown
-  run out applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
+  (`share_plus`) with `clipboardText(item)`, summoning the OS share sheet; "Copy" puts
+  `clipboardText(item)` on the clipboard; "Export" (0.1.259) writes the single-item JSON
+  export. Letting the countdown run out applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
   item back one release step (nextRelease→soon, soon→backlog; no-op for Backlog and for
   the automatic Newly-implemented group). Swiping back toward the other side cancels, as
   on the home list.
@@ -1634,13 +1635,17 @@ buttons), but the two swipe directions no longer prioritize/delete:
   Restoring a wish from Deleted Items keeps `dueDate` null (other restores get today) so
   it lands back in the wishlist, not Today.
 
-Per-item Share/Copy/Export/"Move to release group" trailing icon buttons remain for
-platforms where swiping doesn't apply; the emulator/desktop fallback row is a "Wishlist
-swipe options" icon (opens the same Share/Copy panel) and a "Select" icon (starts
-selection with that item), replacing the old prioritize/delete pair. Quick-priority
-setting moved entirely into the add/edit dialog's priority buttons — `wishPriorityRank`/
-`setWishPriority`/`bumpWishPriority` still back sorting and that dialog, just no longer
-the swipe panel.
+**Trailing icons removed (0.1.259):** the per-tile Share / Copy / Export icon buttons and
+the emulator/desktop fallback pair ("Wishlist swipe options" + "Select") are gone —
+every one of those actions is reachable by swiping, so the icons were pure duplication
+crowding the tile. Export joined the options panel as a third button so nothing was lost,
+and `device_info_plus` emulator detection dropped out of `wishlist_page.dart` with the
+fallback row. Only "Move to release group" survives as a trailing control. Consequence:
+on desktop (where the GestureDetector is Android/web-only) per-item share/copy/export are
+no longer reachable — acceptable, as Windows is a dev/screenshot target. Quick-priority
+setting had already moved entirely into the add/edit dialog's priority buttons —
+`wishPriorityRank`/`setWishPriority`/`bumpWishPriority` still back sorting and that
+dialog, just no longer the swipe panel.
 
 **Legacy `wishlist.json` migration (0.1.101):** `loadTaskList()` calls
 `_migrateWishlistIntoTasks`: any items still in `wishlist.json` (a pre-0.1.101 store)

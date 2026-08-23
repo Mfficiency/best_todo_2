@@ -111,7 +111,7 @@ void main() {
     expect(find.textContaining('Due'), findsNothing);
   });
 
-  testWidgets('the copy button puts the item on the clipboard',
+  testWidgets('the swipe Copy shortcut puts the item on the clipboard',
       (tester) async {
     final copied = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -139,8 +139,10 @@ void main() {
       marker: 'Buy a telescope',
     );
 
-    // Every item carries its own copy button, not just the selected one.
-    await tester.tap(find.byTooltip('Copy wishlist item'));
+    // Copy lives behind the swipe options overlay — no per-tile icon.
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    await tester.tap(find.text('Copy'));
     await tester.pump();
 
     expect(copied,
