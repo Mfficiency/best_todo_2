@@ -870,6 +870,12 @@ class TodoistSyncService {
     }
   }
 
+  /// Builds a brand-new local task from a Todoist-side task this app has
+  /// never seen before — first-launch import and step 4's "brand-new
+  /// Todoist tasks" pull both funnel through here. Every such task is a
+  /// task "created with the Todoist workflow", so it gets stamped with
+  /// [waitingApprovalToken] and stays out of every list until a human
+  /// approves or denies it in the Waiting for Approval page.
   Task _taskFromRemote(
     Map<String, dynamic> remoteTask,
     Map<String, String> todoistToLocalProject,
@@ -887,7 +893,7 @@ class TodoistSyncService {
       title: remoteTask['content'] as String? ?? '',
       description: parts.visible,
       note: meta?['note'] as String? ?? '',
-      label: _labelsFromRemote(remoteTask),
+      label: addLabelToken(_labelsFromRemote(remoteTask), waitingApprovalToken),
       createdAt: DateTime.now(),
       projectId: (mapped == _wishlistProjectKey || mapped == _futureProjectKey)
           ? null

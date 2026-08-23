@@ -53,6 +53,7 @@ import 'streak_flame_button.dart';
 import 'task_tile.dart';
 import 'test_results_page.dart';
 import 'usage_data_page.dart';
+import 'waiting_approval_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
 
@@ -2614,6 +2615,7 @@ class _HomePageState extends State<HomePage>
     StreakService.instance.syncKnownTasks(_tasks);
     final enabledTools =
         _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
+    final pendingApprovalCount = ItemViews.waitingApproval(_tasks).length;
     final scaffold = Scaffold(
       key: homeScaffoldKey,
       drawer: Drawer(
@@ -2671,6 +2673,32 @@ class _HomePageState extends State<HomePage>
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AboutPage()),
                 );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.pending_actions),
+              title: const Text('Waiting for Approval'),
+              trailing: pendingApprovalCount > 0
+                  ? CircleAvatar(
+                      radius: 10,
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      child: Text(
+                        '$pendingApprovalCount',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onError,
+                        ),
+                      ),
+                    )
+                  : null,
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                          builder: (_) => const WaitingApprovalPage()),
+                    )
+                    .then((_) => _reloadTasksFromStorage());
               },
             ),
             if (Config.isFeatureEnabled('changelog'))

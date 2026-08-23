@@ -99,4 +99,46 @@ void main() {
           ['todo', 'ongoing']);
     });
   });
+
+  group('waiting for approval', () {
+    Task pending(String title) =>
+        Task(title: title, label: 'waiting-for-approval');
+
+    test('a task tagged waiting-for-approval is hidden from every other '
+        'view', () {
+      final waiting = pending('from todoist');
+      final ok = Task(title: 'normal', dueDate: today);
+      final wish = Task(title: 'wish', isWish: true);
+      final waitingWish = pending('wish pending')..isWish = true;
+      final boardTask = Task(title: 'board', projectId: 'p1');
+      final waitingBoard = pending('board pending')..projectId = 'p1';
+
+      expect(
+          ItemViews.homeBucket([waiting..dueDate = today, ok], 0, today)
+              .map((t) => t.title),
+          ['normal']);
+      expect(ItemViews.wishlist([wish, waitingWish]).map((t) => t.title),
+          ['wish']);
+      expect(ItemViews.active([ok, waiting]).map((t) => t.title), ['normal']);
+      expect(
+          ItemViews.projectTasks([boardTask, waitingBoard], 'p1')
+              .map((t) => t.title),
+          ['board']);
+      expect(
+          ItemViews.boardColumn([boardTask, waitingBoard], 'p1',
+                  Task.kanbanTodo)
+              .map((t) => t.title),
+          ['board']);
+    });
+
+    test('waitingApproval lists only pending, non-deleted tasks', () {
+      final waiting = pending('pending');
+      final approved = Task(title: 'approved');
+      final deletedWaiting = pending('gone')..deletedAt = DateTime(2026, 7, 1);
+      expect(
+          ItemViews.waitingApproval([waiting, approved, deletedWaiting])
+              .map((t) => t.title),
+          ['pending']);
+    });
+  });
 }
