@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.255] - 2026-08-23
+- Editing a task or wishlist item's labels is now a ClickUp/Sheets-style picker instead of a raw text field: current labels show as removable chips, and an "Add label" chip opens a searchable list of every label you've used, checkbox-toggled, with typing a new name offering to create and add it on the spot
+
 ## [0.1.254] - 2026-08-23
 - Wishlist items now group into release sections (Newly implemented, Next release, Soon, Backlog) decided by tags; move an item between groups with its new "Move to release group" menu, and use "Propose for next" above Next release to copy a prompt for Claude to tag ~3 Todoist backlog items for the next release.
 

@@ -275,6 +275,15 @@ when all tokens are known, nothing loads at startup). Kinds derive from the toke
 `priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
 tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
 
+**Label picker (0.1.255):** `LabelPickerField` (`lib/ui/label_picker.dart`) replaces the
+raw comma-separated label text field everywhere a task's `label` is edited (task-tile
+inline editor, wishlist add/edit dialog). Current tokens render as removable `InputChip`s;
+an "Add label" chip opens a dialog with a search/create field over every known label
+(`LabelService.instance.labels`, checkbox-toggled) — typing a name that isn't already a
+label offers "Add "<name>"" to create and select it in one tap. Selection is staged in
+the dialog and only committed (chips update, `onChanged` fires) on "Done"; "Cancel"
+discards it.
+
 ### 4.2e Auto-tagging (0.1.229, grouped dictionary 0.1.249)
 
 `AutoTagGroup` (`lib/models/auto_tag_group.dart`: tag, `keywords` list) + `AutoTagService`
@@ -350,9 +359,10 @@ swept to Deleted at day rollover.
 Moving/rescheduling a child detaches it (clears parent linkage). Regenerated after load,
 import, and any parent edit.
 
-**Inline editing:** tapping a tile expands it — title/description/note/label fields,
-due-date picker, recurring switch (+interval/end for parents), a Notify bell, collapse
-button. Edits persist on change/focus loss.
+**Inline editing:** tapping a tile expands it — title/description/note text fields, a
+`LabelPickerField` (§4.2c) for labels, due-date picker, recurring switch (+interval/end
+for parents), a Notify bell, collapse button. Text fields persist on focus loss; the
+label picker persists immediately on each add/remove.
 
 **Notify bell (delay sheet 0.1.233):** the bell asks *when* first — a modal sheet headed
 `Notify me about "<title>"` offering In 5 minutes / In 20 minutes / In 1 hour
