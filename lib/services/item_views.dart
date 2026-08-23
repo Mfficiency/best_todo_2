@@ -31,8 +31,7 @@ class ItemViews {
   /// [waitingApprovalToken] and stays out of every other view until a human
   /// approves or denies it in the Waiting for Approval page — see that
   /// token's doc.
-  static bool _isApproved(Task task) =>
-      !hasWaitingApprovalToken(task.label);
+  static bool isApproved(Task task) => !hasWaitingApprovalToken(task.label);
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
@@ -69,7 +68,7 @@ class ItemViews {
   }) {
     final list = tasks
         .where((t) =>
-            _isApproved(t) &&
+            isApproved(t) &&
             (where == null || where(t)) &&
             inHomeBucket(t, tabIndex, today))
         .toList();
@@ -79,16 +78,16 @@ class ItemViews {
 
   /// The wishlist: wish-flagged tasks, exactly like opening a project.
   static List<Task> wishlist(List<Task> tasks) =>
-      tasks.where((t) => t.isWish && _isApproved(t)).toList();
+      tasks.where((t) => t.isWish && isApproved(t)).toList();
 
   /// All non-deleted tasks (the Projects page's top pane).
   static List<Task> active(List<Task> tasks) =>
-      tasks.where((t) => t.deletedAt == null && _isApproved(t)).toList();
+      tasks.where((t) => t.deletedAt == null && isApproved(t)).toList();
 
   /// A project's tasks, regardless of board stage.
   static List<Task> projectTasks(List<Task> tasks, String projectId) => tasks
       .where((t) =>
-          t.deletedAt == null && t.projectId == projectId && _isApproved(t))
+          t.deletedAt == null && t.projectId == projectId && isApproved(t))
       .toList();
 
   /// One Kanban column of a project's board.
@@ -99,12 +98,12 @@ class ItemViews {
               t.deletedAt == null &&
               t.projectId == projectId &&
               t.kanbanStatus == stage &&
-              _isApproved(t))
+              isApproved(t))
           .toList();
 
   /// Tasks pulled from Todoist that are still waiting for a human decision
   /// (see [waitingApprovalToken]) — the Waiting for Approval page's list.
   static List<Task> waitingApproval(List<Task> tasks) => tasks
-      .where((t) => t.deletedAt == null && !_isApproved(t))
+      .where((t) => t.deletedAt == null && !isApproved(t))
       .toList();
 }

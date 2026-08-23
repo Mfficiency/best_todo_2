@@ -2541,9 +2541,11 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildScheduleBody() {
     final query = _searchQuery.trim().toLowerCase();
-    final visibleTasks = query.isEmpty
-        ? _tasks
-        : _tasks.where((t) => _matchesSearch(t, query)).toList();
+    final visibleTasks = _tasks
+        .where((t) =>
+            ItemViews.isApproved(t) &&
+            (query.isEmpty || _matchesSearch(t, query)))
+        .toList();
     return ScheduleView(
       key: _scheduleViewKey,
       tasks: visibleTasks,

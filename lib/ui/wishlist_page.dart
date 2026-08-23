@@ -132,6 +132,13 @@ void regressWishReleaseGroup(Task task, String currentVersion) {
   }
 }
 
+/// Countdown before the options-swipe panel's progress bar "sweeps" across
+/// and applies its default action ([regressWishReleaseGroup]). Deliberately
+/// longer than the app-wide swipe-delete undo delay ([Config.delayDuration]):
+/// misreading one of four buttons here costs more than misreading a single
+/// undo action.
+const Duration wishlistSweepDelay = Duration(seconds: 8);
+
 /// Section title shown above a group's items.
 String wishReleaseGroupTitle(WishReleaseGroup group) {
   switch (group) {
@@ -198,8 +205,8 @@ String buildSelectedWishesPrompt(List<Task> items) {
 /// opening a project — showing only tasks flagged [Task.isWish]. The full
 /// item overview (the home page) shows the same tasks with all their
 /// properties and tags; here they render as plain to-do tiles with no due
-/// dates. Swiping right opens Share/Copy shortcuts, with the
-/// [Config.delayDuration] countdown defaulting to moving the item back one
+/// dates. Swiping right opens Share/Copy/Export/Delete shortcuts, with the
+/// [wishlistSweepDelay] countdown defaulting to moving the item back one
 /// release step ([regressWishReleaseGroup]); swiping left enters multi-select
 /// mode, where the app bar's "Copy selected as prompt" action puts a
 /// build-these-items prompt on the clipboard for pasting into Claude.
@@ -719,6 +726,7 @@ class _WishlistPageState extends State<WishlistPage> {
                             onCopy: () => _copyItem(item),
                             onShare: () => _shareItem(item),
                             onExport: () => _exportItem(item),
+                            onDelete: () => _deleteItems([item]),
                             onRegressRelease: () => _regressRelease(item),
                             onSetReleaseGroup: (newGroup) =>
                                 _setReleaseGroup(item, newGroup),
@@ -893,12 +901,13 @@ class _WishEditDialogState extends State<_WishEditDialog> {
 
 /// A wishlist item rendered like a home-page task tile (checkbox, title,
 /// labels — never a due date) with the wishlist swipe actions: swiping
-/// toward the options side opens Share/Copy/Export shortcuts and moves the item
-/// back one release step ([WishlistPage]'s [regressWishReleaseGroup]) when
-/// the countdown runs out; swiping toward the other side starts multi-select
-/// ([onStartSelection])/toggles it ([onToggleSelected]) instead of deleting —
-/// deleting now happens in bulk from the selection app bar. Directions follow
-/// [Config.swipeLeftDelete] like the home list.
+/// toward the options side opens Share/Copy/Export/Delete shortcuts and moves
+/// the item back one release step ([WishlistPage]'s [regressWishReleaseGroup])
+/// when the countdown runs out; swiping toward the other side starts
+/// multi-select ([onStartSelection])/toggles it ([onToggleSelected]) instead
+/// of deleting — deleting a single item now lives in the options panel
+/// above, and the selection app bar still deletes several at once. Directions
+/// follow [Config.swipeLeftDelete] like the home list.
 class _WishTile extends StatefulWidget {
   final Task item;
   final WishReleaseGroup releaseGroup;
@@ -911,6 +920,7 @@ class _WishTile extends StatefulWidget {
   final VoidCallback onCopy;
   final VoidCallback onShare;
   final VoidCallback onExport;
+  final VoidCallback onDelete;
   final VoidCallback onRegressRelease;
   final void Function(WishReleaseGroup group) onSetReleaseGroup;
 
@@ -927,6 +937,7 @@ class _WishTile extends StatefulWidget {
     required this.onCopy,
     required this.onShare,
     required this.onExport,
+    required this.onDelete,
     required this.onRegressRelease,
     required this.onSetReleaseGroup,
   }) : super(key: key);
@@ -948,7 +959,7 @@ class _WishTileState extends State<_WishTile>
     super.initState();
     _progressController = AnimationController(
       vsync: this,
-      duration: Config.delayDuration,
+      duration: wishlistSweepDelay,
     );
   }
 
@@ -964,7 +975,7 @@ class _WishTileState extends State<_WishTile>
     _timer?.cancel();
     _progressController.reset();
     _progressController.forward();
-    _timer = Timer(Config.delayDuration, () {
+    _timer = Timer(wishlistSweepDelay, () {
       if (!mounted || !_optionsOpen) return;
       _progressController.stop();
       setState(() => _optionsOpen = false);
@@ -991,6 +1002,11 @@ class _WishTileState extends State<_WishTile>
   void _export() {
     _closeOptions();
     widget.onExport();
+  }
+
+  void _delete() {
+    _closeOptions();
+    widget.onDelete();
   }
 
   List<String> _labels() => widget.item.label
@@ -1102,17 +1118,25 @@ class _WishTileState extends State<_WishTile>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      TextButton(
+                      TextButton.icon(
                         onPressed: _share,
-                        child: const Text('Share'),
+                        icon: const Icon(Icons.share, size: 18),
+                        label: const Text('Share'),
                       ),
-                      TextButton(
+                      TextButton.icon(
                         onPressed: _copy,
-                        child: const Text('Copy'),
+                        icon: const Icon(Icons.content_copy, size: 18),
+                        label: const Text('Copy'),
                       ),
-                      TextButton(
+                      TextButton.icon(
                         onPressed: _export,
-                        child: const Text('Export'),
+                        icon: const Icon(Icons.download_outlined, size: 18),
+                        label: const Text('Export'),
+                      ),
+                      TextButton.icon(
+                        onPressed: _delete,
+                        icon: const Icon(Icons.delete, size: 18),
+                        label: const Text('Delete'),
                       ),
                     ],
                   ),

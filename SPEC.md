@@ -268,7 +268,7 @@ Membership flags on the task stay the stored form (dual-write era) — this step
 
 Every task `TodoistSyncService._taskFromRemote` builds — first-launch import and the
 "brand-new Todoist tasks" pull alike — is stamped with `waitingApprovalToken`
-(`lib/utils/label_utils.dart`). `ItemViews._isApproved` makes that token the gate on
+(`lib/utils/label_utils.dart`). `ItemViews.isApproved` makes that token the gate on
 *every* other selector (home buckets, wishlist, active, project tasks, board columns), so
 a task "created with the Todoist workflow" is invisible everywhere until a human decides
 on it in Tools ▸ menu ▸ **Waiting for Approval** (`lib/ui/waiting_approval_page.dart`,
@@ -276,6 +276,13 @@ listed via `ItemViews.waitingApproval`, the one selector that shows *only* gated
 Approve strips the token (`removeWaitingApprovalToken`) and the task drops into whatever
 list it belongs to; Deny soft-deletes it into `deleted_tasks.json`, recoverable from
 Deleted Items.
+
+**Schedule view bypassed the gate (fixed 0.1.261):** `HomePage._buildScheduleBody` built
+the calendar/schedule view's list straight from the raw `_tasks`, not through
+`ItemViews.homeBucket` like the tab list view — so a gated task with a due date (Todoist
+due dates survive onto the stub) rendered under its date in Schedule view even while
+correctly hidden from the tab view. Fixed by filtering `_tasks` through
+`ItemViews.isApproved` before handing it to `ScheduleView`, same as every other surface.
 
 **The token is `Waiting_for_approval`, one underscored word (0.1.259).** Label tokens
 split on commas AND whitespace (`_tokenSeparator` = `[,\s]+`), so a Todoist label spelled
@@ -1638,16 +1645,23 @@ excluded), owns and disposes the spans' `TapGestureRecognizer`s, and opens links
 wins the gesture arena over the tile's own `onTap`, so it never opens the edit dialog.
 Used by the wish tile subtitle and by `TaskDetailPage` (description and note).
 
-**Swipes (0.1.101, redesigned 0.1.258, sole entry point 0.1.259):** same gesture
-mechanics as `TaskTile` (drag with AnimatedSlide, 100 px/500 velocity thresholds,
-directions honor `Config.swipeLeftDelete`, GestureDetector on Android/web), but the two
+**Swipes (0.1.101, redesigned 0.1.258, sole entry point 0.1.259, Delete +
+8s sweep 0.1.261):** same gesture mechanics as `TaskTile` (drag with
+AnimatedSlide, 100 px/500 velocity thresholds, directions honor
+`Config.swipeLeftDelete`, GestureDetector on Android/web), but the two
 swipe directions no longer prioritize/delete:
 
-- **Options swipe** (right by default) opens a Share/Copy/Export shortcut row with the
-  `Config.delayDuration` countdown bar. "Share" calls `SharePlus.instance.share`
+- **Options swipe** (right by default) opens a Share/Copy/Export/Delete shortcut
+  row — each button is a `TextButton.icon` (icon beside its label) — with a
+  `wishlistSweepDelay` (8s; deliberately longer than the app-wide
+  `Config.delayDuration` 5s undo delay used elsewhere, since misreading one of
+  four buttons costs more) countdown bar. "Share" calls `SharePlus.instance.share`
   (`share_plus`) with `clipboardText(item)`, summoning the OS share sheet; "Copy" puts
   `clipboardText(item)` on the clipboard; "Export" (0.1.259) writes the single-item JSON
-  export. Letting the countdown run out applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
+  export; "Delete" (0.1.261) calls the same `_deleteItems` bulk-delete path with a
+  single-item list, moving it to the deleted list with the usual undo snackbar
+  (`Config.delayDuration`-timed, not the sweep delay). Letting the countdown run out
+  applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
   item back one release step (nextRelease→soon, soon→backlog; no-op for Backlog and for
   the automatic Newly-implemented group). Swiping back toward the other side cancels, as
   on the home list.
@@ -1662,7 +1676,8 @@ swipe directions no longer prioritize/delete:
   (`_WishlistPageState._deleteItems`, a single undo snackbar covering all of them); when
   the undo window expires each task gets `deletedAt` and moves to `deleted_tasks.json`.
   Restoring a wish from Deleted Items keeps `dueDate` null (other restores get today) so
-  it lands back in the wishlist, not Today.
+  it lands back in the wishlist, not Today. Since 0.1.261 a single item can also be
+  deleted straight from the options-swipe panel, reusing this same path.
 
 **Trailing icons removed (0.1.259):** the per-tile Share / Copy / Export icon buttons and
 the emulator/desktop fallback pair ("Wishlist swipe options" + "Select") are gone —

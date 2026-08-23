@@ -200,12 +200,30 @@ void main() {
     await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
     await tester.pump();
     // Letting the countdown run out applies the default: one step back.
-    await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
+    await tester.pump(wishlistSweepDelay + const Duration(milliseconds: 50));
     await settleWrites(tester);
 
     expect(find.text('Soon (1)'), findsOneWidget);
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['label'], 'release-soon');
+  });
+
+  testWidgets('the swipe Delete shortcut deletes the item', (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Buy a telescope', label: 'gift', isWish: true)],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    expect(find.text('Delete'), findsOneWidget);
+
+    await tester.tap(find.text('Delete'));
+    await tester.pump();
+
+    expect(find.text('Buy a telescope'), findsNothing);
+    expect(find.text('Deleted "Buy a telescope"'), findsOneWidget);
   });
 
   testWidgets(
