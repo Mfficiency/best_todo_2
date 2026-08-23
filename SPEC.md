@@ -1608,18 +1608,39 @@ excluded), owns and disposes the spans' `TapGestureRecognizer`s, and opens links
 wins the gesture arena over the tile's own `onTap`, so it never opens the edit dialog.
 Used by the wish tile subtitle and by `TaskDetailPage` (description and note).
 
-**Swipes (0.1.101):** same gesture mechanics as `TaskTile` (drag with AnimatedSlide,
-100 px/500 velocity thresholds, directions honor `Config.swipeLeftDelete`, GestureDetector
-on Android/web, emulator/desktop fallback buttons: swipe icon = prioritize, trash =
-delete), but the options swipe changes PRIORITY instead of rescheduling: it opens a
-high/medium/low shortcut row with the `Config.delayDuration` countdown bar; letting it
-run out raises the priority one step (none→low→medium→high, capped; helpers
-`wishPriorityRank`/`setWishPriority`/`bumpWishPriority` rewrite the priority label in
-`Task.label`, keeping other labels). Swiping back toward the delete side cancels, as on
-the home list. The delete swipe removes the item immediately and shows the home-style
-undo snackbar; when the undo window expires the task gets `deletedAt` and moves to
-`deleted_tasks.json`. Restoring a wish from Deleted Items keeps `dueDate` null (other
-restores get today) so it lands back in the wishlist, not Today.
+**Swipes (0.1.101, redesigned 0.1.258):** same gesture mechanics as `TaskTile` (drag
+with AnimatedSlide, 100 px/500 velocity thresholds, directions honor
+`Config.swipeLeftDelete`, GestureDetector on Android/web, emulator/desktop fallback
+buttons), but the two swipe directions no longer prioritize/delete:
+
+- **Options swipe** (right by default) opens a Share/Copy shortcut row with the
+  `Config.delayDuration` countdown bar. "Share" calls `SharePlus.instance.share`
+  (`share_plus`) with `clipboardText(item)`, summoning the OS share sheet; "Copy" is the
+  same clipboard copy as the "Copy wishlist item" trailing button. Letting the countdown
+  run out applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
+  item back one release step (nextRelease→soon, soon→backlog; no-op for Backlog and for
+  the automatic Newly-implemented group). Swiping back toward the other side cancels, as
+  on the home list.
+- **Selection swipe** (left by default) starts multi-select instead of deleting: the app
+  bar swaps to a "N selected" bar (close icon cancels, `Icons.content_copy` "Copy
+  selected as prompt", `Icons.delete` "Delete selected"); tapping other tiles toggles
+  them in and out of the selection (tile tap opens the edit dialog only outside selection
+  mode). "Copy selected as prompt" puts `buildSelectedWishesPrompt(items)` — "Build the
+  following items from my BestToDo wishlist:" plus each item's title/description/labels
+  — on the clipboard for pasting into a Claude session, then exits selection mode.
+  "Delete selected" moves every selected item to the deleted list in one shot
+  (`_WishlistPageState._deleteItems`, a single undo snackbar covering all of them); when
+  the undo window expires each task gets `deletedAt` and moves to `deleted_tasks.json`.
+  Restoring a wish from Deleted Items keeps `dueDate` null (other restores get today) so
+  it lands back in the wishlist, not Today.
+
+Per-item Share/Copy/Export/"Move to release group" trailing icon buttons remain for
+platforms where swiping doesn't apply; the emulator/desktop fallback row is a "Wishlist
+swipe options" icon (opens the same Share/Copy panel) and a "Select" icon (starts
+selection with that item), replacing the old prioritize/delete pair. Quick-priority
+setting moved entirely into the add/edit dialog's priority buttons — `wishPriorityRank`/
+`setWishPriority`/`bumpWishPriority` still back sorting and that dialog, just no longer
+the swipe panel.
 
 **Legacy `wishlist.json` migration (0.1.101):** `loadTaskList()` calls
 `_migrateWishlistIntoTasks`: any items still in `wishlist.json` (a pre-0.1.101 store)

@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../config.dart';
 import '../models/task.dart';
@@ -113,6 +114,25 @@ void setWishReleaseGroup(Task task, WishReleaseGroup group) {
   task.label = joinLabelTokens(labels);
 }
 
+/// Moves [task] back one release step — the swipe-right default action:
+/// nextRelease → soon → backlog (capped). No-op for [WishReleaseGroup.
+/// backlog] (nothing further back to go) and [WishReleaseGroup.
+/// newlyImplemented] (that group is automatic, not tag-driven — see
+/// [wishReleaseGroupOf]).
+void regressWishReleaseGroup(Task task, String currentVersion) {
+  switch (wishReleaseGroupOf(task, currentVersion)) {
+    case WishReleaseGroup.nextRelease:
+      setWishReleaseGroup(task, WishReleaseGroup.soon);
+      break;
+    case WishReleaseGroup.soon:
+      setWishReleaseGroup(task, WishReleaseGroup.backlog);
+      break;
+    case WishReleaseGroup.backlog:
+    case WishReleaseGroup.newlyImplemented:
+      break;
+  }
+}
+
 /// Section title shown above a group's items.
 String wishReleaseGroupTitle(WishReleaseGroup group) {
   switch (group) {
@@ -155,14 +175,35 @@ String proposeForNextPrompt(List<Task> backlogAndSoonItems) {
   return lines.join('\n');
 }
 
+/// The plain-text prompt "Copy selected as prompt" (multi-select mode) puts
+/// on the clipboard: an instruction for Claude to build the given wishlist
+/// items, followed by each item's title, description and labels. Pure and
+/// deterministic, like [WishlistPage.clipboardText], so it's unit testable
+/// without pumping a widget.
+String buildSelectedWishesPrompt(List<Task> items) {
+  final lines = <String>[
+    'Build the following items from my BestToDo wishlist:',
+    '',
+  ];
+  for (final item in items) {
+    lines.add('- ${item.title}');
+    final description = item.description.trim();
+    if (description.isNotEmpty) lines.add('  $description');
+    final tags = item.label.trim();
+    if (tags.isNotEmpty) lines.add('  [$tags]');
+  }
+  return lines.join('\n');
+}
+
 /// Tools → Wishlist: a pre-filtered view over the one task list — like
 /// opening a project — showing only tasks flagged [Task.isWish]. The full
 /// item overview (the home page) shows the same tasks with all their
 /// properties and tags; here they render as plain to-do tiles with no due
-/// dates. Swiping works like the home list, except the options swipe raises
-/// the item's priority (default: one step up, with High/Medium/Low
-/// shortcuts) instead of rescheduling it, and the delete swipe moves the
-/// item to the deleted list.
+/// dates. Swiping right opens Share/Copy shortcuts, with the
+/// [Config.delayDuration] countdown defaulting to moving the item back one
+/// release step ([regressWishReleaseGroup]); swiping left enters multi-select
+/// mode, where the app bar's "Copy selected as prompt" action puts a
+/// build-these-items prompt on the clipboard for pasting into Claude.
 class WishlistPage extends StatefulWidget {
   const WishlistPage({Key? key}) : super(key: key);
 
@@ -355,6 +396,12 @@ class _WishlistPageState extends State<WishlistPage> {
       ..showSnackBar(SnackBar(content: Text('Copied "${item.title}"')));
   }
 
+  Future<void> _shareItem(Task item) async {
+    await SharePlus.instance.share(
+      ShareParams(text: clipboardText(item), subject: item.title),
+    );
+  }
+
   List<String> _labelsFromText(String text) => text
       .split(RegExp(r'[,\s]+'))
       .map((label) => label.trim())
@@ -410,13 +457,10 @@ class _WishlistPageState extends State<WishlistPage> {
     _save();
   }
 
-  void _setPriority(Task item, String priorityLabel) {
-    setState(() => setWishPriority(item, priorityLabel));
-    _save();
-  }
-
-  void _bumpPriority(Task item) {
-    setState(() => bumpWishPriority(item));
+  /// Swipe-right's default (countdown-timeout) action: move [item] back one
+  /// release step.
+  void _regressRelease(Task item) {
+    setState(() => regressWishReleaseGroup(item, _currentVersion));
     _save();
   }
 
@@ -459,21 +503,30 @@ class _WishlistPageState extends State<WishlistPage> {
       ));
   }
 
-  /// Moves [item] to the deleted list, with the same undo window as deleting
-  /// a task on the home page.
-  void _deleteItem(Task item) {
-    final originalIndex = _tasks.indexOf(item);
-    if (originalIndex < 0) return;
+  /// Moves every item in [items] to the deleted list in one go, with a
+  /// single undo snackbar covering all of them.
+  void _deleteItems(List<Task> items) {
+    if (items.isEmpty) return;
+    final originalIndices = <Task, int>{
+      for (final item in items) item: _tasks.indexOf(item),
+    }..removeWhere((_, index) => index < 0);
+    if (originalIndices.isEmpty) return;
     final messenger = ScaffoldMessenger.of(context);
 
-    setState(() => _tasks.removeAt(originalIndex));
+    setState(() {
+      for (final item in originalIndices.keys) {
+        _tasks.remove(item);
+      }
+    });
     _save();
 
     late Timer timer;
     timer = Timer(Config.delayDuration, () async {
-      item.deletedAt = DateTime.now();
       final deleted = await _repository.loadDeletedItems();
-      deleted.insert(0, item);
+      for (final item in originalIndices.keys) {
+        item.deletedAt = DateTime.now();
+        deleted.insert(0, item);
+      }
       await _repository.saveDeletedItems(deleted);
       messenger.hideCurrentSnackBar();
     });
@@ -482,7 +535,9 @@ class _WishlistPageState extends State<WishlistPage> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('Deleted "${item.title}"'),
+          content: Text(originalIndices.length == 1
+              ? 'Deleted "${originalIndices.keys.first.title}"'
+              : 'Deleted ${originalIndices.length} items'),
           duration: Config.delayDuration,
           action: SnackBarAction(
             label: 'Undo',
@@ -490,7 +545,14 @@ class _WishlistPageState extends State<WishlistPage> {
               timer.cancel();
               messenger.hideCurrentSnackBar();
               if (!mounted) return;
-              setState(() => _tasks.insert(originalIndex, item));
+              setState(() {
+                final byIndex = originalIndices.entries.toList()
+                  ..sort((a, b) => a.value.compareTo(b.value));
+                for (final entry in byIndex) {
+                  final index = entry.value.clamp(0, _tasks.length);
+                  _tasks.insert(index, entry.key);
+                }
+              });
               _save();
             },
           ),
@@ -498,49 +560,122 @@ class _WishlistPageState extends State<WishlistPage> {
       );
   }
 
+  /// The uids currently selected in multi-select mode; empty means the page
+  /// isn't in selection mode. Swiping a tile left starts a selection with
+  /// just that item; tapping other tiles toggles them in and out.
+  final Set<String> _selectedUids = <String>{};
+
+  bool get _selecting => _selectedUids.isNotEmpty;
+
+  void _startSelection(Task item) {
+    setState(() => _selectedUids.add(item.uid));
+  }
+
+  void _toggleSelected(Task item) {
+    setState(() {
+      if (!_selectedUids.remove(item.uid)) _selectedUids.add(item.uid);
+    });
+  }
+
+  void _cancelSelection() => setState(_selectedUids.clear);
+
+  /// Copies [buildSelectedWishesPrompt] for the selected items and exits
+  /// selection mode.
+  Future<void> _copySelectionAsPrompt() async {
+    final items =
+        _wishes().where((wish) => _selectedUids.contains(wish.uid)).toList();
+    if (items.isEmpty) return;
+    await Clipboard.setData(
+        ClipboardData(text: buildSelectedWishesPrompt(items)));
+    if (!mounted) return;
+    setState(_selectedUids.clear);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(items.length == 1
+            ? 'Copied "${items.first.title}" as a prompt'
+            : 'Copied ${items.length} items as a prompt'),
+      ));
+  }
+
+  void _deleteSelection() {
+    final items =
+        _wishes().where((wish) => _selectedUids.contains(wish.uid)).toList();
+    setState(_selectedUids.clear);
+    _deleteItems(items);
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    if (_selecting) {
+      return AppBar(
+        leading: IconButton(
+          tooltip: 'Cancel selection',
+          icon: const Icon(Icons.close),
+          onPressed: _cancelSelection,
+        ),
+        title: Text('${_selectedUids.length} selected'),
+        actions: [
+          IconButton(
+            tooltip: 'Copy selected as prompt',
+            icon: const Icon(Icons.content_copy),
+            onPressed: _copySelectionAsPrompt,
+          ),
+          IconButton(
+            tooltip: 'Delete selected',
+            icon: const Icon(Icons.delete),
+            onPressed: _deleteSelection,
+          ),
+        ],
+      );
+    }
+    return buildSubpageAppBar(
+      context,
+      title: 'Wishlist',
+      actions: [
+        PopupMenuButton<_WishlistSortOrder>(
+          tooltip: 'Sort wishlist',
+          icon: const Icon(Icons.sort),
+          initialValue: _sortOrder,
+          onSelected: (value) => setState(() => _sortOrder = value),
+          itemBuilder: (context) => [
+            for (final order in _WishlistSortOrder.values)
+              PopupMenuItem(
+                value: order,
+                child: Row(
+                  children: [
+                    if (order == _sortOrder)
+                      const Icon(Icons.check, size: 18)
+                    else
+                      const SizedBox(width: 18),
+                    const SizedBox(width: 8),
+                    Text(_sortLabel(order)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        IconButton(
+          tooltip: 'Export wishlist',
+          onPressed: _wishes().isEmpty ? null : _exportAllItems,
+          icon: const Icon(Icons.download_outlined),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final wishes = _wishes();
     final grouped = _groupedWishes(wishes);
     return Scaffold(
-      appBar: buildSubpageAppBar(
-        context,
-        title: 'Wishlist',
-        actions: [
-          PopupMenuButton<_WishlistSortOrder>(
-            tooltip: 'Sort wishlist',
-            icon: const Icon(Icons.sort),
-            initialValue: _sortOrder,
-            onSelected: (value) => setState(() => _sortOrder = value),
-            itemBuilder: (context) => [
-              for (final order in _WishlistSortOrder.values)
-                PopupMenuItem(
-                  value: order,
-                  child: Row(
-                    children: [
-                      if (order == _sortOrder)
-                        const Icon(Icons.check, size: 18)
-                      else
-                        const SizedBox(width: 18),
-                      const SizedBox(width: 8),
-                      Text(_sortLabel(order)),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          IconButton(
-            tooltip: 'Export wishlist',
-            onPressed: wishes.isEmpty ? null : _exportAllItems,
-            icon: const Icon(Icons.download_outlined),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Add wishlist item',
-        onPressed: () => _editItem(),
-        child: const Icon(Icons.add),
-      ),
+      appBar: _buildAppBar(context),
+      floatingActionButton: _selecting
+          ? null
+          : FloatingActionButton(
+              tooltip: 'Add wishlist item',
+              onPressed: () => _editItem(),
+              child: const Icon(Icons.add),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : wishes.isEmpty
@@ -548,8 +683,8 @@ class _WishlistPageState extends State<WishlistPage> {
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'No wishlist items yet. Add ideas here; swipe to '
-                      'prioritize or delete them.',
+                      'No wishlist items yet. Add ideas here; swipe right to '
+                      'share/copy, swipe left to select.',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -576,14 +711,16 @@ class _WishlistPageState extends State<WishlistPage> {
                             key: ValueKey(item.uid),
                             item: item,
                             releaseGroup: group,
+                            selecting: _selecting,
+                            selected: _selectedUids.contains(item.uid),
                             onToggle: () => _toggleDone(item),
+                            onToggleSelected: () => _toggleSelected(item),
+                            onStartSelection: () => _startSelection(item),
                             onEdit: () => _editItem(item),
                             onCopy: () => _copyItem(item),
+                            onShare: () => _shareItem(item),
                             onExport: () => _exportItem(item),
-                            onDelete: () => _deleteItem(item),
-                            onBumpPriority: () => _bumpPriority(item),
-                            onSetPriority: (label) =>
-                                _setPriority(item, label),
+                            onRegressRelease: () => _regressRelease(item),
                             onSetReleaseGroup: (newGroup) =>
                                 _setReleaseGroup(item, newGroup),
                           ),
@@ -757,33 +894,41 @@ class _WishEditDialogState extends State<_WishEditDialog> {
 
 /// A wishlist item rendered like a home-page task tile (checkbox, title,
 /// labels — never a due date) with the wishlist swipe actions: swiping
-/// toward the options side opens priority shortcuts and raises the priority
-/// one step when the countdown runs out; swiping toward the delete side
-/// moves the item to the deleted list. Directions follow
+/// toward the options side opens Share/Copy shortcuts and moves the item
+/// back one release step ([WishlistPage]'s [regressWishReleaseGroup]) when
+/// the countdown runs out; swiping toward the other side starts multi-select
+/// ([onStartSelection])/toggles it ([onToggleSelected]) instead of deleting —
+/// deleting now happens in bulk from the selection app bar. Directions follow
 /// [Config.swipeLeftDelete] like the home list.
 class _WishTile extends StatefulWidget {
   final Task item;
   final WishReleaseGroup releaseGroup;
+  final bool selecting;
+  final bool selected;
   final VoidCallback onToggle;
+  final VoidCallback onToggleSelected;
+  final VoidCallback onStartSelection;
   final VoidCallback onEdit;
   final VoidCallback onCopy;
+  final VoidCallback onShare;
   final VoidCallback onExport;
-  final VoidCallback onDelete;
-  final VoidCallback onBumpPriority;
-  final void Function(String priorityLabel) onSetPriority;
+  final VoidCallback onRegressRelease;
   final void Function(WishReleaseGroup group) onSetReleaseGroup;
 
   const _WishTile({
     Key? key,
     required this.item,
     required this.releaseGroup,
+    required this.selecting,
+    required this.selected,
     required this.onToggle,
+    required this.onToggleSelected,
+    required this.onStartSelection,
     required this.onEdit,
     required this.onCopy,
+    required this.onShare,
     required this.onExport,
-    required this.onDelete,
-    required this.onBumpPriority,
-    required this.onSetPriority,
+    required this.onRegressRelease,
     required this.onSetReleaseGroup,
   }) : super(key: key);
 
@@ -836,7 +981,7 @@ class _WishTileState extends State<_WishTile>
     super.dispose();
   }
 
-  void _startPriorityOptions() {
+  void _startSwipeOptions() {
     setState(() => _optionsOpen = true);
     _timer?.cancel();
     _progressController.reset();
@@ -845,7 +990,7 @@ class _WishTileState extends State<_WishTile>
       if (!mounted || !_optionsOpen) return;
       _progressController.stop();
       setState(() => _optionsOpen = false);
-      widget.onBumpPriority();
+      widget.onRegressRelease();
     });
   }
 
@@ -855,9 +1000,14 @@ class _WishTileState extends State<_WishTile>
     if (mounted) setState(() => _optionsOpen = false);
   }
 
-  void _selectPriority(String label) {
+  void _share() {
     _closeOptions();
-    widget.onSetPriority(label);
+    widget.onShare();
+  }
+
+  void _copy() {
+    _closeOptions();
+    widget.onCopy();
   }
 
   List<String> _labels() => widget.item.label
@@ -876,10 +1026,15 @@ class _WishTileState extends State<_WishTile>
           ? EdgeInsets.zero
           : const EdgeInsets.symmetric(horizontal: 16.0),
       minLeadingWidth: isAndroid ? 0 : null,
-      leading: Checkbox(
-        value: widget.item.isDone,
-        onChanged: (_) => widget.onToggle(),
-      ),
+      leading: widget.selecting
+          ? Checkbox(
+              value: widget.selected,
+              onChanged: (_) => widget.onToggleSelected(),
+            )
+          : Checkbox(
+              value: widget.item.isDone,
+              onChanged: (_) => widget.onToggle(),
+            ),
       title: Text(
         widget.item.title,
         style: TextStyle(
@@ -913,61 +1068,68 @@ class _WishTileState extends State<_WishTile>
                 ],
               ],
             ),
-      onTap: widget.onEdit,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_isEmulator) ...[
-            IconButton(
-              icon: const Icon(Icons.swipe),
-              tooltip: 'Prioritize',
-              onPressed: _startPriorityOptions,
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete),
-              tooltip: 'Delete wishlist item',
-              onPressed: widget.onDelete,
-            ),
-          ],
-          if (widget.releaseGroup != WishReleaseGroup.newlyImplemented)
-            PopupMenuButton<WishReleaseGroup>(
-              tooltip: 'Move to release group',
-              icon: const Icon(Icons.drive_file_move_outline),
-              initialValue: widget.releaseGroup,
-              onSelected: widget.onSetReleaseGroup,
-              itemBuilder: (context) => [
-                for (final group in const [
-                  WishReleaseGroup.nextRelease,
-                  WishReleaseGroup.soon,
-                  WishReleaseGroup.backlog,
-                ])
-                  PopupMenuItem(
-                    value: group,
-                    child: Row(
-                      children: [
-                        if (group == widget.releaseGroup)
-                          const Icon(Icons.check, size: 18)
-                        else
-                          const SizedBox(width: 18),
-                        const SizedBox(width: 8),
-                        Text(wishReleaseGroupTitle(group)),
-                      ],
-                    ),
+      onTap: widget.selecting ? widget.onToggleSelected : widget.onEdit,
+      trailing: widget.selecting
+          ? null
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isEmulator) ...[
+                  IconButton(
+                    icon: const Icon(Icons.swipe),
+                    tooltip: 'Wishlist swipe options',
+                    onPressed: _startSwipeOptions,
                   ),
+                  IconButton(
+                    icon: const Icon(Icons.checklist),
+                    tooltip: 'Select',
+                    onPressed: widget.onStartSelection,
+                  ),
+                ],
+                if (widget.releaseGroup != WishReleaseGroup.newlyImplemented)
+                  PopupMenuButton<WishReleaseGroup>(
+                    tooltip: 'Move to release group',
+                    icon: const Icon(Icons.drive_file_move_outline),
+                    initialValue: widget.releaseGroup,
+                    onSelected: widget.onSetReleaseGroup,
+                    itemBuilder: (context) => [
+                      for (final group in const [
+                        WishReleaseGroup.nextRelease,
+                        WishReleaseGroup.soon,
+                        WishReleaseGroup.backlog,
+                      ])
+                        PopupMenuItem(
+                          value: group,
+                          child: Row(
+                            children: [
+                              if (group == widget.releaseGroup)
+                                const Icon(Icons.check, size: 18)
+                              else
+                                const SizedBox(width: 18),
+                              const SizedBox(width: 8),
+                              Text(wishReleaseGroupTitle(group)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                IconButton(
+                  tooltip: 'Share wishlist item',
+                  icon: const Icon(Icons.share_outlined),
+                  onPressed: widget.onShare,
+                ),
+                IconButton(
+                  tooltip: 'Copy wishlist item',
+                  icon: const Icon(Icons.copy_outlined),
+                  onPressed: widget.onCopy,
+                ),
+                IconButton(
+                  tooltip: 'Export wishlist item',
+                  icon: const Icon(Icons.ios_share_outlined),
+                  onPressed: widget.onExport,
+                ),
               ],
             ),
-          IconButton(
-            tooltip: 'Copy wishlist item',
-            icon: const Icon(Icons.copy_outlined),
-            onPressed: widget.onCopy,
-          ),
-          IconButton(
-            tooltip: 'Export wishlist item',
-            icon: const Icon(Icons.ios_share_outlined),
-            onPressed: widget.onExport,
-          ),
-        ],
-      ),
     );
 
     final stackTile = Stack(
@@ -985,11 +1147,14 @@ class _WishTileState extends State<_WishTile>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      for (final priority in wishPriorityLabels.reversed)
-                        TextButton(
-                          onPressed: () => _selectPriority(priority),
-                          child: Text(priority.replaceFirst('priority-', '')),
-                        ),
+                      TextButton(
+                        onPressed: _share,
+                        child: const Text('Share'),
+                      ),
+                      TextButton(
+                        onPressed: _copy,
+                        child: const Text('Copy'),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -1020,7 +1185,7 @@ class _WishTileState extends State<_WishTile>
     if (_dragOffset != 0) {
       final isCancelDrag = _optionsOpen &&
           (Config.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0);
-      final dragToDelete =
+      final dragToSelect =
           Config.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
       if (isCancelDrag) {
         final alignment =
@@ -1039,16 +1204,16 @@ class _WishTileState extends State<_WishTile>
             ),
           ),
         );
-      } else if (dragToDelete) {
+      } else if (dragToSelect) {
         final alignment = Config.swipeLeftDelete
             ? Alignment.centerRight
             : Alignment.centerLeft;
         background = Positioned.fill(
           child: Container(
-            color: Colors.red.withValues(alpha: 0.5),
+            color: Colors.blue.withValues(alpha: 0.5),
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Icon(Icons.delete, color: Colors.white),
+            child: const Icon(Icons.checklist, color: Colors.white),
           ),
         );
       } else {
@@ -1059,7 +1224,7 @@ class _WishTileState extends State<_WishTile>
           child: Container(
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Icon(Icons.keyboard_double_arrow_up,
+            child: Icon(Icons.undo,
                 color: Theme.of(context).colorScheme.primary),
           ),
         );
@@ -1073,7 +1238,7 @@ class _WishTileState extends State<_WishTile>
       ],
     );
 
-    if (isAndroid || kIsWeb) {
+    if ((isAndroid || kIsWeb) && !widget.selecting) {
       content = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragStart: (_) {
@@ -1089,15 +1254,15 @@ class _WishTileState extends State<_WishTile>
           final swipedLeft = _dragOffset < -threshold || velocity < -500;
           final optionsSwipe =
               Config.swipeLeftDelete ? swipedRight : swipedLeft;
-          final deleteSwipe = Config.swipeLeftDelete ? swipedLeft : swipedRight;
+          final selectSwipe = Config.swipeLeftDelete ? swipedLeft : swipedRight;
           if (_optionsOpen) {
-            // Swiping back toward the delete side cancels the pending
-            // priority change, mirroring the home list's cancel gesture.
-            if (deleteSwipe) _closeOptions();
+            // Swiping back toward the select side cancels the pending
+            // release change, mirroring the home list's cancel gesture.
+            if (selectSwipe) _closeOptions();
           } else if (optionsSwipe) {
-            _startPriorityOptions();
-          } else if (deleteSwipe) {
-            widget.onDelete();
+            _startSwipeOptions();
+          } else if (selectSwipe) {
+            widget.onStartSelection();
           }
           setState(() {
             _dragging = false;
@@ -1108,6 +1273,11 @@ class _WishTileState extends State<_WishTile>
       );
     }
 
-    return Card(child: content);
+    return Card(
+      color: widget.selected
+          ? Theme.of(context).colorScheme.primaryContainer
+          : null,
+      child: content,
+    );
   }
 }

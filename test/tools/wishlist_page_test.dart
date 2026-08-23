@@ -148,8 +148,22 @@ void main() {
     expect(find.text('Copied "Buy a telescope"'), findsOneWidget);
   });
 
-  testWidgets('priority swipe shows shortcuts; picking one sets the label',
+  testWidgets(
+      'swipe right shows Share/Copy shortcuts; Copy copies the item',
       (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add(call.arguments['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
     await pumpWishlist(
       tester,
       tasks: [Task(title: 'Buy a telescope', label: 'gift', isWish: true)],
@@ -158,47 +172,93 @@ void main() {
 
     await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
     await tester.pump();
-    expect(find.text('high'), findsOneWidget);
-    expect(find.text('medium'), findsOneWidget);
-    expect(find.text('low'), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
+    expect(find.text('Copy'), findsOneWidget);
 
-    await tester.tap(find.text('medium'));
+    await tester.tap(find.text('Copy'));
     await tester.pump();
-    await settleWrites(tester);
 
-    expect(find.text('priority-medium'), findsOneWidget);
-    expect(find.text('gift'), findsOneWidget);
-    final saved = await readJsonList(tester, 'tasks.json');
-    expect(saved.single['label'], 'priority-medium, gift');
+    expect(copied, ['Buy a telescope\ngift']);
+    // The panel closes once an option is picked.
+    expect(find.text('Copy'), findsNothing);
   });
 
-  testWidgets('priority swipe countdown raises the priority one step',
+  testWidgets(
+      'swipe right countdown moves the item back one release step',
       (tester) async {
     await pumpWishlist(
       tester,
       tasks: [
-        Task(title: 'Buy a telescope', label: 'priority-low', isWish: true),
+        Task(title: 'Buy a telescope', label: 'release-next', isWish: true),
+      ],
+      marker: 'Buy a telescope',
+    );
+    expect(find.text('Next release (1)'), findsOneWidget);
+
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    // Letting the countdown run out applies the default: one step back.
+    await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
+    await settleWrites(tester);
+
+    expect(find.text('Soon (1)'), findsOneWidget);
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['label'], 'release-soon');
+  });
+
+  testWidgets(
+      'swipe left starts selection mode; copy selected as prompt copies '
+      'them and exits selection', (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add(call.arguments['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(title: 'Buy a telescope', label: 'gift', isWish: true),
+        Task(title: 'Learn Spanish', isWish: true),
       ],
       marker: 'Buy a telescope',
     );
 
-    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.drag(find.text('Buy a telescope'), const Offset(-300, 0));
     await tester.pump();
-    // Letting the countdown run out applies the default: one step up.
-    await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
-    await settleWrites(tester);
+    expect(find.text('1 selected'), findsOneWidget);
 
-    expect(find.text('priority-medium'), findsOneWidget);
-    final saved = await readJsonList(tester, 'tasks.json');
-    expect(saved.single['label'], 'priority-medium');
+    await tester.tap(find.text('Learn Spanish'));
+    await tester.pump();
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Copy selected as prompt'));
+    await tester.pump();
+
+    expect(copied, hasLength(1));
+    expect(
+        copied.single,
+        'Build the following items from my BestToDo wishlist:\n\n'
+        '- Buy a telescope\n  [gift]\n- Learn Spanish');
+    // Selection mode is exited after copying.
+    expect(find.text('2 selected'), findsNothing);
+    expect(find.text('Wishlist'), findsOneWidget);
   });
 
-  testWidgets('delete swipe moves the item to the deleted list',
+  testWidgets('delete selected moves the selected items to the deleted list',
       (tester) async {
     await pumpWishlist(
       tester,
       tasks: [
         Task(title: 'Buy a telescope', isWish: true),
+        Task(title: 'Learn Spanish', isWish: true),
         Task(title: 'Plan world trip', dueDate: DateTime(2300, 1, 1)),
       ],
       marker: 'Buy a telescope',
@@ -206,10 +266,16 @@ void main() {
 
     await tester.drag(find.text('Buy a telescope'), const Offset(-300, 0));
     await tester.pump();
+    await tester.tap(find.text('Learn Spanish'));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Delete selected'));
+    await tester.pump();
 
     // Removed from the list right away, with an undo window like the home
     // page; the move to the deleted list is persisted when it expires.
     expect(find.text('Buy a telescope'), findsNothing);
+    expect(find.text('Learn Spanish'), findsNothing);
     expect(find.text('Undo'), findsOneWidget);
     await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
     await settleWrites(tester);
@@ -217,13 +283,13 @@ void main() {
     final tasks = await readJsonList(tester, 'tasks.json');
     expect(tasks.map((t) => t['title']), ['Plan world trip']);
     final deleted = await readJsonList(tester, 'deleted_tasks.json');
-    expect(deleted.single['title'], 'Buy a telescope');
-    expect(deleted.single['deletedAt'], isNotNull);
-    expect(deleted.single['isWish'], isTrue);
+    expect(deleted.map((t) => t['title']),
+        containsAll(['Buy a telescope', 'Learn Spanish']));
+    expect(deleted.every((t) => t['deletedAt'] != null), isTrue);
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('undo restores a swiped-away item', (tester) async {
+  testWidgets('undo restores an item deleted from selection', (tester) async {
     await pumpWishlist(
       tester,
       tasks: [Task(title: 'Buy a telescope', isWish: true)],
@@ -231,6 +297,8 @@ void main() {
     );
 
     await tester.drag(find.text('Buy a telescope'), const Offset(-300, 0));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Delete selected'));
     await tester.pump();
     // Let the snackbar finish animating in so the Undo action is tappable.
     await tester.pump(const Duration(milliseconds: 750));
