@@ -760,9 +760,12 @@ challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind currentl
 **All challenges done settles the flame (0.1.236; goal-aware since 0.1.250):** once every
 *tracked* kind is done today (`complete`, plus `create`/`plan` only once a goal is
 configured — an unconfigured slot is excluded so it can't block this forever — and more
-than one tracked kind is on), the cycling collapses into a single **steady red**
-(`StreakFlameButton.allDoneColor` = `0xFFD32F2F`, red 700) lit flame badged with the
-**highest** of the streak counts, keyed `'all-done'` so the switcher stops cross-fading;
+than one tracked kind is on), the cycling collapses into a single **steady white flame
+with a faint blue cast** (`StreakFlameButton.allDoneColor` = `0xFFE8F0FF`; red 700 until
+0.1.252) badged with the **highest** of the streak counts, keyed `'all-done'` so the
+switcher stops cross-fading. The badge's number switches to
+`StreakFlameButton.allDoneBadgeTextColor` (`0xFF1B2A4A`) so it stays readable on the
+near-white badge;
 the tooltip becomes "All 3 challenges done today — 5-day streak" and tapping opens
 `StreakPage` on the kind that owns that highest streak. A single tracked challenge keeps
 its own colour (there is no cycle to collapse) — the cycle itself still hops through every

@@ -386,13 +386,18 @@ void main() {
     expect(find.byTooltip('All 3 challenges done today — 2-day streak'),
         findsOneWidget);
     expect(find.text('2'), findsOneWidget);
-    // ...lit, steady red...
+    // ...lit, steady white with a faint blue cast...
     expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
     expect(
       tester
           .widget<Icon>(find.byIcon(Icons.local_fire_department))
           .color,
       StreakFlameButton.allDoneColor,
+    );
+    // ...with a dark badge number so it stays readable on the near-white badge.
+    expect(
+      tester.widget<Badge>(find.byType(Badge)).textColor,
+      StreakFlameButton.allDoneBadgeTextColor,
     );
 
     // ...and it no longer cycles through the per-challenge flames.

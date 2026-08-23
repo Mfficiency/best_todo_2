@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.253] - 2026-08-23
+- The streak flame now turns white with a slight blue hue (was red) once every challenge is done for the day; its streak badge number switches to dark blue so it stays readable
+
 ## [0.1.252] - 2026-08-23
 - Labels now show as tags on every task in the home list, not just wishlist items — a task tagged "urgent" or "priority-high" shows that tag under its title wherever it appears
 
