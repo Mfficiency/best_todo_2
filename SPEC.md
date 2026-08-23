@@ -270,6 +270,15 @@ when all tokens are known, nothing loads at startup). Kinds derive from the toke
 `priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
 tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
 
+**Label picker (0.1.229):** `LabelPickerField` (`lib/ui/label_picker.dart`) replaces the
+raw comma-separated label text field everywhere a task's `label` is edited (task-tile
+inline editor, wishlist add/edit dialog). Current tokens render as removable `InputChip`s;
+an "Add label" chip opens a dialog with a search/create field over every known label
+(`LabelService.instance.labels`, checkbox-toggled) — typing a name that isn't already a
+label offers "Add "<name>"" to create and select it in one tap. Selection is staged in
+the dialog and only committed (chips update, `onChanged` fires) on "Done"; "Cancel"
+discards it.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next
@@ -312,10 +321,11 @@ swept to Deleted at day rollover.
 Moving/rescheduling a child detaches it (clears parent linkage). Regenerated after load,
 import, and any parent edit.
 
-**Inline editing:** tapping a tile expands it — title/description/note/label fields,
-due-date picker, recurring switch (+interval/end for parents), a Notify bell (schedules a
-task notification after `defaultNotificationDelaySeconds`), collapse button. Edits persist
-on change/focus loss.
+**Inline editing:** tapping a tile expands it — title/description/note text fields, a
+`LabelPickerField` (§4.2c) for labels, due-date picker, recurring switch (+interval/end
+for parents), a Notify bell (schedules a task notification after
+`defaultNotificationDelaySeconds`), collapse button. Text fields persist on focus loss;
+the label picker persists immediately on each add/remove.
 
 **Schedule view:** app-bar toggle swaps the tabbed lists for one long day-grouped list
 (`ScheduleView`); tabs become scroll anchors; overdue rolls up under Today; each day

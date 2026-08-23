@@ -8,6 +8,7 @@ import '../models/task.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
+import 'label_picker.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -70,7 +71,6 @@ class _TaskTileState extends State<TaskTile>
   late final TextEditingController _titleController;
   late final TextEditingController _descController;
   late final TextEditingController _noteController;
-  late final TextEditingController _labelController;
   late final List<int> _destinations;
   double _dragOffset = 0;
   bool _dragging = false;
@@ -83,7 +83,6 @@ class _TaskTileState extends State<TaskTile>
     _titleController = TextEditingController(text: widget.task.title);
     _descController = TextEditingController(text: widget.task.description);
     _noteController = TextEditingController(text: widget.task.note);
-    _labelController = TextEditingController(text: widget.task.label);
     _progressController = AnimationController(
       vsync: this,
       duration: Config.delayDuration,
@@ -196,7 +195,6 @@ class _TaskTileState extends State<TaskTile>
     _titleController.dispose();
     _descController.dispose();
     _noteController.dispose();
-    _labelController.dispose();
     _progressController.dispose();
     super.dispose();
   }
@@ -409,15 +407,12 @@ class _TaskTileState extends State<TaskTile>
                       onChanged: (v) => widget.task.note = v,
                     ),
                   ),
-                  Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
+                  LabelPickerField(
+                    value: widget.task.label,
+                    onChanged: (v) {
+                      widget.task.label = v;
+                      widget.onChanged();
                     },
-                    child: TextField(
-                      controller: _labelController,
-                      decoration: const InputDecoration(labelText: 'Label'),
-                      onChanged: (v) => widget.task.label = v,
-                    ),
                   ),
                   Row(
                     children: [

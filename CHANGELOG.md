@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.229] - 2026-08-23
+- Editing a task or wishlist item's labels is now a ClickUp/Sheets-style picker instead of a raw text field: current labels show as removable chips, and an "Add label" chip opens a searchable list of every label you've used, checkbox-toggled, with typing a new name offering to create and add it on the spot
+
 ## [0.1.228] - 2026-08-17
 - No code change from 0.1.157 below — bumped straight to 0.1.228 so this build installs over the `fix/black-screen-restore` bisect APKs already on a test phone (the highest of those, rc11, is versionCode 227) without needing an uninstall first. Same reason 0.1.156 jumped its own gap; see that entry's note.
 
