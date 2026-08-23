@@ -2,6 +2,7 @@
 
 ## [0.1.257] - 2026-08-23
 - Fix: the Windows exe kept showing the old default icon after rebuilding — the app icon .ico was already correct, but Ninja had no way to know Runner.rc depended on it, so incremental Windows builds never re-embedded a changed icon. A clean/first Windows build after this fix picks it up.
+- Local build: 2026-08-23 17:29
 
 ## [0.1.256] - 2026-08-23
 - Tasks pulled in from Todoist now arrive tagged "Waiting for Approval" and stay out of every list (Today, projects, wishlist) until reviewed in the new Waiting for Approval view (menu, under About) — approve to release it into its normal spot, or deny to delete it.
