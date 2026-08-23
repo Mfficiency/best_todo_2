@@ -14,6 +14,8 @@ import '../models/task.dart';
 import '../services/auto_tag_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
+import '../services/wishlist_shipped.dart';
+import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 
@@ -61,6 +63,97 @@ void bumpWishPriority(Task task) {
   setWishPriority(task, wishPriorityLabels[next]);
 }
 
+/// The release-tracking group a wishlist item is sorted into — rendered as
+/// the wishlist's sections, top to bottom, exactly like the home page's
+/// due-date tabs. Membership is decided entirely by tags: [newlyImplemented]
+/// is automatic (the shipped-wish registry, restricted to the running app's
+/// own version), [nextRelease] and [soon] follow the `release-next` /
+/// `release-soon` label tokens, and anything left over is [backlog].
+enum WishReleaseGroup { newlyImplemented, nextRelease, soon, backlog }
+
+/// Which [WishReleaseGroup] a wishlist item currently belongs to.
+/// [currentVersion] is the running app's version (`Config.version`): an item
+/// the shipped-wish registry says was delivered by exactly that version is
+/// "Newly implemented" regardless of any release-* tag it also carries, so
+/// the group empties out again once the next version ships.
+WishReleaseGroup wishReleaseGroupOf(Task task, String currentVersion) {
+  final shipped = shippedWishesByUid[task.uid];
+  if (shipped != null &&
+      currentVersion.isNotEmpty &&
+      shipped.version == currentVersion) {
+    return WishReleaseGroup.newlyImplemented;
+  }
+  final labels =
+      splitLabelTokens(task.label).map((label) => label.toLowerCase()).toSet();
+  if (labels.contains(releaseNextToken)) return WishReleaseGroup.nextRelease;
+  if (labels.contains(releaseSoonToken)) return WishReleaseGroup.soon;
+  return WishReleaseGroup.backlog;
+}
+
+/// Moves [task] into [group] by rewriting its release tag, keeping every
+/// other label. [WishReleaseGroup.backlog] and [WishReleaseGroup.
+/// newlyImplemented] carry no tag of their own — moving into either just
+/// strips `release-next`/`release-soon`.
+void setWishReleaseGroup(Task task, WishReleaseGroup group) {
+  final labels = splitLabelTokens(task.label)
+      .where((label) => !releaseGroupTokens.contains(label.toLowerCase()))
+      .toList();
+  switch (group) {
+    case WishReleaseGroup.nextRelease:
+      labels.add(releaseNextToken);
+      break;
+    case WishReleaseGroup.soon:
+      labels.add(releaseSoonToken);
+      break;
+    case WishReleaseGroup.newlyImplemented:
+    case WishReleaseGroup.backlog:
+      break;
+  }
+  task.label = joinLabelTokens(labels);
+}
+
+/// Section title shown above a group's items.
+String wishReleaseGroupTitle(WishReleaseGroup group) {
+  switch (group) {
+    case WishReleaseGroup.newlyImplemented:
+      return 'Newly implemented';
+    case WishReleaseGroup.nextRelease:
+      return 'Next release';
+    case WishReleaseGroup.soon:
+      return 'Soon';
+    case WishReleaseGroup.backlog:
+      return 'Backlog';
+  }
+}
+
+/// The plain-text prompt "Propose for next" puts on the clipboard: an
+/// instruction for Claude to tag the user's Todoist backlog with
+/// `release-next`/`release-soon` (aiming for ~3 items in the next release),
+/// plus a snapshot of the current backlog/soon items so Claude has the exact
+/// titles and tags without needing to cross-reference anything first. Pure
+/// and deterministic, like [WishlistPage.clipboardText], so it's unit
+/// testable without pumping a widget.
+String proposeForNextPrompt(List<Task> backlogAndSoonItems) {
+  final lines = <String>[
+    'Check my BestToDo wishlist backlog in Todoist and decide what ships '
+        'next.',
+    'Tag about 3 items "release-next" (the next release) and a handful more '
+        '"release-soon" (after that); leave everything else untagged so it '
+        'stays in the backlog. Remove either tag from an item that no '
+        'longer belongs there. BestToDo groups the wishlist by these tags, '
+        'so the change takes effect there next time it syncs with Todoist.',
+  ];
+  if (backlogAndSoonItems.isNotEmpty) {
+    lines.add('');
+    lines.add('Current backlog / soon items:');
+    for (final item in backlogAndSoonItems) {
+      final tags = item.label.trim();
+      lines.add('- ${item.title}${tags.isEmpty ? '' : ' [$tags]'}');
+    }
+  }
+  return lines.join('\n');
+}
+
 /// Tools → Wishlist: a pre-filtered view over the one task list — like
 /// opening a project — showing only tasks flagged [Task.isWish]. The full
 /// item overview (the home page) shows the same tasks with all their
@@ -85,10 +178,18 @@ class _WishlistPageState extends State<WishlistPage> {
   bool _loading = true;
   _WishlistSortOrder _sortOrder = _WishlistSortOrder.priority;
 
+  /// The running app's version, for [wishReleaseGroupOf]. Empty until
+  /// loaded, which no shipped-wish version ever matches, so every item
+  /// sorts by its tags alone until then.
+  String _currentVersion = '';
+
   @override
   void initState() {
     super.initState();
     _load();
+    Config.ensureVersionLoaded().then((_) {
+      if (mounted) setState(() => _currentVersion = Config.version);
+    });
   }
 
   Future<void> _load() async {
@@ -318,6 +419,45 @@ class _WishlistPageState extends State<WishlistPage> {
     _save();
   }
 
+  /// [wishes] partitioned into release groups, in section order. Membership
+  /// is decided by [wishReleaseGroupOf]; each group keeps [wishes]'s own
+  /// (already sorted) relative order.
+  Map<WishReleaseGroup, List<Task>> _groupedWishes(List<Task> wishes) {
+    final grouped = <WishReleaseGroup, List<Task>>{
+      for (final group in WishReleaseGroup.values) group: <Task>[],
+    };
+    for (final wish in wishes) {
+      grouped[wishReleaseGroupOf(wish, _currentVersion)]!.add(wish);
+    }
+    return grouped;
+  }
+
+  void _setReleaseGroup(Task item, WishReleaseGroup group) {
+    setState(() => setWishReleaseGroup(item, group));
+    _save();
+  }
+
+  /// Copies the "Propose for next" prompt for every open backlog/soon item
+  /// (newly-implemented and already-scheduled items are the app's own
+  /// bookkeeping, not candidates to re-tag).
+  Future<void> _proposeForNext() async {
+    final candidates = _wishes().where((wish) {
+      if (wish.isDone) return false;
+      final group = wishReleaseGroupOf(wish, _currentVersion);
+      return group == WishReleaseGroup.backlog || group == WishReleaseGroup.soon;
+    }).toList();
+    await Clipboard.setData(
+        ClipboardData(text: proposeForNextPrompt(candidates)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text(
+            'Prompt copied — paste it to Claude, then sync Todoist to '
+            'update the groups.'),
+      ));
+  }
+
   /// Moves [item] to the deleted list, with the same undo window as deleting
   /// a task on the home page.
   void _deleteItem(Task item) {
@@ -360,6 +500,7 @@ class _WishlistPageState extends State<WishlistPage> {
   @override
   Widget build(BuildContext context) {
     final wishes = _wishes();
+    final grouped = _groupedWishes(wishes);
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
@@ -412,24 +553,83 @@ class _WishlistPageState extends State<WishlistPage> {
                     ),
                   ),
                 )
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  itemCount: wishes.length,
-                  itemBuilder: (context, index) {
-                    final item = wishes[index];
-                    return _WishTile(
-                      key: ValueKey(item.uid),
-                      item: item,
-                      onToggle: () => _toggleDone(item),
-                      onEdit: () => _editItem(item),
-                      onCopy: () => _copyItem(item),
-                      onExport: () => _exportItem(item),
-                      onDelete: () => _deleteItem(item),
-                      onBumpPriority: () => _bumpPriority(item),
-                      onSetPriority: (label) => _setPriority(item, label),
-                    );
-                  },
+                  children: [
+                    for (final group in WishReleaseGroup.values)
+                      // "Next release" always shows — it's where "Propose for
+                      // next" lives, and that button should stay reachable
+                      // even before anything has been tagged into it.
+                      if (grouped[group]!.isNotEmpty ||
+                          group == WishReleaseGroup.nextRelease) ...[
+                        _WishReleaseSectionHeader(
+                          group: group,
+                          count: grouped[group]!.length,
+                          onProposeForNext:
+                              group == WishReleaseGroup.nextRelease
+                                  ? _proposeForNext
+                                  : null,
+                        ),
+                        for (final item in grouped[group]!)
+                          _WishTile(
+                            key: ValueKey(item.uid),
+                            item: item,
+                            releaseGroup: group,
+                            onToggle: () => _toggleDone(item),
+                            onEdit: () => _editItem(item),
+                            onCopy: () => _copyItem(item),
+                            onExport: () => _exportItem(item),
+                            onDelete: () => _deleteItem(item),
+                            onBumpPriority: () => _bumpPriority(item),
+                            onSetPriority: (label) =>
+                                _setPriority(item, label),
+                            onSetReleaseGroup: (newGroup) =>
+                                _setReleaseGroup(item, newGroup),
+                          ),
+                      ],
+                  ],
                 ),
+    );
+  }
+}
+
+/// Header row above a release group's items: the group's title, its item
+/// count, and — only above "Next release" — the "Propose for next" button
+/// that copies [proposeForNextPrompt] to the clipboard.
+class _WishReleaseSectionHeader extends StatelessWidget {
+  final WishReleaseGroup group;
+  final int count;
+  final VoidCallback? onProposeForNext;
+
+  const _WishReleaseSectionHeader({
+    required this.group,
+    required this.count,
+    required this.onProposeForNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${wishReleaseGroupTitle(group)} ($count)',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          if (onProposeForNext != null)
+            TextButton.icon(
+              onPressed: onProposeForNext,
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Propose for next'),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -568,6 +768,7 @@ class _WishEditDialogState extends State<_WishEditDialog> {
 /// [Config.swipeLeftDelete] like the home list.
 class _WishTile extends StatefulWidget {
   final Task item;
+  final WishReleaseGroup releaseGroup;
   final VoidCallback onToggle;
   final VoidCallback onEdit;
   final VoidCallback onCopy;
@@ -575,10 +776,12 @@ class _WishTile extends StatefulWidget {
   final VoidCallback onDelete;
   final VoidCallback onBumpPriority;
   final void Function(String priorityLabel) onSetPriority;
+  final void Function(WishReleaseGroup group) onSetReleaseGroup;
 
   const _WishTile({
     Key? key,
     required this.item,
+    required this.releaseGroup,
     required this.onToggle,
     required this.onEdit,
     required this.onCopy,
@@ -586,6 +789,7 @@ class _WishTile extends StatefulWidget {
     required this.onDelete,
     required this.onBumpPriority,
     required this.onSetPriority,
+    required this.onSetReleaseGroup,
   }) : super(key: key);
 
   @override
@@ -730,6 +934,33 @@ class _WishTileState extends State<_WishTile>
               onPressed: widget.onDelete,
             ),
           ],
+          if (widget.releaseGroup != WishReleaseGroup.newlyImplemented)
+            PopupMenuButton<WishReleaseGroup>(
+              tooltip: 'Move to release group',
+              icon: const Icon(Icons.drive_file_move_outline),
+              initialValue: widget.releaseGroup,
+              onSelected: widget.onSetReleaseGroup,
+              itemBuilder: (context) => [
+                for (final group in const [
+                  WishReleaseGroup.nextRelease,
+                  WishReleaseGroup.soon,
+                  WishReleaseGroup.backlog,
+                ])
+                  PopupMenuItem(
+                    value: group,
+                    child: Row(
+                      children: [
+                        if (group == widget.releaseGroup)
+                          const Icon(Icons.check, size: 18)
+                        else
+                          const SizedBox(width: 18),
+                        const SizedBox(width: 8),
+                        Text(wishReleaseGroupTitle(group)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           IconButton(
             tooltip: 'Copy wishlist item',
             icon: const Icon(Icons.copy_outlined),

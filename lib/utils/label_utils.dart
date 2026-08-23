@@ -21,6 +21,17 @@ const List<String> priorityTokens = <String>[
   'priority-high',
 ];
 
+/// Tokens that place a wishlist item in the "Next release" / "Soon" release
+/// groups (see `wishlist_page.dart`'s `WishReleaseGroup`). Ordinary tags —
+/// applied by hand or, via "Propose for next", by Claude in Todoist and
+/// pulled in on the next sync.
+const String releaseNextToken = 'release-next';
+const String releaseSoonToken = 'release-soon';
+const List<String> releaseGroupTokens = <String>[
+  releaseNextToken,
+  releaseSoonToken,
+];
+
 /// Splits a task's label string into its distinct tokens, order-preserving.
 List<String> splitLabelTokens(String label) {
   final seen = <String>{};

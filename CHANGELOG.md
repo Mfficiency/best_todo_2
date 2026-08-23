@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.254] - 2026-08-23
+- Wishlist items now group into release sections (Newly implemented, Next release, Soon, Backlog) decided by tags; move an item between groups with its new "Move to release group" menu, and use "Propose for next" above Next release to copy a prompt for Claude to tag ~3 Todoist backlog items for the next release.
+
 ## [0.1.253] - 2026-08-23
 - The streak flame now turns white with a slight blue hue (was red) once every challenge is done for the day; its streak badge number switches to dark blue so it stays readable
 
