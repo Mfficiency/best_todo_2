@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.254] - 2026-08-23
+- Build all release artifacts
+
 ## [0.1.253] - 2026-08-23
 - The streak flame now turns white with a slight blue hue (was red) once every challenge is done for the day; its streak badge number switches to dark blue so it stays readable
 
