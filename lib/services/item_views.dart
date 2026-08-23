@@ -32,7 +32,7 @@ class ItemViews {
   /// approves or denies it in the Waiting for Approval page — see that
   /// token's doc.
   static bool _isApproved(Task task) =>
-      !labelHasToken(task.label, waitingApprovalToken);
+      !hasWaitingApprovalToken(task.label);
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),

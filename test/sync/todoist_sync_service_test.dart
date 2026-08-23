@@ -346,7 +346,9 @@ void main() {
     expect(tasks.single.description, 'entered on the go');
     // The Waiting for Approval view is the only place it shows up in until a
     // human approves or denies it — see ItemViews.
-    expect(tasks.single.label, contains('waiting-for-approval'));
+    expect(tasks.single.label, contains(waitingApprovalToken));
+    // One tag, not one per word — the token survives the whitespace split.
+    expect(splitLabelTokens(tasks.single.label), [waitingApprovalToken]);
     expect(ItemViews.homeBucket(tasks, 0, DateTime.now()), isEmpty);
     expect(ItemViews.waitingApproval(tasks).single.title, 'From Todoist');
 
@@ -364,8 +366,7 @@ void main() {
     final remoteId = fake.tasks.keys.single;
 
     final tasks = await ItemRepository.instance.loadItems();
-    tasks.single.label = removeLabelToken(
-        tasks.single.label, waitingApprovalToken);
+    tasks.single.label = removeWaitingApprovalToken(tasks.single.label);
     await ItemRepository.instance.saveItems(tasks);
 
     final entry = await TodoistSyncService.instance.syncNow();
@@ -797,7 +798,7 @@ void main() {
       );
       // Every task pulled by the first-launch import is "created with the
       // Todoist workflow" too, so it starts out waiting for approval.
-      expect(afterPhaseTwo.every((t) => t.label.contains('waiting-for-approval')),
+      expect(afterPhaseTwo.every((t) => t.label.contains(waitingApprovalToken)),
           isTrue);
       expect(ItemViews.waitingApproval(afterPhaseTwo), hasLength(4));
     });

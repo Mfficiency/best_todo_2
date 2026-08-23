@@ -264,6 +264,35 @@ it; the Future-tab sentinel date (2300-01-01) lives here as `futureSentinelDate`
 Membership flags on the task stay the stored form (dual-write era) — this step moves the
 *reading* of them into one place.
 
+### 4.2e Waiting for Approval gate (0.1.256, token respelled 0.1.259)
+
+Every task `TodoistSyncService._taskFromRemote` builds — first-launch import and the
+"brand-new Todoist tasks" pull alike — is stamped with `waitingApprovalToken`
+(`lib/utils/label_utils.dart`). `ItemViews._isApproved` makes that token the gate on
+*every* other selector (home buckets, wishlist, active, project tasks, board columns), so
+a task "created with the Todoist workflow" is invisible everywhere until a human decides
+on it in Tools ▸ menu ▸ **Waiting for Approval** (`lib/ui/waiting_approval_page.dart`,
+listed via `ItemViews.waitingApproval`, the one selector that shows *only* gated tasks).
+Approve strips the token (`removeWaitingApprovalToken`) and the task drops into whatever
+list it belongs to; Deny soft-deletes it into `deleted_tasks.json`, recoverable from
+Deleted Items.
+
+**The token is `Waiting_for_approval`, one underscored word (0.1.259).** Label tokens
+split on commas AND whitespace (`_tokenSeparator` = `[,\s]+`), so a Todoist label spelled
+`Waiting for Approval` arrives as three unrelated tags — `Waiting`, `for`, `Approval` —
+that gate nothing. The underscored spelling survives the split as a single tag on both
+sides, and round-trips through Todoist's native `labels` array unchanged. Matching is
+case-insensitive throughout, and `legacyWaitingApprovalTokens` keeps the pre-0.1.259
+`waiting-for-approval` spelling recognized (still gates a task, still stripped on
+approval) but never writes it again — so tasks pulled in before the rename don't get
+stranded. Use `hasWaitingApprovalToken`/`removeWaitingApprovalToken` rather than
+`labelHasToken`/`removeLabelToken` with the constant, or the legacy spelling is missed.
+
+The token is local-only at import: the sync map's fingerprint baseline is computed *with*
+it, so the initial pull pushes nothing back and the Todoist item's `labels` array stays
+untouched. Approving changes `_localFingerprint`, so the next sync pushes the shortened
+label array — the tag is removed on the Todoist side too, exactly once.
+
 ### 4.2c Structured labels (0.1.108)
 
 `Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB

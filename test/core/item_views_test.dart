@@ -102,9 +102,18 @@ void main() {
 
   group('waiting for approval', () {
     Task pending(String title) =>
-        Task(title: title, label: 'waiting-for-approval');
+        Task(title: title, label: 'Waiting_for_approval');
 
-    test('a task tagged waiting-for-approval is hidden from every other '
+    test('the pre-0.1.260 waiting-for-approval spelling still gates a task',
+        () {
+      final legacy = Task(title: 'old pending', label: 'waiting-for-approval');
+      final ok = Task(title: 'normal', dueDate: today);
+      expect(ItemViews.active([ok, legacy]).map((t) => t.title), ['normal']);
+      expect(ItemViews.waitingApproval([ok, legacy]).map((t) => t.title),
+          ['old pending']);
+    });
+
+    test('a task tagged Waiting_for_approval is hidden from every other '
         'view', () {
       final waiting = pending('from todoist');
       final ok = Task(title: 'normal', dueDate: today);

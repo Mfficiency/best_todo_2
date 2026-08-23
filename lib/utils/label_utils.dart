@@ -20,7 +20,27 @@ const String autoCompletedToken = 'autocompleted';
 /// it in the Waiting for Approval view (`waiting_approval_page.dart`):
 /// approving strips the token (making the task visible wherever it belongs),
 /// denying deletes the task outright.
-const String waitingApprovalToken = 'waiting-for-approval';
+///
+/// Underscored on purpose (0.1.260): tokens split on commas AND whitespace,
+/// so a Todoist label spelled "Waiting for Approval" arrives as three
+/// separate tags ("Waiting", "for", "Approval") that match nothing. One
+/// underscored word survives the split as a single tag on both sides.
+const String waitingApprovalToken = 'Waiting_for_approval';
+
+/// Earlier spellings of [waitingApprovalToken] still sitting on tasks that
+/// were pulled in before 0.1.260. Recognized everywhere the current token is
+/// (so those tasks stay gated) and stripped alongside it on approval, but
+/// never written again.
+const List<String> legacyWaitingApprovalTokens = <String>[
+  'waiting-for-approval',
+];
+
+/// Whether [token] is the approval gate under any of its spellings.
+bool isWaitingApprovalToken(String token) {
+  final lower = token.toLowerCase();
+  return lower == waitingApprovalToken.toLowerCase() ||
+      legacyWaitingApprovalTokens.any((t) => t.toLowerCase() == lower);
+}
 
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[
@@ -61,7 +81,7 @@ String labelKindFor(String token) {
   if (priorityTokens.contains(lower)) return Label.kindPriority;
   if (lower == legacyImportToken ||
       lower == autoCompletedToken ||
-      lower == waitingApprovalToken) {
+      isWaitingApprovalToken(token)) {
     return Label.kindSystem;
   }
   return Label.kindTag;
@@ -83,3 +103,13 @@ String removeLabelToken(String label, String token) {
   return joinLabelTokens(
       splitLabelTokens(label).where((t) => t.toLowerCase() != lower));
 }
+
+/// Whether [label] carries the approval gate under any of its spellings.
+bool hasWaitingApprovalToken(String label) =>
+    splitLabelTokens(label).any(isWaitingApprovalToken);
+
+/// Strips the approval gate from [label] under every spelling — what
+/// approving a task does (`waiting_approval_page.dart`), so a task never
+/// stays hidden because of a token this app no longer writes.
+String removeWaitingApprovalToken(String label) => joinLabelTokens(
+    splitLabelTokens(label).where((t) => !isWaitingApprovalToken(t)));

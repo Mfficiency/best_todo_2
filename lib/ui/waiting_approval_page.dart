@@ -49,11 +49,13 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   List<Task> _pending() => ItemViews.waitingApproval(_tasks);
 
-  /// Removes [waitingApprovalToken], making the task visible wherever it
-  /// belongs (today's list, a project, the wishlist, ...).
+  /// Removes [waitingApprovalToken] (and its legacy spellings), making the
+  /// task visible wherever it belongs (today's list, a project, the
+  /// wishlist, ...). The next Todoist sync pushes the shortened label array,
+  /// so the tag disappears on the Todoist side too.
   void _approve(Task task) {
     setState(() {
-      task.label = removeLabelToken(task.label, waitingApprovalToken);
+      task.label = removeWaitingApprovalToken(task.label);
     });
     _save();
     LogService.add('WaitingApprovalPage._approve', 'Approved "${task.title}"');
