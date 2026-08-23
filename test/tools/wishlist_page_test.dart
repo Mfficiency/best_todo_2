@@ -4,10 +4,12 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
+import 'package:besttodo/services/wishlist_shipped.dart';
 import 'package:besttodo/ui/wishlist_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
@@ -342,5 +344,158 @@ void main() {
     olderY = tester.getTopLeft(find.text('Older wish')).dy;
     newerY = tester.getTopLeft(find.text('Newer wish')).dy;
     expect(newerY, lessThan(olderY));
+  });
+
+  group('release groups (pure)', () {
+    test('tags decide next-release/soon/backlog membership', () {
+      final backlog = Task(title: 'No tag', isWish: true);
+      final next = Task(title: 'Tagged next', label: 'release-next', isWish: true);
+      final soon = Task(title: 'Tagged soon', label: 'release-soon', isWish: true);
+      expect(wishReleaseGroupOf(backlog, '1.0.0'), WishReleaseGroup.backlog);
+      expect(wishReleaseGroupOf(next, '1.0.0'), WishReleaseGroup.nextRelease);
+      expect(wishReleaseGroupOf(soon, '1.0.0'), WishReleaseGroup.soon);
+    });
+
+    test(
+        'a backlog uid shipped in the running version is newly implemented, '
+        'regardless of tags', () {
+      final shipped = shippedWishes.first;
+      final task = Task(
+        uid: shipped.uid,
+        title: 'Shipped backlog item',
+        label: 'release-next',
+        isWish: true,
+      );
+      expect(wishReleaseGroupOf(task, shipped.version),
+          WishReleaseGroup.newlyImplemented);
+      // Once the app moves past that release, the tag takes over again.
+      expect(
+          wishReleaseGroupOf(task, 'not-a-real-version'),
+          WishReleaseGroup.nextRelease);
+    });
+
+    test('setWishReleaseGroup rewrites only the release tag', () {
+      final task = Task(title: 'Wish', label: 'gift, release-soon', isWish: true);
+      setWishReleaseGroup(task, WishReleaseGroup.nextRelease);
+      expect(task.label, 'gift, release-next');
+
+      setWishReleaseGroup(task, WishReleaseGroup.backlog);
+      expect(task.label, 'gift');
+    });
+
+    test('proposeForNextPrompt lists titles and tags, empty backlog stays terse',
+        () {
+      final withItems = proposeForNextPrompt([
+        Task(title: 'Learn to sail', label: 'gift', isWish: true),
+        Task(title: 'Untagged idea', isWish: true),
+      ]);
+      expect(withItems, contains('release-next'));
+      expect(withItems, contains('- Learn to sail [gift]'));
+      expect(withItems, contains('- Untagged idea'));
+
+      final empty = proposeForNextPrompt(const []);
+      expect(empty, isNot(contains('Current backlog')));
+    });
+  });
+
+  testWidgets('items are grouped into release sections with headers',
+      (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(title: 'Next item', label: 'release-next', isWish: true),
+        Task(title: 'Soon item', label: 'release-soon', isWish: true),
+        Task(title: 'Backlog item', isWish: true),
+      ],
+      marker: 'Backlog item',
+    );
+
+    expect(find.text('Next release (1)'), findsOneWidget);
+    expect(find.text('Soon (1)'), findsOneWidget);
+    expect(find.text('Backlog (1)'), findsOneWidget);
+    // The section order puts Next release above Soon above Backlog.
+    final nextY = tester.getTopLeft(find.text('Next release (1)')).dy;
+    final soonY = tester.getTopLeft(find.text('Soon (1)')).dy;
+    final backlogY = tester.getTopLeft(find.text('Backlog (1)')).dy;
+    expect(nextY, lessThan(soonY));
+    expect(soonY, lessThan(backlogY));
+    // Only the Next release section carries the propose button.
+    expect(find.text('Propose for next'), findsOneWidget);
+  });
+
+  testWidgets('moving an item to a release group retags and resections it',
+      (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Buy a telescope', isWish: true)],
+      marker: 'Buy a telescope',
+    );
+
+    expect(find.text('Backlog (1)'), findsOneWidget);
+    expect(find.text('Next release (1)'), findsNothing);
+
+    await tester.tap(find.byTooltip('Move to release group'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Next release'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Next release (1)'), findsOneWidget);
+    expect(find.text('Backlog (1)'), findsNothing);
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['label'], 'release-next');
+  });
+
+  testWidgets(
+      'propose for next copies backlog/soon items, excluding done and '
+      'shipped ones', (tester) async {
+    Config.resetVersionForTest();
+    PackageInfo.setMockInitialValues(
+      appName: 'BestToDo',
+      packageName: 'com.example.besttodo',
+      version: shippedWishes.first.version,
+      buildNumber: '1',
+      buildSignature: '',
+    );
+    addTearDown(Config.resetVersionForTest);
+
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add(call.arguments['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    final doneBacklogItem = Task(title: 'Done idea', isWish: true)
+      ..toggleDone();
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(title: 'Backlog idea', label: 'gift', isWish: true),
+        Task(title: 'Soon idea', label: 'release-soon', isWish: true),
+        doneBacklogItem,
+        Task(
+          uid: shippedWishes.first.uid,
+          title: 'Shipped idea',
+          isWish: true,
+        ),
+      ],
+      marker: 'Backlog idea',
+    );
+
+    await tester.tap(find.text('Propose for next'));
+    await tester.pump();
+
+    expect(copied, hasLength(1));
+    expect(copied.single, contains('- Backlog idea [gift]'));
+    expect(copied.single, contains('- Soon idea [release-soon]'));
+    expect(copied.single, isNot(contains('Done idea')));
+    expect(copied.single, isNot(contains('Shipped idea')));
   });
 }
