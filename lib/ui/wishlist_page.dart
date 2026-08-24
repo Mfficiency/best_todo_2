@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../utils/linkified_text.dart';
@@ -152,7 +153,10 @@ class _WishlistPageState extends State<WishlistPage> {
   /// Wishlist items sorted like a to-do list: open items before done ones,
   /// then by the selected helper sort, otherwise keeping their list order.
   List<Task> _wishes() {
-    final wishes = ItemViews.wishlist(_tasks);
+    final wishes = ItemViews.wishlist(
+      _tasks,
+      rules: Config.viewFilterRules[ViewFilterRules.wishlist],
+    );
     final order = <String, int>{
       for (var i = 0; i < wishes.length; i++) wishes[i].uid: i,
     };

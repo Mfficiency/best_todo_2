@@ -13,6 +13,7 @@ import '../config.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../services/alarm_service.dart';
 import '../services/auto_backup_service.dart';
 import '../services/item_event_journal.dart';
@@ -1152,8 +1153,9 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
-    // See _reorderTask: reordering is disabled while searching.
-    if (_searchQuery.trim().isNotEmpty) return;
+    // See _reorderTask: reordering is disabled while searching or while a
+    // Home filter rule is hiding tasks.
+    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
     final fullList = _tasksForTab(pageIndex);
 
@@ -1387,9 +1389,10 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
-    // Reordering a search-filtered list would renumber only the visible
-    // subset and scramble the hidden tasks' order, so it is disabled.
-    if (_searchQuery.trim().isNotEmpty) return;
+    // Reordering a search- or filter-rule-narrowed list would renumber only
+    // the visible subset and scramble the hidden tasks' order, so it is
+    // disabled while either is active.
+    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -2079,9 +2082,16 @@ class _HomePageState extends State<HomePage>
             has(ProjectService.instance.nameOf(task.projectId)));
   }
 
+  /// Whether the Home view's configured filter rules (Settings → Filtering
+  /// rules) currently hide anything.
+  bool get _homeFilterRulesActive =>
+      !(Config.viewFilterRules[ViewFilterRules.home]?.isEmpty ?? true);
+
   /// Tasks shown on [pageIndex]. While a search query is active the list is
-  /// narrowed to matching tasks; pass [applySearch] false for logic that must
-  /// see the full tab (e.g. renumbering [Task.listRanking] on save).
+  /// narrowed to matching tasks, and the configured Home filter rules (if
+  /// any) are always applied on top; pass [applySearch] false for logic that
+  /// must see the full tab regardless of either (e.g. renumbering
+  /// [Task.listRanking] on save).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
     // Tab membership is a query over the one list (ItemViews); only the
     // search predicate is home-page state.
@@ -2091,6 +2101,7 @@ class _HomePageState extends State<HomePage>
       pageIndex,
       _currentDate,
       where: query.isEmpty ? null : (task) => _matchesSearch(task, query),
+      rules: applySearch ? Config.viewFilterRules[ViewFilterRules.home] : null,
     );
   }
 
@@ -2347,7 +2358,10 @@ class _HomePageState extends State<HomePage>
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => DeletedItemsPage(
-                        items: _deletedTasks,
+                        items: ItemViews.applyFilterRules(
+                          _deletedTasks,
+                          Config.viewFilterRules[ViewFilterRules.deleted],
+                        ),
                         onRestore: _restoreTask,
                         onDeletePermanently: _deleteTaskPermanently,
                       ),

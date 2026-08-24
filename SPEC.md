@@ -259,6 +259,12 @@ it; the Future-tab sentinel date (2300-01-01) lives here as `futureSentinelDate`
 Membership flags on the task stay the stored form (dual-write era) — this step moves the
 *reading* of them into one place.
 
+Every selector above also takes an optional `rules` (`ViewFilterRules?`, see §4.4 "Filtering
+rules"), checked via `ItemViews.passesFilterRules` — an extra, user-configured tag layer on
+top of the view's own structural query. `applyFilterRules` filters a plain list the same way
+(used for the Deleted Items page, which is not itself a selector). A null or empty `rules`
+is a no-op, so every existing call site that does not pass one is unaffected.
+
 ### 4.2c Structured labels (0.1.108)
 
 `Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB
@@ -611,6 +617,24 @@ must open its section first (tap `Expand <section>` or jump via its chip). `_jum
 `_collapsedSections` first, so chips and search results never land on a closed title;
 toggles re-run `_updateActiveSectionFromScroll` on the next frame because the list height
 changed under the chip row.
+
+**Filtering rules (0.1.235):** a per-view tag filter, configured separately for each of
+Home, Wishlist, Projects and Deleted Items. `ViewFilterRules`
+(`lib/models/view_filter_rules.dart`: `excludeTags`, `includeTags`, both `List<String>`)
+holds one view's configuration; `Config.viewFilterRules` (`Map<String, ViewFilterRules>`,
+keyed by `ViewFilterRules.home/wishlist/projects/deleted`) persists all of them inside
+`settings.json` alongside every other setting. A task carrying any `excludeTags` token is
+hidden from that view; when `includeTags` is non-empty, only tasks carrying at least one of
+its tokens show — matched case-insensitively against `Task.label` tokens
+(`splitLabelTokens`). This sits on top of each view's own structural rule (the wishlist
+still only ever shows `isWish` tasks) — see §4.2d. The Settings "Filtering rules" section
+(last section, index 10) lists all four views with two chip editors each (add via text
+field + Enter/+, remove via the chip's ×); `SettingsPage._rulesFor` lazily creates an empty
+entry per view on first touch. Because a Home rule can hide tasks mid-tab, drag-reorder on
+the home list is disabled whenever one is active (`_homeFilterRulesActive`), exactly like it
+already is while a search query is active — reordering a narrowed list would renumber only
+the visible subset and scramble the hidden tasks' rank order; renumbering on save
+(`_saveTasks`, `applySearch: false`) always sees the true unfiltered tab so ranks never drift.
 
 ### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157)
 
