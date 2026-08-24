@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'package:timezone/data/latest_all.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
+
 void main(List<String> args) {
   final parsed = _parseArgs(args);
   final screenshotFolder = parsed['screenshot-folder'];
@@ -11,7 +14,9 @@ void main(List<String> args) {
     exit(1);
   }
 
-  final now = DateTime.now().toUtc().toIso8601String();
+  tz_data.initializeTimeZones();
+  final swissNow = tz.TZDateTime.now(tz.getLocation('Europe/Zurich'));
+  final now = _fmtSwiss(swissNow);
   final shortSha = (sourceSha == null || sourceSha.isEmpty)
       ? 'unknown'
       : sourceSha.substring(0, sourceSha.length < 7 ? sourceSha.length : 7);
@@ -66,6 +71,12 @@ void main(List<String> args) {
 
   final newContent = '${entry.toString()}$existingContent';
   changelogFile.writeAsStringSync(newContent);
+}
+
+String _fmtSwiss(tz.TZDateTime t) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${t.year}.${two(t.month)}.${two(t.day)} '
+      '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
 }
 
 Map<String, String> _parseArgs(List<String> args) {
