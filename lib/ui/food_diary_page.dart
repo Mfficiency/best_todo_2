@@ -42,24 +42,52 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
 
   Future<void> _load() async {
     final tasks = await _repository.loadItems();
-    // Platforms without storage (web) load an empty list; dev builds seed one
-    // entry so the tool is testable in Chrome.
+    // Platforms without storage (web) load an empty list; dev builds seed a
+    // few entries spread across the day so the tool is testable in Chrome
+    // and its screenshots always show a populated log.
     if (tasks.isEmpty && Config.isDev) {
-      tasks.add(Task(
-        title: 'Greek yogurt with honey',
-        description: 'Dev seed: a food diary entry',
-        label: 'sugar, lactose',
-        createdAt: DateTime.now(),
-        dueDate: DateTime.now(),
-        hasExplicitTime: true,
-        isEatingHabit: true,
-      ));
+      tasks.addAll(_buildDevSeed());
     }
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
       _loading = false;
     });
+  }
+
+  List<Task> _buildDevSeed() {
+    final now = DateTime.now();
+    DateTime at(int hour, int minute) =>
+        DateTime(now.year, now.month, now.day, hour, minute);
+    return [
+      Task(
+        title: 'Oatmeal with banana',
+        description: 'Dev seed: a food diary entry',
+        label: 'gluten',
+        createdAt: now,
+        dueDate: at(8, 0),
+        hasExplicitTime: true,
+        isEatingHabit: true,
+      ),
+      Task(
+        title: 'Grilled chicken salad',
+        description: 'Dev seed: a food diary entry',
+        label: 'dairy-free',
+        createdAt: now,
+        dueDate: at(13, 0),
+        hasExplicitTime: true,
+        isEatingHabit: true,
+      ),
+      Task(
+        title: 'Greek yogurt with honey',
+        description: 'Dev seed: a food diary entry',
+        label: 'sugar, lactose',
+        createdAt: now,
+        dueDate: at(19, 30),
+        hasExplicitTime: true,
+        isEatingHabit: true,
+      ),
+    ];
   }
 
   Future<void> _save() => _repository.saveItems(_tasks);

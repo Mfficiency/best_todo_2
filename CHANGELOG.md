@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.268] - 2026-08-24
+- Dev/demo builds: the Alarms tool now seeds three sample alarms (a repeating weekday "Wake up", a one-off "Midday stretch", and a disabled repeating-weekend "Wind down") instead of opening empty, and the Food Diary tool seeds three sample entries spread across the day instead of one — so every tool's screenshot shows populated demo data.
+
 ## [0.1.267] - 2026-08-24
 - Settings gained per-view Filtering rules: hide or restrict Home, Wishlist, Projects, Archived Items and the Deleted bin by tag, configured separately for each view
 
