@@ -6,9 +6,11 @@ import 'dart:async';
 
 import '../models/project.dart';
 import '../models/task.dart';
+import '../models/todoist_sync_map_entry.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
+import '../services/todoist_sync_service.dart';
 import '../utils/linkified_text.dart';
 import 'label_picker.dart';
 
@@ -195,6 +197,50 @@ class _TaskTileState extends State<TaskTile>
       isEmulator = true;
     }
     if (mounted) setState(() => _isEmulator = isEmulator);
+  }
+
+  /// A small info button shown next to the Note field for a task linked to
+  /// Todoist, so the sync id/date live in one tap-away place instead of
+  /// cluttering the free-text description. Null (no icon) for a task that
+  /// has never been synced.
+  Widget? _todoistSyncInfoIcon() {
+    final entry =
+        TodoistSyncService.instance.entryForLocalUid(widget.task.uid);
+    if (entry == null) return null;
+    return IconButton(
+      icon: const Icon(Icons.info_outline),
+      tooltip: 'Todoist sync info',
+      onPressed: () => _showTodoistSyncInfo(entry),
+    );
+  }
+
+  void _showTodoistSyncInfo(TodoistSyncMapEntry entry) {
+    final synced = entry.syncedAt.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final syncedLabel =
+        '${synced.year}-${two(synced.month)}-${two(synced.day)} '
+        '${two(synced.hour)}:${two(synced.minute)}';
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Todoist sync info'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Source: Todoist'),
+            Text('Synced: $syncedLabel'),
+            Text('Todoist ID: ${entry.todoistId}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _startOptions(_SwipeOptionMode mode, {bool fromKeyboard = false}) {
@@ -702,7 +748,10 @@ class _TaskTileState extends State<TaskTile>
                     },
                     child: TextField(
                       controller: _noteController,
-                      decoration: const InputDecoration(labelText: 'Note'),
+                      decoration: InputDecoration(
+                        labelText: 'Note',
+                        suffixIcon: _todoistSyncInfoIcon(),
+                      ),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
                       onChanged: (v) => widget.task.note = v,

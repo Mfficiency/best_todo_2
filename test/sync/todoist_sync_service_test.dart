@@ -243,6 +243,24 @@ void main() {
     expect(fake.tasks.length, 1);
   });
 
+  test('entryForLocalUid exposes the Todoist id and synced date for a '
+      'synced task, and null for one never synced', () async {
+    final task = Task(title: 'Write report');
+    await StorageService().saveTaskList([task]);
+
+    expect(TodoistSyncService.instance.entryForLocalUid(task.uid), isNull);
+
+    await TodoistSyncService.instance.syncNow();
+
+    final entry = TodoistSyncService.instance.entryForLocalUid(task.uid);
+    expect(entry, isNotNull);
+    expect(entry!.todoistId, fake.tasks.keys.single);
+    expect(
+      entry.syncedAt.difference(DateTime.now()).abs(),
+      lessThan(const Duration(minutes: 1)),
+    );
+  });
+
   test('a label added on the Todoist side (native labels, not the '
       'description trailer) is pulled into the local task', () async {
     await StorageService().saveTaskList([
