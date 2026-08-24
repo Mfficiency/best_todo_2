@@ -1,72 +1,25 @@
 
-Building Windows application...                                    83.1s
+Building Windows application...                                    87.1s
 √ Built build\windows\x64\runner\Debug\BestToDo.exe
 ::group::❌ capture home page screenshot (failed)
 ALARMLOG [WARN] FIRE | could not read notification launch details: LateInitializationError: Field '_instance@1026271368' has not been initialized.
-
-Warning: A call to tap() with finder "Found 1 widget with text "Productivity Stats": [
-  Text("Productivity Stats", dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery, _ScrollableScope]),
-]" derived an Offset (Offset(174.0, 803.0)) that would not hit test on the specified widget.
-Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
-Indeed, Offset(174.0, 803.0) is outside the bounds of the root of the render tree, Size(1028.0, 681.0).
-The finder corresponds to this RenderBox: RenderParagraph#0f5b1 relayoutBoundary=up21
-The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#4d98f(_ReusableRenderView#0892f), HitTestEntry<HitTestTarget>#2eba0(<IntegrationTestWidgetsFlutterBinding>))
-#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2077:25)
-#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1861:12)
-#2      WidgetController.tap (package:flutter_test/src/controller.dart:1041:7)
-#3      main.<anonymous closure> (file:///D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart:106:18)
-<asynchronous suspension>
-#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:193:15)
-<asynchronous suspension>
-#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1064:5)
-<asynchronous suspension>
-#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
-<asynchronous suspension>
-To silence this warning, pass "warnIfMissed: false" to "tap()".
-To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
-
-
-Warning: A call to tap() with finder "Found 1 widget with text "Projects": [
-  Text("Projects", dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery, _ScrollableScope]),
-]" derived an Offset (Offset(174.0, 707.0)) that would not hit test on the specified widget.
-Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
-Indeed, Offset(174.0, 707.0) is outside the bounds of the root of the render tree, Size(1028.0, 681.0).
-The finder corresponds to this RenderBox: RenderParagraph#a0784 relayoutBoundary=up21
-The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#c413d(_ReusableRenderView#0892f), HitTestEntry<HitTestTarget>#faa84(<IntegrationTestWidgetsFlutterBinding>))
-#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2077:25)
-#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1861:12)
-#2      WidgetController.tap (package:flutter_test/src/controller.dart:1041:7)
-#3      main.<anonymous closure> (file:///D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart:129:18)
-<asynchronous suspension>
-#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:193:15)
-<asynchronous suspension>
-#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1064:5)
-<asynchronous suspension>
-#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
-<asynchronous suspension>
-To silence this warning, pass "warnIfMissed: false" to "tap()".
-To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
-
 ══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
-The following StateError was thrown running a test:
-Bad state: No element
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with widget matching predicate: []" (used in a call to "tap()") could
+not find any matching widgets.
 
 When the exception was thrown, this was the stack:
-#0      Iterable.first (dart:core/iterable.dart:645:7)
-#1      _FirstFinderMixin.filter (package:flutter_test/src/finders.dart:1340:28)
-#3      Iterable.single (dart:core/iterable.dart:676:13)
-#4      WidgetController.widget (package:flutter_test/src/controller.dart:804:30)
-#5      WidgetController.scrollUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2336:15)
-#8      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
-#9      WidgetController.scrollUntilVisible (package:flutter_test/src/controller.dart:2334:27)
-#10     main.<anonymous closure> (file:///D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart:139:18)
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2009:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1861:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1041:7)
+#3      main.<anonymous closure> (file:///D:/a/best_todo_2/best_todo_2/integration_test/home_page_screenshot_test.dart:256:18)
 <asynchronous suspension>
-#11     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:193:15)
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:193:15)
 <asynchronous suspension>
-#12     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1064:5)
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1064:5)
 <asynchronous suspension>
 <asynchronous suspension>
-(elided 4 frames from dart:async, dart:async-patch, and package:stack_trace)
+(elided one frame from package:stack_trace)
 
 The test description was:
   capture home page screenshot
