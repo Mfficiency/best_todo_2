@@ -71,6 +71,16 @@ def main():
     for name, size in mac_sizes.items():
         resize_and_save(SOURCE_ICON, f'{mac}/{name}', size)
 
+    # Windows icon (multi-size .ico used for the exe / taskbar)
+    ico = 'windows/runner/resources/app_icon.ico'
+    os.makedirs(os.path.dirname(ico), exist_ok=True)
+    Image.open(SOURCE_ICON).convert("RGBA").save(
+        ico,
+        format="ICO",
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
+    print(f"Saved {ico} (16-256px)")
+
     print("All icons generated from existing PNGs.")
 
 if __name__ == "__main__":

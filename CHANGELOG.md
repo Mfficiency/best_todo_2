@@ -1,7 +1,119 @@
 # Changelog
 
-## [0.1.235] - 2026-08-24
-- Settings gained per-view Filtering rules: hide or restrict Home, Wishlist, Projects and Deleted Items by tag, configured separately for each view
+## [0.1.266] - 2026-08-24
+- Settings gained per-view Filtering rules: hide or restrict Home, Wishlist, Projects, Archived Items and the Deleted bin by tag, configured separately for each view
+
+## [0.1.265] - 2026-08-24
+- Deleted tasks are now Archived Items — restorable indefinitely, exactly like before. A new real Deleted bin sits behind it (open it from the Archived Items app bar): items sent there purge for good after a configurable retention window (Settings → Tasks → "Deleted items retention", default 60 days). Denying a task in Waiting for Approval now goes straight to the bin instead of the archive. Fix: manually archiving one occurrence of a recurring task could reappear on the next app restart; it now stays gone without disturbing the rest of the series or counting toward any goals.
+
+## [0.1.264] - 2026-08-24
+- New setting, Settings → Updates → "Automatically check for updates" (off by default): looks up the newest build every time the app opens and, if one is available, asks before doing anything — confirming opens the About page's update section with the check already run. A manual check on the About page still always works regardless of this setting.
+- A feature branch's pull request into `dev` now has its branch deleted automatically once merged, via a new CI workflow.
+- Local build: 2026-08-24 07:10
+
+## [0.1.263] - 2026-08-24
+- A task synced with Todoist now shows a small info icon next to its Note field (when expanded) with the sync source, last synced date and Todoist task id — the description field stays exactly what you typed, free of any sync metadata.
+- Local build: 2026-08-24 06:24
+
+## [0.1.262] - 2026-08-23
+- Fix: a task denied in the Waiting for Approval view could stay on the Android home-screen widget. The widget list now skips deleted and not-yet-approved tasks (so pending Todoist imports never show there either), denying or approving one redraws the widget right away, and reloading the task list from storage refreshes it too.
+- Local build: 2026-08-24 05:50
+
+## [0.1.261] - 2026-08-23
+- Wishlist swipe options: the countdown before the default action (moving an item back one release step) is now 8 seconds instead of the app-wide 5, each Share/Copy/Export button now shows its icon next to its label, and a Delete button was added so a single wish can be deleted straight from the swipe panel.
+- Fix: tasks still waiting for Todoist approval could leak into the home page's schedule (calendar) view, which built its list straight from the raw task list instead of going through the same filter as the tab list view.
+- Local build: 2026-08-23 21:09
+
+## [0.1.260] - 2026-08-23
+- The Waiting for Approval tag is now a single tag, "Waiting_for_approval", instead of one tag per word — tasks pulled from Todoist are gated properly again, and approving a task strips the tag on the Todoist side too. Tasks still carrying the old "waiting-for-approval" spelling stay gated and get cleaned up on approval.
+- Local build: 2026-08-23 19:09
+
+## [0.1.259] - 2026-08-23
+- Wishlist tiles are decluttered: the per-item share, copy, export, swipe and select icons are gone — those actions now live behind the swipe gestures (swipe right for Share/Copy/Export, swipe left to select). Only the release-group picker stays on the tile.
+- Local build: 2026-08-23 18:51
+
+## [0.1.258] - 2026-08-23
+- Wishlist swipe actions redesigned: swipe right for Share/Copy shortcuts (default: move the item back one release step), swipe left to multi-select items and copy them as a "build these" prompt for Claude, or bulk-delete them.
+- Local build: 2026-08-23 18:33
+
+## [0.1.257] - 2026-08-23
+- Fix: the Windows exe kept showing the old default icon after rebuilding — the app icon .ico was already correct, but Ninja had no way to know Runner.rc depended on it, so incremental Windows builds never re-embedded a changed icon. A clean/first Windows build after this fix picks it up.
+- Local build: 2026-08-23 17:29
+
+## [0.1.256] - 2026-08-23
+- Tasks pulled in from Todoist now arrive tagged "Waiting for Approval" and stay out of every list (Today, projects, wishlist) until reviewed in the new Waiting for Approval view (menu, under About) — approve to release it into its normal spot, or deny to delete it.
+
+## [0.1.255] - 2026-08-23
+- Editing a task or wishlist item's labels is now a ClickUp/Sheets-style picker instead of a raw text field: current labels show as removable chips, and an "Add label" chip opens a searchable list of every label you've used, checkbox-toggled, with typing a new name offering to create and add it on the spot
+
+## [0.1.254] - 2026-08-23
+- Build all release artifacts
+- Wishlist items now group into release sections (Newly implemented, Next release, Soon, Backlog) decided by tags; move an item between groups with its new "Move to release group" menu, and use "Propose for next" above Next release to copy a prompt for Claude to tag ~3 Todoist backlog items for the next release.
+
+## [0.1.253] - 2026-08-23
+- The streak flame now turns white with a slight blue hue (was red) once every challenge is done for the day; its streak badge number switches to dark blue so it stays readable
+
+## [0.1.252] - 2026-08-23
+- Labels now show as tags on every task in the home list, not just wishlist items — a task tagged "urgent" or "priority-high" shows that tag under its title wherever it appears
+
+## [0.1.251] - 2026-08-22
+- Fix: tapping a schedule-view section tab that's scrolled far offscreen now actually scrolls to it (was a silent no-op)
+
+## [0.1.250] - 2026-08-22
+- The green and blue flames are now configurable goals instead of a fixed "create a task"/"plan ahead" rule: pick a recurring task or a project in Settings → Streak, and that flame lights the day a matching task is completed
+- Each configurable flame gets its own title (pre-filled from the task/project name, editable) and shows a "no goal set" state until you choose one, or a "goal missing" prompt if its task/project is later deleted
+- The orange "finish a task" flame is unchanged; the old fixed create/plan behaviour is retired in favour of goals you set yourself
+
+## [0.1.249] - 2026-08-22
+- Windows portable EXE builds now run automatically after a successful GitHub APK build, checking out the same commit that produced the APK; the manual "Build Windows Portable Exe" action is still available for one-off rebuilds.
+- Auto-tagging got smarter: instead of one keyword per tag, each tag now has a whole group of words that trigger it (e.g. "fitness" fires on gym, workout, exercise, cardio, yoga, jogging, running, training or stretch) — seeded with 12 starter categories (work, bike, fitness, health, shopping, finance, travel, home, family, food, study, tech) curated from online thesaurus data. Settings → Auto-tag rules now edits a tag plus its whole word group in one dialog. Still on by default.
+
+## [0.1.248] - 2026-08-22
+- Fixed Todoist sync so a pull (a new task added in Todoist, a label/edit picked up from there, a completion) actually shows up in the app: the Home page's task list is now reloaded from storage after returning from Settings (where "Sync now" lives) and after the app resumes from a quit-triggered background sync, instead of only updating on-disk data that a stale in-memory list never picked up until a full app restart.
+
+## [0.1.247] - 2026-08-22
+- Pulling down on the home page's task list now runs a Todoist sync (two-way, same as the manual "Sync now" button) and reloads the list with whatever it pulled down; a no-op if Todoist sync isn't enabled.
+
+## [0.1.246] - 2026-08-22
+- Fixed a real bug where a Todoist sync run that failed partway through (a dropped/rate-limited API call, a disk write hiccup) could leave the sync bookkeeping out of step with what was actually saved, causing the *next* sync to mistake a just-added Todoist task for one you'd deleted locally — and delete it back on Todoist. A failed sync now rolls its bookkeeping back cleanly instead of carrying stray state into the next run.
+
+## [0.1.245] - 2026-08-22
+- New tasks and wishlist items can be auto-tagged: a small editable keyword → tag dictionary (Settings → Tasks → Auto-tag rules) scans the title on creation and adds any matching tags to the label automatically, with a handful of starter rules (work, bike, gym, shopping, ...) and an on/off switch ("Auto-tag new items")
+
+## [0.1.244] - 2026-08-22
+- Todoist sync: fixed label sync for real this time — pull now trusts Todoist's native `labels` field instead of a stale copy cached in the task description, so a label added or removed in Todoist's own UI actually shows up in BestToDo (and label fingerprinting is now order/case-insensitive, so pure re-ordering never causes a spurious sync). Also added Kanban project name sync: renaming a project on either side now renames it on the other (conflict rule matches everything else — local wins if both sides changed).
+
+## [0.1.243] - 2026-08-22
+- Todoist import (onboarding "Import from Todoist") now loads today's (and overdue) tasks first so the home screen opens right away, and finishes pulling everything else in the background — with a banner on the home page while it does. Web favicon now uses a crisper, correctly-sized copy of the real BestToDo logo.
+
+## [0.1.242] - 2026-08-22
+- A brand-new install now asks whether to start with an empty task list or import straight from a Todoist account (Settings → Todoist sync also still works any time later); added a manual "Build Windows Portable Exe" GitHub Actions workflow that packages a zip with BestToDo.exe and its dependencies — no installer needed, runs on Windows 10 and 11.
+
+## [0.1.241] - 2026-08-21
+- Todoist sync: labels now round-trip both ways as real Todoist labels (already worked, now covered end-to-end), wishlist items sync into a dedicated "Wishlist" Todoist project, and undated/unprojected tasks (the Future tab) sync into a dedicated "Future" project. Reassigning a task's Todoist project on an already-synced task (e.g. toggling wishlist status) now actually moves it there instead of only updating local bookkeeping.
+- Local build: 2026-08-22 06:17
+
+## [0.1.240] - 2026-08-21
+- Local builds (`tool/build.sh`) now note when they finished as a "Local build" line in the changelog, so the Changelog page shows the previous build's build time
+
+## [0.1.239] - 2026-08-21
+- Fun stats on the Productivity Stats page are now tappable: each one that's backed by real items (completions, postponements, etc.) opens a sheet listing which items made it up and the day/time it happened
+
+## [0.1.238] - 2026-08-21
+- Todoist sync: fixed against Todoist's unified API v1 after the old REST v2/Sync v9 endpoints were sunset — the sync tab was failing with an endpoint-deprecated error. Also fixes reading Todoist due dates/times (their new API merged the separate date/datetime fields into one) and pages through more than one page of tasks or projects instead of silently stopping at the first.
+
+## [0.1.237] - 2026-08-21
+- Todoist sync: Settings → **Todoist sync** — a switch and an API token field keep your tasks synced both ways with a Todoist account. New/edited/completed/deleted tasks push to Todoist; tasks created, edited or completed in Todoist pull back in. "Test connection" and "Sync now" buttons, plus a status line showing the last run
+- Fields Todoist has no room for — note, label, project and Kanban stage — are appended to the synced Todoist task's description as a readable summary so nothing is lost round-tripping; editing the description text above that summary in either app stays in sync
+- Wishlist items and recurring tasks stay local-only (Todoist's recurrence engine doesn't map cleanly onto this app's recurring-task model)
+- Runs in the background whenever you leave the app (same trigger as Synced mode) with its own App Logs "Todoist" tab; a failed sync lights the same drawer red dot as the folder sync
+
+## [0.1.236] - 2026-08-21
+- Every wishlist item now has a copy button that puts its title, description and labels on the clipboard
+- The app-bar flame stops cycling once all three daily challenges are done for the day: it settles on one steady red flame showing the highest of the streak counts
+
+## [0.1.235] - 2026-08-17
+- Tier 3 of the Obsidian integration ships: checking a task off in Obsidian now flows back to the phone on its next resume, via a change journal (besttodo_changes.json) the app applies with last-writer-wins conflict rules
 
 ## [0.1.234] - 2026-08-17
 - Streak challenges you have already earned now collect at the bottom of the list, under an "Earned" divider, so the card opens on what is still left to chase

@@ -12,22 +12,31 @@ class ViewFilterRules {
   static const String home = 'home';
   static const String wishlist = 'wishlist';
   static const String projects = 'projects';
-  static const String deleted = 'deleted';
+  static const String archived = 'archived';
+  static const String bin = 'bin';
 
-  static const List<String> viewIds = [home, wishlist, projects, deleted];
+  static const List<String> viewIds = [
+    home,
+    wishlist,
+    projects,
+    archived,
+    bin,
+  ];
 
   static const Map<String, String> viewLabels = {
     home: 'Home',
     wishlist: 'Wishlist',
     projects: 'Projects',
-    deleted: 'Deleted items',
+    archived: 'Archived items',
+    bin: 'Deleted bin',
   };
 
   static const Map<String, String> viewDescriptions = {
     home: 'The Today / Tomorrow / ... tabs on the home screen',
     wishlist: 'Tools → Wishlist',
     projects: 'Tools → Projects, including every project board',
-    deleted: 'Deleted Items (the drawer entry)',
+    archived: 'Archived Items (the drawer entry)',
+    bin: 'The real Deleted bin, opened from Archived Items',
   };
 
   List<String> excludeTags;

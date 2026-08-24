@@ -28,6 +28,12 @@ class ItemViews {
       date.month == futureSentinelDate.month &&
       date.day == futureSentinelDate.day;
 
+  /// A task freshly pulled in from Todoist is stamped with
+  /// [waitingApprovalToken] and stays out of every other view until a human
+  /// approves or denies it in the Waiting for Approval page — see that
+  /// token's doc.
+  static bool isApproved(Task task) => !hasWaitingApprovalToken(task.label);
+
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
   /// 1 Tomorrow, 2 Day After, 3–29 Next Week, 30+ Next Month, and the
@@ -90,6 +96,7 @@ class ItemViews {
   }) {
     final list = tasks
         .where((t) =>
+            isApproved(t) &&
             (where == null || where(t)) &&
             inHomeBucket(t, tabIndex, today) &&
             passesFilterRules(t, rules))
@@ -101,13 +108,17 @@ class ItemViews {
   /// The wishlist: wish-flagged tasks, exactly like opening a project.
   static List<Task> wishlist(List<Task> tasks, {ViewFilterRules? rules}) =>
       tasks
-          .where((t) => t.isWish && passesFilterRules(t, rules))
+          .where((t) =>
+              t.isWish && isApproved(t) && passesFilterRules(t, rules))
           .toList();
 
   /// All non-deleted tasks (the Projects page's top pane).
   static List<Task> active(List<Task> tasks, {ViewFilterRules? rules}) =>
       tasks
-          .where((t) => t.deletedAt == null && passesFilterRules(t, rules))
+          .where((t) =>
+              t.deletedAt == null &&
+              isApproved(t) &&
+              passesFilterRules(t, rules))
           .toList();
 
   /// A project's tasks, regardless of board stage.
@@ -117,6 +128,7 @@ class ItemViews {
           .where((t) =>
               t.deletedAt == null &&
               t.projectId == projectId &&
+              isApproved(t) &&
               passesFilterRules(t, rules))
           .toList();
 
@@ -129,6 +141,13 @@ class ItemViews {
               t.deletedAt == null &&
               t.projectId == projectId &&
               t.kanbanStatus == stage &&
+              isApproved(t) &&
               passesFilterRules(t, rules))
           .toList();
+
+  /// Tasks pulled from Todoist that are still waiting for a human decision
+  /// (see [waitingApprovalToken]) — the Waiting for Approval page's list.
+  static List<Task> waitingApproval(List<Task> tasks) => tasks
+      .where((t) => t.deletedAt == null && !isApproved(t))
+      .toList();
 }

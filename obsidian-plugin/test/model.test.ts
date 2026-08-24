@@ -6,14 +6,20 @@ import {
   SUPPORTED_SYNC_VERSION,
   SyncContractError,
   SyncTask,
+  appendOp,
   bucketIndex,
   buildBuckets,
   dateDiffInDays,
+  emptyJournal,
   formatDate,
   formatDateTime,
+  generateDeviceId,
   isFutureSentinel,
+  makeToggleOp,
+  parseJournal,
   parseSyncFile,
   parseTask,
+  serializeJournal,
 } from "../src/model";
 
 const now = new Date(2026, 7, 6, 14, 30); // 2026-08-06 14:30 local
@@ -238,5 +244,88 @@ describe("envelope parsing", () => {
       envelope({ tasks: [{ title: "Good" }, "bogus", 42, null] })
     );
     expect(file.tasks.map((t) => t.title)).toEqual(["Good"]);
+  });
+});
+
+describe("the change journal (Tier 3)", () => {
+  test("makeToggleOp completes an open task and reopens a done one", () => {
+    const at = new Date(2026, 7, 6, 9, 0);
+    const open = task({ isDone: false });
+    expect(makeToggleOp(open, at)).toEqual({
+      op: "complete",
+      uid: open.uid,
+      at: at.toISOString(),
+    });
+
+    const done = task({ isDone: true });
+    expect(makeToggleOp(done, at)).toEqual({
+      op: "reopen",
+      uid: done.uid,
+      at: at.toISOString(),
+    });
+  });
+
+  test("appendOp is pure: it returns a new journal and leaves the old one alone", () => {
+    const original = emptyJournal("obsidian-1");
+    const op = makeToggleOp(task({}), new Date());
+    const updated = appendOp(original, op);
+
+    expect(original.ops).toHaveLength(0);
+    expect(updated.ops).toEqual([op]);
+    expect(updated).not.toBe(original);
+  });
+
+  test("serializeJournal round-trips through parseJournal", () => {
+    const op = makeToggleOp(task({}), new Date());
+    const journal = appendOp(emptyJournal("obsidian-1"), op);
+
+    const parsed = parseJournal(serializeJournal(journal), "obsidian-1");
+
+    expect(parsed).toEqual(journal);
+  });
+
+  test("a missing or malformed journal parses as empty, never throws", () => {
+    expect(parseJournal("", "obsidian-1")).toEqual(emptyJournal("obsidian-1"));
+    expect(parseJournal("not json", "obsidian-1")).toEqual(
+      emptyJournal("obsidian-1")
+    );
+    expect(parseJournal("[1,2,3]", "obsidian-1")).toEqual(
+      emptyJournal("obsidian-1")
+    );
+  });
+
+  test("an unsupported journal_version parses as empty rather than clobbering it", () => {
+    const raw = JSON.stringify({
+      journal_version: 99,
+      device: "obsidian-1",
+      ops: [{ op: "complete", uid: "x", at: "2026-08-06T09:00:00.000Z" }],
+    });
+    expect(parseJournal(raw, "obsidian-1")).toEqual(emptyJournal("obsidian-1"));
+  });
+
+  test("parseJournal keeps ops already in the file when appending is not involved", () => {
+    const existingOp = {
+      op: "complete" as const,
+      uid: "existing",
+      at: "2026-08-06T09:00:00.000Z",
+    };
+    const raw = JSON.stringify({
+      journal_version: 1,
+      device: "obsidian-1",
+      ops: [existingOp],
+    });
+    expect(parseJournal(raw, "obsidian-1").ops).toEqual([existingOp]);
+  });
+
+  test("generateDeviceId is stable in shape and varies per call", () => {
+    let counter = 0;
+    const fakeRandom = () => {
+      counter += 1;
+      return counter / 10;
+    };
+    const first = generateDeviceId(fakeRandom);
+    const second = generateDeviceId(fakeRandom);
+    expect(first).toMatch(/^obsidian-[a-z0-9]+-[a-z0-9]+$/);
+    expect(first).not.toEqual(second);
   });
 });

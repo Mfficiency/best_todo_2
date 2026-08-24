@@ -7,16 +7,18 @@
 > reasoning behind each step. Written so a human or AI can rebuild the app from zero.
 
 ## Fundamentals
-1. less than 1 second cold startup
+1. less than 0.5 seconds cold startup
 2. it must not be possible in less clicks/steps
 3. open source
+4. The app serves the user—not the other way around.
+
 
 ## 🚀 MVP Features
 - Add task: description, note, labels
 - Tasks default to today
 - Swipe right: reschedule to tomorrow, 2d, next week, next month
 - Local DB: Hive or Isar
-- <1s cold startup
+- <0.5s cold startup
 - Unit and widget test coverage
 
 ## 🛠️ Getting Started
@@ -29,6 +31,10 @@ flutter pub get
 flutter run -d chrome
 flutter build apk --release
 #after installing the android SDK
+## windows
+flutter config --enable-windows-desktop
+flutter pub get
+flutter build windows --release
 ```
 
 When running the app on Chrome, swipe gestures can be hard to test.
@@ -48,6 +54,13 @@ dart run tool/bump_version.dart 0.1.59+29 "swipe both ways"
 
 # but in theory you should be able to just run
 bash tool/build.sh apk
+```
+
+On Windows without Git Bash or WSL, run the native PowerShell wrapper from
+`cmd.exe`:
+
+```bat
+powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release
 ```
 
 For example `bash tool/build.sh web` will create a folder like

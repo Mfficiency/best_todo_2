@@ -1,0 +1,43 @@
+name: Delete branch after merge
+
+# The repo's flow is feature → dev → staging → main (see CLAUDE.md). Once a
+# feature branch's PR lands on dev its job is done, so this deletes the head
+# branch automatically instead of leaving stale branches behind. The long-lived
+# branches themselves (dev/staging/main) are always excluded, whichever side of
+# the merge they were on.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  delete-branch:
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'dev' &&
+      !contains(fromJSON('["dev", "staging", "main"]'), github.event.pull_request.head.ref)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete head branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ref = `heads/${context.payload.pull_request.head.ref}`;
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref,
+              });
+              core.notice(`Deleted branch ${context.payload.pull_request.head.ref}`);
+            } catch (error) {
+              // Already deleted (e.g. by a squash-merge UI option) is not a failure.
+              if (error.status === 422 || error.status === 404) {
+                core.notice(`Branch ${context.payload.pull_request.head.ref} already gone`);
+              } else {
+                throw error;
+              }
+            }

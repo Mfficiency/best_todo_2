@@ -36,7 +36,61 @@ void main() {
       expect(labelKindFor('priority-high'), Label.kindPriority);
       expect(labelKindFor('Priority-Low'), Label.kindPriority);
       expect(labelKindFor('old'), Label.kindSystem);
+      expect(labelKindFor('Waiting_for_approval'), Label.kindSystem);
+      expect(labelKindFor('waiting_FOR_approval'), Label.kindSystem);
+      // The pre-0.1.260 spelling still classifies as a system token.
+      expect(labelKindFor('waiting-for-approval'), Label.kindSystem);
       expect(labelKindFor('urgent'), Label.kindTag);
+    });
+
+    test('labelHasToken matches case-insensitively', () {
+      expect(labelHasToken('work, Waiting_For_Approval', waitingApprovalToken),
+          isTrue);
+      expect(labelHasToken('work, urgent', waitingApprovalToken), isFalse);
+      expect(labelHasToken('', waitingApprovalToken), isFalse);
+    });
+
+    test('the approval token is one whitespace-proof tag, not three', () {
+      expect(splitLabelTokens(waitingApprovalToken), [waitingApprovalToken]);
+      expect(splitLabelTokens('work, $waitingApprovalToken').length, 2);
+      // What a spaced-out Todoist label would have done instead.
+      expect(splitLabelTokens('Waiting for Approval').length, 3);
+    });
+
+    test('hasWaitingApprovalToken accepts current and legacy spellings', () {
+      expect(hasWaitingApprovalToken('work, Waiting_for_approval'), isTrue);
+      expect(hasWaitingApprovalToken('work, waiting-for-approval'), isTrue);
+      expect(hasWaitingApprovalToken('work, urgent'), isFalse);
+      expect(hasWaitingApprovalToken(''), isFalse);
+    });
+
+    test('removeWaitingApprovalToken strips every spelling, keeps the rest',
+        () {
+      expect(
+          removeWaitingApprovalToken(
+              'work, Waiting_For_Approval, urgent'),
+          'work, urgent');
+      expect(
+          removeWaitingApprovalToken('work, waiting-for-approval, urgent'),
+          'work, urgent');
+      expect(removeWaitingApprovalToken('work'), 'work');
+    });
+
+    test('addLabelToken adds once and is idempotent', () {
+      expect(addLabelToken('work', waitingApprovalToken),
+          'work, Waiting_for_approval');
+      expect(
+          addLabelToken('work, Waiting_for_approval', waitingApprovalToken),
+          'work, Waiting_for_approval');
+      expect(addLabelToken('', waitingApprovalToken), 'Waiting_for_approval');
+    });
+
+    test('removeLabelToken drops only the matching token', () {
+      expect(
+          removeLabelToken('work, Waiting_For_Approval, urgent',
+              waitingApprovalToken),
+          'work, urgent');
+      expect(removeLabelToken('work', waitingApprovalToken), 'work');
     });
   });
 
