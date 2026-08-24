@@ -132,6 +132,9 @@ Projects (0.1.89): `projectId` (String?, omitted from JSON when null) + `kanbanS
 (`'todo'`/`'ongoing'`/`'closed'`, constants on `Task`, defaults `'todo'`).
 Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist item
 (see §10.6); wish tasks are undated and undated tasks bucket into the Future tab.
+Food Diary (0.1.266): `isEatingHabit` (bool, default false) marks a task as a food
+diary entry (see §10.6a); gated out of every other view by
+`ItemViews.isVisibleInMainViews`.
 `fromJson` is tolerant: missing keys get defaults.
 
 `DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
@@ -259,12 +262,15 @@ items / ~2 MB, measured startup regression) — is recorded in
 
 `ItemViews` (`lib/services/item_views.dart`) is the shared query layer over the one task
 list: pure static selectors `inHomeBucket`/`homeBucket` (date-only distance bucketing +
-`sortTasks`, optional extra predicate for search), `wishlist` (isWish), `active`
-(deletedAt == null), `projectTasks`, `boardColumn`. The home page's `_tasksForTab`, the
-Wishlist page, the Projects page (counts + top pane) and the Kanban board all delegate to
-it; the Future-tab sentinel date (2300-01-01) lives here as `futureSentinelDate`.
-Membership flags on the task stay the stored form (dual-write era) — this step moves the
-*reading* of them into one place.
+`sortTasks`, optional extra predicate for search), `wishlist` (isWish), `foodDiary`
+(isEatingHabit, §10.6a), `active` (deletedAt == null), `projectTasks`, `boardColumn`. The
+home page's `_tasksForTab`, the Wishlist/Food Diary pages, the Projects page (counts +
+top pane) and the Kanban board all delegate to it; the Future-tab sentinel date
+(2300-01-01) lives here as `futureSentinelDate`. Membership flags on the task stay the
+stored form (dual-write era) — this step moves the *reading* of them into one place.
+`isVisibleInMainViews` (`isApproved(t) && !t.isEatingHabit`) is the combined gate every
+selector except `foodDiary`/`waitingApproval` filters through — a food diary entry, like
+an unapproved Todoist pull, is invisible everywhere but its own tool.
 
 ### 4.2e Waiting for Approval gate (0.1.256, token respelled 0.1.259)
 
@@ -487,7 +493,7 @@ build; sections scrolled out of view are unmounted, which is fine because the se
 spanning the top is always attached.
 
 **Drawer:** Home, Settings, Archived Items (→ Deleted bin, §4.2g), About, Changelog, App Logs, Startup Times,
-Tools ▸ (Alarms, Countdown, Wishlist, Projects, Chronize, Productivity Stats,
+Tools ▸ (Alarms, Countdown, Wishlist, Food Diary, Projects, Chronize, Productivity Stats,
 Usage Data, Test Results). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
@@ -1816,6 +1822,34 @@ The 0.1.232 registry seeds twelve entries whose features shipped long before the
 mechanism existed (calendar view ×2, Chronize, the Wishlist tab itself, Productivity
 Stats, Startup Times, simple/advanced/pro mode ×3, the manual GitHub APK action, the
 automatic test workflow, the screenshot integration tests).
+
+### 10.6a Food Diary (0.1.266, phase 1)
+Tools → Food Diary (`lib/ui/food_diary_page.dart`): a pre-filtered view over the ONE
+task list, structurally identical to the Wishlist tool — flagged tasks
+(`Task.isEatingHabit`) rather than a separate store. Unlike the wishlist, a food diary
+entry is invisible everywhere except this tool and, once deleted, Archived Items/the
+Deleted bin: `ItemViews.isVisibleInMainViews` (`isApproved(t) && !t.isEatingHabit`)
+gates `homeBucket`, `wishlist`, `active`, `projectTasks`, `boardColumn`, the schedule
+view's task list, the home-screen widget's `todayTasks`, and Todoist's `syncable`
+filter — an eating-habit task carries no Todoist mapping and is never pushed or pulled.
+`ItemViews.foodDiary(tasks)` (gated by `isApproved` alone, since the eating-habit check
+would exclude every result) is the tool's own selector.
+
+Phase 1 fields, deliberately small: title, description, a "time" (stored in the same
+`dueDate`/`hasExplicitTime` fields every task uses — picked via `pickDateInstantly` +
+`pickTimeOfDay`, so a past or future time is fine and never triggers day-rollover sweep
+since rollover only sweeps `isDone` tasks and an entry's `isDone` never flips), and
+free-form tags (e.g. "sugar", "lactose") through the same `LabelPickerField` every task
+uses. Entries render newest-time-first, no checkbox, no priority/release grouping/
+export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swipe
+(`Dismissible`) to delete. Deleting moves the entry straight to Archived Items
+(`ItemRepository.loadDeletedItems`/`saveDeletedItems`) with an undo snackbar, exactly
+like a wishlist delete — never the plain task list, never the real bin directly.
+
+Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
+`featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
+drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
+on return (the tool loads/saves the list on its own, like Wishlist).
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

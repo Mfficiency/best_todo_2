@@ -85,6 +85,7 @@ class Config {
     'alarms',
     'countdown',
     'wishlist',
+    'food_diary',
     'projects',
     'chronize',
     'usage_data',
@@ -98,6 +99,7 @@ class Config {
     'Alarms',
     'Countdown',
     'Wishlist',
+    'Food Diary',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -125,12 +127,13 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first eight match
+  /// Keys are persisted, so keep them stable; the first nine match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
     'countdown',
     'wishlist',
+    'food_diary',
     'projects',
     'chronize',
     'usage_data',
@@ -152,6 +155,7 @@ class Config {
     'Alarms',
     'Countdown',
     'Wishlist',
+    'Food Diary',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -173,6 +177,7 @@ class Config {
     'Alarm clock with escalating reminders',
     'Countdown timers with milestones',
     'Wishlist of someday items',
+    'Track what you eat, separate from your tasks',
     'Project boards for grouping tasks',
     'Timeline planner for the day',
     'Charts about how you use the app',

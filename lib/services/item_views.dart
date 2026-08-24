@@ -9,9 +9,9 @@ import '../utils/task_utils.dart';
 /// I/O, no state, so they cost nothing at startup and can be unit-tested
 /// without pumping widgets.
 ///
-/// Membership flags on the task (`isWish`, `projectId`, `kanbanStatus`)
-/// remain the stored representation for now (dual-write era); pages just no
-/// longer hand-roll the same `where(...)` chains.
+/// Membership flags on the task (`isWish`, `isEatingHabit`, `projectId`,
+/// `kanbanStatus`) remain the stored representation for now (dual-write
+/// era); pages just no longer hand-roll the same `where(...)` chains.
 class ItemViews {
   ItemViews._();
 
@@ -32,6 +32,15 @@ class ItemViews {
   /// approves or denies it in the Waiting for Approval page — see that
   /// token's doc.
   static bool isApproved(Task task) => !hasWaitingApprovalToken(task.label);
+
+  /// Whether [task] belongs to every main view — home tabs, schedule view,
+  /// wishlist, projects, the home-screen widget, Todoist sync — as opposed
+  /// to being gated into exactly one dedicated tool. Combines the Todoist
+  /// approval gate with the Food Diary gate ([Task.isEatingHabit]): a food
+  /// diary entry is visible only in the Food Diary tool itself and, once
+  /// deleted there, the deleted/archived lists.
+  static bool isVisibleInMainViews(Task task) =>
+      isApproved(task) && !task.isEatingHabit;
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
@@ -68,7 +77,7 @@ class ItemViews {
   }) {
     final list = tasks
         .where((t) =>
-            isApproved(t) &&
+            isVisibleInMainViews(t) &&
             (where == null || where(t)) &&
             inHomeBucket(t, tabIndex, today))
         .toList();
@@ -78,16 +87,25 @@ class ItemViews {
 
   /// The wishlist: wish-flagged tasks, exactly like opening a project.
   static List<Task> wishlist(List<Task> tasks) =>
-      tasks.where((t) => t.isWish && isApproved(t)).toList();
+      tasks.where((t) => t.isWish && isVisibleInMainViews(t)).toList();
+
+  /// The Food Diary: eating-habit-flagged tasks, exactly like opening the
+  /// wishlist. [isApproved] rather than [isVisibleInMainViews] since the
+  /// latter itself excludes eating-habit tasks.
+  static List<Task> foodDiary(List<Task> tasks) =>
+      tasks.where((t) => t.isEatingHabit && isApproved(t)).toList();
 
   /// All non-deleted tasks (the Projects page's top pane).
-  static List<Task> active(List<Task> tasks) =>
-      tasks.where((t) => t.deletedAt == null && isApproved(t)).toList();
+  static List<Task> active(List<Task> tasks) => tasks
+      .where((t) => t.deletedAt == null && isVisibleInMainViews(t))
+      .toList();
 
   /// A project's tasks, regardless of board stage.
   static List<Task> projectTasks(List<Task> tasks, String projectId) => tasks
       .where((t) =>
-          t.deletedAt == null && t.projectId == projectId && isApproved(t))
+          t.deletedAt == null &&
+          t.projectId == projectId &&
+          isVisibleInMainViews(t))
       .toList();
 
   /// One Kanban column of a project's board.
@@ -98,7 +116,7 @@ class ItemViews {
               t.deletedAt == null &&
               t.projectId == projectId &&
               t.kanbanStatus == stage &&
-              isApproved(t))
+              isVisibleInMainViews(t))
           .toList();
 
   /// Tasks pulled from Todoist that are still waiting for a human decision

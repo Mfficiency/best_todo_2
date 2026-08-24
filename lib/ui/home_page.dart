@@ -45,6 +45,7 @@ import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
 import 'deleted_bin_page.dart';
 import 'dice_timer_page.dart';
+import 'food_diary_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
@@ -1056,6 +1057,8 @@ class _HomePageState extends State<HomePage>
         return const CountdownTimerPage();
       case 'wishlist':
         return const WishlistPage();
+      case 'food_diary':
+        return const FoodDiaryPage();
       case 'projects':
         return ProjectsPage(tasks: _tasks, onChanged: _saveTasks);
       case 'chronize':
@@ -1094,9 +1097,12 @@ class _HomePageState extends State<HomePage>
       // Tools like Projects mutate tasks in place; refresh the lists when
       // coming back.
       if (mounted) setState(() {});
-      // The Wishlist tool loads and saves the task list on its own, so this
-      // page's in-memory copy is refreshed from disk when coming back.
-      if (tool == 'wishlist') _reloadTasksFromStorage();
+      // The Wishlist/Food Diary tools load and save the task list on their
+      // own, so this page's in-memory copy is refreshed from disk when
+      // coming back.
+      if (tool == 'wishlist' || tool == 'food_diary') {
+        _reloadTasksFromStorage();
+      }
     });
   }
 
@@ -2611,7 +2617,7 @@ class _HomePageState extends State<HomePage>
     final query = _searchQuery.trim().toLowerCase();
     final visibleTasks = _tasks
         .where((t) =>
-            ItemViews.isApproved(t) &&
+            ItemViews.isVisibleInMainViews(t) &&
             (query.isEmpty || _matchesSearch(t, query)))
         .toList();
     return ScheduleView(
@@ -2643,6 +2649,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('alarms', 'Alarms', Icons.alarm),
     _ToolEntry('countdown', 'Countdown', Icons.timer),
     _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
+    _ToolEntry('food_diary', 'Food Diary', Icons.restaurant),
     _ToolEntry('projects', 'Projects', Icons.dashboard),
     _ToolEntry('chronize', 'Chronize', Icons.access_time),
     _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
