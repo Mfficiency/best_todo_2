@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.264] - 2026-08-24
+- New setting, Settings → Updates → "Automatically check for updates" (off by default): looks up the newest build every time the app opens and, if one is available, asks before doing anything — confirming opens the About page's update section with the check already run. A manual check on the About page still always works regardless of this setting.
+- A feature branch's pull request into `dev` now has its branch deleted automatically once merged, via a new CI workflow.
+
 ## [0.1.263] - 2026-08-24
 - A task synced with Todoist now shows a small info icon next to its Note field (when expanded) with the sync source, last synced date and Todoist task id — the description field stays exactly what you typed, free of any sync metadata.
 - Local build: 2026-08-24 06:24

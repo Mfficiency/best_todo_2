@@ -459,6 +459,12 @@ class Config {
   /// every other value in this file — the app has no secret-storage layer.
   static String todoistApiToken = '';
 
+  /// If true, the app checks for a newer build every time it starts and, if
+  /// one is found, asks before doing anything — see Settings → Updates. Off
+  /// by default so a fresh install never phones home unasked; a manual check
+  /// from the About page always works regardless of this setting.
+  static bool autoUpdateCheckEnabled = false;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -528,6 +534,7 @@ class Config {
       'syncFolderPath': syncFolderPath,
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
+      'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'features': Map<String, bool>.from(featureEnabled),
     };
   }
@@ -642,6 +649,8 @@ class Config {
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
     todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
+    autoUpdateCheckEnabled =
+        data['autoUpdateCheckEnabled'] ?? autoUpdateCheckEnabled;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {

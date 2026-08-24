@@ -32,6 +32,7 @@ void main() {
     Config.dateFormat = 'yyyy-MM-dd';
     Config.startTool = 'productivity_stats';
     Config.showFailureDotOnMenu = true;
+    Config.autoUpdateCheckEnabled = true;
     await Config.save();
 
     // Reset to defaults
@@ -48,6 +49,7 @@ void main() {
     Config.dateFormat = Config.dateFormats.first;
     Config.startTool = 'tasks';
     Config.showFailureDotOnMenu = false;
+    Config.autoUpdateCheckEnabled = false;
 
     await Config.load();
 
@@ -64,11 +66,13 @@ void main() {
     expect(Config.dateFormat, 'yyyy-MM-dd');
     expect(Config.startTool, 'productivity_stats');
     expect(Config.showFailureDotOnMenu, isTrue);
+    expect(Config.autoUpdateCheckEnabled, isTrue);
 
     // Restore the defaults so other tests see a clean config.
     Config.showFailureDotOnMenu = false;
     Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
+    Config.autoUpdateCheckEnabled = false;
   });
 
   test('out-of-range default add buckets are clamped on load', () {
