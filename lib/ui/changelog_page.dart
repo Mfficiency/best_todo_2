@@ -199,7 +199,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (!_showHeatmap) {
-            return Markdown(data: snapshot.data!);
+            return Markdown(data: snapshot.data!, selectable: true);
           }
           return _buildHeatmapView(parseChangelogReleases(snapshot.data!));
         },
@@ -366,7 +366,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
           ),
         ),
         const Divider(height: 1),
-        _buildDayDetails(byDay),
+        SelectionArea(child: _buildDayDetails(byDay)),
       ],
     );
   }

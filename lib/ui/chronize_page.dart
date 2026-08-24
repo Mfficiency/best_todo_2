@@ -7,6 +7,7 @@ import 'package:flutter/physics.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 
 /// A level's marks start fading in once they are at least [kMarkFadeStartPx]
@@ -324,7 +325,8 @@ class _ChronizePageState extends State<ChronizePage>
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
     // The minute under the fingers when the gesture began.
-    final anchorMinute = _gestureStartTop + _gestureStartFocalY / _gestureStartPpm;
+    final anchorMinute =
+        _gestureStartTop + _gestureStartFocalY / _gestureStartPpm;
     final newPpm = _clampZoom(_gestureStartPpm * details.scale);
     final focalY = details.localFocalPoint.dy;
     // Keep that minute under the current focal point: one expression covers
@@ -537,7 +539,8 @@ class _ChronizePageState extends State<ChronizePage>
           IconButton(
             icon: const Icon(Icons.zoom_out),
             tooltip: 'Zoom out',
-            onPressed: _canZoomOut ? () => _zoomBy(1 / _zoomButtonFactor) : null,
+            onPressed:
+                _canZoomOut ? () => _zoomBy(1 / _zoomButtonFactor) : null,
           ),
           SizedBox(
             width: 44,
@@ -626,8 +629,8 @@ class _ChronizePageState extends State<ChronizePage>
       final m = _minutesFromBase(due).toDouble();
       return m >= topMin - 60 && m <= bottomMin + 1;
     }).toList()
-      ..sort((a, b) => _minutesFromBase(a.dueDate!)
-          .compareTo(_minutesFromBase(b.dueDate!)));
+      ..sort((a, b) =>
+          _minutesFromBase(a.dueDate!).compareTo(_minutesFromBase(b.dueDate!)));
 
     final chips = <Widget>[];
     double lastBottom = double.negativeInfinity;
@@ -830,7 +833,7 @@ class _ChronizePageState extends State<ChronizePage>
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text(
+            child: LinkifiedText(
               task.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1000,7 +1003,8 @@ class _TimeAxisPainter extends CustomPainter {
         if (y > size.height) break;
         if (_coveredByCoarser(minute, levelIndex)) continue;
 
-        canvas.drawLine(Offset(gutterWidth, y), Offset(size.width, y), gridPaint);
+        canvas.drawLine(
+            Offset(gutterWidth, y), Offset(size.width, y), gridPaint);
         canvas.drawLine(
           Offset(gutterWidth - level.tickLength, y),
           Offset(gutterWidth, y),
@@ -1129,8 +1133,8 @@ class _TaskEditDialogState extends State<_TaskEditDialog> {
       lastDate: DateTime(2100),
     );
     if (picked != null) {
-      setState(() => _due =
-          DateTime(picked.year, picked.month, picked.day, _due.hour, _due.minute));
+      setState(() => _due = DateTime(
+          picked.year, picked.month, picked.day, _due.hour, _due.minute));
     }
   }
 

@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.1.234] - 2026-08-17
+- Streak challenges you have already earned now collect at the bottom of the list, under an "Earned" divider, so the card opens on what is still left to chase
+- Productivity Stats gained a "Fun stats" section at the bottom: items completed and created, completion rate, busiest day, golden hour, favourite weekday, early-bird and night-owl finishes, weekend share, fastest finish, longest wait, oldest open item and how often things were postponed
+- Double-tapping a task now also offers "Remind me in 5 / 10 / 20 minutes" next to "Start timer" — it only sends a notification, the task's own due date stays where it is
+- The wishlist item asking for extra productivity stats ("when is the most productive day / time, which day do I postpone the most") ticks itself off with this release
+
+## [0.1.233] - 2026-08-17
+- The menu now opens with a Home entry: it closes whatever tool page you are on, clears an active search and takes you back to your start tab
+- New tasks no longer have to land in the list you happen to be looking at: Settings → Tasks → "New tasks go to" pins them to one bucket (Today, Future, …), so an idea typed on Today can go straight to Future. The add row then names its target ("Add task · Future") so nothing disappears unexpectedly; the schedule view still adds to the day you highlighted
+- The Notify bell on an opened task now asks when: in 5 minutes, 20 minutes, 1 hour, or the default delay from Settings. It only reminds you — the task's own due date stays where it is
+- Three more wishlist items tick themselves off with this release: "add home to menu", "Default due bucket" and "have a way to sent a notification about that item in 5- 20 or 60 minutes"
+
+## [0.1.232] - 2026-08-17
+- Wishlist items now have permanent ids, so the app can tick them off itself: when a feature from the wishlist is actually built, the matching item completes on next launch, gets an "autocompleted" tag and a note saying which release delivered it — twelve already-built ideas (calendar view, Chronize, the Wishlist tab, Productivity Stats, Startup Times, simple/pro mode, the GitHub build and test workflows, the screenshot tests) are ticked off in this release
+- Wishes you added yourself can be ticked off the same way, not just the ones imported from the old backlog — "autodetect URLs and make clickable" is the first, completed by the clickable links that landed in v0.1.148
+
+## [0.1.231] - 2026-08-17
+- Changelog text is now selectable (both the plain view and the update-heatmap day details), so you can copy entries out
+- Android share-sheet entry is back: share a link, selected text or an email address from any app and it becomes a task on Today (first line as the title, the full shared text kept in the description) — re-implemented on the current code (ShareActivity is a translucent trampoline, not a second MainActivity, so it doesn't touch the widget black-screen investigation)
+
+## [0.1.230] - 2026-08-17
+- Ten of the features that went missing in the v0.1.157 revert are back, all of them re-implemented on the current code and none of them touching the widget/rendering path that the black-screen investigation is still about:
+- Dice timer: a "Cancel timer" button ends a running, paused or ringing timer and drops its alarm with it — the task is left exactly as it was, neither done nor postponed (originally v0.1.127)
+- Dice timer buttons sit in a compact grid so every control fits on one screen without scrolling (v0.1.134)
+- Double-tap a task to start a timer for it straight away; double-tapping the task whose timer is already running returns to that countdown instead of restarting it (v0.1.132)
+- Test Results now lists every test file and every test in it — pass, fail or skip, with per-test times — instead of only the totals; failing files sort to the top (v0.1.129)
+- In-app self-update: "Check for updates" on the About page downloads the newest release APK and hands it to Android's installer, no browser detour (v0.1.133)
+- Two-APK rollback: every release build stages its APK plus the previous one in `github_releases/`, so About also offers "Go back to ..." when a fresh build misbehaves (v0.1.146)
+- Opt-in red dot on the menu icon when the latest test run failed, off by default and self-clearing once you have opened Test Results (v0.1.137)
+- Settings → Sync & export got a "Sync now" tile showing the time and task count of the last sync; URLs in wishlist items and task descriptions are clickable; the wishlist dialog puts labels and quick-priority right under the title, description last (v0.1.148)
+- Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
+- Fix: "Check for updates" needs the Android INTERNET permission, which release builds did not declare — debug builds get it for free, which is why this only ever failed on a real release APK (v0.1.139)
+- **Still missing versus the old `dev` tip (v0.1.156)**, each a real, already-designed feature waiting on the widget black-screen investigation or on its own port:
+  - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
+  - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
+
+## [0.1.229] - 2026-08-17
+- Streak flame: a challenge you have not done yet today stays grey and outlined and pulses white, so an unfinished day catches the eye.
+
 ## [0.1.228] - 2026-08-17
 - No code change from 0.1.157 below — bumped straight to 0.1.228 so this build installs over the `fix/black-screen-restore` bisect APKs already on a test phone (the highest of those, rc11, is versionCode 227) without needing an uninstall first. Same reason 0.1.156 jumped its own gap; see that entry's note.
 
@@ -27,7 +66,6 @@
   - Fix: first launch on a new phone seeds the three starter tasks even when a Todo.md import already filled the list (v0.1.138)
   - Fix: "Check for updates" needs the Android INTERNET permission in release builds (v0.1.139)
   - Upfront permission flow: ask for every permission at once when choosing the full experience, and again after an app update if one is missing (v0.1.140)
-  - Android share-sheet entry: share text/links/an email address into BestToDo to create a task on Today (v0.1.145)
   - Two-APK rollback: every release build stages its APK plus the previous one, so About → "Go back to ..." can downgrade one version (v0.1.146)
   - Settings → Sync & export "Sync now" tile, clickable URLs in descriptions, wishlist dialog field reorder (v0.1.148)
   - The widget-tap black-screen fix itself (task widget always opens the task list, `taskAffinity`/duplicate-launch handling, deferred plugin startup) — needs solving in a way that doesn't reintroduce a glitch; the native/Dart diagnostics instrumentation added to chase it (App Logs Device tab, render-surface heartbeat) is the leading suspect and should not simply be restored as-is
