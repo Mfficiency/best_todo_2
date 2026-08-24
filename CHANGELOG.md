@@ -2,6 +2,7 @@
 
 ## [0.1.269] - 2026-08-24
 - Screenshot Changelog entries now timestamp in Swiss local time (`yyyy.mm.dd HH:mm:ss`) instead of raw UTC ISO-8601
+- Local build: 2026-08-24 18:37
 
 ## [0.1.268] - 2026-08-24
 - Reordered the Settings sections: Appearance, Mode & features, Filtering rules, Notifications, Tasks, Streak, Dice timer, SMS report, Widget, Updates, Todoist sync, Sync & export, Backup
