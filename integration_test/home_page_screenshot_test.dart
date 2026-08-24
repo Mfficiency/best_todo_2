@@ -252,6 +252,11 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
+    // Back to the home page: ProjectBoardPage -> ProjectsPage -> Home. The
+    // drawer (and its "Open navigation menu" button) only exists on Home.
+    await popCurrentPage();
+    await popCurrentPage();
+
     // Archived Items lives directly in the drawer, outside the Tools section.
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
