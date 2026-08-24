@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../config.dart';
 import '../models/countdown_timer.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
@@ -32,6 +33,7 @@ class TaskImportBundle {
 class StorageService {
   static const _fileName = 'tasks.json';
   static const _deletedFileName = 'deleted_tasks.json';
+  static const _binFileName = 'deleted_bin.json';
   static const _dailyStatsFileName = 'daily_task_stats.json';
   static const _dateFileName = 'last_opened.txt';
   static const _countdownFileName = 'countdown_timers.json';
@@ -79,6 +81,11 @@ class StorageService {
   Future<File> _getDeletedFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_deletedFileName');
+  }
+
+  Future<File> _getBinFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_binFileName');
   }
 
   Future<File> _getDailyStatsFile() async {
@@ -165,6 +172,42 @@ class StorageService {
           await SafeFile.readWithRecovery(file, _parseTaskArray) ?? <Task>[];
       _ensureUniqueIds(tasks);
       _trimDeletedTasks(tasks);
+      return tasks;
+    } catch (_) {
+      return <Task>[];
+    }
+  }
+
+  /// The real Deleted bin: tasks denied from Waiting for Approval, or moved
+  /// on from Archived Items. Unlike the archive, entries here age out —
+  /// [loadBinTaskList] purges anything older than
+  /// [Config.deletedItemsRetentionDays] on every read and persists the
+  /// trimmed list, so the purge applies even if the bin page is never opened.
+  Future<void> saveBinTaskList(List<Task> tasks) async {
+    await PreUpdateBackup.ensure();
+    final file = await _getBinFile();
+    _trimDeletedTasks(tasks);
+    final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
+    await SafeFile.writeString(file, jsonString);
+  }
+
+  Future<List<Task>> loadBinTaskList() async {
+    try {
+      final file = await _getBinFile();
+      final tasks =
+          await SafeFile.readWithRecovery(file, _parseTaskArray) ?? <Task>[];
+      _ensureUniqueIds(tasks);
+      _trimDeletedTasks(tasks);
+      final retentionDays = Config.deletedItemsRetentionDays;
+      final cutoff =
+          DateTime.now().subtract(Duration(days: retentionDays));
+      final expired = tasks
+          .where((t) => t.deletedAt != null && t.deletedAt!.isBefore(cutoff))
+          .toList();
+      if (expired.isNotEmpty) {
+        tasks.removeWhere(expired.contains);
+        await saveBinTaskList(tasks);
+      }
       return tasks;
     } catch (_) {
       return <Task>[];

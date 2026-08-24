@@ -220,3 +220,97 @@ export function formatDate(d: Date): string {
 export function formatDateTime(d: Date): string {
   return `${formatDate(d)} ${two(d.getHours())}:${two(d.getMinutes())}`;
 }
+
+// --- Tier 3: the change journal (`besttodo_changes.json`) -----------------
+//
+// Two-way sync (.claude/notes/obsidian-integration.md §Tier 3). The plugin
+// never edits besttodo_tasks.json/.md directly — the app overwrites both on
+// every sync, so a direct edit would just be clobbered. Instead it appends
+// operations here; the app applies them on resume, truncates the file, and
+// re-syncs. This module only ever *writes* "complete"/"reopen" (the
+// checkbox), but parses the full op vocabulary the app-side importer
+// understands (lib/services/sync_import_service.dart) so a future richer
+// write surface has somewhere to grow into without a format change.
+
+/** The one journal version this plugin writes. */
+export const SUPPORTED_JOURNAL_VERSION = 1;
+
+export interface ChangeOp {
+  op: "complete" | "reopen" | "edit" | "create" | "delete";
+  uid?: string;
+  at: string;
+  fields?: Record<string, unknown>;
+}
+
+export interface ChangeJournal {
+  journal_version: number;
+  device: string;
+  ops: ChangeOp[];
+}
+
+/** The well-defined "nothing pending" state — what the app truncates the
+ * journal to once it has applied every op in it. */
+export function emptyJournal(device: string): ChangeJournal {
+  return { journal_version: SUPPORTED_JOURNAL_VERSION, device, ops: [] };
+}
+
+/**
+ * Parses the change journal tolerantly: a missing file, invalid JSON, or an
+ * unrecognized journal_version all fall back to an empty journal rather than
+ * throwing. Refusing on version mismatch is the app importer's job (it must
+ * not silently drop another device's ops); this side only ever needs to keep
+ * appending, so losing an unreadable journal to "start fresh" is the safer
+ * failure than blocking every future checkbox tap on it.
+ */
+export function parseJournal(contents: string, device: string): ChangeJournal {
+  try {
+    const data: unknown = JSON.parse(contents);
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      !Array.isArray(data) &&
+      (data as Record<string, unknown>)["journal_version"] ===
+        SUPPORTED_JOURNAL_VERSION &&
+      Array.isArray((data as Record<string, unknown>)["ops"])
+    ) {
+      const envelope = data as Record<string, unknown>;
+      return {
+        journal_version: SUPPORTED_JOURNAL_VERSION,
+        device:
+          typeof envelope["device"] === "string"
+            ? (envelope["device"] as string)
+            : device,
+        ops: envelope["ops"] as ChangeOp[],
+      };
+    }
+  } catch {
+    // fall through to an empty journal
+  }
+  return emptyJournal(device);
+}
+
+export function serializeJournal(journal: ChangeJournal): string {
+  return JSON.stringify(journal);
+}
+
+/** Appends [op] to [journal], returning a new journal (pure — no mutation). */
+export function appendOp(journal: ChangeJournal, op: ChangeOp): ChangeJournal {
+  return { ...journal, ops: [...journal.ops, op] };
+}
+
+/** The op a checkbox toggle produces: the inverse of the task's current
+ * (pre-toggle) done state. */
+export function makeToggleOp(task: SyncTask, at: Date): ChangeOp {
+  return {
+    op: task.isDone ? "reopen" : "complete",
+    uid: task.uid,
+    at: at.toISOString(),
+  };
+}
+
+/** A short id stamped on every op this install writes — not identity, just
+ * enough to tell log entries apart if that's ever useful. Generated once
+ * and persisted in plugin settings. */
+export function generateDeviceId(random: () => number = Math.random): string {
+  return `obsidian-${random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}

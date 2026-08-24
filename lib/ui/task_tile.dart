@@ -6,10 +6,13 @@ import 'dart:async';
 
 import '../models/project.dart';
 import '../models/task.dart';
+import '../models/todoist_sync_map_entry.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
+import '../services/todoist_sync_service.dart';
 import '../utils/linkified_text.dart';
+import 'label_picker.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -81,6 +84,10 @@ class TaskTile extends StatefulWidget {
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
+  final TaskTileController? controller;
+  final bool keyboardFocused;
+  final VoidCallback? onFocusRequested;
+  final VoidCallback? onKeyboardActionCommitted;
 
   const TaskTile({
     Key? key,
@@ -97,10 +104,37 @@ class TaskTile extends StatefulWidget {
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
+    this.controller,
+    this.keyboardFocused = false,
+    this.onFocusRequested,
+    this.onKeyboardActionCommitted,
   }) : super(key: key);
 
   @override
   State<TaskTile> createState() => _TaskTileState();
+}
+
+class TaskTileController {
+  _TaskTileState? _state;
+
+  bool get hasOptions => _state?._optionMode != null;
+  bool get hasMoveOptions => _state?._optionMode == _SwipeOptionMode.move;
+  bool get hasDeleteOptions => _state?._optionMode == _SwipeOptionMode.delete;
+
+  void _attach(_TaskTileState state) {
+    _state = state;
+  }
+
+  void _detach(_TaskTileState state) {
+    if (_state == state) _state = null;
+  }
+
+  void open() => _state?._openExpanded();
+  void startMoveOptions() => _state?._startMoveOptions(fromKeyboard: true);
+  void startDeleteOptions() => _state?._startDeleteOptions(fromKeyboard: true);
+  void stepOptions() => _state?._stepOptionSelection(fromKeyboard: true);
+  void confirmOptions() => _state?._commitSelectedOption(advanceFocus: true);
+  void closeOptions() => _state?._closeOptions();
 }
 
 class _TaskTileState extends State<TaskTile>
@@ -113,10 +147,11 @@ class _TaskTileState extends State<TaskTile>
   late final TextEditingController _titleController;
   late final TextEditingController _descController;
   late final TextEditingController _noteController;
-  late final TextEditingController _labelController;
   late final List<int> _destinations;
   double _dragOffset = 0;
   bool _dragging = false;
+  int _optionSelectionIndex = 0;
+  bool _optionStartedFromKeyboard = false;
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -126,14 +161,23 @@ class _TaskTileState extends State<TaskTile>
     _titleController = TextEditingController(text: widget.task.title);
     _descController = TextEditingController(text: widget.task.description);
     _noteController = TextEditingController(text: widget.task.note);
-    _labelController = TextEditingController(text: widget.task.label);
     _progressController = AnimationController(
       vsync: this,
       duration: Config.delayDuration,
     );
     _destinations = List<int>.generate(Config.tabs.length, (i) => i)
       ..remove(widget.pageIndex);
+    widget.controller?._attach(this);
     _checkEmulator();
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(this);
+      widget.controller?._attach(this);
+    }
   }
 
   Future<void> _checkEmulator() async {
@@ -155,35 +199,86 @@ class _TaskTileState extends State<TaskTile>
     if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
-  void _startOptions(_SwipeOptionMode mode) {
-    setState(() => _optionMode = mode);
+  /// A small info button shown next to the Note field for a task linked to
+  /// Todoist, so the sync id/date live in one tap-away place instead of
+  /// cluttering the free-text description. Null (no icon) for a task that
+  /// has never been synced.
+  Widget? _todoistSyncInfoIcon() {
+    final entry =
+        TodoistSyncService.instance.entryForLocalUid(widget.task.uid);
+    if (entry == null) return null;
+    return IconButton(
+      icon: const Icon(Icons.info_outline),
+      tooltip: 'Todoist sync info',
+      onPressed: () => _showTodoistSyncInfo(entry),
+    );
+  }
+
+  void _showTodoistSyncInfo(TodoistSyncMapEntry entry) {
+    final synced = entry.syncedAt.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final syncedLabel =
+        '${synced.year}-${two(synced.month)}-${two(synced.day)} '
+        '${two(synced.hour)}:${two(synced.minute)}';
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Todoist sync info'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Source: Todoist'),
+            Text('Synced: $syncedLabel'),
+            Text('Todoist ID: ${entry.todoistId}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startOptions(_SwipeOptionMode mode, {bool fromKeyboard = false}) {
+    setState(() {
+      _optionMode = mode;
+      _optionSelectionIndex = 0;
+      _optionStartedFromKeyboard = fromKeyboard;
+    });
+    _restartOptionTimer(mode);
+  }
+
+  void _restartOptionTimer(_SwipeOptionMode mode) {
     _timer?.cancel();
     _progressController.reset();
     _progressController.forward();
     _timer = Timer(Config.delayDuration, () {
       if (!mounted || _optionMode != mode) return;
-      _progressController.stop();
-      setState(() => _optionMode = null);
-      if (mode == _SwipeOptionMode.move) {
-        widget.onMoveNext();
-      } else {
-        widget.onDelete();
-      }
+      _commitSelectedOption();
     });
   }
 
-  void _startMoveOptions() {
-    _startOptions(_SwipeOptionMode.move);
+  void _startMoveOptions({bool fromKeyboard = false}) {
+    _startOptions(_SwipeOptionMode.move, fromKeyboard: fromKeyboard);
   }
 
-  void _startDeleteOptions() {
-    _startOptions(_SwipeOptionMode.delete);
+  void _startDeleteOptions({bool fromKeyboard = false}) {
+    _startOptions(_SwipeOptionMode.delete, fromKeyboard: fromKeyboard);
   }
 
   void _closeOptions() {
     _timer?.cancel();
     _progressController.stop();
-    if (mounted) setState(() => _optionMode = null);
+    if (mounted) {
+      setState(() {
+        _optionMode = null;
+        _optionStartedFromKeyboard = false;
+      });
+    }
   }
 
   void _selectMove(int dest) {
@@ -201,6 +296,51 @@ class _TaskTileState extends State<TaskTile>
     widget.onMoveToWeekday?.call(weekday);
   }
 
+  int get _optionCount {
+    if (_optionMode == _SwipeOptionMode.move) return _destinations.length;
+    if (_optionMode == _SwipeOptionMode.delete) {
+      return 1 + _deleteSwipeWeekdayOptions.length;
+    }
+    return 0;
+  }
+
+  void _stepOptionSelection({bool fromKeyboard = false}) {
+    final mode = _optionMode;
+    final count = _optionCount;
+    if (mode == null || count == 0) return;
+    setState(() {
+      _optionSelectionIndex = (_optionSelectionIndex + 1) % count;
+      _optionStartedFromKeyboard = _optionStartedFromKeyboard || fromKeyboard;
+    });
+    _restartOptionTimer(mode);
+  }
+
+  void _commitSelectedOption({bool advanceFocus = false}) {
+    final mode = _optionMode;
+    if (mode == null) return;
+    final shouldAdvanceFocus = advanceFocus || _optionStartedFromKeyboard;
+    final selectedIndex = _optionSelectionIndex;
+    _closeOptions();
+    if (mode == _SwipeOptionMode.move) {
+      final dest = _destinations[
+          selectedIndex.clamp(0, _destinations.length - 1).toInt()];
+      widget.onMove(dest);
+    } else if (selectedIndex == 0) {
+      widget.onDelete();
+    } else {
+      final option = _deleteSwipeWeekdayOptions[(selectedIndex - 1)
+          .clamp(0, _deleteSwipeWeekdayOptions.length - 1)
+          .toInt()];
+      widget.onMoveToWeekday?.call(option.weekday);
+    }
+    if (shouldAdvanceFocus) widget.onKeyboardActionCommitted?.call();
+  }
+
+  void _openExpanded() {
+    if (_expanded) return;
+    setState(() => _expanded = true);
+  }
+
   void _toggleExpanded() {
     setState(() => _expanded = !_expanded);
   }
@@ -213,6 +353,7 @@ class _TaskTileState extends State<TaskTile>
   DateTime? _lastTapAt;
 
   void _handleTap() {
+    widget.onFocusRequested?.call();
     final now = DateTime.now();
     final last = _lastTapAt;
     _lastTapAt = now;
@@ -383,10 +524,10 @@ class _TaskTileState extends State<TaskTile>
   @override
   void dispose() {
     _timer?.cancel();
+    widget.controller?._detach(this);
     _titleController.dispose();
     _descController.dispose();
     _noteController.dispose();
-    _labelController.dispose();
     _progressController.dispose();
     super.dispose();
   }
@@ -408,17 +549,17 @@ class _TaskTileState extends State<TaskTile>
 
   /// Small tags shown under the title: "Project 1" / "To-Do" for a task
   /// assigned to a project (listens to the project list so renames update
-  /// everywhere), plus "wish" and the task's own labels for wishlist items —
-  /// so the main list shows every property a wish carries. Returns null when
-  /// there is nothing to show.
+  /// everywhere), "wish" for wishlist items, plus every label the task
+  /// carries — so the main list shows the task's properties whatever kind of
+  /// task it is. Returns null when there is nothing to show.
   Widget? _buildSubtitle() {
     final task = widget.task;
-    if (task.projectId == null && !task.isWish) return null;
     final labels = task.label
         .split(RegExp(r'[,\s]+'))
         .map((label) => label.trim())
         .where((label) => label.isNotEmpty)
         .toList();
+    if (task.projectId == null && !task.isWish && labels.isEmpty) return null;
     return ValueListenableBuilder<List<Project>>(
       valueListenable: ProjectService.instance.projects,
       builder: (context, _, __) => Padding(
@@ -436,10 +577,8 @@ class _TaskTileState extends State<TaskTile>
                   _tag(ProjectService.instance.nameOf(task.projectId)),
                   _tag(ProjectService.stageLabel(task.kanbanStatus)),
                 ],
-                if (task.isWish) ...[
-                  _tag('wish'),
-                  for (final label in labels) _tag(label),
-                ],
+                if (task.isWish) _tag('wish'),
+                for (final label in labels) _tag(label),
               ],
             ),
           ],
@@ -483,6 +622,16 @@ class _TaskTileState extends State<TaskTile>
       ],
     );
 
+    final scheme = Theme.of(context).colorScheme;
+
+    ButtonStyle? optionStyle(int index) {
+      if (index != _optionSelectionIndex) return null;
+      return TextButton.styleFrom(
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
+      );
+    }
+
     final listTile = ListTile(
       contentPadding: isAndroid
           ? EdgeInsets.zero
@@ -518,20 +667,26 @@ class _TaskTileState extends State<TaskTile>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_optionMode == _SwipeOptionMode.move)
-                        for (var dest in _destinations)
+                        for (var i = 0; i < _destinations.length; i++)
                           TextButton(
-                            onPressed: () => _selectMove(dest),
-                            child: Text(Config.tabs[dest]),
+                            style: optionStyle(i),
+                            onPressed: () => _selectMove(_destinations[i]),
+                            child: Text(Config.tabs[_destinations[i]]),
                           ),
                       if (_optionMode == _SwipeOptionMode.delete) ...[
                         TextButton(
+                          style: optionStyle(0),
                           onPressed: _selectDelete,
                           child: const Text('Delete'),
                         ),
-                        for (final option in _deleteSwipeWeekdayOptions)
+                        for (var i = 0;
+                            i < _deleteSwipeWeekdayOptions.length;
+                            i++)
                           TextButton(
-                            onPressed: () => _selectWeekday(option.weekday),
-                            child: Text(option.label),
+                            style: optionStyle(i + 1),
+                            onPressed: () => _selectWeekday(
+                                _deleteSwipeWeekdayOptions[i].weekday),
+                            child: Text(_deleteSwipeWeekdayOptions[i].label),
                           ),
                       ],
                     ],
@@ -593,21 +748,21 @@ class _TaskTileState extends State<TaskTile>
                     },
                     child: TextField(
                       controller: _noteController,
-                      decoration: const InputDecoration(labelText: 'Note'),
+                      decoration: InputDecoration(
+                        labelText: 'Note',
+                        suffixIcon: _todoistSyncInfoIcon(),
+                      ),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
                       onChanged: (v) => widget.task.note = v,
                     ),
                   ),
-                  Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
+                  LabelPickerField(
+                    value: widget.task.label,
+                    onChanged: (v) {
+                      widget.task.label = v;
+                      widget.onChanged();
                     },
-                    child: TextField(
-                      controller: _labelController,
-                      decoration: const InputDecoration(labelText: 'Label'),
-                      onChanged: (v) => widget.task.label = v,
-                    ),
                   ),
                   Row(
                     children: [
@@ -846,6 +1001,16 @@ class _TaskTileState extends State<TaskTile>
             _dragOffset = 0;
           });
         },
+        child: content,
+      );
+    }
+
+    if (widget.keyboardFocused) {
+      content = DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: scheme.primary, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: content,
       );
     }

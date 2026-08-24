@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/project.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../services/item_views.dart';
 import '../services/project_service.dart';
 import '../utils/linkified_text.dart';
@@ -49,8 +51,12 @@ class _ProjectBoardPageState extends State<ProjectBoardPage> {
     ),
   ];
 
-  List<Task> _tasksForStatus(String status) =>
-      ItemViews.boardColumn(widget.tasks, widget.project.id, status);
+  List<Task> _tasksForStatus(String status) => ItemViews.boardColumn(
+        widget.tasks,
+        widget.project.id,
+        status,
+        rules: Config.viewFilterRules[ViewFilterRules.projects],
+      );
 
   void _moveTask(Task task, String status) {
     if (task.kanbanStatus == status) return;

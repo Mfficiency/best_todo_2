@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'models/streak_goal.dart';
 import 'models/streak_reminder.dart';
+import 'models/view_filter_rules.dart';
 
 class Config {
   static double defaultDelaySeconds = 5.0;
@@ -84,6 +86,7 @@ class Config {
     'alarms',
     'countdown',
     'wishlist',
+    'food_diary',
     'projects',
     'chronize',
     'usage_data',
@@ -97,6 +100,7 @@ class Config {
     'Alarms',
     'Countdown',
     'Wishlist',
+    'Food Diary',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -124,12 +128,13 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first eight match
+  /// Keys are persisted, so keep them stable; the first nine match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
     'countdown',
     'wishlist',
+    'food_diary',
     'projects',
     'chronize',
     'usage_data',
@@ -151,6 +156,7 @@ class Config {
     'Alarms',
     'Countdown',
     'Wishlist',
+    'Food Diary',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -160,7 +166,7 @@ class Config {
     'Dice timer',
     'Schedule view',
     'Task search',
-    'Deleted items',
+    'Archived items',
     'Changelog',
     'App logs',
     'Startup times',
@@ -172,6 +178,7 @@ class Config {
     'Alarm clock with escalating reminders',
     'Countdown timers with milestones',
     'Wishlist of someday items',
+    'Track what you eat, separate from your tasks',
     'Project boards for grouping tasks',
     'Timeline planner for the day',
     'Charts about how you use the app',
@@ -181,7 +188,7 @@ class Config {
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
     'Search field in the home app bar',
-    'Restore or purge deleted tasks',
+    'Restore archived tasks, or send them on to the Deleted bin',
     "What changed in each version of the app",
     'Diagnostic log of what the app did',
     'How fast the app started, over time',
@@ -194,9 +201,10 @@ class Config {
   };
 
   /// Features that stay available in simple mode: the drawer entries that are
-  /// not really "extra features" but the app's own service pages — the deleted
-  /// items (the undo of a plain task list), the changelog, the app logs and the
-  /// startup times. Simple mode is about the home surface, so these stay.
+  /// not really "extra features" but the app's own service pages — the
+  /// archived items (the undo of a plain task list), the changelog, the app
+  /// logs and the startup times. Simple mode is about the home surface, so
+  /// these stay.
   static const Set<String> simpleModeFeatures = {
     'deleted_items',
     'changelog',
@@ -305,6 +313,12 @@ class Config {
   /// runs. Only applied when [isDev] and no streak history exists yet.
   static const int devSeedStreakDays = 50;
 
+  /// User-defined goals for the customizable flames (`create` = green, `plan`
+  /// = blue), keyed by `StreakKind.id`. A flame with no entry here stays cold
+  /// and unlit until the user sets a goal for it in the streak settings —
+  /// there is no built-in default behaviour for these two slots any more.
+  static Map<String, StreakGoal> streakGoals = {};
+
   /// How the dice timer announces that the countdown hit zero. The keys are
   /// persisted, so keep them stable:
   ///  * `melody` — plays [diceTimerMelody] at [diceTimerVolume], like an alarm
@@ -353,7 +367,16 @@ class Config {
   static int diceTimerDefaultMinutes = 20;
 
   /// Dial lengths offered as the pre-wound default (one dial turn = 60 min).
-  static const List<int> diceTimerLengthOptions = [5, 10, 15, 20, 25, 30, 45, 60];
+  static const List<int> diceTimerLengthOptions = [
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    45,
+    60
+  ];
 
   /// If true, the tab bar shows icons for unselected tabs.
   /// When false, all tabs display text labels only.
@@ -370,6 +393,14 @@ class Config {
   /// If true, new tasks are inserted at the top of the current list.
   /// Otherwise they are appended to the bottom.
   static bool addNewTasksToTop = true;
+
+  /// If true, new items are scanned against the auto-tag service's keyword
+  /// rules and any matched tags are appended to their label on creation.
+  static bool autoTagEnabled = true;
+
+  /// If true, Enter saves the add-task field. When false, the add-task field
+  /// accepts multiple lines and Ctrl+Enter saves it.
+  static bool enterSavesNewTask = true;
 
   /// Value of [defaultAddTabIndex] meaning "whichever tab is open".
   static const int addToCurrentTab = -1;
@@ -425,6 +456,34 @@ class Config {
   /// Folder the automatic backup writes into; empty until the user picks one.
   static String autoBackupDirectory = '';
 
+  /// Extra per-view tag filters configured in Settings → Filtering rules.
+  /// Keyed by one of [ViewFilterRules.viewIds]; a view with no entry (or an
+  /// empty entry) applies no extra filtering beyond its normal structural
+  /// query (see `ItemViews.passesFilterRules`).
+  static Map<String, ViewFilterRules> viewFilterRules = {};
+
+  /// If true, tasks are kept in sync both ways with a Todoist account (see
+  /// `TodoistSyncService`). Off by default; enabling without a token set is a
+  /// no-op until one is entered in Settings → Todoist sync.
+  static bool todoistSyncEnabled = false;
+
+  /// Todoist personal API token ("Integrations" tab of Todoist Settings).
+  /// Stored in plain text alongside the rest of the app's settings, matching
+  /// every other value in this file — the app has no secret-storage layer.
+  static String todoistApiToken = '';
+
+  /// If true, the app checks for a newer build every time it starts and, if
+  /// one is found, asks before doing anything — see Settings → Updates. Off
+  /// by default so a fresh install never phones home unasked; a manual check
+  /// from the About page always works regardless of this setting.
+  static bool autoUpdateCheckEnabled = false;
+
+  /// How many days a task stays in the real Deleted bin (`deleted_bin.json`)
+  /// before it is purged for good. Archived tasks (`deleted_tasks.json`,
+  /// shown as "Archived Items") are unaffected — they are only capped by
+  /// count, never by age. Default 60, editable in Settings → Tasks.
+  static int deletedItemsRetentionDays = 60;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -460,6 +519,8 @@ class Config {
       'showWidgetProgressLine': showWidgetProgressLine,
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
+      'autoTagEnabled': autoTagEnabled,
+      'enterSavesNewTask': enterSavesNewTask,
       'defaultAddTabIndex': defaultAddTabIndex,
       'use24HourFormat': use24HourFormat,
       'dateFormat': dateFormat,
@@ -475,6 +536,9 @@ class Config {
         for (final reminder in streakReminders) reminder.toJson(),
       ],
       'streakKindEnabled': Map<String, bool>.from(streakKindEnabled),
+      'streakGoals': {
+        for (final entry in streakGoals.entries) entry.key: entry.value.toJson(),
+      },
       'streakCompletionAnimation': streakCompletionAnimation,
       'simpleMode': simpleMode,
       'modeChosen': modeChosen,
@@ -487,15 +551,22 @@ class Config {
       'autoBackupDirectory': autoBackupDirectory,
       'syncEnabled': syncEnabled,
       'syncFolderPath': syncFolderPath,
+      'todoistSyncEnabled': todoistSyncEnabled,
+      'todoistApiToken': todoistApiToken,
+      'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
+      'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
+      'viewFilterRules': {
+        for (final entry in viewFilterRules.entries)
+          entry.key: entry.value.toJson(),
+      },
     };
   }
 
   static void applyMap(Map<String, dynamic> data) {
     swipeLeftDelete = data['swipeLeftDelete'] ?? swipeLeftDelete;
     darkMode = data['darkMode'] ?? darkMode;
-    showFailureDotOnMenu =
-        data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
+    showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     defaultNotificationDelaySeconds =
@@ -516,6 +587,8 @@ class Config {
         data['showWidgetProgressLine'] ?? showWidgetProgressLine;
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
+    autoTagEnabled = data['autoTagEnabled'] ?? autoTagEnabled;
+    enterSavesNewTask = data['enterSavesNewTask'] ?? enterSavesNewTask;
     defaultAddTabIndex = (data['defaultAddTabIndex'] as num?)
             ?.round()
             .clamp(addToCurrentTab, tabs.length - 1) ??
@@ -525,8 +598,8 @@ class Config {
     if (savedDateFormat != null && dateFormats.contains(savedDateFormat)) {
       dateFormat = savedDateFormat;
     }
-    defaultDelaySeconds =
-        (data['defaultDelaySeconds'] as num?)?.toDouble() ?? defaultDelaySeconds;
+    defaultDelaySeconds = (data['defaultDelaySeconds'] as num?)?.toDouble() ??
+        defaultDelaySeconds;
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
@@ -563,20 +636,29 @@ class Config {
         if (value is bool) streakKindEnabled[key] = value;
       }
     }
+    final savedStreakGoals = data['streakGoals'];
+    if (savedStreakGoals is Map) {
+      streakGoals = {
+        for (final entry in savedStreakGoals.entries)
+          if (entry.value is Map)
+            entry.key as String:
+                StreakGoal.fromJson(Map<String, dynamic>.from(entry.value)),
+      };
+    }
     streakCompletionAnimation =
         data['streakCompletionAnimation'] ?? streakCompletionAnimation;
     simpleMode = data['simpleMode'] ?? simpleMode;
     modeChosen = data['modeChosen'] ?? modeChosen;
     final savedAlertMode = data['diceTimerAlertMode'] as String?;
-    if (savedAlertMode != null && diceTimerAlertModes.contains(savedAlertMode)) {
+    if (savedAlertMode != null &&
+        diceTimerAlertModes.contains(savedAlertMode)) {
       diceTimerAlertMode = savedAlertMode;
     }
     diceTimerMelody = data['diceTimerMelody'] as String? ?? diceTimerMelody;
     diceTimerVolume =
         (data['diceTimerVolume'] as num?)?.toDouble().clamp(0.0, 1.0) ??
             diceTimerVolume;
-    diceTimerAlsoVibrate =
-        data['diceTimerAlsoVibrate'] ?? diceTimerAlsoVibrate;
+    diceTimerAlsoVibrate = data['diceTimerAlsoVibrate'] ?? diceTimerAlsoVibrate;
     diceTimerDefaultMinutes =
         (data['diceTimerDefaultMinutes'] as num?)?.round().clamp(1, 60) ??
             diceTimerDefaultMinutes;
@@ -589,12 +671,28 @@ class Config {
         data['autoBackupDirectory'] as String? ?? autoBackupDirectory;
     syncEnabled = data['syncEnabled'] ?? syncEnabled;
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
+    todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
+    todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
+    autoUpdateCheckEnabled =
+        data['autoUpdateCheckEnabled'] ?? autoUpdateCheckEnabled;
+    deletedItemsRetentionDays =
+        (data['deletedItemsRetentionDays'] as num?)?.round().clamp(1, 3650) ??
+            deletedItemsRetentionDays;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {
         final value = savedFeatures[key];
         if (value is bool) featureEnabled[key] = value;
       }
+    }
+    final savedViewFilterRules = data['viewFilterRules'];
+    if (savedViewFilterRules is Map) {
+      viewFilterRules = {
+        for (final entry in savedViewFilterRules.entries)
+          if (entry.value is Map)
+            entry.key as String: ViewFilterRules.fromJson(
+                Map<String, dynamic>.from(entry.value as Map)),
+      };
     }
   }
 

@@ -99,4 +99,24 @@ void main() {
     expect(_addTaskField('Add task · Today'), findsOneWidget);
     expect(find.byTooltip('Back to top'), findsNothing);
   });
+
+  testWidgets(
+      'schedule view hides tasks still waiting for approval', (tester) async {
+    await pumpHome(tester, [
+      Task(title: 'Existing today task', dueDate: DateTime.now()),
+      Task(
+        title: 'Pending Todoist task',
+        dueDate: DateTime.now(),
+        label: 'Waiting_for_approval',
+      ),
+    ]);
+
+    await tester.tap(find.byTooltip('Schedule view'));
+    await tester.pumpAndSettle();
+
+    // The list view already filters these out (ItemViews.homeBucket); the
+    // schedule view must too — it used to hand the raw task list straight to
+    // ScheduleView, bypassing the filter.
+    expect(find.text('Pending Todoist task'), findsNothing);
+  });
 }

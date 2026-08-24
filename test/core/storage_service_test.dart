@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -104,6 +105,37 @@ void main() {
     expect(tasks.length, 3);
     final ids = tasks.map((t) => t.uid).toSet();
     expect(ids.length, 3);
+  });
+
+  test('loadBinTaskList purges items older than the retention window',
+      () async {
+    final tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    await writeImportFlag(tempDir);
+
+    final originalRetention = Config.deletedItemsRetentionDays;
+    addTearDown(() => Config.deletedItemsRetentionDays = originalRetention);
+    Config.deletedItemsRetentionDays = 10;
+
+    final service = StorageService();
+    final fresh = Task(
+      title: 'fresh',
+      deletedAt: DateTime.now().subtract(const Duration(days: 1)),
+    );
+    final stale = Task(
+      title: 'stale',
+      deletedAt: DateTime.now().subtract(const Duration(days: 30)),
+    );
+    await service.saveBinTaskList([fresh, stale]);
+
+    final loaded = await service.loadBinTaskList();
+    expect(loaded.length, 1);
+    expect(loaded.single.title, 'fresh');
+
+    // The purge is persisted, so a second load stays clean without stale
+    // ever having been written back.
+    final loadedAgain = await service.loadBinTaskList();
+    expect(loadedAgain.length, 1);
   });
 }
 

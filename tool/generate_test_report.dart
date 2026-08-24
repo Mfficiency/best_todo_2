@@ -37,6 +37,11 @@ void main(List<String> args) {
       case '--version':
         version = value;
         break;
+      case '--run-url':
+        // Accepted for forward-compatibility with the CI workflows, which
+        // pass the run's URL; TestReport has no field for it yet, so it's a
+        // no-op until something downstream actually wants it.
+        break;
       default:
         stderr.writeln('Unknown option: ${args[i]}');
         exitCode = 64;

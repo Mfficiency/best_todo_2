@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
+import 'package:besttodo/models/streak_goal.dart';
 import 'package:besttodo/models/streak_kind.dart';
 import 'package:besttodo/models/streak_reminder.dart';
 import 'package:besttodo/models/task.dart';
@@ -11,6 +12,7 @@ import 'package:besttodo/services/streak_service.dart';
 import 'package:besttodo/ui/home_page.dart';
 import 'package:besttodo/ui/settings_page.dart';
 import 'package:besttodo/ui/streak_flame_button.dart';
+import 'package:besttodo/ui/streak_goal_dialog.dart';
 import 'package:besttodo/ui/streak_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,6 +40,7 @@ void main() {
     Config.streakGraceHours = 24;
     Config.streakReminderEnabled = false;
     Config.streakReminders = [];
+    Config.streakGoals = {};
     for (final key in Config.streakKindKeys) {
       Config.streakKindEnabled[key] = true;
     }
@@ -49,6 +52,7 @@ void main() {
   tearDown(() {
     Config.showStreak = true;
     Config.streakCompletionAnimation = true;
+    Config.streakGoals = {};
   });
 
   /// Seeds `streak.json` with plain file I/O — deliberately NOT through
@@ -339,15 +343,101 @@ void main() {
     await tester.pump();
     expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
 
+    // Create/plan have no goal configured yet, so they show the "no goal
+    // set" placeholder instead of a streak count.
     await tester.pump(StreakFlameButton.cycleInterval);
-    expect(find.byTooltip('Create a task: no streak yet'), findsOneWidget);
+    expect(find.byTooltip('Create · no goal set'), findsOneWidget);
 
     await tester.pump(StreakFlameButton.cycleInterval);
-    expect(find.byTooltip('Plan ahead: no streak yet'), findsOneWidget);
+    expect(find.byTooltip('Plan · no goal set'), findsOneWidget);
 
     // ...and back around to the first one.
     await tester.pump(StreakFlameButton.cycleInterval);
     expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+  });
+
+  testWidgets('all three challenges done settles on one steady red flame',
+      (tester) async {
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    // create/plan only count toward "all done" once they have a goal
+    // configured — otherwise they would block it forever.
+    Config.streakGoals['create'] = StreakGoal(
+        target: StreakGoalTarget.task, targetId: 'exercise', title: 'Exercise');
+    Config.streakGoals['plan'] = StreakGoal(
+        target: StreakGoalTarget.project, targetId: 'project_1', title: 'Health');
+    addTearDown(() => Config.streakGoals.clear());
+    // Every challenge done today, with different streak lengths behind them.
+    await tester.runAsync(() => File('$tempPath/streak.json').writeAsString(
+          jsonEncode({
+            'completionsByDay': {dayKeyAgo(0): 1, dayKeyAgo(1): 1},
+            'createsByDay': {dayKeyAgo(0): 1},
+            'planByDay': {dayKeyAgo(0): 1},
+          }),
+        ));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Row(children: [StreakFlameButton()])),
+    ));
+    await tester.pump();
+
+    // One flame badged with the highest of the three counts (2, not 1)...
+    expect(find.byTooltip('All 3 challenges done today — 2-day streak'),
+        findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    // ...lit, steady white with a faint blue cast...
+    expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
+    expect(
+      tester
+          .widget<Icon>(find.byIcon(Icons.local_fire_department))
+          .color,
+      StreakFlameButton.allDoneColor,
+    );
+    // ...with a dark badge number so it stays readable on the near-white badge.
+    expect(
+      tester.widget<Badge>(find.byType(Badge)).textColor,
+      StreakFlameButton.allDoneBadgeTextColor,
+    );
+
+    // ...and it no longer cycles through the per-challenge flames.
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('All 3 challenges done today — 2-day streak'),
+        findsOneWidget);
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('All 3 challenges done today — 2-day streak'),
+        findsOneWidget);
+  });
+
+  testWidgets('one challenge still open keeps the flame cycling',
+      (tester) async {
+    StreakFlameButton.debugForceCycle = true;
+    addTearDown(() => StreakFlameButton.debugForceCycle = false);
+    Config.streakGoals['create'] = StreakGoal(
+        target: StreakGoalTarget.task, targetId: 'exercise', title: 'Exercise');
+    Config.streakGoals['plan'] = StreakGoal(
+        target: StreakGoalTarget.project, targetId: 'project_1', title: 'Health');
+    addTearDown(() => Config.streakGoals.clear());
+    await tester.runAsync(() => File('$tempPath/streak.json').writeAsString(
+          jsonEncode({
+            'completionsByDay': {dayKeyAgo(0): 1},
+            'createsByDay': {dayKeyAgo(0): 1},
+            // 'planByDay' left empty: Health's goal has not fired today, so
+            // the day is not all-done and the cycle keeps hopping.
+          }),
+        ));
+    await tester.runAsync(() => StreakService.instance.load());
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Row(children: [StreakFlameButton()])),
+    ));
+    await tester.pump();
+
+    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Exercise: 1-day streak'), findsOneWidget);
+    await tester.pump(StreakFlameButton.cycleInterval);
+    expect(find.byTooltip('Health: no streak yet'), findsOneWidget);
   });
 
   testWidgets('a challenge switched off drops out of the flame',
@@ -363,12 +453,12 @@ void main() {
     ));
     await tester.pump();
 
-    expect(find.byTooltip('Create a task: no streak yet'), findsOneWidget);
+    expect(find.byTooltip('Create · no goal set'), findsOneWidget);
     await tester.pump(StreakFlameButton.cycleInterval);
-    expect(find.byTooltip('Plan ahead: no streak yet'), findsOneWidget);
+    expect(find.byTooltip('Plan · no goal set'), findsOneWidget);
     // The completion flame never comes around again.
     await tester.pump(StreakFlameButton.cycleInterval);
-    expect(find.byTooltip('Create a task: no streak yet'), findsOneWidget);
+    expect(find.byTooltip('Create · no goal set'), findsOneWidget);
   });
 
   testWidgets('a day still open keeps the flame grey and pulsing white',
@@ -426,26 +516,51 @@ void main() {
         isNot(ThemeData().disabledColor));
   });
 
-  testWidgets('adding a task keeps the create streak', (tester) async {
-    await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
+  testWidgets(
+      'completing the exact recurring task behind a configured goal lights it',
+      (tester) async {
+    final task = Task(title: 'Exercise', dueDate: DateTime.now());
+    Config.streakGoals['create'] = StreakGoal(
+      target: StreakGoalTarget.task,
+      targetId: task.uid,
+      title: 'Exercise',
+    );
+    addTearDown(() => Config.streakGoals.clear());
+    await pumpHome(tester, [task]);
     expect(
         StreakService.instance
             .isDayDone(DateTime.now(), kind: StreakKind.create),
         isFalse);
 
-    await tester.enterText(find.byType(TextField).first, 'Plan the week');
-    await tester.tap(find.byIcon(Icons.add).first);
+    await tester.tap(find.byType(Checkbox).first);
     await settleIo(tester);
 
     expect(
         StreakService.instance
             .isDayDone(DateTime.now(), kind: StreakKind.create),
         isTrue);
+
+    // Un-toggling reverts just that goal, matching the completion flame.
+    await tester.tap(find.byType(Checkbox).first);
+    await settleIo(tester);
+    expect(
+        StreakService.instance
+            .isDayDone(DateTime.now(), kind: StreakKind.create),
+        isFalse);
   });
 
-  testWidgets('finishing the whole day keeps the plan-ahead streak',
+  testWidgets(
+      'completing a task filed under a configured project goal lights it',
       (tester) async {
-    await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
+    final task = Task(
+        title: 'Solo task', dueDate: DateTime.now(), projectId: 'project_1');
+    Config.streakGoals['plan'] = StreakGoal(
+      target: StreakGoalTarget.project,
+      targetId: 'project_1',
+      title: 'Health',
+    );
+    addTearDown(() => Config.streakGoals.clear());
+    await pumpHome(tester, [task]);
     expect(
         StreakService.instance.isDayDone(DateTime.now(), kind: StreakKind.plan),
         isFalse);
@@ -453,10 +568,24 @@ void main() {
     await tester.tap(find.byType(Checkbox).first);
     await settleIo(tester);
 
-    // The day's only task is done — the day was dealt with.
     expect(
         StreakService.instance.isDayDone(DateTime.now(), kind: StreakKind.plan),
         isTrue);
+  });
+
+  testWidgets('a goal whose recurring task was deleted shows as missing',
+      (tester) async {
+    Config.streakGoals['create'] = StreakGoal(
+      target: StreakGoalTarget.task,
+      targetId: 'gone-uid',
+      title: 'Exercise',
+    );
+    addTearDown(() => Config.streakGoals.clear());
+    // No task with 'gone-uid' is ever reported to syncKnownTasks, so the
+    // goal reads as missing from the very first build.
+    await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
+
+    expect(StreakService.instance.isGoalMissing(StreakKind.create), isTrue);
   });
 
   testWidgets('the streak page lists today per challenge and switches kind',
@@ -467,11 +596,13 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: StreakPage()));
     await tester.pump(const Duration(milliseconds: 100));
 
-    // The "Today" card names every active challenge with its state.
+    // The "Today" card names every active challenge with its state. The
+    // create/plan slots have no goal configured, so they show that instead
+    // of a done/open state.
     expect(find.text('Finish a task'), findsOneWidget);
-    expect(find.text('Create a task'), findsOneWidget);
-    expect(find.text('Plan ahead'), findsOneWidget);
-    expect(find.text('Open'), findsNWidgets(2));
+    expect(find.text('Create · no goal set'), findsOneWidget);
+    expect(find.text('Plan · no goal set'), findsOneWidget);
+    expect(find.text('Not set'), findsNWidgets(2));
 
     // The page opens on the completion flame...
     expect(find.text('1-day streak'), findsOneWidget);
@@ -482,8 +613,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('No streak yet'), findsOneWidget);
-    expect(find.text('Days with a new task'), findsOneWidget);
-    expect(find.text('Add one task today to light the flame.'), findsOneWidget);
+    expect(find.text('Days the goal was met'), findsOneWidget);
+    expect(find.text('Set a goal for this flame in Streak settings.'),
+        findsOneWidget);
   });
 
   testWidgets('settings can turn a challenge off and manage reminders',
@@ -491,13 +623,19 @@ void main() {
     enlarge(tester);
     await openStreakSettings(tester);
 
-    // Every challenge starts on.
-    for (final label in ['Finish a task', 'Create a task', 'Plan ahead']) {
+    // Every challenge starts on; create/plan show their unconfigured state
+    // as their title until a goal is set.
+    for (final label in [
+      'Finish a task',
+      'Create · no goal set',
+      'Plan · no goal set',
+    ]) {
       expect(find.widgetWithText(SwitchListTile, label), findsOneWidget);
     }
-    await tester.ensureVisible(find.widgetWithText(SwitchListTile, 'Plan ahead'));
+    await tester.ensureVisible(
+        find.widgetWithText(SwitchListTile, 'Plan · no goal set'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(SwitchListTile, 'Plan ahead'));
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Plan · no goal set'));
     await settleIo(tester);
     expect(Config.isStreakKindEnabled('plan'), isFalse);
 
@@ -528,5 +666,119 @@ void main() {
     await tester.tap(find.byTooltip('Remove reminder').first);
     await settleIo(tester);
     expect(Config.streakReminders.length, 1);
+  });
+
+  // The dialog reads the task list in initState via a real file (see
+  // StorageService.readTaskListRaw), which fake-async never completes on its
+  // own (CLAUDE.md's real-file-I/O-inside-testWidgets note) — service it with
+  // runAsync until the loading spinner clears.
+  Future<void> pumpGoalDialog(WidgetTester tester, StreakKind kind) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => showDialog<bool>(
+              context: context,
+              builder: (_) => StreakGoalDialog(kind: kind),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final spinner = find.byType(CircularProgressIndicator);
+    for (var i = 0; i < 60 && spinner.evaluate().isNotEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+  }
+
+  testWidgets('the goal dialog sets a project goal, pre-filling its title',
+      (tester) async {
+    await pumpGoalDialog(tester, StreakKind.create);
+
+    expect(find.text('Create flame goal (green)'), findsOneWidget);
+    expect(find.text('No recurring tasks yet — make one recurring first.'),
+        findsOneWidget);
+
+    await tester.tap(find.text('Project'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(DropdownButton<String>)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Project 1').last);
+    await tester.pumpAndSettle();
+
+    // The title auto-fills from the chosen project's name.
+    final titleField = tester.widget<TextField>(find.byType(TextField));
+    expect(titleField.controller!.text, 'Project 1');
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(Config.streakGoals['create']!.target, StreakGoalTarget.project);
+    expect(Config.streakGoals['create']!.targetId, 'project_1');
+    expect(Config.streakGoals['create']!.title, 'Project 1');
+  });
+
+  testWidgets('the goal dialog can clear an existing goal', (tester) async {
+    Config.streakGoals['plan'] = StreakGoal(
+      target: StreakGoalTarget.project,
+      targetId: 'project_1',
+      title: 'Health',
+    );
+    addTearDown(() => Config.streakGoals.clear());
+
+    await pumpGoalDialog(tester, StreakKind.plan);
+
+    expect(find.text('Remove goal'), findsOneWidget);
+    await tester.tap(find.text('Remove goal'));
+    await tester.pumpAndSettle();
+
+    expect(Config.streakGoals.containsKey('plan'), isFalse);
+  });
+
+  testWidgets(
+      'settings opens the goal dialog from Set goal and reflects the saved goal',
+      (tester) async {
+    enlarge(tester);
+    await openStreakSettings(tester);
+
+    await tester.scrollUntilVisible(find.text('Set goal').first, 150,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Set goal'), findsNWidgets(2));
+
+    await tester.tap(find.text('Set goal').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    // Service the dialog's real file read before interacting further (see
+    // pumpGoalDialog's comment above).
+    final spinner = find.byType(CircularProgressIndicator);
+    for (var i = 0; i < 60 && spinner.evaluate().isNotEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+
+    await tester.tap(find.text('Project'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(DropdownButton<String>)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Project 1').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(Config.streakGoals['create']!.targetId, 'project_1');
+    expect(find.widgetWithText(SwitchListTile, 'Project 1'), findsOneWidget);
+    expect(find.text('Change'), findsOneWidget);
+    expect(find.text('Set goal'), findsOneWidget);
   });
 }

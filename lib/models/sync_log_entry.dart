@@ -8,7 +8,8 @@ class SyncLogEntry {
   bool success;
   String message;
 
-  /// What started the sync: 'app quit' (the lifecycle hook) or 'manual'.
+  /// What started the sync: 'app quit' (the lifecycle hook), 'manual', or
+  /// 'pull_to_refresh' (pulling down on the home page's task list).
   String trigger;
 
   SyncLogEntry({
