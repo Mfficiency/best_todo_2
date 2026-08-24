@@ -49,7 +49,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    11,
+    12,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -64,6 +64,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Sync & export',
     'Backup',
     'Todoist sync',
+    'Updates',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -94,7 +95,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
   final Set<int> _collapsedSections = {
-    for (var i = 0; i < 11; i++) i,
+    for (var i = 0; i < 12; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
@@ -190,6 +191,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'Enable Todoist sync', 10, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
+    _SettingsSearchEntry('Automatically check for updates', 11,
+        'auto update version release new build startup prompt install about'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -237,6 +240,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _syncEnabled = Config.syncEnabled;
   String _syncFolderPath = Config.syncFolderPath;
   bool _todoistSyncEnabled = Config.todoistSyncEnabled;
+  bool _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
   final TextEditingController _todoistTokenController =
       TextEditingController(text: Config.todoistApiToken);
   bool _todoistTokenObscured = true;
@@ -282,6 +286,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _syncFolderPath = Config.syncFolderPath;
     _todoistSyncEnabled = Config.todoistSyncEnabled;
     _todoistTokenController.text = Config.todoistApiToken;
+    _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
   }
 
   @override
@@ -1829,6 +1834,31 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _setAutoUpdateCheckEnabled(bool value) async {
+    setState(() => _autoUpdateCheckEnabled = value);
+    Config.autoUpdateCheckEnabled = value;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildUpdatesSection() {
+    return _buildSection(
+      index: 11,
+      title: 'Updates',
+      children: [
+        SwitchListTile(
+          title: const Text('Automatically check for updates'),
+          subtitle: const Text(
+              'Looks for a newer version every time the app opens and asks '
+              'before installing it. Manual checks on the About page always '
+              'work regardless of this setting.'),
+          value: _autoUpdateCheckEnabled,
+          onChanged: _setAutoUpdateCheckEnabled,
+        ),
+      ],
+    );
+  }
+
   List<_SettingsSearchEntry> get _searchResults {
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return const [];
@@ -2437,6 +2467,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         _buildExportSection(),
                         _buildBackupSection(),
                         _buildTodoistSyncSection(),
+                        _buildUpdatesSection(),
                       ],
               ),
             ),

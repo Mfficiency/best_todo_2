@@ -1861,6 +1861,16 @@ in App Logs → Todoist — onboarding has already finished by then.
   `UpdateCheck.rollback` — `previous` unless that is the running version — in both the
   update-available and up-to-date states. The rollback warns that Android blocks
   downgrades for non-debuggable builds, so the install may need an uninstall first.
+- **Automatic update check (0.1.264):** `Config.autoUpdateCheckEnabled` (Settings →
+  Updates, off by default) — when on, `_MyAppState` in `lib/main.dart` calls
+  `UpdateService.instance.checkForUpdate()` once per launch (2s after the first frame,
+  skipped while the intro/mode picker/startup chooser is still on screen). A newer build
+  shows an "Update available" confirm dialog (`appNavigatorKey.currentContext`, not
+  `_MyAppState`'s own context, since `MyApp` sits above its own `MaterialApp`/`Navigator`);
+  confirming pushes `AboutPage(autoCheckForUpdate: true)`, which runs `_UpdateSection`'s
+  check immediately on `initState` so the user lands straight on "Download & install"
+  instead of needing an extra tap. The check never downloads or installs anything by
+  itself — that still goes through the same About-page flow as a manual check.
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
@@ -1892,8 +1902,13 @@ in App Logs → Todoist — onboarding has already finished by then.
     no admin rights; works on Windows 10 and 11 (x64). APK-triggered runs check
     out `github.event.workflow_run.head_sha`, so the EXE is built from the same
     commit as the APK that triggered it.
+  - `delete-merged-branch.yml` (0.1.264, `pull_request: closed`; `contents: write`):
+    once a PR into `dev` merges, deletes its head branch via `actions/github-script`
+    (`git.deleteRef`), skipping `dev`/`staging`/`main` themselves and tolerating a branch
+    already gone (422/404, e.g. deleted by a squash-merge UI option).
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
-  `staging` → `main`. Releases are built from dev after a version bump.
+  `staging` → `main`. Releases are built from dev after a version bump. A feature branch's
+  PR into `dev` has its branch auto-deleted on merge (`delete-merged-branch.yml` above).
 
 ## 12. Testing
 

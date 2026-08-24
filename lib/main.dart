@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'ui/about_page.dart';
 import 'ui/alarm_ring_page.dart';
 import 'ui/alarms_page.dart';
 import 'ui/dice_timer_page.dart';
@@ -29,6 +30,7 @@ import 'services/todoist_sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
+import 'services/update_service.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
@@ -243,6 +245,57 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       } catch (_) {}
       // Text shared into the app from other apps becomes a task on Today.
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
+    }
+    // Settings → Updates → "Automatically check for updates": look up the
+    // newest build once per launch. Deferred a couple of seconds so it never
+    // competes with startup, and skipped entirely while onboarding is still
+    // on screen so the prompt can't collide with the intro/mode picker.
+    if (!kIsWeb) {
+      unawaited(Future<void>.delayed(const Duration(seconds: 2))
+          .then((_) => _maybeCheckForUpdate()));
+    }
+  }
+
+  /// Looks up the newest build and, if one is newer than the running app,
+  /// asks before doing anything — confirming opens the About page's update
+  /// section (pre-triggered, see [AboutPage.autoCheckForUpdate]) rather than
+  /// downloading or installing anything itself.
+  Future<void> _maybeCheckForUpdate() async {
+    if (!Config.autoUpdateCheckEnabled) return;
+    if (_showIntro || _showModePicker || _showStartupChoice) return;
+    UpdateInfo? update;
+    try {
+      update = await UpdateService.instance.checkForUpdate();
+    } catch (_) {
+      return;
+    }
+    if (update == null) return;
+    final info = update;
+    final navigatorContext = appNavigatorKey.currentContext;
+    if (navigatorContext == null) return;
+    final shouldUpdate = await showDialog<bool>(
+      context: navigatorContext,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Update available'),
+        content: Text('Version ${info.version} is available. Update now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+    if (shouldUpdate == true) {
+      appNavigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => const AboutPage(autoCheckForUpdate: true),
+        ),
+      );
     }
   }
 
