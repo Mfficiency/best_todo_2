@@ -161,7 +161,7 @@ class Config {
     'Dice timer',
     'Schedule view',
     'Task search',
-    'Deleted items',
+    'Archived items',
     'Changelog',
     'App logs',
     'Startup times',
@@ -182,7 +182,7 @@ class Config {
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
     'Search field in the home app bar',
-    'Restore or purge deleted tasks',
+    'Restore archived tasks, or send them on to the Deleted bin',
     "What changed in each version of the app",
     'Diagnostic log of what the app did',
     'How fast the app started, over time',
@@ -195,9 +195,10 @@ class Config {
   };
 
   /// Features that stay available in simple mode: the drawer entries that are
-  /// not really "extra features" but the app's own service pages — the deleted
-  /// items (the undo of a plain task list), the changelog, the app logs and the
-  /// startup times. Simple mode is about the home surface, so these stay.
+  /// not really "extra features" but the app's own service pages — the
+  /// archived items (the undo of a plain task list), the changelog, the app
+  /// logs and the startup times. Simple mode is about the home surface, so
+  /// these stay.
   static const Set<String> simpleModeFeatures = {
     'deleted_items',
     'changelog',
@@ -465,6 +466,12 @@ class Config {
   /// from the About page always works regardless of this setting.
   static bool autoUpdateCheckEnabled = false;
 
+  /// How many days a task stays in the real Deleted bin (`deleted_bin.json`)
+  /// before it is purged for good. Archived tasks (`deleted_tasks.json`,
+  /// shown as "Archived Items") are unaffected — they are only capped by
+  /// count, never by age. Default 60, editable in Settings → Tasks.
+  static int deletedItemsRetentionDays = 60;
+
   static const _settingsFileName = 'settings.json';
 
   static Future<File> _getSettingsFile() async {
@@ -535,6 +542,7 @@ class Config {
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
+      'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
     };
   }
@@ -651,6 +659,9 @@ class Config {
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
     autoUpdateCheckEnabled =
         data['autoUpdateCheckEnabled'] ?? autoUpdateCheckEnabled;
+    deletedItemsRetentionDays =
+        (data['deletedItemsRetentionDays'] as num?)?.round().clamp(1, 3650) ??
+            deletedItemsRetentionDays;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {

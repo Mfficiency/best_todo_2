@@ -68,18 +68,21 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     LogService.add('WaitingApprovalPage._approve', 'Approved "${task.title}"');
   }
 
-  /// Denies the task by deleting it outright (soft-delete, same as swiping a
-  /// task away elsewhere — recoverable from Deleted Items).
+  /// Denies the task by sending it straight to the real Deleted bin — unlike
+  /// a normal delete elsewhere in the app (which only archives), a denial was
+  /// never wanted in the first place, so it skips the archive and starts
+  /// aging toward permanent purge right away (recoverable from the bin until
+  /// then).
   Future<void> _deny(Task task) async {
     setState(() {
       _tasks.remove(task);
     });
     task.deletedAt = DateTime.now();
     task.autoDeleted = false;
-    final deleted = await _repository.loadDeletedItems();
-    deleted.insert(0, task);
-    if (deleted.length > 100) deleted.removeLast();
-    await _repository.saveDeletedItems(deleted);
+    final binned = await _repository.loadBinItems();
+    binned.insert(0, task);
+    if (binned.length > 100) binned.removeLast();
+    await _repository.saveBinItems(binned);
     await _save();
     LogService.add('WaitingApprovalPage._deny', 'Denied "${task.title}"');
   }

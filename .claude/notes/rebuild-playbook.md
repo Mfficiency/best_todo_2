@@ -37,8 +37,9 @@ don't add others). Pin Flutter 3.29.2 to match CI.
 
 Order inside the stage: `Task` model (+ `DailyTaskStats`) → `task_utils`
 (bucketing, sorting, 18:00 normalization) → `Config` (`settings.json`,
-defensive `applyMap`) → `StorageService` (tasks, deleted list cap 100, day
-rollover, `_ensureUniqueIds`) → `SafeFile` atomic writes + recovery →
+defensive `applyMap`) → `StorageService` (tasks, archive + real Deleted-bin
+lists each cap 100, the bin also age-purged — SPEC §4.2g — day rollover,
+`_ensureUniqueIds`) → `SafeFile` atomic writes + recovery →
 export/import. This is the heart; everything else consumes it.
 **Gate:** `flutter test test/core` — the whole silo, green.
 

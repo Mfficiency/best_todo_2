@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.265] - 2026-08-24
+- Deleted tasks are now Archived Items — restorable indefinitely, exactly like before. A new real Deleted bin sits behind it (open it from the Archived Items app bar): items sent there purge for good after a configurable retention window (Settings → Tasks → "Deleted items retention", default 60 days). Denying a task in Waiting for Approval now goes straight to the bin instead of the archive. Fix: manually archiving one occurrence of a recurring task could reappear on the next app restart; it now stays gone without disturbing the rest of the series or counting toward any goals.
+
 ## [0.1.264] - 2026-08-24
 - New setting, Settings → Updates → "Automatically check for updates" (off by default): looks up the newest build every time the app opens and, if one is available, asks before doing anything — confirming opens the About page's update section with the check already run. A manual check on the About page still always works regardless of this setting.
 - A feature branch's pull request into `dev` now has its branch deleted automatically once merged, via a new CI workflow.

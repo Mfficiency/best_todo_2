@@ -4,15 +4,21 @@ import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
-class DeletedItemsPage extends StatelessWidget {
+/// Where a task lands after a normal delete (swipe, Chronize, wishlist) or an
+/// end-of-day auto-clear of a finished task — a soft archive, not a real
+/// deletion. Restorable here, or sent on to the real [Icons.delete_forever]
+/// bin (see the app bar action), where [Task.deletedAt] finally ages out.
+class ArchivedItemsPage extends StatelessWidget {
   final List<Task> items;
   final void Function(Task task) onRestore;
-  final void Function(Task task) onDeletePermanently;
-  const DeletedItemsPage({
+  final void Function(Task task) onMoveToBin;
+  final VoidCallback onOpenBin;
+  const ArchivedItemsPage({
     Key? key,
     required this.items,
     required this.onRestore,
-    required this.onDeletePermanently,
+    required this.onMoveToBin,
+    required this.onOpenBin,
   }) : super(key: key);
 
   String _formatDate(DateTime date) {
@@ -26,18 +32,28 @@ class DeletedItemsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Deleted Items'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Archived Items',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_forever),
+            tooltip: 'Deleted items (bin)',
+            onPressed: onOpenBin,
+          ),
+        ],
+      ),
       body: ListView.builder(
         itemCount: items.length,
         itemBuilder: (context, index) {
           final task = items[index];
-          final deletedLabel = task.autoDeleted ? 'Auto-deleted' : 'Deleted';
-          final deletedText = task.deletedAt != null
-              ? '$deletedLabel: ${_formatDate(task.deletedAt!)}'
-              : '$deletedLabel: Unknown date';
+          final archivedLabel = task.autoDeleted ? 'Auto-archived' : 'Archived';
+          final archivedText = task.deletedAt != null
+              ? '$archivedLabel: ${_formatDate(task.deletedAt!)}'
+              : '$archivedLabel: Unknown date';
           final subtitle = task.description.isNotEmpty
-              ? '${task.description}\n$deletedText'
-              : deletedText;
+              ? '${task.description}\n$archivedText'
+              : archivedText;
           return ListTile(
             leading: IconButton(
               icon: const Icon(Icons.restore),
@@ -45,9 +61,9 @@ class DeletedItemsPage extends StatelessWidget {
               onPressed: () => onRestore(task),
             ),
             trailing: IconButton(
-              icon: const Icon(Icons.delete_forever),
-              tooltip: 'Delete permanently',
-              onPressed: () => onDeletePermanently(task),
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Move to bin',
+              onPressed: () => onMoveToBin(task),
             ),
             title: LinkifiedText(task.title),
             subtitle: LinkifiedText(subtitle),
