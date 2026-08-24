@@ -102,6 +102,18 @@ class TodoistSyncService {
     return _loadFuture!;
   }
 
+  /// The sync map entry linking [localUid] to a Todoist task, or null if this
+  /// task has never been synced. Lets the UI surface the Todoist id and last
+  /// synced date (see the task edit view's info icon) without exposing the
+  /// sync map itself. Call [ensureLoaded] first — this reads whatever is
+  /// already in memory.
+  TodoistSyncMapEntry? entryForLocalUid(String localUid) {
+    for (final e in _taskMap) {
+      if (e.localUid == localUid) return e;
+    }
+    return null;
+  }
+
   Future<File> _stateFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_stateFileName');

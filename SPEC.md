@@ -1115,6 +1115,13 @@ is picked up. Label fingerprints (both push- and pull-side) compare the token *s
 case-insensitively, order-independent, so re-ordering labels on either side isn't treated
 as a change.
 
+**Sync info in the UI, not the description** (0.1.263): `TodoistSyncService.entryForLocalUid`
+looks up a task's `TodoistSyncMapEntry` by `Task.uid`. `TaskTile`'s expanded edit view shows
+an info icon (`Icons.info_outline`) as the Note field's `suffixIcon` when a mapping exists —
+tapping it opens a dialog with the sync source ("Todoist"), the entry's `syncedAt` (local
+time) and its `todoistId`. `Task.description` never carries any of this — it round-trips only
+the free text on both sides, unlike the note/label/project/Kanban trailer above.
+
 **Algorithm** (`TodoistSyncService._runSync`, six passes over one fetch of Todoist's
 active tasks + projects): (0) every Kanban project already mapped in `_projectMap` has its
 name reconciled against Todoist's, fingerprinted the same local-wins way as tasks (baseline
