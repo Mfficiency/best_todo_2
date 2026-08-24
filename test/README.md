@@ -12,10 +12,10 @@ other suites are per-feature silos: run the ones whose area you touched.
 | `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, item-history journal (`ItemEventJournal` diff + persistence), upgrade safety (`SafeFile` atomic writes/recovery, `PreUpdateBackup` snapshot, historical payload matrix), config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip + corruption recovery/backup, alarm editor (top save), alarm ring page, item-linked reminders (`ReminderSyncService` + task-detail reminder section) |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
-| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, its alert settings and its full-screen alarm ring (`dice_timer_alarm_test.dart`), wishlist items on the Future tab, simple/full mode + the feature switches (`simple_mode_test.dart`, `settings_features_test.dart`), collapsible settings sections (`settings_collapse_test.dart`), home-screen widget payload + checkbox toggles (`widget_checkboxes_test.dart`), double-tap "Start timer" menu (`task_double_tap_timer_test.dart`), first-launch starter-task seeding next to a Todo.md import (`home_first_launch_seed_test.dart`), `LinkifiedText` URL spans (`linkified_text_test.dart`), the default bucket for quick-added tasks (`home_default_add_bucket_test.dart`), the drawer's Home entry (`home_drawer_home_entry_test.dart`), the Notify bell's 5/20/60-minute delay sheet (`task_tile_notify_delay_test.dart`) |
-| `test/streaks/` | `flutter test test/streaks` | Daily streaks: `StreakService` (grace periods, persistence, history seeding, fun stats), the three challenges — finish/create/plan — and their per-kind streaks, reminder list + migration (`streak_kinds_test.dart`), the cycling home-page flame + badge, celebration overlay, `StreakPage`, Streak settings section + search entries |
+| `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, its alert settings and its full-screen alarm ring (`dice_timer_alarm_test.dart`), wishlist items on the Future tab, simple/full mode + the feature switches (`simple_mode_test.dart`, `settings_features_test.dart`), collapsible settings sections (`settings_collapse_test.dart`), home-screen widget payload + checkbox toggles (`widget_checkboxes_test.dart`), double-tap "Start timer" menu (`task_double_tap_timer_test.dart`), first-launch starter-task seeding next to a Todo.md import (`home_first_launch_seed_test.dart`), `LinkifiedText` URL spans (`linkified_text_test.dart`), the default bucket for quick-added tasks (`home_default_add_bucket_test.dart`), the drawer's Home entry (`home_drawer_home_entry_test.dart`), the Notify bell's 5/20/60-minute delay sheet (`task_tile_notify_delay_test.dart`), the fresh-start/import-from-Todoist onboarding chooser (`startup_choice_page_test.dart`), auto-tagging (`AutoTagService` keyword matching/persistence in `auto_tag_service_test.dart`, the Settings switch + rules page in `auto_tag_settings_test.dart`, new tasks tagged on creation in `auto_tag_home_test.dart`) |
+| `test/streaks/` | `flutter test test/streaks` | Daily streaks: `StreakService` (grace periods, persistence, history seeding, fun stats), the fixed `complete` challenge plus the user-configured `create`/`plan` goals (`StreakGoal` matching, `Config.streakGoals` persistence, `isGoalMissing`) and their per-kind streaks, reminder list + migration (`streak_kinds_test.dart`), the cycling home-page flame + badge (unlit-until-done pulse, all-tracked-done red collapse), celebration overlay, `StreakPage`, `StreakGoalDialog`, Streak settings section + search entries |
 | `test/sms/` | `flutter test test/sms` | SMS daily report: `SmsRecipient`/`SmsReportConfig` JSON round-trip, per-recipient enable flag + `activeRecipients` filtering, Settings recipient rows (pause switch, edit keeps the flag) |
-| `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile + "Sync now" manual run |
+| `test/sync/` | `flutter test test/sync` | Synced mode (background folder sync on quit): `SyncService` write/failure/persistence round-trips, the once-per-background lifecycle latch, the Obsidian-friendly Markdown companion (`SyncMarkdown` bucketing/format), App Logs "Sync" tab entries + unseen-error acknowledgement, sync-error red dot on the drawer's App Logs entry, Settings "Synced mode" switch + folder tile + "Sync now" manual run. Todoist sync: `TodoistMetadataCodec` trailer round-trip, `TodoistApiClient` request/response handling (`http.testing.MockClient`), `TodoistSyncService` push/pull/conflict/completion/deletion/project-mapping/lifecycle-latch against a small in-memory fake Todoist backend, Settings "Todoist sync" section (switch, token field, Sync now) + its App Logs "Todoist" tab + combined drawer dot |
 | `test/update/` | `flutter test test/update` | In-app updates: `UpdateService` version parsing/comparison and the `github_releases/` folder listing (newest + rollback), the About page's check → download → install flow and its "Go back to ..." button, `tool/publish_apk.dart` release naming, `tool/stage_local_release.dart` keep-the-newest-two staging |
 | `test/share/` | `flutter test test/share` | Share-sheet task creation (`ShareIntentService`): shared text → task-due-today mapping (title/description split, truncation), consumer routing/queueing between the home page and the direct-to-storage fallback, the platform-channel pull |
 | `test/tools/` | `flutter test test/tools` | Auxiliary tools: export/import + analytics CSVs, usage-data service, startup-times page, countdown timer model + milestone notifications (model & dialog), timer date picker (`lib/utils/date_time_format.dart`), chronize page, CI test report model/parser + Test Results page, wishlist Todo.md import migration, stable backlog uids + shipped-wish auto-completion (`wishlist_autocomplete_test.dart`), wishlist page (filtered view, priority/delete swipes), changelog parser + update heatmap (toggle, day selection), Productivity Stats item-activity heatmap colour scale (`stats_activity_heatmap_test.dart`), failure-dot acknowledgement (`test_report_service_test.dart`) |
@@ -36,15 +36,19 @@ Pick suites by what you touched, always including core:
   + **streaks** for `home_page.dart`/`settings_page.dart`, which host the flame and
   its settings section)
 - `lib/services/streak_service.dart`, `lib/models/streak_kind.dart`,
-  `lib/models/streak_reminder.dart`, `lib/ui/streak_page.dart`,
-  `lib/ui/streak_flame_button.dart`, `lib/ui/streak_calendar_page.dart`,
+  `lib/models/streak_goal.dart`, `lib/models/streak_reminder.dart`,
+  `lib/services/streak_flame_display.dart`, `lib/ui/streak_page.dart`,
+  `lib/ui/streak_flame_button.dart`, `lib/ui/streak_goal_dialog.dart`,
+  `lib/ui/streak_calendar_page.dart`,
   `lib/ui/streak_celebration.dart` → core + **streaks**
 - `lib/models/sms_*`, `lib/services/sms_report_*`, the SMS section of
   `lib/ui/settings_page.dart` → core + **sms** (+ **home**/**streaks**, which also
   pump the settings page)
 - `lib/services/sync_service.dart`, `lib/services/sync_markdown.dart`,
-  `lib/models/sync_log_entry.dart`,
-  `lib/ui/app_logs_page.dart`, the Sync & export section of
+  `lib/services/todoist_sync_service.dart`, `lib/services/todoist_api_client.dart`,
+  `lib/services/todoist_metadata_codec.dart`, `lib/models/sync_log_entry.dart`,
+  `lib/models/todoist_sync_map_entry.dart`,
+  `lib/ui/app_logs_page.dart`, the Sync & export / Todoist sync sections of
   `lib/ui/settings_page.dart` → core + **sync** (+ **home**, which also pumps the
   settings page and drawer)
 - `lib/services/share_intent_service.dart`, `ShareActivity.kt`, the share
@@ -59,6 +63,9 @@ Pick suites by what you touched, always including core:
   `lib/ui/wishlist_page.dart`,
   `lib/ui/your_stats_page.dart`,
   `tool/generate_test_report.dart` → core + **tools**
+- `lib/models/auto_tag_group.dart`, `lib/services/auto_tag_service.dart`,
+  `lib/ui/auto_tag_rules_page.dart` → core + **home** (+ **tools**, since
+  `wishlist_page.dart` also calls into it)
 - `lib/services/update_service.dart`, `lib/ui/about_page.dart`,
   `tool/publish_apk.dart`, `tool/stage_local_release.dart` → core + **update**
 - `lib/utils/linkified_text.dart`, `lib/ui/task_detail_page.dart` → core +

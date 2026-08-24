@@ -15,6 +15,7 @@ import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
+import 'ui/startup_choice_page.dart';
 import 'config.dart';
 import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
@@ -24,6 +25,7 @@ import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
+import 'services/todoist_sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
@@ -143,12 +145,23 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   // The mode question closes the intro, so someone who has never answered it
   // gets the whole welcome flow rather than the chooser on its own.
-  final showIntro = Config.isDev
-      ? false
-      : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
+  final introAlreadyShown = prefs.getBool('intro_shown') ?? false;
+  final showIntro = Config.isDev ? false : !introAlreadyShown || !Config.modeChosen;
+  // The fresh-start/import-from-Todoist question is a one-time step of its
+  // own, decoupled from intro_shown so it survives being interrupted (app
+  // closed mid-onboarding). An install that had already finished onboarding
+  // before this question existed backfills to "already answered" here so
+  // existing users are never asked it after an upgrade.
+  var startupChoiceMade = prefs.getBool('startup_choice_made');
+  if (startupChoiceMade == null) {
+    startupChoiceMade = introAlreadyShown;
+    await prefs.setBool('startup_choice_made', startupChoiceMade);
+  }
+  final showStartupChoice = Config.isDev ? false : !startupChoiceMade;
   runApp(MyApp(
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
+    showStartupChoice: showStartupChoice,
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
@@ -171,10 +184,16 @@ class MyApp extends StatefulWidget {
   /// Whether the simple/full mode picker is shown after the intro. Set from
   /// [Config.modeChosen] on launch; tests and screenshot runs pass false.
   final bool showModePicker;
+
+  /// Whether the fresh-start/import-from-Todoist chooser is shown after the
+  /// intro and mode picker, on a brand-new install only. Tests and
+  /// screenshot runs pass false.
+  final bool showStartupChoice;
   const MyApp({
     Key? key,
     required this.showIntro,
     this.showModePicker = false,
+    this.showStartupChoice = false,
   }) : super(key: key);
 
   static _MyAppState? of(BuildContext context) =>
@@ -187,6 +206,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late bool _showIntro = widget.showIntro;
   late bool _showModePicker = widget.showModePicker;
+  late bool _showStartupChoice = widget.showStartupChoice;
   bool _alarmRingOpen = false;
 
   @override
@@ -236,6 +256,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
+    TodoistSyncService.instance.onLifecycleChanged(state);
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
@@ -324,6 +345,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  /// Called once the fresh-start/import-from-Todoist chooser has been
+  /// answered (either choice), so it never appears again on this install.
+  Future<void> _finishStartupChoice() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('startup_choice_made', true);
+    if (!mounted) return;
+    setState(() => _showStartupChoice = false);
+  }
+
   /// Shows the simple/full mode picker again (Settings → Mode & features).
   Future<void> restartModePicker() async {
     Config.modeChosen = false;
@@ -383,7 +413,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   onModeSelected: () =>
                       setState(() => _showModePicker = false),
                 )
-              : _initialPage(),
+              : _showStartupChoice
+                  ? StartupChoicePage(onFinished: _finishStartupChoice)
+                  : _initialPage(),
     );
   }
 }

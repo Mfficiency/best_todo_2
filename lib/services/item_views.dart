@@ -1,5 +1,6 @@
 import '../models/task.dart';
 import '../utils/date_utils.dart';
+import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
 
 /// The views layer: every surface that shows items — home tabs, wishlist,
@@ -25,6 +26,12 @@ class ItemViews {
       date.year == futureSentinelDate.year &&
       date.month == futureSentinelDate.month &&
       date.day == futureSentinelDate.day;
+
+  /// A task freshly pulled in from Todoist is stamped with
+  /// [waitingApprovalToken] and stays out of every other view until a human
+  /// approves or denies it in the Waiting for Approval page — see that
+  /// token's doc.
+  static bool isApproved(Task task) => !hasWaitingApprovalToken(task.label);
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
@@ -61,7 +68,9 @@ class ItemViews {
   }) {
     final list = tasks
         .where((t) =>
-            (where == null || where(t)) && inHomeBucket(t, tabIndex, today))
+            isApproved(t) &&
+            (where == null || where(t)) &&
+            inHomeBucket(t, tabIndex, today))
         .toList();
     sortTasks(list);
     return list;
@@ -69,15 +78,16 @@ class ItemViews {
 
   /// The wishlist: wish-flagged tasks, exactly like opening a project.
   static List<Task> wishlist(List<Task> tasks) =>
-      tasks.where((t) => t.isWish).toList();
+      tasks.where((t) => t.isWish && isApproved(t)).toList();
 
   /// All non-deleted tasks (the Projects page's top pane).
   static List<Task> active(List<Task> tasks) =>
-      tasks.where((t) => t.deletedAt == null).toList();
+      tasks.where((t) => t.deletedAt == null && isApproved(t)).toList();
 
   /// A project's tasks, regardless of board stage.
   static List<Task> projectTasks(List<Task> tasks, String projectId) => tasks
-      .where((t) => t.deletedAt == null && t.projectId == projectId)
+      .where((t) =>
+          t.deletedAt == null && t.projectId == projectId && isApproved(t))
       .toList();
 
   /// One Kanban column of a project's board.
@@ -87,6 +97,13 @@ class ItemViews {
           .where((t) =>
               t.deletedAt == null &&
               t.projectId == projectId &&
-              t.kanbanStatus == stage)
+              t.kanbanStatus == stage &&
+              isApproved(t))
           .toList();
+
+  /// Tasks pulled from Todoist that are still waiting for a human decision
+  /// (see [waitingApprovalToken]) — the Waiting for Approval page's list.
+  static List<Task> waitingApproval(List<Task> tasks) => tasks
+      .where((t) => t.deletedAt == null && !isApproved(t))
+      .toList();
 }

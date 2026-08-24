@@ -1,3 +1,1233 @@
+## 2026-08-24T04:06:07.957591Z | branch: dev | source: 4603b82
+
+- Folder: `docs/screenshots/home/20260824-040607-4603b82`
+
+### Home Page
+![2026-08-24T04:06:07.957591Z - dev - home_page](docs/screenshots/home/20260824-040607-4603b82/home_page.png)
+
+### Menu Open
+![2026-08-24T04:06:07.957591Z - dev - menu_open](docs/screenshots/home/20260824-040607-4603b82/menu_open.png)
+
+### Project Board Page
+![2026-08-24T04:06:07.957591Z - dev - project_board_page](docs/screenshots/home/20260824-040607-4603b82/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-24T04:06:07.957591Z - dev - project_edit_dialog](docs/screenshots/home/20260824-040607-4603b82/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-24T04:06:07.957591Z - dev - projects_page](docs/screenshots/home/20260824-040607-4603b82/projects_page.png)
+
+### Search Active
+![2026-08-24T04:06:07.957591Z - dev - search_active](docs/screenshots/home/20260824-040607-4603b82/search_active.png)
+
+### Settings Page
+![2026-08-24T04:06:07.957591Z - dev - settings_page](docs/screenshots/home/20260824-040607-4603b82/settings_page.png)
+
+### Your Stats Page
+![2026-08-24T04:06:07.957591Z - dev - your_stats_page](docs/screenshots/home/20260824-040607-4603b82/your_stats_page.png)
+
+---
+
+## 2026-08-24T03:55:08.947802Z | branch: dev | source: 5935013
+
+- Folder: `docs/screenshots/home/20260824-035508-5935013`
+
+### Home Page
+![2026-08-24T03:55:08.947802Z - dev - home_page](docs/screenshots/home/20260824-035508-5935013/home_page.png)
+
+### Menu Open
+![2026-08-24T03:55:08.947802Z - dev - menu_open](docs/screenshots/home/20260824-035508-5935013/menu_open.png)
+
+### Project Board Page
+![2026-08-24T03:55:08.947802Z - dev - project_board_page](docs/screenshots/home/20260824-035508-5935013/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-24T03:55:08.947802Z - dev - project_edit_dialog](docs/screenshots/home/20260824-035508-5935013/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-24T03:55:08.947802Z - dev - projects_page](docs/screenshots/home/20260824-035508-5935013/projects_page.png)
+
+### Search Active
+![2026-08-24T03:55:08.947802Z - dev - search_active](docs/screenshots/home/20260824-035508-5935013/search_active.png)
+
+### Settings Page
+![2026-08-24T03:55:08.947802Z - dev - settings_page](docs/screenshots/home/20260824-035508-5935013/settings_page.png)
+
+### Your Stats Page
+![2026-08-24T03:55:08.947802Z - dev - your_stats_page](docs/screenshots/home/20260824-035508-5935013/your_stats_page.png)
+
+---
+
+## 2026-08-23T19:13:48.860576Z | branch: dev | source: ef5008d
+
+- Folder: `docs/screenshots/home/20260823-191348-ef5008d`
+
+### Home Page
+![2026-08-23T19:13:48.860576Z - dev - home_page](docs/screenshots/home/20260823-191348-ef5008d/home_page.png)
+
+### Menu Open
+![2026-08-23T19:13:48.860576Z - dev - menu_open](docs/screenshots/home/20260823-191348-ef5008d/menu_open.png)
+
+### Project Board Page
+![2026-08-23T19:13:48.860576Z - dev - project_board_page](docs/screenshots/home/20260823-191348-ef5008d/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T19:13:48.860576Z - dev - project_edit_dialog](docs/screenshots/home/20260823-191348-ef5008d/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T19:13:48.860576Z - dev - projects_page](docs/screenshots/home/20260823-191348-ef5008d/projects_page.png)
+
+### Search Active
+![2026-08-23T19:13:48.860576Z - dev - search_active](docs/screenshots/home/20260823-191348-ef5008d/search_active.png)
+
+### Settings Page
+![2026-08-23T19:13:48.860576Z - dev - settings_page](docs/screenshots/home/20260823-191348-ef5008d/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T19:13:48.860576Z - dev - your_stats_page](docs/screenshots/home/20260823-191348-ef5008d/your_stats_page.png)
+
+---
+
+## 2026-08-23T19:01:00.120088Z | branch: dev | source: 12149a0
+
+- Folder: `docs/screenshots/home/20260823-190059-12149a0`
+
+### Home Page
+![2026-08-23T19:01:00.120088Z - dev - home_page](docs/screenshots/home/20260823-190059-12149a0/home_page.png)
+
+### Menu Open
+![2026-08-23T19:01:00.120088Z - dev - menu_open](docs/screenshots/home/20260823-190059-12149a0/menu_open.png)
+
+### Project Board Page
+![2026-08-23T19:01:00.120088Z - dev - project_board_page](docs/screenshots/home/20260823-190059-12149a0/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T19:01:00.120088Z - dev - project_edit_dialog](docs/screenshots/home/20260823-190059-12149a0/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T19:01:00.120088Z - dev - projects_page](docs/screenshots/home/20260823-190059-12149a0/projects_page.png)
+
+### Search Active
+![2026-08-23T19:01:00.120088Z - dev - search_active](docs/screenshots/home/20260823-190059-12149a0/search_active.png)
+
+### Settings Page
+![2026-08-23T19:01:00.120088Z - dev - settings_page](docs/screenshots/home/20260823-190059-12149a0/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T19:01:00.120088Z - dev - your_stats_page](docs/screenshots/home/20260823-190059-12149a0/your_stats_page.png)
+
+---
+
+## 2026-08-23T17:13:24.953715Z | branch: dev | source: c877880
+
+- Folder: `docs/screenshots/home/20260823-171324-c877880`
+
+### Home Page
+![2026-08-23T17:13:24.953715Z - dev - home_page](docs/screenshots/home/20260823-171324-c877880/home_page.png)
+
+### Menu Open
+![2026-08-23T17:13:24.953715Z - dev - menu_open](docs/screenshots/home/20260823-171324-c877880/menu_open.png)
+
+### Project Board Page
+![2026-08-23T17:13:24.953715Z - dev - project_board_page](docs/screenshots/home/20260823-171324-c877880/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T17:13:24.953715Z - dev - project_edit_dialog](docs/screenshots/home/20260823-171324-c877880/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T17:13:24.953715Z - dev - projects_page](docs/screenshots/home/20260823-171324-c877880/projects_page.png)
+
+### Search Active
+![2026-08-23T17:13:24.953715Z - dev - search_active](docs/screenshots/home/20260823-171324-c877880/search_active.png)
+
+### Settings Page
+![2026-08-23T17:13:24.953715Z - dev - settings_page](docs/screenshots/home/20260823-171324-c877880/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T17:13:24.953715Z - dev - your_stats_page](docs/screenshots/home/20260823-171324-c877880/your_stats_page.png)
+
+---
+
+## 2026-08-23T16:55:48.599884Z | branch: dev | source: be29746
+
+- Folder: `docs/screenshots/home/20260823-165547-be29746`
+
+### Home Page
+![2026-08-23T16:55:48.599884Z - dev - home_page](docs/screenshots/home/20260823-165547-be29746/home_page.png)
+
+### Menu Open
+![2026-08-23T16:55:48.599884Z - dev - menu_open](docs/screenshots/home/20260823-165547-be29746/menu_open.png)
+
+### Project Board Page
+![2026-08-23T16:55:48.599884Z - dev - project_board_page](docs/screenshots/home/20260823-165547-be29746/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T16:55:48.599884Z - dev - project_edit_dialog](docs/screenshots/home/20260823-165547-be29746/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T16:55:48.599884Z - dev - projects_page](docs/screenshots/home/20260823-165547-be29746/projects_page.png)
+
+### Search Active
+![2026-08-23T16:55:48.599884Z - dev - search_active](docs/screenshots/home/20260823-165547-be29746/search_active.png)
+
+### Settings Page
+![2026-08-23T16:55:48.599884Z - dev - settings_page](docs/screenshots/home/20260823-165547-be29746/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T16:55:48.599884Z - dev - your_stats_page](docs/screenshots/home/20260823-165547-be29746/your_stats_page.png)
+
+---
+
+## 2026-08-23T16:46:15.987915Z | branch: dev | source: cfa3179
+
+- Folder: `docs/screenshots/home/20260823-164615-cfa3179`
+
+### Home Page
+![2026-08-23T16:46:15.987915Z - dev - home_page](docs/screenshots/home/20260823-164615-cfa3179/home_page.png)
+
+### Menu Open
+![2026-08-23T16:46:15.987915Z - dev - menu_open](docs/screenshots/home/20260823-164615-cfa3179/menu_open.png)
+
+### Project Board Page
+![2026-08-23T16:46:15.987915Z - dev - project_board_page](docs/screenshots/home/20260823-164615-cfa3179/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T16:46:15.987915Z - dev - project_edit_dialog](docs/screenshots/home/20260823-164615-cfa3179/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T16:46:15.987915Z - dev - projects_page](docs/screenshots/home/20260823-164615-cfa3179/projects_page.png)
+
+### Search Active
+![2026-08-23T16:46:15.987915Z - dev - search_active](docs/screenshots/home/20260823-164615-cfa3179/search_active.png)
+
+### Settings Page
+![2026-08-23T16:46:15.987915Z - dev - settings_page](docs/screenshots/home/20260823-164615-cfa3179/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T16:46:15.987915Z - dev - your_stats_page](docs/screenshots/home/20260823-164615-cfa3179/your_stats_page.png)
+
+---
+
+## 2026-08-23T16:32:51.042535Z | branch: dev | source: 0215506
+
+- Folder: `docs/screenshots/home/20260823-163250-0215506`
+
+### Home Page
+![2026-08-23T16:32:51.042535Z - dev - home_page](docs/screenshots/home/20260823-163250-0215506/home_page.png)
+
+### Menu Open
+![2026-08-23T16:32:51.042535Z - dev - menu_open](docs/screenshots/home/20260823-163250-0215506/menu_open.png)
+
+### Project Board Page
+![2026-08-23T16:32:51.042535Z - dev - project_board_page](docs/screenshots/home/20260823-163250-0215506/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T16:32:51.042535Z - dev - project_edit_dialog](docs/screenshots/home/20260823-163250-0215506/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T16:32:51.042535Z - dev - projects_page](docs/screenshots/home/20260823-163250-0215506/projects_page.png)
+
+### Search Active
+![2026-08-23T16:32:51.042535Z - dev - search_active](docs/screenshots/home/20260823-163250-0215506/search_active.png)
+
+### Settings Page
+![2026-08-23T16:32:51.042535Z - dev - settings_page](docs/screenshots/home/20260823-163250-0215506/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T16:32:51.042535Z - dev - your_stats_page](docs/screenshots/home/20260823-163250-0215506/your_stats_page.png)
+
+---
+
+## 2026-08-23T16:10:04.901049Z | branch: dev | source: 3e2e5d2
+
+- Folder: `docs/screenshots/home/20260823-161004-3e2e5d2`
+
+### Home Page
+![2026-08-23T16:10:04.901049Z - dev - home_page](docs/screenshots/home/20260823-161004-3e2e5d2/home_page.png)
+
+### Menu Open
+![2026-08-23T16:10:04.901049Z - dev - menu_open](docs/screenshots/home/20260823-161004-3e2e5d2/menu_open.png)
+
+### Project Board Page
+![2026-08-23T16:10:04.901049Z - dev - project_board_page](docs/screenshots/home/20260823-161004-3e2e5d2/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T16:10:04.901049Z - dev - project_edit_dialog](docs/screenshots/home/20260823-161004-3e2e5d2/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T16:10:04.901049Z - dev - projects_page](docs/screenshots/home/20260823-161004-3e2e5d2/projects_page.png)
+
+### Search Active
+![2026-08-23T16:10:04.901049Z - dev - search_active](docs/screenshots/home/20260823-161004-3e2e5d2/search_active.png)
+
+### Settings Page
+![2026-08-23T16:10:04.901049Z - dev - settings_page](docs/screenshots/home/20260823-161004-3e2e5d2/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T16:10:04.901049Z - dev - your_stats_page](docs/screenshots/home/20260823-161004-3e2e5d2/your_stats_page.png)
+
+---
+
+## 2026-08-23T15:33:58.028669Z | branch: dev | source: d062006
+
+- Folder: `docs/screenshots/home/20260823-153357-d062006`
+
+### Home Page
+![2026-08-23T15:33:58.028669Z - dev - home_page](docs/screenshots/home/20260823-153357-d062006/home_page.png)
+
+### Menu Open
+![2026-08-23T15:33:58.028669Z - dev - menu_open](docs/screenshots/home/20260823-153357-d062006/menu_open.png)
+
+### Project Board Page
+![2026-08-23T15:33:58.028669Z - dev - project_board_page](docs/screenshots/home/20260823-153357-d062006/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T15:33:58.028669Z - dev - project_edit_dialog](docs/screenshots/home/20260823-153357-d062006/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T15:33:58.028669Z - dev - projects_page](docs/screenshots/home/20260823-153357-d062006/projects_page.png)
+
+### Search Active
+![2026-08-23T15:33:58.028669Z - dev - search_active](docs/screenshots/home/20260823-153357-d062006/search_active.png)
+
+### Settings Page
+![2026-08-23T15:33:58.028669Z - dev - settings_page](docs/screenshots/home/20260823-153357-d062006/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T15:33:58.028669Z - dev - your_stats_page](docs/screenshots/home/20260823-153357-d062006/your_stats_page.png)
+
+---
+
+## 2026-08-23T15:15:05.953433Z | branch: dev | source: 3d8a0bf
+
+- Folder: `docs/screenshots/home/20260823-151505-3d8a0bf`
+
+### Home Page
+![2026-08-23T15:15:05.953433Z - dev - home_page](docs/screenshots/home/20260823-151505-3d8a0bf/home_page.png)
+
+### Menu Open
+![2026-08-23T15:15:05.953433Z - dev - menu_open](docs/screenshots/home/20260823-151505-3d8a0bf/menu_open.png)
+
+### Project Board Page
+![2026-08-23T15:15:05.953433Z - dev - project_board_page](docs/screenshots/home/20260823-151505-3d8a0bf/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T15:15:05.953433Z - dev - project_edit_dialog](docs/screenshots/home/20260823-151505-3d8a0bf/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T15:15:05.953433Z - dev - projects_page](docs/screenshots/home/20260823-151505-3d8a0bf/projects_page.png)
+
+### Search Active
+![2026-08-23T15:15:05.953433Z - dev - search_active](docs/screenshots/home/20260823-151505-3d8a0bf/search_active.png)
+
+### Settings Page
+![2026-08-23T15:15:05.953433Z - dev - settings_page](docs/screenshots/home/20260823-151505-3d8a0bf/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T15:15:05.953433Z - dev - your_stats_page](docs/screenshots/home/20260823-151505-3d8a0bf/your_stats_page.png)
+
+---
+
+## 2026-08-23T14:35:27.444829Z | branch: dev | source: 1826a0b
+
+- Folder: `docs/screenshots/home/20260823-143526-1826a0b`
+
+### Home Page
+![2026-08-23T14:35:27.444829Z - dev - home_page](docs/screenshots/home/20260823-143526-1826a0b/home_page.png)
+
+### Menu Open
+![2026-08-23T14:35:27.444829Z - dev - menu_open](docs/screenshots/home/20260823-143526-1826a0b/menu_open.png)
+
+### Project Board Page
+![2026-08-23T14:35:27.444829Z - dev - project_board_page](docs/screenshots/home/20260823-143526-1826a0b/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T14:35:27.444829Z - dev - project_edit_dialog](docs/screenshots/home/20260823-143526-1826a0b/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T14:35:27.444829Z - dev - projects_page](docs/screenshots/home/20260823-143526-1826a0b/projects_page.png)
+
+### Search Active
+![2026-08-23T14:35:27.444829Z - dev - search_active](docs/screenshots/home/20260823-143526-1826a0b/search_active.png)
+
+### Settings Page
+![2026-08-23T14:35:27.444829Z - dev - settings_page](docs/screenshots/home/20260823-143526-1826a0b/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T14:35:27.444829Z - dev - your_stats_page](docs/screenshots/home/20260823-143526-1826a0b/your_stats_page.png)
+
+---
+
+## 2026-08-23T13:36:03.057407Z | branch: dev | source: 52fd204
+
+- Folder: `docs/screenshots/home/20260823-133602-52fd204`
+
+### Home Page
+![2026-08-23T13:36:03.057407Z - dev - home_page](docs/screenshots/home/20260823-133602-52fd204/home_page.png)
+
+### Menu Open
+![2026-08-23T13:36:03.057407Z - dev - menu_open](docs/screenshots/home/20260823-133602-52fd204/menu_open.png)
+
+### Project Board Page
+![2026-08-23T13:36:03.057407Z - dev - project_board_page](docs/screenshots/home/20260823-133602-52fd204/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T13:36:03.057407Z - dev - project_edit_dialog](docs/screenshots/home/20260823-133602-52fd204/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T13:36:03.057407Z - dev - projects_page](docs/screenshots/home/20260823-133602-52fd204/projects_page.png)
+
+### Search Active
+![2026-08-23T13:36:03.057407Z - dev - search_active](docs/screenshots/home/20260823-133602-52fd204/search_active.png)
+
+### Settings Page
+![2026-08-23T13:36:03.057407Z - dev - settings_page](docs/screenshots/home/20260823-133602-52fd204/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T13:36:03.057407Z - dev - your_stats_page](docs/screenshots/home/20260823-133602-52fd204/your_stats_page.png)
+
+---
+
+## 2026-08-23T12:24:15.205899Z | branch: dev | source: ea008c3
+
+- Folder: `docs/screenshots/home/20260823-122414-ea008c3`
+
+### Home Page
+![2026-08-23T12:24:15.205899Z - dev - home_page](docs/screenshots/home/20260823-122414-ea008c3/home_page.png)
+
+### Menu Open
+![2026-08-23T12:24:15.205899Z - dev - menu_open](docs/screenshots/home/20260823-122414-ea008c3/menu_open.png)
+
+### Project Board Page
+![2026-08-23T12:24:15.205899Z - dev - project_board_page](docs/screenshots/home/20260823-122414-ea008c3/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T12:24:15.205899Z - dev - project_edit_dialog](docs/screenshots/home/20260823-122414-ea008c3/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T12:24:15.205899Z - dev - projects_page](docs/screenshots/home/20260823-122414-ea008c3/projects_page.png)
+
+### Search Active
+![2026-08-23T12:24:15.205899Z - dev - search_active](docs/screenshots/home/20260823-122414-ea008c3/search_active.png)
+
+### Settings Page
+![2026-08-23T12:24:15.205899Z - dev - settings_page](docs/screenshots/home/20260823-122414-ea008c3/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T12:24:15.205899Z - dev - your_stats_page](docs/screenshots/home/20260823-122414-ea008c3/your_stats_page.png)
+
+---
+
+## 2026-08-23T08:47:57.418238Z | branch: dev | source: 3042d1c
+
+- Folder: `docs/screenshots/home/20260823-084756-3042d1c`
+
+### Home Page
+![2026-08-23T08:47:57.418238Z - dev - home_page](docs/screenshots/home/20260823-084756-3042d1c/home_page.png)
+
+### Menu Open
+![2026-08-23T08:47:57.418238Z - dev - menu_open](docs/screenshots/home/20260823-084756-3042d1c/menu_open.png)
+
+### Project Board Page
+![2026-08-23T08:47:57.418238Z - dev - project_board_page](docs/screenshots/home/20260823-084756-3042d1c/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T08:47:57.418238Z - dev - project_edit_dialog](docs/screenshots/home/20260823-084756-3042d1c/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T08:47:57.418238Z - dev - projects_page](docs/screenshots/home/20260823-084756-3042d1c/projects_page.png)
+
+### Search Active
+![2026-08-23T08:47:57.418238Z - dev - search_active](docs/screenshots/home/20260823-084756-3042d1c/search_active.png)
+
+### Settings Page
+![2026-08-23T08:47:57.418238Z - dev - settings_page](docs/screenshots/home/20260823-084756-3042d1c/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T08:47:57.418238Z - dev - your_stats_page](docs/screenshots/home/20260823-084756-3042d1c/your_stats_page.png)
+
+---
+
+## 2026-08-23T08:36:59.943926Z | branch: dev | source: 83e49e0
+
+- Folder: `docs/screenshots/home/20260823-083659-83e49e0`
+
+### Home Page
+![2026-08-23T08:36:59.943926Z - dev - home_page](docs/screenshots/home/20260823-083659-83e49e0/home_page.png)
+
+### Menu Open
+![2026-08-23T08:36:59.943926Z - dev - menu_open](docs/screenshots/home/20260823-083659-83e49e0/menu_open.png)
+
+### Project Board Page
+![2026-08-23T08:36:59.943926Z - dev - project_board_page](docs/screenshots/home/20260823-083659-83e49e0/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T08:36:59.943926Z - dev - project_edit_dialog](docs/screenshots/home/20260823-083659-83e49e0/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T08:36:59.943926Z - dev - projects_page](docs/screenshots/home/20260823-083659-83e49e0/projects_page.png)
+
+### Search Active
+![2026-08-23T08:36:59.943926Z - dev - search_active](docs/screenshots/home/20260823-083659-83e49e0/search_active.png)
+
+### Settings Page
+![2026-08-23T08:36:59.943926Z - dev - settings_page](docs/screenshots/home/20260823-083659-83e49e0/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T08:36:59.943926Z - dev - your_stats_page](docs/screenshots/home/20260823-083659-83e49e0/your_stats_page.png)
+
+---
+
+## 2026-08-23T06:04:56.868035Z | branch: dev | source: 9f82744
+
+- Folder: `docs/screenshots/home/20260823-060456-9f82744`
+
+### Home Page
+![2026-08-23T06:04:56.868035Z - dev - home_page](docs/screenshots/home/20260823-060456-9f82744/home_page.png)
+
+### Menu Open
+![2026-08-23T06:04:56.868035Z - dev - menu_open](docs/screenshots/home/20260823-060456-9f82744/menu_open.png)
+
+### Project Board Page
+![2026-08-23T06:04:56.868035Z - dev - project_board_page](docs/screenshots/home/20260823-060456-9f82744/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T06:04:56.868035Z - dev - project_edit_dialog](docs/screenshots/home/20260823-060456-9f82744/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T06:04:56.868035Z - dev - projects_page](docs/screenshots/home/20260823-060456-9f82744/projects_page.png)
+
+### Search Active
+![2026-08-23T06:04:56.868035Z - dev - search_active](docs/screenshots/home/20260823-060456-9f82744/search_active.png)
+
+### Settings Page
+![2026-08-23T06:04:56.868035Z - dev - settings_page](docs/screenshots/home/20260823-060456-9f82744/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T06:04:56.868035Z - dev - your_stats_page](docs/screenshots/home/20260823-060456-9f82744/your_stats_page.png)
+
+---
+
+## 2026-08-23T05:22:58.567449Z | branch: dev | source: 1ed0e37
+
+- Folder: `docs/screenshots/home/20260823-052257-1ed0e37`
+
+### Home Page
+![2026-08-23T05:22:58.567449Z - dev - home_page](docs/screenshots/home/20260823-052257-1ed0e37/home_page.png)
+
+### Menu Open
+![2026-08-23T05:22:58.567449Z - dev - menu_open](docs/screenshots/home/20260823-052257-1ed0e37/menu_open.png)
+
+### Project Board Page
+![2026-08-23T05:22:58.567449Z - dev - project_board_page](docs/screenshots/home/20260823-052257-1ed0e37/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T05:22:58.567449Z - dev - project_edit_dialog](docs/screenshots/home/20260823-052257-1ed0e37/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T05:22:58.567449Z - dev - projects_page](docs/screenshots/home/20260823-052257-1ed0e37/projects_page.png)
+
+### Search Active
+![2026-08-23T05:22:58.567449Z - dev - search_active](docs/screenshots/home/20260823-052257-1ed0e37/search_active.png)
+
+### Settings Page
+![2026-08-23T05:22:58.567449Z - dev - settings_page](docs/screenshots/home/20260823-052257-1ed0e37/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T05:22:58.567449Z - dev - your_stats_page](docs/screenshots/home/20260823-052257-1ed0e37/your_stats_page.png)
+
+---
+
+## 2026-08-23T05:07:11.015585Z | branch: dev | source: 12413ce
+
+- Folder: `docs/screenshots/home/20260823-050710-12413ce`
+
+### Home Page
+![2026-08-23T05:07:11.015585Z - dev - home_page](docs/screenshots/home/20260823-050710-12413ce/home_page.png)
+
+### Menu Open
+![2026-08-23T05:07:11.015585Z - dev - menu_open](docs/screenshots/home/20260823-050710-12413ce/menu_open.png)
+
+### Project Board Page
+![2026-08-23T05:07:11.015585Z - dev - project_board_page](docs/screenshots/home/20260823-050710-12413ce/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T05:07:11.015585Z - dev - project_edit_dialog](docs/screenshots/home/20260823-050710-12413ce/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T05:07:11.015585Z - dev - projects_page](docs/screenshots/home/20260823-050710-12413ce/projects_page.png)
+
+### Search Active
+![2026-08-23T05:07:11.015585Z - dev - search_active](docs/screenshots/home/20260823-050710-12413ce/search_active.png)
+
+### Settings Page
+![2026-08-23T05:07:11.015585Z - dev - settings_page](docs/screenshots/home/20260823-050710-12413ce/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T05:07:11.015585Z - dev - your_stats_page](docs/screenshots/home/20260823-050710-12413ce/your_stats_page.png)
+
+---
+
+## 2026-08-23T04:48:37.449596Z | branch: dev | source: ba7649c
+
+- Folder: `docs/screenshots/home/20260823-044836-ba7649c`
+
+### Home Page
+![2026-08-23T04:48:37.449596Z - dev - home_page](docs/screenshots/home/20260823-044836-ba7649c/home_page.png)
+
+### Menu Open
+![2026-08-23T04:48:37.449596Z - dev - menu_open](docs/screenshots/home/20260823-044836-ba7649c/menu_open.png)
+
+### Project Board Page
+![2026-08-23T04:48:37.449596Z - dev - project_board_page](docs/screenshots/home/20260823-044836-ba7649c/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-23T04:48:37.449596Z - dev - project_edit_dialog](docs/screenshots/home/20260823-044836-ba7649c/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-23T04:48:37.449596Z - dev - projects_page](docs/screenshots/home/20260823-044836-ba7649c/projects_page.png)
+
+### Search Active
+![2026-08-23T04:48:37.449596Z - dev - search_active](docs/screenshots/home/20260823-044836-ba7649c/search_active.png)
+
+### Settings Page
+![2026-08-23T04:48:37.449596Z - dev - settings_page](docs/screenshots/home/20260823-044836-ba7649c/settings_page.png)
+
+### Your Stats Page
+![2026-08-23T04:48:37.449596Z - dev - your_stats_page](docs/screenshots/home/20260823-044836-ba7649c/your_stats_page.png)
+
+---
+
+## 2026-08-22T16:48:48.906536Z | branch: dev | source: f6d56c1
+
+- Folder: `docs/screenshots/home/20260822-164848-f6d56c1`
+
+### Home Page
+![2026-08-22T16:48:48.906536Z - dev - home_page](docs/screenshots/home/20260822-164848-f6d56c1/home_page.png)
+
+### Menu Open
+![2026-08-22T16:48:48.906536Z - dev - menu_open](docs/screenshots/home/20260822-164848-f6d56c1/menu_open.png)
+
+### Project Board Page
+![2026-08-22T16:48:48.906536Z - dev - project_board_page](docs/screenshots/home/20260822-164848-f6d56c1/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T16:48:48.906536Z - dev - project_edit_dialog](docs/screenshots/home/20260822-164848-f6d56c1/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T16:48:48.906536Z - dev - projects_page](docs/screenshots/home/20260822-164848-f6d56c1/projects_page.png)
+
+### Search Active
+![2026-08-22T16:48:48.906536Z - dev - search_active](docs/screenshots/home/20260822-164848-f6d56c1/search_active.png)
+
+### Settings Page
+![2026-08-22T16:48:48.906536Z - dev - settings_page](docs/screenshots/home/20260822-164848-f6d56c1/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T16:48:48.906536Z - dev - your_stats_page](docs/screenshots/home/20260822-164848-f6d56c1/your_stats_page.png)
+
+---
+
+## 2026-08-22T16:41:44.895251Z | branch: dev | source: dbc97f7
+
+- Folder: `docs/screenshots/home/20260822-164144-dbc97f7`
+
+### Home Page
+![2026-08-22T16:41:44.895251Z - dev - home_page](docs/screenshots/home/20260822-164144-dbc97f7/home_page.png)
+
+### Menu Open
+![2026-08-22T16:41:44.895251Z - dev - menu_open](docs/screenshots/home/20260822-164144-dbc97f7/menu_open.png)
+
+### Project Board Page
+![2026-08-22T16:41:44.895251Z - dev - project_board_page](docs/screenshots/home/20260822-164144-dbc97f7/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T16:41:44.895251Z - dev - project_edit_dialog](docs/screenshots/home/20260822-164144-dbc97f7/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T16:41:44.895251Z - dev - projects_page](docs/screenshots/home/20260822-164144-dbc97f7/projects_page.png)
+
+### Search Active
+![2026-08-22T16:41:44.895251Z - dev - search_active](docs/screenshots/home/20260822-164144-dbc97f7/search_active.png)
+
+### Settings Page
+![2026-08-22T16:41:44.895251Z - dev - settings_page](docs/screenshots/home/20260822-164144-dbc97f7/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T16:41:44.895251Z - dev - your_stats_page](docs/screenshots/home/20260822-164144-dbc97f7/your_stats_page.png)
+
+---
+
+## 2026-08-22T16:35:34.340805Z | branch: dev | source: ec8a368
+
+- Folder: `docs/screenshots/home/20260822-163533-ec8a368`
+
+### Home Page
+![2026-08-22T16:35:34.340805Z - dev - home_page](docs/screenshots/home/20260822-163533-ec8a368/home_page.png)
+
+### Menu Open
+![2026-08-22T16:35:34.340805Z - dev - menu_open](docs/screenshots/home/20260822-163533-ec8a368/menu_open.png)
+
+### Project Board Page
+![2026-08-22T16:35:34.340805Z - dev - project_board_page](docs/screenshots/home/20260822-163533-ec8a368/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T16:35:34.340805Z - dev - project_edit_dialog](docs/screenshots/home/20260822-163533-ec8a368/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T16:35:34.340805Z - dev - projects_page](docs/screenshots/home/20260822-163533-ec8a368/projects_page.png)
+
+### Search Active
+![2026-08-22T16:35:34.340805Z - dev - search_active](docs/screenshots/home/20260822-163533-ec8a368/search_active.png)
+
+### Settings Page
+![2026-08-22T16:35:34.340805Z - dev - settings_page](docs/screenshots/home/20260822-163533-ec8a368/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T16:35:34.340805Z - dev - your_stats_page](docs/screenshots/home/20260822-163533-ec8a368/your_stats_page.png)
+
+---
+
+## 2026-08-22T14:48:18.709238Z | branch: dev | source: 48abdbb
+
+- Folder: `docs/screenshots/home/20260822-144817-48abdbb`
+
+### Home Page
+![2026-08-22T14:48:18.709238Z - dev - home_page](docs/screenshots/home/20260822-144817-48abdbb/home_page.png)
+
+### Menu Open
+![2026-08-22T14:48:18.709238Z - dev - menu_open](docs/screenshots/home/20260822-144817-48abdbb/menu_open.png)
+
+### Project Board Page
+![2026-08-22T14:48:18.709238Z - dev - project_board_page](docs/screenshots/home/20260822-144817-48abdbb/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T14:48:18.709238Z - dev - project_edit_dialog](docs/screenshots/home/20260822-144817-48abdbb/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T14:48:18.709238Z - dev - projects_page](docs/screenshots/home/20260822-144817-48abdbb/projects_page.png)
+
+### Search Active
+![2026-08-22T14:48:18.709238Z - dev - search_active](docs/screenshots/home/20260822-144817-48abdbb/search_active.png)
+
+### Settings Page
+![2026-08-22T14:48:18.709238Z - dev - settings_page](docs/screenshots/home/20260822-144817-48abdbb/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T14:48:18.709238Z - dev - your_stats_page](docs/screenshots/home/20260822-144817-48abdbb/your_stats_page.png)
+
+---
+
+## 2026-08-22T12:17:06.551762Z | branch: dev | source: 9f722a3
+
+- Folder: `docs/screenshots/home/20260822-121705-9f722a3`
+
+### Home Page
+![2026-08-22T12:17:06.551762Z - dev - home_page](docs/screenshots/home/20260822-121705-9f722a3/home_page.png)
+
+### Menu Open
+![2026-08-22T12:17:06.551762Z - dev - menu_open](docs/screenshots/home/20260822-121705-9f722a3/menu_open.png)
+
+### Project Board Page
+![2026-08-22T12:17:06.551762Z - dev - project_board_page](docs/screenshots/home/20260822-121705-9f722a3/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T12:17:06.551762Z - dev - project_edit_dialog](docs/screenshots/home/20260822-121705-9f722a3/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T12:17:06.551762Z - dev - projects_page](docs/screenshots/home/20260822-121705-9f722a3/projects_page.png)
+
+### Search Active
+![2026-08-22T12:17:06.551762Z - dev - search_active](docs/screenshots/home/20260822-121705-9f722a3/search_active.png)
+
+### Settings Page
+![2026-08-22T12:17:06.551762Z - dev - settings_page](docs/screenshots/home/20260822-121705-9f722a3/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T12:17:06.551762Z - dev - your_stats_page](docs/screenshots/home/20260822-121705-9f722a3/your_stats_page.png)
+
+---
+
+## 2026-08-22T11:59:14.253477Z | branch: dev | source: cea75bb
+
+- Folder: `docs/screenshots/home/20260822-115913-cea75bb`
+
+### Home Page
+![2026-08-22T11:59:14.253477Z - dev - home_page](docs/screenshots/home/20260822-115913-cea75bb/home_page.png)
+
+### Menu Open
+![2026-08-22T11:59:14.253477Z - dev - menu_open](docs/screenshots/home/20260822-115913-cea75bb/menu_open.png)
+
+### Project Board Page
+![2026-08-22T11:59:14.253477Z - dev - project_board_page](docs/screenshots/home/20260822-115913-cea75bb/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T11:59:14.253477Z - dev - project_edit_dialog](docs/screenshots/home/20260822-115913-cea75bb/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T11:59:14.253477Z - dev - projects_page](docs/screenshots/home/20260822-115913-cea75bb/projects_page.png)
+
+### Search Active
+![2026-08-22T11:59:14.253477Z - dev - search_active](docs/screenshots/home/20260822-115913-cea75bb/search_active.png)
+
+### Settings Page
+![2026-08-22T11:59:14.253477Z - dev - settings_page](docs/screenshots/home/20260822-115913-cea75bb/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T11:59:14.253477Z - dev - your_stats_page](docs/screenshots/home/20260822-115913-cea75bb/your_stats_page.png)
+
+---
+
+## 2026-08-22T10:05:48.951388Z | branch: dev | source: ba580f1
+
+- Folder: `docs/screenshots/home/20260822-100548-ba580f1`
+
+### Home Page
+![2026-08-22T10:05:48.951388Z - dev - home_page](docs/screenshots/home/20260822-100548-ba580f1/home_page.png)
+
+### Menu Open
+![2026-08-22T10:05:48.951388Z - dev - menu_open](docs/screenshots/home/20260822-100548-ba580f1/menu_open.png)
+
+### Project Board Page
+![2026-08-22T10:05:48.951388Z - dev - project_board_page](docs/screenshots/home/20260822-100548-ba580f1/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T10:05:48.951388Z - dev - project_edit_dialog](docs/screenshots/home/20260822-100548-ba580f1/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T10:05:48.951388Z - dev - projects_page](docs/screenshots/home/20260822-100548-ba580f1/projects_page.png)
+
+### Search Active
+![2026-08-22T10:05:48.951388Z - dev - search_active](docs/screenshots/home/20260822-100548-ba580f1/search_active.png)
+
+### Settings Page
+![2026-08-22T10:05:48.951388Z - dev - settings_page](docs/screenshots/home/20260822-100548-ba580f1/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T10:05:48.951388Z - dev - your_stats_page](docs/screenshots/home/20260822-100548-ba580f1/your_stats_page.png)
+
+---
+
+## 2026-08-22T08:33:46.473035Z | branch: dev | source: 81719f9
+
+- Folder: `docs/screenshots/home/20260822-083345-81719f9`
+
+### Home Page
+![2026-08-22T08:33:46.473035Z - dev - home_page](docs/screenshots/home/20260822-083345-81719f9/home_page.png)
+
+### Menu Open
+![2026-08-22T08:33:46.473035Z - dev - menu_open](docs/screenshots/home/20260822-083345-81719f9/menu_open.png)
+
+### Project Board Page
+![2026-08-22T08:33:46.473035Z - dev - project_board_page](docs/screenshots/home/20260822-083345-81719f9/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T08:33:46.473035Z - dev - project_edit_dialog](docs/screenshots/home/20260822-083345-81719f9/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T08:33:46.473035Z - dev - projects_page](docs/screenshots/home/20260822-083345-81719f9/projects_page.png)
+
+### Search Active
+![2026-08-22T08:33:46.473035Z - dev - search_active](docs/screenshots/home/20260822-083345-81719f9/search_active.png)
+
+### Settings Page
+![2026-08-22T08:33:46.473035Z - dev - settings_page](docs/screenshots/home/20260822-083345-81719f9/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T08:33:46.473035Z - dev - your_stats_page](docs/screenshots/home/20260822-083345-81719f9/your_stats_page.png)
+
+---
+
+## 2026-08-22T05:47:44.432021Z | branch: dev | source: 6c8ea85
+
+- Folder: `docs/screenshots/home/20260822-054743-6c8ea85`
+
+### Home Page
+![2026-08-22T05:47:44.432021Z - dev - home_page](docs/screenshots/home/20260822-054743-6c8ea85/home_page.png)
+
+### Menu Open
+![2026-08-22T05:47:44.432021Z - dev - menu_open](docs/screenshots/home/20260822-054743-6c8ea85/menu_open.png)
+
+### Project Board Page
+![2026-08-22T05:47:44.432021Z - dev - project_board_page](docs/screenshots/home/20260822-054743-6c8ea85/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T05:47:44.432021Z - dev - project_edit_dialog](docs/screenshots/home/20260822-054743-6c8ea85/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T05:47:44.432021Z - dev - projects_page](docs/screenshots/home/20260822-054743-6c8ea85/projects_page.png)
+
+### Search Active
+![2026-08-22T05:47:44.432021Z - dev - search_active](docs/screenshots/home/20260822-054743-6c8ea85/search_active.png)
+
+### Settings Page
+![2026-08-22T05:47:44.432021Z - dev - settings_page](docs/screenshots/home/20260822-054743-6c8ea85/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T05:47:44.432021Z - dev - your_stats_page](docs/screenshots/home/20260822-054743-6c8ea85/your_stats_page.png)
+
+---
+
+## 2026-08-22T05:17:23.583173Z | branch: dev | source: 051c5d6
+
+- Folder: `docs/screenshots/home/20260822-051723-051c5d6`
+
+### Home Page
+![2026-08-22T05:17:23.583173Z - dev - home_page](docs/screenshots/home/20260822-051723-051c5d6/home_page.png)
+
+### Menu Open
+![2026-08-22T05:17:23.583173Z - dev - menu_open](docs/screenshots/home/20260822-051723-051c5d6/menu_open.png)
+
+### Project Board Page
+![2026-08-22T05:17:23.583173Z - dev - project_board_page](docs/screenshots/home/20260822-051723-051c5d6/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T05:17:23.583173Z - dev - project_edit_dialog](docs/screenshots/home/20260822-051723-051c5d6/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T05:17:23.583173Z - dev - projects_page](docs/screenshots/home/20260822-051723-051c5d6/projects_page.png)
+
+### Search Active
+![2026-08-22T05:17:23.583173Z - dev - search_active](docs/screenshots/home/20260822-051723-051c5d6/search_active.png)
+
+### Settings Page
+![2026-08-22T05:17:23.583173Z - dev - settings_page](docs/screenshots/home/20260822-051723-051c5d6/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T05:17:23.583173Z - dev - your_stats_page](docs/screenshots/home/20260822-051723-051c5d6/your_stats_page.png)
+
+---
+
+## 2026-08-22T04:56:17.137389Z | branch: dev | source: 747d330
+
+- Folder: `docs/screenshots/home/20260822-045616-747d330`
+
+### Home Page
+![2026-08-22T04:56:17.137389Z - dev - home_page](docs/screenshots/home/20260822-045616-747d330/home_page.png)
+
+### Menu Open
+![2026-08-22T04:56:17.137389Z - dev - menu_open](docs/screenshots/home/20260822-045616-747d330/menu_open.png)
+
+### Project Board Page
+![2026-08-22T04:56:17.137389Z - dev - project_board_page](docs/screenshots/home/20260822-045616-747d330/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T04:56:17.137389Z - dev - project_edit_dialog](docs/screenshots/home/20260822-045616-747d330/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T04:56:17.137389Z - dev - projects_page](docs/screenshots/home/20260822-045616-747d330/projects_page.png)
+
+### Search Active
+![2026-08-22T04:56:17.137389Z - dev - search_active](docs/screenshots/home/20260822-045616-747d330/search_active.png)
+
+### Settings Page
+![2026-08-22T04:56:17.137389Z - dev - settings_page](docs/screenshots/home/20260822-045616-747d330/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T04:56:17.137389Z - dev - your_stats_page](docs/screenshots/home/20260822-045616-747d330/your_stats_page.png)
+
+---
+
+## 2026-08-22T04:46:57.451189Z | branch: dev | source: 10932f4
+
+- Folder: `docs/screenshots/home/20260822-044656-10932f4`
+
+### Home Page
+![2026-08-22T04:46:57.451189Z - dev - home_page](docs/screenshots/home/20260822-044656-10932f4/home_page.png)
+
+### Menu Open
+![2026-08-22T04:46:57.451189Z - dev - menu_open](docs/screenshots/home/20260822-044656-10932f4/menu_open.png)
+
+### Project Board Page
+![2026-08-22T04:46:57.451189Z - dev - project_board_page](docs/screenshots/home/20260822-044656-10932f4/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T04:46:57.451189Z - dev - project_edit_dialog](docs/screenshots/home/20260822-044656-10932f4/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T04:46:57.451189Z - dev - projects_page](docs/screenshots/home/20260822-044656-10932f4/projects_page.png)
+
+### Search Active
+![2026-08-22T04:46:57.451189Z - dev - search_active](docs/screenshots/home/20260822-044656-10932f4/search_active.png)
+
+### Settings Page
+![2026-08-22T04:46:57.451189Z - dev - settings_page](docs/screenshots/home/20260822-044656-10932f4/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T04:46:57.451189Z - dev - your_stats_page](docs/screenshots/home/20260822-044656-10932f4/your_stats_page.png)
+
+---
+
+## 2026-08-22T04:18:43.930700Z | branch: dev | source: c2f6ea8
+
+- Folder: `docs/screenshots/home/20260822-041843-c2f6ea8`
+
+### Home Page
+![2026-08-22T04:18:43.930700Z - dev - home_page](docs/screenshots/home/20260822-041843-c2f6ea8/home_page.png)
+
+### Menu Open
+![2026-08-22T04:18:43.930700Z - dev - menu_open](docs/screenshots/home/20260822-041843-c2f6ea8/menu_open.png)
+
+### Project Board Page
+![2026-08-22T04:18:43.930700Z - dev - project_board_page](docs/screenshots/home/20260822-041843-c2f6ea8/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T04:18:43.930700Z - dev - project_edit_dialog](docs/screenshots/home/20260822-041843-c2f6ea8/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T04:18:43.930700Z - dev - projects_page](docs/screenshots/home/20260822-041843-c2f6ea8/projects_page.png)
+
+### Search Active
+![2026-08-22T04:18:43.930700Z - dev - search_active](docs/screenshots/home/20260822-041843-c2f6ea8/search_active.png)
+
+### Settings Page
+![2026-08-22T04:18:43.930700Z - dev - settings_page](docs/screenshots/home/20260822-041843-c2f6ea8/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T04:18:43.930700Z - dev - your_stats_page](docs/screenshots/home/20260822-041843-c2f6ea8/your_stats_page.png)
+
+---
+
+## 2026-08-22T03:39:16.385663Z | branch: dev | source: 038d799
+
+- Folder: `docs/screenshots/home/20260822-033915-038d799`
+
+### Home Page
+![2026-08-22T03:39:16.385663Z - dev - home_page](docs/screenshots/home/20260822-033915-038d799/home_page.png)
+
+### Menu Open
+![2026-08-22T03:39:16.385663Z - dev - menu_open](docs/screenshots/home/20260822-033915-038d799/menu_open.png)
+
+### Project Board Page
+![2026-08-22T03:39:16.385663Z - dev - project_board_page](docs/screenshots/home/20260822-033915-038d799/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-22T03:39:16.385663Z - dev - project_edit_dialog](docs/screenshots/home/20260822-033915-038d799/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-22T03:39:16.385663Z - dev - projects_page](docs/screenshots/home/20260822-033915-038d799/projects_page.png)
+
+### Search Active
+![2026-08-22T03:39:16.385663Z - dev - search_active](docs/screenshots/home/20260822-033915-038d799/search_active.png)
+
+### Settings Page
+![2026-08-22T03:39:16.385663Z - dev - settings_page](docs/screenshots/home/20260822-033915-038d799/settings_page.png)
+
+### Your Stats Page
+![2026-08-22T03:39:16.385663Z - dev - your_stats_page](docs/screenshots/home/20260822-033915-038d799/your_stats_page.png)
+
+---
+
+## 2026-08-21T21:10:06.097803Z | branch: dev | source: 3f62b24
+
+- Folder: `docs/screenshots/home/20260821-211005-3f62b24`
+
+### Home Page
+![2026-08-21T21:10:06.097803Z - dev - home_page](docs/screenshots/home/20260821-211005-3f62b24/home_page.png)
+
+### Menu Open
+![2026-08-21T21:10:06.097803Z - dev - menu_open](docs/screenshots/home/20260821-211005-3f62b24/menu_open.png)
+
+### Project Board Page
+![2026-08-21T21:10:06.097803Z - dev - project_board_page](docs/screenshots/home/20260821-211005-3f62b24/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-21T21:10:06.097803Z - dev - project_edit_dialog](docs/screenshots/home/20260821-211005-3f62b24/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-21T21:10:06.097803Z - dev - projects_page](docs/screenshots/home/20260821-211005-3f62b24/projects_page.png)
+
+### Search Active
+![2026-08-21T21:10:06.097803Z - dev - search_active](docs/screenshots/home/20260821-211005-3f62b24/search_active.png)
+
+### Settings Page
+![2026-08-21T21:10:06.097803Z - dev - settings_page](docs/screenshots/home/20260821-211005-3f62b24/settings_page.png)
+
+### Your Stats Page
+![2026-08-21T21:10:06.097803Z - dev - your_stats_page](docs/screenshots/home/20260821-211005-3f62b24/your_stats_page.png)
+
+---
+
+## 2026-08-21T20:57:21.369647Z | branch: dev | source: 6e05c43
+
+- Folder: `docs/screenshots/home/20260821-205720-6e05c43`
+
+### Home Page
+![2026-08-21T20:57:21.369647Z - dev - home_page](docs/screenshots/home/20260821-205720-6e05c43/home_page.png)
+
+### Menu Open
+![2026-08-21T20:57:21.369647Z - dev - menu_open](docs/screenshots/home/20260821-205720-6e05c43/menu_open.png)
+
+### Project Board Page
+![2026-08-21T20:57:21.369647Z - dev - project_board_page](docs/screenshots/home/20260821-205720-6e05c43/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-21T20:57:21.369647Z - dev - project_edit_dialog](docs/screenshots/home/20260821-205720-6e05c43/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-21T20:57:21.369647Z - dev - projects_page](docs/screenshots/home/20260821-205720-6e05c43/projects_page.png)
+
+### Search Active
+![2026-08-21T20:57:21.369647Z - dev - search_active](docs/screenshots/home/20260821-205720-6e05c43/search_active.png)
+
+### Settings Page
+![2026-08-21T20:57:21.369647Z - dev - settings_page](docs/screenshots/home/20260821-205720-6e05c43/settings_page.png)
+
+### Your Stats Page
+![2026-08-21T20:57:21.369647Z - dev - your_stats_page](docs/screenshots/home/20260821-205720-6e05c43/your_stats_page.png)
+
+---
+
+## 2026-08-21T20:28:11.021241Z | branch: dev | source: bdbda24
+
+- Folder: `docs/screenshots/home/20260821-202810-bdbda24`
+
+### Home Page
+![2026-08-21T20:28:11.021241Z - dev - home_page](docs/screenshots/home/20260821-202810-bdbda24/home_page.png)
+
+### Menu Open
+![2026-08-21T20:28:11.021241Z - dev - menu_open](docs/screenshots/home/20260821-202810-bdbda24/menu_open.png)
+
+### Project Board Page
+![2026-08-21T20:28:11.021241Z - dev - project_board_page](docs/screenshots/home/20260821-202810-bdbda24/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-21T20:28:11.021241Z - dev - project_edit_dialog](docs/screenshots/home/20260821-202810-bdbda24/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-21T20:28:11.021241Z - dev - projects_page](docs/screenshots/home/20260821-202810-bdbda24/projects_page.png)
+
+### Search Active
+![2026-08-21T20:28:11.021241Z - dev - search_active](docs/screenshots/home/20260821-202810-bdbda24/search_active.png)
+
+### Settings Page
+![2026-08-21T20:28:11.021241Z - dev - settings_page](docs/screenshots/home/20260821-202810-bdbda24/settings_page.png)
+
+### Your Stats Page
+![2026-08-21T20:28:11.021241Z - dev - your_stats_page](docs/screenshots/home/20260821-202810-bdbda24/your_stats_page.png)
+
+---
+
+## 2026-08-21T20:09:08.030761Z | branch: dev | source: ce3b77a
+
+- Folder: `docs/screenshots/home/20260821-200907-ce3b77a`
+
+### Home Page
+![2026-08-21T20:09:08.030761Z - dev - home_page](docs/screenshots/home/20260821-200907-ce3b77a/home_page.png)
+
+### Menu Open
+![2026-08-21T20:09:08.030761Z - dev - menu_open](docs/screenshots/home/20260821-200907-ce3b77a/menu_open.png)
+
+### Project Board Page
+![2026-08-21T20:09:08.030761Z - dev - project_board_page](docs/screenshots/home/20260821-200907-ce3b77a/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-21T20:09:08.030761Z - dev - project_edit_dialog](docs/screenshots/home/20260821-200907-ce3b77a/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-21T20:09:08.030761Z - dev - projects_page](docs/screenshots/home/20260821-200907-ce3b77a/projects_page.png)
+
+### Search Active
+![2026-08-21T20:09:08.030761Z - dev - search_active](docs/screenshots/home/20260821-200907-ce3b77a/search_active.png)
+
+### Settings Page
+![2026-08-21T20:09:08.030761Z - dev - settings_page](docs/screenshots/home/20260821-200907-ce3b77a/settings_page.png)
+
+### Your Stats Page
+![2026-08-21T20:09:08.030761Z - dev - your_stats_page](docs/screenshots/home/20260821-200907-ce3b77a/your_stats_page.png)
+
+---
+
+## 2026-08-21T20:04:19.270668Z | branch: dev | source: 9d4389b
+
+- Folder: `docs/screenshots/home/20260821-200418-9d4389b`
+
+### Home Page
+![2026-08-21T20:04:19.270668Z - dev - home_page](docs/screenshots/home/20260821-200418-9d4389b/home_page.png)
+
+### Menu Open
+![2026-08-21T20:04:19.270668Z - dev - menu_open](docs/screenshots/home/20260821-200418-9d4389b/menu_open.png)
+
+### Project Board Page
+![2026-08-21T20:04:19.270668Z - dev - project_board_page](docs/screenshots/home/20260821-200418-9d4389b/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-21T20:04:19.270668Z - dev - project_edit_dialog](docs/screenshots/home/20260821-200418-9d4389b/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-21T20:04:19.270668Z - dev - projects_page](docs/screenshots/home/20260821-200418-9d4389b/projects_page.png)
+
+### Search Active
+![2026-08-21T20:04:19.270668Z - dev - search_active](docs/screenshots/home/20260821-200418-9d4389b/search_active.png)
+
+### Settings Page
+![2026-08-21T20:04:19.270668Z - dev - settings_page](docs/screenshots/home/20260821-200418-9d4389b/settings_page.png)
+
+### Your Stats Page
+![2026-08-21T20:04:19.270668Z - dev - your_stats_page](docs/screenshots/home/20260821-200418-9d4389b/your_stats_page.png)
+
+---
+
+## 2026-08-21T19:34:01.108229Z | branch: dev | source: 30de209
+
+- Folder: `docs/screenshots/home/20260821-193400-30de209`
+
+### Home Page
+![2026-08-21T19:34:01.108229Z - dev - home_page](docs/screenshots/home/20260821-193400-30de209/home_page.png)
+
+### Menu Open
+![2026-08-21T19:34:01.108229Z - dev - menu_open](docs/screenshots/home/20260821-193400-30de209/menu_open.png)
+
+### Project Board Page
+![2026-08-21T19:34:01.108229Z - dev - project_board_page](docs/screenshots/home/20260821-193400-30de209/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-21T19:34:01.108229Z - dev - project_edit_dialog](docs/screenshots/home/20260821-193400-30de209/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-21T19:34:01.108229Z - dev - projects_page](docs/screenshots/home/20260821-193400-30de209/projects_page.png)
+
+### Search Active
+![2026-08-21T19:34:01.108229Z - dev - search_active](docs/screenshots/home/20260821-193400-30de209/search_active.png)
+
+### Settings Page
+![2026-08-21T19:34:01.108229Z - dev - settings_page](docs/screenshots/home/20260821-193400-30de209/settings_page.png)
+
+### Your Stats Page
+![2026-08-21T19:34:01.108229Z - dev - your_stats_page](docs/screenshots/home/20260821-193400-30de209/your_stats_page.png)
+
+---
+
+## 2026-08-17T20:15:15.607093Z | branch: dev | source: 3252e28
+
+- Folder: `docs/screenshots/home/20260817-201514-3252e28`
+
+### Home Page
+![2026-08-17T20:15:15.607093Z - dev - home_page](docs/screenshots/home/20260817-201514-3252e28/home_page.png)
+
+### Menu Open
+![2026-08-17T20:15:15.607093Z - dev - menu_open](docs/screenshots/home/20260817-201514-3252e28/menu_open.png)
+
+### Project Board Page
+![2026-08-17T20:15:15.607093Z - dev - project_board_page](docs/screenshots/home/20260817-201514-3252e28/project_board_page.png)
+
+### Project Edit Dialog
+![2026-08-17T20:15:15.607093Z - dev - project_edit_dialog](docs/screenshots/home/20260817-201514-3252e28/project_edit_dialog.png)
+
+### Projects Page
+![2026-08-17T20:15:15.607093Z - dev - projects_page](docs/screenshots/home/20260817-201514-3252e28/projects_page.png)
+
+### Search Active
+![2026-08-17T20:15:15.607093Z - dev - search_active](docs/screenshots/home/20260817-201514-3252e28/search_active.png)
+
+### Settings Page
+![2026-08-17T20:15:15.607093Z - dev - settings_page](docs/screenshots/home/20260817-201514-3252e28/settings_page.png)
+
+### Your Stats Page
+![2026-08-17T20:15:15.607093Z - dev - your_stats_page](docs/screenshots/home/20260817-201514-3252e28/your_stats_page.png)
+
+---
+
 ## 2026-08-17T20:11:33.332265Z | branch: staging | source: 8ce3994
 
 - Folder: `docs/screenshots/home/20260817-201132-8ce3994`

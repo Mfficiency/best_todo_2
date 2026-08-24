@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
+import 'package:besttodo/models/streak_goal.dart';
 import 'package:besttodo/models/streak_kind.dart';
 import 'package:besttodo/models/streak_reminder.dart';
 import 'package:besttodo/models/task.dart';
@@ -33,16 +34,17 @@ void main() {
     Config.streakGraceHours = 24;
     Config.streakReminderEnabled = false;
     Config.streakReminders = [];
+    Config.streakGoals = {};
     for (final key in Config.streakKindKeys) {
       Config.streakKindEnabled[key] = true;
     }
   });
 
-  test('the three challenges keep independent streaks', () {
+  test('the three flames keep independent streaks', () {
     final service = StreakService.instance;
     service.recordCompletion(daysAgo(1));
     service.recordCompletion(day);
-    service.recordCreation(day);
+    service.recordGoal(StreakKind.create, day);
 
     expect(service.currentStreak(kind: StreakKind.complete, now: day), 2);
     expect(service.currentStreak(kind: StreakKind.create, now: day), 1);
@@ -51,19 +53,19 @@ void main() {
     expect(service.currentStreak(now: day), 2);
   });
 
-  test('planning is recorded once per day, however often it happens', () {
+  test('a goal is recorded once per day, however often it fires', () {
     final service = StreakService.instance;
-    expect(service.recordPlanning(day), isTrue);
-    expect(service.recordPlanning(day), isFalse);
+    expect(service.recordGoal(StreakKind.plan, day), isTrue);
+    expect(service.recordGoal(StreakKind.plan, day), isFalse);
     expect(service.completionsOn(day, kind: StreakKind.plan), 1);
     expect(service.isDayDone(day, kind: StreakKind.plan), isTrue);
   });
 
-  test('un-completing a task leaves the other challenges alone', () {
+  test('un-completing a task leaves the other flames alone', () {
     final service = StreakService.instance;
     service.recordCompletion(day);
-    service.recordCreation(day);
-    service.recordPlanning(day);
+    service.recordGoal(StreakKind.create, day);
+    service.recordGoal(StreakKind.plan, day);
 
     service.recordUncompletion(day);
 
@@ -72,12 +74,22 @@ void main() {
     expect(service.isDayDone(day, kind: StreakKind.plan), isTrue);
   });
 
+  test('recordUncompletion reverts a specific goal kind', () {
+    final service = StreakService.instance;
+    service.recordGoal(StreakKind.create, day);
+    expect(service.isDayDone(day, kind: StreakKind.create), isTrue);
+
+    service.recordUncompletion(day, kind: StreakKind.create);
+
+    expect(service.isDayDone(day, kind: StreakKind.create), isFalse);
+  });
+
   test('all three histories survive a save/load round trip', () async {
     final service = StreakService.instance;
     service.recordCompletion(day);
-    service.recordCreation(day);
-    service.recordCreation(daysAgo(1));
-    service.recordPlanning(daysAgo(2));
+    service.recordGoal(StreakKind.create, day);
+    service.recordGoal(StreakKind.create, daysAgo(1));
+    service.recordGoal(StreakKind.plan, daysAgo(2));
     await service.saveNow();
 
     final raw = jsonDecode(await File('$tempPath/streak.json').readAsString())
@@ -105,7 +117,8 @@ void main() {
     expect(service.needsSeed, isFalse);
   });
 
-  test('seeding backfills creates and planning moves from the tasks', () {
+  test('seeding only backfills the complete kind — create/plan are goals now',
+      () {
     final service = StreakService.instance;
     service.seedFromHistory(
       tasks: [
@@ -117,18 +130,17 @@ void main() {
     );
 
     expect(service.isDayDone(daysAgo(2)), isTrue);
-    expect(service.isDayDone(daysAgo(3), kind: StreakKind.create), isTrue);
-    expect(service.currentStreak(kind: StreakKind.create, now: daysAgo(1)), 3);
-    expect(service.isDayDone(daysAgo(1), kind: StreakKind.plan), isTrue);
+    expect(service.totalActiveDays(kind: StreakKind.create), 0);
+    expect(service.totalActiveDays(kind: StreakKind.plan), 0);
   });
 
-  test('the dev seed lights all three flames at different lengths', () {
+  test('the dev seed only lights the complete flame', () {
     final service = StreakService.instance;
     service.seedDevStreak(days: 12, now: day);
 
     expect(service.currentStreak(kind: StreakKind.complete, now: day), 12);
-    expect(service.currentStreak(kind: StreakKind.create, now: day), 8);
-    expect(service.currentStreak(kind: StreakKind.plan, now: day), 6);
+    expect(service.currentStreak(kind: StreakKind.create, now: day), 0);
+    expect(service.currentStreak(kind: StreakKind.plan, now: day), 0);
   });
 
   test('enabledKinds follows the settings switches', () {
@@ -139,19 +151,106 @@ void main() {
     expect(service.enabledKinds, [StreakKind.complete, StreakKind.plan]);
   });
 
-  test('the reminder body names what is still open and the streak at risk', () {
+  test('a task-targeted goal matches its recurring instances, not others', () {
+    final goal = StreakGoal(
+      target: StreakGoalTarget.task,
+      targetId: 'parent-1',
+      title: 'Exercise',
+    );
+    final parent = Task(uid: 'parent-1', title: 'Exercise', isRecurring: true);
+    final instance = Task(
+        uid: 'instance-1', title: 'Exercise', recurrenceParentUid: 'parent-1');
+    final other = Task(uid: 'other', title: 'Something else');
+
+    expect(goal.matches(parent), isTrue);
+    expect(goal.matches(instance), isTrue);
+    expect(goal.matches(other), isFalse);
+  });
+
+  test('a project-targeted goal matches any task filed under it', () {
+    final goal = StreakGoal(
+      target: StreakGoalTarget.project,
+      targetId: 'proj-1',
+      title: 'Health',
+    );
+    final inProject = Task(title: 'Anything', projectId: 'proj-1');
+    final elsewhere = Task(title: 'Anything', projectId: 'proj-2');
+    final unfiled = Task(title: 'Anything');
+
+    expect(goal.matches(inProject), isTrue);
+    expect(goal.matches(elsewhere), isFalse);
+    expect(goal.matches(unfiled), isFalse);
+  });
+
+  test('isGoalMissing is true only once a task-targeted goal\'s task is gone',
+      () {
     final service = StreakService.instance;
+    Config.streakGoals['create'] = StreakGoal(
+      target: StreakGoalTarget.task,
+      targetId: 'parent-1',
+      title: 'Exercise',
+    );
+
+    service.syncKnownTasks([Task(uid: 'parent-1', title: 'Exercise')]);
+    expect(service.isGoalMissing(StreakKind.create), isFalse);
+
+    service.syncKnownTasks([Task(uid: 'other', title: 'Something else')]);
+    expect(service.isGoalMissing(StreakKind.create), isTrue);
+
+    // An unconfigured flame is just cold, never "missing".
+    expect(service.isGoalMissing(StreakKind.plan), isFalse);
+  });
+
+  test('streak goals survive a settings round trip', () {
+    Config.streakGoals['create'] = StreakGoal(
+      target: StreakGoalTarget.task,
+      targetId: 'parent-1',
+      title: 'Exercise',
+    );
+    Config.streakGoals['plan'] = StreakGoal(
+      target: StreakGoalTarget.project,
+      targetId: 'proj-1',
+      title: 'Health',
+    );
+
+    final map = Config.toMap();
+    Config.streakGoals = {};
+    Config.applyMap(map);
+
+    expect(Config.streakGoals['create']!.target, StreakGoalTarget.task);
+    expect(Config.streakGoals['create']!.targetId, 'parent-1');
+    expect(Config.streakGoals['create']!.title, 'Exercise');
+    expect(Config.streakGoals['plan']!.target, StreakGoalTarget.project);
+    expect(Config.streakGoals['plan']!.targetId, 'proj-1');
+  });
+
+  test('the reminder body ignores unconfigured create/plan slots', () {
+    final service = StreakService.instance;
+    // Yesterday and the day before are done; today (day) is still open, so
+    // the streak-at-risk text and the "still open" text both have something
+    // to report without needing a completion on `day` itself.
     service.recordCompletion(daysAgo(1));
+    service.recordCompletion(daysAgo(2));
+
+    final body = service.reminderBody(day);
+    expect(body, contains('finish a task'));
+    expect(body, isNot(contains('no goal set')));
+    expect(body, contains('2-day streak'));
+  });
+
+  test('the reminder body names a configured goal by its own title', () {
+    final service = StreakService.instance;
+    Config.streakGoals['create'] = StreakGoal(
+      target: StreakGoalTarget.project,
+      targetId: 'proj-1',
+      title: 'Exercise',
+    );
     service.recordCompletion(day);
 
     final body = service.reminderBody(day);
-    expect(body, contains('create a task'));
-    expect(body, contains('plan ahead'));
-    expect(body, isNot(contains('finish a task')));
-    expect(body, contains('2-day streak'));
+    expect(body, contains('exercise'));
 
-    service.recordCreation(day);
-    service.recordPlanning(day);
+    service.recordGoal(StreakKind.create, day);
     expect(service.reminderBody(day), contains('Everything done today'));
   });
 
