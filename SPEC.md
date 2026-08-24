@@ -772,7 +772,7 @@ hidden from that view; when `includeTags` is non-empty, only tasks carrying at l
 its tokens show — matched case-insensitively against `Task.label` tokens
 (`splitLabelTokens`). This sits on top of each view's own structural rule (the wishlist
 still only ever shows `isWish` tasks) — see §4.2d. The Settings "Filtering rules" section
-(last section, index 12) lists all five views with two chip editors each (add via text
+(index 2, right after Mode & features) lists all five views with two chip editors each (add via text
 field + Enter/+, remove via the chip's ×); `SettingsPage._rulesFor` lazily creates an empty
 entry per view on first touch. Because a Home rule can hide tasks mid-tab, drag-reorder on
 the home list is disabled whenever one is active (`_homeFilterRulesActive`), exactly like it

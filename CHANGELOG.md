@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.268] - 2026-08-24
+- Reordered the Settings sections: Appearance, Mode & features, Filtering rules, Notifications, Tasks, Streak, Dice timer, SMS report, Widget, Updates, Todoist sync, Sync & export, Backup
+
 ## [0.1.267] - 2026-08-24
 - Settings gained per-view Filtering rules: hide or restrict Home, Wishlist, Projects, Archived Items and the Deleted bin by tag, configured separately for each view
 
