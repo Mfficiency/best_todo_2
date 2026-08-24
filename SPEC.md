@@ -772,7 +772,7 @@ hidden from that view; when `includeTags` is non-empty, only tasks carrying at l
 its tokens show — matched case-insensitively against `Task.label` tokens
 (`splitLabelTokens`). This sits on top of each view's own structural rule (the wishlist
 still only ever shows `isWish` tasks) — see §4.2d. The Settings "Filtering rules" section
-(last section, index 12) lists all five views with two chip editors each (add via text
+(index 2, right after Mode & features) lists all five views with two chip editors each (add via text
 field + Enter/+, remove via the chip's ×); `SettingsPage._rulesFor` lazily creates an empty
 entry per view on first touch. Because a Home rule can hide tasks mid-tab, drag-reorder on
 the home list is disabled whenever one is active (`_homeFilterRulesActive`), exactly like it
@@ -1268,7 +1268,7 @@ syncs the widget → **awaits** `rescheduleAll` (so short-lived isolates don't d
 disk, flip, save, sync widget, and **always** reschedule (the old `_loaded`-guarded version
 was why widget toggles silently did nothing with the app closed).
 
-**Dev seed (0.1.268):** `load()` seeds three sample alarms (a repeating weekday "Wake up",
+**Dev seed (0.1.269):** `load()` seeds three sample alarms (a repeating weekday "Wake up",
 a one-off "Midday stretch", a disabled repeating-weekend "Wind down") when storage is
 empty and `Config.isDev`, mirroring the seeds already used for tasks/wishlist/projects/
 countdown timers — so the Alarms tool (and its screenshot) is never an empty state in
@@ -1883,10 +1883,13 @@ Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
 on return (the tool loads/saves the list on its own, like Wishlist).
 
-**Dev seed (0.1.268):** when the loaded list is empty and `Config.isDev`, the page seeds
-three entries spread across the day (breakfast/lunch/dinner, each with its own tags) so
-the tool is testable in Chrome and never shows the empty state in a screenshot; up from
-the single "Greek yogurt with honey" entry seeded at launch.
+**Dev seed (0.1.269):** when no `isEatingHabit` task exists yet and `Config.isDev`, the
+page seeds three entries spread across the day (breakfast/lunch/dinner, each with its own
+tags) so the tool is testable in Chrome and never shows the empty state in a screenshot.
+Checking the eating-habit subset rather than `tasks.isEmpty` is the fix (0.1.269): the
+dev/demo starter tasks seeded by `home_page._loadTasks` mean the overall list is never
+actually empty by the time this page loads, so the original single-entry seed (a plain
+`tasks.isEmpty` check) never fired in practice.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

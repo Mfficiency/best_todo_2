@@ -56,17 +56,17 @@ class _SettingsPageState extends State<SettingsPage> {
   final List<String> _sectionTitles = const [
     'Appearance',
     'Mode & features',
-    'Tasks',
-    'Widget',
+    'Filtering rules',
     'Notifications',
+    'Tasks',
     'Streak',
     'Dice timer',
     'SMS report',
+    'Widget',
+    'Updates',
+    'Todoist sync',
     'Sync & export',
     'Backup',
-    'Todoist sync',
-    'Updates',
-    'Filtering rules',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -137,31 +137,31 @@ class _SettingsPageState extends State<SettingsPage> {
         'Simple mode', 1, 'full mode basic minimal features hide tools'),
     _SettingsSearchEntry(
         'Show the mode picker again', 1, 'simple full first start choose'),
-    _SettingsSearchEntry('Add new tasks at top', 2, 'bottom order insert'),
-    _SettingsSearchEntry('Desktop keyboard shortcuts', 2,
+    _SettingsSearchEntry('Add new tasks at top', 4, 'bottom order insert'),
+    _SettingsSearchEntry('Desktop keyboard shortcuts', 4,
         'hotkeys ctrl enter arrows keyboard windows'),
-    _SettingsSearchEntry('Save new task shortcut', 2,
+    _SettingsSearchEntry('Save new task shortcut', 4,
         'enter ctrl enter multiline keyboard shortcuts'),
-    _SettingsSearchEntry('New tasks go to', 2,
+    _SettingsSearchEntry('New tasks go to', 4,
         'default list bucket target tab today future someday quick add'),
-    _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
-    _SettingsSearchEntry('Deleted items retention', 2,
+    _SettingsSearchEntry('Swipe left to delete', 4, 'gesture direction move'),
+    _SettingsSearchEntry('Deleted items retention', 4,
         'archive archived bin trash purge days delete forever'),
-    _SettingsSearchEntry('Default delay', 2, 'undo seconds snackbar'),
-    _SettingsSearchEntry('Start page', 2, 'tab launch open today'),
-    _SettingsSearchEntry('Default start page', 2, 'tool launch open tasks'),
-    _SettingsSearchEntry('Start in schedule view', 2, 'calendar launch'),
-    _SettingsSearchEntry('Chronize: show hour wheel', 2, 'timeline scroll'),
+    _SettingsSearchEntry('Default delay', 4, 'undo seconds snackbar'),
+    _SettingsSearchEntry('Start page', 4, 'tab launch open today'),
+    _SettingsSearchEntry('Default start page', 4, 'tool launch open tasks'),
+    _SettingsSearchEntry('Start in schedule view', 4, 'calendar launch'),
+    _SettingsSearchEntry('Chronize: show hour wheel', 4, 'timeline scroll'),
     _SettingsSearchEntry(
-        'Auto-tag new items', 2, 'tags labels keywords automatic'),
+        'Auto-tag new items', 4, 'tags labels keywords automatic'),
     _SettingsSearchEntry(
-        'Auto-tag rules', 2, 'tags labels keywords dictionary work bike'),
-    _SettingsSearchEntry('Widget progress line', 3, 'home screen completion'),
-    _SettingsSearchEntry('Check off tasks on the widget', 3,
+        'Auto-tag rules', 4, 'tags labels keywords dictionary work bike'),
+    _SettingsSearchEntry('Widget progress line', 8, 'home screen completion'),
+    _SettingsSearchEntry('Check off tasks on the widget', 8,
         'home screen checkbox tick complete done interactive'),
-    _SettingsSearchEntry('Enable notifications', 4, 'push reminders'),
-    _SettingsSearchEntry('Quiet hours', 4, 'silence night do not disturb'),
-    _SettingsSearchEntry('Default notification delay', 4, 'bell reminder'),
+    _SettingsSearchEntry('Enable notifications', 3, 'push reminders'),
+    _SettingsSearchEntry('Quiet hours', 3, 'silence night do not disturb'),
+    _SettingsSearchEntry('Default notification delay', 3, 'bell reminder'),
     _SettingsSearchEntry('Show streak', 5, 'flame fire hide daily habit'),
     _SettingsSearchEntry(
         'Streak grace period', 5, '24 48 hours flame miss day forgive'),
@@ -190,25 +190,25 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Message template', 7, 'sms tokens text'),
     _SettingsSearchEntry('Sent message history', 7, 'sms log'),
     _SettingsSearchEntry('Send test now', 7, 'sms report'),
-    _SettingsSearchEntry('Synced mode', 8,
+    _SettingsSearchEntry('Synced mode', 11,
         'sync offline folder background quit backup automatic tasks'),
-    _SettingsSearchEntry('Sync folder', 8, 'sync directory location choose'),
-    _SettingsSearchEntry('Sync now', 8, 'sync manual run last synced'),
-    _SettingsSearchEntry('Export Tasks', 8, 'backup save json'),
-    _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
-    _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
-    _SettingsSearchEntry('Import', 8, 'restore backup load json'),
-    _SettingsSearchEntry('Automatic backup', 9,
+    _SettingsSearchEntry('Sync folder', 11, 'sync directory location choose'),
+    _SettingsSearchEntry('Sync now', 11, 'sync manual run last synced'),
+    _SettingsSearchEntry('Export Tasks', 11, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 11, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 11, 'backup save json'),
+    _SettingsSearchEntry('Import', 11, 'restore backup load json'),
+    _SettingsSearchEntry('Automatic backup', 12,
         'daily weekly schedule export save everything off'),
-    _SettingsSearchEntry('Backup folder', 9, 'directory location path choose'),
-    _SettingsSearchEntry('Back up now', 9, 'manual backup export run'),
+    _SettingsSearchEntry('Backup folder', 12, 'directory location path choose'),
+    _SettingsSearchEntry('Back up now', 12, 'manual backup export run'),
     _SettingsSearchEntry(
         'Enable Todoist sync', 10, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
-    _SettingsSearchEntry('Automatically check for updates', 11,
+    _SettingsSearchEntry('Automatically check for updates', 9,
         'auto update version release new build startup prompt install about'),
-    _SettingsSearchEntry('Filtering rules', 12,
+    _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist projects archived deleted bin hide show tag exclude include only filter'),
   ];
 
@@ -1416,7 +1416,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildExportSection() {
     return _buildSection(
-      index: 8,
+      index: 11,
       title: 'Sync & export',
       children: [
         SwitchListTile(
@@ -1582,7 +1582,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildBackupSection() {
     final folderChosen = _autoBackupDirectory.isNotEmpty;
     return _buildSection(
-      index: 9,
+      index: 12,
       title: 'Backup',
       children: [
         ListTile(
@@ -1866,7 +1866,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildUpdatesSection() {
     return _buildSection(
-      index: 11,
+      index: 9,
       title: 'Updates',
       children: [
         SwitchListTile(
@@ -1977,7 +1977,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = Theme.of(context);
     final viewIds = ViewFilterRules.viewIds;
     return _buildSection(
-      index: 12,
+      index: 2,
       title: 'Filtering rules',
       children: [
         const Padding(
@@ -2358,8 +2358,60 @@ class _SettingsPageState extends State<SettingsPage> {
                           ],
                         ),
                         _buildModeFeaturesSection(),
+                        _buildFilteringRulesSection(),
                         _buildSection(
-                          index: 2,
+                          index: 3,
+                          title: 'Notifications',
+                          children: [
+                            SwitchListTile(
+                              title: const Text('Enable notifications'),
+                              value: _notifications,
+                              onChanged: (val) async {
+                                setState(() => _notifications = val);
+                                Config.enableNotifications = val;
+                                await Config.save();
+                              },
+                            ),
+                            SwitchListTile(
+                              title: const Text('Quiet hours'),
+                              subtitle: const Text(
+                                  'Delay notifications until quiet hours end'),
+                              value: _quietHoursEnabled,
+                              onChanged: (val) async {
+                                setState(() => _quietHoursEnabled = val);
+                                Config.quietHoursEnabled = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            if (_quietHoursEnabled)
+                              ListTile(
+                                title: const Text('Quiet hours start'),
+                                subtitle: Text(
+                                    _formatHourMinute(_quietHoursStartMinutes)),
+                                trailing: const Icon(Icons.schedule),
+                                onTap: () => _pickQuietHour(isStart: true),
+                              ),
+                            if (_quietHoursEnabled)
+                              ListTile(
+                                title: const Text('Quiet hours end'),
+                                subtitle: Text(
+                                    _formatHourMinute(_quietHoursEndMinutes)),
+                                trailing: const Icon(Icons.schedule),
+                                onTap: () => _pickQuietHour(isStart: false),
+                              ),
+                            ListTile(
+                              title: const Text('Default notification delay'),
+                              subtitle: Text(
+                                'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
+                              ),
+                              trailing: const Icon(Icons.edit),
+                              onTap: _editNotificationDelay,
+                            ),
+                          ],
+                        ),
+                        _buildSection(
+                          index: 4,
                           title: 'Tasks',
                           children: [
                             SwitchListTile(
@@ -2572,8 +2624,11 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
+                        if (_isSectionVisible(5)) _buildStreakSection(),
+                        if (_isSectionVisible(6)) _buildDiceTimerSection(),
+                        if (_isSectionVisible(7)) _buildSmsReportSection(),
                         _buildSection(
-                          index: 3,
+                          index: 8,
                           title: 'Widget',
                           children: [
                             SwitchListTile(
@@ -2604,65 +2659,10 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        _buildSection(
-                          index: 4,
-                          title: 'Notifications',
-                          children: [
-                            SwitchListTile(
-                              title: const Text('Enable notifications'),
-                              value: _notifications,
-                              onChanged: (val) async {
-                                setState(() => _notifications = val);
-                                Config.enableNotifications = val;
-                                await Config.save();
-                              },
-                            ),
-                            SwitchListTile(
-                              title: const Text('Quiet hours'),
-                              subtitle: const Text(
-                                  'Delay notifications until quiet hours end'),
-                              value: _quietHoursEnabled,
-                              onChanged: (val) async {
-                                setState(() => _quietHoursEnabled = val);
-                                Config.quietHoursEnabled = val;
-                                await Config.save();
-                                widget.onSettingsChanged?.call();
-                              },
-                            ),
-                            if (_quietHoursEnabled)
-                              ListTile(
-                                title: const Text('Quiet hours start'),
-                                subtitle: Text(
-                                    _formatHourMinute(_quietHoursStartMinutes)),
-                                trailing: const Icon(Icons.schedule),
-                                onTap: () => _pickQuietHour(isStart: true),
-                              ),
-                            if (_quietHoursEnabled)
-                              ListTile(
-                                title: const Text('Quiet hours end'),
-                                subtitle: Text(
-                                    _formatHourMinute(_quietHoursEndMinutes)),
-                                trailing: const Icon(Icons.schedule),
-                                onTap: () => _pickQuietHour(isStart: false),
-                              ),
-                            ListTile(
-                              title: const Text('Default notification delay'),
-                              subtitle: Text(
-                                'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
-                              ),
-                              trailing: const Icon(Icons.edit),
-                              onTap: _editNotificationDelay,
-                            ),
-                          ],
-                        ),
-                        if (_isSectionVisible(5)) _buildStreakSection(),
-                        if (_isSectionVisible(6)) _buildDiceTimerSection(),
-                        if (_isSectionVisible(7)) _buildSmsReportSection(),
+                        _buildUpdatesSection(),
+                        _buildTodoistSyncSection(),
                         _buildExportSection(),
                         _buildBackupSection(),
-                        _buildTodoistSyncSection(),
-                        _buildUpdatesSection(),
-                        _buildFilteringRulesSection(),
                       ],
               ),
             ),

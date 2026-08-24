@@ -42,10 +42,13 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
 
   Future<void> _load() async {
     final tasks = await _repository.loadItems();
-    // Platforms without storage (web) load an empty list; dev builds seed a
-    // few entries spread across the day so the tool is testable in Chrome
-    // and its screenshots always show a populated log.
-    if (tasks.isEmpty && Config.isDev) {
+    // The dev/demo starter tasks (see home_page._loadTasks) mean the overall
+    // list is essentially never empty, so the seed condition has to check
+    // for existing food-diary entries specifically, not list emptiness —
+    // otherwise it never fires. Dev builds seed a few entries spread across
+    // the day so the tool is testable in Chrome and its screenshots always
+    // show a populated log.
+    if (!tasks.any((t) => t.isEatingHabit) && Config.isDev) {
       tasks.addAll(_buildDevSeed());
     }
     if (!mounted) return;
