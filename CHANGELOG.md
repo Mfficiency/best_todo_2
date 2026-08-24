@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.266] - 2026-08-24
+- New Food Diary tool (Tools drawer): log what you eat — title, description, time and free-form tags (e.g. "sugar", "lactose") — kept entirely separate from your task lists. Entries never show on the home tabs, schedule view, projects or Todoist sync; deleting one sends it to Archived Items like everything else.
+
 ## [0.1.265] - 2026-08-24
 - Deleted tasks are now Archived Items — restorable indefinitely, exactly like before. A new real Deleted bin sits behind it (open it from the Archived Items app bar): items sent there purge for good after a configurable retention window (Settings → Tasks → "Deleted items retention", default 60 days). Denying a task in Waiting for Approval now goes straight to the bin instead of the archive. Fix: manually archiving one occurrence of a recurring task could reappear on the next app restart; it now stays gone without disturbing the rest of the series or counting toward any goals.
 

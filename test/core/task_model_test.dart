@@ -63,4 +63,14 @@ void main() {
     task.isWish = true;
     expect(Task.fromJson(task.toJson()).isWish, isTrue);
   });
+
+  test('isEatingHabit defaults to false and serializes', () {
+    final task = Task(title: 'Plain');
+    expect(task.isEatingHabit, isFalse);
+    expect(Task.fromJson(<String, dynamic>{'title': 'legacy'}).isEatingHabit,
+        isFalse);
+
+    task.isEatingHabit = true;
+    expect(Task.fromJson(task.toJson()).isEatingHabit, isTrue);
+  });
 }

@@ -446,9 +446,12 @@ class TodoistSyncService {
 
     // Recurring tasks (parents and generated instances) are out of scope —
     // see the class doc. Wishlist items are in scope (routed to the
-    // Wishlist project below).
+    // Wishlist project below). Food Diary entries never leave the app.
     final syncable = allLocal
-        .where((t) => !t.isRecurring && t.recurrenceParentUid == null)
+        .where((t) =>
+            !t.isRecurring &&
+            t.recurrenceParentUid == null &&
+            !t.isEatingHabit)
         .toList();
     final syncableByUid = {for (final t in syncable) t.uid: t};
 
