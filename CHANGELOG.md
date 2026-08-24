@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.267] - 2026-08-24
+- Settings gained per-view Filtering rules: hide or restrict Home, Wishlist, Projects, Archived Items and the Deleted bin by tag, configured separately for each view
+
 ## [0.1.266] - 2026-08-24
 - New Food Diary tool (Tools drawer): log what you eat — title, description, time and free-form tags (e.g. "sugar", "lactose") — kept entirely separate from your task lists. Entries never show on the home tabs, schedule view, projects or Todoist sync; deleting one sends it to Archived Items like everything else.
 

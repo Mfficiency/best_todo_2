@@ -1,4 +1,5 @@
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../utils/date_utils.dart';
 import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
@@ -67,27 +68,60 @@ class ItemViews {
     }
   }
 
+  /// Whether [task] passes the user-configured [rules] (Settings →
+  /// Filtering rules): hidden if it carries any [ViewFilterRules.excludeTags]
+  /// token, or — when [ViewFilterRules.includeTags] is non-empty — kept only
+  /// if it carries at least one of them. A null or empty [rules] passes
+  /// everything.
+  static bool passesFilterRules(Task task, ViewFilterRules? rules) {
+    if (rules == null || rules.isEmpty) return true;
+    final tokens =
+        splitLabelTokens(task.label).map((t) => t.toLowerCase()).toSet();
+    if (rules.excludeTags.any((t) => tokens.contains(t.toLowerCase()))) {
+      return false;
+    }
+    if (rules.includeTags.isNotEmpty &&
+        !rules.includeTags.any((t) => tokens.contains(t.toLowerCase()))) {
+      return false;
+    }
+    return true;
+  }
+
+  /// [tasks] narrowed to those passing [passesFilterRules].
+  static List<Task> applyFilterRules(List<Task> tasks, ViewFilterRules? rules) {
+    if (rules == null || rules.isEmpty) return tasks;
+    return tasks.where((t) => passesFilterRules(t, rules)).toList();
+  }
+
   /// The tasks of home tab [tabIndex], sorted like the home list (open
   /// first, then by ranking). [where] adds an extra predicate (search).
+  /// [rules] is the configured Home view filter, see [passesFilterRules].
   static List<Task> homeBucket(
     List<Task> tasks,
     int tabIndex,
     DateTime today, {
     bool Function(Task task)? where,
+    ViewFilterRules? rules,
   }) {
     final list = tasks
         .where((t) =>
             isVisibleInMainViews(t) &&
             (where == null || where(t)) &&
-            inHomeBucket(t, tabIndex, today))
+            inHomeBucket(t, tabIndex, today) &&
+            passesFilterRules(t, rules))
         .toList();
     sortTasks(list);
     return list;
   }
 
   /// The wishlist: wish-flagged tasks, exactly like opening a project.
-  static List<Task> wishlist(List<Task> tasks) =>
-      tasks.where((t) => t.isWish && isVisibleInMainViews(t)).toList();
+  static List<Task> wishlist(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isWish &&
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
+          .toList();
 
   /// The Food Diary: eating-habit-flagged tasks, exactly like opening the
   /// wishlist. [isApproved] rather than [isVisibleInMainViews] since the
@@ -96,27 +130,36 @@ class ItemViews {
       tasks.where((t) => t.isEatingHabit && isApproved(t)).toList();
 
   /// All non-deleted tasks (the Projects page's top pane).
-  static List<Task> active(List<Task> tasks) => tasks
-      .where((t) => t.deletedAt == null && isVisibleInMainViews(t))
-      .toList();
+  static List<Task> active(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
+          .toList();
 
   /// A project's tasks, regardless of board stage.
-  static List<Task> projectTasks(List<Task> tasks, String projectId) => tasks
-      .where((t) =>
-          t.deletedAt == null &&
-          t.projectId == projectId &&
-          isVisibleInMainViews(t))
-      .toList();
+  static List<Task> projectTasks(List<Task> tasks, String projectId,
+          {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              t.projectId == projectId &&
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
+          .toList();
 
   /// One Kanban column of a project's board.
   static List<Task> boardColumn(
-          List<Task> tasks, String projectId, String stage) =>
+          List<Task> tasks, String projectId, String stage,
+          {ViewFilterRules? rules}) =>
       tasks
           .where((t) =>
               t.deletedAt == null &&
               t.projectId == projectId &&
               t.kanbanStatus == stage &&
-              isVisibleInMainViews(t))
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
           .toList();
 
   /// Tasks pulled from Todoist that are still waiting for a human decision

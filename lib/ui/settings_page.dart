@@ -11,6 +11,7 @@ import '../models/sms_report_config.dart';
 import '../models/streak_kind.dart';
 import '../models/streak_reminder.dart';
 import '../models/sync_log_entry.dart';
+import '../models/view_filter_rules.dart';
 import '../services/auto_backup_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
@@ -49,7 +50,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    12,
+    13,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -65,6 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Backup',
     'Todoist sync',
     'Updates',
+    'Filtering rules',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -106,7 +108,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
   final Set<int> _collapsedSections = {
-    for (var i = 0; i < 12; i++) i,
+    for (var i = 0; i < 13; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
@@ -206,6 +208,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
     _SettingsSearchEntry('Automatically check for updates', 11,
         'auto update version release new build startup prompt install about'),
+    _SettingsSearchEntry('Filtering rules', 12,
+        'view home wishlist projects archived deleted bin hide show tag exclude include only filter'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -264,6 +268,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
+
+  /// One text field per view/kind combo in the Filtering rules section,
+  /// keyed `'$viewId:$kind'` (`kind` is `exclude` or `include`).
+  final Map<String, TextEditingController> _filterTagControllers = {};
 
   void _syncLocalStateFromConfig() {
     _notifications = Config.enableNotifications;
@@ -1874,6 +1882,147 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// The rules configured for [viewId], creating an empty (no-op) entry on
+  /// first touch so the chip editors below always have a list to mutate.
+  ViewFilterRules _rulesFor(String viewId) =>
+      Config.viewFilterRules.putIfAbsent(viewId, () => ViewFilterRules());
+
+  TextEditingController _filterTagController(String viewId, String kind) =>
+      _filterTagControllers.putIfAbsent(
+          '$viewId:$kind', () => TextEditingController());
+
+  Future<void> _addFilterTag(String viewId, String kind, String rawTag) async {
+    final tag = rawTag.trim();
+    if (tag.isEmpty) return;
+    final rules = _rulesFor(viewId);
+    final list = kind == 'exclude' ? rules.excludeTags : rules.includeTags;
+    if (list.any((t) => t.toLowerCase() == tag.toLowerCase())) {
+      _filterTagController(viewId, kind).clear();
+      return;
+    }
+    setState(() => list.add(tag));
+    _filterTagController(viewId, kind).clear();
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _removeFilterTag(String viewId, String kind, String tag) async {
+    final rules = _rulesFor(viewId);
+    final list = kind == 'exclude' ? rules.excludeTags : rules.includeTags;
+    setState(() => list.remove(tag));
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildTagRuleEditor({
+    required String viewId,
+    required String kind,
+    required String label,
+    required List<String> tags,
+  }) {
+    final controller = _filterTagController(viewId, kind);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 4),
+          if (tags.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final tag in tags)
+                    InputChip(
+                      label: Text(tag),
+                      visualDensity: VisualDensity.compact,
+                      onDeleted: () => _removeFilterTag(viewId, kind, tag),
+                    ),
+                ],
+              ),
+            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    hintText: 'Tag name',
+                    isDense: true,
+                  ),
+                  onSubmitted: (value) => _addFilterTag(viewId, kind, value),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Add tag',
+                icon: const Icon(Icons.add),
+                onPressed: () =>
+                    _addFilterTag(viewId, kind, controller.text),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Per-view tag filters: hide tasks carrying a tag, or restrict a view to
+  /// only tasks carrying one. Layers on top of each view's own structural
+  /// rule (e.g. the wishlist still only ever shows [Task.isWish] items) —
+  /// see [ItemViews.passesFilterRules].
+  Widget _buildFilteringRulesSection() {
+    final theme = Theme.of(context);
+    final viewIds = ViewFilterRules.viewIds;
+    return _buildSection(
+      index: 12,
+      title: 'Filtering rules',
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            'Hide tasks by tag, or restrict a view to only tasks carrying a '
+            'given tag — configured separately for each view below.',
+          ),
+        ),
+        for (var i = 0; i < viewIds.length; i++) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              ViewFilterRules.viewLabels[viewIds[i]]!,
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              ViewFilterRules.viewDescriptions[viewIds[i]]!,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          _buildTagRuleEditor(
+            viewId: viewIds[i],
+            kind: 'exclude',
+            label: 'Hide tasks with any of these tags',
+            tags: _rulesFor(viewIds[i]).excludeTags,
+          ),
+          _buildTagRuleEditor(
+            viewId: viewIds[i],
+            kind: 'include',
+            label:
+                'Only show tasks with one of these tags (empty = no restriction)',
+            tags: _rulesFor(viewIds[i]).includeTags,
+          ),
+          if (i < viewIds.length - 1) const Divider(height: 24),
+        ],
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
   List<_SettingsSearchEntry> get _searchResults {
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return const [];
@@ -2051,6 +2200,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _smsTemplateController.dispose();
     _searchController.dispose();
     _todoistTokenController.dispose();
+    for (final controller in _filterTagControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -2510,6 +2662,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         _buildBackupSection(),
                         _buildTodoistSyncSection(),
                         _buildUpdatesSection(),
+                        _buildFilteringRulesSection(),
                       ],
               ),
             ),

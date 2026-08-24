@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'models/streak_goal.dart';
 import 'models/streak_reminder.dart';
+import 'models/view_filter_rules.dart';
 
 class Config {
   static double defaultDelaySeconds = 5.0;
@@ -455,6 +456,12 @@ class Config {
   /// Folder the automatic backup writes into; empty until the user picks one.
   static String autoBackupDirectory = '';
 
+  /// Extra per-view tag filters configured in Settings → Filtering rules.
+  /// Keyed by one of [ViewFilterRules.viewIds]; a view with no entry (or an
+  /// empty entry) applies no extra filtering beyond its normal structural
+  /// query (see `ItemViews.passesFilterRules`).
+  static Map<String, ViewFilterRules> viewFilterRules = {};
+
   /// If true, tasks are kept in sync both ways with a Todoist account (see
   /// `TodoistSyncService`). Off by default; enabling without a token set is a
   /// no-op until one is entered in Settings → Todoist sync.
@@ -549,6 +556,10 @@ class Config {
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
+      'viewFilterRules': {
+        for (final entry in viewFilterRules.entries)
+          entry.key: entry.value.toJson(),
+      },
     };
   }
 
@@ -673,6 +684,15 @@ class Config {
         final value = savedFeatures[key];
         if (value is bool) featureEnabled[key] = value;
       }
+    }
+    final savedViewFilterRules = data['viewFilterRules'];
+    if (savedViewFilterRules is Map) {
+      viewFilterRules = {
+        for (final entry in savedViewFilterRules.entries)
+          if (entry.value is Map)
+            entry.key as String: ViewFilterRules.fromJson(
+                Map<String, dynamic>.from(entry.value as Map)),
+      };
     }
   }
 

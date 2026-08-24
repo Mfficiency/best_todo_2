@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/project.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../services/item_views.dart';
 import '../services/project_service.dart';
 import '../utils/linkified_text.dart';
@@ -37,10 +39,14 @@ class _ProjectsPageState extends State<ProjectsPage> {
     });
   }
 
-  List<Task> get _activeTasks => ItemViews.active(widget.tasks);
+  ViewFilterRules? get _rules =>
+      Config.viewFilterRules[ViewFilterRules.projects];
+
+  List<Task> get _activeTasks =>
+      ItemViews.active(widget.tasks, rules: _rules);
 
   int _taskCountForProject(Project project) =>
-      ItemViews.projectTasks(widget.tasks, project.id).length;
+      ItemViews.projectTasks(widget.tasks, project.id, rules: _rules).length;
 
   Project? _projectById(String? id) => _service.byId(id);
 
