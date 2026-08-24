@@ -2,6 +2,7 @@
 
 ## [0.1.263] - 2026-08-24
 - A task synced with Todoist now shows a small info icon next to its Note field (when expanded) with the sync source, last synced date and Todoist task id — the description field stays exactly what you typed, free of any sync metadata.
+- Local build: 2026-08-24 06:24
 
 ## [0.1.262] - 2026-08-23
 - Fix: a task denied in the Waiting for Approval view could stay on the Android home-screen widget. The widget list now skips deleted and not-yet-approved tasks (so pending Todoist imports never show there either), denying or approving one redraws the widget right away, and reloading the task list from storage refreshes it too.
