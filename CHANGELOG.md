@@ -2,6 +2,7 @@
 
 ## [0.1.262] - 2026-08-23
 - Fix: a task denied in the Waiting for Approval view could stay on the Android home-screen widget. The widget list now skips deleted and not-yet-approved tasks (so pending Todoist imports never show there either), denying or approving one redraws the widget right away, and reloading the task list from storage refreshes it too.
+- Local build: 2026-08-24 05:50
 
 ## [0.1.261] - 2026-08-23
 - Wishlist swipe options: the countdown before the default action (moving an item back one release step) is now 8 seconds instead of the app-wide 5, each Share/Copy/Export button now shows its icon next to its label, and a Delete button was added so a single wish can be deleted straight from the swipe panel.
