@@ -34,6 +34,13 @@ class ItemRepository {
   Future<void> saveDeletedItems(List<Task> items) =>
       _storage.saveDeletedTaskList(items);
 
+  /// The real Deleted bin — see [StorageService.loadBinTaskList] for the
+  /// age-based purge that runs on every read.
+  Future<List<Task>> loadBinItems() => _storage.loadBinTaskList();
+
+  Future<void> saveBinItems(List<Task> items) =>
+      _storage.saveBinTaskList(items);
+
   Future<Map<String, DailyTaskStats>> loadDailyStats() =>
       _storage.loadDailyTaskStats();
 

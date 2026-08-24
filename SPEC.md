@@ -146,7 +146,8 @@ rollups.
 | `settings.json` | Config map | — |
 | `tasks.json` | active tasks (incl. recurrence children and `isWish` wishlist items) | — |
 | `wishlist.json` | legacy wishlist store; drained into `tasks.json` on load since 0.1.101 | — |
-| `deleted_tasks.json` | deleted list | **100**, trimmed on save+load |
+| `deleted_tasks.json` | archive (Archived Items — "deleted" but restorable, never age-purged) | **100**, trimmed on save+load |
+| `deleted_bin.json` | the real Deleted bin — see §4.2g | **100**, trimmed on save+load; also age-purged past `Config.deletedItemsRetentionDays` |
 | `daily_task_stats.json` | one record per day | — |
 | `last_opened.txt` | ISO timestamp for day-rollover detection | 1 value |
 | `countdown_timers.json` | timers (null = first run, [] = emptied) | — |
@@ -218,8 +219,9 @@ No update path may lose data. Three layers (`lib/services/safe_file.dart`,
 
 1. **Atomic saves with rotation** — `SafeFile.writeString` writes `<file>.tmp` (flushed),
    rotates the previous content to `<file>.bak`, then renames over. Applied to
-   `tasks.json`, `deleted_tasks.json`, `daily_task_stats.json`, `countdown_timers.json`
-   and `alarms.json`. A crash mid-save can no longer leave a half-written file.
+   `tasks.json`, `deleted_tasks.json`, `deleted_bin.json`, `daily_task_stats.json`,
+   `countdown_timers.json` and `alarms.json`. A crash mid-save can no longer leave a
+   half-written file.
    Writes to the same path are serialized on a per-path future chain (overlapping
    saves — e.g. delete + undo — would otherwise race on the shared `.tmp`; last
    caller wins, a failed write still surfaces to its own caller only).
@@ -274,8 +276,9 @@ a task "created with the Todoist workflow" is invisible everywhere until a human
 on it in Tools ▸ menu ▸ **Waiting for Approval** (`lib/ui/waiting_approval_page.dart`,
 listed via `ItemViews.waitingApproval`, the one selector that shows *only* gated tasks).
 Approve strips the token (`removeWaitingApprovalToken`) and the task drops into whatever
-list it belongs to; Deny soft-deletes it into `deleted_tasks.json`, recoverable from
-Deleted Items.
+list it belongs to; Deny soft-deletes it straight into the real Deleted bin
+(`deleted_bin.json`, recoverable from Deleted Items until it ages out — see §4.2g), never
+into the archive, since a denial was never wanted in the first place.
 
 **Schedule view bypassed the gate (fixed 0.1.261):** `HomePage._buildScheduleBody` built
 the calendar/schedule view's list straight from the raw `_tasks`, not through
@@ -310,6 +313,48 @@ The token is local-only at import: the sync map's fingerprint baseline is comput
 it, so the initial pull pushes nothing back and the Todoist item's `labels` array stays
 untouched. Approving changes `_localFingerprint`, so the next sync pushes the shortened
 label array — the tag is removed on the Todoist side too, exactly once.
+
+### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
+
+What used to be the single "Deleted Items" list is now **Archived Items**
+(`lib/ui/archived_items_page.dart`, `deleted_tasks.json`, capped at 100 entries, never
+purged by age): every normal delete — a swipe/menu delete anywhere in the app, Chronize's
+delete, a wishlist delete, and the end-of-day sweep that clears finished tasks (both
+`HomePage._changeDate`'s in-session rollover and `StorageService.loadTaskList`'s
+across-launch rollover, both stamping `autoDeleted: true`) — lands here first, exactly as
+"Deleted Items" always worked. Restorable from there indefinitely.
+
+A second, real bin sits behind it: **the Deleted bin** (`lib/ui/deleted_bin_page.dart`,
+`deleted_bin.json`, same 100-entry cap) is reachable from an Archived Items app-bar action
+(`Icons.delete_forever`, tooltip "Deleted items (bin)"). An archived item's trailing icon
+(`Icons.delete_outline`, "Move to bin" — `HomePage._moveArchivedToBin`) sends it on; from
+there `Icons.delete_forever` ("Delete permanently") erases it for good, same undoable
+snackbar pattern as before. Left alone, an item in the bin purges itself automatically
+`Config.deletedItemsRetentionDays` days after it landed there (default 60, editable in
+Settings → Tasks → "Deleted items retention") — `StorageService.loadBinTaskList` sweeps
+expired entries and re-persists the trimmed list on every read, so the purge applies even
+if the bin page is never opened.
+
+**Denial skips the archive.** `WaitingApprovalPage._deny` was never "delete this task the
+user actually wanted" — it inserts straight into `deleted_bin.json` via
+`ItemRepository.loadBinItems`/`saveBinItems`, starting the retention clock immediately
+rather than sitting in the archive indefinitely.
+
+**Recurring instances and the archive/bin.** `HomePage._refreshRecurringForTask`
+regenerates any date between a recurring parent's due date and its `recurrenceEndDate`
+that is missing from `_tasks` — which, before this, included a date whose instance had
+simply been archived, silently recreating it on the next refresh (app restart, or any edit
+to the parent). The existing-dates lookup now also scans `_deletedTasks` and `_binTasks`
+for that `recurrenceParentUid`, so an archived or binned occurrence's date stays skipped:
+manually archiving one instance of a recurring task never regenerates it, and never
+disturbs the rest of the series. Since goal credit (`StreakGoal`/`_recordGoalCompletion`)
+only ever fires off an `isDone` toggle, an archived-but-incomplete instance was already
+never counted toward a goal — archiving just had to stop fighting the regeneration.
+
+`TodoistSyncService._runSyncBody`'s completed-vs-deleted reconciliation
+(`deletedByUid`) reads both the archive and the bin, so a task whose Todoist mapping
+predates it being moved on to the bin (denied, or sent there from Archived Items) is still
+recognized correctly.
 
 ### 4.2c Structured labels (0.1.108)
 
@@ -395,16 +440,17 @@ wins over the pinned bucket (there the day is picked explicitly).
   `device_info_plus`) because gestures are awkward there.
 
 **Delete is deferred:** the task leaves the active list immediately, but only lands in the
-deleted list after the undo-snackbar window (same 5 s default) so Undo can restore it
-in-place. Restore from Deleted Items always resets due date to today.
+archive after the undo-snackbar window (same 5 s default) so Undo can restore it
+in-place. Restore from Archived Items always resets due date to today.
 
 **Done:** checkbox sets `isDone` + `completedAt`, sinks to bottom with strikethrough;
-swept to Deleted at day rollover.
+swept to the archive at day rollover.
 
 **Recurrence:** only parents generate; children are copies with
 `recurrenceParentUid`/`recurrenceInstanceKey` per day-step until `recurrenceEndDate`.
 Moving/rescheduling a child detaches it (clears parent linkage). Regenerated after load,
-import, and any parent edit.
+import, and any parent edit — skipping any date already archived or binned (§4.2g), so a
+manually archived occurrence stays gone.
 
 **Inline editing:** tapping a tile expands it — title/description/note text fields, a
 `LabelPickerField` (§4.2c) for labels, due-date picker, recurring switch (+interval/end
@@ -440,7 +486,7 @@ offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback
 build; sections scrolled out of view are unmounted, which is fine because the section
 spanning the top is always attached.
 
-**Drawer:** Home, Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
+**Drawer:** Home, Settings, Archived Items (→ Deleted bin, §4.2g), About, Changelog, App Logs, Startup Times,
 Tools ▸ (Alarms, Countdown, Wishlist, Projects, Chronize, Productivity Stats,
 Usage Data, Test Results). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
@@ -935,7 +981,7 @@ while `MyApp.restartIntro()` (About) replays the slides and the question togethe
 **`Config.isFeatureEnabled(key)` is the single gate:** in simple mode it returns false for
 everything except `Config.simpleModeFeatures` (`deleted_items`, `changelog`, `app_logs`,
 `startup_times` since 0.1.121 — the app's own service pages are not "extra features", and
-the deleted list is the undo of a delete, so simple mode only strips the home surface and
+Archived Items is the undo of a delete, so simple mode only strips the home surface and
 the tools); in full mode it returns the per-feature switch. About has no feature key and is
 always in the drawer. Call sites: `home_page.dart`
 drawer entries and the Tools section (built from `_toolEntries`, hidden entirely when no
@@ -1677,7 +1723,7 @@ swipe directions no longer prioritize/delete:
   (`share_plus`) with `clipboardText(item)`, summoning the OS share sheet; "Copy" puts
   `clipboardText(item)` on the clipboard; "Export" (0.1.259) writes the single-item JSON
   export; "Delete" (0.1.261) calls the same `_deleteItems` bulk-delete path with a
-  single-item list, moving it to the deleted list with the usual undo snackbar
+  single-item list, moving it to the archive with the usual undo snackbar
   (`Config.delayDuration`-timed, not the sweep delay). Letting the countdown run out
   applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
   item back one release step (nextRelease→soon, soon→backlog; no-op for Backlog and for
@@ -1690,10 +1736,10 @@ swipe directions no longer prioritize/delete:
   mode). "Copy selected as prompt" puts `buildSelectedWishesPrompt(items)` — "Build the
   following items from my BestToDo wishlist:" plus each item's title/description/labels
   — on the clipboard for pasting into a Claude session, then exits selection mode.
-  "Delete selected" moves every selected item to the deleted list in one shot
+  "Delete selected" moves every selected item to the archive in one shot
   (`_WishlistPageState._deleteItems`, a single undo snackbar covering all of them); when
   the undo window expires each task gets `deletedAt` and moves to `deleted_tasks.json`.
-  Restoring a wish from Deleted Items keeps `dueDate` null (other restores get today) so
+  Restoring a wish from Archived Items keeps `dueDate` null (other restores get today) so
   it lands back in the wishlist, not Today. Since 0.1.261 a single item can also be
   deleted straight from the options-swipe panel, reusing this same path.
 

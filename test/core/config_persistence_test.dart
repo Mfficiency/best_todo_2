@@ -33,6 +33,7 @@ void main() {
     Config.startTool = 'productivity_stats';
     Config.showFailureDotOnMenu = true;
     Config.autoUpdateCheckEnabled = true;
+    Config.deletedItemsRetentionDays = 90;
     await Config.save();
 
     // Reset to defaults
@@ -50,6 +51,7 @@ void main() {
     Config.startTool = 'tasks';
     Config.showFailureDotOnMenu = false;
     Config.autoUpdateCheckEnabled = false;
+    Config.deletedItemsRetentionDays = 60;
 
     await Config.load();
 
@@ -67,12 +69,28 @@ void main() {
     expect(Config.startTool, 'productivity_stats');
     expect(Config.showFailureDotOnMenu, isTrue);
     expect(Config.autoUpdateCheckEnabled, isTrue);
+    expect(Config.deletedItemsRetentionDays, 90);
 
     // Restore the defaults so other tests see a clean config.
     Config.showFailureDotOnMenu = false;
     Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
     Config.autoUpdateCheckEnabled = false;
+    Config.deletedItemsRetentionDays = 60;
+  });
+
+  test('deletedItemsRetentionDays is clamped on load', () {
+    Config.applyMap({'deletedItemsRetentionDays': 0});
+    expect(Config.deletedItemsRetentionDays, 1);
+
+    Config.applyMap({'deletedItemsRetentionDays': 99999});
+    expect(Config.deletedItemsRetentionDays, 3650);
+
+    Config.applyMap({'deletedItemsRetentionDays': 30});
+    expect(Config.deletedItemsRetentionDays, 30);
+
+    // Restore the default so other tests see a clean config.
+    Config.deletedItemsRetentionDays = 60;
   });
 
   test('out-of-range default add buckets are clamped on load', () {

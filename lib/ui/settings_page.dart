@@ -88,6 +88,17 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// Choices offered for [Config.deletedItemsRetentionDays].
+  static const List<int> _deletedItemsRetentionDayOptions = [
+    7,
+    14,
+    30,
+    60,
+    90,
+    180,
+    365,
+  ];
+
   int _activeSectionIndex = 0;
 
   /// Sections whose body is hidden. Tapping a section title toggles it. Every
@@ -132,6 +143,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('New tasks go to', 2,
         'default list bucket target tab today future someday quick add'),
     _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
+    _SettingsSearchEntry('Deleted items retention', 2,
+        'archive archived bin trash purge days delete forever'),
     _SettingsSearchEntry('Default delay', 2, 'undo seconds snackbar'),
     _SettingsSearchEntry('Start page', 2, 'tab launch open today'),
     _SettingsSearchEntry('Default start page', 2, 'tool launch open tasks'),
@@ -241,6 +254,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _syncFolderPath = Config.syncFolderPath;
   bool _todoistSyncEnabled = Config.todoistSyncEnabled;
   bool _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
+  int _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
   final TextEditingController _todoistTokenController =
       TextEditingController(text: Config.todoistApiToken);
   bool _todoistTokenObscured = true;
@@ -287,6 +301,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _todoistSyncEnabled = Config.todoistSyncEnabled;
     _todoistTokenController.text = Config.todoistApiToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
+    _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
   }
 
   @override
@@ -2253,6 +2268,33 @@ class _SettingsPageState extends State<SettingsPage> {
                                 await Config.save();
                                 widget.onSettingsChanged?.call();
                               },
+                            ),
+                            ListTile(
+                              title: const Text('Deleted items retention'),
+                              subtitle: const Text(
+                                  'How long an item stays in the real Deleted bin '
+                                  '(Archived Items → bin icon) before it is purged for good'),
+                              trailing: DropdownButton<int>(
+                                value: _deletedItemsRetentionDayOptions
+                                        .contains(_deletedItemsRetentionDays)
+                                    ? _deletedItemsRetentionDays
+                                    : _deletedItemsRetentionDayOptions.first,
+                                items: [
+                                  for (final days
+                                      in _deletedItemsRetentionDayOptions)
+                                    DropdownMenuItem<int>(
+                                      value: days,
+                                      child: Text('$days days'),
+                                    ),
+                                ],
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  setState(() => _deletedItemsRetentionDays = val);
+                                  Config.deletedItemsRetentionDays = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
                             ),
                             ListTile(
                               title: Text(

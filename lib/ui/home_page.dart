@@ -38,14 +38,15 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'alarms_page.dart';
 import 'app_logs_page.dart';
+import 'archived_items_page.dart';
 import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
+import 'deleted_bin_page.dart';
 import 'dice_timer_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
-import 'deleted_items_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
 import 'streak_celebration.dart';
@@ -85,7 +86,13 @@ class _HomePageState extends State<HomePage>
   /// All tasks in the app. Tasks are assigned a dueDate when created and
   /// filtered into the appropriate lists based on [_currentDate].
   final List<Task> _tasks = [];
+  /// Archived items ("Archived Items" page) — soft-deleted, capped by count,
+  /// never purged by age.
   final List<Task> _deletedTasks = [];
+  /// The real Deleted bin ("Deleted Items" page) — denials from Waiting for
+  /// Approval, or archived items sent on manually. Purged after
+  /// [Config.deletedItemsRetentionDays] days (see `StorageService.loadBinTaskList`).
+  final List<Task> _binTasks = [];
 
   final Map<String, DailyTaskStats> _dailyStatsByDay = {};
   // Item store goes through the repository seam; _storageService remains for
@@ -581,6 +588,7 @@ class _HomePageState extends State<HomePage>
     // Todo.md import) into the task list as isWish tasks.
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
+    final loadedBin = await _repository.loadBinItems();
     final loadedDailyStats = await _repository.loadDailyStats();
     // A share-sheet task created while this load was reading the file can be
     // in memory (via ShareIntentService's consumer) *and* in the read result
@@ -651,7 +659,6 @@ class _HomePageState extends State<HomePage>
         _seedDevLinkedReminder();
       }
     }
-    _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
       _deletedTasks.addAll(loadedDeleted);
       // Backfill auto-deleted seed items for dev users whose persisted
@@ -676,6 +683,11 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
       _saveDeletedTasks();
     }
+    _binTasks.addAll(loadedBin);
+    // Recurring-series regeneration below has to see the archive and the bin
+    // so a manually archived/binned instance's date stays skipped instead of
+    // being silently recreated — see _refreshRecurringForTask.
+    _refreshAllRecurringTasks();
     if (loadedDailyStats.isNotEmpty) {
       _dailyStatsByDay.addAll(loadedDailyStats);
     } else if (Config.isDev) {
@@ -708,6 +720,10 @@ class _HomePageState extends State<HomePage>
 
   void _saveDeletedTasks() {
     _repository.saveDeletedItems(_deletedTasks);
+  }
+
+  void _saveBinTasks() {
+    _repository.saveBinItems(_binTasks);
   }
 
   void _saveDailyStats() {
@@ -762,6 +778,17 @@ class _HomePageState extends State<HomePage>
       existingByKey[_dayKey(d)] = t;
       return false;
     });
+
+    // A date already accounted for in the archive or the bin was manually
+    // archived — skip it here too, so it stays gone instead of being
+    // silently recreated on the next refresh (see the class doc on
+    // _deletedTasks/_binTasks).
+    for (final t in _deletedTasks.followedBy(_binTasks)) {
+      if (t.recurrenceParentUid != parentUid) continue;
+      final dueDate = t.dueDate;
+      if (dueDate == null) continue;
+      existingByKey.putIfAbsent(_dayKey(_dateOnly(dueDate)), () => t);
+    }
 
     for (var date = baseDate.add(Duration(days: intervalDays));
         !date.isAfter(endDate);
@@ -1760,15 +1787,52 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
   }
 
+  /// Sends an archived item on to the real Deleted bin, where it starts
+  /// aging toward permanent purge (see [Config.deletedItemsRetentionDays]).
+  void _moveArchivedToBin(Task task) {
+    final index = _deletedTasks.indexOf(task);
+    if (index < 0) return;
+    setState(() {
+      _deletedTasks.removeAt(index);
+      // Re-stamp the timestamp: retention is measured from bin entry, not
+      // from the original archive time.
+      task.deletedAt = DateTime.now();
+      _binTasks.insert(0, task);
+    });
+    _saveDeletedTasks();
+    _saveBinTasks();
+    LogService.add(
+        'HomePage._moveArchivedToBin', 'Moved "${task.title}" to the bin');
+  }
+
+  /// Restores a task straight out of the real Deleted bin back into the
+  /// active list, mirroring [_restoreTask].
+  void _restoreFromBin(Task task) {
+    setState(() {
+      _binTasks.remove(task);
+      task.deletedAt = null;
+      task.autoDeleted = false;
+      if (!task.isWish) task.dueDate = _currentDate;
+      _tasks.add(task);
+      _refreshRecurringForTask(task);
+    });
+    _saveTasks();
+    _saveBinTasks();
+    LogService.add(
+        'HomePage._restoreFromBin', 'Restored "${task.title}" from the bin');
+  }
+
+  /// Erases a bin item for good. Only reachable from the real Deleted bin —
+  /// archived items are sent to the bin first (see [_moveArchivedToBin]).
   void _deleteTaskPermanently(Task task) {
-    final originalIndex = _deletedTasks.indexOf(task);
+    final originalIndex = _binTasks.indexOf(task);
     if (originalIndex < 0) return;
     final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
-      _deletedTasks.removeAt(originalIndex);
+      _binTasks.removeAt(originalIndex);
     });
-    _saveDeletedTasks();
+    _saveBinTasks();
     LogService.add('HomePage._deleteTaskPermanently',
         'Queued permanent delete "${task.title}"');
 
@@ -1794,12 +1858,12 @@ class _HomePageState extends State<HomePage>
               messenger.hideCurrentSnackBar();
               if (!mounted) return;
               setState(() {
-                final insertAt = originalIndex <= _deletedTasks.length
+                final insertAt = originalIndex <= _binTasks.length
                     ? originalIndex
-                    : _deletedTasks.length;
-                _deletedTasks.insert(insertAt, task);
+                    : _binTasks.length;
+                _binTasks.insert(insertAt, task);
               });
-              _saveDeletedTasks();
+              _saveBinTasks();
               LogService.add('HomePage._deleteTaskPermanently',
                   'Restored from undo "${task.title}"');
             },
@@ -2657,15 +2721,26 @@ class _HomePageState extends State<HomePage>
             if (Config.isFeatureEnabled('deleted_items'))
               ListTile(
                 leading: const Icon(Icons.delete),
-                title: const Text('Deleted Items'),
+                title: const Text('Archived Items'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => DeletedItemsPage(
+                      builder: (_) => ArchivedItemsPage(
                         items: _deletedTasks,
                         onRestore: _restoreTask,
-                        onDeletePermanently: _deleteTaskPermanently,
+                        onMoveToBin: _moveArchivedToBin,
+                        onOpenBin: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => DeletedBinPage(
+                                items: _binTasks,
+                                onRestore: _restoreFromBin,
+                                onDeletePermanently: _deleteTaskPermanently,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   );
