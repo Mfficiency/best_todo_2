@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../config.dart';
 import '../models/alarm.dart';
 import 'alarm_notification_service.dart';
 import 'alarm_storage_service.dart';
@@ -23,8 +24,46 @@ class AlarmService {
   Future<void> load() async {
     if (_loaded) return;
     await reload(persist: false, trigger: 'app start');
+    // Platforms without storage (web) load an empty list; dev builds seed a
+    // few sample alarms so the tool — and its screenshots — are never an
+    // empty state.
+    if (alarms.value.isEmpty && Config.isDev) {
+      alarms.value = _buildDevSeed();
+      await _afterChange(trigger: 'dev seed');
+    }
     _loaded = true;
   }
+
+  /// A small, varied set of alarms for dev/demo builds: a repeating weekday
+  /// alarm, a one-off reminder, and a disabled weekend alarm, so the alarms
+  /// list shows off toggles, repeat schedules and colours at a glance.
+  List<Alarm> _buildDevSeed() => [
+        Alarm(
+          name: 'Wake up',
+          hour: 7,
+          minute: 0,
+          isRepeating: true,
+          repeatDays: const [1, 2, 3, 4, 5],
+          color: 0xFF005FDD,
+        ),
+        Alarm(
+          name: 'Midday stretch',
+          hour: 12,
+          minute: 30,
+          color: 0xFF43A047,
+          snoozeEnabled: false,
+        ),
+        Alarm(
+          name: 'Wind down',
+          hour: 22,
+          minute: 0,
+          isRepeating: true,
+          repeatDays: const [6, 7],
+          color: 0xFF8E24AA,
+          enabled: false,
+          vibrate: false,
+        ),
+      ];
 
   /// Re-reads alarms from disk, optionally persisting afterwards. Used after a
   /// background widget toggle modified the stored data.
