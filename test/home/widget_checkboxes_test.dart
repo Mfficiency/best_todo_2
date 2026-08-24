@@ -6,6 +6,7 @@ import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/streak_service.dart';
 import 'package:besttodo/services/task_widget_service.dart';
 import 'package:besttodo/ui/settings_page.dart';
+import 'package:besttodo/utils/label_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -76,6 +77,24 @@ void main() {
 
     expect(rows.map((t) => t.title).toList(),
         ['open today', 'overdue', 'done today']);
+  });
+
+  test('todayTasks leaves out denied and unapproved tasks', () {
+    final now = DateTime(2026, 8, 5, 10);
+    final today = DateTime(2026, 8, 5);
+    final denied = taskDue('denied', today, ranking: 1)
+      ..deletedAt = DateTime(2026, 8, 5, 9);
+    final pending = taskDue('waiting', today, ranking: 2)
+      ..label = waitingApprovalToken;
+    final tasks = [
+      denied,
+      pending,
+      taskDue('open today', today, ranking: 3),
+    ];
+
+    final rows = TaskWidgetService.todayTasks(tasks, now: now);
+
+    expect(rows.map((t) => t.title).toList(), ['open today']);
   });
 
   test('toggleInStorage completes a task in storage and back again', () async {

@@ -1086,6 +1086,10 @@ class _HomePageState extends State<HomePage>
         ..addAll(loaded);
       _refreshAllRecurringTasks();
     });
+    // The list the widget mirrors just changed under it (a Todoist pull, an
+    // approval denied, a wishlist edit), and none of those went through
+    // _saveTasks here — so push the fresh payload.
+    _updateHomeWidget();
   }
 
   /// Pull-to-refresh on the task list: runs a two-way Todoist sync (a no-op

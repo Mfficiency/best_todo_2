@@ -284,6 +284,17 @@ due dates survive onto the stub) rendered under its date in Schedule view even w
 correctly hidden from the tab view. Fixed by filtering `_tasks` through
 `ItemViews.isApproved` before handing it to `ScheduleView`, same as every other surface.
 
+**The home-screen widget bypassed it too, and kept a denied task (fixed 0.1.262):**
+`TaskWidgetService.todayTasks` selected purely on `dueDate`, so a gated task due today sat
+on the Android task widget — and denying it did not take it off, because the widget is only
+pushed by `HomePage._saveTasks`, which the self-contained approval page never calls. Both
+halves are fixed: `todayTasks` now drops `deletedAt != null` and `!ItemViews.isApproved`
+rows (the widget mirrors the same views layer as every list), `WaitingApprovalPage._save`
+pushes `TaskWidgetService.sync` after persisting, and `HomePage._reloadTasksFromStorage`
+(the return path from the approval page, the wishlist and a Todoist pull) pushes as well.
+`toggleInStorage` also re-syncs when the tapped uid is gone, so an already-stale row
+clears itself instead of doing nothing.
+
 **The token is `Waiting_for_approval`, one underscored word (0.1.259).** Label tokens
 split on commas AND whitespace (`_tokenSeparator` = `[,\s]+`), so a Todoist label spelled
 `Waiting for Approval` arrives as three unrelated tags — `Waiting`, `for`, `Approval` —
@@ -1300,7 +1311,7 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
-  at midnight. The whole payload is built by `TaskWidgetService.sync(tasks)`
+  at midnight. Deleted and not-yet-approved tasks never appear (§4.2e). The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
   **Checkable rows (0.1.125, `Config.widgetCheckboxes`, default off):** with the setting on

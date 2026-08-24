@@ -4,6 +4,7 @@ import '../models/task.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
+import '../services/task_widget_service.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
@@ -45,7 +46,13 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     });
   }
 
-  Future<void> _save() => _repository.saveItems(_tasks);
+  /// Persists the list and redraws the home-screen widget from it — the
+  /// widget is a view of the same list, so a denied task has to leave it
+  /// too (the home page only pushes on its own saves).
+  Future<void> _save() async {
+    await _repository.saveItems(_tasks);
+    await TaskWidgetService.sync(_tasks);
+  }
 
   List<Task> _pending() => ItemViews.waitingApproval(_tasks);
 
