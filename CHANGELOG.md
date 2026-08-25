@@ -3,6 +3,7 @@
 ## [0.1.284] - 2026-08-25
 - Turn Usage Data into an interactive, optional digital wellbeing dashboard with period views, phone sessions, hourly patterns, app rankings, BestTodo productivity measures, supportive insights, and gentle goals.
 - Add opt-in Android Usage Access collection so screen time stays private and is combined with the existing detailed Usage Data exports.
+- Local build: 2026-08-25 21:16
 
 ## [0.1.283] - 2026-08-25
 - Task History and global Undo: every task change (create, edit, reschedule, priority/label, project, complete, archive, delete) now records who or what made it — you, sync (the Todoist integration), Android Share, or the app's own automation — visible in each task's History timeline; a new Undo/Redo pair in the app bar can step back (and forward) through recent actions, one tap per action, with bulk/paired changes like archiving or deleting undoing as a single step
