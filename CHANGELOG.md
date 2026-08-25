@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.271] - 2026-08-25
+- Add Weekly Hours Planner tool: a Monday-to-Friday 8:36-a-day plan split into two draggable work blocks around a half-hour lunch break, with a dotted Friday line showing the theoretical clock-out time needed to keep the week at 43 hours
+
 ## [0.1.270] - 2026-08-24
 - Dev/demo builds: the Alarms tool now seeds three sample alarms (a repeating weekday "Wake up", a one-off "Midday stretch", and a disabled repeating-weekend "Wind down") instead of opening empty. Fix: the Food Diary dev seed never actually fired, because it checked whether the whole task list was empty instead of whether any food-diary entry existed — the dev starter tasks always made that list non-empty. It now seeds three sample entries spread across the day whenever no food-diary entry exists yet, so every tool's screenshot shows populated demo data.
 
