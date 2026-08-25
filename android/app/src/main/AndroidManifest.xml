@@ -141,6 +141,16 @@
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/food_diary_widget_info" />
         </receiver>
+        <receiver
+            android:name=".FoodDiaryButtonWidgetProvider"
+            android:exported="true"
+            android:label="@string/food_diary_button_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/food_diary_button_widget_info" />
+        </receiver>
         <!-- Receives background taps (alarm toggles) from the home-screen widget -->
         <receiver
             android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"

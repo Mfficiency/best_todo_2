@@ -1464,7 +1464,7 @@ clue for the missing-receiver bug.
 
 ## 8. Home-screen widgets (Android)
 
-Three widgets via `home_widget` (app group `group.homeScreenApp`):
+Four widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
@@ -1512,9 +1512,15 @@ Three widgets via `home_widget` (app group `group.homeScreenApp`):
   info.xml` sets `updatePeriodMillis` = 30 min), so the color is right even when the widget
   redraws on its own schedule with the app never opened — a purely Flutter-computed flag
   would go stale the moment the clock crosses a checkpoint without a save happening.
+- **Food Diary button widget** (`FoodDiaryButtonWidgetProvider.kt`): a companion to the
+  Food Diary widget above, fixed at 1x1 (`minWidth`/`minHeight` = 40dp, `targetCellWidth`/
+  `targetCellHeight` = 1, `resizeMode="none"`) and drawing nothing but a "+" that fills the
+  cell. Tapping it is the same foreground `besttodofood://add` launch intent as the full
+  widget's "+" — there is no room for status text at this size, so it carries no other tap
+  target, pushes no data, and (`updatePeriodMillis="0"`) never redraws itself once placed.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
-`Config.isDev`, next to App Logs/Startup Times): the three widgets above are drawn by
+`Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
 `RemoteViews` on the Android home screen, entirely outside the Flutter tree, so they cannot
 be captured by the desktop screenshot integration test (`integration_test/
 home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
@@ -1523,7 +1529,8 @@ from the same data/logic the real widgets use — `TaskWidgetService.todayTasks`
 checkpoint-passed-against-the-live-clock check `FoodDiaryWidgetProvider.kt` does — so the
 colors/text stay in sync with the Kotlin providers without duplicating their logic. The Food
 Diary mock falls back to two in-memory (never saved) demo entries when no Food Diary tasks
-exist yet, the same way `FoodDiaryPage` seeds its own copy on first open.
+exist yet, the same way `FoodDiaryPage` seeds its own copy on first open. The button-widget
+mock is static (just the "+"), matching what the Kotlin provider actually draws.
 
 ## 9. Android platform config
 
@@ -1544,7 +1551,7 @@ the plugin ships an empty manifest and its PendingIntent targets this class) +
 `RebootBroadcastReceiver`; flutter_local_notifications `ScheduledNotificationReceiver` +
 `ScheduledNotificationBootReceiver` (BOOT/PACKAGE_REPLACED/quickboot) +
 `ActionBroadcastReceiver` (snooze/dismiss); home_widget background receiver/service; the
-three widget providers.
+four widget providers.
 
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(23, flutter.minSdkVersion)` (androidx.work via home_widget needs 23); Java/Kotlin 11

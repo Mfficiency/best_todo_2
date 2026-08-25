@@ -267,7 +267,7 @@ void main() {
     await popCurrentPage();
 
     // Widget Previews lives directly in the drawer too (dev-only tool
-    // mocking the three Android home-screen widgets, since these
+    // mocking the four Android home-screen widgets, since these
     // integration tests run on Windows/desktop where the real RemoteViews
     // widgets drawn by the OS home screen can't be captured).
     await tester.tap(find.byTooltip('Open navigation menu'));

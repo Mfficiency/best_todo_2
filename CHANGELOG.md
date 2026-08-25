@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.282] - 2026-08-25
+- Added a second, 1x1 Food Diary home-screen widget that is nothing but the "+" button, for pinning to the smallest widget slot next to the full Food Diary widget
+
 ## [0.1.281] - 2026-08-25
 - Android share sheet: BestToDo now appears when sharing text, links, images or PDFs from other apps (Chrome, YouTube, Maps, Gmail, Photos, ...) and opens a small quick-add screen prefilled from the shared content, with one tap to save to Today or the Inbox, attachments preserved, and a return to the app you shared from
 - Local build: 2026-08-25 20:25
