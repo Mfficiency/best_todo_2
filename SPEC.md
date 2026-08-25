@@ -1891,7 +1891,7 @@ dev/demo starter tasks seeded by `home_page._loadTasks` mean the overall list is
 actually empty by the time this page loads, so the original single-entry seed (a plain
 `tasks.isEmpty` check) never fired in practice.
 
-### 10.6b Weekly Hours Planner (0.1.271)
+### 10.6b Weekly Hours Planner (0.1.272)
 Tools → Weekly Hours Planner (`lib/models/weekly_hours_plan.dart`,
 `lib/services/weekly_hours_service.dart`, `lib/ui/weekly_hours_planner_page.dart`): a
 standalone, date-less Monday-to-Friday work-hours template — not tied to the task list or
