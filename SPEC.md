@@ -1996,12 +1996,13 @@ dev/demo starter tasks seeded by `home_page._loadTasks` mean the overall list is
 actually empty by the time this page loads, so the original single-entry seed (a plain
 `tasks.isEmpty` check) never fired in practice.
 
-### 10.6b Weekly Hours Planner (0.1.272, vertical grid + Google Calendar overlay 0.1.274)
+### 10.6b Weekly Hours Planner (0.1.272, vertical grid + Google Calendar overlay 0.1.274,
+week navigation + actual over/undertime + sync-on-edit 0.1.280)
 Tools → Weekly Hours Planner (`lib/models/weekly_hours_plan.dart`,
 `lib/services/weekly_hours_service.dart`, `lib/ui/weekly_hours_planner_page.dart`): a
 standalone, date-less Monday-to-Friday work-hours template — not tied to the task list or
-any specific calendar week — with an optional Google Calendar overlay resolved against the
-*current* calendar week.
+any specific calendar week — with an optional Google Calendar overlay and a per-week actual
+over/undertime entry, both resolved against whichever calendar week chevrons navigate to.
 
 **Model:** `WorkBlock{startMinutes,endMinutes}` (minutes since midnight); `DayPlan{morning,
 afternoon}` with `lunchMinutes` simply the gap between them and `workedMinutes` the sum of
@@ -2038,9 +2039,30 @@ that resize a block by dragging either of its own two edges, clamped to a 30-min
 block length and to not cross the other block, snapped to 5-minute increments. Dragging
 updates the in-memory plan on every frame (so Friday's dashed line and every day's duration
 label react live) but only persists to disk once via `onDragEnd` when the drag finishes, to
-avoid hammering the file on every pointer move. A summary card at the top shows the week's
-planned vs. 43:00 target total with a +/- surplus/deficit chip; a reset button (app bar)
-restores `WeeklyHoursPlan.defaultPlan()`.
+avoid hammering the file on every pointer move — a drag-end also re-syncs the Google Calendar
+overlay (`_persistAndSync`), not only the file write. A summary card at the top shows the
+viewed week's planned-plus-actual vs. 43:00 target total with a +/- surplus/deficit chip; a
+reset button (app bar) restores `WeeklyHoursPlan.defaultPlan()`.
+
+**Week navigation (0.1.280):** chevrons above the summary card move `_viewedWeekStart`
+(Monday-normalized, `WeeklyActual.mondayOf`) a week at a time; a "Back to this week" text
+button appears whenever it isn't the current week and jumps straight back. The block template
+itself (`_plan`) is never per-week — dragging edits the one reusable template regardless of
+which week is being viewed — but the Google Calendar overlay's date range and the actual
+over/undertime field (below) both follow `_viewedWeekStart`, which is what makes "moving
+between weeks" meaningful for a date-less template: it changes what real-world context you're
+comparing the template against, not the template itself.
+
+**Actual over/undertime (0.1.280):** a field in the summary card
+(`ValueKey('over-undertime-field')`, signed decimal hours, debounced 500 ms) records
+`WeeklyActual{weekStart, overUndertimeMinutes}` for whichever week is being viewed — positive
+means more was actually worked than the template planned, negative less. Typing updates the
+displayed total (`planned + actualMinutes`) immediately via `setState`, independent of the
+save debounce; after the debounce fires, `WeeklyHoursService.saveActual` persists it and the
+page re-syncs the Google Calendar overlay, same as a block edit. Switching weeks reloads the
+field from `WeeklyHoursService.actualFor(_viewedWeekStart)` (a zeroed, unpersisted record for
+a week with nothing saved) and rewrites the controller text via `_formatSignedHours` (empty
+for zero, `+`-prefixed for a surplus, unprefixed negative for a deficit).
 
 **Google Calendar overlay:** Settings → Weekly Hours Planner has a "Calendar URL" field
 (`Config.googleCalendarUrl`, shared with nothing else) — paste a public `.ics` feed (a Google
@@ -2056,18 +2078,24 @@ asked for — `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `COUNT`, `UNTIL`, 
 only) `BYDAY`; `EXDATE` drops one occurrence (a date-only `EXDATE` excludes that whole day).
 Network access goes through `HttpClient` (same pattern as `UpdateService._fetch`, with a
 `fetchOverride` test hook). The plan itself stays date-less, so the Weekly Hours Planner page
-resolves the overlay against the *current* calendar week only: `_mondayOfThisWeek()` plus the
-column index gives each weekday column's real date, and `eventsInRange` is called per day
-(`_gcalEventsForDay`, timed events only — all-day events are not shown). Each event renders as
-a `_gcalBlock`: a `tertiaryContainer`-tinted, 55%-opacity `Positioned` bar added to the
-column's `Stack` *before* the work blocks, so it paints underneath them — visible in any gap
-where no work block covers that time, and simply covered where one does (the honest reading:
-that time slot is occupied by a real work block).
+resolves the overlay against `_viewedWeekStart` (defaults to the current calendar week, moved
+by the chevrons above): `_viewedWeekStart` plus the column index gives each weekday column's
+real date, and `eventsInRange` is called per day (`_gcalEventsForDay`, timed events only —
+all-day events are not shown). The overlay refreshes (`_loadGoogleCalendar`) on page open, on
+every block drag-end, and on every debounced actual-over/undertime edit — not only on the
+Settings page's manual Import button — so it never falls behind while the planner is open.
+Each event renders as a `_gcalBlock`: a `tertiaryContainer`-tinted, 55%-opacity `Positioned`
+bar added to the column's `Stack` *before* the work blocks, so it paints underneath them —
+visible in any gap where no work block covers that time, and simply covered where one does
+(the honest reading: that time slot is occupied by a real work block).
 
 **Persistence:** `WeeklyHoursService` (singleton, `ValueNotifier<WeeklyHoursPlan>`)
 persists to `weekly_hours_plan.json` in the app documents directory, seeded with
 `WeeklyHoursPlan.defaultPlan()` on first run — same load-once/seed-if-missing/swallow-errors
-shape as `ProjectService`.
+shape as `ProjectService`. A second `ValueNotifier<List<WeeklyActual>>` on the same singleton
+persists to `weekly_hours_actuals.json` (own load flag `loadActuals`/`_actualsLoaded`, so the
+plan and the actuals list load independently); `saveActual` upserts by `weekStart` and drops
+the row entirely once it goes back to zero, so an untouched week never leaves a stale entry.
 
 Registered like every other tool: `weekly_hours_planner` key in
 `Config.startToolOptions`/`featureKeys` (and their label/description arrays, right after

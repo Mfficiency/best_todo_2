@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../models/gcal_event.dart';
@@ -20,6 +23,13 @@ import 'subpage_app_bar.dart';
 /// whole configured hour range (Settings → Weekly Hours Planner) is visible
 /// without scrolling. A Google Calendar URL imported in Settings overlays
 /// that day's real events, translucent, underneath the work blocks.
+///
+/// The block template itself has no date — it is a reusable "typical week" —
+/// but chevrons let you navigate to any week to see its Google Calendar
+/// overlay and to record that week's actual over/undertime, which folds into
+/// the weekly total shown above the grid. Both the calendar overlay and the
+/// actual-over/undertime field re-sync/persist immediately on every edit, on
+/// top of the calendar already refreshing whenever the page opens.
 class WeeklyHoursPlannerPage extends StatefulWidget {
   const WeeklyHoursPlannerPage({Key? key}) : super(key: key);
 
@@ -35,12 +45,35 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
 
   List<GCalRawEvent> _gcalRaw = const [];
   String? _gcalError;
+  bool _gcalSyncing = false;
+
+  /// Monday of the week currently being viewed — drives the Google Calendar
+  /// overlay's date range and which week's [WeeklyActual] is shown/edited.
+  /// The block template itself (`_plan`) has no date and stays the same
+  /// regardless of which week is viewed.
+  late DateTime _viewedWeekStart;
+  late WeeklyActual _actual;
+  final TextEditingController _overUndertimeController =
+      TextEditingController();
+  Timer? _actualSaveDebounce;
 
   @override
   void initState() {
     super.initState();
+    _viewedWeekStart = _mondayOfThisWeek();
+    // Set synchronously so `build()` never sees `_actual` uninitialized —
+    // `_loadActual()` below only ever refines it once the real records load.
+    _actual = WeeklyActual(weekStart: _viewedWeekStart);
     _load();
+    _loadActual();
     _loadGoogleCalendar();
+  }
+
+  @override
+  void dispose() {
+    _actualSaveDebounce?.cancel();
+    _overUndertimeController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -52,11 +85,23 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
     });
   }
 
+  Future<void> _loadActual() async {
+    await _service.loadActuals();
+    if (!mounted) return;
+    setState(() => _actual = _service.actualFor(_viewedWeekStart));
+    _overUndertimeController.text =
+        _formatSignedHours(_actual.overUndertimeMinutes);
+  }
+
   Future<void> _loadGoogleCalendar() async {
+    if (mounted) setState(() => _gcalSyncing = true);
     final cached = await GoogleCalendarService.loadCached();
     if (mounted && cached.isNotEmpty) setState(() => _gcalRaw = cached);
     final url = Config.googleCalendarUrl.trim();
-    if (url.isEmpty) return;
+    if (url.isEmpty) {
+      if (mounted) setState(() => _gcalSyncing = false);
+      return;
+    }
     try {
       final fresh = await GoogleCalendarService.refresh(url);
       if (!mounted) return;
@@ -67,37 +112,76 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _gcalError = 'Could not refresh the imported calendar');
+    } finally {
+      if (mounted) setState(() => _gcalSyncing = false);
     }
   }
 
   /// Updates the in-memory plan immediately (so every day's block sizes and
   /// Friday's theoretical line react live while dragging); the file write
-  /// only happens once the drag ends, via [_persist].
+  /// only happens once the drag ends, via [_persistAndSync].
   void _onDayChanged(int index, DayPlan day) {
     setState(() => _plan = _plan.withDay(index, day));
   }
 
   Future<void> _persist() => _service.updatePlan(_plan);
 
-  Future<void> _reset() async {
-    setState(() => _plan = WeeklyHoursPlan.defaultPlan());
+  /// Persists the just-edited plan and re-syncs the Google Calendar overlay,
+  /// so the imported events stay current every time you finish an edit (not
+  /// only when the page is first opened).
+  Future<void> _persistAndSync() async {
     await _persist();
+    await _loadGoogleCalendar();
   }
 
-  /// Monday of the current calendar week, used only to resolve which real
-  /// dates the Google Calendar overlay pulls events for — the plan itself
-  /// stays a date-less Monday-to-Friday template.
-  DateTime _mondayOfThisWeek() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    return today.subtract(Duration(days: today.weekday - 1));
+  Future<void> _reset() async {
+    setState(() => _plan = WeeklyHoursPlan.defaultPlan());
+    await _persistAndSync();
+  }
+
+  /// Monday of the current calendar week (today's week) — the default view
+  /// and the "back to this week" target.
+  DateTime _mondayOfThisWeek() => WeeklyActual.mondayOf(DateTime.now());
+
+  bool get _isViewingThisWeek => _viewedWeekStart == _mondayOfThisWeek();
+
+  void _changeWeek(int deltaWeeks) {
+    setState(() {
+      _viewedWeekStart = _viewedWeekStart.add(Duration(days: 7 * deltaWeeks));
+      _actual = _service.actualFor(_viewedWeekStart);
+    });
+    _overUndertimeController.text =
+        _formatSignedHours(_actual.overUndertimeMinutes);
+  }
+
+  void _onOverUndertimeChanged(String text) {
+    final hours = double.tryParse(text.trim());
+    setState(() {
+      _actual = _actual.copyWith(
+        overUndertimeMinutes: hours == null ? 0 : (hours * 60).round(),
+      );
+    });
+    _actualSaveDebounce?.cancel();
+    _actualSaveDebounce = Timer(const Duration(milliseconds: 500), () async {
+      await _service.saveActual(_actual);
+      await _loadGoogleCalendar();
+    });
+  }
+
+  static String _formatSignedHours(int minutes) {
+    if (minutes == 0) return '';
+    final hours = minutes / 60;
+    final text = hours == hours.roundToDouble()
+        ? hours.round().toString()
+        : hours.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '');
+    return hours > 0 ? '+$text' : text;
   }
 
   /// Timed (non-all-day) Google Calendar events for the given weekday
-  /// [index] (0 = Monday .. 4 = Friday) of the current week.
+  /// [index] (0 = Monday .. 4 = Friday) of [_viewedWeekStart].
   List<GCalEvent> _gcalEventsForDay(int index) {
     if (_gcalRaw.isEmpty) return const [];
-    final day = _mondayOfThisWeek().add(Duration(days: index));
+    final day = _viewedWeekStart.add(Duration(days: index));
     final dayEnd = day.add(const Duration(days: 1));
     return GoogleCalendarService.eventsInRange(_gcalRaw, day, dayEnd)
         .where((e) => !e.allDay)
@@ -130,41 +214,78 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
     final theme = Theme.of(context);
     final planned = _plan.plannedWeeklyMinutes;
     final target = _plan.targetWeeklyMinutes;
-    final diff = planned - target;
+    final actualMinutes = _actual.overUndertimeMinutes;
+    final total = planned + actualMinutes;
+    final diff = total - target;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _buildWeekNav(theme),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('This week', style: theme.textTheme.titleSmall),
-                        const SizedBox(height: 4),
-                        Text(
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
                           '${_formatDuration(planned)} planned  ·  target '
                           '${_formatDuration(target)}',
                           style: theme.textTheme.bodyMedium,
                         ),
-                      ],
-                    ),
-                  ),
-                  if (diff != 0)
-                    Chip(
-                      label: Text(
-                        '${diff > 0 ? '+' : '-'}${_formatDuration(diff.abs())}',
                       ),
-                      backgroundColor: diff > 0
-                          ? theme.colorScheme.tertiaryContainer
-                          : theme.colorScheme.errorContainer,
-                    ),
+                      if (diff != 0)
+                        Chip(
+                          label: Text(
+                            '${diff > 0 ? '+' : '-'}${_formatDuration(diff.abs())}',
+                          ),
+                          backgroundColor: diff > 0
+                              ? theme.colorScheme.tertiaryContainer
+                              : theme.colorScheme.errorContainer,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 140,
+                        child: TextField(
+                          key: const ValueKey('over-undertime-field'),
+                          controller: _overUndertimeController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true, signed: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'^[+-]?\d*\.?\d{0,2}')),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: 'Actual over/undertime (h)',
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: _onOverUndertimeChanged,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Total: ${_formatDuration(total)}',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -183,6 +304,57 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: _buildWeekGrid(theme),
           ),
+        ),
+      ],
+    );
+  }
+
+  /// Chevron navigation between weeks: which week's Google Calendar overlay
+  /// and actual-over/undertime field are shown, below in the summary card
+  /// and grid. The block template itself never changes with the viewed week.
+  Widget _buildWeekNav(ThemeData theme) {
+    final weekEnd = _viewedWeekStart.add(const Duration(days: 4));
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.chevron_left),
+          tooltip: 'Previous week',
+          onPressed: () => _changeWeek(-1),
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              Text(
+                _isViewingThisWeek
+                    ? 'This week'
+                    : '${formatTimerDate(_viewedWeekStart)} – '
+                        '${formatTimerDate(weekEnd)}',
+                style: theme.textTheme.titleSmall,
+                textAlign: TextAlign.center,
+              ),
+              if (!_isViewingThisWeek)
+                TextButton(
+                  onPressed: () => _changeWeek(
+                    _mondayOfThisWeek()
+                            .difference(_viewedWeekStart)
+                            .inDays ~/
+                        7,
+                  ),
+                  child: const Text('Back to this week'),
+                ),
+              if (_gcalSyncing)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text('Syncing calendar…',
+                      style: theme.textTheme.bodySmall),
+                ),
+            ],
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.chevron_right),
+          tooltip: 'Next week',
+          onPressed: () => _changeWeek(1),
         ),
       ],
     );
@@ -268,7 +440,7 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
                           pxPerMinute: pxPerMinute,
                           gcalEvents: _gcalEventsForDay(i),
                           onChanged: (day) => _onDayChanged(i, day),
-                          onDragEnd: _persist,
+                          onDragEnd: _persistAndSync,
                         ),
                       ),
                     ),

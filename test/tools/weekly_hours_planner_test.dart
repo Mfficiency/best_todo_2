@@ -134,6 +134,91 @@ void main() {
       expect(WeeklyHoursService.instance.plan.value.days[0].morning
           .startMinutes, 8 * 60);
     });
+
+    File actualsFile() => File('${tempDir.path}/weekly_hours_actuals.json');
+
+    test('actualFor returns a zeroed, unpersisted record for an untouched week',
+        () async {
+      await WeeklyHoursService.instance.loadActuals();
+      final monday = WeeklyActual.mondayOf(DateTime(2026, 8, 25));
+      final actual = WeeklyHoursService.instance.actualFor(monday);
+
+      expect(actual.weekStart, monday);
+      expect(actual.overUndertimeMinutes, 0);
+      expect(await actualsFile().exists(), isFalse);
+    });
+
+    test('saveActual persists a record and it survives a reload', () async {
+      await WeeklyHoursService.instance.loadActuals();
+      final monday = WeeklyActual.mondayOf(DateTime(2026, 8, 25));
+      await WeeklyHoursService.instance
+          .saveActual(WeeklyActual(weekStart: monday, overUndertimeMinutes: 90));
+
+      expect(await actualsFile().exists(), isTrue);
+
+      WeeklyHoursService.instance.resetForTest();
+      await WeeklyHoursService.instance.loadActuals();
+      expect(WeeklyHoursService.instance.actualFor(monday).overUndertimeMinutes,
+          90);
+    });
+
+    test('saveActual drops the record once it goes back to zero', () async {
+      await WeeklyHoursService.instance.loadActuals();
+      final monday = WeeklyActual.mondayOf(DateTime(2026, 8, 25));
+      await WeeklyHoursService.instance
+          .saveActual(WeeklyActual(weekStart: monday, overUndertimeMinutes: 90));
+      expect(WeeklyHoursService.instance.actuals.value, hasLength(1));
+
+      await WeeklyHoursService.instance
+          .saveActual(WeeklyActual(weekStart: monday, overUndertimeMinutes: 0));
+      expect(WeeklyHoursService.instance.actuals.value, isEmpty);
+    });
+
+    test('saveActual replaces the existing record for the same week', () async {
+      await WeeklyHoursService.instance.loadActuals();
+      final monday = WeeklyActual.mondayOf(DateTime(2026, 8, 25));
+      await WeeklyHoursService.instance
+          .saveActual(WeeklyActual(weekStart: monday, overUndertimeMinutes: 30));
+      await WeeklyHoursService.instance
+          .saveActual(WeeklyActual(weekStart: monday, overUndertimeMinutes: -45));
+
+      expect(WeeklyHoursService.instance.actuals.value, hasLength(1));
+      expect(WeeklyHoursService.instance.actualFor(monday).overUndertimeMinutes,
+          -45);
+    });
+  });
+
+  group('WeeklyActual model', () {
+    test('mondayOf normalizes a mid-week date to that week\'s Monday', () {
+      // 2026-08-25 is a Tuesday.
+      final monday = WeeklyActual.mondayOf(DateTime(2026, 8, 25, 14, 30));
+      expect(monday, DateTime(2026, 8, 24));
+      expect(monday.weekday, DateTime.monday);
+    });
+
+    test('weekKey is the Monday as yyyy-MM-dd', () {
+      final actual = WeeklyActual(weekStart: DateTime(2026, 1, 5));
+      expect(actual.weekKey, '2026-01-05');
+    });
+
+    test('toJson/fromJson round-trips weekStart and overUndertimeMinutes', () {
+      final actual = WeeklyActual(
+        weekStart: DateTime(2026, 8, 24),
+        overUndertimeMinutes: -75,
+      );
+      final restored = WeeklyActual.fromJson(actual.toJson());
+
+      expect(restored.weekStart, actual.weekStart);
+      expect(restored.overUndertimeMinutes, -75);
+    });
+
+    test('copyWith replaces overUndertimeMinutes and keeps weekStart', () {
+      final actual = WeeklyActual(weekStart: DateTime(2026, 8, 24));
+      final changed = actual.copyWith(overUndertimeMinutes: 60);
+
+      expect(changed.weekStart, actual.weekStart);
+      expect(changed.overUndertimeMinutes, 60);
+    });
   });
 
   group('WeeklyHoursPlannerPage', () {
@@ -241,6 +326,102 @@ END:VCALENDAR
 
       expect(find.text('Team Standup'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('week navigation shows each week\'s own actual over/undertime',
+        (tester) async {
+      final thisMonday = WeeklyActual.mondayOf(DateTime.now());
+      // Pre-saving is real file I/O, which must run on the real event loop
+      // (runAsync), not the fake-async test zone.
+      await tester.runAsync(() => WeeklyHoursService.instance.saveActual(
+            WeeklyActual(weekStart: thisMonday, overUndertimeMinutes: 120),
+          ));
+
+      await tester.pumpWidget(
+        const MaterialApp(home: WeeklyHoursPlannerPage()),
+      );
+      for (var i = 0; i < 300 && find.text('Friday').evaluate().isEmpty; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      await tester.pump();
+
+      final field = find.byKey(const ValueKey('over-undertime-field'));
+      expect(
+        (tester.widget<TextField>(field).controller!.text),
+        '+2',
+      );
+
+      await tester.tap(find.byTooltip('Next week'));
+      await tester.pump();
+      expect((tester.widget<TextField>(field).controller!.text), '');
+      expect(find.text('Back to this week'), findsOneWidget);
+
+      await tester.tap(find.text('Back to this week'));
+      await tester.pump();
+      expect((tester.widget<TextField>(field).controller!.text), '+2');
+      expect(find.text('Back to this week'), findsNothing);
+    });
+
+    testWidgets(
+        'typing an over/undertime value updates the weekly total immediately',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: WeeklyHoursPlannerPage()),
+      );
+      for (var i = 0; i < 300 && find.text('Friday').evaluate().isEmpty; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      await tester.pump();
+
+      expect(find.textContaining('Total: 43h 00m'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('over-undertime-field')),
+        '2',
+      );
+      await tester.pump();
+
+      expect(find.textContaining('Total: 45h 00m'), findsOneWidget);
+    });
+
+    testWidgets(
+        'editing the over/undertime field persists it and survives a reload',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: WeeklyHoursPlannerPage()),
+      );
+      for (var i = 0; i < 300 && find.text('Friday').evaluate().isEmpty; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      await tester.pump();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('over-undertime-field')),
+        '-1.5',
+      );
+      await tester.pump();
+      // Fires the 500ms save debounce (fake clock), then lets the real
+      // dart:io write it kicks off actually complete.
+      await tester.pump(const Duration(milliseconds: 600));
+      for (var i = 0; i < 80; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump();
+      }
+
+      final thisMonday = WeeklyActual.mondayOf(DateTime.now());
+      final reloaded = await tester.runAsync(() async {
+        WeeklyHoursService.instance.resetForTest();
+        await WeeklyHoursService.instance.loadActuals();
+        return WeeklyHoursService.instance.actualFor(thisMonday);
+      });
+      expect(reloaded!.overUndertimeMinutes, -90);
     });
   });
 }
