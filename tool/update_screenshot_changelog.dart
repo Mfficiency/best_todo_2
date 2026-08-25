@@ -21,6 +21,8 @@ void main(List<String> args) {
       ? 'unknown'
       : sourceSha.substring(0, sourceSha.length < 7 ? sourceSha.length : 7);
   final safeBranch = (branch == null || branch.isEmpty) ? 'unknown' : branch;
+  final version = _readPubspecVersion();
+  final branchLabel = version == null ? safeBranch : '$safeBranch v$version';
 
   // One section per PNG in the folder so newly captured pages are picked up
   // without touching this tool. Falls back to the historical four names when
@@ -50,14 +52,15 @@ void main(List<String> args) {
       .join(' ');
 
   final entry = StringBuffer()
-    ..writeln('## $now | branch: $safeBranch | source: $shortSha')
+    ..writeln('## $now | branch: $branchLabel | source: $shortSha')
     ..writeln()
     ..writeln('- Folder: `$screenshotFolder`')
     ..writeln();
   for (final name in names) {
     entry
       ..writeln('### ${titleOf(name)}')
-      ..writeln('![$now - $safeBranch - $name]($screenshotFolder/$name.png)')
+      ..writeln(
+          '![$now - $branchLabel - $name]($screenshotFolder/$name.png)')
       ..writeln();
   }
   entry
@@ -71,6 +74,17 @@ void main(List<String> args) {
 
   final newContent = '${entry.toString()}$existingContent';
   changelogFile.writeAsStringSync(newContent);
+}
+
+/// The `version:` line from `pubspec.yaml` (e.g. `0.1.274+274`), or null if
+/// it can't be read — the changelog entry then falls back to the branch name
+/// alone rather than failing the run.
+String? _readPubspecVersion() {
+  final pubspecFile = File('pubspec.yaml');
+  if (!pubspecFile.existsSync()) return null;
+  final match = RegExp(r'^version:\s*(.+)$', multiLine: true)
+      .firstMatch(pubspecFile.readAsStringSync());
+  return match?.group(1)?.trim();
 }
 
 String _fmtSwiss(tz.TZDateTime t) {
