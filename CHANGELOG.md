@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.235] - 2026-08-25
+- Phone numbers in task descriptions and notes are now clickable too, same as URLs — tap one to open the dialer
+
 ## [0.1.234] - 2026-08-17
 - Streak challenges you have already earned now collect at the bottom of the list, under an "Earned" divider, so the card opens on what is still left to chase
 - Productivity Stats gained a "Fun stats" section at the bottom: items completed and created, completion rate, busiest day, golden hour, favourite weekday, early-bird and night-owl finishes, weekend share, fastest finish, longest wait, oldest open item and how often things were postponed
