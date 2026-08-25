@@ -7,7 +7,6 @@
 - send in app to each other
 - add more settings to controll the days of the week on the swiping motion and different icons and the cancel color etc
 - search function should also be able to show when you type a date and it should show items from the dates around it as well, it should prioritize the tiltel but also look in the description
-- add a sync function with google calendars
 - add clever filter functions to sort and filter all the timers and events
 - add optional week numbers to the date selectors everythere
 
@@ -42,6 +41,7 @@
 - Default due bucket: When creating a task quickly, choose default target list (Today vs Future).
 - have a way to sent a notification about that item in 5- 20 or 60 minutes
 - cancel swipe, when you swiped one way you can cancel the action by swiping the other way
+- make the weekly planning tool vertical to use the full screen, and let it overlay a Google Calendar .ics URL underneath the work blocks, with settings for the grid's default start/end hour
 - Notification quiet hours: Suppress notifications in a time range, plus weekday/weekend override.
 - Start page: Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
 - make a "future tab", that you can move away to just have the idea written down.
@@ -54,7 +54,6 @@
 ## Later
 ### TODO
 - add logo in banners etc
-- link to google calendar
 - add video to youtube channel
 - add story and vision to about page
 - add to f-droid store if possible
@@ -83,6 +82,7 @@
 - complete a tab statistics
 - make a tab wishlist
 - make calendar view
+- link to google calendar (import a .ics URL in Settings; read-only, overlaid on the Weekly Hours Planner)
 
 ## MVP
 ### TODO

@@ -327,6 +327,25 @@ it, so the initial pull pushes nothing back and the Todoist item's `labels` arra
 untouched. Approving changes `_localFingerprint`, so the next sync pushes the shortened
 label array — the tag is removed on the Todoist side too, exactly once.
 
+**Swipe approve/deny (0.1.272), matching `TaskTile`'s move/delete swipe exactly:** each
+row in `WaitingApprovalPage` (`_PendingTaskTile`) carries the same gesture mechanics as
+the home list and the Wishlist tile (drag with `AnimatedSlide`, 100 px/500 velocity
+thresholds, directions honor `Config.swipeLeftDelete`, `GestureDetector` on Android/web).
+The approve-side swipe opens a shortcut row of every `Config.tabs` label (Today/Tomorrow/
+Day After Tomorrow/Next Week/Next Month/Future) with the `Config.delayDuration` countdown
+bar; tapping one, or letting the countdown run out (default: Today), approves the task
+(`removeWaitingApprovalToken`) AND schedules it — sets `dueDate` to that bucket's date
+(same day math as `HomePageState._dueDateForTab`) plus `movedAt`/`rescheduledAt`. The
+deny-side swipe opens a Deny button plus Fri/Sat/Sun/Mon weekday shortcuts (same set as
+`TaskTile`'s delete-side weekday options): a weekday shortcut approves the task onto the
+next occurrence of that day instead of denying it; Deny, or letting the countdown run out,
+denies the task with the same home-style undo snackbar as everywhere else in the app —
+only after the undo window expires does it move to the real Deleted bin (previously
+`_deny` moved it there immediately, with no undo). Swiping back toward the other side
+while options are open cancels, as on the home list. The original leading/trailing
+Approve/Deny icon buttons are unchanged: they stay one-tap alternatives that lift the
+approval gate (or deny) without touching `dueDate`.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**
@@ -501,7 +520,7 @@ spanning the top is always attached.
 
 **Drawer:** Home, Settings, Archived Items (→ Deleted bin, §4.2g), About, Changelog, App Logs, Startup Times,
 Tools ▸ (Alarms, Countdown, Wishlist, Food Diary, Projects, Chronize, Productivity Stats,
-Usage Data, Test Results). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
+Usage Data, Test Results, Weekly Hours Planner). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
 schedule-view feature is on) — so it always lands on the same familiar screen rather than
@@ -712,7 +731,7 @@ default `dd.MM.yy`). Tasks: add-to-top, "New tasks go to" (`defaultAddTabIndex`,
 "Current tab", see §4.3), swipe-left-delete, default delay 0–10 s slider,
 start tab (simple mode hides the tool-related entries, see §4.6), default start page
 (`startTool`: the task list or any enabled tool — Alarms, Countdown,
-Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
+Projects, Chronize, Usage Data, Productivity Stats, Weekly Hours Planner; the tool is pushed on top of the task
 list after loading, so back lands on the tasks), start in schedule view, Chronize hour
 wheel, "Auto-tag new items" (`autoTagEnabled`, default on) + an "Auto-tag rules" entry
 point to edit the keyword dictionary (§4.2e). Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes`,
@@ -1014,7 +1033,7 @@ while `MyApp.restartIntro()` (About) replays the slides and the question togethe
 
 **Feature registry (`Config`):** `featureKeys` / `featureLabels` / `featureDescriptions`
 (index-aligned) + `Map<String,bool> featureEnabled` (all true by default, persisted under
-`'features'`; unknown/missing keys count as enabled). Keys: the eight tool keys (equal to
+`'features'`; unknown/missing keys count as enabled). Keys: the ten tool keys (equal to
 `startToolOptions` minus `tasks`) plus `streak`, `dice_timer`, `schedule_view`, `search`,
 `deleted_items`, `changelog`, `app_logs`, `startup_times`, `sms_report`.
 
@@ -1898,6 +1917,88 @@ Checking the eating-habit subset rather than `tasks.isEmpty` is the fix (0.1.270
 dev/demo starter tasks seeded by `home_page._loadTasks` mean the overall list is never
 actually empty by the time this page loads, so the original single-entry seed (a plain
 `tasks.isEmpty` check) never fired in practice.
+
+### 10.6b Weekly Hours Planner (0.1.272, vertical grid + Google Calendar overlay 0.1.274)
+Tools → Weekly Hours Planner (`lib/models/weekly_hours_plan.dart`,
+`lib/services/weekly_hours_service.dart`, `lib/ui/weekly_hours_planner_page.dart`): a
+standalone, date-less Monday-to-Friday work-hours template — not tied to the task list or
+any specific calendar week — with an optional Google Calendar overlay resolved against the
+*current* calendar week.
+
+**Model:** `WorkBlock{startMinutes,endMinutes}` (minutes since midnight); `DayPlan{morning,
+afternoon}` with `lunchMinutes` simply the gap between them and `workedMinutes` the sum of
+both block durations; `WeeklyHoursPlan{days}` holds 5 `DayPlan`s (Monday index 0 .. Friday
+index 4). `targetMinutesPerDay` is a fixed constant, 8:36 (516 min), so
+`targetWeeklyMinutes` is 43:00 (the standard flexitime week this tool is built around).
+`DayPlan.defaultPlan()` starts at 09:00, splits the 8:36 evenly (4:18 each side) around the
+fixed 30-minute default lunch, ending 18:06.
+
+**Flexitime carryover:** dragging a block's start/end away from the 8:36 default on any
+Monday-Thursday day changes that day's `workedMinutes` without touching the 43:00 weekly
+target. `WeeklyHoursPlan.carryoverBeforeFriday` sums `workedMinutes - targetMinutesPerDay`
+over Monday-Thursday; `theoreticalFridayEndMinutes` is Friday's own start time + its lunch
+gap + however many minutes Friday needs to work (`targetWeeklyMinutes` minus the
+Monday-Thursday total) to bring the week back to 43:00 — independent of how Friday's own
+two blocks are split, since only the total matters. The Weekly Hours Planner page renders
+this as a dashed red line + time label under Friday's column (`_TheoreticalEndLine`,
+`_HorizontalDashedLinePainter`), which is always computed (not gated on any "modified" flag)
+so it simply coincides with Friday's own scheduled end when the week is exactly on target.
+
+**UI (`weekly_hours_planner_page.dart`) — vertical week grid:** the five weekdays render as
+columns side by side with time running top-to-bottom, sized (via a `LayoutBuilder` computing
+`pxPerMinute = trackHeight / rangeMinutes`) to fill the space left under the summary card, so
+the whole configured hour range (`Config.weeklyHoursStartHour`/`weeklyHoursEndHour`, Settings
+→ Weekly Hours Planner, default 06:00-22:00) is visible without scrolling — replacing the
+original one-row-per-weekday horizontal-timeline layout. A shared left gutter
+(`_HourGutterPainter`) draws the hour labels; each day column (`_DayColumn`,
+`_ColumnBackgroundPainter` for its faint hour gridlines) draws the morning block (primary
+color) and afternoon block (secondary color) as `Positioned` bars (start/end time labels once
+tall enough) plus 4 draggable handles (`_Handle.morningStart/morningEnd/afternoonStart/
+afternoonEnd`, each keyed `handle-<Weekday>-<handleName>` for tests, now horizontal bars
+dragged **vertically** — `onVerticalDragUpdate`, `deltaDy / pxPerMinute` for the minute delta)
+that resize a block by dragging either of its own two edges, clamped to a 30-minute minimum
+block length and to not cross the other block, snapped to 5-minute increments. Dragging
+updates the in-memory plan on every frame (so Friday's dashed line and every day's duration
+label react live) but only persists to disk once via `onDragEnd` when the drag finishes, to
+avoid hammering the file on every pointer move. A summary card at the top shows the week's
+planned vs. 43:00 target total with a +/- surplus/deficit chip; a reset button (app bar)
+restores `WeeklyHoursPlan.defaultPlan()`.
+
+**Google Calendar overlay:** Settings → Weekly Hours Planner has a "Calendar URL" field
+(`Config.googleCalendarUrl`, shared with nothing else) — paste a public `.ics` feed (a Google
+Calendar "Secret address in iCal format" URL, or any RFC 5545 feed) and Settings' Import
+button fetches + caches it immediately, showing the event count/timestamp or an error inline.
+`GoogleCalendarService` (`lib/services/google_calendar_service.dart`,
+`lib/models/gcal_event.dart`) parses the feed into `GCalRawEvent`s (RFC 5545 line-unfolding;
+`DTSTART`/`DTEND`/`DURATION`/`SUMMARY`/`UID`/`RRULE`/`EXDATE`; a `VALUE=DATE` or bare
+8-digit `DTSTART` is all-day) and caches them to `google_calendar_cache.json` in the app
+documents dir, so the planner has something to show offline before the next refresh.
+`GoogleCalendarService.eventsInRange` expands `RRULE` on demand for whatever date range is
+asked for — `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `COUNT`, `UNTIL`, and (`WEEKLY`
+only) `BYDAY`; `EXDATE` drops one occurrence (a date-only `EXDATE` excludes that whole day).
+Network access goes through `HttpClient` (same pattern as `UpdateService._fetch`, with a
+`fetchOverride` test hook). The plan itself stays date-less, so the Weekly Hours Planner page
+resolves the overlay against the *current* calendar week only: `_mondayOfThisWeek()` plus the
+column index gives each weekday column's real date, and `eventsInRange` is called per day
+(`_gcalEventsForDay`, timed events only — all-day events are not shown). Each event renders as
+a `_gcalBlock`: a `tertiaryContainer`-tinted, 55%-opacity `Positioned` bar added to the
+column's `Stack` *before* the work blocks, so it paints underneath them — visible in any gap
+where no work block covers that time, and simply covered where one does (the honest reading:
+that time slot is occupied by a real work block).
+
+**Persistence:** `WeeklyHoursService` (singleton, `ValueNotifier<WeeklyHoursPlan>`)
+persists to `weekly_hours_plan.json` in the app documents directory, seeded with
+`WeeklyHoursPlan.defaultPlan()` on first run — same load-once/seed-if-missing/swallow-errors
+shape as `ProjectService`.
+
+Registered like every other tool: `weekly_hours_planner` key in
+`Config.startToolOptions`/`featureKeys` (and their label/description arrays, right after
+`test_results` so the "first N keys match `startToolOptions`" comment stays accurate), a
+`_ToolEntry` in home_page's drawer list (`Icons.calendar_view_week`), and a
+`_buildToolPage` case. No `_openTool` reload-on-return wiring is needed — unlike
+Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (index 13,
+"Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
+at the end of `_sectionTitles` to avoid renumbering the other twelve.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

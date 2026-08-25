@@ -57,6 +57,7 @@ import 'task_tile.dart';
 import 'test_results_page.dart';
 import 'usage_data_page.dart';
 import 'waiting_approval_page.dart';
+import 'weekly_hours_planner_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
 
@@ -1077,6 +1078,8 @@ class _HomePageState extends State<HomePage>
         );
       case 'test_results':
         return const TestResultsPage();
+      case 'weekly_hours_planner':
+        return const WeeklyHoursPlannerPage();
       case 'productivity_stats':
         return YourStatsPage(
           tasks: _tasks,
@@ -2666,6 +2669,8 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
     _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
+    _ToolEntry('weekly_hours_planner', 'Weekly Hours Planner',
+        Icons.calendar_view_week),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —

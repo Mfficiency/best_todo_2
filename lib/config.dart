@@ -92,6 +92,7 @@ class Config {
     'usage_data',
     'productivity_stats',
     'test_results',
+    'weekly_hours_planner',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -106,6 +107,7 @@ class Config {
     'Usage Data',
     'Productivity Stats',
     'Test Results',
+    'Weekly Hours Planner',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -128,7 +130,7 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first nine match
+  /// Keys are persisted, so keep them stable; the first ten match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
@@ -140,6 +142,7 @@ class Config {
     'usage_data',
     'productivity_stats',
     'test_results',
+    'weekly_hours_planner',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -162,6 +165,7 @@ class Config {
     'Usage Data',
     'Productivity Stats',
     'Test Results',
+    'Weekly Hours Planner',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -184,6 +188,7 @@ class Config {
     'Charts about how you use the app',
     'Completion stats and trends',
     'Results of the latest CI test run',
+    'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
@@ -230,6 +235,20 @@ class Config {
   /// right. Off by default so the timeline gets more room (the hour is set by
   /// scrolling the timeline itself).
   static bool chronizeShowHourWheel = false;
+
+  /// First hour shown on the Weekly Hours Planner's grid (0-23). Replaces
+  /// what used to be a fixed 06:00 start.
+  static int weeklyHoursStartHour = 6;
+
+  /// Last hour shown on the Weekly Hours Planner's grid (1-24, exclusive —
+  /// 22 means the grid ends at 22:00). Always kept above [weeklyHoursStartHour].
+  static int weeklyHoursEndHour = 22;
+
+  /// Public .ics feed URL (a Google Calendar "Secret address in iCal format"
+  /// URL, or any other RFC 5545 feed) overlaid on the Weekly Hours Planner.
+  /// Empty until set in Settings; imported events render translucent,
+  /// underneath that day's work blocks.
+  static String googleCalendarUrl = '';
 
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
@@ -527,6 +546,9 @@ class Config {
       'defaultDelaySeconds': defaultDelaySeconds,
       'startInScheduleView': startInScheduleView,
       'chronizeShowHourWheel': chronizeShowHourWheel,
+      'weeklyHoursStartHour': weeklyHoursStartHour,
+      'weeklyHoursEndHour': weeklyHoursEndHour,
+      'googleCalendarUrl': googleCalendarUrl,
       'startTool': startTool,
       'showStreak': showStreak,
       'streakGraceHours': streakGraceHours,
@@ -603,6 +625,17 @@ class Config {
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
+    weeklyHoursStartHour =
+        (data['weeklyHoursStartHour'] as num?)?.round().clamp(0, 22) ??
+            weeklyHoursStartHour;
+    weeklyHoursEndHour =
+        (data['weeklyHoursEndHour'] as num?)?.round().clamp(1, 24) ??
+            weeklyHoursEndHour;
+    if (weeklyHoursEndHour <= weeklyHoursStartHour) {
+      weeklyHoursEndHour = weeklyHoursStartHour + 1;
+    }
+    googleCalendarUrl =
+        data['googleCalendarUrl'] as String? ?? googleCalendarUrl;
     final savedStartTool = data['startTool'] as String?;
     if (savedStartTool != null && startToolOptions.contains(savedStartTool)) {
       startTool = savedStartTool;
