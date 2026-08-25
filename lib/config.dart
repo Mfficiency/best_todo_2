@@ -92,6 +92,7 @@ class Config {
     'usage_data',
     'productivity_stats',
     'test_results',
+    'weekly_hours_planner',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -106,6 +107,7 @@ class Config {
     'Usage Data',
     'Productivity Stats',
     'Test Results',
+    'Weekly Hours Planner',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -128,7 +130,7 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first nine match
+  /// Keys are persisted, so keep them stable; the first ten match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
@@ -140,6 +142,7 @@ class Config {
     'usage_data',
     'productivity_stats',
     'test_results',
+    'weekly_hours_planner',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -162,6 +165,7 @@ class Config {
     'Usage Data',
     'Productivity Stats',
     'Test Results',
+    'Weekly Hours Planner',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -184,6 +188,7 @@ class Config {
     'Charts about how you use the app',
     'Completion stats and trends',
     'Results of the latest CI test run',
+    'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
