@@ -16,6 +16,7 @@ import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/streak_kind.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../models/view_filter_rules.dart';
 import '../services/alarm_service.dart';
 import '../services/auto_backup_service.dart';
@@ -30,6 +31,7 @@ import '../services/share_intent_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
 import '../services/sync_service.dart';
+import '../services/task_mutation_service.dart';
 import '../services/todoist_sync_service.dart';
 import '../services/food_diary_widget_service.dart';
 import '../services/task_widget_service.dart';
@@ -447,6 +449,7 @@ class _HomePageState extends State<HomePage>
           type: ItemEvent.typeCreated,
           patch: [FieldChange('title', null, second.title)],
           seeded: true,
+          source: TaskChangeSource.system,
         ),
         ItemEvent(
           itemId: second.uid,
@@ -454,6 +457,7 @@ class _HomePageState extends State<HomePage>
           at: now.subtract(const Duration(days: 14)),
           type: ItemEvent.typeScheduled,
           seeded: true,
+          source: TaskChangeSource.system,
         ),
       ]);
     }
@@ -596,6 +600,12 @@ class _HomePageState extends State<HomePage>
     final loadedDeleted = await _repository.loadDeletedItems();
     final loadedBin = await _repository.loadBinItems();
     final loadedDailyStats = await _repository.loadDailyStats();
+    // The state as it sits on disk, before any seeding/migration below
+    // mutates it — so only real, later changes become undoable, and the
+    // first save this method makes doesn't read as "everything just got
+    // created".
+    TaskMutationService.instance.noteBaseline(
+        active: loaded, deleted: loadedDeleted, bin: loadedBin);
     // A share-sheet task created while this load was reading the file can be
     // in memory (via ShareIntentService's consumer) *and* in the read result
     // (via its own save); keep the in-memory one only.
@@ -742,15 +752,56 @@ class _HomePageState extends State<HomePage>
     if (mounted) {
       setState(() {});
     }
-    _saveTasks();
+    // Everything above (seeding, migration, recurring refresh) is the app's
+    // own doing, not something the user just did.
+    _saveTasks(source: TaskChangeSource.automation);
   }
 
   void _saveDeletedTasks() {
+    TaskMutationService.instance.noteDeletedChange(_deletedTasks);
     _repository.saveDeletedItems(_deletedTasks);
   }
 
   void _saveBinTasks() {
+    TaskMutationService.instance.noteBinChange(_binTasks);
     _repository.saveBinItems(_binTasks);
+  }
+
+  /// Applies an undo/redo result to the in-memory lists in place — never
+  /// reassigning [_tasks]/[_deletedTasks]/[_binTasks], since other open
+  /// pages (Projects, Wishlist, ...) hold onto those exact list instances by
+  /// reference.
+  void _applyUndoState(TaskUndoState state) {
+    setState(() {
+      _tasks
+        ..clear()
+        ..addAll(state.active);
+      _deletedTasks
+        ..clear()
+        ..addAll(state.deleted);
+      _binTasks
+        ..clear()
+        ..addAll(state.bin);
+    });
+    _updateHomeWidget();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(state.description)),
+    );
+  }
+
+  Future<void> _undoLastAction() async {
+    final state = await TaskMutationService.instance.undo();
+    if (state == null) return;
+    _applyUndoState(state.copyWith(description: 'Undone: ${state.description}'));
+    LogService.add('HomePage._undoLastAction', state.description);
+  }
+
+  Future<void> _redoLastAction() async {
+    final state = await TaskMutationService.instance.redo();
+    if (state == null) return;
+    _applyUndoState(state.copyWith(description: 'Redone: ${state.description}'));
+    LogService.add('HomePage._redoLastAction', state.description);
   }
 
   void _saveDailyStats() {
@@ -1605,7 +1656,7 @@ class _HomePageState extends State<HomePage>
       _tasks.add(task);
     });
     _trackTaskCreated(task);
-    _saveTasks();
+    _saveTasks(source: TaskChangeSource.share);
     LogService.add(
         'HomePage._addSharedTask', 'Added shared task: ${task.title}');
   }
@@ -2111,12 +2162,12 @@ class _HomePageState extends State<HomePage>
       // stats live only here, so they catch up now.
       _trackTaskDoneState(task, !task.isDone);
     }
-    _saveTasks();
+    _saveTasks(source: TaskChangeSource.automation);
     LogService.add('HomePage._mergeWidgetCompletions',
         'Merged ${changed.length} widget completion(s)');
   }
 
-  void _saveTasks() {
+  void _saveTasks({String source = TaskChangeSource.user}) {
     for (var i = 0; i < Config.tabs.length; i++) {
       final listTasks = _tasksForTab(i, applySearch: false);
       for (var j = 0; j < listTasks.length; j++) {
@@ -2126,7 +2177,11 @@ class _HomePageState extends State<HomePage>
     // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
     // multiple tasks land on the same day so no two share a time.
     applyDefaultDeadlineTimes(_tasks);
-    _repository.saveItems(_tasks);
+    // Every task-list save funnels through here, so this is also the one
+    // place that feeds the global Undo/Redo stack (see
+    // TaskMutationService) — note the change before persisting it.
+    TaskMutationService.instance.noteActiveChange(_tasks);
+    _repository.saveItems(_tasks, source: source);
     _updateHomeWidget();
   }
 
@@ -2953,6 +3008,34 @@ class _HomePageState extends State<HomePage>
               )
             : const Text('BestToDo'),
         actions: [
+          ValueListenableBuilder<int>(
+            valueListenable: TaskMutationService.instance.revision,
+            builder: (context, _, __) {
+              final undoDescription = TaskMutationService.instance.undoDescription;
+              final redoDescription = TaskMutationService.instance.redoDescription;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.undo),
+                    tooltip: undoDescription == null
+                        ? 'Nothing to undo'
+                        : 'Undo: $undoDescription',
+                    onPressed:
+                        undoDescription == null ? null : _undoLastAction,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.redo),
+                    tooltip: redoDescription == null
+                        ? 'Nothing to redo'
+                        : 'Redo: $redoDescription',
+                    onPressed:
+                        redoDescription == null ? null : _redoLastAction,
+                  ),
+                ],
+              );
+            },
+          ),
           StreakFlameButton(
             now: _currentDate,
             onSettingsChanged: () {

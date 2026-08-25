@@ -3,6 +3,7 @@ import '../models/alarm.dart';
 import '../models/item_event.dart';
 import '../models/label.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../services/alarm_service.dart';
 import '../services/item_repository.dart';
 import '../services/label_service.dart';
@@ -239,8 +240,17 @@ class TaskHistorySection extends StatelessWidget {
 }
 
 /// One human-readable line per journal event. Kept as a top-level function so
-/// tests can cover the wording without pumping widgets.
+/// tests can cover the wording without pumping widgets. Non-user sources
+/// (sync, share, automation, undo, ...) get a trailing "· <Source>" tag;
+/// direct user actions — the overwhelming majority — stay unadorned.
 String describeItemEvent(ItemEvent event) {
+  final base = _describeItemEventBase(event);
+  return event.source == TaskChangeSource.user
+      ? base
+      : '$base · ${TaskChangeSource.label(event.source)}';
+}
+
+String _describeItemEventBase(ItemEvent event) {
   String suffix() => event.seeded ? ' (reconstructed)' : '';
   Object? changeTo(String field) {
     for (final change in event.patch) {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
 import 'item_repository.dart';
@@ -111,7 +112,7 @@ class ShareIntentService {
         tasks.add(buildTask(text));
       }
       applyDefaultDeadlineTimes(tasks);
-      await repository.saveItems(tasks);
+      await repository.saveItems(tasks, source: TaskChangeSource.share);
       LogService.add('ShareIntentService',
           'Created ${texts.length} task(s) from share (no home page open)');
     } catch (_) {}

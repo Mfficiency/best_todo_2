@@ -8,6 +8,7 @@ import '../models/countdown_timer.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import 'attachment_storage_service.dart';
 import 'item_event_journal.dart';
 import 'label_service.dart';
@@ -127,7 +128,10 @@ class StorageService {
     return false;
   }
 
-  Future<void> saveTaskList(List<Task> tasks) async {
+  Future<void> saveTaskList(
+    List<Task> tasks, {
+    String source = TaskChangeSource.user,
+  }) async {
     // Before this version's first-ever write, snapshot whatever the previous
     // app version left on disk (no-op after the first call).
     await PreUpdateBackup.ensure();
@@ -138,7 +142,8 @@ class StorageService {
     final baseline = _journalBaseline;
     _journalBaseline = snapshot;
     if (baseline != null) {
-      ItemEventJournal.instance.recordDiff(before: baseline, after: snapshot);
+      ItemEventJournal.instance
+          .recordDiff(before: baseline, after: snapshot, source: source);
     }
     // Structured-label dual-write: make sure every token on any task exists
     // as a first-class Label. Fire-and-forget and write-free once all tokens
@@ -268,11 +273,15 @@ class StorageService {
         }
         tasks.removeWhere((t) => t.isDone);
       }
-      if (isNewDay || backfilled) await saveTaskList(tasks);
+      if (isNewDay || backfilled) {
+        await saveTaskList(tasks, source: TaskChangeSource.automation);
+      }
       await _migrateWishlistIntoTasks(tasks);
       // Wishes whose feature has since been built tick themselves off. Real
       // history (done + labelled), so this save is journalled normally.
-      if (applyShippedWishes(tasks)) await saveTaskList(tasks);
+      if (applyShippedWishes(tasks)) {
+        await saveTaskList(tasks, source: TaskChangeSource.automation);
+      }
       return tasks;
     } catch (_) {
       return <Task>[];
@@ -297,7 +306,7 @@ class StorageService {
     // Save the merged list BEFORE emptying the legacy file: saveTaskList's
     // pre-update snapshot then still captures the original wishlist.json,
     // and a crash in between merely re-merges next load (deduped by uid).
-    await saveTaskList(tasks);
+    await saveTaskList(tasks, source: TaskChangeSource.automation);
     await saveWishlist(<Task>[]);
   }
 

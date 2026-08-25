@@ -473,6 +473,62 @@ separated) in one dialog. Deliberately dumb today (a fixed dictionary, no real N
 plan is to later swap the matching in `tagsFor` for an on-device LLM without touching
 callers, which only ever see the resulting tag list.
 
+### 4.2h Change sources & global Undo (0.1.281)
+
+**Source tracking.** Every `ItemEvent` now carries a `source` field — one of
+`TaskChangeSource`'s constants (`lib/models/task_change_source.dart`): `user` (default,
+omitted from JSON to keep old journal lines readable as-is), `sync` (stamped on every
+`TodoistSyncService` write — push, the two pull saves, §4.2 Todoist sync above), `share`
+(Android share-sheet tasks), `automation` (day-rollover archiving, recurring-task
+generation, shipped-wish auto-completion, wishlist migration), `undo`/`redo` (the global
+Undo/Redo below), and `system` (pre-journal history reconstructed by
+`ItemHistorySeeder`/the dev-seed timelines, which predates source tracking).
+`ItemEventJournal.diffSnapshots`/`recordDiff` and `StorageService.saveTaskList` take an
+optional `source` parameter (threaded through `ItemRepository.saveItems`) that's stamped
+on every event one save produces. The task-detail History section
+(`describeItemEvent`, `lib/ui/task_detail_page.dart`) appends `· <Source>` to non-`user`
+lines (e.g. "Created · Share"); a plain user action stays unadorned since that's the
+overwhelming majority of history.
+
+**Global Undo/Redo.** `TaskMutationService` (`lib/services/task_mutation_service.dart`,
+singleton) is a bounded (30-entry) undo/redo stack sitting alongside every task-list
+save, without owning persistence itself. The home page's three existing save
+chokepoints — `_saveTasks()`/`_saveDeletedTasks()`/`_saveBinTasks()`, which every
+mutation in the file already funnels through (active list, the Archived Items list, the
+real Deleted bin — §4.2g) — call `noteActiveChange`/`noteDeletedChange`/`noteBinChange`
+right alongside their existing `ItemRepository` call. All three notes coalesce into one
+microtask-scheduled flush, so an archive-then-bin move (`_moveArchivedToBin`, which
+calls `_saveDeletedTasks()` then `_saveBinTasks()` back to back, synchronously) becomes
+exactly one undo entry: **bulk/paired changes undo as one action** because Dart's
+microtask queue only drains after the current synchronous call stack finishes.
+`noteBaseline` is called once per session, right after `_loadTasks()` reads the three
+on-disk lists and before any seeding/migration mutates them, so the first save doesn't
+get diffed against nothing and misread as "everything was just created". Each flush
+that finds a real change pushes a three-way before/after snapshot (the same
+`uid → task JSON` shape `StorageService` diffs into the journal) with an auto-generated
+description (`TaskMutationService.describeChange`, tested directly): grouped per-task by
+what happened across all three lists — created/completed/reopened/rescheduled/moved/
+relabeled/archived/restored/deleted (archive → bin)/denied (straight to bin)/permanently
+deleted (bin → gone)/edited — collapsing a same-kind batch into one phrase ("Completed 3
+tasks") rather than one line per task. `undo()`/`redo()` persist the reverted/re-applied
+lists straight through `ItemRepository` tagged `TaskChangeSource.undo`/`.redo` —
+bypassing the note/flush path entirely, so applying an undo is never itself undoable,
+and (since `StorageService` runs its own independent before/after diff on every
+`saveTaskList` call) the per-task History timeline picks up an active-list revert as an
+ordinary tagged event for free. The home app bar carries Undo/Redo icon buttons
+(`ValueListenableBuilder` over `TaskMutationService.instance.revision`, disabled with
+nothing to act on); tapping either applies the returned snapshot to `_tasks`/
+`_deletedTasks`/`_binTasks` **in place** (`clear()` + `addAll()`, never reassigning the
+list) since other open pages (Projects, Archived Items, the bin) hold those exact list
+instances by reference, then shows a snackbar with the action's description. "Priority"
+is not a separate concept in this app — it is a `label` edit (`priority-low/-medium/
+-high` tokens, §4.2c) — so it is already covered by the mechanisms above without its own
+event type. `WishlistPage` and `WaitingApprovalPage` (whose `_deny` writes the bin directly, see
+§4.2g) each keep their own independently-loaded copy of the task list — not shared by
+reference with the home page — and are deliberately left out of this undo stack: wiring
+a second, independently-timed reader/writer into the same before/after baseline risks
+misreading ordinary staleness between the two pages as a real edit.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next
