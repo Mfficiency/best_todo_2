@@ -1,5 +1,9 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/task.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -8,6 +12,27 @@ import '../services/task_widget_service.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
+
+/// A pending item's swipe options: the approve side (lift the approval gate
+/// and schedule it) or the deny side (drop it, or approve it onto one of a
+/// few quick weekdays instead).
+enum _PendingSwipeMode { approve, deny }
+
+class _PendingWeekdayOption {
+  final String label;
+  final int weekday;
+
+  const _PendingWeekdayOption(this.label, this.weekday);
+}
+
+/// Quick weekday shortcuts on the deny side — same set as the home list's
+/// swipe-to-a-weekday shortcuts.
+const _pendingSwipeWeekdayOptions = <_PendingWeekdayOption>[
+  _PendingWeekdayOption('Fri', DateTime.friday),
+  _PendingWeekdayOption('Sat', DateTime.saturday),
+  _PendingWeekdayOption('Sun', DateTime.sunday),
+  _PendingWeekdayOption('Mon', DateTime.monday),
+];
 
 /// Tasks pulled in via the Todoist workflow land here first — tagged with
 /// [waitingApprovalToken] and hidden from every other list (home tabs,
@@ -56,6 +81,27 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   List<Task> _pending() => ItemViews.waitingApproval(_tasks);
 
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Day offsets for the [Config.tabs] destinations a pending item can be
+  /// approved into, mirroring `HomePageState._offsetDays`. The last tab
+  /// (Future) has no offset — it always resolves to the fixed far-future
+  /// sentinel date.
+  static const List<int> _tabOffsetDays = [0, 1, 2, 7, 30];
+
+  DateTime _dueDateForTab(int tabIndex) {
+    if (tabIndex >= _tabOffsetDays.length) return Task.futureBucketMarker;
+    return _dateOnly(DateTime.now())
+        .add(Duration(days: _tabOffsetDays[tabIndex]));
+  }
+
+  DateTime _nextWeekdayDate(int weekday) {
+    final start = _dateOnly(DateTime.now());
+    var daysUntil = (weekday - start.weekday) % 7;
+    if (daysUntil == 0) daysUntil = 7;
+    return start.add(Duration(days: daysUntil));
+  }
+
   /// Removes [waitingApprovalToken] (and its legacy spellings), making the
   /// task visible wherever it belongs (today's list, a project, the
   /// wishlist, ...). The next Todoist sync pushes the shortened label array,
@@ -68,23 +114,79 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     LogService.add('WaitingApprovalPage._approve', 'Approved "${task.title}"');
   }
 
+  /// Approves [task] and schedules it: due on the date [tabIndex] (an index
+  /// into [Config.tabs]) maps to — the swipe-side quick-select shortcuts.
+  void _approveWithDate(Task task, int tabIndex) {
+    setState(() {
+      task.label = removeWaitingApprovalToken(task.label);
+      task.dueDate = _dueDateForTab(tabIndex);
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._approve',
+        'Approved "${task.title}", due ${task.dueDate}');
+  }
+
+  /// Approves [task], due on the next occurrence of [weekday].
+  void _approveToWeekday(Task task, int weekday) {
+    if (weekday < DateTime.monday || weekday > DateTime.sunday) return;
+    setState(() {
+      task.label = removeWaitingApprovalToken(task.label);
+      task.dueDate = _nextWeekdayDate(weekday);
+      final now = DateTime.now();
+      task.movedAt = now;
+      task.rescheduledAt = now;
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._approve',
+        'Approved "${task.title}", due ${task.dueDate}');
+  }
+
   /// Denies the task by sending it straight to the real Deleted bin — unlike
   /// a normal delete elsewhere in the app (which only archives), a denial was
   /// never wanted in the first place, so it skips the archive and starts
   /// aging toward permanent purge right away (recoverable from the bin until
-  /// then).
-  Future<void> _deny(Task task) async {
-    setState(() {
-      _tasks.remove(task);
-    });
-    task.deletedAt = DateTime.now();
-    task.autoDeleted = false;
-    final binned = await _repository.loadBinItems();
-    binned.insert(0, task);
-    if (binned.length > 100) binned.removeLast();
-    await _repository.saveBinItems(binned);
-    await _save();
+  /// then). Same home-style undo window as the main list's delete swipe.
+  void _deny(Task task) {
+    final originalIndex = _tasks.indexOf(task);
+    if (originalIndex < 0) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() => _tasks.removeAt(originalIndex));
+    _save();
     LogService.add('WaitingApprovalPage._deny', 'Denied "${task.title}"');
+
+    late Timer timer;
+    timer = Timer(Config.delayDuration, () async {
+      task.deletedAt = DateTime.now();
+      task.autoDeleted = false;
+      final binned = await _repository.loadBinItems();
+      binned.insert(0, task);
+      if (binned.length > 100) binned.removeLast();
+      await _repository.saveBinItems(binned);
+      messenger.hideCurrentSnackBar();
+    });
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Denied "${task.title}"'),
+          duration: Config.delayDuration,
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
+              setState(() => _tasks.insert(originalIndex, task));
+              _save();
+            },
+          ),
+        ),
+      );
   }
 
   @override
@@ -100,27 +202,301 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
                   itemCount: pending.length,
                   itemBuilder: (context, index) {
                     final task = pending[index];
-                    return ListTile(
-                      title: LinkifiedText(task.title),
-                      subtitle: task.description.isNotEmpty
-                          ? LinkifiedText(task.description)
-                          : null,
-                      isThreeLine: task.description.isNotEmpty,
-                      leading: IconButton(
-                        icon: const Icon(Icons.check_circle_outline),
-                        tooltip: 'Approve',
-                        color: Colors.green,
-                        onPressed: () => _approve(task),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.cancel_outlined),
-                        tooltip: 'Deny',
-                        color: Theme.of(context).colorScheme.error,
-                        onPressed: () => _deny(task),
-                      ),
+                    return _PendingTaskTile(
+                      key: ValueKey(task.uid),
+                      task: task,
+                      onApprove: () => _approve(task),
+                      onApproveWithDate: (tabIndex) =>
+                          _approveWithDate(task, tabIndex),
+                      onApproveToWeekday: (weekday) =>
+                          _approveToWeekday(task, weekday),
+                      onDeny: () => _deny(task),
                     );
                   },
                 ),
     );
+  }
+}
+
+/// A pending item rendered like a home-page task tile, with exactly the home
+/// list's swipe gestures: swiping toward the approve side offers Today/
+/// Tomorrow/Day After Tomorrow/Next Week/Next Month/Future shortcuts and
+/// approves the item onto today when the countdown runs out; swiping toward
+/// the deny side offers Deny plus Fri/Sat/Sun/Mon shortcuts (which approve
+/// the item onto that day) and denies it when the countdown runs out.
+/// Directions follow [Config.swipeLeftDelete] like the home list. The plain
+/// leading/trailing Approve/Deny icon buttons stay as one-tap alternatives
+/// that don't touch the due date.
+class _PendingTaskTile extends StatefulWidget {
+  final Task task;
+  final VoidCallback onApprove;
+  final void Function(int tabIndex) onApproveWithDate;
+  final void Function(int weekday) onApproveToWeekday;
+  final VoidCallback onDeny;
+
+  const _PendingTaskTile({
+    Key? key,
+    required this.task,
+    required this.onApprove,
+    required this.onApproveWithDate,
+    required this.onApproveToWeekday,
+    required this.onDeny,
+  }) : super(key: key);
+
+  @override
+  State<_PendingTaskTile> createState() => _PendingTaskTileState();
+}
+
+class _PendingTaskTileState extends State<_PendingTaskTile>
+    with SingleTickerProviderStateMixin {
+  _PendingSwipeMode? _mode;
+  Timer? _timer;
+  late final AnimationController _progressController;
+  double _dragOffset = 0;
+  bool _dragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressController = AnimationController(
+      vsync: this,
+      duration: Config.delayDuration,
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _progressController.dispose();
+    super.dispose();
+  }
+
+  void _startOptions(_PendingSwipeMode mode) {
+    setState(() => _mode = mode);
+    _timer?.cancel();
+    _progressController.reset();
+    _progressController.forward();
+    _timer = Timer(Config.delayDuration, () {
+      if (!mounted || _mode != mode) return;
+      _progressController.stop();
+      setState(() => _mode = null);
+      if (mode == _PendingSwipeMode.approve) {
+        widget.onApproveWithDate(0); // Today
+      } else {
+        widget.onDeny();
+      }
+    });
+  }
+
+  void _startApproveOptions() => _startOptions(_PendingSwipeMode.approve);
+  void _startDenyOptions() => _startOptions(_PendingSwipeMode.deny);
+
+  void _closeOptions() {
+    _timer?.cancel();
+    _progressController.stop();
+    if (mounted) setState(() => _mode = null);
+  }
+
+  void _selectApprove(int tabIndex) {
+    _closeOptions();
+    widget.onApproveWithDate(tabIndex);
+  }
+
+  void _selectDeny() {
+    _closeOptions();
+    widget.onDeny();
+  }
+
+  void _selectWeekday(int weekday) {
+    _closeOptions();
+    widget.onApproveToWeekday(weekday);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final task = widget.task;
+    final listTile = ListTile(
+      title: LinkifiedText(task.title),
+      subtitle: task.description.isNotEmpty
+          ? LinkifiedText(task.description)
+          : null,
+      isThreeLine: task.description.isNotEmpty,
+      leading: IconButton(
+        icon: const Icon(Icons.check_circle_outline),
+        tooltip: 'Approve',
+        color: Colors.green,
+        onPressed: widget.onApprove,
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.cancel_outlined),
+        tooltip: 'Deny',
+        color: Theme.of(context).colorScheme.error,
+        onPressed: widget.onDeny,
+      ),
+    );
+
+    final stackTile = Stack(
+      children: [
+        listTile,
+        if (_mode != null)
+          Positioned.fill(
+            child: Container(
+              color: Theme.of(context).cardColor.withValues(alpha: 0.9),
+              alignment: Alignment.centerRight,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_mode == _PendingSwipeMode.approve)
+                        for (var i = 0; i < Config.tabs.length; i++)
+                          TextButton(
+                            onPressed: () => _selectApprove(i),
+                            child: Text(Config.tabs[i]),
+                          ),
+                      if (_mode == _PendingSwipeMode.deny) ...[
+                        TextButton(
+                          onPressed: _selectDeny,
+                          child: const Text('Deny'),
+                        ),
+                        for (final option in _pendingSwipeWeekdayOptions)
+                          TextButton(
+                            onPressed: () => _selectWeekday(option.weekday),
+                            child: Text(option.label),
+                          ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 60,
+                    child: AnimatedBuilder(
+                      animation: _progressController,
+                      builder: (context, child) {
+                        return LinearProgressIndicator(
+                            value: _progressController.value);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+
+    final slide = AnimatedSlide(
+      offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
+      duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
+      child: stackTile,
+    );
+
+    Widget? background;
+    if (_dragOffset != 0) {
+      final originalWasRight = _mode != null &&
+          Config.swipeLeftDelete == (_mode == _PendingSwipeMode.approve);
+      final isCancelDrag = _mode != null &&
+          ((originalWasRight && _dragOffset < 0) ||
+              (!originalWasRight && _dragOffset > 0));
+      final dragToDeny =
+          Config.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
+      if (isCancelDrag) {
+        final alignment =
+            _dragOffset < 0 ? Alignment.centerRight : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.orange.withValues(alpha: 0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      } else if (dragToDeny) {
+        final alignment = Config.swipeLeftDelete
+            ? Alignment.centerRight
+            : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.red.withValues(alpha: 0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Icon(Icons.cancel_outlined, color: Colors.white),
+          ),
+        );
+      } else {
+        final alignment = Config.swipeLeftDelete
+            ? Alignment.centerLeft
+            : Alignment.centerRight;
+        background = Positioned.fill(
+          child: Container(
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Icon(Icons.check_circle_outline,
+                color: Theme.of(context).colorScheme.primary),
+          ),
+        );
+      }
+    }
+
+    Widget content = Stack(
+      children: [
+        if (background != null) background,
+        slide,
+      ],
+    );
+
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    if (isAndroid || kIsWeb) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) {
+          setState(() => _dragging = true);
+        },
+        onHorizontalDragUpdate: (details) {
+          setState(() => _dragOffset += details.delta.dx);
+        },
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          const threshold = 100;
+          final swipedRight = _dragOffset > threshold || velocity > 500;
+          final swipedLeft = _dragOffset < -threshold || velocity < -500;
+          if (_mode != null) {
+            final originalWasRight = Config.swipeLeftDelete ==
+                (_mode == _PendingSwipeMode.approve);
+            if ((originalWasRight && swipedLeft) ||
+                (!originalWasRight && swipedRight)) {
+              _closeOptions();
+            }
+          } else if (Config.swipeLeftDelete) {
+            if (swipedRight) {
+              _startApproveOptions();
+            } else if (swipedLeft) {
+              _startDenyOptions();
+            }
+          } else {
+            if (swipedRight) {
+              _startDenyOptions();
+            } else if (swipedLeft) {
+              _startApproveOptions();
+            }
+          }
+          setState(() {
+            _dragging = false;
+            _dragOffset = 0;
+          });
+        },
+        child: content,
+      );
+    }
+
+    return content;
   }
 }

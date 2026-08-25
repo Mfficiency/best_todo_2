@@ -327,6 +327,25 @@ it, so the initial pull pushes nothing back and the Todoist item's `labels` arra
 untouched. Approving changes `_localFingerprint`, so the next sync pushes the shortened
 label array — the tag is removed on the Todoist side too, exactly once.
 
+**Swipe approve/deny (0.1.272), matching `TaskTile`'s move/delete swipe exactly:** each
+row in `WaitingApprovalPage` (`_PendingTaskTile`) carries the same gesture mechanics as
+the home list and the Wishlist tile (drag with `AnimatedSlide`, 100 px/500 velocity
+thresholds, directions honor `Config.swipeLeftDelete`, `GestureDetector` on Android/web).
+The approve-side swipe opens a shortcut row of every `Config.tabs` label (Today/Tomorrow/
+Day After Tomorrow/Next Week/Next Month/Future) with the `Config.delayDuration` countdown
+bar; tapping one, or letting the countdown run out (default: Today), approves the task
+(`removeWaitingApprovalToken`) AND schedules it — sets `dueDate` to that bucket's date
+(same day math as `HomePageState._dueDateForTab`) plus `movedAt`/`rescheduledAt`. The
+deny-side swipe opens a Deny button plus Fri/Sat/Sun/Mon weekday shortcuts (same set as
+`TaskTile`'s delete-side weekday options): a weekday shortcut approves the task onto the
+next occurrence of that day instead of denying it; Deny, or letting the countdown run out,
+denies the task with the same home-style undo snackbar as everywhere else in the app —
+only after the undo window expires does it move to the real Deleted bin (previously
+`_deny` moved it there immediately, with no undo). Swiping back toward the other side
+while options are open cancels, as on the home list. The original leading/trailing
+Approve/Deny icon buttons are unchanged: they stay one-tap alternatives that lift the
+approval gate (or deny) without touching `dueDate`.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**

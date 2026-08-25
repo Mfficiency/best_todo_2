@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.272] - 2026-08-25
+- Waiting for Approval now has the same swipe gestures as the main list: swipe one way to approve a pending item onto today, with quick shortcuts for Tomorrow/Day After Tomorrow/Next Week/Next Month/Future; swipe the other way to deny it, with Fri/Sat/Sun/Mon shortcuts to approve it onto a specific day instead. Denying now gets an undo window before the item moves to the bin, matching every other delete swipe in the app.
+
 ## [0.1.271] - 2026-08-25
 - Fixed a launch failure that could leave the app on a blank screen: a startup step that fails (for example saving data on a platform without file storage) no longer stops the app from opening.
 - Local build: 2026-08-25 06:14
