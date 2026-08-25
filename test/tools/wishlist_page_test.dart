@@ -224,6 +224,8 @@ void main() {
 
     expect(find.text('Buy a telescope'), findsNothing);
     expect(find.text('Deleted "Buy a telescope"'), findsOneWidget);
+    // Let the undo timer fire so it doesn't leak past the end of the test.
+    await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
   });
 
   testWidgets(
