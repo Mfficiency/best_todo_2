@@ -1458,7 +1458,7 @@ clue for the missing-receiver bug.
 
 ## 8. Home-screen widgets (Android)
 
-Two widgets via `home_widget` (app group `group.homeScreenApp`):
+Three widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
@@ -1490,6 +1490,22 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
   binding+registrant init → `AlarmService.toggleInStorage` → full awaited reschedule. This
   chain is what makes a widget toggle actually schedule/cancel the OS alarm with the app
   closed.
+- **Food Diary widget** (`FoodDiaryWidgetProvider.kt`, 0.1.278): a "+" that opens the
+  in-app "create entry" dialog directly (`besttodofood://add` → `FoodDiaryPage(autoAddEntry:
+  true)`, which auto-opens `_editEntry()` on first frame, same pattern as the alarm widget's
+  `edit?id=`); tapping anywhere else opens the Food Diary list (`besttodofood://open`). Both
+  are foreground `HomeWidgetLaunchIntent`s, unlike the other two widgets' background
+  toggles — logging food always needs the UI, so there is no background isolate path here.
+  Turns the whole background red once a meal checkpoint (8:00/13:00/20:00 — breakfast/lunch/
+  dinner) has passed today with nothing logged in that window (dueDate falling in
+  `[checkpoint, nextCheckpoint)`, last window running to midnight). `FoodDiaryWidgetService`
+  (`lib/services/food_diary_widget_service.dart`) pushes only "was anything logged in each
+  window today" booleans plus the date they describe, synced from `FoodDiaryPage._save`,
+  `home_page._updateHomeWidget` and `WaitingApprovalPage._save`; whether a checkpoint has
+  *passed* is deliberately decided in Kotlin against the live clock (`food_diary_widget_
+  info.xml` sets `updatePeriodMillis` = 30 min), so the color is right even when the widget
+  redraws on its own schedule with the app never opened — a purely Flutter-computed flag
+  would go stale the moment the clock crosses a checkpoint without a save happening.
 
 ## 9. Android platform config
 
@@ -1510,7 +1526,7 @@ the plugin ships an empty manifest and its PendingIntent targets this class) +
 `RebootBroadcastReceiver`; flutter_local_notifications `ScheduledNotificationReceiver` +
 `ScheduledNotificationBootReceiver` (BOOT/PACKAGE_REPLACED/quickboot) +
 `ActionBroadcastReceiver` (snooze/dismiss); home_widget background receiver/service; the
-two widget providers.
+three widget providers.
 
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(23, flutter.minSdkVersion)` (androidx.work via home_widget needs 23); Java/Kotlin 11
@@ -1949,6 +1965,10 @@ Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 `featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
 drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
 on return (the tool loads/saves the list on its own, like Wishlist).
+
+A home-screen widget mirrors the tool (§8, "Food Diary widget") — its "+" opens this
+same add dialog and its background goes red once a meal checkpoint has passed with
+nothing logged.
 
 **Dev seed (0.1.270):** when no `isEatingHabit` task exists yet and `Config.isDev`, the
 page seeds three entries spread across the day (breakfast/lunch/dinner, each with its own

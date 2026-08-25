@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../services/food_diary_widget_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../utils/date_time_format.dart';
@@ -20,7 +21,11 @@ import 'subpage_app_bar.dart';
 /// [ItemViews.foodDiary] — and swiping one away moves it to the Archived
 /// Items list, exactly like deleting a wishlist item.
 class FoodDiaryPage extends StatefulWidget {
-  const FoodDiaryPage({Key? key}) : super(key: key);
+  /// Opens the "add entry" dialog automatically on first build, used when
+  /// arriving from the home-screen widget's "+" (`besttodofood://add`).
+  final bool autoAddEntry;
+
+  const FoodDiaryPage({Key? key, this.autoAddEntry = false}) : super(key: key);
 
   @override
   State<FoodDiaryPage> createState() => _FoodDiaryPageState();
@@ -56,6 +61,9 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       _tasks = tasks;
       _loading = false;
     });
+    if (widget.autoAddEntry) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _editEntry());
+    }
   }
 
   List<Task> _buildDevSeed() {
@@ -93,7 +101,10 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     ];
   }
 
-  Future<void> _save() => _repository.saveItems(_tasks);
+  Future<void> _save() async {
+    await _repository.saveItems(_tasks);
+    await FoodDiaryWidgetService.sync(_tasks);
+  }
 
   /// Entries sorted newest-eaten-first, undated ones (shouldn't normally
   /// happen) last.

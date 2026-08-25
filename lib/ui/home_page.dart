@@ -30,6 +30,7 @@ import '../services/storage_service.dart';
 import '../services/streak_service.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_sync_service.dart';
+import '../services/food_diary_widget_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
@@ -2051,7 +2052,10 @@ class _HomePageState extends State<HomePage>
         'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }
 
-  Future<void> _updateHomeWidget() => TaskWidgetService.sync(_tasks);
+  Future<void> _updateHomeWidget() async {
+    await TaskWidgetService.sync(_tasks);
+    await FoodDiaryWidgetService.sync(_tasks);
+  }
 
   /// Picks up completions made on the home-screen widget while the app was in
   /// the background ([Config.widgetCheckboxes]). The widget writes straight to

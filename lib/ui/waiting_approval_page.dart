@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
+import '../services/food_diary_widget_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
@@ -78,6 +79,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   Future<void> _save() async {
     await _repository.saveItems(_tasks);
     await TaskWidgetService.sync(_tasks);
+    await FoodDiaryWidgetService.sync(_tasks);
   }
 
   List<Task> _pending() => ItemViews.waitingApproval(

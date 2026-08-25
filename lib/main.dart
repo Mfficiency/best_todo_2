@@ -10,6 +10,7 @@ import 'ui/about_page.dart';
 import 'ui/alarm_ring_page.dart';
 import 'ui/alarms_page.dart';
 import 'ui/dice_timer_page.dart';
+import 'ui/food_diary_page.dart';
 import 'ui/home_scaffold_key.dart';
 import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
@@ -21,6 +22,7 @@ import 'config.dart';
 import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
+import 'services/food_diary_widget_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
@@ -363,6 +365,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _handleWidgetClick(Uri? uri) async {
     if (uri == null) return;
+    if (uri.scheme == FoodDiaryWidgetService.scheme) {
+      switch (uri.host) {
+        case FoodDiaryWidgetService.hostAdd:
+          _openFoodDiary(autoAdd: true);
+          break;
+        case FoodDiaryWidgetService.hostOpen:
+          _openFoodDiary();
+          break;
+      }
+      return;
+    }
     final id = uri.queryParameters['id'];
     switch (uri.host) {
       case AlarmWidgetService.hostToggle:
@@ -385,6 +398,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (navigator == null) return;
     navigator.push(
       MaterialPageRoute(builder: (_) => AlarmsPage(editUid: editUid)),
+    );
+  }
+
+  void _openFoodDiary({bool autoAdd = false}) {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator == null) return;
+    navigator.push(
+      MaterialPageRoute(builder: (_) => FoodDiaryPage(autoAddEntry: autoAdd)),
     );
   }
 
