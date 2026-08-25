@@ -1,35 +1,19 @@
-import 'dart:io';
-
 import 'package:besttodo/models/label.dart';
 import 'package:besttodo/services/label_service.dart';
 import 'package:besttodo/ui/label_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-
-class _FakePathProvider extends PathProviderPlatform {
-  _FakePathProvider(this.path);
-  final String path;
-
-  @override
-  Future<String?> getApplicationDocumentsPath() async => path;
-}
 
 void main() {
-  late Directory tempDir;
-
-  setUp(() async {
-    tempDir = await Directory.systemTemp.createTemp();
-    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+  // Deliberately no PathProviderPlatform override: the field
+  // registers/loads LabelService in the background on a fire-and-forget
+  // chain (see LabelService), and real dart:io calls kicked off from
+  // initState never complete inside a testWidgets fake-async zone (they
+  // just hang the test — see CLAUDE.md). Leaving path_provider
+  // unimplemented makes that chain fail fast (caught internally) instead,
+  // which is fine here since these tests only assert on in-memory state.
+  setUp(() {
     LabelService.instance.resetForTest();
-  });
-
-  // The field registers/loads in the background on a fire-and-forget chain
-  // (see LabelService); drain it here — outside the widget test's fake-async
-  // zone, where real file I/O actually completes — so nothing from one test
-  // leaks a late write into the next.
-  tearDown(() async {
-    await LabelService.instance.pendingWrites;
   });
 
   Future<void> pumpField(
@@ -126,6 +110,7 @@ void main() {
     await tester.tap(find.text('Add label'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'ignored');
+    await tester.pump();
     await tester.tap(find.text('Add "ignored"'));
     await tester.pump();
     await tester.tap(find.text('Cancel'));
