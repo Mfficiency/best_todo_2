@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/services/label_service.dart';
 import 'package:besttodo/services/todoist_sync_service.dart';
 import 'package:besttodo/ui/task_tile.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,14 @@ void main() {
     docsDir = await Directory.systemTemp.createTemp('task_tile_todoist_docs');
     PathProviderPlatform.instance = _FakePathProvider(docsDir.path);
     TodoistSyncService.resetForTest();
+    LabelService.instance.resetForTest();
+    // Expanding the tile renders LabelPickerField, which fires
+    // LabelService.ensureLoaded()/registerTokens() fire-and-forget from
+    // initState. Pre-loading here (a real async context, not the
+    // testWidgets fake-async zone) means that call is a no-op by the time
+    // it runs inside the test — otherwise its dart:io read never
+    // completes inside the fake zone and the test hangs (see CLAUDE.md).
+    await LabelService.instance.ensureLoaded();
   });
 
   Future<void> pumpTile(WidgetTester tester, Task task) async {
@@ -59,17 +68,17 @@ void main() {
       (tester) async {
     final task = Task(title: 'Synced task', description: 'Free-text notes');
     final stateFile = File('${docsDir.path}/todoist_sync_state.json');
-    await stateFile.writeAsString(jsonEncode({
-      'taskEntries': [
-        {
-          'localUid': task.uid,
-          'todoistId': '999',
-          'localFingerprint': 'fp',
-          'remoteFingerprint': 'fp',
-          'syncedAt': '2026-08-20T10:30:00.000Z',
-        }
-      ],
-    }));
+    await tester.runAsync(() => stateFile.writeAsString(jsonEncode({
+          'taskEntries': [
+            {
+              'localUid': task.uid,
+              'todoistId': '999',
+              'localFingerprint': 'fp',
+              'remoteFingerprint': 'fp',
+              'syncedAt': '2026-08-20T10:30:00.000Z',
+            }
+          ],
+        })));
     await tester.runAsync(() => TodoistSyncService.instance.ensureLoaded());
 
     await pumpTile(tester, task);
