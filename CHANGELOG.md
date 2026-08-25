@@ -2,6 +2,7 @@
 
 ## [0.1.273] - 2026-08-25
 - Waiting for Approval now has the same swipe gestures as the main list: swipe one way to approve a pending item onto today, with quick shortcuts for Tomorrow/Day After Tomorrow/Next Week/Next Month/Future; swipe the other way to deny it, with Fri/Sat/Sun/Mon shortcuts to approve it onto a specific day instead. Denying now gets an undo window before the item moves to the bin, matching every other delete swipe in the app.
+- Local build: 2026-08-25 06:47
 
 ## [0.1.272] - 2026-08-25
 - Add Weekly Hours Planner tool: a Monday-to-Friday 8:36-a-day plan split into two draggable work blocks around a half-hour lunch break, with a dotted Friday line showing the theoretical clock-out time needed to keep the week at 43 hours
