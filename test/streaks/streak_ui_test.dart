@@ -114,7 +114,7 @@ void main() {
       (tester) async {
     await pumpHome(tester, [Task(title: 'Solo task', dueDate: DateTime.now())]);
 
-    expect(find.byTooltip('Finish a task: no streak yet'), findsOneWidget);
+    expect(find.byTooltip('Finish: no streak yet'), findsOneWidget);
     expect(find.byIcon(Icons.casino), findsOneWidget);
     expect(flameIcon(), findsOneWidget);
   });
@@ -133,7 +133,7 @@ void main() {
     await tester.tap(find.byType(Checkbox).first);
     await settleIo(tester);
 
-    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+    expect(find.byTooltip('Finish: 1-day streak'), findsOneWidget);
     expect(find.text('1'), findsWidgets); // badge label
   });
 
@@ -164,7 +164,7 @@ void main() {
       streak: {dayKeyAgo(1): 1, dayKeyAgo(0): 2},
     );
 
-    await tester.tap(find.byTooltip('Finish a task: 2-day streak'));
+    await tester.tap(find.byTooltip('Finish: 2-day streak'));
     // The streak page's flame flickers forever — never pumpAndSettle here.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -341,7 +341,7 @@ void main() {
       ),
     ));
     await tester.pump();
-    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+    expect(find.byTooltip('Finish: 1-day streak'), findsOneWidget);
 
     // Create/plan have no goal configured yet, so they show the "no goal
     // set" placeholder instead of a streak count.
@@ -353,7 +353,7 @@ void main() {
 
     // ...and back around to the first one.
     await tester.pump(StreakFlameButton.cycleInterval);
-    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+    expect(find.byTooltip('Finish: 1-day streak'), findsOneWidget);
   });
 
   testWidgets('all three challenges done settles on one steady red flame',
@@ -433,7 +433,7 @@ void main() {
     ));
     await tester.pump();
 
-    expect(find.byTooltip('Finish a task: 1-day streak'), findsOneWidget);
+    expect(find.byTooltip('Finish: 1-day streak'), findsOneWidget);
     await tester.pump(StreakFlameButton.cycleInterval);
     expect(find.byTooltip('Exercise: 1-day streak'), findsOneWidget);
     await tester.pump(StreakFlameButton.cycleInterval);
@@ -478,7 +478,7 @@ void main() {
     ));
     await tester.pump();
 
-    expect(find.byTooltip('Finish a task: 1-day streak — still open today'),
+    expect(find.byTooltip('Finish: 1-day streak — still open today'),
         findsOneWidget);
     // Unlit: the outlined flame in the theme's disabled grey...
     expect(find.byIcon(Icons.local_fire_department_outlined), findsOneWidget);
@@ -510,7 +510,7 @@ void main() {
     await tester.tap(find.byType(Checkbox).first);
     await settleIo(tester);
 
-    expect(find.byTooltip('Finish a task: 2-day streak'), findsOneWidget);
+    expect(find.byTooltip('Finish: 2-day streak'), findsOneWidget);
     expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
     expect(tester.widget<Icon>(find.byIcon(Icons.local_fire_department)).color,
         isNot(ThemeData().disabledColor));
