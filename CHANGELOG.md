@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.272] - 2026-08-25
+- Settings → Filtering rules gained a Waiting for Approval view (with its own tag rules, like every other view) and a read-only built-in-rule line under each view explaining the business logic it already enforces unconditionally — e.g. Home always excludes Waiting for Approval, Archived, and Deleted items
+
 ## [0.1.271] - 2026-08-25
 - Fixed a launch failure that could leave the app on a blank screen: a startup step that fails (for example saving data on a platform without file storage) no longer stops the app from opening.
 

@@ -164,7 +164,14 @@ class ItemViews {
 
   /// Tasks pulled from Todoist that are still waiting for a human decision
   /// (see [waitingApprovalToken]) — the Waiting for Approval page's list.
-  static List<Task> waitingApproval(List<Task> tasks) => tasks
-      .where((t) => t.deletedAt == null && !isApproved(t))
-      .toList();
+  /// [rules] is the configured Waiting for Approval view filter, an extra
+  /// layer on top of the structural pending/non-deleted gate, see
+  /// [passesFilterRules].
+  static List<Task> waitingApproval(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              !isApproved(t) &&
+              passesFilterRules(t, rules))
+          .toList();
 }
