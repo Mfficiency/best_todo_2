@@ -127,15 +127,29 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   }
 }
 
+/// Runs one launch-time initialisation step, keeping a failure inside it from
+/// taking the whole launch down. Every step here is storage- or plugin-backed
+/// and can fail on a platform that lacks the plugin (web has no path_provider,
+/// so anything writing a JSON file throws `MissingPluginException`); an
+/// uncaught throw means `runApp` is never reached and the app is a blank
+/// screen instead of a degraded but usable one.
+Future<void> _initStep(String label, Future<void> Function() step) async {
+  try {
+    await step();
+  } catch (e) {
+    debugPrint('Startup step "$label" failed: $e');
+  }
+}
+
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
-  await Config.load();
-  await NotificationService.initialize();
+  await _initStep('config', Config.load);
+  await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
-    await SmsReportScheduler.applyFromConfig();
+    await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
   }
-  await AlarmService.instance.load();
+  await _initStep('alarms', AlarmService.instance.load);
   // Snapshot the device/permission state into the alarm log on every launch,
   // so a missed alarm can be diagnosed from the file after the fact. Fire and
   // forget: must not delay first frame.
@@ -144,20 +158,25 @@ Future<void> main() async {
     await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
     await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
   } catch (_) {}
-  final prefs = await SharedPreferences.getInstance();
+  SharedPreferences? prefs;
+  try {
+    prefs = await SharedPreferences.getInstance();
+  } catch (e) {
+    debugPrint('Startup step "preferences" failed: $e');
+  }
   // The mode question closes the intro, so someone who has never answered it
   // gets the whole welcome flow rather than the chooser on its own.
-  final introAlreadyShown = prefs.getBool('intro_shown') ?? false;
+  final introAlreadyShown = prefs?.getBool('intro_shown') ?? false;
   final showIntro = Config.isDev ? false : !introAlreadyShown || !Config.modeChosen;
   // The fresh-start/import-from-Todoist question is a one-time step of its
   // own, decoupled from intro_shown so it survives being interrupted (app
   // closed mid-onboarding). An install that had already finished onboarding
   // before this question existed backfills to "already answered" here so
   // existing users are never asked it after an upgrade.
-  var startupChoiceMade = prefs.getBool('startup_choice_made');
+  var startupChoiceMade = prefs?.getBool('startup_choice_made');
   if (startupChoiceMade == null) {
     startupChoiceMade = introAlreadyShown;
-    await prefs.setBool('startup_choice_made', startupChoiceMade);
+    await prefs?.setBool('startup_choice_made', startupChoiceMade);
   }
   final showStartupChoice = Config.isDev ? false : !startupChoiceMade;
   runApp(MyApp(

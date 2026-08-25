@@ -29,7 +29,11 @@ class AlarmService {
     // empty state.
     if (alarms.value.isEmpty && Config.isDev) {
       alarms.value = _buildDevSeed();
-      await _afterChange(trigger: 'dev seed');
+      // Persisting the seed is best-effort: on a platform without file storage
+      // the save throws, and the seeded alarms are still worth showing.
+      try {
+        await _afterChange(trigger: 'dev seed');
+      } catch (_) {}
     }
     _loaded = true;
   }
