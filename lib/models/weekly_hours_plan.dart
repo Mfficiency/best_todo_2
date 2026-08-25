@@ -148,3 +148,50 @@ class WeeklyHoursPlan {
         neededFridayMinutes;
   }
 }
+
+/// A manual, per-calendar-week record of actual over/undertime, on top of
+/// the block-edited [WeeklyHoursPlan] template (which stays a single
+/// reusable "typical week" — it has no date of its own). Keyed by the Monday
+/// of the week it applies to, so the Weekly Hours Planner's week navigation
+/// can show/edit a different value for each week you look at.
+class WeeklyActual {
+  /// Monday of the week this record is for, normalized to midnight.
+  final DateTime weekStart;
+
+  /// Signed minutes: positive means more was actually worked than the
+  /// template planned, negative means less.
+  final int overUndertimeMinutes;
+
+  WeeklyActual({required DateTime weekStart, this.overUndertimeMinutes = 0})
+      : weekStart = mondayOf(weekStart);
+
+  /// Normalizes any date to the Monday of its week, at midnight.
+  static DateTime mondayOf(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    return day.subtract(Duration(days: day.weekday - DateTime.monday));
+  }
+
+  /// Stable per-week key used to persist and look up records, `yyyy-MM-dd`
+  /// of the Monday.
+  String get weekKey => '${weekStart.year.toString().padLeft(4, '0')}-'
+      '${weekStart.month.toString().padLeft(2, '0')}-'
+      '${weekStart.day.toString().padLeft(2, '0')}';
+
+  WeeklyActual copyWith({int? overUndertimeMinutes}) => WeeklyActual(
+        weekStart: weekStart,
+        overUndertimeMinutes:
+            overUndertimeMinutes ?? this.overUndertimeMinutes,
+      );
+
+  factory WeeklyActual.fromJson(Map<String, dynamic> json) => WeeklyActual(
+        weekStart: DateTime.tryParse(json['weekStart'] as String? ?? '') ??
+            DateTime.now(),
+        overUndertimeMinutes:
+            (json['overUndertimeMinutes'] as num?)?.round() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'weekStart': weekStart.toIso8601String(),
+        'overUndertimeMinutes': overUndertimeMinutes,
+      };
+}

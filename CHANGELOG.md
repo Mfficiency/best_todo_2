@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.280] - 2026-08-25
+- Weekly Hours Planner: navigate between weeks with chevrons, record each week's actual over/undertime (folds into the weekly total shown), and the Google Calendar overlay now re-syncs automatically after every edit (block drag or over/undertime entry), not only when the page opens or you tap Import in Settings
+
 ## [0.1.279] - 2026-08-25
 - Added a dev-only "Widget Previews" drawer entry that mocks the Task/Alarms/Food Diary home-screen widgets in-app, so the screenshot changelog can show them off even though the real widgets are drawn by Android outside the Flutter app
 - Dev/laptop runs now seed a demo text attachment onto a starter task, and the screenshot changelog captures a task expanded on the main screen both with and without an attachment
