@@ -1,5 +1,7 @@
 import 'package:uuid/uuid.dart';
 
+import 'attachment.dart';
+
 class Task {
   static final Uuid _uuid = const Uuid();
 
@@ -101,6 +103,11 @@ class Task {
   static const String kanbanOngoing = 'ongoing';
   static const String kanbanClosed = 'closed';
 
+  /// Files and notes attached to this item (text, image, pdf — see
+  /// [Attachment]). File-backed entries point at a copy kept under the app
+  /// documents dir via `AttachmentStorageService`.
+  List<Attachment> attachments;
+
   Task({
     String? uid,
     required this.title,
@@ -128,7 +135,9 @@ class Task {
     this.isEatingHabit = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
+    List<Attachment>? attachments,
   })  : uid = uid ?? Task.newUid(),
+        attachments = attachments ?? <Attachment>[],
         // An explicit interval wins; a plain dueDate is a deadline
         // (start == end), matching what every existing caller means.
         startAt = startAt ?? dueDate,
@@ -189,6 +198,10 @@ class Task {
       isEatingHabit: json['isEatingHabit'] as bool? ?? false,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
+      attachments: (json['attachments'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((e) => Attachment.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 
@@ -223,5 +236,7 @@ class Task {
         'isEatingHabit': isEatingHabit,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,
+        if (attachments.isNotEmpty)
+          'attachments': attachments.map((a) => a.toJson()).toList(),
       };
 }

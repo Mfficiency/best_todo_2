@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/project_service.dart';
 import '../services/todoist_sync_service.dart';
 import '../utils/linkified_text.dart';
+import 'attachments_field.dart';
 import 'label_picker.dart';
 
 enum _SwipeOptionMode { move, delete }
@@ -761,6 +762,14 @@ class _TaskTileState extends State<TaskTile>
                     value: widget.task.label,
                     onChanged: (v) {
                       widget.task.label = v;
+                      widget.onChanged();
+                    },
+                  ),
+                  AttachmentsField(
+                    taskUid: widget.task.uid,
+                    attachments: widget.task.attachments,
+                    onChanged: (v) {
+                      widget.task.attachments = v;
                       widget.onChanged();
                     },
                   ),

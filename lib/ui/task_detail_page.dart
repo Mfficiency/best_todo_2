@@ -9,6 +9,7 @@ import '../services/label_service.dart';
 import '../services/reminder_sync_service.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
+import 'attachments_field.dart';
 import 'subpage_app_bar.dart';
 
 class TaskDetailPage extends StatelessWidget {
@@ -66,6 +67,15 @@ class TaskDetailPage extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           Text('Completed: ${task.isDone ? 'Yes' : 'No'}'),
+          if (task.attachments.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            AttachmentsField(
+              taskUid: task.uid,
+              attachments: task.attachments,
+              onChanged: (_) {},
+              readOnly: true,
+            ),
+          ],
           TaskReminderSection(task: task),
           TaskHistorySection(taskUid: task.uid),
         ],

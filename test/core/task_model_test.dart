@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:besttodo/models/attachment.dart';
 import 'package:besttodo/models/task.dart';
 
 void main() {
@@ -72,5 +73,45 @@ void main() {
 
     task.isEatingHabit = true;
     expect(Task.fromJson(task.toJson()).isEatingHabit, isTrue);
+  });
+
+  test('attachments default to empty and are omitted from JSON', () {
+    final task = Task(title: 'Plain');
+    expect(task.attachments, isEmpty);
+    expect(task.toJson().containsKey('attachments'), isFalse);
+    expect(
+        Task.fromJson(<String, dynamic>{'title': 'legacy'}).attachments,
+        isEmpty);
+  });
+
+  test('attachments (text, image, pdf) round-trip through JSON', () {
+    final task = Task(title: 'With attachments', attachments: [
+      Attachment(type: Attachment.typeText, text: 'a quick note'),
+      Attachment(
+        type: Attachment.typeImage,
+        fileName: 'photo.png',
+        relativePath: 'attachments/task1/a1.png',
+      ),
+      Attachment(
+        type: Attachment.typePdf,
+        fileName: 'doc.pdf',
+        relativePath: 'attachments/task1/a2.pdf',
+      ),
+    ]);
+
+    final decoded = Task.fromJson(task.toJson());
+
+    expect(decoded.attachments, hasLength(3));
+    expect(decoded.attachments[0].type, Attachment.typeText);
+    expect(decoded.attachments[0].text, 'a quick note');
+    expect(decoded.attachments[1].type, Attachment.typeImage);
+    expect(decoded.attachments[1].fileName, 'photo.png');
+    expect(decoded.attachments[1].relativePath, 'attachments/task1/a1.png');
+    expect(decoded.attachments[2].type, Attachment.typePdf);
+    expect(decoded.attachments[2].fileName, 'doc.pdf');
+    expect(decoded.attachments[2].relativePath, 'attachments/task1/a2.pdf');
+    for (var i = 0; i < 3; i++) {
+      expect(decoded.attachments[i].uid, task.attachments[i].uid);
+    }
   });
 }
