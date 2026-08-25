@@ -1766,13 +1766,20 @@ anything first. The user pastes the prompt into a Claude session with Todoist ac
 BestToDo picks up the resulting tag changes on its next Todoist sync. Confirms with a
 snackbar reminding the user to sync after pasting.
 
-**Clickable URLs (0.1.148):** http/https URLs in descriptions are auto-linkified by
-`LinkifiedText` (`lib/utils/linkified_text.dart`): a StatefulWidget that renders
-`Text.rich` with underlined, primary-colored link spans (trailing sentence punctuation
-excluded), owns and disposes the spans' `TapGestureRecognizer`s, and opens links via
-`url_launcher` (`LaunchMode.externalApplication`; `onOpenLink` test hook). A link tap
-wins the gesture arena over the tile's own `onTap`, so it never opens the edit dialog.
-Used by the wish tile subtitle and by `TaskDetailPage` (description and note).
+**Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
+numbers in descriptions are auto-linkified by `LinkifiedText`
+(`lib/utils/linkified_text.dart`): a StatefulWidget that renders `Text.rich` with
+underlined, primary-colored link spans (trailing sentence punctuation excluded), owns
+and disposes the spans' `TapGestureRecognizer`s, and opens links via `url_launcher`
+(`LaunchMode.externalApplication`; `onOpenLink` test hook). A link tap wins the gesture
+arena over the tile's own `onTap`, so it never opens the edit dialog. Phone matching is
+a shape regex (digits/spaces/dashes/dots/parens, optional leading `+`, 7-15 digits;
+a bare run with no separators needs 9+ digits so short item counts/IDs don't qualify)
+filtered to reject YYYY-MM-DD/MM-DD-YYYY-shaped text so due dates typed into a note
+aren't mistaken for numbers; a match dials via a `tel:` Uri built from its digits and
+any leading `+`. URL and phone matches share one pass so an accidental digit run inside
+a matched URL never double-links. Used by the wish tile subtitle and by `TaskDetailPage`
+(description and note).
 
 **Swipes (0.1.101, redesigned 0.1.258, sole entry point 0.1.259, Delete +
 8s sweep 0.1.261):** same gesture mechanics as `TaskTile` (drag with

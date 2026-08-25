@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.276] - 2026-08-25
+- Phone numbers in task descriptions and notes are now clickable too, same as URLs — tap one to open the dialer
+
 ## [0.1.275] - 2026-08-25
 - Settings → Filtering rules gained a Waiting for Approval view (with its own tag rules, like every other view) and a read-only built-in-rule line under each view explaining the business logic it already enforces unconditionally — e.g. Home always excludes Waiting for Approval, Archived, and Deleted items
 - The screenshot changelog job now also captures the Weekly Hours Planner grid alongside the rest of the tool pages
