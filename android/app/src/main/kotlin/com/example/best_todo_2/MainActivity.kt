@@ -1,6 +1,9 @@
 package com.mfficiency.best_todo_2
 
 import android.app.NotificationManager
+import android.app.AppOpsManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
@@ -17,6 +20,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import android.content.pm.ApplicationInfo
 
 class MainActivity : FlutterActivity() {
 
@@ -127,6 +131,41 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/digital_wellbeing",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasPermission" -> {
+                    val ops = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+                    val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
+                            android.os.Process.myUid(), packageName)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
+                            android.os.Process.myUid(), packageName)
+                    }
+                    result.success(mode == AppOpsManager.MODE_ALLOWED)
+                }
+                "openPermissionSettings" -> {
+                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                    result.success(null)
+                }
+                "querySessions" -> {
+                    val from = call.argument<Number>("from")?.toLong()
+                    val to = call.argument<Number>("to")?.toLong()
+                    if (from == null || to == null) {
+                        result.error("bad-args", "from/to missing", null)
+                    } else {
+                        result.success(queryUsageSessions(from, to))
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/alarm_ring",
@@ -267,5 +306,46 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    private fun queryUsageSessions(from: Long, to: Long): List<Map<String, Any>> {
+        val manager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val events = manager.queryEvents(from, to)
+        val event = UsageEvents.Event()
+        val starts = mutableMapOf<String, Long>()
+        val sessions = mutableListOf<Map<String, Any>>()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val pkg = event.packageName ?: continue
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
+                event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                starts[pkg] = maxOf(event.timeStamp, from)
+            } else if (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED ||
+                event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND) {
+                val start = starts.remove(pkg) ?: continue
+                if (event.timeStamp <= start) continue
+                val info = try { packageManager.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
+                val name = info?.let { packageManager.getApplicationLabel(it).toString() } ?: pkg
+                val category = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && info != null) {
+                    when (info.category) {
+                        ApplicationInfo.CATEGORY_GAME -> "Games"
+                        ApplicationInfo.CATEGORY_AUDIO, ApplicationInfo.CATEGORY_VIDEO -> "Entertainment"
+                        ApplicationInfo.CATEGORY_SOCIAL -> "Social"
+                        ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Productivity"
+                        ApplicationInfo.CATEGORY_NEWS -> "News"
+                        ApplicationInfo.CATEGORY_MAPS -> "Travel"
+                        else -> "Other"
+                    }
+                } else "Other"
+                sessions.add(mapOf("package" to pkg, "appName" to name,
+                    "category" to category, "start" to start,
+                    "end" to minOf(event.timeStamp, to)))
+            }
+        }
+        starts.forEach { (pkg, start) ->
+            sessions.add(mapOf("package" to pkg, "appName" to pkg,
+                "category" to "Other", "start" to start, "end" to to))
+        }
+        return sessions
     }
 }
