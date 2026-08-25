@@ -1,5 +1,7 @@
 import 'package:uuid/uuid.dart';
 
+import 'task_change_source.dart';
+
 /// A single change to one field of an item, recorded inside an [ItemEvent].
 /// Values are the JSON representations of the field (String/bool/int/null),
 /// so a change round-trips losslessly through the journal file.
@@ -69,6 +71,11 @@ class ItemEvent {
   /// timestamps, the deleted list, daily stats) rather than observed live.
   bool seeded;
 
+  /// Where the change came from — one of [TaskChangeSource]'s constants.
+  /// Absent on events written before source tracking existed; those default
+  /// to [TaskChangeSource.user] on read.
+  String source;
+
   ItemEvent({
     String? eventId,
     required this.itemId,
@@ -77,6 +84,7 @@ class ItemEvent {
     required this.type,
     List<FieldChange>? patch,
     this.seeded = false,
+    this.source = TaskChangeSource.user,
   })  : eventId = eventId ?? ItemEvent.newUid(),
         patch = patch ?? <FieldChange>[];
 
@@ -92,6 +100,7 @@ class ItemEvent {
                 .toList() ??
             <FieldChange>[],
         seeded: json['seeded'] as bool? ?? false,
+        source: json['source'] as String? ?? TaskChangeSource.user,
       );
 
   Map<String, dynamic> toJson() => {
@@ -102,5 +111,6 @@ class ItemEvent {
         'type': type,
         if (patch.isNotEmpty) 'patch': patch.map((c) => c.toJson()).toList(),
         if (seeded) 'seeded': seeded,
+        if (source != TaskChangeSource.user) 'source': source,
       };
 }

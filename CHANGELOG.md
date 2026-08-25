@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.283] - 2026-08-25
+- Task History and global Undo: every task change (create, edit, reschedule, priority/label, project, complete, archive, delete) now records who or what made it — you, sync (the Todoist integration), Android Share, or the app's own automation — visible in each task's History timeline; a new Undo/Redo pair in the app bar can step back (and forward) through recent actions, one tap per action, with bulk/paired changes like archiving or deleting undoing as a single step
+
 ## [0.1.282] - 2026-08-25
 - Added a second, 1x1 Food Diary home-screen widget that is nothing but the "+" button, for pinning to the smallest widget slot next to the full Food Diary widget
 

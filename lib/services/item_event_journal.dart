@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/item_event.dart';
+import '../models/task_change_source.dart';
 
 /// Append-only history journal for items (`item_events.jsonl`, one JSON
 /// event per line) plus a small per-item sequence index
@@ -70,6 +71,7 @@ class ItemEventJournal {
     required int Function(String uid) nextSeq,
     required bool Function(String uid) wasSeen,
     required DateTime at,
+    String source = TaskChangeSource.user,
   }) {
     final events = <ItemEvent>[];
 
@@ -87,6 +89,7 @@ class ItemEventJournal {
           patch: restored
               ? const []
               : [FieldChange('title', null, now['title'])],
+          source: source,
         ));
         continue;
       }
@@ -109,6 +112,7 @@ class ItemEventJournal {
           at: at,
           type: type,
           patch: changesByType[type],
+          source: source,
         ));
       }
     }
@@ -120,6 +124,7 @@ class ItemEventJournal {
           seq: nextSeq(uid),
           at: at,
           type: ItemEvent.typeDeleted,
+          source: source,
         ));
       }
     }
@@ -131,6 +136,7 @@ class ItemEventJournal {
   void recordDiff({
     required Map<String, Map<String, dynamic>> before,
     required Map<String, Map<String, dynamic>> after,
+    String source = TaskChangeSource.user,
   }) {
     final at = DateTime.now();
     _chain = _chain.then((_) async {
@@ -142,6 +148,7 @@ class ItemEventJournal {
           nextSeq: (uid) => seqs[uid] = (seqs[uid] ?? 0) + 1,
           wasSeen: (uid) => (seqs[uid] ?? 0) > 0,
           at: at,
+          source: source,
         );
         if (events.isEmpty) return;
         _sessionEvents.addAll(events);

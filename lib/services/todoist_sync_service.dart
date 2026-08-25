@@ -9,6 +9,7 @@ import '../config.dart';
 import '../models/project.dart';
 import '../models/sync_log_entry.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../models/todoist_sync_map_entry.dart';
 import '../utils/label_utils.dart';
 import 'item_repository.dart';
@@ -335,7 +336,8 @@ class TodoistSyncService {
     final existing = await ItemRepository.instance.loadItems();
     final todayLocal = pull(todayRemote);
     existing.addAll(todayLocal);
-    await ItemRepository.instance.saveItems(existing);
+    await ItemRepository.instance
+        .saveItems(existing, source: TaskChangeSource.sync);
     await _persistState();
 
     Future<SyncLogEntry?> finish() async {
@@ -344,7 +346,8 @@ class TodoistSyncService {
         if (restLocal.isNotEmpty) {
           final current = await ItemRepository.instance.loadItems();
           current.addAll(restLocal);
-          await ItemRepository.instance.saveItems(current);
+          await ItemRepository.instance
+              .saveItems(current, source: TaskChangeSource.sync);
         }
         await _persistState();
         stopwatch.stop();
@@ -714,7 +717,8 @@ class TodoistSyncService {
 
     _taskMap.removeWhere((e) => removedUids.contains(e.localUid));
 
-    await ItemRepository.instance.saveItems(allLocal);
+    await ItemRepository.instance
+        .saveItems(allLocal, source: TaskChangeSource.sync);
     await _persistState();
     return changeCount;
   }

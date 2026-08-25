@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models/attachment.dart';
 import '../models/shared_payload.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../utils/task_utils.dart';
 import 'attachment_storage_service.dart';
 import 'item_repository.dart';
@@ -142,7 +143,7 @@ class ShareIntentService {
     final tasks = await repository.loadItems();
     tasks.add(task);
     applyDefaultDeadlineTimes(tasks);
-    await repository.saveItems(tasks);
+    await repository.saveItems(tasks, source: TaskChangeSource.share);
     LogService.add(
         'ShareIntentService', 'Created task from share: ${task.title}');
   }
