@@ -34,6 +34,11 @@ BUILD_ARGS="$*"
 WINDOWS_STATUS="skipped"
 ANDROID_STATUS="skipped"
 
+# --- 0. Pull latest from origin ----------------------------------------
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "==> pulling latest from origin/$BRANCH"
+git pull --rebase --autostash origin "$BRANCH"
+
 # --- 1. Android APK -----------------------------------------------------
 # The first target pays for the preflight (test-report pull + smoke test);
 # later ones reuse it.
@@ -71,7 +76,6 @@ VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
 if [ "$SYNC" = "0" ]; then
   echo "==> SYNC=0: skipping git commit/push"
 else
-  BRANCH=$(git rev-parse --abbrev-ref HEAD)
   echo "==> syncing github_releases/ + CHANGELOG.md on $BRANCH"
 
   git add github_releases CHANGELOG.md
