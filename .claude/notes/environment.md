@@ -30,6 +30,8 @@ bash tool/build.sh apk           # gated build with versioned artifact names
   `assets/test_report.json` is committed on dev — no build step needed.
 - Historic build unsticker (from README): `flutter clean && flutter pub get &&
   flutter create . && flutter run`.
+- Need to build from this machine while it's asleep/off and you're elsewhere?
+  See `notes/remote-pc-wake.md` (Wake-on-LAN setup + remote build trigger).
 
 ## CI runners
 
