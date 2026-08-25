@@ -15,6 +15,7 @@ import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/streak_kind.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../services/alarm_service.dart';
 import '../services/auto_backup_service.dart';
 import '../services/auto_tag_service.dart';
@@ -38,14 +39,16 @@ import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'alarms_page.dart';
 import 'app_logs_page.dart';
+import 'archived_items_page.dart';
 import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
+import 'deleted_bin_page.dart';
 import 'dice_timer_page.dart';
+import 'food_diary_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
-import 'deleted_items_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
 import 'streak_celebration.dart';
@@ -85,7 +88,13 @@ class _HomePageState extends State<HomePage>
   /// All tasks in the app. Tasks are assigned a dueDate when created and
   /// filtered into the appropriate lists based on [_currentDate].
   final List<Task> _tasks = [];
+  /// Archived items ("Archived Items" page) — soft-deleted, capped by count,
+  /// never purged by age.
   final List<Task> _deletedTasks = [];
+  /// The real Deleted bin ("Deleted Items" page) — denials from Waiting for
+  /// Approval, or archived items sent on manually. Purged after
+  /// [Config.deletedItemsRetentionDays] days (see `StorageService.loadBinTaskList`).
+  final List<Task> _binTasks = [];
 
   final Map<String, DailyTaskStats> _dailyStatsByDay = {};
   // Item store goes through the repository seam; _storageService remains for
@@ -581,6 +590,7 @@ class _HomePageState extends State<HomePage>
     // Todo.md import) into the task list as isWish tasks.
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
+    final loadedBin = await _repository.loadBinItems();
     final loadedDailyStats = await _repository.loadDailyStats();
     // A share-sheet task created while this load was reading the file can be
     // in memory (via ShareIntentService's consumer) *and* in the read result
@@ -651,7 +661,6 @@ class _HomePageState extends State<HomePage>
         _seedDevLinkedReminder();
       }
     }
-    _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
       _deletedTasks.addAll(loadedDeleted);
       // Backfill auto-deleted seed items for dev users whose persisted
@@ -676,6 +685,11 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
       _saveDeletedTasks();
     }
+    _binTasks.addAll(loadedBin);
+    // Recurring-series regeneration below has to see the archive and the bin
+    // so a manually archived/binned instance's date stays skipped instead of
+    // being silently recreated — see _refreshRecurringForTask.
+    _refreshAllRecurringTasks();
     if (loadedDailyStats.isNotEmpty) {
       _dailyStatsByDay.addAll(loadedDailyStats);
     } else if (Config.isDev) {
@@ -708,6 +722,10 @@ class _HomePageState extends State<HomePage>
 
   void _saveDeletedTasks() {
     _repository.saveDeletedItems(_deletedTasks);
+  }
+
+  void _saveBinTasks() {
+    _repository.saveBinItems(_binTasks);
   }
 
   void _saveDailyStats() {
@@ -762,6 +780,17 @@ class _HomePageState extends State<HomePage>
       existingByKey[_dayKey(d)] = t;
       return false;
     });
+
+    // A date already accounted for in the archive or the bin was manually
+    // archived — skip it here too, so it stays gone instead of being
+    // silently recreated on the next refresh (see the class doc on
+    // _deletedTasks/_binTasks).
+    for (final t in _deletedTasks.followedBy(_binTasks)) {
+      if (t.recurrenceParentUid != parentUid) continue;
+      final dueDate = t.dueDate;
+      if (dueDate == null) continue;
+      existingByKey.putIfAbsent(_dayKey(_dateOnly(dueDate)), () => t);
+    }
 
     for (var date = baseDate.add(Duration(days: intervalDays));
         !date.isAfter(endDate);
@@ -1029,6 +1058,8 @@ class _HomePageState extends State<HomePage>
         return const CountdownTimerPage();
       case 'wishlist':
         return const WishlistPage();
+      case 'food_diary':
+        return const FoodDiaryPage();
       case 'projects':
         return ProjectsPage(tasks: _tasks, onChanged: _saveTasks);
       case 'chronize':
@@ -1067,9 +1098,12 @@ class _HomePageState extends State<HomePage>
       // Tools like Projects mutate tasks in place; refresh the lists when
       // coming back.
       if (mounted) setState(() {});
-      // The Wishlist tool loads and saves the task list on its own, so this
-      // page's in-memory copy is refreshed from disk when coming back.
-      if (tool == 'wishlist') _reloadTasksFromStorage();
+      // The Wishlist/Food Diary tools load and save the task list on their
+      // own, so this page's in-memory copy is refreshed from disk when
+      // coming back.
+      if (tool == 'wishlist' || tool == 'food_diary') {
+        _reloadTasksFromStorage();
+      }
     });
   }
 
@@ -1199,8 +1233,9 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
-    // See _reorderTask: reordering is disabled while searching.
-    if (_searchQuery.trim().isNotEmpty) return;
+    // See _reorderTask: reordering is disabled while searching or while a
+    // Home filter rule is hiding tasks.
+    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
     final fullList = _tasksForTab(pageIndex);
 
@@ -1676,9 +1711,10 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
-    // Reordering a search-filtered list would renumber only the visible
-    // subset and scramble the hidden tasks' order, so it is disabled.
-    if (_searchQuery.trim().isNotEmpty) return;
+    // Reordering a search- or filter-rule-narrowed list would renumber only
+    // the visible subset and scramble the hidden tasks' order, so it is
+    // disabled while either is active.
+    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -1760,15 +1796,52 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
   }
 
+  /// Sends an archived item on to the real Deleted bin, where it starts
+  /// aging toward permanent purge (see [Config.deletedItemsRetentionDays]).
+  void _moveArchivedToBin(Task task) {
+    final index = _deletedTasks.indexOf(task);
+    if (index < 0) return;
+    setState(() {
+      _deletedTasks.removeAt(index);
+      // Re-stamp the timestamp: retention is measured from bin entry, not
+      // from the original archive time.
+      task.deletedAt = DateTime.now();
+      _binTasks.insert(0, task);
+    });
+    _saveDeletedTasks();
+    _saveBinTasks();
+    LogService.add(
+        'HomePage._moveArchivedToBin', 'Moved "${task.title}" to the bin');
+  }
+
+  /// Restores a task straight out of the real Deleted bin back into the
+  /// active list, mirroring [_restoreTask].
+  void _restoreFromBin(Task task) {
+    setState(() {
+      _binTasks.remove(task);
+      task.deletedAt = null;
+      task.autoDeleted = false;
+      if (!task.isWish) task.dueDate = _currentDate;
+      _tasks.add(task);
+      _refreshRecurringForTask(task);
+    });
+    _saveTasks();
+    _saveBinTasks();
+    LogService.add(
+        'HomePage._restoreFromBin', 'Restored "${task.title}" from the bin');
+  }
+
+  /// Erases a bin item for good. Only reachable from the real Deleted bin —
+  /// archived items are sent to the bin first (see [_moveArchivedToBin]).
   void _deleteTaskPermanently(Task task) {
-    final originalIndex = _deletedTasks.indexOf(task);
+    final originalIndex = _binTasks.indexOf(task);
     if (originalIndex < 0) return;
     final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
-      _deletedTasks.removeAt(originalIndex);
+      _binTasks.removeAt(originalIndex);
     });
-    _saveDeletedTasks();
+    _saveBinTasks();
     LogService.add('HomePage._deleteTaskPermanently',
         'Queued permanent delete "${task.title}"');
 
@@ -1794,12 +1867,12 @@ class _HomePageState extends State<HomePage>
               messenger.hideCurrentSnackBar();
               if (!mounted) return;
               setState(() {
-                final insertAt = originalIndex <= _deletedTasks.length
+                final insertAt = originalIndex <= _binTasks.length
                     ? originalIndex
-                    : _deletedTasks.length;
-                _deletedTasks.insert(insertAt, task);
+                    : _binTasks.length;
+                _binTasks.insert(insertAt, task);
               });
-              _saveDeletedTasks();
+              _saveBinTasks();
               LogService.add('HomePage._deleteTaskPermanently',
                   'Restored from undo "${task.title}"');
             },
@@ -2366,9 +2439,16 @@ class _HomePageState extends State<HomePage>
             has(ProjectService.instance.nameOf(task.projectId)));
   }
 
+  /// Whether the Home view's configured filter rules (Settings → Filtering
+  /// rules) currently hide anything.
+  bool get _homeFilterRulesActive =>
+      !(Config.viewFilterRules[ViewFilterRules.home]?.isEmpty ?? true);
+
   /// Tasks shown on [pageIndex]. While a search query is active the list is
-  /// narrowed to matching tasks; pass [applySearch] false for logic that must
-  /// see the full tab (e.g. renumbering [Task.listRanking] on save).
+  /// narrowed to matching tasks, and the configured Home filter rules (if
+  /// any) are always applied on top; pass [applySearch] false for logic that
+  /// must see the full tab regardless of either (e.g. renumbering
+  /// [Task.listRanking] on save).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
     // Tab membership is a query over the one list (ItemViews); only the
     // search predicate is home-page state.
@@ -2378,6 +2458,7 @@ class _HomePageState extends State<HomePage>
       pageIndex,
       _currentDate,
       where: query.isEmpty ? null : (task) => _matchesSearch(task, query),
+      rules: applySearch ? Config.viewFilterRules[ViewFilterRules.home] : null,
     );
   }
 
@@ -2547,7 +2628,7 @@ class _HomePageState extends State<HomePage>
     final query = _searchQuery.trim().toLowerCase();
     final visibleTasks = _tasks
         .where((t) =>
-            ItemViews.isApproved(t) &&
+            ItemViews.isVisibleInMainViews(t) &&
             (query.isEmpty || _matchesSearch(t, query)))
         .toList();
     return ScheduleView(
@@ -2579,6 +2660,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('alarms', 'Alarms', Icons.alarm),
     _ToolEntry('countdown', 'Countdown', Icons.timer),
     _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
+    _ToolEntry('food_diary', 'Food Diary', Icons.restaurant),
     _ToolEntry('projects', 'Projects', Icons.dashboard),
     _ToolEntry('chronize', 'Chronize', Icons.access_time),
     _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
@@ -2657,15 +2739,32 @@ class _HomePageState extends State<HomePage>
             if (Config.isFeatureEnabled('deleted_items'))
               ListTile(
                 leading: const Icon(Icons.delete),
-                title: const Text('Deleted Items'),
+                title: const Text('Archived Items'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => DeletedItemsPage(
-                        items: _deletedTasks,
+                      builder: (_) => ArchivedItemsPage(
+                        items: ItemViews.applyFilterRules(
+                          _deletedTasks,
+                          Config.viewFilterRules[ViewFilterRules.archived],
+                        ),
                         onRestore: _restoreTask,
-                        onDeletePermanently: _deleteTaskPermanently,
+                        onMoveToBin: _moveArchivedToBin,
+                        onOpenBin: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => DeletedBinPage(
+                                items: ItemViews.applyFilterRules(
+                                  _binTasks,
+                                  Config.viewFilterRules[ViewFilterRules.bin],
+                                ),
+                                onRestore: _restoreFromBin,
+                                onDeletePermanently: _deleteTaskPermanently,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   );

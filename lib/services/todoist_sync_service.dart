@@ -437,13 +437,21 @@ class TodoistSyncService {
 
     final allLocal = await ItemRepository.instance.loadItems();
     final deletedLocal = await ItemRepository.instance.loadDeletedItems();
-    final deletedByUid = {for (final t in deletedLocal) t.uid: t};
+    // The real bin (denials, or archived items sent on) counts too — a task
+    // no longer active there is just as "gone" as one still in the archive.
+    final binLocal = await ItemRepository.instance.loadBinItems();
+    final deletedByUid = {
+      for (final t in deletedLocal.followedBy(binLocal)) t.uid: t,
+    };
 
     // Recurring tasks (parents and generated instances) are out of scope —
     // see the class doc. Wishlist items are in scope (routed to the
-    // Wishlist project below).
+    // Wishlist project below). Food Diary entries never leave the app.
     final syncable = allLocal
-        .where((t) => !t.isRecurring && t.recurrenceParentUid == null)
+        .where((t) =>
+            !t.isRecurring &&
+            t.recurrenceParentUid == null &&
+            !t.isEatingHabit)
         .toList();
     final syncableByUid = {for (final t in syncable) t.uid: t};
 

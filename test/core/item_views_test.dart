@@ -100,6 +100,43 @@ void main() {
     });
   });
 
+  group('food diary', () {
+    test('foodDiary selects only eating-habit-flagged tasks', () {
+      final entry = Task(title: 'yogurt', isEatingHabit: true);
+      final plain = Task(title: 'chore');
+      expect(ItemViews.foodDiary([entry, plain]).map((t) => t.title),
+          ['yogurt']);
+    });
+
+    test('an eating-habit task is hidden from every other view, even with '
+        'a due date and project assignment', () {
+      final entry = Task(
+        title: 'yogurt',
+        dueDate: today,
+        isEatingHabit: true,
+        projectId: 'p1',
+      );
+      final ok = Task(title: 'normal', dueDate: today);
+      final boardTask = Task(title: 'board', projectId: 'p1');
+
+      expect(ItemViews.homeBucket([entry, ok], 0, today).map((t) => t.title),
+          ['normal']);
+      expect(ItemViews.active([entry, ok]).map((t) => t.title), ['normal']);
+      expect(
+          ItemViews.projectTasks([entry, boardTask], 'p1').map((t) => t.title),
+          ['board']);
+      expect(
+          ItemViews.boardColumn([entry, boardTask], 'p1', Task.kanbanTodo)
+              .map((t) => t.title),
+          ['board']);
+      final wishAndEating = Task(
+          title: 'wish and eating', isWish: true, isEatingHabit: true);
+      final wish = Task(title: 'wish', isWish: true);
+      expect(ItemViews.wishlist([wish, wishAndEating]).map((t) => t.title),
+          ['wish']);
+    });
+  });
+
   group('waiting for approval', () {
     Task pending(String title) =>
         Task(title: title, label: 'Waiting_for_approval');

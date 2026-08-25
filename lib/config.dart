@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'models/streak_goal.dart';
 import 'models/streak_reminder.dart';
+import 'models/view_filter_rules.dart';
 
 class Config {
   static double defaultDelaySeconds = 5.0;
@@ -85,6 +86,7 @@ class Config {
     'alarms',
     'countdown',
     'wishlist',
+    'food_diary',
     'projects',
     'chronize',
     'usage_data',
@@ -98,6 +100,7 @@ class Config {
     'Alarms',
     'Countdown',
     'Wishlist',
+    'Food Diary',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -125,12 +128,13 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first eight match
+  /// Keys are persisted, so keep them stable; the first nine match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
     'countdown',
     'wishlist',
+    'food_diary',
     'projects',
     'chronize',
     'usage_data',
@@ -152,6 +156,7 @@ class Config {
     'Alarms',
     'Countdown',
     'Wishlist',
+    'Food Diary',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -161,7 +166,7 @@ class Config {
     'Dice timer',
     'Schedule view',
     'Task search',
-    'Deleted items',
+    'Archived items',
     'Changelog',
     'App logs',
     'Startup times',
@@ -173,6 +178,7 @@ class Config {
     'Alarm clock with escalating reminders',
     'Countdown timers with milestones',
     'Wishlist of someday items',
+    'Track what you eat, separate from your tasks',
     'Project boards for grouping tasks',
     'Timeline planner for the day',
     'Charts about how you use the app',
@@ -182,7 +188,7 @@ class Config {
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
     'Search field in the home app bar',
-    'Restore or purge deleted tasks',
+    'Restore archived tasks, or send them on to the Deleted bin',
     "What changed in each version of the app",
     'Diagnostic log of what the app did',
     'How fast the app started, over time',
@@ -195,9 +201,10 @@ class Config {
   };
 
   /// Features that stay available in simple mode: the drawer entries that are
-  /// not really "extra features" but the app's own service pages — the deleted
-  /// items (the undo of a plain task list), the changelog, the app logs and the
-  /// startup times. Simple mode is about the home surface, so these stay.
+  /// not really "extra features" but the app's own service pages — the
+  /// archived items (the undo of a plain task list), the changelog, the app
+  /// logs and the startup times. Simple mode is about the home surface, so
+  /// these stay.
   static const Set<String> simpleModeFeatures = {
     'deleted_items',
     'changelog',
@@ -449,6 +456,12 @@ class Config {
   /// Folder the automatic backup writes into; empty until the user picks one.
   static String autoBackupDirectory = '';
 
+  /// Extra per-view tag filters configured in Settings → Filtering rules.
+  /// Keyed by one of [ViewFilterRules.viewIds]; a view with no entry (or an
+  /// empty entry) applies no extra filtering beyond its normal structural
+  /// query (see `ItemViews.passesFilterRules`).
+  static Map<String, ViewFilterRules> viewFilterRules = {};
+
   /// If true, tasks are kept in sync both ways with a Todoist account (see
   /// `TodoistSyncService`). Off by default; enabling without a token set is a
   /// no-op until one is entered in Settings → Todoist sync.
@@ -458,6 +471,18 @@ class Config {
   /// Stored in plain text alongside the rest of the app's settings, matching
   /// every other value in this file — the app has no secret-storage layer.
   static String todoistApiToken = '';
+
+  /// If true, the app checks for a newer build every time it starts and, if
+  /// one is found, asks before doing anything — see Settings → Updates. Off
+  /// by default so a fresh install never phones home unasked; a manual check
+  /// from the About page always works regardless of this setting.
+  static bool autoUpdateCheckEnabled = false;
+
+  /// How many days a task stays in the real Deleted bin (`deleted_bin.json`)
+  /// before it is purged for good. Archived tasks (`deleted_tasks.json`,
+  /// shown as "Archived Items") are unaffected — they are only capped by
+  /// count, never by age. Default 60, editable in Settings → Tasks.
+  static int deletedItemsRetentionDays = 60;
 
   static const _settingsFileName = 'settings.json';
 
@@ -528,7 +553,13 @@ class Config {
       'syncFolderPath': syncFolderPath,
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
+      'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
+      'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
+      'viewFilterRules': {
+        for (final entry in viewFilterRules.entries)
+          entry.key: entry.value.toJson(),
+      },
     };
   }
 
@@ -642,12 +673,26 @@ class Config {
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
     todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
+    autoUpdateCheckEnabled =
+        data['autoUpdateCheckEnabled'] ?? autoUpdateCheckEnabled;
+    deletedItemsRetentionDays =
+        (data['deletedItemsRetentionDays'] as num?)?.round().clamp(1, 3650) ??
+            deletedItemsRetentionDays;
     final savedFeatures = data['features'];
     if (savedFeatures is Map) {
       for (final key in featureKeys) {
         final value = savedFeatures[key];
         if (value is bool) featureEnabled[key] = value;
       }
+    }
+    final savedViewFilterRules = data['viewFilterRules'];
+    if (savedViewFilterRules is Map) {
+      viewFilterRules = {
+        for (final entry in savedViewFilterRules.entries)
+          if (entry.value is Map)
+            entry.key as String: ViewFilterRules.fromJson(
+                Map<String, dynamic>.from(entry.value as Map)),
+      };
     }
   }
 

@@ -11,6 +11,7 @@ import '../models/sms_report_config.dart';
 import '../models/streak_kind.dart';
 import '../models/streak_reminder.dart';
 import '../models/sync_log_entry.dart';
+import '../models/view_filter_rules.dart';
 import '../services/auto_backup_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
@@ -49,21 +50,23 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    11,
+    13,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
     'Appearance',
     'Mode & features',
-    'Tasks',
-    'Widget',
+    'Filtering rules',
     'Notifications',
+    'Tasks',
     'Streak',
     'Dice timer',
     'SMS report',
+    'Widget',
+    'Updates',
+    'Todoist sync',
     'Sync & export',
     'Backup',
-    'Todoist sync',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -87,6 +90,17 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// Choices offered for [Config.deletedItemsRetentionDays].
+  static const List<int> _deletedItemsRetentionDayOptions = [
+    7,
+    14,
+    30,
+    60,
+    90,
+    180,
+    365,
+  ];
+
   int _activeSectionIndex = 0;
 
   /// Sections whose body is hidden. Tapping a section title toggles it. Every
@@ -94,7 +108,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
   final Set<int> _collapsedSections = {
-    for (var i = 0; i < 11; i++) i,
+    for (var i = 0; i < 13; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
@@ -123,29 +137,31 @@ class _SettingsPageState extends State<SettingsPage> {
         'Simple mode', 1, 'full mode basic minimal features hide tools'),
     _SettingsSearchEntry(
         'Show the mode picker again', 1, 'simple full first start choose'),
-    _SettingsSearchEntry('Add new tasks at top', 2, 'bottom order insert'),
-    _SettingsSearchEntry('Desktop keyboard shortcuts', 2,
+    _SettingsSearchEntry('Add new tasks at top', 4, 'bottom order insert'),
+    _SettingsSearchEntry('Desktop keyboard shortcuts', 4,
         'hotkeys ctrl enter arrows keyboard windows'),
-    _SettingsSearchEntry('Save new task shortcut', 2,
+    _SettingsSearchEntry('Save new task shortcut', 4,
         'enter ctrl enter multiline keyboard shortcuts'),
-    _SettingsSearchEntry('New tasks go to', 2,
+    _SettingsSearchEntry('New tasks go to', 4,
         'default list bucket target tab today future someday quick add'),
-    _SettingsSearchEntry('Swipe left to delete', 2, 'gesture direction move'),
-    _SettingsSearchEntry('Default delay', 2, 'undo seconds snackbar'),
-    _SettingsSearchEntry('Start page', 2, 'tab launch open today'),
-    _SettingsSearchEntry('Default start page', 2, 'tool launch open tasks'),
-    _SettingsSearchEntry('Start in schedule view', 2, 'calendar launch'),
-    _SettingsSearchEntry('Chronize: show hour wheel', 2, 'timeline scroll'),
+    _SettingsSearchEntry('Swipe left to delete', 4, 'gesture direction move'),
+    _SettingsSearchEntry('Deleted items retention', 4,
+        'archive archived bin trash purge days delete forever'),
+    _SettingsSearchEntry('Default delay', 4, 'undo seconds snackbar'),
+    _SettingsSearchEntry('Start page', 4, 'tab launch open today'),
+    _SettingsSearchEntry('Default start page', 4, 'tool launch open tasks'),
+    _SettingsSearchEntry('Start in schedule view', 4, 'calendar launch'),
+    _SettingsSearchEntry('Chronize: show hour wheel', 4, 'timeline scroll'),
     _SettingsSearchEntry(
-        'Auto-tag new items', 2, 'tags labels keywords automatic'),
+        'Auto-tag new items', 4, 'tags labels keywords automatic'),
     _SettingsSearchEntry(
-        'Auto-tag rules', 2, 'tags labels keywords dictionary work bike'),
-    _SettingsSearchEntry('Widget progress line', 3, 'home screen completion'),
-    _SettingsSearchEntry('Check off tasks on the widget', 3,
+        'Auto-tag rules', 4, 'tags labels keywords dictionary work bike'),
+    _SettingsSearchEntry('Widget progress line', 8, 'home screen completion'),
+    _SettingsSearchEntry('Check off tasks on the widget', 8,
         'home screen checkbox tick complete done interactive'),
-    _SettingsSearchEntry('Enable notifications', 4, 'push reminders'),
-    _SettingsSearchEntry('Quiet hours', 4, 'silence night do not disturb'),
-    _SettingsSearchEntry('Default notification delay', 4, 'bell reminder'),
+    _SettingsSearchEntry('Enable notifications', 3, 'push reminders'),
+    _SettingsSearchEntry('Quiet hours', 3, 'silence night do not disturb'),
+    _SettingsSearchEntry('Default notification delay', 3, 'bell reminder'),
     _SettingsSearchEntry('Show streak', 5, 'flame fire hide daily habit'),
     _SettingsSearchEntry(
         'Streak grace period', 5, '24 48 hours flame miss day forgive'),
@@ -174,22 +190,26 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Message template', 7, 'sms tokens text'),
     _SettingsSearchEntry('Sent message history', 7, 'sms log'),
     _SettingsSearchEntry('Send test now', 7, 'sms report'),
-    _SettingsSearchEntry('Synced mode', 8,
+    _SettingsSearchEntry('Synced mode', 11,
         'sync offline folder background quit backup automatic tasks'),
-    _SettingsSearchEntry('Sync folder', 8, 'sync directory location choose'),
-    _SettingsSearchEntry('Sync now', 8, 'sync manual run last synced'),
-    _SettingsSearchEntry('Export Tasks', 8, 'backup save json'),
-    _SettingsSearchEntry('Export Settings', 8, 'backup save json'),
-    _SettingsSearchEntry('Export Everything', 8, 'backup save json'),
-    _SettingsSearchEntry('Import', 8, 'restore backup load json'),
-    _SettingsSearchEntry('Automatic backup', 9,
+    _SettingsSearchEntry('Sync folder', 11, 'sync directory location choose'),
+    _SettingsSearchEntry('Sync now', 11, 'sync manual run last synced'),
+    _SettingsSearchEntry('Export Tasks', 11, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 11, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 11, 'backup save json'),
+    _SettingsSearchEntry('Import', 11, 'restore backup load json'),
+    _SettingsSearchEntry('Automatic backup', 12,
         'daily weekly schedule export save everything off'),
-    _SettingsSearchEntry('Backup folder', 9, 'directory location path choose'),
-    _SettingsSearchEntry('Back up now', 9, 'manual backup export run'),
+    _SettingsSearchEntry('Backup folder', 12, 'directory location path choose'),
+    _SettingsSearchEntry('Back up now', 12, 'manual backup export run'),
     _SettingsSearchEntry(
         'Enable Todoist sync', 10, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
+    _SettingsSearchEntry('Automatically check for updates', 9,
+        'auto update version release new build startup prompt install about'),
+    _SettingsSearchEntry('Filtering rules', 2,
+        'view home wishlist projects archived deleted bin hide show tag exclude include only filter'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -237,6 +257,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _syncEnabled = Config.syncEnabled;
   String _syncFolderPath = Config.syncFolderPath;
   bool _todoistSyncEnabled = Config.todoistSyncEnabled;
+  bool _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
+  int _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
   final TextEditingController _todoistTokenController =
       TextEditingController(text: Config.todoistApiToken);
   bool _todoistTokenObscured = true;
@@ -246,6 +268,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
+
+  /// One text field per view/kind combo in the Filtering rules section,
+  /// keyed `'$viewId:$kind'` (`kind` is `exclude` or `include`).
+  final Map<String, TextEditingController> _filterTagControllers = {};
 
   void _syncLocalStateFromConfig() {
     _notifications = Config.enableNotifications;
@@ -282,6 +308,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _syncFolderPath = Config.syncFolderPath;
     _todoistSyncEnabled = Config.todoistSyncEnabled;
     _todoistTokenController.text = Config.todoistApiToken;
+    _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
+    _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
   }
 
   @override
@@ -1388,7 +1416,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildExportSection() {
     return _buildSection(
-      index: 8,
+      index: 11,
       title: 'Sync & export',
       children: [
         SwitchListTile(
@@ -1554,7 +1582,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildBackupSection() {
     final folderChosen = _autoBackupDirectory.isNotEmpty;
     return _buildSection(
-      index: 9,
+      index: 12,
       title: 'Backup',
       children: [
         ListTile(
@@ -1829,6 +1857,172 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _setAutoUpdateCheckEnabled(bool value) async {
+    setState(() => _autoUpdateCheckEnabled = value);
+    Config.autoUpdateCheckEnabled = value;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildUpdatesSection() {
+    return _buildSection(
+      index: 9,
+      title: 'Updates',
+      children: [
+        SwitchListTile(
+          title: const Text('Automatically check for updates'),
+          subtitle: const Text(
+              'Looks for a newer version every time the app opens and asks '
+              'before installing it. Manual checks on the About page always '
+              'work regardless of this setting.'),
+          value: _autoUpdateCheckEnabled,
+          onChanged: _setAutoUpdateCheckEnabled,
+        ),
+      ],
+    );
+  }
+
+  /// The rules configured for [viewId], creating an empty (no-op) entry on
+  /// first touch so the chip editors below always have a list to mutate.
+  ViewFilterRules _rulesFor(String viewId) =>
+      Config.viewFilterRules.putIfAbsent(viewId, () => ViewFilterRules());
+
+  TextEditingController _filterTagController(String viewId, String kind) =>
+      _filterTagControllers.putIfAbsent(
+          '$viewId:$kind', () => TextEditingController());
+
+  Future<void> _addFilterTag(String viewId, String kind, String rawTag) async {
+    final tag = rawTag.trim();
+    if (tag.isEmpty) return;
+    final rules = _rulesFor(viewId);
+    final list = kind == 'exclude' ? rules.excludeTags : rules.includeTags;
+    if (list.any((t) => t.toLowerCase() == tag.toLowerCase())) {
+      _filterTagController(viewId, kind).clear();
+      return;
+    }
+    setState(() => list.add(tag));
+    _filterTagController(viewId, kind).clear();
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _removeFilterTag(String viewId, String kind, String tag) async {
+    final rules = _rulesFor(viewId);
+    final list = kind == 'exclude' ? rules.excludeTags : rules.includeTags;
+    setState(() => list.remove(tag));
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildTagRuleEditor({
+    required String viewId,
+    required String kind,
+    required String label,
+    required List<String> tags,
+  }) {
+    final controller = _filterTagController(viewId, kind);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 4),
+          if (tags.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final tag in tags)
+                    InputChip(
+                      label: Text(tag),
+                      visualDensity: VisualDensity.compact,
+                      onDeleted: () => _removeFilterTag(viewId, kind, tag),
+                    ),
+                ],
+              ),
+            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    hintText: 'Tag name',
+                    isDense: true,
+                  ),
+                  onSubmitted: (value) => _addFilterTag(viewId, kind, value),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Add tag',
+                icon: const Icon(Icons.add),
+                onPressed: () =>
+                    _addFilterTag(viewId, kind, controller.text),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Per-view tag filters: hide tasks carrying a tag, or restrict a view to
+  /// only tasks carrying one. Layers on top of each view's own structural
+  /// rule (e.g. the wishlist still only ever shows [Task.isWish] items) —
+  /// see [ItemViews.passesFilterRules].
+  Widget _buildFilteringRulesSection() {
+    final theme = Theme.of(context);
+    final viewIds = ViewFilterRules.viewIds;
+    return _buildSection(
+      index: 2,
+      title: 'Filtering rules',
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            'Hide tasks by tag, or restrict a view to only tasks carrying a '
+            'given tag — configured separately for each view below.',
+          ),
+        ),
+        for (var i = 0; i < viewIds.length; i++) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              ViewFilterRules.viewLabels[viewIds[i]]!,
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              ViewFilterRules.viewDescriptions[viewIds[i]]!,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          _buildTagRuleEditor(
+            viewId: viewIds[i],
+            kind: 'exclude',
+            label: 'Hide tasks with any of these tags',
+            tags: _rulesFor(viewIds[i]).excludeTags,
+          ),
+          _buildTagRuleEditor(
+            viewId: viewIds[i],
+            kind: 'include',
+            label:
+                'Only show tasks with one of these tags (empty = no restriction)',
+            tags: _rulesFor(viewIds[i]).includeTags,
+          ),
+          if (i < viewIds.length - 1) const Divider(height: 24),
+        ],
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
   List<_SettingsSearchEntry> get _searchResults {
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return const [];
@@ -2006,6 +2200,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _smsTemplateController.dispose();
     _searchController.dispose();
     _todoistTokenController.dispose();
+    for (final controller in _filterTagControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -2161,8 +2358,60 @@ class _SettingsPageState extends State<SettingsPage> {
                           ],
                         ),
                         _buildModeFeaturesSection(),
+                        _buildFilteringRulesSection(),
                         _buildSection(
-                          index: 2,
+                          index: 3,
+                          title: 'Notifications',
+                          children: [
+                            SwitchListTile(
+                              title: const Text('Enable notifications'),
+                              value: _notifications,
+                              onChanged: (val) async {
+                                setState(() => _notifications = val);
+                                Config.enableNotifications = val;
+                                await Config.save();
+                              },
+                            ),
+                            SwitchListTile(
+                              title: const Text('Quiet hours'),
+                              subtitle: const Text(
+                                  'Delay notifications until quiet hours end'),
+                              value: _quietHoursEnabled,
+                              onChanged: (val) async {
+                                setState(() => _quietHoursEnabled = val);
+                                Config.quietHoursEnabled = val;
+                                await Config.save();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            if (_quietHoursEnabled)
+                              ListTile(
+                                title: const Text('Quiet hours start'),
+                                subtitle: Text(
+                                    _formatHourMinute(_quietHoursStartMinutes)),
+                                trailing: const Icon(Icons.schedule),
+                                onTap: () => _pickQuietHour(isStart: true),
+                              ),
+                            if (_quietHoursEnabled)
+                              ListTile(
+                                title: const Text('Quiet hours end'),
+                                subtitle: Text(
+                                    _formatHourMinute(_quietHoursEndMinutes)),
+                                trailing: const Icon(Icons.schedule),
+                                onTap: () => _pickQuietHour(isStart: false),
+                              ),
+                            ListTile(
+                              title: const Text('Default notification delay'),
+                              subtitle: Text(
+                                'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
+                              ),
+                              trailing: const Icon(Icons.edit),
+                              onTap: _editNotificationDelay,
+                            ),
+                          ],
+                        ),
+                        _buildSection(
+                          index: 4,
                           title: 'Tasks',
                           children: [
                             SwitchListTile(
@@ -2223,6 +2472,33 @@ class _SettingsPageState extends State<SettingsPage> {
                                 await Config.save();
                                 widget.onSettingsChanged?.call();
                               },
+                            ),
+                            ListTile(
+                              title: const Text('Deleted items retention'),
+                              subtitle: const Text(
+                                  'How long an item stays in the real Deleted bin '
+                                  '(Archived Items → bin icon) before it is purged for good'),
+                              trailing: DropdownButton<int>(
+                                value: _deletedItemsRetentionDayOptions
+                                        .contains(_deletedItemsRetentionDays)
+                                    ? _deletedItemsRetentionDays
+                                    : _deletedItemsRetentionDayOptions.first,
+                                items: [
+                                  for (final days
+                                      in _deletedItemsRetentionDayOptions)
+                                    DropdownMenuItem<int>(
+                                      value: days,
+                                      child: Text('$days days'),
+                                    ),
+                                ],
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  setState(() => _deletedItemsRetentionDays = val);
+                                  Config.deletedItemsRetentionDays = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
                             ),
                             ListTile(
                               title: Text(
@@ -2348,8 +2624,11 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
+                        if (_isSectionVisible(5)) _buildStreakSection(),
+                        if (_isSectionVisible(6)) _buildDiceTimerSection(),
+                        if (_isSectionVisible(7)) _buildSmsReportSection(),
                         _buildSection(
-                          index: 3,
+                          index: 8,
                           title: 'Widget',
                           children: [
                             SwitchListTile(
@@ -2380,63 +2659,10 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        _buildSection(
-                          index: 4,
-                          title: 'Notifications',
-                          children: [
-                            SwitchListTile(
-                              title: const Text('Enable notifications'),
-                              value: _notifications,
-                              onChanged: (val) async {
-                                setState(() => _notifications = val);
-                                Config.enableNotifications = val;
-                                await Config.save();
-                              },
-                            ),
-                            SwitchListTile(
-                              title: const Text('Quiet hours'),
-                              subtitle: const Text(
-                                  'Delay notifications until quiet hours end'),
-                              value: _quietHoursEnabled,
-                              onChanged: (val) async {
-                                setState(() => _quietHoursEnabled = val);
-                                Config.quietHoursEnabled = val;
-                                await Config.save();
-                                widget.onSettingsChanged?.call();
-                              },
-                            ),
-                            if (_quietHoursEnabled)
-                              ListTile(
-                                title: const Text('Quiet hours start'),
-                                subtitle: Text(
-                                    _formatHourMinute(_quietHoursStartMinutes)),
-                                trailing: const Icon(Icons.schedule),
-                                onTap: () => _pickQuietHour(isStart: true),
-                              ),
-                            if (_quietHoursEnabled)
-                              ListTile(
-                                title: const Text('Quiet hours end'),
-                                subtitle: Text(
-                                    _formatHourMinute(_quietHoursEndMinutes)),
-                                trailing: const Icon(Icons.schedule),
-                                onTap: () => _pickQuietHour(isStart: false),
-                              ),
-                            ListTile(
-                              title: const Text('Default notification delay'),
-                              subtitle: Text(
-                                'MM:SS (${_formatMmSs(_defaultNotificationDelaySeconds)})',
-                              ),
-                              trailing: const Icon(Icons.edit),
-                              onTap: _editNotificationDelay,
-                            ),
-                          ],
-                        ),
-                        if (_isSectionVisible(5)) _buildStreakSection(),
-                        if (_isSectionVisible(6)) _buildDiceTimerSection(),
-                        if (_isSectionVisible(7)) _buildSmsReportSection(),
+                        _buildUpdatesSection(),
+                        _buildTodoistSyncSection(),
                         _buildExportSection(),
                         _buildBackupSection(),
-                        _buildTodoistSyncSection(),
                       ],
               ),
             ),
