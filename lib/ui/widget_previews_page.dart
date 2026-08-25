@@ -13,10 +13,11 @@ import 'subpage_app_bar.dart';
 /// Dev-only tool (drawer entry gated on [Config.isDev]) that renders a mock
 /// of each Android home-screen widget using live app data, so the widgets —
 /// which live outside the Flutter tree entirely, drawn by
-/// `SimpleWidgetProvider`/`AlarmsWidgetProvider`/`FoodDiaryWidgetProvider`
-/// via `RemoteViews` on the OS home screen — can still be captured by the
-/// desktop screenshot integration test. Colors/text mirror those Kotlin
-/// providers and their layout XMLs; this page changes nothing they render.
+/// `SimpleWidgetProvider`/`AlarmsWidgetProvider`/`FoodDiaryWidgetProvider`/
+/// `FoodDiaryButtonWidgetProvider` via `RemoteViews` on the OS home screen —
+/// can still be captured by the desktop screenshot integration test.
+/// Colors/text mirror those Kotlin providers and their layout XMLs; this
+/// page changes nothing they render.
 class WidgetPreviewsPage extends StatefulWidget {
   const WidgetPreviewsPage({Key? key}) : super(key: key);
 
@@ -348,6 +349,26 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
     );
   }
 
+  /// Mirrors `FoodDiaryButtonWidgetProvider.kt` /
+  /// `food_diary_button_widget_layout.xml`: a fixed 1x1 widget that is
+  /// nothing but the "+" button, shown here at roughly its real on-screen
+  /// size (one home-screen grid cell) rather than stretched to [_widgetFrame]'s
+  /// width like the other mocks.
+  Widget _buildFoodDiaryButtonWidget() => Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.center,
+        child: const Text(
+          '+',
+          style: TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 28),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -358,7 +379,7 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 const Text(
-                  'Mocks of the three Android home-screen widgets, drawn from '
+                  'Mocks of the four Android home-screen widgets, drawn from '
                   'the same data the real widgets show. Dev/debug only — not '
                   'part of the release build\'s navigation.',
                 ),
@@ -368,6 +389,8 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
                 _buildAlarmsWidget(),
                 _sectionLabel('Food Diary widget'),
                 _buildFoodDiaryWidget(),
+                _sectionLabel('Food Diary button widget'),
+                _buildFoodDiaryButtonWidget(),
               ],
             ),
     );

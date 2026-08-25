@@ -74,6 +74,11 @@ void main() {
         find.descendant(
             of: previewsPage, matching: find.text('Food Diary widget')),
         findsOneWidget);
+    expect(
+        find.descendant(
+            of: previewsPage,
+            matching: find.text('Food Diary button widget')),
+        findsOneWidget);
     // Today's seeded task shows up in the task-widget mock.
     expect(
         find.descendant(
