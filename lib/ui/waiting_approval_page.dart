@@ -343,44 +343,53 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
             child: Container(
               color: Theme.of(context).cardColor.withValues(alpha: 0.9),
               alignment: Alignment.centerRight,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_mode == _PendingSwipeMode.approve)
-                        for (var i = 0; i < Config.tabs.length; i++)
+              // The ListTile's own single-line height (56) leaves the
+              // button row + progress bar column no slack, so a slightly
+              // taller TextButton tap target (theme/density dependent)
+              // overflows it — scale the whole column down rather than
+              // chase exact pixel budgets across themes.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_mode == _PendingSwipeMode.approve)
+                          for (var i = 0; i < Config.tabs.length; i++)
+                            TextButton(
+                              onPressed: () => _selectApprove(i),
+                              child: Text(Config.tabs[i]),
+                            ),
+                        if (_mode == _PendingSwipeMode.deny) ...[
                           TextButton(
-                            onPressed: () => _selectApprove(i),
-                            child: Text(Config.tabs[i]),
+                            onPressed: _selectDeny,
+                            child: const Text('Deny'),
                           ),
-                      if (_mode == _PendingSwipeMode.deny) ...[
-                        TextButton(
-                          onPressed: _selectDeny,
-                          child: const Text('Deny'),
-                        ),
-                        for (final option in _pendingSwipeWeekdayOptions)
-                          TextButton(
-                            onPressed: () => _selectWeekday(option.weekday),
-                            child: Text(option.label),
-                          ),
+                          for (final option in _pendingSwipeWeekdayOptions)
+                            TextButton(
+                              onPressed: () => _selectWeekday(option.weekday),
+                              child: Text(option.label),
+                            ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: 60,
-                    child: AnimatedBuilder(
-                      animation: _progressController,
-                      builder: (context, child) {
-                        return LinearProgressIndicator(
-                            value: _progressController.value);
-                      },
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: 60,
+                      child: AnimatedBuilder(
+                        animation: _progressController,
+                        builder: (context, child) {
+                          return LinearProgressIndicator(
+                              value: _progressController.value);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -190,6 +190,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Deny'));
     await tester.pump();
+    await settleWrites(tester);
 
     // Removed from the list right away, with an undo window like the home
     // page; the move to the bin is persisted when it expires.
