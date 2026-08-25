@@ -95,6 +95,15 @@ void main() {
 
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
+    // The drawer has grown past one screen, and the home page body carries
+    // its own Scrollables, so scroll the Drawer's own Scrollable specifically
+    // to bring Tools into view before it can be tapped.
+    await tester.scrollUntilVisible(find.text('Tools'), 200,
+        scrollable: find
+            .descendant(
+                of: find.byType(Drawer), matching: find.byType(Scrollable))
+            .first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();
 
