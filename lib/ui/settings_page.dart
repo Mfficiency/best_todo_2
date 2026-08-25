@@ -213,7 +213,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Automatically check for updates', 9,
         'auto update version release new build startup prompt install about'),
     _SettingsSearchEntry('Filtering rules', 2,
-        'view home wishlist projects archived deleted bin hide show tag exclude include only filter'),
+        'view home wishlist approval waiting for approval projects archived '
+        'deleted bin hide show tag exclude include only filter built in'),
     _SettingsSearchEntry('Google Calendar URL', 13,
         'ics import feed link sync events weekly hours planner overlay calendar'),
     _SettingsSearchEntry('Weekly Hours Planner start hour', 13,
@@ -2189,7 +2190,8 @@ class _SettingsPageState extends State<SettingsPage> {
           padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(
             'Hide tasks by tag, or restrict a view to only tasks carrying a '
-            'given tag — configured separately for each view below.',
+            'given tag — configured separately for each view below, on top '
+            'of the built-in rule (if any) shown under each one.',
           ),
         ),
         for (var i = 0; i < viewIds.length; i++) ...[
@@ -2208,6 +2210,16 @@ class _SettingsPageState extends State<SettingsPage> {
               style: theme.textTheme.bodySmall,
             ),
           ),
+          if (ViewFilterRules.builtInRules[viewIds[i]]!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                ViewFilterRules.builtInRules[viewIds[i]]!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
           _buildTagRuleEditor(
             viewId: viewIds[i],
             kind: 'exclude',

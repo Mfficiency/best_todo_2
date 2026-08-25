@@ -11,6 +11,7 @@ class ViewFilterRules {
   /// persisted map keys (`Config.viewFilterRules`).
   static const String home = 'home';
   static const String wishlist = 'wishlist';
+  static const String approval = 'approval';
   static const String projects = 'projects';
   static const String archived = 'archived';
   static const String bin = 'bin';
@@ -18,6 +19,7 @@ class ViewFilterRules {
   static const List<String> viewIds = [
     home,
     wishlist,
+    approval,
     projects,
     archived,
     bin,
@@ -26,6 +28,7 @@ class ViewFilterRules {
   static const Map<String, String> viewLabels = {
     home: 'Home',
     wishlist: 'Wishlist',
+    approval: 'Waiting for Approval',
     projects: 'Projects',
     archived: 'Archived items',
     bin: 'Deleted bin',
@@ -34,9 +37,32 @@ class ViewFilterRules {
   static const Map<String, String> viewDescriptions = {
     home: 'The Today / Tomorrow / ... tabs on the home screen',
     wishlist: 'Tools → Wishlist',
+    approval: 'Tools → Waiting for Approval',
     projects: 'Tools → Projects, including every project board',
     archived: 'Archived Items (the drawer entry)',
     bin: 'The real Deleted bin, opened from Archived Items',
+  };
+
+  /// Read-only summary of the business logic each view already enforces on
+  /// its own, regardless of anything configured below — shown above the
+  /// editable chip rows so the "built in" exclusions this view lives by
+  /// (asked for directly: "the home view doesn't have anything that's not
+  /// approved, deleted, or archived") are visible, not just implied. Empty
+  /// for [archived]/[bin]: both take an item list handed to them directly,
+  /// not one of the structural gates below.
+  static const Map<String, String> builtInRules = {
+    home: 'Always excludes Waiting for Approval, Archived, and Deleted '
+        'items — enforced regardless of the rule below.',
+    wishlist: 'Always shows Wish items only, and always excludes Waiting '
+        'for Approval, Archived, and Deleted — enforced regardless of the '
+        'rule below.',
+    approval: 'Always shows only items still tagged Waiting for Approval, '
+        'and never a deleted one — enforced regardless of the rule below.',
+    projects: 'Always excludes Archived and Deleted items, and anything '
+        'still Waiting for Approval — enforced regardless of the rule '
+        'below.',
+    archived: '',
+    bin: '',
   };
 
   List<String> excludeTags;

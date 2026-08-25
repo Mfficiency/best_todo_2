@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
@@ -79,7 +80,10 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     await TaskWidgetService.sync(_tasks);
   }
 
-  List<Task> _pending() => ItemViews.waitingApproval(_tasks);
+  List<Task> _pending() => ItemViews.waitingApproval(
+        _tasks,
+        rules: Config.viewFilterRules[ViewFilterRules.approval],
+      );
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 

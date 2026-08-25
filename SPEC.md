@@ -272,12 +272,12 @@ stored form (dual-write era) — this step moves the *reading* of them into one 
 selector except `foodDiary`/`waitingApproval` filters through — a food diary entry, like
 an unapproved Todoist pull, is invisible everywhere but its own tool.
 
-Every selector above also takes an optional `rules` (`ViewFilterRules?`, see §4.4 "Filtering
-rules"), checked via `ItemViews.passesFilterRules` — an extra, user-configured tag layer on
-top of the view's own structural query. `applyFilterRules` filters a plain list the same way
-(used for the Archived Items and Deleted bin pages, neither of which is itself a selector —
-see §4.2g). A null or empty `rules` is a no-op, so every existing call site that does not
-pass one is unaffected.
+Every selector above, including `waitingApproval` (0.1.272), also takes an optional `rules`
+(`ViewFilterRules?`, see §4.4 "Filtering rules"), checked via `ItemViews.passesFilterRules` —
+an extra, user-configured tag layer on top of the view's own structural query. `applyFilterRules`
+filters a plain list the same way (used for the Archived Items and Deleted bin pages, neither
+of which is itself a selector — see §4.2g). A null or empty `rules` is a no-op, so every existing
+call site that does not pass one is unaffected.
 
 ### 4.2e Waiting for Approval gate (0.1.256, token respelled 0.1.259)
 
@@ -780,24 +780,32 @@ must open its section first (tap `Expand <section>` or jump via its chip). `_jum
 toggles re-run `_updateActiveSectionFromScroll` on the next frame because the list height
 changed under the chip row.
 
-**Filtering rules (0.1.235, extended to the archive/bin split 0.1.266):** a per-view tag
-filter, configured separately for each of Home, Wishlist, Projects, Archived Items and the
-Deleted bin. `ViewFilterRules` (`lib/models/view_filter_rules.dart`: `excludeTags`,
-`includeTags`, both `List<String>`) holds one view's configuration; `Config.viewFilterRules`
-(`Map<String, ViewFilterRules>`, keyed by
-`ViewFilterRules.home/wishlist/projects/archived/bin`) persists all of them inside
+**Filtering rules (0.1.235, extended to the archive/bin split 0.1.266, Waiting for Approval
+added 0.1.272):** a per-view tag filter, configured separately for each of Home, Wishlist,
+Waiting for Approval, Projects, Archived Items and the Deleted bin. `ViewFilterRules`
+(`lib/models/view_filter_rules.dart`: `excludeTags`, `includeTags`, both `List<String>`) holds
+one view's configuration; `Config.viewFilterRules` (`Map<String, ViewFilterRules>`, keyed by
+`ViewFilterRules.home/wishlist/approval/projects/archived/bin`) persists all of them inside
 `settings.json` alongside every other setting. A task carrying any `excludeTags` token is
 hidden from that view; when `includeTags` is non-empty, only tasks carrying at least one of
 its tokens show — matched case-insensitively against `Task.label` tokens
 (`splitLabelTokens`). This sits on top of each view's own structural rule (the wishlist
-still only ever shows `isWish` tasks) — see §4.2d. The Settings "Filtering rules" section
-(index 2, right after Mode & features) lists all five views with two chip editors each (add via text
-field + Enter/+, remove via the chip's ×); `SettingsPage._rulesFor` lazily creates an empty
-entry per view on first touch. Because a Home rule can hide tasks mid-tab, drag-reorder on
-the home list is disabled whenever one is active (`_homeFilterRulesActive`), exactly like it
-already is while a search query is active — reordering a narrowed list would renumber only
-the visible subset and scramble the hidden tasks' rank order; renumbering on save
-(`_saveTasks`, `applySearch: false`) always sees the true unfiltered tab so ranks never drift.
+still only ever shows `isWish` tasks, and the Waiting for Approval queue only ever shows
+pending, non-deleted ones) — see §4.2d. `ViewFilterRules.builtInRules` is a read-only string
+per view id (empty for Archived Items/Deleted bin, which have no selector-level rule of their
+own) summarizing that always-on structural business logic — Home's reads "Always excludes
+Waiting for Approval, Archived, and Deleted items", for instance — shown in Settings directly
+under each view's description, above its two editable chip rows, so the business logic a view
+lives by is visible even though (being unconditional, not itself one of the `excludeTags`/
+`includeTags` below it) it isn't something a chip edit can turn off. The Settings "Filtering
+rules" section (index 2, right after Mode & features) lists all six views with the built-in
+line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
+×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
+Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever one is
+active (`_homeFilterRulesActive`), exactly like it already is while a search query is active —
+reordering a narrowed list would renumber only the visible subset and scramble the hidden
+tasks' rank order; renumbering on save (`_saveTasks`, `applySearch: false`) always sees the
+true unfiltered tab so ranks never drift.
 
 ### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157; unlit-until-done
 pulse 0.1.229; configurable goals 0.1.250)
@@ -2107,12 +2115,14 @@ in App Logs → Todoist — onboarding has already finished by then.
     PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
     integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
-    search-active, projects page, project board, project edit dialog) into
-    `docs/screenshots/home/<timestamp>-<sha>/` and prepends to `SCREENSHOT_CHANGELOG.md`.
-    The workflow copies every `build/e2e_screenshots/*.png` and the changelog tool emits
-    one section per PNG found, so new captures need no CI edits. Loop protection:
-    paths-ignore on its own outputs, skips actor `github-actions[bot]`, and its commit
-    message carries `[skip-screenshot-changelog]`.
+    search-active, projects page, project board, project edit dialog; since 0.1.275 also the
+    Weekly Hours Planner grid) into `docs/screenshots/home/<timestamp>-<sha>/` and prepends
+    to `SCREENSHOT_CHANGELOG.md`. The workflow copies every `build/e2e_screenshots/*.png`
+    and the changelog tool emits one section per PNG found, so new captures need no CI
+    edits. Each entry's header line reads `branch: <branch> v<pubspec version>` (since
+    0.1.275, read straight from `pubspec.yaml` at the captured commit) alongside the
+    timestamp and source sha. Loop protection: paths-ignore on its own outputs, skips actor
+    `github-actions[bot]`, and its commit message carries `[skip-screenshot-changelog]`.
   - `build-windows-exe.yml` (`workflow_dispatch` + successful `Build APK`
     `workflow_run`, 0.1.250): Windows runner (same `windows-2022` pin as
     `screenshot_changelog.yml`, for the same VS-2022-CMake-generator reason)

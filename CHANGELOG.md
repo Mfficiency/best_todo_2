@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.275] - 2026-08-25
+- Settings → Filtering rules gained a Waiting for Approval view (with its own tag rules, like every other view) and a read-only built-in-rule line under each view explaining the business logic it already enforces unconditionally — e.g. Home always excludes Waiting for Approval, Archived, and Deleted items
+- The screenshot changelog job now also captures the Weekly Hours Planner grid alongside the rest of the tool pages
+- Every screenshot changelog entry now shows the app version next to the branch it was captured from (e.g. `branch: dev v0.1.275+275`), not just the branch name
+
 ## [0.1.274] - 2026-08-25
 - Weekly Hours Planner is now a vertical week grid: the five weekdays sit side by side as columns with time running top-to-bottom, sized to fill the screen so the whole hour range is visible without scrolling (replacing the old one-row-per-weekday horizontal timeline). Drag a block's edge up or down to resize it, same as before
 - Settings → Weekly Hours Planner: set the grid's default start/end hour, and paste a Google Calendar (or any .ics feed) URL to import — this week's events show translucent, underneath your work blocks, right on the planner

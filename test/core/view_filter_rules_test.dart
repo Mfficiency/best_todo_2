@@ -11,6 +11,36 @@ void main() {
 
   Task tagged(String label) => Task(title: 'x', label: label);
 
+  group('ViewFilterRules view registry', () {
+    test('approval is a registered view alongside home and wishlist', () {
+      expect(ViewFilterRules.viewIds, contains(ViewFilterRules.approval));
+      expect(ViewFilterRules.viewLabels[ViewFilterRules.approval],
+          isNotNull);
+      expect(ViewFilterRules.viewDescriptions[ViewFilterRules.approval],
+          isNotNull);
+    });
+
+    test('every view id has a builtInRules entry (possibly empty)', () {
+      for (final id in ViewFilterRules.viewIds) {
+        expect(ViewFilterRules.builtInRules.containsKey(id), isTrue,
+            reason: '$id is missing a builtInRules entry');
+      }
+    });
+
+    test('home, wishlist, approval and projects describe a built-in rule',
+        () {
+      for (final id in [
+        ViewFilterRules.home,
+        ViewFilterRules.wishlist,
+        ViewFilterRules.approval,
+        ViewFilterRules.projects,
+      ]) {
+        expect(ViewFilterRules.builtInRules[id], isNotEmpty,
+            reason: '$id should describe its always-on business logic');
+      }
+    });
+  });
+
   group('ViewFilterRules JSON round trip', () {
     test('round-trips exclude and include tags', () {
       final rules = ViewFilterRules(

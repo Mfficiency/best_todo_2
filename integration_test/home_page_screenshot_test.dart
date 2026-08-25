@@ -295,5 +295,6 @@ void main() {
     await captureTool('Chronize', 'chronize_page');
     await captureTool('Usage Data', 'usage_data_page');
     await captureTool('Test Results', 'test_results_page');
+    await captureTool('Weekly Hours Planner', 'weekly_hours_planner_page');
   });
 }
