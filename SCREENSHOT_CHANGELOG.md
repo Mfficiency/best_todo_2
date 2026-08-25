@@ -1,3 +1,44 @@
+<!-- screenshot-toc:start -->
+# Screenshot Changelog
+
+## Latest Screenshots
+
+Jump to a screenshot from the most recent run:
+
+- [Alarms Page](#alarms-page)
+- [Archived Items Page](#archived-items-page)
+- [Chronize Page](#chronize-page)
+- [Countdown Page](#countdown-page)
+- [Food Diary Page](#food-diary-page)
+- [Home Page](#home-page)
+- [Menu Open](#menu-open)
+- [Project Board Page](#project-board-page)
+- [Project Edit Dialog](#project-edit-dialog)
+- [Projects Page](#projects-page)
+- [Search Active](#search-active)
+- [Settings Page](#settings-page)
+- [Settings Section Appearance](#settings-section-appearance)
+- [Settings Section Backup](#settings-section-backup)
+- [Settings Section Dice Timer](#settings-section-dice-timer)
+- [Settings Section Filtering Rules](#settings-section-filtering-rules)
+- [Settings Section Mode Features](#settings-section-mode-features)
+- [Settings Section Notifications](#settings-section-notifications)
+- [Settings Section Sms Report](#settings-section-sms-report)
+- [Settings Section Streak](#settings-section-streak)
+- [Settings Section Sync Export](#settings-section-sync-export)
+- [Settings Section Tasks](#settings-section-tasks)
+- [Settings Section Todoist Sync](#settings-section-todoist-sync)
+- [Settings Section Updates](#settings-section-updates)
+- [Settings Section Widget](#settings-section-widget)
+- [Test Results Page](#test-results-page)
+- [Usage Data Page](#usage-data-page)
+- [Weekly Hours Planner Page](#weekly-hours-planner-page)
+- [Wishlist Page](#wishlist-page)
+- [Your Stats Page](#your-stats-page)
+<!-- screenshot-toc:end -->
+
+---
+
 ## 2026.08.25 15:19:29 | branch: dev v0.1.276+276 | source: ffd61a5
 
 - Folder: `docs/screenshots/home/20260825-131929-ffd61a5`
@@ -4305,6 +4346,4 @@
 ![2026-05-03T05:34:05.478070Z - dev](docs\screenshots\home\20260503-053404-c6a54b4.png)
 
 ---
-
-# Screenshot Changelog
 
