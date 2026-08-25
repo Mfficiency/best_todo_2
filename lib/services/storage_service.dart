@@ -8,6 +8,7 @@ import '../models/countdown_timer.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
+import 'attachment_storage_service.dart';
 import 'item_event_journal.dart';
 import 'label_service.dart';
 import 'pre_update_backup.dart';
@@ -207,6 +208,12 @@ class StorageService {
       if (expired.isNotEmpty) {
         tasks.removeWhere(expired.contains);
         await saveBinTaskList(tasks);
+        for (final task in expired) {
+          if (task.attachments.isNotEmpty) {
+            await AttachmentStorageService.instance
+                .deleteAttachmentsForTask(task.uid);
+          }
+        }
       }
       return tasks;
     } catch (_) {

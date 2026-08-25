@@ -135,7 +135,40 @@ Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist it
 Food Diary (0.1.266): `isEatingHabit` (bool, default false) marks a task as a food
 diary entry (see §10.6a); gated out of every other view by
 `ItemViews.isVisibleInMainViews`.
+Attachments (0.1.277): `attachments` (`List<Attachment>`, default `[]`, omitted from JSON
+when empty) — see §4.1a.
 `fromJson` is tolerant: missing keys get defaults.
+
+### 4.1a Attachments (`lib/models/attachment.dart`, 0.1.277)
+
+An `Attachment` is a note or file hung off a `Task`: uuid-v4 `uid`, `type` (`Attachment.
+typeText`/`typeImage`/`typePdf`), `text` (inline content — used only by `typeText`),
+`fileName` (original picked file name — used only by the file-backed types), `relativePath`
+(the copy's path relative to the app documents dir — null for `typeText`), `createdAt`.
+`toJson` omits empty `text`/`fileName` and null `relativePath`; `fromJson` defaults a missing
+`type` to `typeText` so a stripped/legacy payload still parses.
+
+`AttachmentStorageService` (`lib/services/attachment_storage_service.dart`, singleton
+`.instance`) owns the on-disk side for image/PDF attachments — text attachments never touch
+it. `importFile({taskUid, sourcePath, type})` copies the picked file's bytes into
+`<docs>/attachments/<taskUid>/<attachmentUid>.<ext>` (never moves/deletes the source) and
+returns the `Attachment`; `absolutePath(relativePath)` resolves a stored path back to an
+absolute one for display; `deleteAttachmentFile(attachment)` removes one copy (no-op for
+`typeText`); `deleteAttachmentsForTask(taskUid)` removes a task's whole attachments
+subdirectory. `StorageService.loadBinTaskList`'s age-based retention purge (§4.2g) calls
+`deleteAttachmentsForTask` for every task it expires out of the bin, so attachment files
+don't outlive the task they belonged to.
+
+UI: `AttachmentsField` (`lib/ui/attachments_field.dart`) is the editor, embedded in the
+task tile's expanded editor (`lib/ui/task_tile.dart`, alongside the label picker) and, in
+`readOnly: true` mode (view/open only, no add row or remove buttons, hidden entirely when
+there are none), on `TaskDetailPage`. Adding an image/PDF uses `file_selector`'s `openFile`
+(already a dependency, used elsewhere for import/export) with an extension-filtered
+`XTypeGroup`; adding a note opens a plain multiline-text `AlertDialog`. Tapping a text
+attachment reopens that dialog pre-filled (edit in place, not read-only mode); tapping an
+image opens a full-screen `InteractiveViewer`; tapping a PDF (or any other file-backed type)
+hands it to `share_plus`'s `SharePlus.instance.share(ShareParams(files: [...]))`, i.e. "open"
+is implemented as the platform share sheet rather than an in-app viewer.
 
 `DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
 `openingTaskIds`, `movedFromOpeningTaskIds`, `completedFromOpeningTaskIds`,

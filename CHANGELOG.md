@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.277] - 2026-08-25
+- Tasks can now carry attachments: add a text note, an image, or a PDF from the expanded task editor. Images open full-screen; PDFs open via the share sheet. Attachments are removable and are cleaned up automatically when a deleted task ages out of the bin.
+
 ## [0.1.276] - 2026-08-25
 - Phone numbers in task descriptions and notes are now clickable too, same as URLs — tap one to open the dialer
 
