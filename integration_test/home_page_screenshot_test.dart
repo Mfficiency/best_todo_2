@@ -79,6 +79,39 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    // Drags [scrollable] until [target]'s center point lands inside
+    // [scrollable]'s own rect. Drawer entries and the settings chip row are
+    // built eagerly (plain ListView/Row, not builders), so the finder exists
+    // in the tree from the very first frame; that makes
+    // WidgetController.scrollUntilVisible/dragUntilVisible a no-op (their
+    // loop only drags while the finder can't be found at all) and leaves the
+    // single Scrollable.ensureVisible() call as the only thing standing
+    // between a long list and an off-window tap. Measuring and nudging
+    // ourselves — checking the exact point tester.tap() will use — is what
+    // actually guarantees the tap lands on-screen.
+    Future<void> ensureCenterOnScreen(
+      Finder target,
+      Finder scrollable, {
+      bool horizontal = false,
+    }) async {
+      for (var attempt = 0; attempt < 24; attempt++) {
+        final center = tester.getCenter(target);
+        final viewport = tester.getRect(scrollable);
+        final onScreen = horizontal
+            ? center.dx >= viewport.left && center.dx <= viewport.right
+            : center.dy >= viewport.top && center.dy <= viewport.bottom;
+        if (onScreen) break;
+        final before =
+            horizontal ? center.dx < viewport.left : center.dy < viewport.top;
+        final step = horizontal
+            ? Offset(before ? 140 : -140, 0)
+            : Offset(0, before ? 140 : -140);
+        await tester.drag(scrollable, step);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
     await capture('home_page');
 
     await tester.tap(find.byTooltip('Open navigation menu'));
@@ -89,19 +122,60 @@ void main() {
     await tester.pumpAndSettle();
     await capture('settings_page');
 
+    // Every collapsible section in Settings, expanded one at a time via its
+    // jump-to chip in the pinned header — the chip's onSelected both scrolls
+    // the section into view and expands it (SettingsPage._jumpToSection).
+    const settingsSectionTitles = [
+      'Appearance',
+      'Mode & features',
+      'Tasks',
+      'Widget',
+      'Notifications',
+      'Streak',
+      'Dice timer',
+      'SMS report',
+      'Sync & export',
+      'Backup',
+      'Todoist sync',
+      'Updates',
+      'Filtering rules',
+    ];
+    final settingsChipScrollable = find
+        .descendant(
+          of: find.byType(SingleChildScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    for (final title in settingsSectionTitles) {
+      final chip = find.widgetWithText(ChoiceChip, title);
+      await ensureCenterOnScreen(
+        chip,
+        settingsChipScrollable,
+        horizontal: true,
+      );
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+      final slug = title
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+      await capture('settings_section_$slug');
+    }
+
     await popCurrentPage();
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
     // Productivity Stats lives in the collapsible Tools section now.
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
+    await ensureCenterOnScreen(
       find.text('Productivity Stats'),
-      80,
-      scrollable: find.descendant(
-        of: find.byType(Drawer),
-        matching: find.byType(Scrollable),
-      ),
+      find
+          .descendant(
+            of: find.byType(Drawer),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.tap(find.text('Productivity Stats'));
     await tester.pumpAndSettle();
@@ -125,7 +199,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Projects'));
+    await ensureCenterOnScreen(
+      find.text('Projects'),
+      find
+          .descendant(
+            of: find.byType(Drawer),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.text('Projects'));
     await tester.pumpAndSettle();
 
@@ -169,5 +251,50 @@ void main() {
     await capture('project_edit_dialog');
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
+
+    // Back to the home page: ProjectBoardPage -> ProjectsPage -> Home. The
+    // drawer (and its "Open navigation menu" button) only exists on Home.
+    await popCurrentPage();
+    await popCurrentPage();
+
+    // Archived Items lives directly in the drawer, outside the Tools section.
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Archived Items'));
+    await tester.pumpAndSettle();
+    await capture('archived_items_page');
+    await popCurrentPage();
+
+    // Wishlist plus every remaining Tools entry — Projects and Productivity
+    // Stats already have their own screenshots above.
+    Future<void> captureTool(String label, String screenshotName) async {
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tools'));
+      await tester.pumpAndSettle();
+      final entry = find.text(label);
+      await ensureCenterOnScreen(
+        entry,
+        find
+            .descendant(
+              of: find.byType(Drawer),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      await capture(screenshotName);
+      await popCurrentPage();
+    }
+
+    await captureTool('Wishlist', 'wishlist_page');
+    await captureTool('Alarms', 'alarms_page');
+    await captureTool('Countdown', 'countdown_page');
+    await captureTool('Food Diary', 'food_diary_page');
+    await captureTool('Chronize', 'chronize_page');
+    await captureTool('Usage Data', 'usage_data_page');
+    await captureTool('Test Results', 'test_results_page');
+    await captureTool('Weekly Hours Planner', 'weekly_hours_planner_page');
   });
 }

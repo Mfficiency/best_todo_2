@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../models/sync_log_entry.dart';
 import '../services/log_service.dart';
 import '../services/sync_service.dart';
+import '../services/todoist_sync_service.dart';
 import 'subpage_app_bar.dart';
 
 /// Displays logs collected during app interactions and widget updates, plus
-/// the history of background syncs (Sync tab). Opening the page acknowledges
-/// a failed sync, clearing the red dot on the drawer's App Logs entry.
+/// the history of background syncs (Sync tab) and Todoist syncs (Todoist
+/// tab). Opening the page acknowledges a failed sync on either, clearing the
+/// red dot on the drawer's App Logs entry.
 class AppLogsPage extends StatefulWidget {
   const AppLogsPage({Key? key}) : super(key: key);
 
@@ -22,12 +24,15 @@ class _AppLogsPageState extends State<AppLogsPage> {
     SyncService.instance.ensureLoaded().then((_) {
       SyncService.instance.markErrorSeen();
     });
+    TodoistSyncService.instance.ensureLoaded().then((_) {
+      TodoistSyncService.instance.markErrorSeen();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: buildSubpageAppBar(
           context,
@@ -36,6 +41,7 @@ class _AppLogsPageState extends State<AppLogsPage> {
             tabs: [
               Tab(text: 'Logs'),
               Tab(text: 'Sync'),
+              Tab(text: 'Todoist'),
             ],
           ),
         ),
@@ -69,6 +75,19 @@ class _AppLogsPageState extends State<AppLogsPage> {
                 );
               },
             ),
+            ValueListenableBuilder<List<SyncLogEntry>>(
+              valueListenable: TodoistSyncService.instance.entries,
+              builder: (context, entries, _) {
+                if (entries.isEmpty) {
+                  return const Center(child: Text('No Todoist syncs yet'));
+                }
+                return ListView.builder(
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) =>
+                      _SyncEntryTile(entry: entries[index], isTodoist: true),
+                );
+              },
+            ),
           ],
         ),
         floatingActionButton: FloatingActionButton(
@@ -83,7 +102,8 @@ class _AppLogsPageState extends State<AppLogsPage> {
 
 class _SyncEntryTile extends StatelessWidget {
   final SyncLogEntry entry;
-  const _SyncEntryTile({required this.entry});
+  final bool isTodoist;
+  const _SyncEntryTile({required this.entry, this.isTodoist = false});
 
   String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -93,6 +113,7 @@ class _SyncEntryTile extends StatelessWidget {
     final at = entry.at;
     final stamp = '${_two(at.day)}.${_two(at.month)}.${at.year % 100} '
         '${_two(at.hour)}:${_two(at.minute)}:${_two(at.second)}';
+    final noun = isTodoist ? 'change' : 'item';
     return ListTile(
       dense: true,
       leading: Icon(
@@ -102,7 +123,7 @@ class _SyncEntryTile extends StatelessWidget {
       title: Text(
         entry.success
             ? 'Synced ${entry.itemCount} '
-                '${entry.itemCount == 1 ? 'item' : 'items'} '
+                '$noun${entry.itemCount == 1 ? '' : 's'} '
                 'in ${entry.durationMs} ms'
             : 'Sync failed: ${entry.message}',
       ),

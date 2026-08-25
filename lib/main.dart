@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'ui/about_page.dart';
 import 'ui/alarm_ring_page.dart';
 import 'ui/alarms_page.dart';
 import 'ui/dice_timer_page.dart';
@@ -15,6 +16,7 @@ import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
+import 'ui/startup_choice_page.dart';
 import 'config.dart';
 import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
@@ -24,9 +26,11 @@ import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/sync_service.dart';
+import 'services/todoist_sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/sms_report_scheduler.dart';
+import 'services/update_service.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
@@ -123,15 +127,29 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   }
 }
 
+/// Runs one launch-time initialisation step, keeping a failure inside it from
+/// taking the whole launch down. Every step here is storage- or plugin-backed
+/// and can fail on a platform that lacks the plugin (web has no path_provider,
+/// so anything writing a JSON file throws `MissingPluginException`); an
+/// uncaught throw means `runApp` is never reached and the app is a blank
+/// screen instead of a degraded but usable one.
+Future<void> _initStep(String label, Future<void> Function() step) async {
+  try {
+    await step();
+  } catch (e) {
+    debugPrint('Startup step "$label" failed: $e');
+  }
+}
+
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
-  await Config.load();
-  await NotificationService.initialize();
+  await _initStep('config', Config.load);
+  await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
-    await SmsReportScheduler.applyFromConfig();
+    await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
   }
-  await AlarmService.instance.load();
+  await _initStep('alarms', AlarmService.instance.load);
   // Snapshot the device/permission state into the alarm log on every launch,
   // so a missed alarm can be diagnosed from the file after the fact. Fire and
   // forget: must not delay first frame.
@@ -140,15 +158,31 @@ Future<void> main() async {
     await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
     await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
   } catch (_) {}
-  final prefs = await SharedPreferences.getInstance();
+  SharedPreferences? prefs;
+  try {
+    prefs = await SharedPreferences.getInstance();
+  } catch (e) {
+    debugPrint('Startup step "preferences" failed: $e');
+  }
   // The mode question closes the intro, so someone who has never answered it
   // gets the whole welcome flow rather than the chooser on its own.
-  final showIntro = Config.isDev
-      ? false
-      : !(prefs.getBool('intro_shown') ?? false) || !Config.modeChosen;
+  final introAlreadyShown = prefs?.getBool('intro_shown') ?? false;
+  final showIntro = Config.isDev ? false : !introAlreadyShown || !Config.modeChosen;
+  // The fresh-start/import-from-Todoist question is a one-time step of its
+  // own, decoupled from intro_shown so it survives being interrupted (app
+  // closed mid-onboarding). An install that had already finished onboarding
+  // before this question existed backfills to "already answered" here so
+  // existing users are never asked it after an upgrade.
+  var startupChoiceMade = prefs?.getBool('startup_choice_made');
+  if (startupChoiceMade == null) {
+    startupChoiceMade = introAlreadyShown;
+    await prefs?.setBool('startup_choice_made', startupChoiceMade);
+  }
+  final showStartupChoice = Config.isDev ? false : !startupChoiceMade;
   runApp(MyApp(
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
+    showStartupChoice: showStartupChoice,
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
@@ -171,10 +205,16 @@ class MyApp extends StatefulWidget {
   /// Whether the simple/full mode picker is shown after the intro. Set from
   /// [Config.modeChosen] on launch; tests and screenshot runs pass false.
   final bool showModePicker;
+
+  /// Whether the fresh-start/import-from-Todoist chooser is shown after the
+  /// intro and mode picker, on a brand-new install only. Tests and
+  /// screenshot runs pass false.
+  final bool showStartupChoice;
   const MyApp({
     Key? key,
     required this.showIntro,
     this.showModePicker = false,
+    this.showStartupChoice = false,
   }) : super(key: key);
 
   static _MyAppState? of(BuildContext context) =>
@@ -187,6 +227,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late bool _showIntro = widget.showIntro;
   late bool _showModePicker = widget.showModePicker;
+  late bool _showStartupChoice = widget.showStartupChoice;
   bool _alarmRingOpen = false;
 
   @override
@@ -224,6 +265,57 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // Text shared into the app from other apps becomes a task on Today.
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
     }
+    // Settings → Updates → "Automatically check for updates": look up the
+    // newest build once per launch. Deferred a couple of seconds so it never
+    // competes with startup, and skipped entirely while onboarding is still
+    // on screen so the prompt can't collide with the intro/mode picker.
+    if (!kIsWeb) {
+      unawaited(Future<void>.delayed(const Duration(seconds: 2))
+          .then((_) => _maybeCheckForUpdate()));
+    }
+  }
+
+  /// Looks up the newest build and, if one is newer than the running app,
+  /// asks before doing anything — confirming opens the About page's update
+  /// section (pre-triggered, see [AboutPage.autoCheckForUpdate]) rather than
+  /// downloading or installing anything itself.
+  Future<void> _maybeCheckForUpdate() async {
+    if (!Config.autoUpdateCheckEnabled) return;
+    if (_showIntro || _showModePicker || _showStartupChoice) return;
+    UpdateInfo? update;
+    try {
+      update = await UpdateService.instance.checkForUpdate();
+    } catch (_) {
+      return;
+    }
+    if (update == null) return;
+    final info = update;
+    final navigatorContext = appNavigatorKey.currentContext;
+    if (navigatorContext == null) return;
+    final shouldUpdate = await showDialog<bool>(
+      context: navigatorContext,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Update available'),
+        content: Text('Version ${info.version} is available. Update now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+    if (shouldUpdate == true) {
+      appNavigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => const AboutPage(autoCheckForUpdate: true),
+        ),
+      );
+    }
   }
 
   @override
@@ -236,6 +328,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
+    TodoistSyncService.instance.onLifecycleChanged(state);
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {
@@ -324,6 +417,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  /// Called once the fresh-start/import-from-Todoist chooser has been
+  /// answered (either choice), so it never appears again on this install.
+  Future<void> _finishStartupChoice() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('startup_choice_made', true);
+    if (!mounted) return;
+    setState(() => _showStartupChoice = false);
+  }
+
   /// Shows the simple/full mode picker again (Settings → Mode & features).
   Future<void> restartModePicker() async {
     Config.modeChosen = false;
@@ -383,7 +485,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   onModeSelected: () =>
                       setState(() => _showModePicker = false),
                 )
-              : _initialPage(),
+              : _showStartupChoice
+                  ? StartupChoicePage(onFinished: _finishStartupChoice)
+                  : _initialPage(),
     );
   }
 }

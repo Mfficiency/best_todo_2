@@ -67,6 +67,28 @@ class Task {
   /// project) and, lacking a due date, buckets into the Future tab.
   bool isWish;
 
+  /// When true this task is a Food Diary entry: it shows up only in the
+  /// Food Diary tool (a pre-filtered view over the one task list, like the
+  /// wishlist) and, once deleted there, the deleted/archived lists — never
+  /// the home tabs, schedule view, projects or Todoist sync. See
+  /// [ItemViews.foodDiary] for the gate every other view honors.
+  bool isEatingHabit;
+
+  /// Sentinel due date the schedule view's "move to" tab picker uses to
+  /// place a task in the Future tab explicitly, without leaving it fully
+  /// undated. Exposed here (rather than kept private to the home page) so
+  /// other layers — e.g. Todoist sync's Future-project routing — recognize
+  /// the same bucket.
+  static final DateTime futureBucketMarker = DateTime(2300, 1, 1);
+
+  /// True for a null due date or [futureBucketMarker] — i.e. [due] belongs
+  /// to the Future tab bucket.
+  static bool isFutureBucketDue(DateTime? due) =>
+      due == null ||
+      (due.year == futureBucketMarker.year &&
+          due.month == futureBucketMarker.month &&
+          due.day == futureBucketMarker.day);
+
   /// Id of the project this task is assigned to, or null if unassigned.
   String? projectId;
 
@@ -103,6 +125,7 @@ class Task {
     this.recurrenceParentUid,
     this.recurrenceInstanceKey,
     this.isWish = false,
+    this.isEatingHabit = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
   })  : uid = uid ?? Task.newUid(),
@@ -163,6 +186,7 @@ class Task {
       recurrenceParentUid: json['recurrenceParentUid'] as String?,
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
       isWish: json['isWish'] as bool? ?? false,
+      isEatingHabit: json['isEatingHabit'] as bool? ?? false,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
     );
@@ -196,6 +220,7 @@ class Task {
         if (recurrenceInstanceKey != null)
           'recurrenceInstanceKey': recurrenceInstanceKey,
         'isWish': isWish,
+        'isEatingHabit': isEatingHabit,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,
       };

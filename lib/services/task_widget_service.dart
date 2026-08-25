@@ -1,7 +1,9 @@
 import 'package:home_widget/home_widget.dart';
 
 import '../config.dart';
+import '../models/streak_kind.dart';
 import '../models/task.dart';
+import 'item_views.dart';
 import 'storage_service.dart';
 import 'streak_service.dart';
 
@@ -44,10 +46,17 @@ class TaskWidgetService {
   /// Today's list as the widget shows it: everything due today or earlier,
   /// open tasks first (in list order) so a full slate still shows what is
   /// left, with the completed ones after them for un-checking.
+  ///
+  /// Deleted tasks (denying one in the Waiting for Approval page
+  /// soft-deletes it) and tasks still waiting for approval belong to no
+  /// list, so they never reach the widget either.
   static List<Task> todayTasks(List<Task> tasks, {DateTime? now}) {
     final current = now ?? DateTime.now();
     final today = DateTime(current.year, current.month, current.day);
     final due = tasks.where((t) {
+      if (t.deletedAt != null || !ItemViews.isVisibleInMainViews(t)) {
+        return false;
+      }
       if (t.dueDate == null) return false;
       final d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
       return !d.isAfter(today);
@@ -126,7 +135,12 @@ class TaskWidgetService {
     final storage = StorageService();
     final tasks = await storage.loadTaskList();
     final index = tasks.indexWhere((t) => t.uid == uid);
-    if (index < 0) return;
+    if (index < 0) {
+      // The row is stale — the task was deleted (or denied) while the
+      // widget still showed it. Redraw from the current list so it goes.
+      await sync(tasks, now: now);
+      return;
+    }
     final task = tasks[index];
     final at = now ?? DateTime.now();
     task.toggleDone();
@@ -141,8 +155,20 @@ class TaskWidgetService {
         await StreakService.instance.load();
         if (task.isDone) {
           StreakService.instance.recordCompletion(at);
+          for (final kind in const [StreakKind.create, StreakKind.plan]) {
+            final goal = Config.streakGoals[kind.id];
+            if (goal != null && goal.matches(task)) {
+              StreakService.instance.recordGoal(kind, at);
+            }
+          }
         } else {
           StreakService.instance.recordUncompletion(at);
+          for (final kind in const [StreakKind.create, StreakKind.plan]) {
+            final goal = Config.streakGoals[kind.id];
+            if (goal != null && goal.matches(task)) {
+              StreakService.instance.recordUncompletion(at, kind: kind);
+            }
+          }
         }
         await StreakService.instance.saveNow();
       } catch (_) {}

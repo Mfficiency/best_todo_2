@@ -93,10 +93,15 @@ Dependencies and why they exist:
 9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
    (always skipped in dev builds); the mode question closes the intro, so an
    unanswered mode brings the whole welcome flow back rather than the chooser
-   alone.
-10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen))`;
-    post-frame → `StartupTimeService.record()`. `MyApp.home`: intro (slides +
-    mode choice) → `_initialPage()`. The standalone `ModeSelectPage` is only
+   alone. `showStartupChoice` = `!startup_choice_made`, a separate one-time
+   flag (0.1.242) decoupled from `intro_shown` so it survives being
+   interrupted mid-onboarding; on an install where `intro_shown` was already
+   true the very first time this flag is read, it backfills to "already
+   answered" so nobody upgrading from an older build is asked it.
+10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen,
+    showStartupChoice))`; post-frame → `StartupTimeService.record()`.
+    `MyApp.home`: intro (slides + mode choice) → startup choice (fresh
+    install only) → `_initialPage()`. The standalone `ModeSelectPage` is only
     for asking the mode question again (Settings → Mode & features, §4.6).
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
@@ -127,6 +132,9 @@ Projects (0.1.89): `projectId` (String?, omitted from JSON when null) + `kanbanS
 (`'todo'`/`'ongoing'`/`'closed'`, constants on `Task`, defaults `'todo'`).
 Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist item
 (see §10.6); wish tasks are undated and undated tasks bucket into the Future tab.
+Food Diary (0.1.266): `isEatingHabit` (bool, default false) marks a task as a food
+diary entry (see §10.6a); gated out of every other view by
+`ItemViews.isVisibleInMainViews`.
 `fromJson` is tolerant: missing keys get defaults.
 
 `DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
@@ -141,7 +149,8 @@ rollups.
 | `settings.json` | Config map | — |
 | `tasks.json` | active tasks (incl. recurrence children and `isWish` wishlist items) | — |
 | `wishlist.json` | legacy wishlist store; drained into `tasks.json` on load since 0.1.101 | — |
-| `deleted_tasks.json` | deleted list | **100**, trimmed on save+load |
+| `deleted_tasks.json` | archive (Archived Items — "deleted" but restorable, never age-purged) | **100**, trimmed on save+load |
+| `deleted_bin.json` | the real Deleted bin — see §4.2g | **100**, trimmed on save+load; also age-purged past `Config.deletedItemsRetentionDays` |
 | `daily_task_stats.json` | one record per day | — |
 | `last_opened.txt` | ISO timestamp for day-rollover detection | 1 value |
 | `countdown_timers.json` | timers (null = first run, [] = emptied) | — |
@@ -213,8 +222,9 @@ No update path may lose data. Three layers (`lib/services/safe_file.dart`,
 
 1. **Atomic saves with rotation** — `SafeFile.writeString` writes `<file>.tmp` (flushed),
    rotates the previous content to `<file>.bak`, then renames over. Applied to
-   `tasks.json`, `deleted_tasks.json`, `daily_task_stats.json`, `countdown_timers.json`
-   and `alarms.json`. A crash mid-save can no longer leave a half-written file.
+   `tasks.json`, `deleted_tasks.json`, `deleted_bin.json`, `daily_task_stats.json`,
+   `countdown_timers.json` and `alarms.json`. A crash mid-save can no longer leave a
+   half-written file.
    Writes to the same path are serialized on a per-path future chain (overlapping
    saves — e.g. delete + undo — would otherwise race on the shared `.tmp`; last
    caller wins, a failed write still surfaces to its own caller only).
@@ -252,12 +262,131 @@ items / ~2 MB, measured startup regression) — is recorded in
 
 `ItemViews` (`lib/services/item_views.dart`) is the shared query layer over the one task
 list: pure static selectors `inHomeBucket`/`homeBucket` (date-only distance bucketing +
-`sortTasks`, optional extra predicate for search), `wishlist` (isWish), `active`
-(deletedAt == null), `projectTasks`, `boardColumn`. The home page's `_tasksForTab`, the
-Wishlist page, the Projects page (counts + top pane) and the Kanban board all delegate to
-it; the Future-tab sentinel date (2300-01-01) lives here as `futureSentinelDate`.
-Membership flags on the task stay the stored form (dual-write era) — this step moves the
-*reading* of them into one place.
+`sortTasks`, optional extra predicate for search), `wishlist` (isWish), `foodDiary`
+(isEatingHabit, §10.6a), `active` (deletedAt == null), `projectTasks`, `boardColumn`. The
+home page's `_tasksForTab`, the Wishlist/Food Diary pages, the Projects page (counts +
+top pane) and the Kanban board all delegate to it; the Future-tab sentinel date
+(2300-01-01) lives here as `futureSentinelDate`. Membership flags on the task stay the
+stored form (dual-write era) — this step moves the *reading* of them into one place.
+`isVisibleInMainViews` (`isApproved(t) && !t.isEatingHabit`) is the combined gate every
+selector except `foodDiary`/`waitingApproval` filters through — a food diary entry, like
+an unapproved Todoist pull, is invisible everywhere but its own tool.
+
+Every selector above, including `waitingApproval` (0.1.272), also takes an optional `rules`
+(`ViewFilterRules?`, see §4.4 "Filtering rules"), checked via `ItemViews.passesFilterRules` —
+an extra, user-configured tag layer on top of the view's own structural query. `applyFilterRules`
+filters a plain list the same way (used for the Archived Items and Deleted bin pages, neither
+of which is itself a selector — see §4.2g). A null or empty `rules` is a no-op, so every existing
+call site that does not pass one is unaffected.
+
+### 4.2e Waiting for Approval gate (0.1.256, token respelled 0.1.259)
+
+Every task `TodoistSyncService._taskFromRemote` builds — first-launch import and the
+"brand-new Todoist tasks" pull alike — is stamped with `waitingApprovalToken`
+(`lib/utils/label_utils.dart`). `ItemViews.isApproved` makes that token the gate on
+*every* other selector (home buckets, wishlist, active, project tasks, board columns), so
+a task "created with the Todoist workflow" is invisible everywhere until a human decides
+on it in Tools ▸ menu ▸ **Waiting for Approval** (`lib/ui/waiting_approval_page.dart`,
+listed via `ItemViews.waitingApproval`, the one selector that shows *only* gated tasks).
+Approve strips the token (`removeWaitingApprovalToken`) and the task drops into whatever
+list it belongs to; Deny soft-deletes it straight into the real Deleted bin
+(`deleted_bin.json`, recoverable from Deleted Items until it ages out — see §4.2g), never
+into the archive, since a denial was never wanted in the first place.
+
+**Schedule view bypassed the gate (fixed 0.1.261):** `HomePage._buildScheduleBody` built
+the calendar/schedule view's list straight from the raw `_tasks`, not through
+`ItemViews.homeBucket` like the tab list view — so a gated task with a due date (Todoist
+due dates survive onto the stub) rendered under its date in Schedule view even while
+correctly hidden from the tab view. Fixed by filtering `_tasks` through
+`ItemViews.isApproved` before handing it to `ScheduleView`, same as every other surface.
+
+**The home-screen widget bypassed it too, and kept a denied task (fixed 0.1.262):**
+`TaskWidgetService.todayTasks` selected purely on `dueDate`, so a gated task due today sat
+on the Android task widget — and denying it did not take it off, because the widget is only
+pushed by `HomePage._saveTasks`, which the self-contained approval page never calls. Both
+halves are fixed: `todayTasks` now drops `deletedAt != null` and `!ItemViews.isApproved`
+rows (the widget mirrors the same views layer as every list), `WaitingApprovalPage._save`
+pushes `TaskWidgetService.sync` after persisting, and `HomePage._reloadTasksFromStorage`
+(the return path from the approval page, the wishlist and a Todoist pull) pushes as well.
+`toggleInStorage` also re-syncs when the tapped uid is gone, so an already-stale row
+clears itself instead of doing nothing.
+
+**The token is `Waiting_for_approval`, one underscored word (0.1.259).** Label tokens
+split on commas AND whitespace (`_tokenSeparator` = `[,\s]+`), so a Todoist label spelled
+`Waiting for Approval` arrives as three unrelated tags — `Waiting`, `for`, `Approval` —
+that gate nothing. The underscored spelling survives the split as a single tag on both
+sides, and round-trips through Todoist's native `labels` array unchanged. Matching is
+case-insensitive throughout, and `legacyWaitingApprovalTokens` keeps the pre-0.1.259
+`waiting-for-approval` spelling recognized (still gates a task, still stripped on
+approval) but never writes it again — so tasks pulled in before the rename don't get
+stranded. Use `hasWaitingApprovalToken`/`removeWaitingApprovalToken` rather than
+`labelHasToken`/`removeLabelToken` with the constant, or the legacy spelling is missed.
+
+The token is local-only at import: the sync map's fingerprint baseline is computed *with*
+it, so the initial pull pushes nothing back and the Todoist item's `labels` array stays
+untouched. Approving changes `_localFingerprint`, so the next sync pushes the shortened
+label array — the tag is removed on the Todoist side too, exactly once.
+
+**Swipe approve/deny (0.1.272), matching `TaskTile`'s move/delete swipe exactly:** each
+row in `WaitingApprovalPage` (`_PendingTaskTile`) carries the same gesture mechanics as
+the home list and the Wishlist tile (drag with `AnimatedSlide`, 100 px/500 velocity
+thresholds, directions honor `Config.swipeLeftDelete`, `GestureDetector` on Android/web).
+The approve-side swipe opens a shortcut row of every `Config.tabs` label (Today/Tomorrow/
+Day After Tomorrow/Next Week/Next Month/Future) with the `Config.delayDuration` countdown
+bar; tapping one, or letting the countdown run out (default: Today), approves the task
+(`removeWaitingApprovalToken`) AND schedules it — sets `dueDate` to that bucket's date
+(same day math as `HomePageState._dueDateForTab`) plus `movedAt`/`rescheduledAt`. The
+deny-side swipe opens a Deny button plus Fri/Sat/Sun/Mon weekday shortcuts (same set as
+`TaskTile`'s delete-side weekday options): a weekday shortcut approves the task onto the
+next occurrence of that day instead of denying it; Deny, or letting the countdown run out,
+denies the task with the same home-style undo snackbar as everywhere else in the app —
+only after the undo window expires does it move to the real Deleted bin (previously
+`_deny` moved it there immediately, with no undo). Swiping back toward the other side
+while options are open cancels, as on the home list. The original leading/trailing
+Approve/Deny icon buttons are unchanged: they stay one-tap alternatives that lift the
+approval gate (or deny) without touching `dueDate`.
+
+### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
+
+What used to be the single "Deleted Items" list is now **Archived Items**
+(`lib/ui/archived_items_page.dart`, `deleted_tasks.json`, capped at 100 entries, never
+purged by age): every normal delete — a swipe/menu delete anywhere in the app, Chronize's
+delete, a wishlist delete, and the end-of-day sweep that clears finished tasks (both
+`HomePage._changeDate`'s in-session rollover and `StorageService.loadTaskList`'s
+across-launch rollover, both stamping `autoDeleted: true`) — lands here first, exactly as
+"Deleted Items" always worked. Restorable from there indefinitely.
+
+A second, real bin sits behind it: **the Deleted bin** (`lib/ui/deleted_bin_page.dart`,
+`deleted_bin.json`, same 100-entry cap) is reachable from an Archived Items app-bar action
+(`Icons.delete_forever`, tooltip "Deleted items (bin)"). An archived item's trailing icon
+(`Icons.delete_outline`, "Move to bin" — `HomePage._moveArchivedToBin`) sends it on; from
+there `Icons.delete_forever` ("Delete permanently") erases it for good, same undoable
+snackbar pattern as before. Left alone, an item in the bin purges itself automatically
+`Config.deletedItemsRetentionDays` days after it landed there (default 60, editable in
+Settings → Tasks → "Deleted items retention") — `StorageService.loadBinTaskList` sweeps
+expired entries and re-persists the trimmed list on every read, so the purge applies even
+if the bin page is never opened.
+
+**Denial skips the archive.** `WaitingApprovalPage._deny` was never "delete this task the
+user actually wanted" — it inserts straight into `deleted_bin.json` via
+`ItemRepository.loadBinItems`/`saveBinItems`, starting the retention clock immediately
+rather than sitting in the archive indefinitely.
+
+**Recurring instances and the archive/bin.** `HomePage._refreshRecurringForTask`
+regenerates any date between a recurring parent's due date and its `recurrenceEndDate`
+that is missing from `_tasks` — which, before this, included a date whose instance had
+simply been archived, silently recreating it on the next refresh (app restart, or any edit
+to the parent). The existing-dates lookup now also scans `_deletedTasks` and `_binTasks`
+for that `recurrenceParentUid`, so an archived or binned occurrence's date stays skipped:
+manually archiving one instance of a recurring task never regenerates it, and never
+disturbs the rest of the series. Since goal credit (`StreakGoal`/`_recordGoalCompletion`)
+only ever fires off an `isDone` toggle, an archived-but-incomplete instance was already
+never counted toward a goal — archiving just had to stop fighting the regeneration.
+
+`TodoistSyncService._runSyncBody`'s completed-vs-deleted reconciliation
+(`deletedByUid`) reads both the archive and the bin, so a task whose Todoist mapping
+predates it being moved on to the bin (denied, or sent there from Archived Items) is still
+recognized correctly.
 
 ### 4.2c Structured labels (0.1.108)
 
@@ -269,6 +398,41 @@ unseen tokens fire-and-forget (`registerFromLabelStrings` from `saveTaskList`; w
 when all tokens are known, nothing loads at startup). Kinds derive from the token:
 `priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
 tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
+
+**Label picker (0.1.255):** `LabelPickerField` (`lib/ui/label_picker.dart`) replaces the
+raw comma-separated label text field everywhere a task's `label` is edited (task-tile
+inline editor, wishlist add/edit dialog). Current tokens render as removable `InputChip`s;
+an "Add label" chip opens a dialog with a search/create field over every known label
+(`LabelService.instance.labels`, checkbox-toggled) — typing a name that isn't already a
+label offers "Add "<name>"" to create and select it in one tap. Selection is staged in
+the dialog and only committed (chips update, `onChanged` fires) on "Done"; "Cancel"
+discards it.
+
+### 4.2e Auto-tagging (0.1.229, grouped dictionary 0.1.249)
+
+`AutoTagGroup` (`lib/models/auto_tag_group.dart`: tag, `keywords` list) + `AutoTagService`
+(`auto_tag_rules.json`, ValueNotifier singleton, `lib/services/auto_tag_service.dart`) —
+a user-editable tag → group-of-words dictionary, e.g. the `fitness` tag fires on any of
+`gym`/`workout`/`exercise`/`cardio`/`yoga`/`jogging`/`running`/`training`/`stretch`. Seeded
+with 12 starter groups (work, bike, fitness, health, shopping, finance, travel, home,
+family, food, study, tech) on first run, same load-seeds-and-persists / write-on-save
+shape as `ProjectService`; the starter word groups were curated from online thesaurus
+results (thesaurus.com, Merriam-Webster, WordHippo, relatedwords.io — via `WebSearch`)
+trimmed to common, everyday words. `withAutoTags(title, label)` is the one entry point:
+when `Config.autoTagEnabled` (default **true**) is on, `tagsFor` whole-word
+case-insensitively matches `title` against every group's keywords and every group with a
+hit contributes its tag; matched tags are appended to `label` (deduped against tokens
+already present via `label_utils`), a no-op otherwise. Called from the home page's
+`_addTask`/`_addTaskFromChronize` and the Wishlist page's new-item flow — edits never
+re-tag. `AutoTagGroup.fromJson` also accepts the original one-keyword-per-tag shape
+(`keyword` singular) from before groups existed, and `AutoTagService._normalize` (run on
+every load/save) merges any groups sharing a tag and dedupes their keywords, so old data
+and hand-edited duplicates both collapse into one clean group per tag. Settings → Tasks
+has the on/off switch ("Auto-tag new items") and an "Auto-tag rules" entry point
+(`AutoTagRulesPage`) to add/rename/delete a tag and edit its whole word group (comma/space
+separated) in one dialog. Deliberately dumb today (a fixed dictionary, no real NLP); the
+plan is to later swap the matching in `tagsFor` for an on-device LLM without touching
+callers, which only ever see the resulting tag list.
 
 ### 4.3 Home page UX
 
@@ -308,20 +472,22 @@ wins over the pinned bucket (there the day is picked explicitly).
   `device_info_plus`) because gestures are awkward there.
 
 **Delete is deferred:** the task leaves the active list immediately, but only lands in the
-deleted list after the undo-snackbar window (same 5 s default) so Undo can restore it
-in-place. Restore from Deleted Items always resets due date to today.
+archive after the undo-snackbar window (same 5 s default) so Undo can restore it
+in-place. Restore from Archived Items always resets due date to today.
 
 **Done:** checkbox sets `isDone` + `completedAt`, sinks to bottom with strikethrough;
-swept to Deleted at day rollover.
+swept to the archive at day rollover.
 
 **Recurrence:** only parents generate; children are copies with
 `recurrenceParentUid`/`recurrenceInstanceKey` per day-step until `recurrenceEndDate`.
 Moving/rescheduling a child detaches it (clears parent linkage). Regenerated after load,
-import, and any parent edit.
+import, and any parent edit — skipping any date already archived or binned (§4.2g), so a
+manually archived occurrence stays gone.
 
-**Inline editing:** tapping a tile expands it — title/description/note/label fields,
-due-date picker, recurring switch (+interval/end for parents), a Notify bell, collapse
-button. Edits persist on change/focus loss.
+**Inline editing:** tapping a tile expands it — title/description/note text fields, a
+`LabelPickerField` (§4.2c) for labels, due-date picker, recurring switch (+interval/end
+for parents), a Notify bell, collapse button. Text fields persist on focus loss; the
+label picker persists immediately on each add/remove.
 
 **Notify bell (delay sheet 0.1.233):** the bell asks *when* first — a modal sheet headed
 `Notify me about "<title>"` offering In 5 minutes / In 20 minutes / In 1 hour
@@ -352,9 +518,9 @@ offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback
 build; sections scrolled out of view are unmounted, which is fine because the section
 spanning the top is always attached.
 
-**Drawer:** Home, Settings, Deleted Items, About, Changelog, App Logs, Startup Times,
-Tools ▸ (Alarms, Countdown, Wishlist, Projects, Chronize, Productivity Stats,
-Usage Data, Test Results). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
+**Drawer:** Home, Settings, Archived Items (→ Deleted bin, §4.2g), About, Changelog, App Logs, Startup Times,
+Tools ▸ (Alarms, Countdown, Wishlist, Food Diary, Projects, Chronize, Productivity Stats,
+Usage Data, Test Results, Weekly Hours Planner). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
 schedule-view feature is on) — so it always lands on the same familiar screen rather than
@@ -565,14 +731,16 @@ default `dd.MM.yy`). Tasks: add-to-top, "New tasks go to" (`defaultAddTabIndex`,
 "Current tab", see §4.3), swipe-left-delete, default delay 0–10 s slider,
 start tab (simple mode hides the tool-related entries, see §4.6), default start page
 (`startTool`: the task list or any enabled tool — Alarms, Countdown,
-Projects, Chronize, Usage Data, Productivity Stats; the tool is pushed on top of the task
+Projects, Chronize, Usage Data, Productivity Stats, Weekly Hours Planner; the tool is pushed on top of the task
 list after loading, so back lands on the tasks), start in schedule view, Chronize hour
-wheel. Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes`,
+wheel, "Auto-tag new items" (`autoTagEnabled`, default on) + an "Auto-tag rules" entry
+point to edit the keyword dictionary (§4.2e). Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes`,
 default **off**, see §8). Notifications:
 enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
 applied to task notifications only, never alarms), default notification delay (dev 3 s /
 prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
-+ Sync now tile (§4.7), Export/Import buttons. `Config.applyMap` is defensive
++ Sync now tile (§4.7), Export/Import buttons. Todoist sync: enable switch + API token
+field (§4.8). `Config.applyMap` is defensive
 (clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
 the app-bar date stepper, seeds demo data.
 
@@ -612,16 +780,56 @@ must open its section first (tap `Expand <section>` or jump via its chip). `_jum
 toggles re-run `_updateActiveSectionFromScroll` on the next frame because the list height
 changed under the chip row.
 
-### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157)
+**Filtering rules (0.1.235, extended to the archive/bin split 0.1.266, Waiting for Approval
+added 0.1.272):** a per-view tag filter, configured separately for each of Home, Wishlist,
+Waiting for Approval, Projects, Archived Items and the Deleted bin. `ViewFilterRules`
+(`lib/models/view_filter_rules.dart`: `excludeTags`, `includeTags`, both `List<String>`) holds
+one view's configuration; `Config.viewFilterRules` (`Map<String, ViewFilterRules>`, keyed by
+`ViewFilterRules.home/wishlist/approval/projects/archived/bin`) persists all of them inside
+`settings.json` alongside every other setting. A task carrying any `excludeTags` token is
+hidden from that view; when `includeTags` is non-empty, only tasks carrying at least one of
+its tokens show — matched case-insensitively against `Task.label` tokens
+(`splitLabelTokens`). This sits on top of each view's own structural rule (the wishlist
+still only ever shows `isWish` tasks, and the Waiting for Approval queue only ever shows
+pending, non-deleted ones) — see §4.2d. `ViewFilterRules.builtInRules` is a read-only string
+per view id (empty for Archived Items/Deleted bin, which have no selector-level rule of their
+own) summarizing that always-on structural business logic — Home's reads "Always excludes
+Waiting for Approval, Archived, and Deleted items", for instance — shown in Settings directly
+under each view's description, above its two editable chip rows, so the business logic a view
+lives by is visible even though (being unconditional, not itself one of the `excludeTags`/
+`includeTags` below it) it isn't something a chip edit can turn off. The Settings "Filtering
+rules" section (index 2, right after Mode & features) lists all six views with the built-in
+line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
+×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
+Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever one is
+active (`_homeFilterRulesActive`), exactly like it already is while a search query is active —
+reordering a narrowed list would renumber only the visible subset and scramble the hidden
+tasks' rank order; renumbering on save (`_saveTasks`, `applySearch: false`) always sees the
+true unfiltered tab so ranks never drift.
 
-Daily streak gamification with **three** challenges (`StreakKind` in
+### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157; unlit-until-done
+pulse 0.1.229; configurable goals 0.1.250)
+
+Daily streak gamification with **three** flames (`StreakKind` in
 `lib/models/streak_kind.dart`; the ids are persisted, so keep them stable):
 
 | kind | id | day counts when | flame colours (cold → warm → hot) |
 | --- | --- | --- | --- |
 | Finish a task | `complete` | ≥1 non-wish task completed | orange → deep orange → red |
-| Create a task | `create` | ≥1 non-wish task created (any due date) | light green → green → teal |
-| Plan ahead | `plan` | a task moved to another day **or** the whole day's list finished | light blue → indigo → purple |
+| Create (green) | `create` | a task matching its configured goal is completed | light green → green → teal |
+| Plan (blue) | `plan` | a task matching its configured goal is completed | light blue → indigo → purple |
+
+`complete` is fixed. The green (`create`) and blue (`plan`) slots are **user-configured
+goals** since 0.1.250 (`StreakGoal` in `lib/models/streak_goal.dart`, persisted in
+`Config.streakGoals` — a `Map<String, StreakGoal>` keyed by kind id): each goal picks a
+`target` (`StreakGoalTarget.task` — one specific recurring task, matched by its own uid
+**or** its generated instances' `recurrenceParentUid` — or `StreakGoalTarget.project` —
+any task filed under a chosen project, matched by `projectId`) plus a `title` shown on
+the flame instead of a fixed label (pre-filled from the task/project name when the goal
+is set in the picker dialog, freely editable afterwards). `StreakGoal.matches(Task)`
+implements the match. A slot with no entry in `Config.streakGoals` has **no built-in
+default any more** — it just stays cold until configured (`streakFlameInfo` in
+`lib/services/streak_flame_display.dart`, see below).
 
 `StreakService` (ChangeNotifier singleton, `streak.json` via `SafeFile`) stores one
 dayKey → **count** map per kind — `completionsByDay` (the original key, kept so old files
@@ -630,24 +838,33 @@ load unchanged), `createsByDay`, `planByDay` — plus, since 0.1.144, a parallel
 history has counts only) powering the time-of-day challenges. Counts, not booleans, so
 toggle+untoggle on the same day cancels out exactly and per-day stats are possible.
 `record(kind, when)` returns true on that kind's **first** event of the day (the
-streak-kept moment); `recordCompletion`/`recordCreation` wrap it, and `recordPlanning`
-stores at most one event per day (re-checking "everything done" on every toggle must not
-inflate the count). `recordUncompletion` decrements the completion map, drops the
-**latest** recorded minute, and removes the day at zero — creations and planning moves
-already happened and are never reverted. Every read API (`currentStreak`, `isDayDone`,
-`longestStreak`, `bestDay`, `flameProgress`, …) takes an optional `kind:` that defaults
-to `StreakKind.complete`, so older call sites and tests keep their meaning.
-`enabledKinds` filters by `Config.streakKindEnabled` (all three on by default; the
-switches live in Settings → Streak → "Active challenges").
+streak-kept moment); `recordCompletion` wraps it for `complete`, and `recordGoal(kind,
+when)` is the equivalent for a configured `create`/`plan` goal — at most one event per
+day (re-checking a task's matches on every toggle must not inflate the count).
+`recordUncompletion(when, {kind})` (generalized in 0.1.250 — used to be `complete`-only)
+decrements that kind's map, drops the **latest** recorded minute only for `complete` (the
+other two never tracked times), and removes the day at zero. Every read API
+(`currentStreak`, `isDayDone`, `longestStreak`, `bestDay`, `flameProgress`, …) takes an
+optional `kind:` that defaults to `StreakKind.complete`, so older call sites and tests
+keep their meaning. `enabledKinds` filters by `Config.streakKindEnabled` (all three on by
+default; the switches live in Settings → Streak → "Active challenges" — this is
+independent of whether a `create`/`plan` slot has a goal configured).
+`StreakService.syncKnownTasks(tasks)` (called every `HomePage.build()`) tracks which task
+uids currently exist so `isGoalMissing(kind)` can tell a task-targeted goal whose task was
+deleted apart from one that simply has not fired today; a project-targeted goal is
+checked directly against `ProjectService.instance.byId(goal.targetId)` by the display
+layer instead (no service-to-service dependency needed for that case).
 
 Wish items never count. Hooks in `home_page.dart`, all using `_currentDate` so the dev
-date stepper works: `_recordStreakToggle` (tile checkbox + dice-timer "done") →
-completion, plus `_recordStreakDayCleared` when every task due today is done (an empty
-day is not an achievement and does not count); `_recordStreakCreation` from
-`_trackTaskCreated` (add row, shared text, Chronize); `_recordStreakPlanning` from
-`_trackTaskMove` whenever a task's day actually changes. The home-screen widget's
-checkbox (`task_widget_service.dart`) records completions only — it runs in a background
-isolate without the task list.
+date stepper works: `_recordStreakToggle` (tile checkbox + dice-timer "done") → completion
+plus `_recordGoalCompletion`/`_recordGoalUncompletion`, which check the toggled task
+against `Config.streakGoals['create']`/`['plan']` (`StreakGoal.matches`) and call
+`recordGoal`/`recordUncompletion(kind: …)` on a match. The home-screen widget's checkbox
+(`task_widget_service.dart`) mirrors the same goal-matching inline since it runs in a
+background isolate without the home page's hooks. The old fixed "any task created" /
+"a task moved or the day cleared" defaults (and their `_recordStreakCreation`/
+`_recordStreakPlanning`/`_recordStreakDayCleared` hooks) were retired in 0.1.250 —
+`_trackTaskCreated`/`_trackTaskMove` no longer touch the streak at all.
 
 **Streak semantics:** consecutive active days ending today or later-graced; a day still
 in progress never breaks the streak. Grace (`Config.streakGraceHours`, 24 default / 48):
@@ -657,34 +874,84 @@ back). `longestStreak()` scans full history under the same rule; `longestStreakR
 returns the same run's exact first/last day as a record (earliest run wins ties). Flame
 maxes out at **365 days** (`flameProgress` = streak/365 clamped to 1).
 
+**Display layer (0.1.250):** `streakFlameInfo(kind)` in
+`lib/services/streak_flame_display.dart` is the single place every flame's `short`
+(chip/tooltip label), `title`, `description` and `callToAction` come from — `StreakPage`,
+`StreakFlameButton` and the Settings "Active challenges" rows all call it instead of
+reading `StreakKind`'s constants directly. `complete` always returns the fixed enum text.
+For `create`/`plan` it returns one of three states: **unconfigured** (no
+`Config.streakGoals` entry — `short`/title fall back to the kind's own short name, e.g.
+"Create · no goal set", description invites setting one, `configured: false`);
+**missing** (a goal is configured but `StreakService.isGoalMissing(kind)` — task target —
+or `ProjectService.instance.byId(goal.targetId) == null` — project target — is true;
+shows the goal's title with a "was deleted" description, `missing: true`); or **active**
+(goal resolved fine — title/description/callToAction all built from `goal.title`, e.g.
+"Complete 'Exercise' every day"). An unconfigured or missing slot never has anything
+recorded against it, so its flame naturally renders cold (`flameColor` at progress 0 is
+already grey) with no special-casing needed in the colour/size math.
+
+**Goal picker (0.1.250):** `StreakGoalDialog` (`lib/ui/streak_goal_dialog.dart`, own
+`StatefulWidget` owning its `TextEditingController` per the `_ProjectEditDialog`
+convention) is opened from a "Set goal"/"Change" row under each of the `create`/`plan`
+switches in Settings → Streak → "Active challenges". A `SegmentedButton` picks
+`StreakGoalTarget.task` (a `DropdownButton` of recurring tasks — `isRecurring &&
+recurrenceParentUid == null`, loaded via `StorageService().readTaskListRaw()` so it never
+fights the home page's in-memory list/rollover) or `.project` (a dropdown of
+`ProjectService.instance.list`); picking an option auto-fills the title field with its
+name (only while the field still matches the last auto-fill, so a hand-typed title is
+never clobbered) and the field stays freely editable. Save writes
+`Config.streakGoals[kind.id]`, `Config.save()`s and calls
+`StreakService.instance.settingsChanged()`; "Remove goal" clears that entry — both close
+the dialog and the Settings page picks up the change via its own `setState`.
+
 **UI:** `StreakFlameButton` (`lib/ui/streak_flame_button.dart`) in the home app bar
 directly left of the dice (`ListenableBuilder` on the service; hidden when
 `Config.showStreak` is false or every challenge is switched off). It **cycles** through
 the active challenges every 2.4 s (`Timer.periodic` + `AnimatedSwitcher` fade/scale keyed
-by kind), showing that kind's colour, `Badge` count and tooltip ("Finish a task: 3-day
-streak" / "Create a task: no streak yet"); the icon grows 22→30 px with progress.
+by kind), showing that kind's colour, `Badge` count and a `streakFlameInfo`-built tooltip
+("Finish a task: 3-day streak" / "Create · no goal set" / "Exercise: 5-day streak"); the
+icon grows 22→30 px with progress.
 **Unlit until the day is done (0.1.229):** the flame burns in the kind's colour only when
 `isDayDone(today, kind:)` — a streak still riding on yesterday (or on the grace day) shows
 the *outlined* icon in `theme.disabledColor`, the `Badge` (still counting the streak at
-risk) greys with it, and the tooltip gains "— still open today". That grey icon **pulses**:
-a 900 ms repeat-reverse controller lerps it grey → white and scales it 1.0 → 1.12, so an
-unfinished challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind
-currently shown. **Cycle and pulse are both disabled under the test bindings** (a repeating
-timer/animation means `pumpAndSettle` never settles, and it also keeps screenshot runs
-deterministic) — the check is `WidgetsBinding.instance.runtimeType` containing "Test";
-`StreakFlameButton.debugForceCycle` re-enables both for the tests that cover them.
+risk) greys with it, and the tooltip gains "— still open today" (an unconfigured
+`create`/`plan` slot short-circuits before any of this — `streakFlameInfo`'s `title` is
+shown as-is with no streak/done state at all). That grey icon **pulses**: a 900 ms
+repeat-reverse controller lerps it grey → white and scales it 1.0 → 1.12, so an unfinished
+challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind currently shown.
+**All challenges done settles the flame (0.1.236; goal-aware since 0.1.250):** once every
+*tracked* kind is done today (`complete`, plus `create`/`plan` only once a goal is
+configured — an unconfigured slot is excluded so it can't block this forever — and more
+than one tracked kind is on), the cycling collapses into a single **steady white flame
+with a faint blue cast** (`StreakFlameButton.allDoneColor` = `0xFFE8F0FF`; red 700 until
+0.1.252) badged with the **highest** of the streak counts, keyed `'all-done'` so the
+switcher stops cross-fading. The badge's number switches to
+`StreakFlameButton.allDoneBadgeTextColor` (`0xFF1B2A4A`) so it stays readable on the
+near-white badge;
+the tooltip becomes "All 3 challenges done today — 5-day streak" and tapping opens
+`StreakPage` on the kind that owns that highest streak. A single tracked challenge keeps
+its own colour (there is no cycle to collapse) — the cycle itself still hops through every
+*enabled* kind, tracked or not, so an unconfigured slot's "no goal set" placeholder is
+still shown in its turn. **Cycle and pulse are both disabled under the test bindings** (a
+repeating timer/animation means `pumpAndSettle` never settles, and it also keeps
+screenshot runs deterministic) — the check is `WidgetsBinding.instance.runtimeType`
+containing "Test"; `StreakFlameButton.debugForceCycle` re-enables both for the tests that
+cover them.
 
 `StreakPage`: a `ChoiceChip` row (one mini flame per active challenge, "Finish 3") when
 more than one is on, big flickering flame in the selected kind's colour (700 ms
 repeat-reverse controller — **never `pumpAndSettle` this page in tests**, it never
 settles; scale/sway/glow scale with progress), fun level names ("First spark" →
 "MAXIMUM FIRE"), progress bar to a full year, a "Today" card listing every active
-challenge with its description and a check mark or "Open" (tap a row to select it), a
-stats card worded per kind (streak start, longest ever, active days, total events, best
-day, average per active day), and a gear action → Settings. First completion of the day
-plays a ~1.4 s
+challenge via `streakFlameInfo` with a check mark, "Open", "Not set" (unconfigured) or an
+error icon (goal missing) trailing (tap a row to select it), a stats card worded per kind
+(streak start, longest ever, active days, total events, best day, average per active
+day — `create`/`plan` use generic "the goal was met" wording since there is no fixed
+challenge behind them any more), and a gear action → Settings. First completion of the
+day plays a ~1.4 s
 self-removing overlay celebration (`showStreakCelebration`: flame pop + sparks + "Streak
-kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`).
+kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`) — tied only
+to the `complete` flame, not to a goal completion.
 
 **Streak calendar (0.1.144):** the "Longest streak ever" stat tile is tappable
 ("Tap to see it on the calendar") → `StreakCalendarPage`: header card naming the longest
@@ -714,16 +981,17 @@ open first (evaluation order within the group), then an amber "Earned" divider h
 (only when both groups exist), then the earned ones — the card opens on what is left to
 chase rather than on a wall of check marks.
 
-**Seeding:** on first load without `streak.json` (`needsSeed`), backfilled from existing
-history — completions per day the **max** of daily-stats counts and `completedAt`
-timestamps on live+deleted tasks (so nothing double-counts and long-time users start
-warm), creations from `createdAt` and planning days from `movedAt ?? rescheduledAt`.
-(In dev builds the seeded demo daily-stats produce a pre-lit flame; tests write an empty
-`streak.json` up front to opt out.) Dev/demo builds then also run `seedDevStreak()`, which
-fills the last `Config.devSeedStreakDays` (**50**) days back from today — complete = 50,
-create = ⅔, plan = ½ of that, so the cycling flame shows three different colours and
-sizes — max-merged, so real counts survive. It runs only inside the `needsSeed` branch,
-so a dev install's real streak is never papered over.
+**Seeding:** on first load without `streak.json` (`needsSeed`), only the `complete` kind
+is backfilled from existing history — completions per day the **max** of daily-stats
+counts and `completedAt` timestamps on live+deleted tasks (so nothing double-counts and
+long-time users start warm). `create`/`plan` are user-configured goals with no fixed
+app-wide meaning (0.1.250), so there is nothing generic to backfill for them — they start
+cold and unconfigured for everyone, new install or not. (In dev builds the seeded demo
+daily-stats produce a pre-lit `complete` flame; tests write an empty `streak.json` up
+front to opt out.) Dev/demo builds then also run `seedDevStreak()`, which fills the last
+`Config.devSeedStreakDays` (**50**) days back from today for `complete` only — max-merged,
+so real counts survive. It runs only inside the `needsSeed` branch, so a dev install's
+real streak is never papered over.
 
 **Reminders (list since 0.1.157):** `Config.streakReminderEnabled` is the master switch
 (default off) and `Config.streakReminders` holds up to `maxStreakReminders` (**24**)
@@ -735,13 +1003,17 @@ every slot and re-arms one **one-shot** `zonedSchedule` per enabled reminder (id
 `kStreakReminderNotificationIdBase = 0x20000010` + slot, plus the legacy
 `kStreakReminderNotificationId = 0x20000002` which is only ever cancelled;
 `inexactAllowWhileIdle` — deliberately NOT the alarm ladder, no exact-alarm permission
-needed) for today's time, or tomorrow when the time has passed or every active challenge
-is already met. The body names what is still open ("Still open today: create a task, plan
-ahead. Keep your 5-day streak alive.", `reminderBody`). Re-synced on every app start,
-recorded event and settings change; cancelled when reminders are off, the streak is
-hidden, or no challenge is active. Settings live in a searchable "Streak" Settings
+needed) for today's time, or tomorrow when the time has passed or every *tracked* kind is
+already met — an unconfigured `create`/`plan` slot is excluded from that check (0.1.250;
+it has no challenge to meet, so it must not block the "everything done" shortcut). The
+body names what is still open, skipping unconfigured slots and naming a configured goal
+by its own title ("Still open today: finish a task, exercise. Keep your 5-day streak
+alive.", `reminderBody`). Re-synced on every app start, recorded event and settings
+change; cancelled when reminders are off, the streak is hidden, or no challenge is active.
+Settings live in a searchable "Streak" Settings
 section: show/hide, 24h/48h `SegmentedButton`, "Active challenges" (one switch per
-`StreakKind`), "Streak reminders" (master switch, one row per reminder with time picker,
+`StreakKind`, plus a "Set goal"/"Change" row under `create`/`plan` opening
+`StreakGoalDialog`), "Streak reminders" (master switch, one row per reminder with time picker,
 alert-mode chips, on/off switch and delete, plus "Add reminder" — new entries default to
 the last time + 1 h), celebration toggle.
 
@@ -761,14 +1033,14 @@ while `MyApp.restartIntro()` (About) replays the slides and the question togethe
 
 **Feature registry (`Config`):** `featureKeys` / `featureLabels` / `featureDescriptions`
 (index-aligned) + `Map<String,bool> featureEnabled` (all true by default, persisted under
-`'features'`; unknown/missing keys count as enabled). Keys: the eight tool keys (equal to
+`'features'`; unknown/missing keys count as enabled). Keys: the ten tool keys (equal to
 `startToolOptions` minus `tasks`) plus `streak`, `dice_timer`, `schedule_view`, `search`,
 `deleted_items`, `changelog`, `app_logs`, `startup_times`, `sms_report`.
 
 **`Config.isFeatureEnabled(key)` is the single gate:** in simple mode it returns false for
 everything except `Config.simpleModeFeatures` (`deleted_items`, `changelog`, `app_logs`,
 `startup_times` since 0.1.121 — the app's own service pages are not "extra features", and
-the deleted list is the undo of a delete, so simple mode only strips the home surface and
+Archived Items is the undo of a delete, so simple mode only strips the home surface and
 the tools); in full mode it returns the per-feature switch. About has no feature key and is
 always in the drawer. Call sites: `home_page.dart`
 drawer entries and the Tools section (built from `_toolEntries`, hidden entirely when no
@@ -814,11 +1086,11 @@ vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way
 file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
 the whole sync run (red history entry) like the JSON write.
 
-Since 0.1.141 the repo also ships **Tier 2** of the Obsidian integration: a read-only
+Since 0.1.141 the repo also ships **Tier 2** of the Obsidian integration: an
 Obsidian community plugin in the top-level `obsidian-plugin/` folder (TypeScript +
 esbuild, own npm package and CI job `obsidian_plugin.yml` — not part of the Flutter
 build). It renders `besttodo_tasks.json` as a custom `ItemView` (ribbon icon /
-"Open task view" command): the six home buckets, disabled checkbox + title + `📅` due
+"Open task view" command): the six home buckets, checkbox + title + `📅` due
 date (sentinel omitted) + `✅` completion date + `🔁` recurring marker, label chip and a
 generic `📁 project` chip (the sync file carries no project names), open-first/ranking
 order, plus an "as of …" line showing `synced_at` + app version. It re-reads on
@@ -827,8 +1099,35 @@ Obsidian's file-change events (safe because the app's write is atomic), refuses 
 `Task.fromJson`. The contract lives in the pure module `obsidian-plugin/src/model.ts`
 (mirrors `ItemViews.inHomeBucket`, `sortTasks`, `Task.fromJson`) and is pinned by jest
 tests (`obsidian-plugin/test/model.test.ts`) mirroring `test/sync/sync_markdown_test
-.dart`. Strictly a viewer — it never writes. Tier 3 (two-way via a change journal)
-remains designed-only in `.claude/notes/obsidian-integration.md`.
+.dart`.
+
+Since 0.1.235 the repo also ships **Tier 3**: two-way sync via a change journal, so
+checking a task off (or back on) in Obsidian flows back to the phone. The plugin's
+checkbox is no longer disabled — a tap appends a `complete`/`reopen` operation to
+`besttodo_changes.json`, written next to the sync file (`BestToDoPlugin.appendChangeOp`,
+`obsidian-plugin/src/main.ts`), instead of editing `besttodo_tasks.json`/`.md`
+directly (the app overwrites both on every sync, so a direct edit would be clobbered).
+The view updates optimistically and shows a "syncing…" chip on the task
+(`BestToDoView.pending` in `obsidian-plugin/src/view.ts`) until a subsequent
+file-change event confirms the app picked up the change.
+
+On the app side, `SyncService.onLifecycleChanged` triggers `SyncImportService
+.importPending()` (`lib/services/sync_import_service.dart`) on every **resume** —
+the mirror of the quit-time sync trigger. It reads `besttodo_changes.json`, applies
+ops by `uid` with last-writer-wins conflict rules (idempotent/monotonic
+`complete`/`reopen` against `Task.completedAt`; date-field `edit`s arbitrated against
+`Task.rescheduledAt`; `delete` as a `Task.deletedAt` tombstone, never a hard delete;
+`create` idempotent by the `uid` it brings), truncates the journal to an empty
+envelope (never deletes the file), and re-runs `SyncService.syncNow` so both sides
+converge. Failures (malformed journal, unknown `journal_version`, folder gone) land as
+red entries in the same App Logs "Sync" history as a regular sync
+(`SyncService.recordEntry`), never as an exception — same fail-soft contract as the
+rest of synced mode. The op vocabulary also carries `edit`/`create`/`delete` for a
+future richer write surface; only the checkbox (`complete`/`reopen`) is wired up on the
+plugin side today. Conflict rules and failure-mode rationale are recorded in
+`.claude/notes/obsidian-integration.md`; tests: `test/sync/sync_import_service_test
+.dart` (Dart) and the "change journal" describe block in `obsidian-plugin/test/model
+.test.ts` (TypeScript).
 
 **Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
 forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
@@ -860,6 +1159,99 @@ stays); a later successful sync also clears it.
 
 Tests live in their own silo `test/sync/` (service round-trip/failures/lifecycle latch
 + Sync tab, drawer dot, settings switch).
+
+### 4.8 Todoist sync — two-way sync with a Todoist account (0.1.237, API v1 since 0.1.238)
+
+`Config.todoistSyncEnabled` (default **off**) + `Config.todoistApiToken` (plain text,
+same as every other setting — the app has no secret-storage layer), both in Settings →
+**Todoist sync**. `TodoistSyncService` (`lib/services/todoist_sync_service.dart`,
+singleton with `resetForTest`) mirrors `SyncService`'s shape (lifecycle-triggered
+background run via the same `onLifecycleChanged` latch, a manual "Sync now", a
+`SyncLogEntry` history in `todoist_sync_log.json` — App Logs gained a third "Todoist" tab,
+and its `hasUnseenError` ORs into the same drawer red dot as the folder sync) but writes
+**both directions** against Todoist's unified API v1
+(`https://api.todoist.com/api/v1`, `lib/services/todoist_api_client.dart`, `http` package,
+injectable client for tests). Pulling down on the home page's task list
+(`RefreshIndicator` around the tab/schedule body, `HomePage._pullToRefreshSync`) also runs
+`syncNow(trigger: 'pull_to_refresh')` and reloads tasks from storage afterwards — a no-op
+(no snackbar) when Todoist sync is off or unconfigured, same as any other trigger
+otherwise; the same `SyncLogEntry` history and drawer dot apply. The old REST v2 (`rest/v2`)
+and Sync v9 (`sync/v9`) endpoints Todoist previously offered are sunset and now return a
+deprecation notice
+instead of data — `tasks`/`projects` GET responses on v1 are also cursor-paginated
+(`{"results": [...], "next_cursor": ...}` rather than a bare array), which
+`TodoistApiClient._fetchAllPages` walks to completion.
+
+**Scope:** recurring tasks (parents and generated instances) are excluded —
+Todoist's own recurrence engine has no clean mapping onto this app's
+generated-instance model, so those stay local-only. Everything else syncs,
+including wishlist items: a task's `label` free-text round-trips as real
+Todoist labels (auto-created on push), and `_targetProjectKey` routes it to a
+Todoist project — its own Kanban project if it has one, else a dedicated
+**Wishlist** project for `isWish` tasks, else a dedicated **Future** project
+for any other unprojected task with no due date (the Future tab bucket,
+including the schedule view's `Task.futureBucketMarker` sentinel date), else
+Todoist's Inbox. Both dedicated projects are created on first push and cached
+in `todoist_sync_state.json`'s project map like any other. Pulling a task back
+out of either project restores the matching local state (`isWish: true`/
+unassigned, or just unassigned).
+
+**No live diff, so fingerprints:** the API has no per-task "updated at" and no
+completed-task endpoint, so a run can't diff against a timestamp. `TodoistSyncMapEntry`
+(`lib/models/todoist_sync_map_entry.dart`) persists, per synced task
+(`todoist_sync_state.json`: task entries + the local-project→Todoist-project id map), a
+fingerprint of each side's fields as of the last successful sync; a run recomputes both
+current fingerprints and compares. **Conflict rule: local wins** — a task changed on both
+sides pushes the local edit and overwrites the Todoist-side one. A task's disappearance
+from Todoist's active-task list (the only "done" signal the API gives) is always treated
+as a completion, never a delete, so the ambiguity never loses data.
+
+**Fields with no Todoist equivalent** — `Task.note`, the project/Kanban assignment, `uid`
+for relinking — round-trip through a trailer appended to Todoist's `description` field
+(`lib/services/todoist_metadata_codec.dart`): the task's own description text, then a
+`⸻ BestToDo sync — generated, do not edit below this line ⸻` separator, human-readable
+`Project:`/`Label:`/`Note:` lines (visible if you open the task in Todoist), then one
+`sync-data: {...}` JSON line, which is what parsing actually reads back. A description
+with no such trailer is a plain Todoist-native task. `Task.label` is pushed into the
+trailer's `Label:` summary line too (for readability in the Todoist app), but is **not**
+read back from it — Todoist's native `labels` array is the only source of truth on pull,
+so a label added/removed via Todoist's own label UI (which never touches the description)
+is picked up. Label fingerprints (both push- and pull-side) compare the token *set*
+case-insensitively, order-independent, so re-ordering labels on either side isn't treated
+as a change.
+
+**Sync info in the UI, not the description** (0.1.263): `TodoistSyncService.entryForLocalUid`
+looks up a task's `TodoistSyncMapEntry` by `Task.uid`. `TaskTile`'s expanded edit view shows
+an info icon (`Icons.info_outline`) as the Note field's `suffixIcon` when a mapping exists —
+tapping it opens a dialog with the sync source ("Todoist"), the entry's `syncedAt` (local
+time) and its `todoistId`. `Task.description` never carries any of this — it round-trips only
+the free text on both sides, unlike the note/label/project/Kanban trailer above.
+
+**Algorithm** (`TodoistSyncService._runSync`, six passes over one fetch of Todoist's
+active tasks + projects): (0) every Kanban project already mapped in `_projectMap` has its
+name reconciled against Todoist's, fingerprinted the same local-wins way as tasks (baseline
+in `todoist_sync_state.json`'s `projectNameMap`, seeded rather than pushed the first time a
+mapping is seen so a pre-existing mapping doesn't look like a rename); (1) a locally-vanished
+synced task (completed-and-rolled-over or deleted) closes or deletes its Todoist
+counterpart; (2) a still-open-locally task now marked done closes it; (3) every other open
+local task creates (new), or pushes/pulls an edit by fingerprint diff (conflict → local
+wins); (4) a Todoist task with no local mapping is pulled in as a new local task (an
+embedded `uid` matching an existing local task relinks instead of duplicating — recovers
+from a lost/reset state file); (5) a mapped task that silently vanished from Todoist's
+active list is marked done locally. Projects are matched by name (case-insensitive) or
+created on first push; an unmapped Todoist project on a pulled task leaves the local task
+unassigned rather than importing the project. The Wishlist/Future dedicated projects are
+exempt from name-sync (pass 0) — they're app infrastructure, not user projects. Due dates:
+`hasExplicitTime` tasks are pushed via `due_datetime` (UTC); date-only tasks via `due_date`.
+On pull, v1's `due.date` is a single field holding either a bare date or a full datetime
+string — a `T` in it tells them apart; date-only tasks default to 18:00 (matching
+`applyDefaultDeadlineTimes`).
+
+Tests live in `test/sync/`: `todoist_metadata_codec_test.dart` (pure trailer round-trip),
+`todoist_api_client_test.dart` (`http.testing.MockClient`), `todoist_sync_service_test.dart`
+(a small in-memory fake Todoist backend routed through `MockClient`, covering push/pull/
+conflict/completion/deletion/project-mapping/lifecycle-latch), plus the Settings section
+and combined drawer-dot coverage in `sync_ui_test.dart`.
 
 ## 5. Alarm subsystem (the reliability showpiece)
 
@@ -902,6 +1294,12 @@ syncs the widget → **awaits** `rescheduleAll` (so short-lived isolates don't d
 `toggleInStorage(uid)` is the static isolate-safe path used by widget toggles: load from
 disk, flip, save, sync widget, and **always** reschedule (the old `_loaded`-guarded version
 was why widget toggles silently did nothing with the app closed).
+
+**Dev seed (0.1.270):** `load()` seeds three sample alarms (a repeating weekday "Wake up",
+a one-off "Midday stretch", a disabled repeating-weekend "Wind down") when storage is
+empty and `Config.isDev`, mirroring the seeds already used for tasks/wishlist/projects/
+countdown timers — so the Alarms tool (and its screenshot) is never an empty state in
+dev/demo builds. Goes through the same persist-and-reschedule path as any other mutation.
 
 ### 5.2 Scheduling pipeline (per reschedule run)
 
@@ -1031,7 +1429,7 @@ Two widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
-  at midnight. The whole payload is built by `TaskWidgetService.sync(tasks)`
+  at midnight. Deleted and not-yet-approved tasks never appear (§4.2e). The whole payload is built by `TaskWidgetService.sync(tasks)`
   (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
   background isolate both go through it, so both looks always agree.
   **Checkable rows (0.1.125, `Config.widgetCheckboxes`, default off):** with the setting on
@@ -1226,6 +1624,18 @@ input is missing are dropped; a completely empty history shows "Complete a few i
 the trivia shows up here." instead of a column of zeroes. Durations are deliberately
 rough (`s` → `min` → `h` → `days` → `weeks`).
 
+Since 0.1.239, any row backed by concrete items or days is **tappable** (a trailing
+chevron marks it — `_funStatTile`'s `details` param, empty list = plain row, e.g. "Open
+right now" and "Items ever created" stay non-interactive): tapping opens a
+`DraggableScrollableSheet` (`_showStatDetails`) listing each item's title (or day, for
+day-bucketed stats like busiest day / days with something done / times postponed / most
+postponed on) against the weekday + date + time it happened
+(`_weekdayDateTime`, e.g. "Mon, 2026-08-10 · 14:32"), newest first. Fastest finish /
+longest wait / oldest open item show a two-row created→completed breakdown instead of a
+list, since there is only ever one task behind them. All detail lists are recomputed on
+tap from the same in-memory `tasks`/`deletedItems`/`dailyStatsByDay` the tile numbers
+already come from — no new storage or state.
+
 The item-activity cell shading is **outlier-resistant** (`_ActivityScale`, 0.1.124): the
 ramp saturates at the Tukey upper fence of the non-empty cells
 (`cap = clamp(max(q3+1, q3 + 1.5·IQR), 1, maxCount)`) and counts are compressed
@@ -1290,7 +1700,10 @@ list — exactly like opening a project — showing only tasks flagged `Task.isW
 everything else; they are undated (`dueDate == null`), which alone buckets them into
 the Future tab (`_tasksForTab` sends null-due tasks to the future bucket), where they
 render as full, editable task tiles whose `TaskTile` subtitle shows the description, a
-small "wish" tag and the task's own labels as tags. The schedule view groups undated
+small "wish" tag and the task's own labels as tags. Label tags are not wish-only: from
+0.1.252 `TaskTile._buildSubtitle` renders every label token on any task (plain,
+project-assigned or wish), so a task tagged `urgent` shows that tag in the home list;
+the subtitle is still null when a task has no project, no wish flag and no labels. The schedule view groups undated
 tasks under "Someday". The home search matches them like any task. So: the item
 overview (home) shows all items with all properties/tags; the Wishlist shows only wish
 items and never anything date-related.
@@ -1308,7 +1721,52 @@ StatefulWidget owning its controllers); edits mutate the task in place so uid/pr
 recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
 exported_at, wishlist_items: [...]}`) remain.
 
-**Clickable URLs (0.1.148) and phone numbers (0.1.235):** http/https URLs and phone
+**Copy to clipboard (0.1.236, moved behind the swipe panel 0.1.259):** "Copy" puts the
+plain-text item on the clipboard via `_WishlistPageState.clipboardText` — title, then
+description, then labels, each on its own line, empty parts skipped — and confirms with a
+`Copied "<title>"` snackbar. Since 0.1.259 it lives only in the options-swipe panel; the
+per-tile `Icons.copy_outlined` button is gone.
+
+**Release grouping (0.1.254):** the wishlist is sectioned like the home page's due-date
+tabs, top to bottom: **Newly implemented**, **Next release**, **Soon**, **Backlog**
+(`WishReleaseGroup` in `wishlist_page.dart`). An empty non-"Next release" section is
+skipped entirely; "Next release" always renders (even at 0) since it carries the
+"Propose for next" button. Membership is decided purely by tags, via
+`wishReleaseGroupOf(task, currentVersion)`:
+- **Newly implemented** is automatic and not user-settable: it's the shipped-wish
+  registry (`wishlist_shipped.dart`) restricted to the app's *own running version* —
+  `shippedWishesByUid[task.uid]?.version == currentVersion` — so a backlog item that
+  auto-completed this release shows here, and drops back to its tag-based group the
+  moment the next version ships (`currentVersion` comes from `Config.version`, loaded
+  async in `initState`; blank until then, which no registry version ever matches).
+- **Next release** / **Soon** follow the `release-next` / `release-soon` label tokens
+  (`releaseNextToken`/`releaseSoonToken`/`releaseGroupTokens` in `label_utils.dart`,
+  ordinary `Label.kindTag` tokens — no new label kind). Anything left over, including
+  a task whose shipped-version match has expired, is **Backlog**.
+- `setWishReleaseGroup(task, group)` rewrites just the release tag (keeping every other
+  label), mirroring `setWishPriority`; moving to Backlog or Newly-implemented just
+  strips `release-next`/`release-soon`.
+
+Every tile except a "Newly implemented" one carries a "Move to release group" icon
+button (`Icons.drive_file_move_outline`, a `PopupMenuButton`) offering Next release /
+Soon / Backlog with a checkmark on the current group — same shape as the sort menu.
+Since 0.1.259 it is the tile's *only* trailing control (see Swipes below): the swipe
+default only steps an item back one group, so an explicit picker has no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
+native labels (§ Sync), tagging an item `release-next` in Todoist (by hand, or via
+"Propose for next" below) moves it here on the next sync, with no extra plumbing.
+
+**"Propose for next" (0.1.254):** a `TextButton.icon` (`Icons.auto_awesome`) on the
+"Next release" section header. There is no in-app model call — it copies
+`proposeForNextPrompt(...)` to the clipboard: an instruction for Claude to review the
+Todoist backlog, tag roughly 3 items `release-next` and a few more `release-soon`
+(the "~3 items per release" target is a guideline in the prompt text, not an enforced
+cap), plus a snapshot of every open, non-"Newly implemented" Backlog/Soon item
+(`- <title> [<tags>]`) so Claude has titles and existing tags without cross-referencing
+anything first. The user pastes the prompt into a Claude session with Todoist access;
+BestToDo picks up the resulting tag changes on its next Todoist sync. Confirms with a
+snackbar reminding the user to sync after pasting.
+
+**Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
 numbers in descriptions are auto-linkified by `LinkifiedText`
 (`lib/utils/linkified_text.dart`): a StatefulWidget that renders `Text.rich` with
 underlined, primary-colored link spans (trailing sentence punctuation excluded), owns
@@ -1323,18 +1781,51 @@ any leading `+`. URL and phone matches share one pass so an accidental digit run
 a matched URL never double-links. Used by the wish tile subtitle and by `TaskDetailPage`
 (description and note).
 
-**Swipes (0.1.101):** same gesture mechanics as `TaskTile` (drag with AnimatedSlide,
-100 px/500 velocity thresholds, directions honor `Config.swipeLeftDelete`, GestureDetector
-on Android/web, emulator/desktop fallback buttons: swipe icon = prioritize, trash =
-delete), but the options swipe changes PRIORITY instead of rescheduling: it opens a
-high/medium/low shortcut row with the `Config.delayDuration` countdown bar; letting it
-run out raises the priority one step (none→low→medium→high, capped; helpers
-`wishPriorityRank`/`setWishPriority`/`bumpWishPriority` rewrite the priority label in
-`Task.label`, keeping other labels). Swiping back toward the delete side cancels, as on
-the home list. The delete swipe removes the item immediately and shows the home-style
-undo snackbar; when the undo window expires the task gets `deletedAt` and moves to
-`deleted_tasks.json`. Restoring a wish from Deleted Items keeps `dueDate` null (other
-restores get today) so it lands back in the wishlist, not Today.
+**Swipes (0.1.101, redesigned 0.1.258, sole entry point 0.1.259, Delete +
+8s sweep 0.1.261):** same gesture mechanics as `TaskTile` (drag with
+AnimatedSlide, 100 px/500 velocity thresholds, directions honor
+`Config.swipeLeftDelete`, GestureDetector on Android/web), but the two
+swipe directions no longer prioritize/delete:
+
+- **Options swipe** (right by default) opens a Share/Copy/Export/Delete shortcut
+  row — each button is a `TextButton.icon` (icon beside its label) — with a
+  `wishlistSweepDelay` (8s; deliberately longer than the app-wide
+  `Config.delayDuration` 5s undo delay used elsewhere, since misreading one of
+  four buttons costs more) countdown bar. "Share" calls `SharePlus.instance.share`
+  (`share_plus`) with `clipboardText(item)`, summoning the OS share sheet; "Copy" puts
+  `clipboardText(item)` on the clipboard; "Export" (0.1.259) writes the single-item JSON
+  export; "Delete" (0.1.261) calls the same `_deleteItems` bulk-delete path with a
+  single-item list, moving it to the archive with the usual undo snackbar
+  (`Config.delayDuration`-timed, not the sweep delay). Letting the countdown run out
+  applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
+  item back one release step (nextRelease→soon, soon→backlog; no-op for Backlog and for
+  the automatic Newly-implemented group). Swiping back toward the other side cancels, as
+  on the home list.
+- **Selection swipe** (left by default) starts multi-select instead of deleting: the app
+  bar swaps to a "N selected" bar (close icon cancels, `Icons.content_copy` "Copy
+  selected as prompt", `Icons.delete` "Delete selected"); tapping other tiles toggles
+  them in and out of the selection (tile tap opens the edit dialog only outside selection
+  mode). "Copy selected as prompt" puts `buildSelectedWishesPrompt(items)` — "Build the
+  following items from my BestToDo wishlist:" plus each item's title/description/labels
+  — on the clipboard for pasting into a Claude session, then exits selection mode.
+  "Delete selected" moves every selected item to the archive in one shot
+  (`_WishlistPageState._deleteItems`, a single undo snackbar covering all of them); when
+  the undo window expires each task gets `deletedAt` and moves to `deleted_tasks.json`.
+  Restoring a wish from Archived Items keeps `dueDate` null (other restores get today) so
+  it lands back in the wishlist, not Today. Since 0.1.261 a single item can also be
+  deleted straight from the options-swipe panel, reusing this same path.
+
+**Trailing icons removed (0.1.259):** the per-tile Share / Copy / Export icon buttons and
+the emulator/desktop fallback pair ("Wishlist swipe options" + "Select") are gone —
+every one of those actions is reachable by swiping, so the icons were pure duplication
+crowding the tile. Export joined the options panel as a third button so nothing was lost,
+and `device_info_plus` emulator detection dropped out of `wishlist_page.dart` with the
+fallback row. Only "Move to release group" survives as a trailing control. Consequence:
+on desktop (where the GestureDetector is Android/web-only) per-item share/copy/export are
+no longer reachable — acceptable, as Windows is a dev/screenshot target. Quick-priority
+setting had already moved entirely into the add/edit dialog's priority buttons —
+`wishPriorityRank`/`setWishPriority`/`bumpWishPriority` still back sorting and that
+dialog, just no longer the swipe panel.
 
 **Legacy `wishlist.json` migration (0.1.101):** `loadTaskList()` calls
 `_migrateWishlistIntoTasks`: any items still in `wishlist.json` (a pre-0.1.101 store)
@@ -1398,6 +1889,124 @@ mechanism existed (calendar view ×2, Chronize, the Wishlist tab itself, Product
 Stats, Startup Times, simple/advanced/pro mode ×3, the manual GitHub APK action, the
 automatic test workflow, the screenshot integration tests).
 
+### 10.6a Food Diary (0.1.266, phase 1)
+Tools → Food Diary (`lib/ui/food_diary_page.dart`): a pre-filtered view over the ONE
+task list, structurally identical to the Wishlist tool — flagged tasks
+(`Task.isEatingHabit`) rather than a separate store. Unlike the wishlist, a food diary
+entry is invisible everywhere except this tool and, once deleted, Archived Items/the
+Deleted bin: `ItemViews.isVisibleInMainViews` (`isApproved(t) && !t.isEatingHabit`)
+gates `homeBucket`, `wishlist`, `active`, `projectTasks`, `boardColumn`, the schedule
+view's task list, the home-screen widget's `todayTasks`, and Todoist's `syncable`
+filter — an eating-habit task carries no Todoist mapping and is never pushed or pulled.
+`ItemViews.foodDiary(tasks)` (gated by `isApproved` alone, since the eating-habit check
+would exclude every result) is the tool's own selector.
+
+Phase 1 fields, deliberately small: title, description, a "time" (stored in the same
+`dueDate`/`hasExplicitTime` fields every task uses — picked via `pickDateInstantly` +
+`pickTimeOfDay`, so a past or future time is fine and never triggers day-rollover sweep
+since rollover only sweeps `isDone` tasks and an entry's `isDone` never flips), and
+free-form tags (e.g. "sugar", "lactose") through the same `LabelPickerField` every task
+uses. Entries render newest-time-first, no checkbox, no priority/release grouping/
+export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swipe
+(`Dismissible`) to delete. Deleting moves the entry straight to Archived Items
+(`ItemRepository.loadDeletedItems`/`saveDeletedItems`) with an undo snackbar, exactly
+like a wishlist delete — never the plain task list, never the real bin directly.
+
+Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
+`featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
+drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
+on return (the tool loads/saves the list on its own, like Wishlist).
+
+**Dev seed (0.1.270):** when no `isEatingHabit` task exists yet and `Config.isDev`, the
+page seeds three entries spread across the day (breakfast/lunch/dinner, each with its own
+tags) so the tool is testable in Chrome and never shows the empty state in a screenshot.
+Checking the eating-habit subset rather than `tasks.isEmpty` is the fix (0.1.270): the
+dev/demo starter tasks seeded by `home_page._loadTasks` mean the overall list is never
+actually empty by the time this page loads, so the original single-entry seed (a plain
+`tasks.isEmpty` check) never fired in practice.
+
+### 10.6b Weekly Hours Planner (0.1.272, vertical grid + Google Calendar overlay 0.1.274)
+Tools → Weekly Hours Planner (`lib/models/weekly_hours_plan.dart`,
+`lib/services/weekly_hours_service.dart`, `lib/ui/weekly_hours_planner_page.dart`): a
+standalone, date-less Monday-to-Friday work-hours template — not tied to the task list or
+any specific calendar week — with an optional Google Calendar overlay resolved against the
+*current* calendar week.
+
+**Model:** `WorkBlock{startMinutes,endMinutes}` (minutes since midnight); `DayPlan{morning,
+afternoon}` with `lunchMinutes` simply the gap between them and `workedMinutes` the sum of
+both block durations; `WeeklyHoursPlan{days}` holds 5 `DayPlan`s (Monday index 0 .. Friday
+index 4). `targetMinutesPerDay` is a fixed constant, 8:36 (516 min), so
+`targetWeeklyMinutes` is 43:00 (the standard flexitime week this tool is built around).
+`DayPlan.defaultPlan()` starts at 09:00, splits the 8:36 evenly (4:18 each side) around the
+fixed 30-minute default lunch, ending 18:06.
+
+**Flexitime carryover:** dragging a block's start/end away from the 8:36 default on any
+Monday-Thursday day changes that day's `workedMinutes` without touching the 43:00 weekly
+target. `WeeklyHoursPlan.carryoverBeforeFriday` sums `workedMinutes - targetMinutesPerDay`
+over Monday-Thursday; `theoreticalFridayEndMinutes` is Friday's own start time + its lunch
+gap + however many minutes Friday needs to work (`targetWeeklyMinutes` minus the
+Monday-Thursday total) to bring the week back to 43:00 — independent of how Friday's own
+two blocks are split, since only the total matters. The Weekly Hours Planner page renders
+this as a dashed red line + time label under Friday's column (`_TheoreticalEndLine`,
+`_HorizontalDashedLinePainter`), which is always computed (not gated on any "modified" flag)
+so it simply coincides with Friday's own scheduled end when the week is exactly on target.
+
+**UI (`weekly_hours_planner_page.dart`) — vertical week grid:** the five weekdays render as
+columns side by side with time running top-to-bottom, sized (via a `LayoutBuilder` computing
+`pxPerMinute = trackHeight / rangeMinutes`) to fill the space left under the summary card, so
+the whole configured hour range (`Config.weeklyHoursStartHour`/`weeklyHoursEndHour`, Settings
+→ Weekly Hours Planner, default 06:00-22:00) is visible without scrolling — replacing the
+original one-row-per-weekday horizontal-timeline layout. A shared left gutter
+(`_HourGutterPainter`) draws the hour labels; each day column (`_DayColumn`,
+`_ColumnBackgroundPainter` for its faint hour gridlines) draws the morning block (primary
+color) and afternoon block (secondary color) as `Positioned` bars (start/end time labels once
+tall enough) plus 4 draggable handles (`_Handle.morningStart/morningEnd/afternoonStart/
+afternoonEnd`, each keyed `handle-<Weekday>-<handleName>` for tests, now horizontal bars
+dragged **vertically** — `onVerticalDragUpdate`, `deltaDy / pxPerMinute` for the minute delta)
+that resize a block by dragging either of its own two edges, clamped to a 30-minute minimum
+block length and to not cross the other block, snapped to 5-minute increments. Dragging
+updates the in-memory plan on every frame (so Friday's dashed line and every day's duration
+label react live) but only persists to disk once via `onDragEnd` when the drag finishes, to
+avoid hammering the file on every pointer move. A summary card at the top shows the week's
+planned vs. 43:00 target total with a +/- surplus/deficit chip; a reset button (app bar)
+restores `WeeklyHoursPlan.defaultPlan()`.
+
+**Google Calendar overlay:** Settings → Weekly Hours Planner has a "Calendar URL" field
+(`Config.googleCalendarUrl`, shared with nothing else) — paste a public `.ics` feed (a Google
+Calendar "Secret address in iCal format" URL, or any RFC 5545 feed) and Settings' Import
+button fetches + caches it immediately, showing the event count/timestamp or an error inline.
+`GoogleCalendarService` (`lib/services/google_calendar_service.dart`,
+`lib/models/gcal_event.dart`) parses the feed into `GCalRawEvent`s (RFC 5545 line-unfolding;
+`DTSTART`/`DTEND`/`DURATION`/`SUMMARY`/`UID`/`RRULE`/`EXDATE`; a `VALUE=DATE` or bare
+8-digit `DTSTART` is all-day) and caches them to `google_calendar_cache.json` in the app
+documents dir, so the planner has something to show offline before the next refresh.
+`GoogleCalendarService.eventsInRange` expands `RRULE` on demand for whatever date range is
+asked for — `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `COUNT`, `UNTIL`, and (`WEEKLY`
+only) `BYDAY`; `EXDATE` drops one occurrence (a date-only `EXDATE` excludes that whole day).
+Network access goes through `HttpClient` (same pattern as `UpdateService._fetch`, with a
+`fetchOverride` test hook). The plan itself stays date-less, so the Weekly Hours Planner page
+resolves the overlay against the *current* calendar week only: `_mondayOfThisWeek()` plus the
+column index gives each weekday column's real date, and `eventsInRange` is called per day
+(`_gcalEventsForDay`, timed events only — all-day events are not shown). Each event renders as
+a `_gcalBlock`: a `tertiaryContainer`-tinted, 55%-opacity `Positioned` bar added to the
+column's `Stack` *before* the work blocks, so it paints underneath them — visible in any gap
+where no work block covers that time, and simply covered where one does (the honest reading:
+that time slot is occupied by a real work block).
+
+**Persistence:** `WeeklyHoursService` (singleton, `ValueNotifier<WeeklyHoursPlan>`)
+persists to `weekly_hours_plan.json` in the app documents directory, seeded with
+`WeeklyHoursPlan.defaultPlan()` on first run — same load-once/seed-if-missing/swallow-errors
+shape as `ProjectService`.
+
+Registered like every other tool: `weekly_hours_planner` key in
+`Config.startToolOptions`/`featureKeys` (and their label/description arrays, right after
+`test_results` so the "first N keys match `startToolOptions`" comment stays accurate), a
+`_ToolEntry` in home_page's drawer list (`Icons.calendar_view_week`), and a
+`_buildToolPage` case. No `_openTool` reload-on-return wiring is needed — unlike
+Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (index 13,
+"Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
+at the end of `_sectionTitles` to avoid renumbering the other twelve.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
@@ -1421,6 +2030,24 @@ its last page — the dots count 4, the last page has no Next button so the mode
 question cannot be skipped, and picking a mode is what ends the intro. Shown once
 (`intro_shown` + `Config.modeChosen`), replayable from About, skipped in dev.
 
+**Startup choice** (`startup_choice_page.dart`, 0.1.242; today-first import 0.1.243):
+shown once, right after the intro/mode picker finish on a brand-new install (§3 step
+9's `showStartupChoice`; never shown again after "Replay Introduction" — only the
+intro's own two flags are cleared there). Two cards: **Start fresh** finishes
+onboarding immediately with an empty list; **Import from Todoist** opens a dialog for
+a Todoist API token (`TodoistSyncService.testConnection`), and on success saves it
+(`Config.todoistApiToken`, `Config.todoistSyncEnabled = true`) and calls
+`TodoistSyncService.startFirstLaunchImport()` — a pull-only, first-launch-shaped
+variant of the regular two-way `syncNow()` (§4.8): it pulls just today's (and overdue)
+tasks synchronously so the dialog can close and onboarding finish right away, and
+returns a `finishInBackground()` closure — fired and forgotten — that pulls everything
+else while the user is already on the home page exploring. `syncing` (the same
+`ValueNotifier` the Settings page spinner uses) stays true until that finishes,
+driving a slim "Importing the rest of your tasks from Todoist…" banner atop the home
+page's tab view. A failed *first* connection (bad token) blocks with an inline error
+and keeps the dialog open; once connected, a background-phase failure only shows up
+in App Logs → Todoist — onboarding has already finished by then.
+
 ## 11. Build, versioning, CI
 
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z[+build]> ["changelog entry"]`
@@ -1429,9 +2056,17 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
   dropped by accident.
 - **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
-  rename artifacts with the version (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) →
-  `dart run tool/stage_local_release.dart` for an APK build → optionally
-  `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+  on success, `dart run tool/append_build_time.dart` → rename artifacts with the version
+  (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart`
+  for an APK build → optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
+- **Local build time (0.1.240):** `tool/append_build_time.dart` writes/updates a
+  `- Local build: yyyy-mm-dd HH:MM` bullet inside the *newest* CHANGELOG.md section
+  (`withBuildTimeNote`: replaces the existing line for that version on a repeat build
+  instead of piling one up per build; inserted right after that section's other entries).
+  Runs after `flutter build`, which already bundled CHANGELOG.md as an asset for *this*
+  build — so a build only ever shows the previous build's timestamp on the Changelog page,
+  never its own; that's expected, not a bug. No-ops (prints, doesn't touch the file) when
+  CHANGELOG.md has no `## [version] - date` heading yet.
 - **Kept builds in the repo (0.1.146):** `tool/stage_local_release.dart` copies the built
   APK to `github_releases/best_todo_<x.y.z+build>.apk` and deletes everything but the
   newest two (`--keep`, `--dir`, `--apk`, `--dry-run`; ordering by the numeric name
@@ -1462,6 +2097,16 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
   `UpdateCheck.rollback` — `previous` unless that is the running version — in both the
   update-available and up-to-date states. The rollback warns that Android blocks
   downgrades for non-debuggable builds, so the install may need an uninstall first.
+- **Automatic update check (0.1.264):** `Config.autoUpdateCheckEnabled` (Settings →
+  Updates, off by default) — when on, `_MyAppState` in `lib/main.dart` calls
+  `UpdateService.instance.checkForUpdate()` once per launch (2s after the first frame,
+  skipped while the intro/mode picker/startup chooser is still on screen). A newer build
+  shows an "Update available" confirm dialog (`appNavigatorKey.currentContext`, not
+  `_MyAppState`'s own context, since `MyApp` sits above its own `MaterialApp`/`Navigator`);
+  confirming pushes `AboutPage(autoCheckForUpdate: true)`, which runs `_UpdateSection`'s
+  check immediately on `initState` so the user lands straight on "Download & install"
+  instead of needing an extra tap. The check never downloads or installs anything by
+  itself — that still goes through the same About-page flow as a manual check.
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
@@ -1477,14 +2122,31 @@ question cannot be skipped, and picking a mode is what ends the intro. Shown onc
     PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
     integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
-    search-active, projects page, project board, project edit dialog) into
-    `docs/screenshots/home/<timestamp>-<sha>/` and prepends to `SCREENSHOT_CHANGELOG.md`.
-    The workflow copies every `build/e2e_screenshots/*.png` and the changelog tool emits
-    one section per PNG found, so new captures need no CI edits. Loop protection:
-    paths-ignore on its own outputs, skips actor `github-actions[bot]`, and its commit
-    message carries `[skip-screenshot-changelog]`.
+    search-active, projects page, project board, project edit dialog; since 0.1.275 also the
+    Weekly Hours Planner grid) into `docs/screenshots/home/<timestamp>-<sha>/` and prepends
+    to `SCREENSHOT_CHANGELOG.md`. The workflow copies every `build/e2e_screenshots/*.png`
+    and the changelog tool emits one section per PNG found, so new captures need no CI
+    edits. Each entry's header line reads `branch: <branch> v<pubspec version>` (since
+    0.1.275, read straight from `pubspec.yaml` at the captured commit) alongside the
+    timestamp and source sha. Loop protection: paths-ignore on its own outputs, skips actor
+    `github-actions[bot]`, and its commit message carries `[skip-screenshot-changelog]`.
+  - `build-windows-exe.yml` (`workflow_dispatch` + successful `Build APK`
+    `workflow_run`, 0.1.250): Windows runner (same `windows-2022` pin as
+    `screenshot_changelog.yml`, for the same VS-2022-CMake-generator reason)
+    runs `flutter build windows --release`, zips the
+    `build/windows/x64/runner/Release` folder as
+    `BestToDo-<version>-portable-win64.zip` and uploads it as a build artifact
+    (30-day retention). "Portable" = unzip and run `BestToDo.exe`, no installer,
+    no admin rights; works on Windows 10 and 11 (x64). APK-triggered runs check
+    out `github.event.workflow_run.head_sha`, so the EXE is built from the same
+    commit as the APK that triggered it.
+  - `delete-merged-branch.yml` (0.1.264, `pull_request: closed`; `contents: write`):
+    once a PR into `dev` merges, deletes its head branch via `actions/github-script`
+    (`git.deleteRef`), skipping `dev`/`staging`/`main` themselves and tolerating a branch
+    already gone (422/404, e.g. deleted by a squash-merge UI option).
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
-  `staging` → `main`. Releases are built from dev after a version bump.
+  `staging` → `main`. Releases are built from dev after a version bump. A feature branch's
+  PR into `dev` has its branch auto-deleted on merge (`delete-merged-branch.yml` above).
 
 ## 12. Testing
 
