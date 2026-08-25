@@ -38,12 +38,6 @@ void main(List<String> args) {
     if (found.isNotEmpty) names = found;
   }
 
-  String titleOf(String name) => name
-      .split('_')
-      .where((w) => w.isNotEmpty)
-      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
-      .join(' ');
-
   final entry = StringBuffer()
     ..writeln('## $now | branch: $safeBranch | source: $shortSha')
     ..writeln()
@@ -62,10 +56,56 @@ void main(List<String> args) {
   final changelogFile = File('SCREENSHOT_CHANGELOG.md');
   final existingContent = changelogFile.existsSync()
       ? changelogFile.readAsStringSync()
-      : '# Screenshot Changelog\n\n';
+      : '';
 
-  final newContent = '${entry.toString()}$existingContent';
+  // Drop any previous table of contents so a fresh one (pointing at this
+  // run's screenshots, which is now the topmost/newest entry) replaces it —
+  // the anchors GitHub generates for duplicate headers only resolve to the
+  // first occurrence in the document, so the ToC must always sit above the
+  // latest entry and nowhere else.
+  final strippedExisting = existingContent.replaceFirst(_tocPattern, '');
+
+  final newContent = '${buildToc(names)}${entry.toString()}$strippedExisting';
   changelogFile.writeAsStringSync(newContent);
+}
+
+final _tocPattern = RegExp(
+  r'<!-- screenshot-toc:start -->[\s\S]*?<!-- screenshot-toc:end -->\n*(?:---\n)?\n*',
+);
+
+String titleOf(String name) => name
+    .split('_')
+    .where((w) => w.isNotEmpty)
+    .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+    .join(' ');
+
+/// Mirrors GitHub's markdown heading-anchor algorithm closely enough for our
+/// titles (letters, digits and spaces only): lowercase, drop anything that
+/// isn't a letter/digit/space/hyphen, then turn spaces into hyphens.
+String slugOf(String title) {
+  final lower = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 -]'), '');
+  return lower.trim().replaceAll(RegExp(r'\s+'), '-');
+}
+
+String buildToc(List<String> names) {
+  final buffer = StringBuffer()
+    ..writeln('<!-- screenshot-toc:start -->')
+    ..writeln('# Screenshot Changelog')
+    ..writeln()
+    ..writeln('## Latest Screenshots')
+    ..writeln()
+    ..writeln('Jump to a screenshot from the most recent run:')
+    ..writeln();
+  for (final name in names) {
+    final title = titleOf(name);
+    buffer.writeln('- [$title](#${slugOf(title)})');
+  }
+  buffer
+    ..writeln('<!-- screenshot-toc:end -->')
+    ..writeln()
+    ..writeln('---')
+    ..writeln();
+  return buffer.toString();
 }
 
 Map<String, String> _parseArgs(List<String> args) {

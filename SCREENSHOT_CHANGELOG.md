@@ -1,3 +1,22 @@
+<!-- screenshot-toc:start -->
+# Screenshot Changelog
+
+## Latest Screenshots
+
+Jump to a screenshot from the most recent run:
+
+- [Home Page](#home-page)
+- [Menu Open](#menu-open)
+- [Project Board Page](#project-board-page)
+- [Project Edit Dialog](#project-edit-dialog)
+- [Projects Page](#projects-page)
+- [Search Active](#search-active)
+- [Settings Page](#settings-page)
+- [Your Stats Page](#your-stats-page)
+<!-- screenshot-toc:end -->
+
+---
+
 ## 2026-08-24T04:30:48.269178Z | branch: main | source: d45ac98
 
 - Folder: `docs/screenshots/home/20260824-043047-d45ac98`
@@ -1419,6 +1438,4 @@
 ![2026-05-03T05:34:05.478070Z - dev](docs\screenshots\home\20260503-053404-c6a54b4.png)
 
 ---
-
-# Screenshot Changelog
 
