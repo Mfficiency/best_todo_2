@@ -30,12 +30,124 @@ Jump to a screenshot from the most recent run:
 - [Settings Section Todoist Sync](#settings-section-todoist-sync)
 - [Settings Section Updates](#settings-section-updates)
 - [Settings Section Widget](#settings-section-widget)
+- [Task Open No Attachment](#task-open-no-attachment)
+- [Task Open With Attachment](#task-open-with-attachment)
 - [Test Results Page](#test-results-page)
 - [Usage Data Page](#usage-data-page)
 - [Weekly Hours Planner Page](#weekly-hours-planner-page)
+- [Widget Previews Page](#widget-previews-page)
 - [Wishlist Page](#wishlist-page)
 - [Your Stats Page](#your-stats-page)
 <!-- screenshot-toc:end -->
+
+---
+
+## 2026.08.25 16:19:14 | branch: dev v0.1.279+279 | source: 5803e4e
+
+- Folder: `docs/screenshots/home/20260825-141913-5803e4e`
+
+### Alarms Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - alarms_page](docs/screenshots/home/20260825-141913-5803e4e/alarms_page.png)
+
+### Archived Items Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - archived_items_page](docs/screenshots/home/20260825-141913-5803e4e/archived_items_page.png)
+
+### Chronize Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - chronize_page](docs/screenshots/home/20260825-141913-5803e4e/chronize_page.png)
+
+### Countdown Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - countdown_page](docs/screenshots/home/20260825-141913-5803e4e/countdown_page.png)
+
+### Food Diary Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - food_diary_page](docs/screenshots/home/20260825-141913-5803e4e/food_diary_page.png)
+
+### Home Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - home_page](docs/screenshots/home/20260825-141913-5803e4e/home_page.png)
+
+### Menu Open
+![2026.08.25 16:19:14 - dev v0.1.279+279 - menu_open](docs/screenshots/home/20260825-141913-5803e4e/menu_open.png)
+
+### Project Board Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - project_board_page](docs/screenshots/home/20260825-141913-5803e4e/project_board_page.png)
+
+### Project Edit Dialog
+![2026.08.25 16:19:14 - dev v0.1.279+279 - project_edit_dialog](docs/screenshots/home/20260825-141913-5803e4e/project_edit_dialog.png)
+
+### Projects Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - projects_page](docs/screenshots/home/20260825-141913-5803e4e/projects_page.png)
+
+### Search Active
+![2026.08.25 16:19:14 - dev v0.1.279+279 - search_active](docs/screenshots/home/20260825-141913-5803e4e/search_active.png)
+
+### Settings Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_page](docs/screenshots/home/20260825-141913-5803e4e/settings_page.png)
+
+### Settings Section Appearance
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_appearance](docs/screenshots/home/20260825-141913-5803e4e/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_backup](docs/screenshots/home/20260825-141913-5803e4e/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_dice_timer](docs/screenshots/home/20260825-141913-5803e4e/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_filtering_rules](docs/screenshots/home/20260825-141913-5803e4e/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_mode_features](docs/screenshots/home/20260825-141913-5803e4e/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_notifications](docs/screenshots/home/20260825-141913-5803e4e/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_sms_report](docs/screenshots/home/20260825-141913-5803e4e/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_streak](docs/screenshots/home/20260825-141913-5803e4e/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_sync_export](docs/screenshots/home/20260825-141913-5803e4e/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_tasks](docs/screenshots/home/20260825-141913-5803e4e/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_todoist_sync](docs/screenshots/home/20260825-141913-5803e4e/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_updates](docs/screenshots/home/20260825-141913-5803e4e/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.08.25 16:19:14 - dev v0.1.279+279 - settings_section_widget](docs/screenshots/home/20260825-141913-5803e4e/settings_section_widget.png)
+
+### Task Open No Attachment
+![2026.08.25 16:19:14 - dev v0.1.279+279 - task_open_no_attachment](docs/screenshots/home/20260825-141913-5803e4e/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.08.25 16:19:14 - dev v0.1.279+279 - task_open_with_attachment](docs/screenshots/home/20260825-141913-5803e4e/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - test_results_page](docs/screenshots/home/20260825-141913-5803e4e/test_results_page.png)
+
+### Usage Data Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - usage_data_page](docs/screenshots/home/20260825-141913-5803e4e/usage_data_page.png)
+
+### Weekly Hours Planner Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - weekly_hours_planner_page](docs/screenshots/home/20260825-141913-5803e4e/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - widget_previews_page](docs/screenshots/home/20260825-141913-5803e4e/widget_previews_page.png)
+
+### Wishlist Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - wishlist_page](docs/screenshots/home/20260825-141913-5803e4e/wishlist_page.png)
+
+### Your Stats Page
+![2026.08.25 16:19:14 - dev v0.1.279+279 - your_stats_page](docs/screenshots/home/20260825-141913-5803e4e/your_stats_page.png)
+
+---
+
+
 
 ---
 
