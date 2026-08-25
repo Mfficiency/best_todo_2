@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.274] - 2026-08-25
+- Weekly Hours Planner is now a vertical week grid: the five weekdays sit side by side as columns with time running top-to-bottom, sized to fill the screen so the whole hour range is visible without scrolling (replacing the old one-row-per-weekday horizontal timeline). Drag a block's edge up or down to resize it, same as before
+- Settings → Weekly Hours Planner: set the grid's default start/end hour, and paste a Google Calendar (or any .ics feed) URL to import — this week's events show translucent, underneath your work blocks, right on the planner
+- Weekly Hours Planner's Google Calendar card ("coming in a future update") is gone now that it's built
+
 ## [0.1.273] - 2026-08-25
 - Waiting for Approval now has the same swipe gestures as the main list: swipe one way to approve a pending item onto today, with quick shortcuts for Tomorrow/Day After Tomorrow/Next Week/Next Month/Future; swipe the other way to deny it, with Fri/Sat/Sun/Mon shortcuts to approve it onto a specific day instead. Denying now gets an undo window before the item moves to the bin, matching every other delete swipe in the app.
 - Local build: 2026-08-25 06:49

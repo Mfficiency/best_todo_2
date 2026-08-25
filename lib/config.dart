@@ -236,6 +236,20 @@ class Config {
   /// scrolling the timeline itself).
   static bool chronizeShowHourWheel = false;
 
+  /// First hour shown on the Weekly Hours Planner's grid (0-23). Replaces
+  /// what used to be a fixed 06:00 start.
+  static int weeklyHoursStartHour = 6;
+
+  /// Last hour shown on the Weekly Hours Planner's grid (1-24, exclusive —
+  /// 22 means the grid ends at 22:00). Always kept above [weeklyHoursStartHour].
+  static int weeklyHoursEndHour = 22;
+
+  /// Public .ics feed URL (a Google Calendar "Secret address in iCal format"
+  /// URL, or any other RFC 5545 feed) overlaid on the Weekly Hours Planner.
+  /// Empty until set in Settings; imported events render translucent,
+  /// underneath that day's work blocks.
+  static String googleCalendarUrl = '';
+
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
   static bool swipeLeftDelete = true;
@@ -532,6 +546,9 @@ class Config {
       'defaultDelaySeconds': defaultDelaySeconds,
       'startInScheduleView': startInScheduleView,
       'chronizeShowHourWheel': chronizeShowHourWheel,
+      'weeklyHoursStartHour': weeklyHoursStartHour,
+      'weeklyHoursEndHour': weeklyHoursEndHour,
+      'googleCalendarUrl': googleCalendarUrl,
       'startTool': startTool,
       'showStreak': showStreak,
       'streakGraceHours': streakGraceHours,
@@ -608,6 +625,17 @@ class Config {
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
+    weeklyHoursStartHour =
+        (data['weeklyHoursStartHour'] as num?)?.round().clamp(0, 22) ??
+            weeklyHoursStartHour;
+    weeklyHoursEndHour =
+        (data['weeklyHoursEndHour'] as num?)?.round().clamp(1, 24) ??
+            weeklyHoursEndHour;
+    if (weeklyHoursEndHour <= weeklyHoursStartHour) {
+      weeklyHoursEndHour = weeklyHoursStartHour + 1;
+    }
+    googleCalendarUrl =
+        data['googleCalendarUrl'] as String? ?? googleCalendarUrl;
     final savedStartTool = data['startTool'] as String?;
     if (savedStartTool != null && startToolOptions.contains(savedStartTool)) {
       startTool = savedStartTool;

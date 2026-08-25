@@ -1910,11 +1910,12 @@ dev/demo starter tasks seeded by `home_page._loadTasks` mean the overall list is
 actually empty by the time this page loads, so the original single-entry seed (a plain
 `tasks.isEmpty` check) never fired in practice.
 
-### 10.6b Weekly Hours Planner (0.1.272)
+### 10.6b Weekly Hours Planner (0.1.272, vertical grid + Google Calendar overlay 0.1.274)
 Tools → Weekly Hours Planner (`lib/models/weekly_hours_plan.dart`,
 `lib/services/weekly_hours_service.dart`, `lib/ui/weekly_hours_planner_page.dart`): a
 standalone, date-less Monday-to-Friday work-hours template — not tied to the task list or
-any specific calendar week (a future version overlays it on the user's Google Calendar).
+any specific calendar week — with an optional Google Calendar overlay resolved against the
+*current* calendar week.
 
 **Model:** `WorkBlock{startMinutes,endMinutes}` (minutes since midnight); `DayPlan{morning,
 afternoon}` with `lunchMinutes` simply the gap between them and `workedMinutes` the sum of
@@ -1931,23 +1932,51 @@ over Monday-Thursday; `theoreticalFridayEndMinutes` is Friday's own start time +
 gap + however many minutes Friday needs to work (`targetWeeklyMinutes` minus the
 Monday-Thursday total) to bring the week back to 43:00 — independent of how Friday's own
 two blocks are split, since only the total matters. The Weekly Hours Planner page renders
-this as a dotted red line + time label on the Friday row (`_TheoreticalEndLine`,
-`_DashedLinePainter`), which is always computed (not gated on any "modified" flag) so it
-simply coincides with Friday's own scheduled end when the week is exactly on target.
+this as a dashed red line + time label under Friday's column (`_TheoreticalEndLine`,
+`_HorizontalDashedLinePainter`), which is always computed (not gated on any "modified" flag)
+so it simply coincides with Friday's own scheduled end when the week is exactly on target.
 
-**UI (`weekly_hours_planner_page.dart`):** one horizontal timeline row per weekday, track
-spanning a fixed 06:00-22:00 window; the morning block (primary color) and afternoon block
-(secondary color) are drawn as `Positioned` bars with a time-range label once wide enough,
-plus 4 draggable handles (`_Handle.morningStart/morningEnd/afternoonStart/afternoonEnd`,
-each keyed `handle-<Weekday>-<handleName>` for tests) that resize a block by dragging
-either of its own two edges, clamped to a 30-minute minimum block length and to not cross
-the other block, snapped to 5-minute increments. Dragging updates the in-memory plan on
-every frame (so Friday's dotted line and every day's duration label react live) but only
-persists to disk once via `onDragEnd` when the drag finishes, to avoid hammering the file
-on every pointer move. A summary card at the top shows the week's planned vs. 43:00 target
-total with a +/- surplus/deficit chip; a reset button (app bar) restores
-`WeeklyHoursPlan.defaultPlan()`; a static card notes the Google Calendar overlay is
-planned but not yet built.
+**UI (`weekly_hours_planner_page.dart`) — vertical week grid:** the five weekdays render as
+columns side by side with time running top-to-bottom, sized (via a `LayoutBuilder` computing
+`pxPerMinute = trackHeight / rangeMinutes`) to fill the space left under the summary card, so
+the whole configured hour range (`Config.weeklyHoursStartHour`/`weeklyHoursEndHour`, Settings
+→ Weekly Hours Planner, default 06:00-22:00) is visible without scrolling — replacing the
+original one-row-per-weekday horizontal-timeline layout. A shared left gutter
+(`_HourGutterPainter`) draws the hour labels; each day column (`_DayColumn`,
+`_ColumnBackgroundPainter` for its faint hour gridlines) draws the morning block (primary
+color) and afternoon block (secondary color) as `Positioned` bars (start/end time labels once
+tall enough) plus 4 draggable handles (`_Handle.morningStart/morningEnd/afternoonStart/
+afternoonEnd`, each keyed `handle-<Weekday>-<handleName>` for tests, now horizontal bars
+dragged **vertically** — `onVerticalDragUpdate`, `deltaDy / pxPerMinute` for the minute delta)
+that resize a block by dragging either of its own two edges, clamped to a 30-minute minimum
+block length and to not cross the other block, snapped to 5-minute increments. Dragging
+updates the in-memory plan on every frame (so Friday's dashed line and every day's duration
+label react live) but only persists to disk once via `onDragEnd` when the drag finishes, to
+avoid hammering the file on every pointer move. A summary card at the top shows the week's
+planned vs. 43:00 target total with a +/- surplus/deficit chip; a reset button (app bar)
+restores `WeeklyHoursPlan.defaultPlan()`.
+
+**Google Calendar overlay:** Settings → Weekly Hours Planner has a "Calendar URL" field
+(`Config.googleCalendarUrl`, shared with nothing else) — paste a public `.ics` feed (a Google
+Calendar "Secret address in iCal format" URL, or any RFC 5545 feed) and Settings' Import
+button fetches + caches it immediately, showing the event count/timestamp or an error inline.
+`GoogleCalendarService` (`lib/services/google_calendar_service.dart`,
+`lib/models/gcal_event.dart`) parses the feed into `GCalRawEvent`s (RFC 5545 line-unfolding;
+`DTSTART`/`DTEND`/`DURATION`/`SUMMARY`/`UID`/`RRULE`/`EXDATE`; a `VALUE=DATE` or bare
+8-digit `DTSTART` is all-day) and caches them to `google_calendar_cache.json` in the app
+documents dir, so the planner has something to show offline before the next refresh.
+`GoogleCalendarService.eventsInRange` expands `RRULE` on demand for whatever date range is
+asked for — `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `COUNT`, `UNTIL`, and (`WEEKLY`
+only) `BYDAY`; `EXDATE` drops one occurrence (a date-only `EXDATE` excludes that whole day).
+Network access goes through `HttpClient` (same pattern as `UpdateService._fetch`, with a
+`fetchOverride` test hook). The plan itself stays date-less, so the Weekly Hours Planner page
+resolves the overlay against the *current* calendar week only: `_mondayOfThisWeek()` plus the
+column index gives each weekday column's real date, and `eventsInRange` is called per day
+(`_gcalEventsForDay`, timed events only — all-day events are not shown). Each event renders as
+a `_gcalBlock`: a `tertiaryContainer`-tinted, 55%-opacity `Positioned` bar added to the
+column's `Stack` *before* the work blocks, so it paints underneath them — visible in any gap
+where no work block covers that time, and simply covered where one does (the honest reading:
+that time slot is occupied by a real work block).
 
 **Persistence:** `WeeklyHoursService` (singleton, `ValueNotifier<WeeklyHoursPlan>`)
 persists to `weekly_hours_plan.json` in the app documents directory, seeded with
@@ -1959,7 +1988,9 @@ Registered like every other tool: `weekly_hours_planner` key in
 `test_results` so the "first N keys match `startToolOptions`" comment stays accurate), a
 `_ToolEntry` in home_page's drawer list (`Icons.calendar_view_week`), and a
 `_buildToolPage` case. No `_openTool` reload-on-return wiring is needed — unlike
-Wishlist/Food Diary this tool never touches `_tasks`.
+Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (index 13,
+"Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
+at the end of `_sectionTitles` to avoid renumbering the other twelve.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

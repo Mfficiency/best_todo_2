@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/weekly_hours_plan.dart';
+import 'package:besttodo/services/google_calendar_service.dart';
 import 'package:besttodo/services/weekly_hours_service.dart';
 import 'package:besttodo/ui/weekly_hours_planner_page.dart';
 import 'package:flutter/material.dart';
@@ -143,6 +145,11 @@ void main() {
       WeeklyHoursService.instance.resetForTest();
     });
 
+    tearDown(() {
+      Config.googleCalendarUrl = '';
+      GoogleCalendarService.fetchOverride = null;
+    });
+
     testWidgets('shows every weekday and the weekly total',
         (tester) async {
       await tester.pumpWidget(
@@ -178,10 +185,11 @@ void main() {
       // At the default plan the week is exactly on target: no surplus chip.
       expect(find.textContaining('+'), findsNothing);
 
-      // Drag Monday's afternoon-end handle further out to extend the day.
+      // Drag Monday's afternoon-end handle further down (later) to extend
+      // the day — the grid runs top-to-bottom, so a positive dy means later.
       await tester.drag(
         find.byKey(const ValueKey('handle-Monday-afternoonEnd')),
-        const Offset(60, 0),
+        const Offset(0, 40),
       );
       await tester.pump();
 
@@ -196,5 +204,49 @@ void main() {
       expect(WeeklyHoursService.instance.plan.value.plannedWeeklyMinutes,
           43 * 60);
     });
+
+    testWidgets(
+        'an imported Google Calendar event shows on its weekday, translucent '
+        'underneath the work blocks', (tester) async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final monday = today.subtract(Duration(days: today.weekday - 1));
+      // A 3-hour block, comfortably tall enough to render its label at any
+      // viewport height the test harness uses.
+      final eventStart = DateTime(monday.year, monday.month, monday.day, 8);
+      final eventEnd = eventStart.add(const Duration(hours: 3));
+      final ics = '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:test-event@example.com
+DTSTART:${_icsStamp(eventStart)}
+DTEND:${_icsStamp(eventEnd)}
+SUMMARY:Team Standup
+END:VEVENT
+END:VCALENDAR
+''';
+      Config.googleCalendarUrl = 'https://example.com/cal.ics';
+      GoogleCalendarService.fetchOverride = (_) async => ics;
+
+      await tester.pumpWidget(
+        const MaterialApp(home: WeeklyHoursPlannerPage()),
+      );
+      for (var i = 0;
+          i < 300 && find.text('Team Standup').evaluate().isEmpty;
+          i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+
+      expect(find.text('Team Standup'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
+}
+
+String _icsStamp(DateTime dt) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${dt.year}${two(dt.month)}${two(dt.day)}T'
+      '${two(dt.hour)}${two(dt.minute)}${two(dt.second)}';
 }

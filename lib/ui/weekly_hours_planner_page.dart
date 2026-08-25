@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
+import '../models/gcal_event.dart';
 import '../models/weekly_hours_plan.dart';
+import '../services/google_calendar_service.dart';
 import '../services/weekly_hours_service.dart';
 import '../utils/date_time_format.dart';
 import 'subpage_app_bar.dart';
@@ -12,8 +15,11 @@ import 'subpage_app_bar.dart';
 /// default banks a surplus or deficit that Friday's dotted line shows as the
 /// theoretical clock-out time needed to keep the week at 43 hours.
 ///
-/// This is a standalone template, not tied to actual calendar dates yet — a
-/// future version overlays it on the user's Google Calendar.
+/// The five weekdays render as a vertical week grid — columns side by side,
+/// time running top-to-bottom — sized to fill the available height so the
+/// whole configured hour range (Settings → Weekly Hours Planner) is visible
+/// without scrolling. A Google Calendar URL imported in Settings overlays
+/// that day's real events, translucent, underneath the work blocks.
 class WeeklyHoursPlannerPage extends StatefulWidget {
   const WeeklyHoursPlannerPage({Key? key}) : super(key: key);
 
@@ -27,10 +33,14 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
   late WeeklyHoursPlan _plan;
   bool _loading = true;
 
+  List<GCalRawEvent> _gcalRaw = const [];
+  String? _gcalError;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadGoogleCalendar();
   }
 
   Future<void> _load() async {
@@ -40,6 +50,24 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
       _plan = _service.plan.value;
       _loading = false;
     });
+  }
+
+  Future<void> _loadGoogleCalendar() async {
+    final cached = await GoogleCalendarService.loadCached();
+    if (mounted && cached.isNotEmpty) setState(() => _gcalRaw = cached);
+    final url = Config.googleCalendarUrl.trim();
+    if (url.isEmpty) return;
+    try {
+      final fresh = await GoogleCalendarService.refresh(url);
+      if (!mounted) return;
+      setState(() {
+        _gcalRaw = fresh;
+        _gcalError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _gcalError = 'Could not refresh the imported calendar');
+    }
   }
 
   /// Updates the in-memory plan immediately (so every day's block sizes and
@@ -54,6 +82,26 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
   Future<void> _reset() async {
     setState(() => _plan = WeeklyHoursPlan.defaultPlan());
     await _persist();
+  }
+
+  /// Monday of the current calendar week, used only to resolve which real
+  /// dates the Google Calendar overlay pulls events for — the plan itself
+  /// stays a date-less Monday-to-Friday template.
+  DateTime _mondayOfThisWeek() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return today.subtract(Duration(days: today.weekday - 1));
+  }
+
+  /// Timed (non-all-day) Google Calendar events for the given weekday
+  /// [index] (0 = Monday .. 4 = Friday) of the current week.
+  List<GCalEvent> _gcalEventsForDay(int index) {
+    if (_gcalRaw.isEmpty) return const [];
+    final day = _mondayOfThisWeek().add(Duration(days: index));
+    final dayEnd = day.add(const Duration(days: 1));
+    return GoogleCalendarService.eventsInRange(_gcalRaw, day, dayEnd)
+        .where((e) => !e.allDay)
+        .toList();
   }
 
   @override
@@ -84,78 +132,157 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
     final target = _plan.targetWeeklyMinutes;
     final diff = planned - target;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('This week', style: theme.textTheme.titleSmall),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${_formatDuration(planned)} planned  ·  target '
-                        '${_formatDuration(target)}',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-                if (diff != 0)
-                  Chip(
-                    label: Text(
-                      '${diff > 0 ? '+' : '-'}${_formatDuration(diff.abs())}',
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('This week', style: theme.textTheme.titleSmall),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_formatDuration(planned)} planned  ·  target '
+                          '${_formatDuration(target)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
                     ),
-                    backgroundColor: diff > 0
-                        ? theme.colorScheme.tertiaryContainer
-                        : theme.colorScheme.errorContainer,
                   ),
-              ],
+                  if (diff != 0)
+                    Chip(
+                      label: Text(
+                        '${diff > 0 ? '+' : '-'}${_formatDuration(diff.abs())}',
+                      ),
+                      backgroundColor: diff > 0
+                          ? theme.colorScheme.tertiaryContainer
+                          : theme.colorScheme.errorContainer,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        for (var i = 0; i < _plan.days.length; i++)
+        if (_gcalError != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _DayRow(
-              weekday: WeeklyHoursPlan.weekdayNames[i],
-              day: _plan.days[i],
-              isFriday: i == _plan.days.length - 1,
-              theoreticalEndMinutes:
-                  i == _plan.days.length - 1 ? _plan.theoreticalFridayEndMinutes : null,
-              onChanged: (day) => _onDayChanged(i, day),
-              onDragEnd: _persist,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              _gcalError!,
+              style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
             ),
           ),
-        const SizedBox(height: 8),
-        Card(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-          child: const Padding(
-            padding: EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(Icons.calendar_month_outlined),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Overlaying your Google Calendar on top of this plan is '
-                    'coming in a future update.',
-                  ),
-                ),
-              ],
-            ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: _buildWeekGrid(theme),
           ),
         ),
       ],
     );
   }
+
+  Widget _buildWeekGrid(ThemeData theme) {
+    final startHour = Config.weeklyHoursStartHour;
+    final endHour = Config.weeklyHoursEndHour;
+    final rangeMinutes = (endHour - startHour) * 60;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const headerHeight = 32.0;
+        final trackHeight =
+            (constraints.maxHeight - headerHeight).clamp(0.0, double.infinity);
+        final pxPerMinute = rangeMinutes > 0 ? trackHeight / rangeMinutes : 0.0;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: headerHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(width: _gutterWidth),
+                  for (var i = 0; i < _plan.days.length; i++)
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            WeeklyHoursPlan.weekdayNames[i],
+                            style: theme.textTheme.labelSmall
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                          Text(
+                            _formatDuration(_plan.days[i].workedMinutes),
+                            style: theme.textTheme.labelSmall
+                                ?.copyWith(color: theme.disabledColor),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: _gutterWidth,
+                    child: CustomPaint(
+                      painter: _HourGutterPainter(
+                        startHour: startHour,
+                        endHour: endHour,
+                        pxPerMinute: pxPerMinute,
+                        color: theme.disabledColor,
+                        use24Hour: Config.use24HourFormat,
+                      ),
+                    ),
+                  ),
+                  for (var i = 0; i < _plan.days.length; i++)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 2),
+                        child: _DayColumn(
+                          weekday: WeeklyHoursPlan.weekdayNames[i],
+                          day: _plan.days[i],
+                          isFriday: i == _plan.days.length - 1,
+                          theoreticalEndMinutes:
+                              i == _plan.days.length - 1
+                                  ? _plan.theoreticalFridayEndMinutes
+                                  : null,
+                          startHour: startHour,
+                          endHour: endHour,
+                          pxPerMinute: pxPerMinute,
+                          gcalEvents: _gcalEventsForDay(i),
+                          onChanged: (day) => _onDayChanged(i, day),
+                          onDragEnd: _persist,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
+
+const double _gutterWidth = 28.0;
 
 String _formatDuration(int minutes) {
   final h = minutes ~/ 60;
@@ -168,51 +295,58 @@ String _formatMinutesOfDay(int minutes) {
   return formatTimerTime(DateTime(2000, 1, 1, clamped ~/ 60, clamped % 60));
 }
 
-/// One weekday's horizontal timeline: a track spanning [_DayRow.trackStart]
-/// to [_DayRow.trackEnd] with the morning and afternoon blocks drawn as
-/// colored bars, four draggable handles at their ends, and (Friday only) a
-/// dotted line marking [theoreticalEndMinutes].
-class _DayRow extends StatefulWidget {
+/// One weekday's vertical timeline: a track spanning [startHour] to
+/// [endHour] (top to bottom) with the morning and afternoon blocks drawn as
+/// colored bars, four draggable handles at their top/bottom edges, any
+/// imported Google Calendar events for the day rendered translucent behind
+/// them, and (Friday only) a dashed horizontal line marking
+/// [theoreticalEndMinutes].
+class _DayColumn extends StatefulWidget {
   final String weekday;
   final DayPlan day;
   final bool isFriday;
   final int? theoreticalEndMinutes;
+  final int startHour;
+  final int endHour;
+  final double pxPerMinute;
+  final List<GCalEvent> gcalEvents;
   final ValueChanged<DayPlan> onChanged;
   final VoidCallback onDragEnd;
 
-  const _DayRow({
+  const _DayColumn({
     required this.weekday,
     required this.day,
     required this.isFriday,
     required this.theoreticalEndMinutes,
+    required this.startHour,
+    required this.endHour,
+    required this.pxPerMinute,
+    required this.gcalEvents,
     required this.onChanged,
     required this.onDragEnd,
   });
 
   @override
-  State<_DayRow> createState() => _DayRowState();
+  State<_DayColumn> createState() => _DayColumnState();
 }
 
 enum _Handle { morningStart, morningEnd, afternoonStart, afternoonEnd }
 
-class _DayRowState extends State<_DayRow> {
-  static const int trackStartMinutes = 6 * 60;
-  static const int trackEndMinutes = 22 * 60;
+class _DayColumnState extends State<_DayColumn> {
   static const int minBlockMinutes = 30;
   static const int snapMinutes = 5;
-  static const double trackHeight = 44;
-  static const double handleWidth = 20;
+  static const double handleTouchHeight = 22;
 
   /// Unsnapped running value for the handle currently being dragged, in
   /// minutes since midnight. Null when nothing is being dragged.
   double? _dragValue;
   _Handle? _draggingHandle;
 
-  double _minutesToX(int minutes, double width) {
-    final span = trackEndMinutes - trackStartMinutes;
-    final x = (minutes - trackStartMinutes) / span * width;
-    return x.clamp(0.0, width);
-  }
+  int get _trackStartMinutes => widget.startHour * 60;
+  int get _trackEndMinutes => widget.endHour * 60;
+
+  double _minutesToY(int minutes) =>
+      (minutes - _trackStartMinutes) * widget.pxPerMinute;
 
   int _current(_Handle handle) {
     if (_draggingHandle == handle && _dragValue != null) {
@@ -237,10 +371,10 @@ class _DayRowState extends State<_DayRow> {
     });
   }
 
-  void _onDragUpdate(_Handle handle, double deltaDx, double width) {
+  void _onDragUpdate(_Handle handle, double deltaDy) {
     if (_draggingHandle != handle || _dragValue == null) return;
-    final span = trackEndMinutes - trackStartMinutes;
-    final deltaMinutes = deltaDx / width * span;
+    if (widget.pxPerMinute <= 0) return;
+    final deltaMinutes = deltaDy / widget.pxPerMinute;
     var next = _dragValue! + deltaMinutes;
 
     final morning = widget.day.morning;
@@ -248,7 +382,7 @@ class _DayRowState extends State<_DayRow> {
     switch (handle) {
       case _Handle.morningStart:
         next = next.clamp(
-          trackStartMinutes.toDouble(),
+          _trackStartMinutes.toDouble(),
           (morning.endMinutes - minBlockMinutes).toDouble(),
         );
         break;
@@ -267,7 +401,7 @@ class _DayRowState extends State<_DayRow> {
       case _Handle.afternoonEnd:
         next = next.clamp(
           (afternoon.startMinutes + minBlockMinutes).toDouble(),
-          trackEndMinutes.toDouble(),
+          _trackEndMinutes.toDouble(),
         );
         break;
     }
@@ -296,26 +430,26 @@ class _DayRowState extends State<_DayRow> {
     widget.onDragEnd();
   }
 
-  Widget _handle(_Handle handle, int minutes, double width) {
-    final x = _minutesToX(minutes, width) - handleWidth / 2;
+  Widget _handle(_Handle handle, int minutes) {
+    final y = _minutesToY(minutes) - handleTouchHeight / 2;
     return Positioned(
-      left: x,
-      top: 0,
-      bottom: 0,
-      width: handleWidth,
+      left: 0,
+      right: 0,
+      top: y,
+      height: handleTouchHeight,
       child: MouseRegion(
-        cursor: SystemMouseCursors.resizeLeftRight,
+        cursor: SystemMouseCursors.resizeUpDown,
         child: GestureDetector(
           key: ValueKey('handle-${widget.weekday}-${handle.name}'),
           behavior: HitTestBehavior.translucent,
-          onHorizontalDragStart: (_) => _onDragStart(handle),
-          onHorizontalDragUpdate: (d) =>
-              _onDragUpdate(handle, d.delta.dx, width),
-          onHorizontalDragEnd: (_) => _onDragEnd(),
+          onVerticalDragStart: (_) => _onDragStart(handle),
+          onVerticalDragUpdate: (d) => _onDragUpdate(handle, d.delta.dy),
+          onVerticalDragEnd: (_) => _onDragEnd(),
           child: Center(
             child: Container(
-              width: 4,
-              height: trackHeight - 8,
+              height: 4,
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(2),
@@ -327,30 +461,88 @@ class _DayRowState extends State<_DayRow> {
     );
   }
 
-  Widget _block(ColorScheme scheme, double left, double right, Color color,
-      String label) {
-    final width = (right - left).clamp(0.0, double.infinity);
+  Widget _block(
+    double top,
+    double bottom,
+    Color color,
+    Color onColor,
+    String startLabel,
+    String endLabel,
+  ) {
+    final height = (bottom - top).clamp(0.0, double.infinity);
     return Positioned(
-      left: left,
-      top: 0,
-      bottom: 0,
-      width: width,
+      left: 1,
+      right: 1,
+      top: top,
+      height: height,
       child: Container(
-        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
         ),
-        child: width > 60
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: height > 28
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    startLabel,
+                    style: TextStyle(
+                      color: onColor,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    textAlign: TextAlign.center,
+                  ),
+                  Text(
+                    endLabel,
+                    style: TextStyle(
+                      color: onColor,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              )
+            : null,
+      ),
+    );
+  }
+
+  Widget _gcalBlock(ColorScheme scheme, GCalEvent event) {
+    final top = _minutesToY(event.start.hour * 60 + event.start.minute)
+        .clamp(0.0, double.infinity);
+    final bottom = _minutesToY(event.end.hour * 60 + event.end.minute)
+        .clamp(0.0, double.infinity);
+    final height = (bottom - top).clamp(10.0, double.infinity);
+    return Positioned(
+      left: 1,
+      right: 1,
+      top: top,
+      height: height,
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.tertiaryContainer.withValues(alpha: 0.55),
+          border: Border(left: BorderSide(width: 2, color: scheme.tertiary)),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        alignment: Alignment.topCenter,
+        child: height > 20
             ? Text(
-                label,
+                event.title,
                 style: TextStyle(
-                  color: scheme.onPrimary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+                  color: scheme.onTertiaryContainer,
+                  fontSize: 8,
                 ),
-                overflow: TextOverflow.clip,
-                maxLines: 1,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               )
             : null,
       ),
@@ -365,153 +557,207 @@ class _DayRowState extends State<_DayRow> {
     final morningEnd = _current(_Handle.morningEnd);
     final afternoonStart = _current(_Handle.afternoonStart);
     final afternoonEnd = _current(_Handle.afternoonEnd);
-    final worked =
-        (morningEnd - morningStart) + (afternoonEnd - afternoonStart);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Stack(
+      clipBehavior: Clip.none,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(widget.weekday, style: theme.textTheme.titleSmall),
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _ColumnBackgroundPainter(
+              startHour: widget.startHour,
+              endHour: widget.endHour,
+              pxPerMinute: widget.pxPerMinute,
+              fillColor: scheme.surfaceContainerHighest,
+              lineColor: scheme.outlineVariant.withValues(alpha: 0.4),
             ),
-            Text(
-              _formatDuration(worked),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.disabledColor),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 6),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            return SizedBox(
-              height: trackHeight,
-              width: width,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                  _block(
-                    scheme,
-                    _minutesToX(morningStart, width),
-                    _minutesToX(morningEnd, width),
-                    scheme.primary,
-                    '${_formatMinutesOfDay(morningStart)}–${_formatMinutesOfDay(morningEnd)}',
-                  ),
-                  _block(
-                    scheme,
-                    _minutesToX(afternoonStart, width),
-                    _minutesToX(afternoonEnd, width),
-                    scheme.secondary,
-                    '${_formatMinutesOfDay(afternoonStart)}–${_formatMinutesOfDay(afternoonEnd)}',
-                  ),
-                  if (widget.isFriday && widget.theoreticalEndMinutes != null)
-                    _TheoreticalEndLine(
-                      x: _minutesToX(widget.theoreticalEndMinutes!, width),
-                      height: trackHeight,
-                      label: _formatMinutesOfDay(widget.theoreticalEndMinutes!),
-                      color: scheme.error,
-                    ),
-                  _handle(_Handle.morningStart, morningStart, width),
-                  _handle(_Handle.morningEnd, morningEnd, width),
-                  _handle(_Handle.afternoonStart, afternoonStart, width),
-                  _handle(_Handle.afternoonEnd, afternoonEnd, width),
-                ],
-              ),
-            );
-          },
+        for (final event in widget.gcalEvents) _gcalBlock(scheme, event),
+        _block(
+          _minutesToY(morningStart),
+          _minutesToY(morningEnd),
+          scheme.primary,
+          scheme.onPrimary,
+          _formatMinutesOfDay(morningStart),
+          _formatMinutesOfDay(morningEnd),
         ),
+        _block(
+          _minutesToY(afternoonStart),
+          _minutesToY(afternoonEnd),
+          scheme.secondary,
+          scheme.onSecondary,
+          _formatMinutesOfDay(afternoonStart),
+          _formatMinutesOfDay(afternoonEnd),
+        ),
+        if (widget.isFriday && widget.theoreticalEndMinutes != null)
+          _TheoreticalEndLine(
+            y: _minutesToY(widget.theoreticalEndMinutes!),
+            label: _formatMinutesOfDay(widget.theoreticalEndMinutes!),
+            color: scheme.error,
+          ),
+        _handle(_Handle.morningStart, morningStart),
+        _handle(_Handle.morningEnd, morningEnd),
+        _handle(_Handle.afternoonStart, afternoonStart),
+        _handle(_Handle.afternoonEnd, afternoonEnd),
       ],
     );
   }
 }
 
-/// The dotted vertical line on Friday showing the theoretical clock-out
+/// The dashed horizontal line on Friday showing the theoretical clock-out
 /// time needed to keep the week at its 43-hour target, with a small time
-/// label above the track.
+/// label just beneath it.
 class _TheoreticalEndLine extends StatelessWidget {
-  final double x;
-  final double height;
+  final double y;
   final String label;
   final Color color;
 
   const _TheoreticalEndLine({
-    required this.x,
-    required this.height,
+    required this.y,
     required this.label,
     required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    const labelWidth = 60.0;
     return Positioned(
-      left: x - 1,
-      top: -20,
-      bottom: 0,
-      child: SizedBox(
-        width: 2,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: -labelWidth / 2 + 1,
-              top: 0,
-              width: labelWidth,
-              child: Text(
-                label,
-                key: const ValueKey('friday-theoretical-end-label'),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
+      left: 0,
+      right: 0,
+      top: y - 1,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 2,
+            child: CustomPaint(painter: _HorizontalDashedLinePainter(color: color)),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Text(
+              label,
+              key: const ValueKey('friday-theoretical-end-label'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                color: color,
               ),
             ),
-            Positioned(
-              top: 20,
-              bottom: 0,
-              child: CustomPaint(
-                size: Size(2, height),
-                painter: _DashedLinePainter(color: color),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _DashedLinePainter extends CustomPainter {
+class _HorizontalDashedLinePainter extends CustomPainter {
   final Color color;
-  const _DashedLinePainter({required this.color});
+  const _HorizontalDashedLinePainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 2;
-    const dashHeight = 4.0;
-    const gapHeight = 3.0;
-    var y = 0.0;
-    while (y < size.height) {
-      canvas.drawLine(Offset(1, y), Offset(1, y + dashHeight), paint);
-      y += dashHeight + gapHeight;
+    const dashWidth = 4.0;
+    const gapWidth = 3.0;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 1), Offset(x + dashWidth, 1), paint);
+      x += dashWidth + gapWidth;
     }
   }
 
   @override
-  bool shouldRepaint(covariant _DashedLinePainter old) => old.color != color;
+  bool shouldRepaint(covariant _HorizontalDashedLinePainter old) =>
+      old.color != color;
+}
+
+/// Fills a day column's background and draws faint horizontal lines every
+/// hour, aligned with [_HourGutterPainter]'s labels (both are driven by the
+/// same [startHour]/[endHour]/[pxPerMinute]).
+class _ColumnBackgroundPainter extends CustomPainter {
+  final int startHour;
+  final int endHour;
+  final double pxPerMinute;
+  final Color fillColor;
+  final Color lineColor;
+
+  const _ColumnBackgroundPainter({
+    required this.startHour,
+    required this.endHour,
+    required this.pxPerMinute,
+    required this.fillColor,
+    required this.lineColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(4)),
+      Paint()..color = fillColor,
+    );
+    final linePaint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 1;
+    for (var hour = startHour; hour <= endHour; hour++) {
+      final y = (hour - startHour) * 60 * pxPerMinute;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColumnBackgroundPainter old) =>
+      old.startHour != startHour ||
+      old.endHour != endHour ||
+      old.pxPerMinute != pxPerMinute ||
+      old.fillColor != fillColor ||
+      old.lineColor != lineColor;
+}
+
+/// Paints the left gutter's hour labels, aligned with
+/// [_ColumnBackgroundPainter]'s gridlines.
+class _HourGutterPainter extends CustomPainter {
+  final int startHour;
+  final int endHour;
+  final double pxPerMinute;
+  final Color color;
+  final bool use24Hour;
+
+  const _HourGutterPainter({
+    required this.startHour,
+    required this.endHour,
+    required this.pxPerMinute,
+    required this.color,
+    required this.use24Hour,
+  });
+
+  String _label(int hour) {
+    if (use24Hour) return hour.toString().padLeft(2, '0');
+    final period = hour < 12 ? 'a' : 'p';
+    var h = hour % 12;
+    if (h == 0) h = 12;
+    return '$h$period';
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (var hour = startHour; hour <= endHour; hour++) {
+      final y = (hour - startHour) * 60 * pxPerMinute;
+      final painter = TextPainter(
+        text: TextSpan(text: _label(hour), style: TextStyle(fontSize: 9, color: color)),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: size.width);
+      final labelY = (y - painter.height / 2).clamp(0.0, size.height - painter.height);
+      painter.paint(canvas, Offset(2, labelY));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HourGutterPainter old) =>
+      old.startHour != startHour ||
+      old.endHour != endHour ||
+      old.pxPerMinute != pxPerMinute ||
+      old.color != color ||
+      old.use24Hour != use24Hour;
 }
