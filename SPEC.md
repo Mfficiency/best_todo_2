@@ -14,6 +14,27 @@
 
 # Part I — Rebuild specification
 
+## Usage and digital wellbeing dashboard
+
+Tools → Usage Data is both the raw-data export surface and an interactive
+wellbeing dashboard. It combines BestToDo's existing task lifecycle, startup,
+alarm, timer, and daily-stat records with optional Android system usage
+sessions. Today, current-week, current-month, and current-year filters drive
+the summary cards, hourly chart, app ranking, and productivity measures.
+
+Android integration uses the `besttodo/digital_wellbeing` method channel and
+`UsageStatsManager.queryEvents`. The user must deliberately grant Usage Access
+in Android settings; without it the BestToDo dashboard and CSV exports still
+work normally. Foreground/resumed and background/paused pairs become local
+sessions with package label and Android app category. No usage data is sent to
+a server and the feature never blocks another app.
+
+Supportive insights call out late-night use and repeated sessions without
+shaming language. Goals are disabled by default and persisted in shared
+preferences (daily minutes, pickup limit, bedtime, and no-phone start hour).
+The dashboard always retains the selectable detailed CSV export as an
+expandable drill-down.
+
 ## 1. What the app is
 
 BestToDo is a **swipe-first, ultra-fast to-do app** built with Flutter, primarily targeting

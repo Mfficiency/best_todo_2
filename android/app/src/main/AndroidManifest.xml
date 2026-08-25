@@ -25,6 +25,10 @@
          the system package installer. The user still confirms the install
          and grants the one-time "install unknown apps" toggle. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Optional: the user explicitly grants Usage Access from the wellbeing
+         dashboard. Android does not show a runtime permission dialog. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        android:protectionLevel="signature|privileged|development|appop" />
     <application
         android:label="BestToDo"
         android:name="${applicationName}"
