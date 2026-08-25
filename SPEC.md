@@ -170,6 +170,12 @@ image opens a full-screen `InteractiveViewer`; tapping a PDF (or any other file-
 hands it to `share_plus`'s `SharePlus.instance.share(ShareParams(files: [...]))`, i.e. "open"
 is implemented as the platform share sheet rather than an in-app viewer.
 
+Dev seed: `home_page._loadTasks` backfills a demo text attachment onto one starter task
+(`Config.initialTasks[1]`, falling back to the first non-wish/non-food-diary task) whenever
+`Config.isDev` and no task carries an attachment yet, so the "task expanded with an
+attachment" state is visible on a fresh dev/laptop run without adding one by hand — every
+other starter task stays attachment-free, showing the "without" state alongside it.
+
 `DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
 `openingTaskIds`, `movedFromOpeningTaskIds`, `completedFromOpeningTaskIds`,
 `createdDuringDayTaskIds`, `completedFromCreatedTaskIds`. Powers the stats page and CSV
@@ -1506,6 +1512,18 @@ Three widgets via `home_widget` (app group `group.homeScreenApp`):
   info.xml` sets `updatePeriodMillis` = 30 min), so the color is right even when the widget
   redraws on its own schedule with the app never opened — a purely Flutter-computed flag
   would go stale the moment the clock crosses a checkpoint without a save happening.
+
+**Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
+`Config.isDev`, next to App Logs/Startup Times): the three widgets above are drawn by
+`RemoteViews` on the Android home screen, entirely outside the Flutter tree, so they cannot
+be captured by the desktop screenshot integration test (`integration_test/
+home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
+from the same data/logic the real widgets use — `TaskWidgetService.todayTasks`, the sorted
+`AlarmService.instance.list`, `FoodDiaryWidgetService.computeHasEntry` plus the same
+checkpoint-passed-against-the-live-clock check `FoodDiaryWidgetProvider.kt` does — so the
+colors/text stay in sync with the Kotlin providers without duplicating their logic. The Food
+Diary mock falls back to two in-memory (never saved) demo entries when no Food Diary tasks
+exist yet, the same way `FoodDiaryPage` seeds its own copy on first open.
 
 ## 9. Android platform config
 

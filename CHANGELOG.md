@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.279] - 2026-08-25
+- Added a dev-only "Widget Previews" drawer entry that mocks the Task/Alarms/Food Diary home-screen widgets in-app, so the screenshot changelog can show them off even though the real widgets are drawn by Android outside the Flutter app
+- Dev/laptop runs now seed a demo text attachment onto a starter task, and the screenshot changelog captures a task expanded on the main screen both with and without an attachment
+
 ## [0.1.278] - 2026-08-25
 - Food Diary got a home-screen widget: tap the + to log a meal straight from your home screen, without opening the app — same "create entry" dialog you get inside Food Diary
 - The widget turns red once a meal checkpoint (8:00, 13:00, 20:00 — after breakfast/lunch/dinner) passes with nothing logged in that window, so a missed meal log actually gets your attention

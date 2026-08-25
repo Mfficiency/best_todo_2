@@ -11,6 +11,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
+import '../models/attachment.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/streak_kind.dart';
@@ -59,6 +60,7 @@ import 'test_results_page.dart';
 import 'usage_data_page.dart';
 import 'waiting_approval_page.dart';
 import 'weekly_hours_planner_page.dart';
+import 'widget_previews_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
 
@@ -648,6 +650,27 @@ class _HomePageState extends State<HomePage>
       // untagged until the next launch.
       applyShippedWishes(seeded);
       _tasks.addAll(seeded);
+    }
+    // Backfill a demo text attachment for dev installs so the task-detail
+    // "with attachment" state (AttachmentsField, expanded task tile) is
+    // visible without manual setup — and, symmetrically, the other starter
+    // tasks stay attachment-free so both states are on screen at once.
+    // Idempotent: only runs once, keyed on no task carrying an attachment yet.
+    if (Config.isDev &&
+        _tasks.isNotEmpty &&
+        !_tasks.any((t) => t.attachments.isNotEmpty)) {
+      final demoTarget = _tasks.firstWhere(
+        (t) => t.title == Config.initialTasks[1],
+        orElse: () => _tasks.firstWhere(
+          (t) => !t.isWish && !t.isEatingHabit,
+          orElse: () => _tasks.first,
+        ),
+      );
+      demoTarget.attachments.add(Attachment(
+        type: Attachment.typeText,
+        text: "Quote from Mike's Garage: \$340 for the carburetor, ask "
+            'about the timing belt while it is in the shop.',
+      ));
     }
     // Prepopulate the Projects tool in dev builds so the cards/boards have
     // data to drag around right away.
@@ -2859,6 +2882,18 @@ class _HomePageState extends State<HomePage>
                   Navigator.pop(context);
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const StartupTimesPage()),
+                  );
+                },
+              ),
+            if (Config.isDev)
+              ListTile(
+                leading: const Icon(Icons.widgets_outlined),
+                title: const Text('Widget Previews'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const WidgetPreviewsPage()),
                   );
                 },
               ),
