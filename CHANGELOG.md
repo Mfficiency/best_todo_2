@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.277] - 2026-08-25
+- Food Diary got a home-screen widget: tap the + to log a meal straight from your home screen, without opening the app — same "create entry" dialog you get inside Food Diary
+- The widget turns red once a meal checkpoint (8:00, 13:00, 20:00 — after breakfast/lunch/dinner) passes with nothing logged in that window, so a missed meal log actually gets your attention
+
 ## [0.1.276] - 2026-08-25
 - Phone numbers in task descriptions and notes are now clickable too, same as URLs — tap one to open the dialer
 

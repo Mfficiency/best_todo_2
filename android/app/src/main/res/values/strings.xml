@@ -3,4 +3,5 @@
     <string name="simple_widget_name">Due Tasks</string>
     <string name="no_tasks_today">No due tasks</string>
     <string name="alarms_widget_name">Alarms</string>
+    <string name="food_diary_widget_name">Food Diary</string>
 </resources>
