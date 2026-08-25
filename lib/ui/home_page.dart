@@ -1036,9 +1036,10 @@ class _HomePageState extends State<HomePage>
     // Tasks ticked off on the home-screen widget are written to storage by the
     // widget's own isolate; on the way back into the app they are merged in.
     WidgetsBinding.instance.addObserver(this);
-    // Text shared into the app from other apps becomes a task on Today.
-    // Registering before _loadTasks means every share from here on goes
-    // through this page's in-memory list — never a second tasks.json writer.
+    // A task built by the share-sheet quick-add screen (see main.dart) is
+    // claimed here while this page is alive. Registering before _loadTasks
+    // means every share from here on goes through this page's in-memory
+    // list — never a second tasks.json writer.
     ShareIntentService.instance.registerConsumer(_addSharedTask);
     // Lets the app shell reopen a live dice timer after its full-screen alarm
     // is stopped (see main.dart), with the task's actions ready.
@@ -1593,12 +1594,13 @@ class _HomePageState extends State<HomePage>
     return KeyEventResult.ignored;
   }
 
-  /// Creates a task from text shared into the app (Android share sheet) —
-  /// always due today, whatever tab or view is open.
-  void _addSharedTask(String text) {
-    final task = ShareIntentService.buildTask(text);
+  /// Adds a task already built by the share-sheet quick-add screen (see
+  /// main.dart) to this page's in-memory list, whatever tab or view is open.
+  /// Ranking follows the same top/bottom setting as every other add, within
+  /// whichever bucket (Today/Inbox) the quick-add screen sent it to.
+  void _addSharedTask(Task task) {
     task.listRanking = _listRankingForNewTask(
-      0,
+      _tabIndexForDueDate(task.dueDate),
       addToTop: Config.addNewTasksToTop,
     );
     setState(() {

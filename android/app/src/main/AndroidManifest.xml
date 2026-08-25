@@ -51,13 +51,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- Share-sheet entry: sharing text/links/email addresses from any
-             app offers BestToDo, which creates a task on Today from the
-             shared text. A translucent trampoline (not MainActivity itself):
-             the share sheet starts its target inside the sharing app's task,
-             and a second MainActivity there would mean a second Flutter
-             engine. ShareActivity forwards the text into the app's real
-             task and finishes. -->
+        <!-- Share-sheet entry: sharing text/links/email addresses, images or
+             PDFs from any app (Chrome, YouTube, Maps, Gmail, Photos, ...)
+             offers BestToDo, which opens the quick-add screen prefilled from
+             the shared content. A translucent trampoline (not MainActivity
+             itself): the share sheet starts its target inside the sharing
+             app's task, and a second MainActivity there would mean a second
+             Flutter engine. ShareActivity copies any shared file into the
+             app's own cache dir (a content:// URI's read grant dies with
+             this activity), forwards everything into the app's real task
+             and finishes. -->
         <activity
             android:name=".ShareActivity"
             android:exported="true"
@@ -68,6 +71,21 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

@@ -20,35 +20,44 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
 
-    // Texts shared into the app (see ShareActivity), waiting for the Dart
-    // side to collect them. On a cold start the queue fills before the
-    // Flutter engine runs; ShareIntentService drains it once initialized.
-    private val pendingSharedTexts = ArrayDeque<String>()
+    // Content shared into the app (see ShareActivity), waiting for the Dart
+    // side to collect it. On a cold start the queue fills before the Flutter
+    // engine runs; ShareIntentService drains it once initialized. Each entry
+    // is a map of {"text": String, "files": [{"path": String, "mimeType":
+    // String}, ...]}.
+    private val pendingSharedContent = ArrayDeque<Map<String, Any?>>()
     private var shareChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         showOverLockScreenIfAlarmLaunch(intent)
-        queueSharedText(intent)
+        queueSharedContent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         showOverLockScreenIfAlarmLaunch(intent)
-        queueSharedText(intent)
+        queueSharedContent(intent)
     }
 
-    // Queues text forwarded by ShareActivity and pokes the Dart side. When
+    // Queues content forwarded by ShareActivity and pokes the Dart side. When
     // the poke arrives before ShareIntentService registered its handler
     // (cold start), it is simply lost — the service's own initial
-    // takeSharedTexts pull drains the queue instead, so nothing is dropped
+    // takeSharedContent pull drains the queue instead, so nothing is dropped
     // and nothing is delivered twice (delivery is always pull-with-clear).
-    private fun queueSharedText(intent: Intent?) {
-        if (intent?.action != ShareActivity.ACTION_SHARED_TEXT) return
-        val shared = intent.getStringExtra(ShareActivity.EXTRA_SHARED_TEXT)
-        if (shared.isNullOrBlank()) return
-        pendingSharedTexts.add(shared)
-        shareChannel?.invokeMethod("sharedTextsPending", null)
+    private fun queueSharedContent(intent: Intent?) {
+        if (intent?.action != ShareActivity.ACTION_SHARED_CONTENT) return
+        val text = intent.getStringExtra(ShareActivity.EXTRA_SHARED_TEXT).orEmpty()
+        val paths = intent.getStringArrayListExtra(ShareActivity.EXTRA_SHARED_FILE_PATHS)
+            ?: arrayListOf()
+        val mimeTypes = intent.getStringArrayListExtra(ShareActivity.EXTRA_SHARED_FILE_MIME_TYPES)
+            ?: arrayListOf()
+        if (text.isBlank() && paths.isEmpty()) return
+        val files = paths.mapIndexed { i, path ->
+            mapOf("path" to path, "mimeType" to (mimeTypes.getOrNull(i) ?: ""))
+        }
+        pendingSharedContent.add(mapOf("text" to text, "files" to files))
+        shareChannel?.invokeMethod("sharedContentPending", null)
     }
 
     // When an alarm notification's full-screen intent launches (or re-fronts)
@@ -237,13 +246,22 @@ class MainActivity : FlutterActivity() {
         ).also { channel ->
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
-                    // Hands over every queued shared text and empties the
-                    // queue in the same step, so a text can never be
-                    // delivered twice.
-                    "takeSharedTexts" -> {
-                        val texts = pendingSharedTexts.toList()
-                        pendingSharedTexts.clear()
-                        result.success(texts)
+                    // Hands over every queued shared item and empties the
+                    // queue in the same step, so one can never be delivered
+                    // twice.
+                    "takeSharedContent" -> {
+                        val items = pendingSharedContent.toList()
+                        pendingSharedContent.clear()
+                        result.success(items)
+                    }
+                    // Backgrounds this app's task once the quick-add screen
+                    // is done (saved or dismissed), re-fronting whatever the
+                    // share came from — the standard "quick capture" pattern,
+                    // since this activity was launched fresh by that app's
+                    // share sheet.
+                    "returnToPreviousApp" -> {
+                        moveTaskToBack(true)
+                        result.success(null)
                     }
                     else -> result.notImplemented()
                 }

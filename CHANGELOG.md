@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.281] - 2026-08-25
+- Android share sheet: BestToDo now appears when sharing text, links, images or PDFs from other apps (Chrome, YouTube, Maps, Gmail, Photos, ...) and opens a small quick-add screen prefilled from the shared content, with one tap to save to Today or the Inbox, attachments preserved, and a return to the app you shared from
+
 ## [0.1.280] - 2026-08-25
 - Weekly Hours Planner: navigate between weeks with chevrons, record each week's actual over/undertime (folds into the weekly total shown), and the Google Calendar overlay now re-syncs automatically after every edit (block drag or over/undertime entry), not only when the page opens or you tap Import in Settings
 

@@ -17,8 +17,10 @@ import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
+import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
 import 'config.dart';
+import 'models/shared_payload.dart';
 import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
@@ -231,6 +233,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late bool _showModePicker = widget.showModePicker;
   late bool _showStartupChoice = widget.showStartupChoice;
   bool _alarmRingOpen = false;
+  final List<SharedPayload> _pendingShares = [];
+  bool _shareScreenOpen = false;
 
   @override
   void initState() {
@@ -264,7 +268,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           onError: (_) {},
         );
       } catch (_) {}
-      // Text shared into the app from other apps becomes a task on Today.
+      // Content shared into the app from other apps (Chrome, YouTube, Maps,
+      // Gmail, Photos, ...) opens the small quick-add screen, prefilled from
+      // whatever was shared. See _queueSharedPayload.
+      ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
     }
     // Settings → Updates → "Automatically check for updates": look up the
@@ -331,6 +338,36 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
     TodoistSyncService.instance.onLifecycleChanged(state);
+  }
+
+  /// Queues a shared payload and, if the quick-add screen isn't already open
+  /// for an earlier one, presents it. Payloads are shown one at a time so a
+  /// cold start with several queued shares doesn't stack screens.
+  void _queueSharedPayload(SharedPayload payload) {
+    _pendingShares.add(payload);
+    if (!_shareScreenOpen) _presentNextSharedPayload();
+  }
+
+  void _presentNextSharedPayload() {
+    if (_pendingShares.isEmpty) return;
+    final payload = _pendingShares.removeAt(0);
+    // Wait for the first frame so the navigator exists on a cold start, same
+    // as the alarm-ring screen below.
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = appNavigatorKey.currentState;
+      if (navigator == null) return;
+      _shareScreenOpen = true;
+      navigator
+          .push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => QuickAddSharePage(payload: payload),
+          ))
+          .whenComplete(() {
+        _shareScreenOpen = false;
+        _presentNextSharedPayload();
+      });
+    });
   }
 
   void _showAlarmRing(Map<String, dynamic> payload) {

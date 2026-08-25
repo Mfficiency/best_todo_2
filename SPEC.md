@@ -1575,29 +1575,58 @@ when the one-time "install unknown apps" toggle is missing (O+,
 `canRequestPackageInstalls()` false) it opens that settings screen and returns
 `"needs-permission"` so the Dart side tells the user to grant it and retry.
 
-**Share-sheet task capture** (0.1.145): BestToDo appears in Android's share sheet
-for any `text/plain` ACTION_SEND (links, selected text, email addresses, ...) and turns
-the shared text into a task due **today**. `ShareActivity` — a translucent,
-non-Flutter trampoline (`excludeFromRecents`, `noHistory`) — receives the share,
-merges `EXTRA_SUBJECT` + `EXTRA_TEXT` (browsers put the page title in the subject;
-the subject is dropped when the text already contains it), and forwards the result
-to `MainActivity` with `FLAG_ACTIVITY_NEW_TASK`. It is deliberately not
-`MainActivity` itself: the share sheet starts its target inside the *sharing*
-app's task, and a second MainActivity there would mean a second Flutter
-engine. MainActivity queues the text
-(`pendingSharedTexts`) and pokes Dart over the `besttodo/share` channel; delivery
-is always **pull-with-clear** (`takeSharedTexts`), so a cold start (queue filled
-before the engine ran, drained by `ShareIntentService.init`) and a warm poke can
-never double-deliver. On the Dart side `ShareIntentService`
-(`lib/services/share_intent_service.dart`) builds the task — first non-empty line
-as title (capped at 120 chars), full text preserved in the description when it
-carries more, due date = today (18:00 via the usual deadline normalization) — and
-routes it: while a home page is alive it is the registered consumer and adds the
-task through its own in-memory list + `_saveTasks()` (no second `tasks.json`
-writer); without one (start page Settings/App Logs) texts wait 3 s for a home
-page, then are persisted directly through `ItemRepository`. The home page also
-drops just-loaded uids that are already in memory, closing the
-share-during-initial-load duplicate window. Tests: `test/share/`.
+**Share-sheet task capture** (0.1.145; quick-add screen, images/PDFs, Today/Inbox
+choice, redelivery dedup added later): BestToDo appears in Android's share sheet for
+`text/plain`, `image/*` and `application/pdf` ACTION_SEND, plus `ACTION_SEND_MULTIPLE`
+for `image/*` (Chrome, YouTube, Maps, Gmail, Photos, ...) and opens a very small
+quick-add screen prefilled from whatever was shared, rather than silently creating a
+task. `ShareActivity` — a translucent, non-Flutter trampoline (`excludeFromRecents`,
+`noHistory`) — receives the share, merges `EXTRA_SUBJECT` + `EXTRA_TEXT` (browsers put
+the page title in the subject; the subject is dropped when the text already contains
+it), copies any `EXTRA_STREAM` file(s) into `cacheDir/shared_incoming/` (a `content://`
+URI's read grant dies with this activity, so the file must be copied before it
+finishes — a display name is looked up via `OpenableColumns.DISPLAY_NAME` when the
+source provides one, else a generated name from the mime type's extension), and
+forwards everything to `MainActivity` with `FLAG_ACTIVITY_NEW_TASK`. It is
+deliberately not `MainActivity` itself: the share sheet starts its target inside the
+*sharing* app's task, and a second MainActivity there would mean a second Flutter
+engine. MainActivity queues the content (`pendingSharedContent`, one entry per share:
+`{text, files: [{path, mimeType}, ...]}`) and pokes Dart over the `besttodo/share`
+channel; delivery is always **pull-with-clear** (`takeSharedContent`), so a cold start
+(queue filled before the engine ran, drained by `ShareIntentService.init`) and a warm
+poke can never double-deliver.
+
+On the Dart side, `SharedPayload`/`SharedFile` (`lib/models/shared_payload.dart`) parse
+the channel map. `ShareIntentService` (`lib/services/share_intent_service.dart`) drops
+an empty payload and a **redelivered duplicate** — a content signature (text + subject
++ file names) seen again within `dedupWindow` (5 s default) is dropped, so a fast
+double-tap on the share target or an Android-level redelivery never queues twice — then
+hands every remaining payload to the callback `main.dart` attached via
+`setOnSharedPayload` (queued payloads drain into it the moment it attaches). `main.dart`
+presents one `QuickAddSharePage` at a time (queuing the rest) via `appNavigatorKey`.
+
+`QuickAddSharePage` (`lib/ui/quick_add_share_page.dart`) prefills title/description via
+`ShareIntentService.buildDraftTask` — first non-empty line of the text (or the subject,
+when there's no text) as the title (capped at 120 chars, full text kept in the
+description when it carries more); a file-only share (no text/subject) titles itself
+from the file — its display name when the source app provided one, a generic "Shared
+photo"/"Shared PDF" for a camera/gallery-generated name (`IMG_...`, a UUID, ...), "(+N
+more)" appended for multiple files. Both fields stay editable. Two buttons save
+directly: **Save to Today** (due today) or **Save to Inbox** (undated — lands in the
+Future tab like any other undated task, via `Task.futureBucketMarker`); any shared
+image/PDF is imported into permanent attachment storage under the new task's uid via
+`ShareIntentService.importAttachments` (reuses `AttachmentStorageService`; a type
+`AttachmentsField` has no viewer for is skipped; the share's cache copy is deleted once
+imported). Saving hands the built `Task` to `ShareIntentService.saveTask`, which routes
+it exactly like every other share-derived write: while a home page is alive it is the
+registered consumer and adds the task through its own in-memory list + `_saveTasks()`
+(no second `tasks.json` writer, and ranking follows the same top/bottom setting as every
+other add via `_tabIndexForDueDate`); without one it is persisted directly through
+`ItemRepository`. Saving *or* discarding calls `returnToPreviousApp`
+(`besttodo/share` → Android `moveTaskToBack(true)`), backgrounding the app to re-front
+whatever app the share came from — the standard "quick capture" pattern, since this
+activity was launched fresh by that app's share sheet; a bare back-gesture dismissal
+(no button tapped) does the same from `dispose()`. Tests: `test/share/`.
 
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
