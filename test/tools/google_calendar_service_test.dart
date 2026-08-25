@@ -52,7 +52,9 @@ END:VEVENT
           'DTSTART:20260828T100000\r\n'
           'DTEND:20260828T110000\r\n'
           'SUMMARY:This is a long summary that\r\n'
-          ' continues on the next line\r\n'
+          // Two leading spaces: the fold's own mandatory single space, plus
+          // the real word-boundary space unfolding is expected to preserve.
+          '  continues on the next line\r\n'
           'END:VEVENT\r\n';
       final e = GoogleCalendarService.parseIcs(ics).single;
       expect(e.title, 'This is a long summary that continues on the next line');
