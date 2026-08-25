@@ -2107,12 +2107,14 @@ in App Logs → Todoist — onboarding has already finished by then.
     PASS/FAIL markdown report artifact, fails on test failure.
   - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
     integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
-    search-active, projects page, project board, project edit dialog) into
-    `docs/screenshots/home/<timestamp>-<sha>/` and prepends to `SCREENSHOT_CHANGELOG.md`.
-    The workflow copies every `build/e2e_screenshots/*.png` and the changelog tool emits
-    one section per PNG found, so new captures need no CI edits. Loop protection:
-    paths-ignore on its own outputs, skips actor `github-actions[bot]`, and its commit
-    message carries `[skip-screenshot-changelog]`.
+    search-active, projects page, project board, project edit dialog; since 0.1.275 also the
+    Weekly Hours Planner grid) into `docs/screenshots/home/<timestamp>-<sha>/` and prepends
+    to `SCREENSHOT_CHANGELOG.md`. The workflow copies every `build/e2e_screenshots/*.png`
+    and the changelog tool emits one section per PNG found, so new captures need no CI
+    edits. Each entry's header line reads `branch: <branch> v<pubspec version>` (since
+    0.1.275, read straight from `pubspec.yaml` at the captured commit) alongside the
+    timestamp and source sha. Loop protection: paths-ignore on its own outputs, skips actor
+    `github-actions[bot]`, and its commit message carries `[skip-screenshot-changelog]`.
   - `build-windows-exe.yml` (`workflow_dispatch` + successful `Build APK`
     `workflow_run`, 0.1.250): Windows runner (same `windows-2022` pin as
     `screenshot_changelog.yml`, for the same VS-2022-CMake-generator reason)
