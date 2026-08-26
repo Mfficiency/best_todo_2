@@ -28,6 +28,18 @@ void main() {
   testWidgets('capture home page screenshot', (tester) async {
     final appBoundaryKey = GlobalKey();
 
+    // Render at a phone-portrait resolution (1080x2400 @ pixelRatio 2.0,
+    // a common Android FHD+ panel) so the screenshot changelog always shows
+    // phone-shaped screenshots regardless of the Windows CI runner's actual
+    // window size — the boundary capture below renders offscreen from the
+    // layer tree, so this virtual size is what ends up in the PNG.
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
     await tester.pumpWidget(
       RepaintBoundary(
         key: appBoundaryKey,
