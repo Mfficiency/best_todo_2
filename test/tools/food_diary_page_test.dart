@@ -75,7 +75,7 @@ void main() {
           title: 'Greek yogurt',
           description: 'With honey',
           label: 'sugar, lactose',
-          dueDate: DateTime(2026, 8, 20, 8, 30),
+          dueDate: DateTime.now(),
           hasExplicitTime: true,
           isEatingHabit: true,
         ),
@@ -90,6 +90,47 @@ void main() {
     expect(find.text('lactose'), findsOneWidget);
     expect(find.text('Feed the zebra'), findsNothing);
     expect(find.text('Buy a telescope'), findsNothing);
+  });
+
+  testWidgets('groups past days into collapsed sections', (tester) async {
+    final now = DateTime.now();
+    final yesterday = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Today lunch',
+          dueDate: DateTime(now.year, now.month, now.day, 12),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Yesterday breakfast',
+          dueDate: yesterday.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Yesterday dinner',
+          dueDate: yesterday.add(const Duration(hours: 19)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Today lunch',
+    );
+
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('2 entries'), findsOneWidget);
+    expect(find.text('Yesterday breakfast'), findsNothing);
+    expect(find.text('Yesterday dinner'), findsNothing);
+
+    await tester.tap(find.text('2 entries'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yesterday breakfast'), findsOneWidget);
+    expect(find.text('Yesterday dinner'), findsOneWidget);
   });
 
   testWidgets('add dialog creates a tagged entry with a title and time',
