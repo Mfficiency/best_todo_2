@@ -209,4 +209,46 @@ void main() {
         tester.widget<TextField>(find.widgetWithText(TextField, 'Title'));
     expect(titleField.controller?.text, 'Greek yogurt');
   });
+
+  testWidgets('copies a previous food entry to the current time',
+      (tester) async {
+    final now = DateTime.now();
+    final previousTime = DateTime(now.year, now.month, now.day);
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Greek yogurt',
+          description: 'With honey',
+          label: 'sugar lactose',
+          dueDate: previousTime,
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Greek yogurt',
+    );
+
+    final beforeCopy = DateTime.now();
+    await tester.tap(find.byTooltip('Copy entry to now'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Greek yogurt'), findsNWidgets(2));
+    expect(find.text('Copied "Greek yogurt" to now'), findsOneWidget);
+
+    final saved = (await readJsonList(tester, 'tasks.json'))
+        .cast<Map<String, dynamic>>();
+    final copies =
+        saved.where((task) => task['title'] == 'Greek yogurt').toList();
+    expect(copies, hasLength(2));
+    final copied = copies.firstWhere((task) => task['uid'] != copies.last['uid']);
+    expect(copied['description'], 'With honey');
+    expect(copied['label'], 'sugar lactose');
+    expect(copied['isEatingHabit'], isTrue);
+    expect(
+      DateTime.parse(copied['dueDate'] as String).isBefore(beforeCopy),
+      isFalse,
+    );
+  });
 }

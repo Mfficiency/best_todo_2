@@ -172,6 +172,30 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     await _save();
   }
 
+  /// Creates a fresh log entry from [entry], preserving the food details but
+  /// recording it at the current time. This makes recurring meals quick to
+  /// log without changing the historical entry they came from.
+  Future<void> _copyEntryToNow(Task entry) async {
+    final now = DateTime.now();
+    final copy = Task(
+      title: entry.title,
+      description: entry.description,
+      label: entry.label,
+      createdAt: now,
+      dueDate: now,
+      hasExplicitTime: true,
+      isEatingHabit: true,
+    );
+    setState(() => _tasks.insert(0, copy));
+    await _save();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text('Copied "${entry.title}" to now')),
+      );
+  }
+
   /// Moves [entry] to the Archived Items list, with an undo snackbar —
   /// exactly like deleting a wishlist item.
   void _deleteEntry(Task entry) {
@@ -246,6 +270,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
                         key: ValueKey(day.day),
                         day: day,
                         onEdit: _editEntry,
+                        onCopyToNow: _copyEntryToNow,
                         onDelete: _deleteEntry,
                       ),
                   ],
@@ -264,12 +289,14 @@ class _FoodDiaryDay {
 class _FoodDiaryDaySection extends StatelessWidget {
   final _FoodDiaryDay day;
   final ValueChanged<Task> onEdit;
+  final ValueChanged<Task> onCopyToNow;
   final ValueChanged<Task> onDelete;
 
   const _FoodDiaryDaySection({
     super.key,
     required this.day,
     required this.onEdit,
+    required this.onCopyToNow,
     required this.onDelete,
   });
 
@@ -285,6 +312,7 @@ class _FoodDiaryDaySection extends StatelessWidget {
             key: ValueKey(entry.uid),
             entry: entry,
             onEdit: () => onEdit(entry),
+            onCopyToNow: () => onCopyToNow(entry),
             onDelete: () => onDelete(entry),
           ),
       ];
@@ -470,12 +498,14 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
 class _FoodDiaryTile extends StatelessWidget {
   final Task entry;
   final VoidCallback onEdit;
+  final VoidCallback onCopyToNow;
   final VoidCallback onDelete;
 
   const _FoodDiaryTile({
     Key? key,
     required this.entry,
     required this.onEdit,
+    required this.onCopyToNow,
     required this.onDelete,
   }) : super(key: key);
 
@@ -507,6 +537,11 @@ class _FoodDiaryTile extends StatelessWidget {
       child: Card(
         child: ListTile(
           title: Text(entry.title),
+          trailing: IconButton(
+            tooltip: 'Copy entry to now',
+            onPressed: onCopyToNow,
+            icon: const Icon(Icons.content_copy),
+          ),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
