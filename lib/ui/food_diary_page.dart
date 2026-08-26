@@ -10,6 +10,7 @@ import '../services/item_views.dart';
 import '../utils/date_time_format.dart';
 import '../utils/description_disclosure.dart';
 import 'label_picker.dart';
+import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
 
 /// Tools → Food Diary: a pre-filtered view over the one task list — like
@@ -427,11 +428,18 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _titleController,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Title'),
-              textInputAction: TextInputAction.next,
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _titleController,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Title'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+                SpeechInputButton(controller: _titleController),
+              ],
             ),
             // Tags sit right under the title, same as the wishlist dialog —
             // they're what a diary entry is glanced at for; the description

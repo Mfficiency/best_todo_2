@@ -573,7 +573,12 @@ while Today is open can go straight to Future. `_addTargetTabIndex()` resolves i
 back to the open tab for an out-of-range value) and the add row's label names the target
 whenever it is not simply the list you are looking at — "Add task · Future" — because a
 task silently appearing in another tab reads as a bug. The schedule view's active day still
-wins over the pinned bucket (there the day is picked explicitly).
+wins over the pinned bucket (there the day is picked explicitly). A mic button
+(`SpeechInputButton`, 0.1.288) sits beside the field: tap to start local
+speech-to-text (`speech_to_text` plugin, wrapped by `SpeechRecognitionService`),
+tap again to stop; the transcript is written straight into the field (appended
+to whatever was already typed), stays fully editable, and never auto-submits —
+the existing Add button/Enter key still does that.
 
 **Swipe gestures** (the heart of the app):
 - Android/web: custom `GestureDetector` swipe in `TaskTile` (threshold 100 px or velocity
@@ -2093,7 +2098,9 @@ Phase 1 fields, deliberately small: title, description, a "time" (stored in the 
 since rollover only sweeps `isDone` tasks and an entry's `isDone` never flips), and
 free-form tags (e.g. "sugar", "lactose") through the same `LabelPickerField` every task
 uses (the add/edit dialog puts the tags field right under the title, description at the
-bottom, matching the wishlist dialog's field order — see 10.6). Entries render
+bottom, matching the wishlist dialog's field order — see 10.6). The Title field has the
+same mic button (`SpeechInputButton`, 0.1.288, see §"Adding" above) as the home add-task
+row, for speaking a food entry instead of typing it. Entries render
 newest-time-first, no checkbox, no priority/release grouping/
 export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swipe
 (`Dismissible`) to delete. Deleting moves the entry straight to Archived Items
