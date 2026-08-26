@@ -2,7 +2,7 @@
 
 ## [0.1.286] - 2026-08-26
 - Food Diary: each entry now has a copy-to-now button that re-logs the same meal at the current time, so recurring meals take one tap instead of retyping them
-- Local build: 2026-08-26 14:15
+- Local build: 2026-08-26 14:25
 
 ## [0.1.285] - 2026-08-26
 - Wellbeing dashboard: the hourly chart's time axis now shows only the 0:00 / 6:00 / 12:00 / 18:00 marks instead of a crowded row of overlapping hour labels
