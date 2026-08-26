@@ -63,6 +63,43 @@ On Windows without Git Bash or WSL, run the native PowerShell wrapper from
 powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release
 ```
 
+### Local dev build watcher
+This machine may have a Windows Scheduled Task named `BestTodo Dev Build Watch`.
+It runs every 10 minutes from `D:\Code\best_todo_2`, checks whether
+`origin/dev` is ahead, and only then pulls and builds with:
+
+```powershell
+tool\build.ps1 all --release
+```
+
+Turn the watcher off:
+
+```powershell
+Stop-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+Disable-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+```
+
+Turn it back on:
+
+```powershell
+Enable-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+Start-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+```
+
+Check its status:
+
+```powershell
+Get-ScheduledTask -TaskName "BestTodo Dev Build Watch" | Select TaskName,State
+```
+
+The task runs:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\noone\AppData\Local\BestTodo\DevBuildWatch\dev-build-watch.ps1"
+```
+
+It writes recent activity to `dev_build_watch.log`.
+
 For example `bash tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.
 
