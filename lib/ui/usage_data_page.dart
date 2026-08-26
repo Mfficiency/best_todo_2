@@ -20,6 +20,13 @@ import '../services/usage_data_service.dart';
 import '../services/digital_wellbeing_service.dart';
 import 'subpage_app_bar.dart';
 
+/// Returns an x-axis label for each six-hour boundary in the wellbeing chart.
+String wellbeingHourLabel(double value) {
+  final hour = value.toInt();
+  if (value != hour || hour < 0 || hour > 23 || hour % 6 != 0) return '';
+  return '$hour:00';
+}
+
 /// Tools → Usage Data: exports everything the app has ever recorded as
 /// detailed CSV files — a Digital-Wellbeing-style data dump covering the full
 /// history available on this device.
@@ -211,7 +218,7 @@ class _UsageDataPageState extends State<UsageDataPage>
       const SizedBox(height: 8), SizedBox(height: 150, child: BarChart(BarChartData(
         maxY: (byHour.reduce((a, b) => a > b ? a : b).clamp(10, 600)).toDouble(),
         barTouchData: BarTouchData(enabled: true), gridData: const FlGridData(show: false), borderData: FlBorderData(show: false),
-        titlesData: FlTitlesData(leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: 6, getTitlesWidget: (v, _) => Text('${v.toInt()}:00', style: const TextStyle(fontSize: 10))))),
+        titlesData: FlTitlesData(leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(wellbeingHourLabel(v), style: const TextStyle(fontSize: 10))))),
         barGroups: List.generate(24, (h) => BarChartGroupData(x: h, barRods: [BarChartRodData(toY: byHour[h].toDouble(), width: 7, color: h >= 22 || h < 6 ? Colors.orange : Colors.deepPurple, borderRadius: BorderRadius.circular(3))])),
       ))),
       const SizedBox(height: 20), Text('Most used', style: Theme.of(context).textTheme.titleLarge),
