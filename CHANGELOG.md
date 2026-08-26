@@ -3,6 +3,7 @@
 ## [0.1.285] - 2026-08-26
 - Wellbeing dashboard: the hourly chart's time axis now shows only the 0:00 / 6:00 / 12:00 / 18:00 marks instead of a crowded row of overlapping hour labels
 - Food Diary now groups entries by day and collapses past days into expandable sections, so today and undated entries stay visible at the top instead of scrolling past weeks of history
+- Local build: 2026-08-26 07:23
 
 ## [0.1.284] - 2026-08-25
 - Turn Usage Data into an interactive, optional digital wellbeing dashboard with period views, phone sessions, hourly patterns, app rankings, BestTodo productivity measures, supportive insights, and gentle goals.
