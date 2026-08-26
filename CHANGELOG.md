@@ -2,7 +2,7 @@
 
 ## [0.1.287] - 2026-08-26
 - Reordered the Tools drawer by how often each tool gets used (Food Diary and Alarms near the top, Test Results pinned last); Wishlist and Food Diary tiles now show tags first and tuck the description behind a chevron toggle instead of showing it in full, and the Food Diary add/edit dialog puts tags above the description to match the Wishlist dialog
-- Local build: 2026-08-26 19:18
+- Local build: 2026-08-26 19:36
 
 ## [0.1.286] - 2026-08-26
 - Food Diary: each entry now has a copy-to-now button that re-logs the same meal at the current time, so recurring meals take one tap instead of retyping them
