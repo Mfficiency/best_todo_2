@@ -75,7 +75,7 @@ void main() {
           title: 'Greek yogurt',
           description: 'With honey',
           label: 'sugar, lactose',
-          dueDate: DateTime(2026, 8, 20, 8, 30),
+          dueDate: DateTime.now(),
           hasExplicitTime: true,
           isEatingHabit: true,
         ),
@@ -90,6 +90,47 @@ void main() {
     expect(find.text('lactose'), findsOneWidget);
     expect(find.text('Feed the zebra'), findsNothing);
     expect(find.text('Buy a telescope'), findsNothing);
+  });
+
+  testWidgets('groups past days into collapsed sections', (tester) async {
+    final now = DateTime.now();
+    final yesterday = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Today lunch',
+          dueDate: DateTime(now.year, now.month, now.day, 12),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Yesterday breakfast',
+          dueDate: yesterday.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Yesterday dinner',
+          dueDate: yesterday.add(const Duration(hours: 19)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Today lunch',
+    );
+
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('2 entries'), findsOneWidget);
+    expect(find.text('Yesterday breakfast'), findsNothing);
+    expect(find.text('Yesterday dinner'), findsNothing);
+
+    await tester.tap(find.text('2 entries'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yesterday breakfast'), findsOneWidget);
+    expect(find.text('Yesterday dinner'), findsOneWidget);
   });
 
   testWidgets('add dialog creates a tagged entry with a title and time',
@@ -167,5 +208,47 @@ void main() {
     final titleField =
         tester.widget<TextField>(find.widgetWithText(TextField, 'Title'));
     expect(titleField.controller?.text, 'Greek yogurt');
+  });
+
+  testWidgets('copies a previous food entry to the current time',
+      (tester) async {
+    final now = DateTime.now();
+    final previousTime = DateTime(now.year, now.month, now.day);
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Greek yogurt',
+          description: 'With honey',
+          label: 'sugar lactose',
+          dueDate: previousTime,
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Greek yogurt',
+    );
+
+    final beforeCopy = DateTime.now();
+    await tester.tap(find.byTooltip('Copy entry to now'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Greek yogurt'), findsNWidgets(2));
+    expect(find.text('Copied "Greek yogurt" to now'), findsOneWidget);
+
+    final saved = (await readJsonList(tester, 'tasks.json'))
+        .cast<Map<String, dynamic>>();
+    final copies =
+        saved.where((task) => task['title'] == 'Greek yogurt').toList();
+    expect(copies, hasLength(2));
+    final copied = copies.firstWhere((task) => task['uid'] != copies.last['uid']);
+    expect(copied['description'], 'With honey');
+    expect(copied['label'], 'sugar lactose');
+    expect(copied['isEatingHabit'], isTrue);
+    expect(
+      DateTime.parse(copied['dueDate'] as String).isBefore(beforeCopy),
+      isFalse,
+    );
   });
 }
