@@ -55,6 +55,7 @@ import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
+import 'speech_input_button.dart';
 import 'streak_celebration.dart';
 import 'streak_flame_button.dart';
 import 'task_tile.dart';
@@ -2612,6 +2613,7 @@ class _HomePageState extends State<HomePage>
               ),
             ),
           ),
+          SpeechInputButton(controller: _controller),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () => _addTask(_controller.text),
