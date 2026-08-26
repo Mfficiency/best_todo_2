@@ -101,8 +101,12 @@ void main() {
       marker: 'Buy a telescope',
     );
 
-    expect(find.text('For stargazing weekends'), findsOneWidget);
     expect(find.text('gift'), findsOneWidget);
+    // The description sits behind a chevron toggle, tags first.
+    expect(find.text('For stargazing weekends'), findsNothing);
+    await tester.tap(find.text('Description'));
+    await tester.pump();
+    expect(find.text('For stargazing weekends'), findsOneWidget);
     // Non-wish tasks stay out of this pre-filtered view.
     expect(find.text('Feed the zebra'), findsNothing);
     // Wishlist tiles look like task tiles (checkbox included)...
@@ -371,6 +375,11 @@ void main() {
       ],
       marker: 'Buy a telescope',
     );
+
+    // The description is collapsed behind a chevron by default; expand it
+    // before the link inside it can be tapped.
+    await tester.tap(find.text('Description'));
+    await tester.pump();
 
     await tester
         .tapOnText(find.textRange.ofSubstring('https://example.com/scopes'));

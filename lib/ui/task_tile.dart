@@ -11,6 +11,7 @@ import '../config.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
 import '../services/todoist_sync_service.dart';
+import '../utils/description_disclosure.dart';
 import '../utils/linkified_text.dart';
 import 'attachments_field.dart';
 import 'label_picker.dart';
@@ -568,8 +569,6 @@ class _TaskTileState extends State<TaskTile>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (task.isWish && task.description.isNotEmpty)
-              LinkifiedText(task.description),
             Wrap(
               spacing: 4,
               runSpacing: 2,
@@ -582,6 +581,8 @@ class _TaskTileState extends State<TaskTile>
                 for (final label in labels) _tag(label),
               ],
             ),
+            if (task.isWish && task.description.isNotEmpty)
+              DescriptionDisclosure(description: task.description),
           ],
         ),
       ),

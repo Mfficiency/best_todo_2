@@ -16,8 +16,8 @@ import '../services/auto_tag_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/wishlist_shipped.dart';
+import '../utils/description_disclosure.dart';
 import '../utils/label_utils.dart';
-import '../utils/linkified_text.dart';
 import 'label_picker.dart';
 import 'subpage_app_bar.dart';
 
@@ -1049,10 +1049,6 @@ class _WishTileState extends State<_WishTile>
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (widget.item.description.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  LinkifiedText(widget.item.description),
-                ],
                 if (labels.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Wrap(
@@ -1068,6 +1064,10 @@ class _WishTileState extends State<_WishTile>
                         ),
                     ],
                   ),
+                ],
+                if (widget.item.description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  DescriptionDisclosure(description: widget.item.description),
                 ],
               ],
             ),

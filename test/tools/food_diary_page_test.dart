@@ -85,9 +85,13 @@ void main() {
       marker: 'Greek yogurt',
     );
 
-    expect(find.text('With honey'), findsOneWidget);
     expect(find.text('sugar'), findsOneWidget);
     expect(find.text('lactose'), findsOneWidget);
+    // The description sits behind a chevron toggle, tags first.
+    expect(find.text('With honey'), findsNothing);
+    await tester.tap(find.text('Description'));
+    await tester.pump();
+    expect(find.text('With honey'), findsOneWidget);
     expect(find.text('Feed the zebra'), findsNothing);
     expect(find.text('Buy a telescope'), findsNothing);
   });
@@ -152,6 +156,10 @@ void main() {
     await settleWrites(tester);
 
     expect(find.text('Apple'), findsOneWidget);
+    // The description sits behind a chevron toggle until tapped.
+    expect(find.text('Afternoon snack'), findsNothing);
+    await tester.tap(find.text('Description'));
+    await tester.pump();
     expect(find.text('Afternoon snack'), findsOneWidget);
 
     final saved = await readJsonList(tester, 'tasks.json');

@@ -635,8 +635,9 @@ build; sections scrolled out of view are unmounted, which is fine because the se
 spanning the top is always attached.
 
 **Drawer:** Home, Settings, Archived Items (→ Deleted bin, §4.2g), About, Changelog, App Logs, Startup Times,
-Tools ▸ (Alarms, Countdown, Wishlist, Food Diary, Projects, Chronize, Productivity Stats,
-Usage Data, Test Results, Weekly Hours Planner). **Home** (0.1.233) is `_goHome()`: pop every page stacked on
+Tools ▸ (Food Diary, Alarms, Weekly Hours Planner, Projects, Wishlist, Chronize, Countdown,
+Productivity Stats, Usage Data, Test Results — most-used first, Test Results pinned last).
+**Home** (0.1.233) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
 schedule-view feature is on) — so it always lands on the same familiar screen rather than
@@ -1879,11 +1880,14 @@ list — exactly like opening a project — showing only tasks flagged `Task.isW
 (JSON key `isWish`, default false). Wish tasks live in `tasks.json` alongside
 everything else; they are undated (`dueDate == null`), which alone buckets them into
 the Future tab (`_tasksForTab` sends null-due tasks to the future bucket), where they
-render as full, editable task tiles whose `TaskTile` subtitle shows the description, a
-small "wish" tag and the task's own labels as tags. Label tags are not wish-only: from
-0.1.252 `TaskTile._buildSubtitle` renders every label token on any task (plain,
-project-assigned or wish), so a task tagged `urgent` shows that tag in the home list;
-the subtitle is still null when a task has no project, no wish flag and no labels. The schedule view groups undated
+render as full, editable task tiles whose `TaskTile` subtitle shows a small "wish" tag
+and the task's own labels as tags first, then (for a wish with a description) a
+`DescriptionDisclosure` — a chevron toggle that expands the description on tap instead
+of dumping it inline; tags read first since they're the more useful glance info. Label
+tags are not wish-only: from 0.1.252 `TaskTile._buildSubtitle` renders every label token
+on any task (plain, project-assigned or wish), so a task tagged `urgent` shows that tag
+in the home list; the subtitle is still null when a task has no project, no wish flag
+and no labels. The schedule view groups undated
 tasks under "Someday". The home search matches them like any task. So: the item
 overview (home) shows all items with all properties/tags; the Wishlist shows only wish
 items and never anything date-related.
@@ -1894,7 +1898,9 @@ mutates only the wish subset and always saves the whole list; HomePage reloads
 items first, then by priority label (`priority-high` > `priority-medium` >
 `priority-low` > none, stable within a group). Tiles look like home task tiles
 (checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
-archived by the normal new-day rollover). Tap opens the add/edit dialog — field order
+archived by the normal new-day rollover); the subtitle shows label tags first, then a
+`DescriptionDisclosure` chevron for the description — same order and widget as the
+Food Diary tile and `TaskTile`'s own wish subtitle. Tap opens the add/edit dialog — field order
 since 0.1.148: title, labels/tags with the quick-priority buttons right below (most
 wishes are a title plus a priority), description last (a `_WishEditDialog`
 StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
@@ -2086,7 +2092,9 @@ Phase 1 fields, deliberately small: title, description, a "time" (stored in the 
 `pickTimeOfDay`, so a past or future time is fine and never triggers day-rollover sweep
 since rollover only sweeps `isDone` tasks and an entry's `isDone` never flips), and
 free-form tags (e.g. "sugar", "lactose") through the same `LabelPickerField` every task
-uses. Entries render newest-time-first, no checkbox, no priority/release grouping/
+uses (the add/edit dialog puts the tags field right under the title, description at the
+bottom, matching the wishlist dialog's field order — see 10.6). Entries render
+newest-time-first, no checkbox, no priority/release grouping/
 export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swipe
 (`Dismissible`) to delete. Deleting moves the entry straight to Archived Items
 (`ItemRepository.loadDeletedItems`/`saveDeletedItems`) with an undo snackbar, exactly

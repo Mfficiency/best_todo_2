@@ -8,7 +8,7 @@ import '../services/food_diary_widget_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../utils/date_time_format.dart';
-import '../utils/linkified_text.dart';
+import '../utils/description_disclosure.dart';
 import 'label_picker.dart';
 import 'subpage_app_bar.dart';
 
@@ -433,11 +433,13 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
               decoration: const InputDecoration(labelText: 'Title'),
               textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: 3,
+            // Tags sit right under the title, same as the wishlist dialog —
+            // they're what a diary entry is glanced at for; the description
+            // is the exception and lives at the bottom.
+            LabelPickerField(
+              value: _label,
+              fieldLabel: 'Tags (e.g. sugar, lactose)',
+              onChanged: (v) => setState(() => _label = v),
             ),
             const SizedBox(height: 12),
             Align(
@@ -461,10 +463,11 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
                 ),
               ],
             ),
-            LabelPickerField(
-              value: _label,
-              fieldLabel: 'Tags (e.g. sugar, lactose)',
-              onChanged: (v) => setState(() => _label = v),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(labelText: 'Description'),
+              maxLines: 3,
             ),
           ],
         ),
@@ -549,10 +552,6 @@ class _FoodDiaryTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(formatTimerDateTime(time)),
               ],
-              if (entry.description.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                LinkifiedText(entry.description),
-              ],
               if (labels.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(
@@ -568,6 +567,10 @@ class _FoodDiaryTile extends StatelessWidget {
                       ),
                   ],
                 ),
+              ],
+              if (entry.description.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                DescriptionDisclosure(description: entry.description),
               ],
             ],
           ),

@@ -2739,22 +2739,25 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// Tools listed under the drawer's Tools section, in display order. Each
-  /// key doubles as its feature key ([Config.featureKeys]) and its
-  /// [Config.startToolOptions] key, so a tool switched off in Settings
-  /// disappears here and can no longer be the start page.
+  /// Tools listed under the drawer's Tools section, in display order — most
+  /// frequently used first, so the daily-driver tools (logging, reminders,
+  /// planning) sit above the occasional ones, with the dev-facing Test
+  /// Results entry pinned at the very bottom. Each key doubles as its
+  /// feature key ([Config.featureKeys]) and its [Config.startToolOptions]
+  /// key, so a tool switched off in Settings disappears here and can no
+  /// longer be the start page.
   static const List<_ToolEntry> _toolEntries = [
-    _ToolEntry('alarms', 'Alarms', Icons.alarm),
-    _ToolEntry('countdown', 'Countdown', Icons.timer),
-    _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
     _ToolEntry('food_diary', 'Food Diary', Icons.restaurant),
+    _ToolEntry('alarms', 'Alarms', Icons.alarm),
+    _ToolEntry('weekly_hours_planner', 'Weekly Hours Planner',
+        Icons.calendar_view_week),
     _ToolEntry('projects', 'Projects', Icons.dashboard),
+    _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
     _ToolEntry('chronize', 'Chronize', Icons.access_time),
+    _ToolEntry('countdown', 'Countdown', Icons.timer),
     _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
     _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
-    _ToolEntry('weekly_hours_planner', 'Weekly Hours Planner',
-        Icons.calendar_view_week),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —
