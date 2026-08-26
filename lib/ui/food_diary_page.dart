@@ -121,6 +121,25 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     return entries;
   }
 
+  /// Groups entries by the calendar day on which they were eaten. Historical
+  /// days are rendered as collapsed sections so an established diary stays
+  /// quick to scan, while today (and any future/undated entries) remains
+  /// immediately visible.
+  List<_FoodDiaryDay> _days(List<Task> entries) {
+    final grouped = <DateTime?, List<Task>>{};
+    for (final entry in entries) {
+      final time = entry.dueDate;
+      final day = time == null
+          ? null
+          : DateTime(time.year, time.month, time.day);
+      grouped.putIfAbsent(day, () => <Task>[]).add(entry);
+    }
+    return [
+      for (final group in grouped.entries)
+        _FoodDiaryDay(day: group.key, entries: group.value),
+    ];
+  }
+
   Future<void> _editEntry([Task? entry]) async {
     final result = await showDialog<_FoodDiaryEditResult>(
       context: context,
@@ -198,6 +217,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   @override
   Widget build(BuildContext context) {
     final entries = _entries();
+    final days = _days(entries);
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Food Diary'),
       floatingActionButton: FloatingActionButton(
@@ -218,19 +238,91 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
                     ),
                   ),
                 )
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    return _FoodDiaryTile(
-                      key: ValueKey(entry.uid),
-                      entry: entry,
-                      onEdit: () => _editEntry(entry),
-                      onDelete: () => _deleteEntry(entry),
-                    );
-                  },
+                  children: [
+                    for (final day in days)
+                      _FoodDiaryDaySection(
+                        key: ValueKey(day.day),
+                        day: day,
+                        onEdit: _editEntry,
+                        onDelete: _deleteEntry,
+                      ),
+                  ],
                 ),
+    );
+  }
+}
+
+class _FoodDiaryDay {
+  final DateTime? day;
+  final List<Task> entries;
+
+  const _FoodDiaryDay({required this.day, required this.entries});
+}
+
+class _FoodDiaryDaySection extends StatelessWidget {
+  final _FoodDiaryDay day;
+  final ValueChanged<Task> onEdit;
+  final ValueChanged<Task> onDelete;
+
+  const _FoodDiaryDaySection({
+    super.key,
+    required this.day,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  String _title(DateTime today) {
+    if (day.day == null) return 'No date';
+    if (day.day == today) return 'Today';
+    return formatTimerDate(day.day!);
+  }
+
+  List<Widget> _tiles() => [
+        for (final entry in day.entries)
+          _FoodDiaryTile(
+            key: ValueKey(entry.uid),
+            entry: entry,
+            onEdit: () => onEdit(entry),
+            onDelete: () => onDelete(entry),
+          ),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final isPast = day.day != null && day.day!.isBefore(today);
+    final title = _title(today);
+
+    if (isPast) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          key: PageStorageKey<String>('food-diary-day-$title'),
+          initiallyExpanded: false,
+          title: Text(title),
+          subtitle: Text(
+            '${day.entries.length} ${day.entries.length == 1 ? 'entry' : 'entries'}',
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          children: _tiles(),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+        ),
+        ..._tiles(),
+        const SizedBox(height: 8),
+      ],
     );
   }
 }
