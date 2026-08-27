@@ -42,6 +42,47 @@ bool isWaitingApprovalToken(String token) {
       legacyWaitingApprovalTokens.any((t) => t.toLowerCase() == lower);
 }
 
+/// Reserved tokens naming an item's built-in state or tool membership rather
+/// than a plain user tag — the canonical display casing shown in Settings →
+/// Filtering rules and used by `ItemViews.stateTags`. Typed by hand onto a
+/// task's own label, most of these do nothing (the state they name is a
+/// structural flag elsewhere — [isWish], [projectId], ...); [waitingApprovalToken]
+/// is the one exception already wired to actually gate visibility (see
+/// [hasWaitingApprovalToken]). Every chip renderer still colors all of them
+/// the same protected way (see `label_style.dart`), since typing one is
+/// always at least a naming collision worth flagging — like typing a
+/// filename that happens to match a reserved system extension.
+const String wishToken = 'Wish';
+const String projectToken = 'Project';
+const String archivedToken = 'Archived';
+const String deletedToken = 'Deleted';
+const String fooddiaryToken = 'Fooddiary';
+const String alarmToken = 'Alarm';
+const String countdownToken = 'Countdown';
+
+/// Every reserved state token, in the order shown in Settings → Filtering
+/// rules templates. Keep [waitingApprovalToken] last — it is the only one
+/// matched case-and-spelling-insensitively via [isWaitingApprovalToken]
+/// rather than a plain string compare.
+const List<String> protectedStateTokens = <String>[
+  wishToken,
+  projectToken,
+  archivedToken,
+  deletedToken,
+  fooddiaryToken,
+  alarmToken,
+  countdownToken,
+  waitingApprovalToken,
+];
+
+/// Whether [token] is one of [protectedStateTokens], under any spelling.
+bool isProtectedToken(String token) {
+  final lower = token.trim().toLowerCase();
+  if (lower.isEmpty) return false;
+  return isWaitingApprovalToken(token) ||
+      protectedStateTokens.any((t) => t.toLowerCase() == lower);
+}
+
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[
   'priority-low',
@@ -81,7 +122,7 @@ String labelKindFor(String token) {
   if (priorityTokens.contains(lower)) return Label.kindPriority;
   if (lower == legacyImportToken ||
       lower == autoCompletedToken ||
-      isWaitingApprovalToken(token)) {
+      isProtectedToken(token)) {
     return Label.kindSystem;
   }
   return Label.kindTag;

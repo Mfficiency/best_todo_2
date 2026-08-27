@@ -2842,6 +2842,7 @@ class _HomePageState extends State<HomePage>
                         items: ItemViews.applyFilterRules(
                           _deletedTasks,
                           Config.viewFilterRules[ViewFilterRules.archived],
+                          archived: true,
                         ),
                         onRestore: _restoreTask,
                         onMoveToBin: _moveArchivedToBin,
@@ -2852,6 +2853,7 @@ class _HomePageState extends State<HomePage>
                                 items: ItemViews.applyFilterRules(
                                   _binTasks,
                                   Config.viewFilterRules[ViewFilterRules.bin],
+                                  binned: true,
                                 ),
                                 onRestore: _restoreFromBin,
                                 onDeletePermanently: _deleteTaskPermanently,

@@ -99,6 +99,30 @@ void main() {
     expect(changedTo, 'homework');
   });
 
+  testWidgets(
+      'a reserved state tag (e.g. "Wish") renders as a protected chip, a '
+      'plain tag does not', (tester) async {
+    await pumpField(tester, value: 'Wish, urgent', onChanged: (_) {});
+
+    final protectedChip =
+        tester.widget<InputChip>(find.widgetWithText(InputChip, 'Wish'));
+    final plainChip =
+        tester.widget<InputChip>(find.widgetWithText(InputChip, 'urgent'));
+
+    expect(protectedChip.tooltip, isNotNull);
+    expect(plainChip.tooltip, isNull);
+    expect(protectedChip.backgroundColor, isNotNull);
+    expect(plainChip.backgroundColor, isNull);
+  });
+
+  testWidgets('matching a reserved tag by lowercase still renders protected',
+      (tester) async {
+    await pumpField(tester, value: 'archived', onChanged: (_) {});
+    final chip =
+        tester.widget<InputChip>(find.widgetWithText(InputChip, 'archived'));
+    expect(chip.tooltip, isNotNull);
+  });
+
   testWidgets('cancel leaves the labels unchanged', (tester) async {
     var called = false;
     await pumpField(

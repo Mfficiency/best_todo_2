@@ -79,4 +79,39 @@ void main() {
     expect(find.text('priority-medium'), findsOneWidget);
     expect(find.text('gear'), findsOneWidget);
   });
+
+  Color _pillColor(WidgetTester tester, String text) {
+    final container = tester.widget<Container>(find
+        .ancestor(of: find.text(text), matching: find.byType(Container))
+        .first);
+    final decoration = container.decoration as BoxDecoration;
+    return decoration.color!;
+  }
+
+  Border? _pillBorder(WidgetTester tester, String text) {
+    final container = tester.widget<Container>(find
+        .ancestor(of: find.text(text), matching: find.byType(Container))
+        .first);
+    return (container.decoration as BoxDecoration).border as Border?;
+  }
+
+  testWidgets('the wish pill is colored differently from a plain label pill',
+      (tester) async {
+    await tester.pumpWidget(_wrap(
+        Task(title: 'New bike', isWish: true, label: 'gear')));
+
+    expect(_pillBorder(tester, 'wish'), isNotNull);
+    expect(_pillBorder(tester, 'gear'), isNull);
+    expect(_pillColor(tester, 'wish'), isNot(_pillColor(tester, 'gear')));
+  });
+
+  testWidgets(
+      'a manually typed reserved word (e.g. "Archived") renders like the '
+      'wish pill, not like a plain label', (tester) async {
+    await tester.pumpWidget(
+        _wrap(Task(title: 'Odd task', label: 'Archived, gear')));
+
+    expect(_pillBorder(tester, 'Archived'), isNotNull);
+    expect(_pillBorder(tester, 'gear'), isNull);
+  });
 }

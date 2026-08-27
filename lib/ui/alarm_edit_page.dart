@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/alarm.dart';
 import '../services/alarm_sound.dart';
+import 'label_picker.dart';
 import 'subpage_app_bar.dart';
 
 /// Full screen editor for creating or editing an [Alarm].
@@ -224,6 +225,11 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
               labelText: 'Description',
               hintText: 'Optional note shown when the alarm rings',
             ),
+          ),
+          LabelPickerField(
+            value: _draft.tags,
+            fieldLabel: 'Tags',
+            onChanged: (v) => setState(() => _draft.tags = v),
           ),
           const SizedBox(height: 16),
           const Divider(),

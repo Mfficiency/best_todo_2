@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../services/food_diary_widget_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -110,7 +111,10 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   /// Entries sorted newest-eaten-first, undated ones (shouldn't normally
   /// happen) last.
   List<Task> _entries() {
-    final entries = ItemViews.foodDiary(_tasks);
+    final entries = ItemViews.foodDiary(
+      _tasks,
+      rules: Config.viewFilterRules[ViewFilterRules.foodDiary],
+    );
     entries.sort((a, b) {
       final aTime = a.dueDate;
       final bTime = b.dueDate;

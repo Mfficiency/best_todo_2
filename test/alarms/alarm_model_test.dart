@@ -106,4 +106,21 @@ void main() {
     final next = alarm.nextOccurrence(from);
     expect(next, DateTime(2026, 7, 1, 9, 0));
   });
+
+  group('tags', () {
+    test('default to empty and round-trip through JSON', () {
+      expect(Alarm(name: 'plain').tags, '');
+      final alarm = Alarm(name: 'work', tags: 'work, medication');
+      final decoded = Alarm.fromJson(alarm.toJson());
+      expect(decoded.tags, 'work, medication');
+    });
+
+    test('an empty tags string is omitted from JSON, matching a legacy '
+        'record saved before the field existed', () {
+      final alarm = Alarm(name: 'plain');
+      expect(alarm.toJson().containsKey('tags'), isFalse);
+      final legacy = alarm.toJson();
+      expect(Alarm.fromJson(legacy).tags, '');
+    });
+  });
 }

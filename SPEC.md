@@ -903,31 +903,83 @@ toggles re-run `_updateActiveSectionFromScroll` on the next frame because the li
 changed under the chip row.
 
 **Filtering rules (0.1.235, extended to the archive/bin split 0.1.266, Waiting for Approval
-added 0.1.272):** a per-view tag filter, configured separately for each of Home, Wishlist,
-Waiting for Approval, Projects, Archived Items and the Deleted bin. `ViewFilterRules`
-(`lib/models/view_filter_rules.dart`: `excludeTags`, `includeTags`, both `List<String>`) holds
-one view's configuration; `Config.viewFilterRules` (`Map<String, ViewFilterRules>`, keyed by
-`ViewFilterRules.home/wishlist/approval/projects/archived/bin`) persists all of them inside
-`settings.json` alongside every other setting. A task carrying any `excludeTags` token is
-hidden from that view; when `includeTags` is non-empty, only tasks carrying at least one of
-its tokens show — matched case-insensitively against `Task.label` tokens
-(`splitLabelTokens`). This sits on top of each view's own structural rule (the wishlist
-still only ever shows `isWish` tasks, and the Waiting for Approval queue only ever shows
-pending, non-deleted ones) — see §4.2d. `ViewFilterRules.builtInRules` is a read-only string
-per view id (empty for Archived Items/Deleted bin, which have no selector-level rule of their
-own) summarizing that always-on structural business logic — Home's reads "Always excludes
-Waiting for Approval, Archived, and Deleted items", for instance — shown in Settings directly
-under each view's description, above its two editable chip rows, so the business logic a view
-lives by is visible even though (being unconditional, not itself one of the `excludeTags`/
+added 0.1.272, synthetic state tags + Food Diary/Alarms/Countdown views + protected-tag
+colouring added later):** a per-view tag filter, configured separately for each of Home,
+Wishlist, Waiting for Approval, Projects, Food Diary, Alarms, Countdown, Archived Items and
+the Deleted bin. `ViewFilterRules` (`lib/models/view_filter_rules.dart`: `excludeTags`,
+`includeTags`, both `List<String>`) holds one view's configuration; `Config.viewFilterRules`
+(`Map<String, ViewFilterRules>`, keyed by `ViewFilterRules.home/wishlist/approval/projects/
+foodDiary/alarms/countdown/archived/bin`) persists all of them inside `settings.json`
+alongside every other setting. A task carrying any `excludeTags` token is hidden from that
+view; when `includeTags` is non-empty, only tasks carrying at least one of its tokens show.
+This sits on top of each view's own structural rule (the wishlist still only ever shows
+`isWish` tasks, and the Waiting for Approval queue only ever shows pending, non-deleted ones)
+— see §4.2d. `ViewFilterRules.builtInRules` is a read-only string per view id (empty for
+Archived Items/Deleted bin/Alarms/Countdown, which have no selector-level rule of their own)
+summarizing that always-on structural business logic — Home's reads "Always excludes Waiting
+for Approval, Archived, and Deleted items", for instance — shown in Settings directly under
+each view's description, above its two editable chip rows, so the business logic a view lives
+by is visible even though (being unconditional, not itself one of the `excludeTags`/
 `includeTags` below it) it isn't something a chip edit can turn off. The Settings "Filtering
-rules" section (index 2, right after Mode & features) lists all six views with the built-in
+rules" section (index 2, right after Mode & features) lists all nine views with the built-in
 line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
 ×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
 Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever one is
 active (`_homeFilterRulesActive`), exactly like it already is while a search query is active —
 reordering a narrowed list would renumber only the visible subset and scramble the hidden
 tasks' rank order; renumbering on save (`_saveTasks`, `applySearch: false`) always sees the
-true unfiltered tab so ranks never drift.
+true unfiltered tab so ranks never drift. Countdown applies the same disable-reorder-while-
+filtered rule to its own manual drag order (`_CountdownTimerPageState._onReorder`).
+
+*Matching, including a task's synthetic state.* Matching (`ItemViews.passesTagRules`) is
+case-insensitive against a *combined* token set: a task's real `Task.label` tokens
+(`splitLabelTokens`) plus its synthetic state tags (`ItemViews.stateTags`) — Wish
+(`isWish`), Fooddiary (`isEatingHabit`), Project (`projectId != null`), Waiting_for_approval
+(`!isApproved`), and — supplied by the caller rather than derived from the task, since
+neither is a field on `Task` itself, only which list currently holds it — Archived and
+Deleted (`ItemViews.applyFilterRules`'s `archived`/`binned` flags, passed `true` at the
+Archived Items and Deleted bin call sites in `home_page.dart`). This is what makes a rule
+like "Home: hide Wish" actually do something even though no task's label literally contains
+the word "Wish". `ItemViews.passesTagRules`/`applyTagRules` are the primitives underneath —
+generalized over a raw tag string rather than a `Task`, so Alarms and Countdown (which have
+their own `tags` field, not a `Task.label`) reuse the identical matching code.
+
+*Protected/reserved tags (`lib/utils/label_utils.dart`, `lib/utils/label_style.dart`).* The
+eight tokens a rule can reference — `Wish`, `Project`, `Archived`, `Deleted`, `Fooddiary`,
+`Alarm`, `Countdown`, `Waiting_for_approval` (`protectedStateTokens`) — are reserved: typing
+one by hand into a task's, alarm's, or timer's own tag field is a naming collision with
+something the app already gives special meaning, so every chip renderer (`LabelPickerField`,
+`TaskTile._tag`, the Alarms/Countdown tag pills) renders a matching token in one fixed accent
+(`protectedTagColor`, deep-orange, with a border and a tooltip explaining why) instead of the
+normal chip style — the tag equivalent of a file extension warning. `labelKindFor` classifies
+every protected token as `Label.kindSystem`. Typing one does not, on its own, flip the
+underlying flag (e.g. typing "Wish" onto a task does not set `isWish`) except
+`Waiting_for_approval`, which — unchanged from before — is the one token that *is* the literal
+mechanism (§4.2e).
+
+*Food Diary, Alarms and Countdown as filterable views.* Food Diary
+(`ItemViews.foodDiary(tasks, {rules})`) works exactly like Wishlist: an extra rules layer on
+top of its `isEatingHabit` gate. Alarms and Countdown aren't task lists, so each gained its
+own `tags` field (`Alarm.tags`, `CountdownTimerItem.tags` — free-form, same comma/whitespace
+convention as `Task.label`, editable via a `LabelPickerField` in `AlarmEditPage` and the
+`_DraftTimerComposer` used for both adding and inline-editing a timer) and each page filters
+its own list with `ItemViews.applyTagRules(items, rules, (item) => item.tags)` before display,
+rendering any tags as small pills under each row.
+
+*Seeded defaults (`Config.viewFilterRulesSeeded`, `ViewFilterRules.defaultsFor`).* A fresh
+install's Settings → Filtering rules starts pre-populated rather than empty:
+`Config.seedViewFilterRuleDefaultsIfNeeded` (called once from `Config.load`, gated by the
+persisted `viewFilterRulesSeeded` flag) fills any view with *no* entry yet with
+`ViewFilterRules.defaultsFor(viewId)` — Wishlist defaults to `includeTags: [Wish]`, Food
+Diary to `includeTags: [Fooddiary]`, Archived/Deleted bin hide each other, and so on. It never
+overwrites a rule a user already configured (even a deliberately empty one), and Home/Projects
+deliberately never default to hiding Wish/Project: a project's or a wishlist's task
+legitimately still shows on Home by its own due date (see `TaskTile`'s project chip, and
+`Task.isWish`'s doc comment), and Projects' top pane must keep showing every unassigned task
+to drag onto a project, so a default that hid either would silently break a working feature
+rather than just declutter one — those two exclusions are available to add by hand in
+Settings, just not defaulted on. Alarms/Countdown get no seeded default (nothing structural
+to make redundant yet).
 
 ### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157; unlit-until-done
 pulse 0.1.229; configurable goals 0.1.250)
@@ -1411,6 +1463,14 @@ deleted, so reopening revives it), task gone → removed, rename → name follow
 via the one-tap "Remind me 15 min before due" on the task-detail page (hidden for
 undated tasks). **The scheduling pipeline below the model is untouched.**
 
+**Tags:** `Alarm.tags` (free-form, `Task.label`'s comma/whitespace convention, empty string
+omitted from JSON) is editable via a `LabelPickerField` in `AlarmEditPage`, alongside name/
+description, and filterable in Settings → Filtering rules → Alarms (`ItemViews.applyTagRules`,
+see §4.4). Any tag rendered anywhere (this field, the Alarms list's tag pills, `TaskTile`'s
+label chips) that names a reserved state — Wish/Project/Archived/Deleted/Fooddiary/Alarm/
+Countdown/Waiting_for_approval — renders in one fixed protected colour as a naming-collision
+warning (`protectedTagColor`, `lib/utils/label_style.dart`).
+
 `AlarmService` is a singleton `ValueNotifier` store; every mutation persists →
 syncs the widget → **awaits** `rescheduleAll` (so short-lived isolates don't die mid-work).
 `toggleInStorage(uid)` is the static isolate-safe path used by widget toggles: load from
@@ -1742,7 +1802,7 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 (5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
 
 ### 10.2 Countdown timers (Tools → Countdown)
-`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt}`
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags}`
 in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
 target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
@@ -1751,6 +1811,12 @@ decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timer
 (orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session).
+
+`tags` (free-form, `Task.label`'s comma/whitespace convention, empty string omitted from
+JSON) is editable via a `LabelPickerField` in the composer, and filterable in Settings →
+Filtering rules → Countdown (`ItemViews.applyTagRules`, see §4.4). Filtering narrows the
+displayed list only — reorder is disabled while a Countdown filter rule is active, same
+reasoning as Home (§4.4).
 
 **Milestone notifications** (# icon → `showCountdownMilestonesDialog`, per-timer, 0.1.105;
 replaced the fixed power-of-ten-seconds ladder of 0.1.103). `notifyRoundNumbers` is now the

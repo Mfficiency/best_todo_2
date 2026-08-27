@@ -481,6 +481,27 @@ class Config {
   /// query (see `ItemViews.passesFilterRules`).
   static Map<String, ViewFilterRules> viewFilterRules = {};
 
+  /// Whether [seedViewFilterRuleDefaultsIfNeeded] has already run once on
+  /// this install. Persisted so the one-time fill-in-the-gaps pass (see that
+  /// method) never repeats and never re-adds a default a user has since
+  /// deliberately removed.
+  static bool viewFilterRulesSeeded = false;
+
+  /// Fills any view in [viewFilterRules] that has no entry yet with
+  /// [ViewFilterRules.defaultsFor] — run once per install (guarded by
+  /// [viewFilterRulesSeeded]) so a fresh install's Settings → Filtering
+  /// rules starts pre-populated with sensible tag names, without ever
+  /// overwriting a rule a user already configured (blank or not) themselves.
+  static void seedViewFilterRuleDefaultsIfNeeded() {
+    if (viewFilterRulesSeeded) return;
+    viewFilterRulesSeeded = true;
+    for (final id in ViewFilterRules.viewIds) {
+      if (viewFilterRules.containsKey(id)) continue;
+      final defaults = ViewFilterRules.defaultsFor(id);
+      if (defaults != null) viewFilterRules[id] = defaults;
+    }
+  }
+
   /// If true, tasks are kept in sync both ways with a Todoist account (see
   /// `TodoistSyncService`). Off by default; enabling without a token set is a
   /// no-op until one is entered in Settings → Todoist sync.
@@ -520,6 +541,9 @@ class Config {
         applyMap(data);
       }
     } catch (_) {}
+    final wasSeeded = viewFilterRulesSeeded;
+    seedViewFilterRuleDefaultsIfNeeded();
+    if (!wasSeeded) await save();
   }
 
   static Map<String, dynamic> toMap() {
@@ -582,6 +606,7 @@ class Config {
         for (final entry in viewFilterRules.entries)
           entry.key: entry.value.toJson(),
       },
+      'viewFilterRulesSeeded': viewFilterRulesSeeded,
     };
   }
 
@@ -727,6 +752,8 @@ class Config {
                 Map<String, dynamic>.from(entry.value as Map)),
       };
     }
+    viewFilterRulesSeeded =
+        data['viewFilterRulesSeeded'] as bool? ?? viewFilterRulesSeeded;
   }
 
   /// Persists the current settings to disk.
