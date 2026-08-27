@@ -562,6 +562,24 @@ reference with the home page — and are deliberately left out of this undo stac
 a second, independently-timed reader/writer into the same before/after baseline risks
 misreading ordinary staleness between the two pages as a real edit.
 
+### 4.2i Presentation filters / view configuration (0.2.5)
+
+`ViewPresentation` (`lib/models/view_presentation.dart`) is the presentation counterpart to
+`ViewFilterRules` (§4.4): where `ViewFilterRules` decides *which* items belong in a view
+(data filter), `ViewPresentation` decides *how* the items a view already selected are shown
+and edited (presentation filter) — the two-part split the item-model redesign calls for.
+Keyed by the same view ids (`ViewPresentation.forView(viewId)`); every field defaults to
+today's actual behavior, so a view that hasn't adopted it renders exactly as before. First
+(and so far only) consumer: `TaskDetailPage` — shared by the Projects board, Archived Items
+and the Deleted bin — takes an optional `viewId` that controls whether the item-linked
+capability sections (`TaskReminderSection`, `TaskCountdownSection`) render; archived/deleted
+items hide both, since offering to attach a *new* reminder or countdown to something already
+over is never useful (an existing linked reminder is already gone by then via
+`ReminderSyncService`). See `docs/architecture/presentation-layer-decision.md` for why this
+step stopped at one real consumer instead of rewriting every view's tile widget onto a shared
+config — `TaskTile` (Home) and the other bespoke tiles (Wishlist, Alarms, Countdown, Food
+Diary, Waiting for Approval, Projects) are unchanged.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next
@@ -1864,7 +1882,7 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 (5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
 
 ### 10.2 Countdown timers (Tools → Countdown)
-`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags}`
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags,itemUid}`
 in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
 target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
@@ -1873,6 +1891,17 @@ decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timer
 (orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session).
+
+**Item-linked timers (0.2.5):** `itemUid` (nullable, mirroring `Alarm.itemUid`, §5.1) makes a
+countdown attach to a task instead of standing alone — Task Details offers a one-tap "Add
+countdown to due date" (`TaskCountdownSection`, next to the reminder section), and a linked
+timer's card shows a small link icon (tooltip names the task). Unlike reminders, the link is
+resolved *lazily*: `CountdownSyncService.resolveAgainstTasks` runs once when the Countdown
+page loads (free when nothing is linked), not on every task save — milestone notifications
+are foreground-only (this page's own ticker), so there is no background path that needs the
+target kept correct between app opens. A linked timer's `target` follows the task's due date;
+a timer whose task disappears is **unlinked**, not deleted — a countdown still means
+something on its own once detached. See `docs/architecture/presentation-layer-decision.md`.
 
 `tags` (free-form, `Task.label`'s comma/whitespace convention, empty string omitted from
 JSON) is editable via a `LabelPickerField` in the composer, and filterable in Settings →
