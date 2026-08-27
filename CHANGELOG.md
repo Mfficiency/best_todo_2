@@ -2,6 +2,7 @@
 
 ## [0.1.289] - 2026-08-27
 - Filtering rules now actually filter: Home/Wishlist/Waiting for Approval/Projects/Food Diary/Archived Items/Deleted bin can hide or restrict by a task's real state (Wish, Project, Waiting for Approval, Archived, Deleted, Food Diary) even though that state isn't literally typed into the task's tags; Alarms and Countdown gained their own tags field plus Filtering rules entries; typing one of these reserved words onto any tag now renders as a distinct protected-colour chip everywhere tags show, since it collides with something the app already treats specially
+- Local build: 2026-08-27 06:57
 
 ## [0.1.288] - 2026-08-26
 - Add a mic button beside the add-task field and the Food Diary entry's Title field for local speech-to-text: tap to start recording, tap again to stop, and the transcription is written straight into the field — fully editable, nothing auto-submits
