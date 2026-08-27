@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../models/alarm.dart';
 import '../models/item_event.dart';
@@ -7,7 +9,9 @@ import '../models/task_change_source.dart';
 import '../services/alarm_service.dart';
 import '../services/item_repository.dart';
 import '../services/label_service.dart';
+import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
+import '../services/todoist_metadata_codec.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'attachments_field.dart';
@@ -34,7 +38,17 @@ class TaskDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Task Details'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Task Details',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'Show all task metadata',
+            onPressed: () => _showMetadataDialog(context, task),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -83,6 +97,79 @@ class TaskDetailPage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The Todoist sync metadata that would be embedded in this task's
+/// description trailer, mirroring `TodoistSyncService._buildRemotePayload`'s
+/// meta map — see [TodoistMetadataCodec] for why that trailer exists.
+Map<String, dynamic> _syncMetaFor(Task task) {
+  final project = ProjectService.instance.byId(task.projectId);
+  return {
+    'uid': task.uid,
+    if (task.note.trim().isNotEmpty) 'note': task.note,
+    if (task.label.trim().isNotEmpty) 'label': task.label,
+    if (task.projectId != null) 'projectId': task.projectId,
+    if (project != null) 'projectName': project.name,
+    'kanbanStatus': task.kanbanStatus,
+    'kanbanStageLabel': ProjectService.stageLabel(task.kanbanStatus),
+    if (task.createdAt != null) 'createdAt': task.createdAt!.toIso8601String(),
+  };
+}
+
+/// Opens a dialog revealing every field BestToDo keeps on this task,
+/// including the hidden metadata trailer normally invisible in the app —
+/// the same text that gets appended to the description synced to Todoist.
+void _showMetadataDialog(BuildContext context, Task task) {
+  const encoder = JsonEncoder.withIndent('  ');
+  final syncDescription = TodoistMetadataCodec.build(
+    visible: task.description,
+    meta: _syncMetaFor(task),
+  );
+  final rawJson = encoder.convert(task.toJson());
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Task metadata'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Hidden sync description',
+                  style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                'What gets appended to the task description when synced to '
+                'Todoist, invisible in the normal task view.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                syncDescription,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              Text('Raw task data',
+                  style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              SelectableText(
+                rawJson,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// One-tap reminder attached to this task. Creating uses the default "15
