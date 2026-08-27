@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0] - 2026-08-27
+- Recurring tasks rebuilt: real weekly/monthly/yearly rules with multi-weekday and never/date/count endings, a Repeat button at creation time, and Google Calendar-style this-event/this-and-following/all-events editing and deleting so a single occurrence can be changed or removed without breaking or losing the rest of the series
+- Fixed: deleting a single occurrence of a recurring task is now permanent — it used to silently come back the next time the app loaded or you imported data, because that regeneration never knew it had been deleted
+- Fixed: deleting the whole series now has a full Undo (every generated occurrence, not just the first one)
+- Fixed: moving one occurrence with a swipe, drag or the dice timer's "Postpone to tomorrow" keeps it in its series instead of quietly detaching it and leaving a gap
+- Fixed: a recurring task's project assignment and Kanban column now carry over to its generated occurrences
+
 ## [0.1.290] - 2026-08-27
 - Fix Filtering rules defaults to match the literal Hide/Show spec: every view now hides every other reserved tag and shows only its own by default (Home hides all nine; Wishlist/Food Diary/Alarms/Countdown show only their own tag; Waiting for Approval and Projects follow their own shorter Hide lists; Archived/Deleted only hide each other) — installs that already auto-seeded the earlier, too-conservative defaults get re-synced automatically. Added the reserved Changelog tag (no dedicated view yet) and fixed the Projects 'All Tasks' pane so the new Project default doesn't hide unassigned tasks from drag-to-assign
 - Polish the release build and quick edit flow: the custom time picker now offers a Save button on the minute step so an unchanged minute can be kept intentionally, the home app bar hides Redo when there is nothing to redo, and local release scripts reuse an existing versioned artifact unless FORCE_BUILD=1 is set

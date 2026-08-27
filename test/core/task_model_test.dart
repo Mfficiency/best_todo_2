@@ -42,6 +42,48 @@ void main() {
     expect(decoded.recurrenceInstanceKey, '2026-02-23');
   });
 
+  test('legacy recurrenceIntervalDays migrates to frequency/interval', () {
+    final legacy = Task.fromJson(<String, dynamic>{
+      'title': 'Every other day',
+      'dueDate': DateTime(2026, 2, 21).toIso8601String(),
+      'isRecurring': true,
+      'recurrenceIntervalDays': 2,
+      'recurrenceEndDate': DateTime(2026, 3, 1).toIso8601String(),
+    });
+
+    expect(legacy.recurrenceFrequency, 'daily');
+    expect(legacy.recurrenceInterval, 2);
+    expect(legacy.recurrenceEndType, 'date');
+    expect(legacy.recurrenceEndDate, DateTime(2026, 3, 1));
+    expect(legacy.recurrenceWeekdays, isEmpty);
+    expect(legacy.recurrenceExceptionDates, isEmpty);
+    expect(legacy.recurrenceOverride, isFalse);
+  });
+
+  test('new recurrence fields round-trip through JSON', () {
+    final task = Task(
+      title: 'Weekly',
+      dueDate: DateTime(2026, 2, 23), // a Monday
+      isRecurring: true,
+      recurrenceFrequency: 'weekly',
+      recurrenceInterval: 2,
+      recurrenceWeekdays: [DateTime.monday, DateTime.wednesday],
+      recurrenceEndType: 'count',
+      recurrenceOccurrenceCount: 6,
+      recurrenceExceptionDates: ['2026-03-04'],
+      recurrenceOverride: true,
+    );
+
+    final decoded = Task.fromJson(task.toJson());
+    expect(decoded.recurrenceFrequency, 'weekly');
+    expect(decoded.recurrenceInterval, 2);
+    expect(decoded.recurrenceWeekdays, [DateTime.monday, DateTime.wednesday]);
+    expect(decoded.recurrenceEndType, 'count');
+    expect(decoded.recurrenceOccurrenceCount, 6);
+    expect(decoded.recurrenceExceptionDates, ['2026-03-04']);
+    expect(decoded.recurrenceOverride, isTrue);
+  });
+
   test('project fields default and serialize', () {
     final task = Task(title: 'Plain');
     expect(task.projectId, isNull);
@@ -58,8 +100,7 @@ void main() {
   test('isWish defaults to false and serializes', () {
     final task = Task(title: 'Plain');
     expect(task.isWish, isFalse);
-    expect(Task.fromJson(<String, dynamic>{'title': 'legacy'}).isWish,
-        isFalse);
+    expect(Task.fromJson(<String, dynamic>{'title': 'legacy'}).isWish, isFalse);
 
     task.isWish = true;
     expect(Task.fromJson(task.toJson()).isWish, isTrue);

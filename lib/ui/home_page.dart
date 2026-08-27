@@ -14,6 +14,7 @@ import '../config.dart';
 import '../models/attachment.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
+import '../models/recurrence_config.dart';
 import '../models/streak_kind.dart';
 import '../models/task.dart';
 import '../models/task_change_source.dart';
@@ -26,6 +27,7 @@ import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/project_service.dart';
+import '../services/recurrence_service.dart';
 import '../services/reminder_sync_service.dart';
 import '../services/share_intent_service.dart';
 import '../services/storage_service.dart';
@@ -48,6 +50,8 @@ import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
+import 'recurrence_editor.dart';
+import 'recurrence_scope_dialog.dart';
 import 'deleted_bin_page.dart';
 import 'dice_timer_page.dart';
 import 'food_diary_page.dart';
@@ -75,6 +79,34 @@ class _ToolEntry {
   final IconData icon;
 
   const _ToolEntry(this.key, this.label, this.icon);
+}
+
+/// A master's end condition + exceptions, captured before a "this and
+/// following"/"all events" delete truncates the series — so the delete's
+/// Undo can put the series rule back exactly as it was, not just restore the
+/// removed tasks.
+class _RecurrenceRuleSnapshot {
+  final String endType;
+  final DateTime? endDate;
+  final int? occurrenceCount;
+  final List<String> exceptionDates;
+
+  _RecurrenceRuleSnapshot._(
+      this.endType, this.endDate, this.occurrenceCount, this.exceptionDates);
+
+  factory _RecurrenceRuleSnapshot.of(Task master) => _RecurrenceRuleSnapshot._(
+        master.recurrenceEndType,
+        master.recurrenceEndDate,
+        master.recurrenceOccurrenceCount,
+        List.of(master.recurrenceExceptionDates),
+      );
+
+  void restoreTo(Task master) {
+    master.recurrenceEndType = endType;
+    master.recurrenceEndDate = endDate;
+    master.recurrenceOccurrenceCount = occurrenceCount;
+    master.recurrenceExceptionDates = List.of(exceptionDates);
+  }
 }
 
 class HomePage extends StatefulWidget {
@@ -111,6 +143,12 @@ class _HomePageState extends State<HomePage>
 
   late final TabController _tabController;
   final TextEditingController _controller = TextEditingController();
+
+  /// A repeat rule armed via the add-task row's "Repeat" button, applied to
+  /// the next task created from that row and cleared afterwards — so
+  /// picking "Weekly" doesn't silently keep making every task afterward
+  /// recurring.
+  RecurrenceConfig? _pendingRecurrence;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _homeKeyboardFocusNode =
       FocusNode(debugLabel: 'Home keyboard shortcuts');
@@ -828,68 +866,20 @@ class _HomePageState extends State<HomePage>
     return '${d.year}-$m-$day';
   }
 
+  /// Regenerates [task]'s series (a no-op unless [task] is itself a master —
+  /// see [RecurrenceService]). The actual generation/exception/override
+  /// logic lives in [RecurrenceService] so it's unit-testable outside the
+  /// widget tree; this just applies its plan to the live task list, still
+  /// passing the archive and the bin so an instance archived/binned before a
+  /// master started recording exceptions stays skipped too (see the class
+  /// doc on _deletedTasks/_binTasks).
   void _refreshRecurringForTask(Task task) {
-    if (task.recurrenceParentUid != null) return;
-    final parentUid = task.uid;
-
-    if (!task.isRecurring ||
-        task.dueDate == null ||
-        task.recurrenceEndDate == null) {
-      _tasks.removeWhere((t) => t.recurrenceParentUid == parentUid);
-      return;
-    }
-
-    final intervalDays =
-        task.recurrenceIntervalDays < 1 ? 1 : task.recurrenceIntervalDays;
-    task.recurrenceIntervalDays = intervalDays;
-    final baseDate = _dateOnly(task.dueDate!);
-    final endDate = _dateOnly(task.recurrenceEndDate!);
-
-    final existingByKey = <String, Task>{};
-    _tasks.removeWhere((t) {
-      if (t.recurrenceParentUid != parentUid) return false;
-      final dueDate = t.dueDate;
-      if (dueDate == null) return true;
-      final d = _dateOnly(dueDate);
-      final diff = d.difference(baseDate).inDays;
-      final valid = diff > 0 && diff % intervalDays == 0 && !d.isAfter(endDate);
-      if (!valid) return true;
-      existingByKey[_dayKey(d)] = t;
-      return false;
-    });
-
-    // A date already accounted for in the archive or the bin was manually
-    // archived — skip it here too, so it stays gone instead of being
-    // silently recreated on the next refresh (see the class doc on
-    // _deletedTasks/_binTasks).
-    for (final t in _deletedTasks.followedBy(_binTasks)) {
-      if (t.recurrenceParentUid != parentUid) continue;
-      final dueDate = t.dueDate;
-      if (dueDate == null) continue;
-      existingByKey.putIfAbsent(_dayKey(_dateOnly(dueDate)), () => t);
-    }
-
-    for (var date = baseDate.add(Duration(days: intervalDays));
-        !date.isAfter(endDate);
-        date = date.add(Duration(days: intervalDays))) {
-      final key = _dayKey(date);
-      if (existingByKey.containsKey(key)) continue;
-      _tasks.add(
-        Task(
-          title: task.title,
-          description: task.description,
-          note: task.note,
-          label: task.label,
-          createdAt: task.createdAt,
-          completedAt: task.completedAt,
-          movedAt: task.movedAt,
-          rescheduledAt: task.rescheduledAt,
-          dueDate: date,
-          recurrenceParentUid: parentUid,
-          recurrenceInstanceKey: key,
-        ),
-      );
-    }
+    RecurrenceService.refresh(
+      task,
+      _tasks,
+      now: _currentDate,
+      archivedOrBinned: [..._deletedTasks, ..._binTasks],
+    );
   }
 
   void _refreshAllRecurringTasks() {
@@ -897,6 +887,13 @@ class _HomePageState extends State<HomePage>
     for (final task in parents) {
       _refreshRecurringForTask(task);
     }
+  }
+
+  Task? _findTaskByUid(String uid) {
+    for (final t in _tasks) {
+      if (t.uid == uid) return t;
+    }
+    return null;
   }
 
   List<Task> _tasksDueOn(DateTime date) {
@@ -1382,23 +1379,149 @@ class _HomePageState extends State<HomePage>
         ? _scheduleActiveDate!
         : _dueDateForTab(_addTargetTabIndex());
     final rankingTabIndex = _tabIndexForDueDate(dueDate);
+    final recurrence = _pendingRecurrence;
     final task = Task(
       title: title,
       label: AutoTagService.instance.withAutoTags(title, ''),
       createdAt: DateTime.now(),
       dueDate: dueDate,
+      isRecurring: recurrence != null,
       listRanking: _listRankingForNewTask(
         rankingTabIndex,
         addToTop: Config.addNewTasksToTop,
       ),
     );
+    recurrence?.applyTo(task);
     setState(() {
       _tasks.add(task);
+      if (recurrence != null) _refreshRecurringForTask(task);
+      _pendingRecurrence = null;
     });
     _trackTaskCreated(task);
     _controller.clear();
     _saveTasks();
     LogService.add('HomePage._addTask', 'Added task: $title');
+  }
+
+  /// Opens the "Repeat" picker for the add-task row: a Calendar-style quick
+  /// list of common presets, or "Custom..." for the full editor. Arms
+  /// [_pendingRecurrence] for the next task created from this row.
+  Future<void> _pickAddTaskRecurrence() async {
+    final anchor = _scheduleView && _scheduleActiveDate != null
+        ? _scheduleActiveDate!
+        : _dueDateForTab(_addTargetTabIndex());
+    final weekdayName = const [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ][anchor.weekday - 1];
+
+    final result = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      // Six rows do not fit the default 9/16-of-the-screen sheet on a short
+      // screen: size to content and let it scroll instead of overflowing.
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Does not repeat'),
+                onTap: () => Navigator.of(sheetContext).pop('none'),
+              ),
+              ListTile(
+                title: const Text('Daily'),
+                onTap: () => Navigator.of(sheetContext).pop(RecurrenceConfig(
+                  frequency: 'daily',
+                  endType: 'never',
+                )),
+              ),
+              ListTile(
+                title: Text('Weekly on $weekdayName'),
+                onTap: () => Navigator.of(sheetContext).pop(RecurrenceConfig(
+                  frequency: 'weekly',
+                  weekdays: [anchor.weekday],
+                  endType: 'never',
+                )),
+              ),
+              ListTile(
+                title: const Text('Monthly on this day'),
+                onTap: () => Navigator.of(sheetContext).pop(RecurrenceConfig(
+                  frequency: 'monthly',
+                  endType: 'never',
+                )),
+              ),
+              ListTile(
+                title: const Text('Yearly on this day'),
+                onTap: () => Navigator.of(sheetContext).pop(RecurrenceConfig(
+                  frequency: 'yearly',
+                  endType: 'never',
+                )),
+              ),
+              ListTile(
+                title: const Text('Custom...'),
+                onTap: () => Navigator.of(sheetContext).pop('custom'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    if (result == 'none') {
+      setState(() => _pendingRecurrence = null);
+      return;
+    }
+    if (result == 'custom') {
+      final base = _pendingRecurrence ?? RecurrenceConfig(endType: 'never');
+      final custom = await _editRecurrenceConfig(base, anchor);
+      if (custom != null && mounted) {
+        setState(() => _pendingRecurrence = custom);
+      }
+      return;
+    }
+    if (result is RecurrenceConfig) {
+      setState(() => _pendingRecurrence = result);
+    }
+  }
+
+  /// Full recurrence editor in a dialog, used for "Custom..." at creation
+  /// time. Returns the edited config, or null if the user cancels.
+  Future<RecurrenceConfig?> _editRecurrenceConfig(
+      RecurrenceConfig initial, DateTime anchor) {
+    var config = initial;
+    return showDialog<RecurrenceConfig>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Custom recurrence'),
+          content: SingleChildScrollView(
+            child: RecurrenceEditor(
+              config: config,
+              anchorDate: anchor,
+              onChanged: (updated) => setDialogState(() => config = updated),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(config),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   bool _isDesktopShortcutsEnabled(BuildContext context) {
@@ -1695,17 +1818,142 @@ class _HomePageState extends State<HomePage>
   /// Deletes a task chosen on the Chronize timeline, moving it to the deleted
   /// list (consistent with the rest of the app).
   void _deleteTaskFromChronize(Task task) {
-    final index = _tasks.indexOf(task);
-    if (index < 0) return;
+    _requestDeleteTask(task);
+  }
+
+  /// Resolves what "delete" means for [task] when it's part of a recurring
+  /// series — asking the Calendar-style "this event / this and following /
+  /// all events" question only when there's more than one occurrence to
+  /// choose between — then removes the resulting task(s) through the normal
+  /// delayed-undo flow. A plain, non-recurring task skips the question
+  /// entirely and is just deleted.
+  Future<void> _requestDeleteTask(Task task) async {
+    final isChild = task.recurrenceParentUid != null;
+    final master = isChild
+        ? _findTaskByUid(task.recurrenceParentUid!)
+        : (task.isRecurring ? task : null);
+    final hasOtherOccurrences = master != null &&
+        (isChild || _tasks.any((t) => t.recurrenceParentUid == master.uid));
+
+    if (master == null || !hasOtherOccurrences) {
+      _deleteTasksBatch([task], label: task.title);
+      return;
+    }
+
+    if (!mounted) return;
+    final scope = await showRecurrenceScopeDialog(context, isDelete: true);
+    if (scope == null || !mounted) return;
+
+    switch (scope) {
+      case RecurrenceEditScope.allEvents:
+        final snapshot = _RecurrenceRuleSnapshot.of(master);
+        final toDelete = RecurrenceService.truncateSeriesBefore(
+            master, _tasks, master.dueDate!);
+        _deleteTasksBatch(
+          toDelete,
+          label: '${toDelete.length} events in "${master.title}"',
+          onUndo: () => snapshot.restoreTo(master),
+        );
+        break;
+      case RecurrenceEditScope.thisAndFollowing:
+        final snapshot = _RecurrenceRuleSnapshot.of(master);
+        final toDelete = RecurrenceService.truncateSeriesBefore(
+            master, _tasks, task.dueDate!);
+        _deleteTasksBatch(
+          toDelete,
+          label: '${toDelete.length} events in "${master.title}"',
+          onUndo: () => snapshot.restoreTo(master),
+        );
+        break;
+      case RecurrenceEditScope.thisEvent:
+        if (identical(task, master)) {
+          setState(() {
+            RecurrenceService.promoteNextOccurrenceAsMaster(master, _tasks);
+          });
+          _deleteTasksBatch([task], label: task.title);
+        } else {
+          final key = task.recurrenceInstanceKey ??
+              RecurrenceService.dayKey(task.dueDate!);
+          master.recurrenceExceptionDates.add(key);
+          _deleteTasksBatch(
+            [task],
+            label: task.title,
+            onUndo: () => master.recurrenceExceptionDates.remove(key),
+          );
+        }
+        break;
+    }
+  }
+
+  /// Removes [toDelete] from the live list, showing one snackbar with an
+  /// Undo that restores every task to its original position (and runs
+  /// [onUndo], for callers that also need to roll back a rule change made
+  /// alongside the removal). After the undo window, the tasks land in
+  /// Archived Items exactly like a single-task delete always has.
+  void _deleteTasksBatch(
+    List<Task> toDelete, {
+    required String label,
+    VoidCallback? onUndo,
+  }) {
+    if (toDelete.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final originalIndexes = <Task, int>{
+      for (final t in toDelete) t: _tasks.indexOf(t),
+    };
+
     setState(() {
-      _tasks.removeAt(index);
-      _tasks.removeWhere((t) => t.recurrenceParentUid == task.uid);
+      for (final t in toDelete) {
+        _tasks.remove(t);
+      }
     });
-    _addToDeletedTasks(task);
     _saveTasks();
-    _saveDeletedTasks();
-    LogService.add(
-        'HomePage._deleteTaskFromChronize', 'Deleted "${task.title}"');
+    LogService.add('HomePage._deleteTasksBatch', 'Deleted $label');
+
+    late Timer timer;
+    timer = Timer(Config.delayDuration, () {
+      if (!mounted) return;
+      setState(() {
+        for (final t in toDelete) {
+          _addToDeletedTasks(t);
+        }
+      });
+      _saveDeletedTasks();
+      // Explicitly close the snackbar when its undo window expires.
+      messenger.hideCurrentSnackBar();
+    });
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(toDelete.length == 1
+              ? 'Deleted "${toDelete.first.title}"'
+              : 'Deleted $label'),
+          duration: Config.delayDuration,
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
+              setState(() {
+                onUndo?.call();
+                final ordered = toDelete.toList()
+                  ..sort((a, b) => (originalIndexes[a] ?? 0)
+                      .compareTo(originalIndexes[b] ?? 0));
+                for (final t in ordered) {
+                  final at =
+                      (originalIndexes[t] ?? 0).clamp(0, _tasks.length);
+                  _tasks.insert(at, t);
+                }
+              });
+              _saveTasks();
+              LogService.add(
+                  'HomePage._deleteTasksBatch', 'Restored from undo $label');
+            },
+          ),
+        ),
+      );
   }
 
   void _moveTaskToNextPage(int pageIndex, int index) {
@@ -1716,9 +1964,11 @@ class _HomePageState extends State<HomePage>
     }
     if (index >= tasks.length) return;
     final task = tasks[index];
+    // Keep the occurrence in its series (as an override, so its slot stays
+    // reserved and a later refresh neither duplicates nor discards it)
+    // rather than detaching it outright.
     if (task.recurrenceParentUid != null) {
-      task.recurrenceParentUid = null;
-      task.recurrenceInstanceKey = null;
+      task.recurrenceOverride = true;
     }
     final oldDueDate = task.dueDate;
     final newDueDate = _dueDateForTab(destination);
@@ -1727,7 +1977,10 @@ class _HomePageState extends State<HomePage>
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
-      _refreshRecurringForTask(task);
+      final master = task.recurrenceParentUid != null
+          ? _findTaskByUid(task.recurrenceParentUid!)
+          : task;
+      if (master != null) _refreshRecurringForTask(master);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
@@ -1740,8 +1993,7 @@ class _HomePageState extends State<HomePage>
     if (index >= tasks.length) return;
     final task = tasks[index];
     if (task.recurrenceParentUid != null) {
-      task.recurrenceParentUid = null;
-      task.recurrenceInstanceKey = null;
+      task.recurrenceOverride = true;
     }
     final oldDueDate = task.dueDate;
     final newDueDate = _dueDateForTab(destination);
@@ -1750,7 +2002,10 @@ class _HomePageState extends State<HomePage>
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
-      _refreshRecurringForTask(task);
+      final master = task.recurrenceParentUid != null
+          ? _findTaskByUid(task.recurrenceParentUid!)
+          : task;
+      if (master != null) _refreshRecurringForTask(master);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
@@ -1771,8 +2026,7 @@ class _HomePageState extends State<HomePage>
     if (index >= tasks.length) return;
     final task = tasks[index];
     if (task.recurrenceParentUid != null) {
-      task.recurrenceParentUid = null;
-      task.recurrenceInstanceKey = null;
+      task.recurrenceOverride = true;
     }
     final oldDueDate = task.dueDate;
     final newDueDate = _nextWeekdayDate(weekday);
@@ -1781,7 +2035,10 @@ class _HomePageState extends State<HomePage>
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
-      _refreshRecurringForTask(task);
+      final master = task.recurrenceParentUid != null
+          ? _findTaskByUid(task.recurrenceParentUid!)
+          : task;
+      if (master != null) _refreshRecurringForTask(master);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
@@ -1814,51 +2071,20 @@ class _HomePageState extends State<HomePage>
   void _deleteTask(int pageIndex, int index) {
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
-    final task = tasks[index];
-    final originalIndex = _tasks.indexOf(task);
-    final messenger = ScaffoldMessenger.of(context);
+    _requestDeleteTask(tasks[index]);
+  }
 
-    setState(() {
-      _tasks.removeAt(originalIndex);
-      _tasks.removeWhere((t) => t.recurrenceParentUid == task.uid);
-    });
-    _saveTasks();
-    LogService.add('HomePage._deleteTask', 'Deleted "${task.title}"');
-
-    late Timer timer;
-    timer = Timer(Config.delayDuration, () {
-      if (!mounted) return;
-      setState(() {
-        _addToDeletedTasks(task);
-      });
-      _saveDeletedTasks();
-      // Explicitly close the snackbar when its undo window expires.
-      messenger.hideCurrentSnackBar();
-    });
-
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text('Deleted "${task.title}"'),
-          duration: Config.delayDuration,
-          action: SnackBarAction(
-            label: 'Undo',
-            onPressed: () {
-              timer.cancel();
-              messenger.hideCurrentSnackBar();
-              if (!mounted) return;
-              setState(() {
-                _tasks.insert(originalIndex, task);
-                _refreshRecurringForTask(task);
-              });
-              _saveTasks();
-              LogService.add(
-                  'HomePage._deleteTask', 'Restored from undo "${task.title}"');
-            },
-          ),
-        ),
-      );
+  /// A restored occurrence of a still-live series needs to (a) not be
+  /// silently regenerated a second time at its original slot and (b) clear
+  /// the exception that a "delete this event" may have recorded on the
+  /// master for that slot, or the very next refresh removes it again.
+  void _clearRecurrenceExceptionOnRestore(Task task) {
+    if (task.recurrenceParentUid == null) return;
+    task.recurrenceOverride = true;
+    final master = _findTaskByUid(task.recurrenceParentUid!);
+    if (master != null && task.recurrenceInstanceKey != null) {
+      master.recurrenceExceptionDates.remove(task.recurrenceInstanceKey);
+    }
   }
 
   void _restoreTask(Task task) {
@@ -1869,6 +2095,7 @@ class _HomePageState extends State<HomePage>
       // Wishlist items stay undated so they return to the wishlist/Future
       // bucket instead of today's list.
       if (!task.isWish) task.dueDate = _currentDate;
+      _clearRecurrenceExceptionOnRestore(task);
       _tasks.add(task);
       _refreshRecurringForTask(task);
     });
@@ -1903,6 +2130,7 @@ class _HomePageState extends State<HomePage>
       task.deletedAt = null;
       task.autoDeleted = false;
       if (!task.isWish) task.dueDate = _currentDate;
+      _clearRecurrenceExceptionOnRestore(task);
       _tasks.add(task);
       _refreshRecurringForTask(task);
     });
@@ -2053,8 +2281,7 @@ class _HomePageState extends State<HomePage>
   /// The dice timer rang and the user postponed the task to tomorrow.
   void _postponeTaskFromDice(Task task) {
     if (task.recurrenceParentUid != null) {
-      task.recurrenceParentUid = null;
-      task.recurrenceInstanceKey = null;
+      task.recurrenceOverride = true;
     }
     final oldDueDate = task.dueDate;
     final newDueDate = _dueDateForTab(1);
@@ -2063,7 +2290,10 @@ class _HomePageState extends State<HomePage>
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
-      _refreshRecurringForTask(task);
+      final master = task.recurrenceParentUid != null
+          ? _findTaskByUid(task.recurrenceParentUid!)
+          : task;
+      if (master != null) _refreshRecurringForTask(master);
     });
     _trackTaskMove(task, oldDueDate, newDueDate);
     _saveTasks();
@@ -2615,6 +2845,18 @@ class _HomePageState extends State<HomePage>
           ),
           SpeechInputButton(controller: _controller),
           IconButton(
+            icon: Icon(
+              Icons.repeat,
+              color: _pendingRecurrence != null
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            tooltip: _pendingRecurrence == null
+                ? 'Repeat'
+                : 'Repeat: on — the next task you add will recur',
+            onPressed: _pickAddTaskRecurrence,
+          ),
+          IconButton(
             icon: const Icon(Icons.add),
             onPressed: () => _addTask(_controller.text),
           )
@@ -2631,17 +2873,39 @@ class _HomePageState extends State<HomePage>
       task: task,
       onChanged: _saveTasks,
       onToggle: () => _toggleTask(task),
-      onDueDateChanged: (oldDueDate, newDueDate) {
+      onDueDateChanged: (oldDueDate, newDueDate, scope) {
         setState(() {
-          if (task.recurrenceParentUid != null) {
-            task.recurrenceParentUid = null;
-            task.recurrenceInstanceKey = null;
-          }
           final now = DateTime.now();
+          final parentUid = task.recurrenceParentUid;
+          if (parentUid != null) {
+            // A generated occurrence's own date change.
+            final master = _findTaskByUid(parentUid);
+            if (master == null) {
+              // Orphaned child (its master is gone): nothing to split, just
+              // move it like a plain task.
+              task.dueDate = newDueDate;
+            } else if (scope == RecurrenceEditScope.thisAndFollowing) {
+              final newMaster = RecurrenceService.reanchorSeriesFrom(
+                  master, _tasks, task, newDueDate);
+              _refreshRecurringForTask(master);
+              _refreshRecurringForTask(newMaster);
+            } else {
+              // "This event": move just this occurrence, keeping its slot
+              // reserved in the series so it's never duplicated or lost.
+              task.dueDate = newDueDate;
+              task.recurrenceOverride = true;
+            }
+          } else if (task.isRecurring) {
+            // The master's own date is the series anchor: moving it
+            // re-anchors (and regenerates) the whole series.
+            task.dueDate = newDueDate;
+            _refreshRecurringForTask(task);
+          } else {
+            task.dueDate = newDueDate;
+          }
           task.movedAt = now;
           task.rescheduledAt = now;
           _trackTaskMove(task, oldDueDate, newDueDate);
-          _refreshRecurringForTask(task);
         });
         _saveTasks();
       },
