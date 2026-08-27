@@ -1,16 +1,20 @@
 {
   "available": true,
-  "generatedAt": "2026-08-27T04:22:42.838945Z",
-  "commit": "125dbca34",
+  "generatedAt": "2026-08-27T04:31:34.556646Z",
+  "commit": "4f9a5a65d",
   "branch": "dev",
   "appVersion": "0.1.288+288",
-  "passed": 812,
-  "failed": 1,
+  "passed": 811,
+  "failed": 2,
   "skipped": 0,
   "failures": [
     {
       "name": "the dev-only Widget Previews drawer entry renders a mock of each Android home-screen widget",
       "error": "Test failed. See exception logs above.\nThe test description was: the dev-only Widget Previews drawer entry renders a mock of each Android home-screen widget"
+    },
+    {
+      "name": "Save to Today persists the task due today and returns to the previous app",
+      "error": "Test failed. See exception logs above.\nThe test description was: Save to Today persists the task due today and returns to the previous app"
     }
   ],
   "suites": [
@@ -20,17 +24,17 @@
         {
           "name": "editor shows the Override Do Not Disturb toggle (off default)",
           "result": "passed",
-          "durationMs": 1312
+          "durationMs": 1272
         },
         {
           "name": "melody Preview button toggles between play and stop",
           "result": "passed",
-          "durationMs": 285
+          "durationMs": 336
         },
         {
           "name": "saving keeps the Override Do Not Disturb choice",
           "result": "passed",
-          "durationMs": 571
+          "durationMs": 695
         }
       ]
     },
@@ -40,67 +44,12 @@
         {
           "name": "saveAlarms then loadAlarms round-trips the list",
           "result": "passed",
-          "durationMs": 71
+          "durationMs": 104
         },
         {
           "name": "loadAlarms returns empty list when file missing",
           "result": "passed",
-          "durationMs": 3
-        }
-      ]
-    },
-    {
-      "path": "test/alarms/reminder_sync_test.dart",
-      "tests": [
-        {
-          "name": "Alarm reminder-link JSON standalone alarms serialize exactly as before (no link keys)",
-          "result": "passed",
-          "durationMs": 32
-        },
-        {
-          "name": "Alarm reminder-link JSON linked alarms round-trip their link",
-          "result": "passed",
-          "durationMs": 5
-        },
-        {
-          "name": "applyTaskToAlarm follows the task deadline with the offset applied",
-          "result": "passed",
-          "durationMs": 8
-        },
-        {
-          "name": "applyTaskToAlarm completing disables; rescheduling re-enables; rename follows",
-          "result": "passed",
-          "durationMs": 2
-        },
-        {
-          "name": "applyTaskToAlarm a task without a schedule cannot get a reminder; losing the schedule disables an existing one",
-          "result": "passed",
-          "durationMs": 3
-        },
-        {
-          "name": "applyTaskToAlarm start-anchored reminders use the interval start",
-          "result": "passed",
-          "durationMs": 3
-        },
-        {
-          "name": "computeSync reminders of vanished tasks are listed for removal",
-          "result": "passed",
-          "durationMs": 3
-        },
-        {
-          "name": "TaskReminderSection undated tasks offer no reminder",
-          "result": "passed",
-          "durationMs": 667
-        },
-        {
-          "name": "TaskReminderSection dated tasks offer the one-tap reminder",
-          "result": "passed",
-          "durationMs": 62
-        },
-        {
-          "name": "TaskReminderSection an existing linked reminder shows with a remove action",
-          "result": "passed",
-          "durationMs": 49
+          "durationMs": 4
         }
       ]
     },
@@ -110,27 +59,82 @@
         {
           "name": "ring page shows alarm name, body, clock and actions",
           "result": "passed",
-          "durationMs": 816
+          "durationMs": 833
         },
         {
           "name": "snooze button is hidden when the alarm cannot be snoozed",
           "result": "passed",
-          "durationMs": 38
+          "durationMs": 49
         },
         {
           "name": "empty name falls back to \"Alarm\"",
           "result": "passed",
-          "durationMs": 32
+          "durationMs": 40
         },
         {
           "name": "Stop invokes the dismiss handler and closes the page",
           "result": "passed",
-          "durationMs": 208
+          "durationMs": 237
         },
         {
           "name": "Snooze invokes the snooze handler and closes the page",
           "result": "passed",
-          "durationMs": 76
+          "durationMs": 87
+        }
+      ]
+    },
+    {
+      "path": "test/alarms/reminder_sync_test.dart",
+      "tests": [
+        {
+          "name": "Alarm reminder-link JSON standalone alarms serialize exactly as before (no link keys)",
+          "result": "passed",
+          "durationMs": 47
+        },
+        {
+          "name": "Alarm reminder-link JSON linked alarms round-trip their link",
+          "result": "passed",
+          "durationMs": 7
+        },
+        {
+          "name": "applyTaskToAlarm follows the task deadline with the offset applied",
+          "result": "passed",
+          "durationMs": 6
+        },
+        {
+          "name": "applyTaskToAlarm completing disables; rescheduling re-enables; rename follows",
+          "result": "passed",
+          "durationMs": 2
+        },
+        {
+          "name": "applyTaskToAlarm a task without a schedule cannot get a reminder; losing the schedule disables an existing one",
+          "result": "passed",
+          "durationMs": 2
+        },
+        {
+          "name": "applyTaskToAlarm start-anchored reminders use the interval start",
+          "result": "passed",
+          "durationMs": 3
+        },
+        {
+          "name": "computeSync reminders of vanished tasks are listed for removal",
+          "result": "passed",
+          "durationMs": 2
+        },
+        {
+          "name": "TaskReminderSection undated tasks offer no reminder",
+          "result": "passed",
+          "durationMs": 630
+        },
+        {
+          "name": "TaskReminderSection dated tasks offer the one-tap reminder",
+          "result": "passed",
+          "durationMs": 90
+        },
+        {
+          "name": "TaskReminderSection an existing linked reminder shows with a remove action",
+          "result": "passed",
+          "durationMs": 54
         }
       ]
     },
@@ -140,7 +144,7 @@
         {
           "name": "a corrupt alarms.json falls back to its .bak instead of losing the alarms",
           "result": "passed",
-          "durationMs": 74
+          "durationMs": 61
         },
         {
           "name": "the first alarm save also triggers the pre-update snapshot",
@@ -155,17 +159,17 @@
         {
           "name": "the editor has a Save action in the top app bar",
           "result": "passed",
-          "durationMs": 1549
+          "durationMs": 1246
         },
         {
           "name": "tapping the top Save pops with the edited alarm",
           "result": "passed",
-          "durationMs": 331
+          "durationMs": 343
         },
         {
           "name": "the bottom Save button still works too",
           "result": "passed",
-          "durationMs": 651
+          "durationMs": 763
         }
       ]
     },
@@ -175,17 +179,17 @@
         {
           "name": "alarms generate unique ids",
           "result": "passed",
-          "durationMs": 32
+          "durationMs": 25
         },
         {
           "name": "timeLabel is zero padded",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "all fields serialize and deserialize",
           "result": "passed",
-          "durationMs": 16
+          "durationMs": 12
         },
         {
           "name": "overrideDnd defaults to off, also for stored alarms without it",
@@ -195,12 +199,12 @@
         {
           "name": "scheduleLabel summarizes repeat days",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "nextOccurrence finds the next repeating weekday",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "one-off alarm without date rolls to tomorrow when time passed",
@@ -215,12 +219,12 @@
         {
           "name": "version ordering of APK file names reads the numeric components, build number included",
           "result": "passed",
-          "durationMs": 20
+          "durationMs": 29
         },
         {
           "name": "version ordering of APK file names orders by major/minor/patch then build",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "namesToPrune keeps the newest two and returns the rest oldest first",
@@ -230,12 +234,12 @@
         {
           "name": "namesToPrune nothing to prune while the folder holds two or fewer",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 2
         },
         {
           "name": "namesToPrune leaves non-APK files (the folder README) alone",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "namesToPrune honours a different keep count",
@@ -245,27 +249,27 @@
         {
           "name": "stagedNameFor matches the committed naming",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "main copies the build in and deletes the oldest kept APK",
           "result": "passed",
-          "durationMs": 55
+          "durationMs": 23
         },
         {
           "name": "main creates the folder on the first build and finds app-release.apk",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 3
         },
         {
           "name": "main a dry run reports without touching the folder",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 5
         },
         {
           "name": "main missing APK fails instead of staging nothing silently",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 6
         }
       ]
     },
@@ -275,17 +279,17 @@
         {
           "name": "compareVersions orders by major/minor/patch then build",
           "result": "passed",
-          "durationMs": 31
+          "durationMs": 21
         },
         {
           "name": "compareVersions same core version, higher build wins",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "compareVersions missing build number counts as 0",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "compareVersions unparseable version compares as all-zero",
@@ -295,7 +299,7 @@
         {
           "name": "versionFromTag converts the git-safe dash back into +",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 3
         },
         {
           "name": "versionFromTag tolerates a plain version tag",
@@ -305,22 +309,22 @@
         {
           "name": "releaseInfo picks the APK asset and the release fields",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 2
         },
         {
           "name": "releaseInfo release without an APK asset still parses",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 3
         },
         {
           "name": "github_releases folder listing reads the version out of the APK file name",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "github_releases folder listing maps the listing to builds, newest first",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "github_releases folder listing skips entries without a download url",
@@ -330,7 +334,7 @@
         {
           "name": "checkReleases offers the newest folder build and the one before it",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 5
         },
         {
           "name": "checkReleases up to date still offers a rollback to the kept older build",
@@ -345,22 +349,22 @@
         {
           "name": "checkReleases reads the folder of the release branch first",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "checkReleases falls back to the latest release when the folder is unavailable",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 4
         },
         {
           "name": "checkForUpdate newer release is reported",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "checkForUpdate same or older release means up to date",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 6
         },
         {
           "name": "checkForUpdate queries the latest-release endpoint of the app repo",
@@ -370,7 +374,7 @@
         {
           "name": "checkForUpdate malformed payload throws instead of pretending up-to-date",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 5
         }
       ]
     },
@@ -380,37 +384,37 @@
         {
           "name": "offers a newer release for download",
           "result": "passed",
-          "durationMs": 1059
+          "durationMs": 1001
         },
         {
           "name": "reports up to date when nothing newer exists",
           "result": "passed",
-          "durationMs": 316
+          "durationMs": 353
         },
         {
           "name": "release without an APK falls back to the release page",
           "result": "passed",
-          "durationMs": 239
+          "durationMs": 373
         },
         {
           "name": "offers the newest folder build plus one version back",
           "result": "passed",
-          "durationMs": 352
+          "durationMs": 306
         },
         {
           "name": "no rollback button when the folder keeps a single build",
           "result": "passed",
-          "durationMs": 335
+          "durationMs": 371
         },
         {
           "name": "autoCheckForUpdate runs the check without a tap on \"Check for updates\"",
           "result": "passed",
-          "durationMs": 188
+          "durationMs": 155
         },
         {
           "name": "a failed check shows the error and allows a retry",
           "result": "passed",
-          "durationMs": 590
+          "durationMs": 702
         }
       ]
     },
@@ -420,27 +424,27 @@
         {
           "name": "release naming matches the historical convention",
           "result": "passed",
-          "durationMs": 23
+          "durationMs": 26
         },
         {
           "name": "reads the version line from a pubspec body",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "firstChangelogSection returns only the newest entry",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "firstChangelogSection is empty when no section heading exists",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "APK lookup prefers the version-named artifact from build.sh",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         }
       ]
     },
@@ -450,22 +454,22 @@
         {
           "name": "spreads one task per Kanban column into each project",
           "result": "passed",
-          "durationMs": 35
+          "durationMs": 32
         },
         {
           "name": "fills every To-Do column first when there are few tasks",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 4
         },
         {
           "name": "does nothing when a seed task already carries a project",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "is a no-op for empty task or project lists",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         }
       ]
     },
@@ -475,47 +479,47 @@
         {
           "name": "at least 20 challenges exist, all unearned without history",
           "result": "passed",
-          "durationMs": 54
+          "durationMs": 62
         },
         {
           "name": "the first completion earns First Spark",
           "result": "passed",
-          "durationMs": 22
+          "durationMs": 17
         },
         {
           "name": "time-of-day challenges: early bird, dawn patrol, night owl, lunch",
           "result": "passed",
-          "durationMs": 17
+          "durationMs": 10
         },
         {
           "name": "per-day count challenges track the best day with progress",
           "result": "passed",
-          "durationMs": 13
+          "durationMs": 5
         },
         {
           "name": "streak-length challenges use the longest streak",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 6
         },
         {
           "name": "weekend warrior needs a Saturday plus the Sunday right after",
           "result": "passed",
-          "durationMs": 11
+          "durationMs": 8
         },
         {
           "name": "monday hero and comeback kid",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 6
         },
         {
           "name": "full month needs every single day of a calendar month",
           "result": "passed",
-          "durationMs": 21
+          "durationMs": 20
         },
         {
           "name": "totals challenges count completions and active days",
           "result": "passed",
-          "durationMs": 15
+          "durationMs": 14
         }
       ]
     },
@@ -525,32 +529,32 @@
         {
           "name": "flame sits in the home app bar next to the dice",
           "result": "passed",
-          "durationMs": 1901
+          "durationMs": 1892
         },
         {
           "name": "hiding the streak in settings removes the flame",
           "result": "passed",
-          "durationMs": 549
+          "durationMs": 624
         },
         {
           "name": "completing a task lights the flame with a 1-day badge",
           "result": "passed",
-          "durationMs": 1073
+          "durationMs": 1193
         },
         {
           "name": "first completion of the day plays the celebration",
           "result": "passed",
-          "durationMs": 1004
+          "durationMs": 951
         },
         {
           "name": "tapping the flame opens the streak page with stats",
           "result": "passed",
-          "durationMs": 847
+          "durationMs": 848
         },
         {
           "name": "streak page lists the challenges with an earned count",
           "result": "passed",
-          "durationMs": 287
+          "durationMs": 299
         },
         {
           "name": "earned challenges sink below the ones still to play for",
@@ -560,42 +564,42 @@
         {
           "name": "longest streak tile opens the yearly calendar with the range",
           "result": "passed",
-          "durationMs": 494
+          "durationMs": 562
         },
         {
           "name": "streak page without a streak invites lighting the flame",
           "result": "passed",
-          "durationMs": 77
+          "durationMs": 65
         },
         {
           "name": "settings has the Streak section with all its settings",
           "result": "passed",
-          "durationMs": 961
+          "durationMs": 990
         },
         {
           "name": "streak search entries jump to the Streak section",
           "result": "passed",
-          "durationMs": 772
+          "durationMs": 730
         },
         {
           "name": "the flame cycles through the active challenges",
           "result": "passed",
-          "durationMs": 86
+          "durationMs": 80
         },
         {
           "name": "all three challenges done settles on one steady red flame",
           "result": "passed",
-          "durationMs": 37
+          "durationMs": 38
         },
         {
           "name": "one challenge still open keeps the flame cycling",
           "result": "passed",
-          "durationMs": 35
+          "durationMs": 39
         },
         {
           "name": "a challenge switched off drops out of the flame",
           "result": "passed",
-          "durationMs": 31
+          "durationMs": 45
         },
         {
           "name": "a day still open keeps the flame grey and pulsing white",
@@ -605,47 +609,47 @@
         {
           "name": "doing the day's action lights the greyed-out flame",
           "result": "passed",
-          "durationMs": 997
+          "durationMs": 1060
         },
         {
           "name": "completing the exact recurring task behind a configured goal lights it",
           "result": "passed",
-          "durationMs": 1339
+          "durationMs": 1440
         },
         {
           "name": "completing a task filed under a configured project goal lights it",
           "result": "passed",
-          "durationMs": 945
+          "durationMs": 918
         },
         {
           "name": "a goal whose recurring task was deleted shows as missing",
           "result": "passed",
-          "durationMs": 442
+          "durationMs": 480
         },
         {
           "name": "the streak page lists today per challenge and switches kind",
           "result": "passed",
-          "durationMs": 176
+          "durationMs": 177
         },
         {
           "name": "settings can turn a challenge off and manage reminders",
           "result": "passed",
-          "durationMs": 3952
+          "durationMs": 3996
         },
         {
           "name": "the goal dialog sets a project goal, pre-filling its title",
           "result": "passed",
-          "durationMs": 356
+          "durationMs": 305
         },
         {
           "name": "the goal dialog can clear an existing goal",
           "result": "passed",
-          "durationMs": 80
+          "durationMs": 101
         },
         {
           "name": "settings opens the goal dialog from Set goal and reflects the saved goal",
           "result": "passed",
-          "durationMs": 996
+          "durationMs": 1008
         }
       ]
     },
@@ -655,47 +659,47 @@
         {
           "name": "the three flames keep independent streaks",
           "result": "passed",
-          "durationMs": 46
+          "durationMs": 63
         },
         {
           "name": "a goal is recorded once per day, however often it fires",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 8
         },
         {
           "name": "un-completing a task leaves the other flames alone",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 7
         },
         {
           "name": "recordUncompletion reverts a specific goal kind",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "all three histories survive a save/load round trip",
           "result": "passed",
-          "durationMs": 20
+          "durationMs": 22
         },
         {
           "name": "a pre-existing file with only completions still loads",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "seeding only backfills the complete kind — create/plan are goals now",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 7
         },
         {
           "name": "the dev seed only lights the complete flame",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "enabledKinds follows the settings switches",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "a task-targeted goal matches its recurring instances, not others",
@@ -705,22 +709,22 @@
         {
           "name": "a project-targeted goal matches any task filed under it",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "isGoalMissing is true only once a task-targeted goal's task is gone",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "streak goals survive a settings round trip",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 7
         },
         {
           "name": "the reminder body ignores unconfigured create/plan slots",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "the reminder body names a configured goal by its own title",
@@ -730,12 +734,12 @@
         {
           "name": "reminders survive a settings round trip",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 4
         },
         {
           "name": "settings from before the reminder list migrate to one reminder",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         }
       ]
     },
@@ -745,22 +749,22 @@
         {
           "name": "first completion of a day is flagged, later ones are not",
           "result": "passed",
-          "durationMs": 47
+          "durationMs": 71
         },
         {
           "name": "consecutive days build a streak; today pending does not break it",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 10
         },
         {
           "name": "24h grace: a missed day breaks the streak",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 3
         },
         {
           "name": "48h grace: one missed day is forgiven, two are not",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "48h grace: yesterday missed still shows the streak from before",
@@ -775,42 +779,42 @@
         {
           "name": "streak history persists across a reload",
           "result": "passed",
-          "durationMs": 25
+          "durationMs": 26
         },
         {
           "name": "longest streak scans all history under the grace setting",
           "result": "passed",
-          "durationMs": 12
+          "durationMs": 13
         },
         {
           "name": "longest streak range names the exact first and last day",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 6
         },
         {
           "name": "completion times persist and untoggle removes the latest one",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 20
         },
         {
           "name": "seedFromHistory merges daily stats and completedAt without doubles",
           "result": "passed",
-          "durationMs": 11
+          "durationMs": 13
         },
         {
           "name": "seedDevStreak fills the demo streak without lowering real counts",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 6
         },
         {
           "name": "flame progress reaches maximum fire after a year",
           "result": "passed",
-          "durationMs": 160
+          "durationMs": 156
         },
         {
           "name": "fun stats: totals, best day and streak start",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 5
         }
       ]
     },
@@ -820,17 +824,17 @@
         {
           "name": "note* + flush an unchanged list produces no undo entry",
           "result": "passed",
-          "durationMs": 46
+          "durationMs": 52
         },
         {
           "name": "note* + flush a real change pushes exactly one undo entry",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 7
         },
         {
           "name": "note* + flush active + deleted noted back to back (an archive) coalesce into one entry",
           "result": "passed",
-          "durationMs": 29
+          "durationMs": 28
         },
         {
           "name": "note* + flush deleted + bin noted back to back (archive -> bin) coalesce into one entry",
@@ -840,22 +844,22 @@
         {
           "name": "note* + flush a Waiting for Approval denial (active straight to bin) reads as deleted",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 4
         },
         {
           "name": "note* + flush a new mutation after the first is a second, separate entry",
           "result": "passed",
-          "durationMs": 10
+          "durationMs": 9
         },
         {
           "name": "undo/redo undo restores the prior snapshot and enables redo",
           "result": "passed",
-          "durationMs": 10
+          "durationMs": 7
         },
         {
           "name": "undo/redo redo re-applies the undone change",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 18
         },
         {
           "name": "undo/redo restoring straight from the bin to active is one undo entry",
@@ -865,37 +869,37 @@
         {
           "name": "undo/redo multiple sequential undos walk back through history in order",
           "result": "passed",
-          "durationMs": 27
+          "durationMs": 23
         },
         {
           "name": "undo/redo a fresh mutation after an undo clears the redo stack",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 7
         },
         {
           "name": "undo/redo undo/redo persist through the repository tagged accordingly",
           "result": "passed",
-          "durationMs": 43
+          "durationMs": 38
         },
         {
           "name": "undo/redo undo on an empty stack returns null and stays a no-op",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 2
         },
         {
           "name": "bounded history the undo stack never grows past maxEntries",
           "result": "passed",
-          "durationMs": 257
+          "durationMs": 232
         },
         {
           "name": "describeChange wording bulk changes of the same kind describe as one grouped phrase",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "describeChange wording an empty diff describes as \"Updated tasks\"",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 1
         },
         {
           "name": "describeChange wording archive, bin-move and restore each get their own wording",
@@ -910,37 +914,37 @@
         {
           "name": "groups the project tasks into the three columns",
           "result": "passed",
-          "durationMs": 741
+          "durationMs": 799
         },
         {
           "name": "dragging a card to another column changes its stage",
           "result": "passed",
-          "durationMs": 227
+          "durationMs": 223
         },
         {
           "name": "on desktop a plain mouse drag moves a card between columns",
           "result": "passed",
-          "durationMs": 109
+          "durationMs": 104
         },
         {
           "name": "the close button removes a task from the project",
           "result": "passed",
-          "durationMs": 77
+          "durationMs": 70
         },
         {
           "name": "edit dialog saves name and description",
           "result": "passed",
-          "durationMs": 2225
+          "durationMs": 2237
         },
         {
           "name": "cancelling the edit dialog changes nothing",
           "result": "passed",
-          "durationMs": 142
+          "durationMs": 146
         },
         {
           "name": "an empty name keeps the previous project name",
           "result": "passed",
-          "durationMs": 1736
+          "durationMs": 1862
         }
       ]
     },
@@ -950,12 +954,12 @@
         {
           "name": "first load seeds the placeholder projects and persists them",
           "result": "passed",
-          "durationMs": 66
+          "durationMs": 49
         },
         {
           "name": "upsert renames a project, persists it and survives a reload",
           "result": "passed",
-          "durationMs": 10
+          "durationMs": 7
         },
         {
           "name": "upsert adds a project with an unknown id",
@@ -965,27 +969,27 @@
         {
           "name": "byId and nameOf handle null and unknown ids",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 3
         },
         {
           "name": "a corrupt projects.json falls back to the placeholder projects",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "an empty or id-less projects file keeps the placeholders",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "load only reads the file once per session",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 4
         },
         {
           "name": "stageLabel maps kanban ids to display names",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 2
         }
       ]
     },
@@ -995,12 +999,12 @@
         {
           "name": "a Projects exclude-tag rule hides matching tasks",
           "result": "passed",
-          "durationMs": 887
+          "durationMs": 905
         },
         {
           "name": "the same rule hides matching tasks on a project board",
           "result": "passed",
-          "durationMs": 91
+          "durationMs": 81
         }
       ]
     },
@@ -1010,37 +1014,37 @@
         {
           "name": "shows all active tasks and the three seed projects",
           "result": "passed",
-          "durationMs": 803
+          "durationMs": 880
         },
         {
           "name": "dragging a task onto a project assigns it",
           "result": "passed",
-          "durationMs": 373
+          "durationMs": 348
         },
         {
           "name": "on desktop a plain mouse drag (no long-press) assigns the task",
           "result": "passed",
-          "durationMs": 206
+          "durationMs": 222
         },
         {
           "name": "touch platforms keep the long-press hint",
           "result": "passed",
-          "durationMs": 123
+          "durationMs": 131
         },
         {
           "name": "an assigned task shows its project as a chip in the task pane",
           "result": "passed",
-          "durationMs": 145
+          "durationMs": 110
         },
         {
           "name": "tapping a project card opens its board when a task chip shares the name",
           "result": "passed",
-          "durationMs": 427
+          "durationMs": 339
         },
         {
           "name": "renamed projects load from disk and show on the cards",
           "result": "passed",
-          "durationMs": 143
+          "durationMs": 125
         }
       ]
     },
@@ -1050,32 +1054,32 @@
         {
           "name": "task without a project shows no tags",
           "result": "passed",
-          "durationMs": 597
+          "durationMs": 599
         },
         {
           "name": "assigned task shows project name and stage tags",
           "result": "passed",
-          "durationMs": 50
+          "durationMs": 55
         },
         {
           "name": "stage tag follows the kanban status",
           "result": "passed",
-          "durationMs": 32
+          "durationMs": 34
         },
         {
           "name": "closed stage shows the Closed tag",
           "result": "passed",
-          "durationMs": 47
+          "durationMs": 35
         },
         {
           "name": "renaming a project updates the tag on the tile",
           "result": "passed",
-          "durationMs": 128
+          "durationMs": 134
         },
         {
           "name": "tag falls back to the raw id when the project is unknown",
           "result": "passed",
-          "durationMs": 48
+          "durationMs": 39
         }
       ]
     },
@@ -1085,17 +1089,17 @@
         {
           "name": "placeholders provide three seed projects with stable ids",
           "result": "passed",
-          "durationMs": 23
+          "durationMs": 40
         },
         {
           "name": "toJson/fromJson round-trips id, name and description",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "fromJson tolerates missing keys",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "copyWith replaces only the given fields and never the id",
@@ -1110,17 +1114,17 @@
         {
           "name": "CountdownTimerItem serializes created/edited timestamps",
           "result": "passed",
-          "durationMs": 46
+          "durationMs": 41
         },
         {
           "name": "milestones survive a round trip",
           "result": "passed",
-          "durationMs": 15
+          "durationMs": 11
         },
         {
           "name": "editedAt defaults to createdAt when omitted",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 7
         },
         {
           "name": "legacy json without timestamps or milestones still loads",
@@ -1130,17 +1134,17 @@
         {
           "name": "milestones with a non-positive value are dropped on load",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "defaults are 10 years/months/weeks/days plus the three big counts",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 6
         },
         {
           "name": "CountdownMilestone.shift fixed-length units add a plain duration",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "CountdownMilestone.shift months and years follow the calendar",
@@ -1180,7 +1184,7 @@
         {
           "name": "dueMilestone an after-only milestone never fires before the event",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "dueMilestone reports only the most recent milestone after a large jump",
@@ -1210,7 +1214,7 @@
         {
           "name": "sortedMilestones orders longest first regardless of unit",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         }
       ]
     },
@@ -1220,22 +1224,22 @@
         {
           "name": "failure-dot acknowledgement markSeen clears the unseen flag and survives a restart",
           "result": "passed",
-          "durationMs": 78
+          "durationMs": 68
         },
         {
           "name": "failure-dot acknowledgement a newer failing run lights the dot up again",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 7
         },
         {
           "name": "failure-dot acknowledgement an undated report is acknowledged by its fingerprint",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 6
         },
         {
           "name": "failure-dot acknowledgement an all-green run never counts as unseen failures",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 8
         }
       ]
     },
@@ -1245,7 +1249,7 @@
         {
           "name": "a configured Wishlist rule hides tasks that do not carry the tag",
           "result": "passed",
-          "durationMs": 1212
+          "durationMs": 1215
         }
       ]
     },
@@ -1255,22 +1259,22 @@
         {
           "name": "no entries today leaves every checkpoint unlogged",
           "result": "passed",
-          "durationMs": 29
+          "durationMs": 27
         },
         {
           "name": "an entry in each window marks all three checkpoints logged",
           "result": "passed",
-          "durationMs": 14
+          "durationMs": 11
         },
         {
           "name": "an entry just before a checkpoint counts toward the earlier window",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "an entry on a different day is ignored",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 1
         },
         {
           "name": "a plain (non-eating-habit) task never counts",
@@ -1290,22 +1294,22 @@
         {
           "name": "markLevelOpacity (the smooth fade) the coarsest (day) level stays fully visible at any zoom",
           "result": "passed",
-          "durationMs": 34
+          "durationMs": 39
         },
         {
           "name": "markLevelOpacity (the smooth fade) a level is hidden when its marks are too close together",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "markLevelOpacity (the smooth fade) a level is fully shown once its marks are far enough apart",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 5
         },
         {
           "name": "markLevelOpacity (the smooth fade) opacity ramps smoothly through the fade band",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "markLevelOpacity (the smooth fade) finer marks appear only after coarser marks as zoom increases",
@@ -1315,42 +1319,42 @@
         {
           "name": "markLevelOpacity (the smooth fade) opacity increases monotonically as the user zooms in",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "Chronize page widget renders the ruler and the scroll wheels",
           "result": "passed",
-          "durationMs": 802
+          "durationMs": 897
         },
         {
           "name": "Chronize page widget the zoom buttons change the finest-visible granularity",
           "result": "passed",
-          "durationMs": 513
+          "durationMs": 452
         },
         {
           "name": "Chronize page widget the Today button settles without error",
           "result": "passed",
-          "durationMs": 183
+          "durationMs": 209
         },
         {
           "name": "Chronize page widget shows prev/next navigator cards when no event is in view",
           "result": "passed",
-          "durationMs": 102
+          "durationMs": 116
         },
         {
           "name": "Chronize page widget hides navigator cards when an event is in view",
           "result": "passed",
-          "durationMs": 81
+          "durationMs": 118
         },
         {
           "name": "Chronize page widget tapping empty timeline opens the new-task dialog",
           "result": "passed",
-          "durationMs": 431
+          "durationMs": 454
         },
         {
           "name": "Chronize page widget tapping a task opens the edit dialog",
           "result": "passed",
-          "durationMs": 176
+          "durationMs": 182
         }
       ]
     },
@@ -1360,27 +1364,27 @@
         {
           "name": "fun stats sum up the all-time trivia",
           "result": "passed",
-          "durationMs": 2286
+          "durationMs": 2268
         },
         {
           "name": "tapping a fun stat opens a sheet listing the items behind it",
           "result": "passed",
-          "durationMs": 1210
+          "durationMs": 1208
         },
         {
           "name": "a stat with nothing behind it stays a plain row",
           "result": "passed",
-          "durationMs": 857
+          "durationMs": 832
         },
         {
           "name": "postponed items are counted from the daily stats",
           "result": "passed",
-          "durationMs": 564
+          "durationMs": 584
         },
         {
           "name": "an empty history says so instead of showing zeroes",
           "result": "passed",
-          "durationMs": 558
+          "durationMs": 514
         }
       ]
     },
@@ -1390,7 +1394,7 @@
         {
           "name": "CSV formatting plain fields pass through unquoted",
           "result": "passed",
-          "durationMs": 28
+          "durationMs": 21
         },
         {
           "name": "CSV formatting fields with commas, quotes and newlines are quoted and escaped",
@@ -1400,42 +1404,42 @@
         {
           "name": "CSV formatting DateTime fields are ISO 8601",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 4
         },
         {
           "name": "CSV formatting rows are joined with CRLF",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 4
         },
         {
           "name": "task events derives one event per dated lifecycle field",
           "result": "passed",
-          "durationMs": 11
+          "durationMs": 14
         },
         {
           "name": "task events deleted tasks contribute deletion events with auto flag",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "task events restored heuristic only applies to active undone tasks",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "alarm log parsing parses entry lines with level, stage and message",
           "result": "passed",
-          "durationMs": 17
+          "durationMs": 13
         },
         {
           "name": "alarm log parsing parses section banners and skips unparseable lines",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "daily usage rollup combines events and daily stats per day",
           "result": "passed",
-          "durationMs": 16
+          "durationMs": 13
         },
         {
           "name": "hourly usage rollup buckets events by day and hour, split per source",
@@ -1445,7 +1449,7 @@
         {
           "name": "task history dataset one row per task with status and derived metrics",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "full export bundle buildAllDatasets returns every dataset with unique file names",
@@ -1455,7 +1459,7 @@
         {
           "name": "full export bundle export info manifest aggregates counts and date range",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         }
       ]
     },
@@ -1465,52 +1469,52 @@
         {
           "name": "lists the timer's milestones longest first",
           "result": "passed",
-          "durationMs": 1185
+          "durationMs": 1184
         },
         {
           "name": "saving returns the edited milestones",
           "result": "passed",
-          "durationMs": 190
+          "durationMs": 181
         },
         {
           "name": "cancelling returns null and leaves the timer untouched",
           "result": "passed",
-          "durationMs": 123
+          "durationMs": 125
         },
         {
           "name": "adding a milestone appends an editable row",
           "result": "passed",
-          "durationMs": 199
+          "durationMs": 212
         },
         {
           "name": "a blank or zero row is dropped on save",
           "result": "passed",
-          "durationMs": 167
+          "durationMs": 185
         },
         {
           "name": "duplicate number+unit rows collapse to one",
           "result": "passed",
-          "durationMs": 135
+          "durationMs": 143
         },
         {
           "name": "removing a row drops that milestone",
           "result": "passed",
-          "durationMs": 119
+          "durationMs": 122
         },
         {
           "name": "the direction button cycles both → before → after",
           "result": "passed",
-          "durationMs": 151
+          "durationMs": 148
         },
         {
           "name": "the master switch turns milestone notifications off",
           "result": "passed",
-          "durationMs": 89
+          "durationMs": 99
         },
         {
           "name": "Defaults restores the seven default milestones",
           "result": "passed",
-          "durationMs": 211
+          "durationMs": 190
         }
       ]
     },
@@ -1520,7 +1524,7 @@
         {
           "name": "a configured Waiting for Approval rule narrows the queue on top of the pending gate",
           "result": "passed",
-          "durationMs": 919
+          "durationMs": 957
         }
       ]
     },
@@ -1530,72 +1534,72 @@
         {
           "name": "shows only wishlist tasks and no due dates",
           "result": "passed",
-          "durationMs": 1411
+          "durationMs": 1279
         },
         {
           "name": "the swipe Copy shortcut puts the item on the clipboard",
           "result": "passed",
-          "durationMs": 303
+          "durationMs": 393
         },
         {
           "name": "swipe right shows Share/Copy shortcuts; Copy copies the item",
           "result": "passed",
-          "durationMs": 277
+          "durationMs": 248
         },
         {
           "name": "swipe right countdown moves the item back one release step",
           "result": "passed",
-          "durationMs": 609
+          "durationMs": 618
         },
         {
           "name": "the swipe Delete shortcut deletes the item",
           "result": "passed",
-          "durationMs": 240
+          "durationMs": 232
         },
         {
           "name": "swipe left starts selection mode; copy selected as prompt copies them and exits selection",
           "result": "passed",
-          "durationMs": 326
+          "durationMs": 289
         },
         {
           "name": "delete selected moves the selected items to the deleted list",
           "result": "passed",
-          "durationMs": 616
+          "durationMs": 627
         },
         {
           "name": "undo restores an item deleted from selection",
           "result": "passed",
-          "durationMs": 1094
+          "durationMs": 1029
         },
         {
           "name": "add dialog puts labels and quick priority above description",
           "result": "passed",
-          "durationMs": 512
+          "durationMs": 513
         },
         {
           "name": "a URL in the description opens externally, not the edit dialog",
           "result": "passed",
-          "durationMs": 324
+          "durationMs": 283
         },
         {
           "name": "wishes are ordered by priority",
           "result": "passed",
-          "durationMs": 171
+          "durationMs": 250
         },
         {
           "name": "sort menu can order wishes by newest first",
           "result": "passed",
-          "durationMs": 305
+          "durationMs": 370
         },
         {
           "name": "release groups (pure) tags decide next-release/soon/backlog membership",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 4
         },
         {
           "name": "release groups (pure) a backlog uid shipped in the running version is newly implemented, regardless of tags",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "release groups (pure) setWishReleaseGroup rewrites only the release tag",
@@ -1605,22 +1609,22 @@
         {
           "name": "release groups (pure) proposeForNextPrompt lists titles and tags, empty backlog stays terse",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "items are grouped into release sections with headers",
           "result": "passed",
-          "durationMs": 260
+          "durationMs": 255
         },
         {
           "name": "moving an item to a release group retags and resections it",
           "result": "passed",
-          "durationMs": 694
+          "durationMs": 656
         },
         {
           "name": "propose for next copies backlog/soon items, excluding done and shipped ones",
           "result": "passed",
-          "durationMs": 253
+          "durationMs": 262
         }
       ]
     },
@@ -1630,32 +1634,32 @@
         {
           "name": "shows only food diary entries, never plain tasks",
           "result": "passed",
-          "durationMs": 1178
+          "durationMs": 1253
         },
         {
           "name": "groups past days into collapsed sections",
           "result": "passed",
-          "durationMs": 254
+          "durationMs": 289
         },
         {
           "name": "add dialog creates a tagged entry with a title and time",
           "result": "passed",
-          "durationMs": 1111
+          "durationMs": 1043
         },
         {
           "name": "swiping an entry deletes it and moves it to the deleted list",
           "result": "passed",
-          "durationMs": 671
+          "durationMs": 649
         },
         {
           "name": "tapping an entry opens the edit dialog with its values",
           "result": "passed",
-          "durationMs": 249
+          "durationMs": 291
         },
         {
           "name": "copies a previous food entry to the current time",
           "result": "passed",
-          "durationMs": 684
+          "durationMs": 637
         }
       ]
     },
@@ -1665,22 +1669,22 @@
         {
           "name": "first load imports the Todo.md backlog labelled \"old\"",
           "result": "passed",
-          "durationMs": 63
+          "durationMs": 79
         },
         {
           "name": "existing items are kept and matching titles are not duplicated",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 18
         },
         {
           "name": "import runs only once, so deleting an imported item sticks",
           "result": "passed",
-          "durationMs": 34
+          "durationMs": 41
         },
         {
           "name": "an unreadable wishlist file is never overwritten by the import",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 7
         },
         {
           "name": "backlog titles are unique after normalization",
@@ -1705,12 +1709,12 @@
         {
           "name": "parseIcs joins folded (continuation) lines back into one property",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "parseIcs unescapes commas, semicolons and backslashes in text values",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "parseIcs an event with no DTEND or DURATION keeps a zero-length window",
@@ -1720,12 +1724,12 @@
         {
           "name": "parseIcs captures the RRULE and EXDATE values",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "eventsInRange (recurrence expansion) expands FREQ=WEEKLY;BYDAY into the right occurrences, honouring COUNT",
           "result": "passed",
-          "durationMs": 14
+          "durationMs": 13
         },
         {
           "name": "eventsInRange (recurrence expansion) only returns occurrences overlapping the requested range",
@@ -1735,12 +1739,12 @@
         {
           "name": "eventsInRange (recurrence expansion) EXDATE removes one occurrence from the expansion",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "eventsInRange (recurrence expansion) a non-recurring event is included only when it overlaps the range",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 1
         },
         {
           "name": "eventsInRange (recurrence expansion) a daily recurrence with INTERVAL steps by that many days",
@@ -1755,7 +1759,7 @@
         {
           "name": "pickDateInstantly supports dates back to 1900",
           "result": "passed",
-          "durationMs": 1001
+          "durationMs": 1083
         }
       ]
     },
@@ -1765,7 +1769,7 @@
         {
           "name": "wellbeing chart labels only six-hour boundaries",
           "result": "passed",
-          "durationMs": 36
+          "durationMs": 28
         },
         {
           "name": "wellbeing chart ignores values outside its whole-hour range",
@@ -1780,17 +1784,17 @@
         {
           "name": "shows summary, chart and explanation for timestamped history",
           "result": "passed",
-          "durationMs": 1048
+          "durationMs": 1079
         },
         {
           "name": "falls back to legacy duration list without timestamps",
           "result": "passed",
-          "durationMs": 126
+          "durationMs": 148
         },
         {
           "name": "shows empty state when nothing recorded",
           "result": "passed",
-          "durationMs": 61
+          "durationMs": 66
         }
       ]
     },
@@ -1800,17 +1804,17 @@
         {
           "name": "export/import preserves analytics data structures",
           "result": "passed",
-          "durationMs": 85
+          "durationMs": 100
         },
         {
           "name": "legacy list export still imports with warnings",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 7
         },
         {
           "name": "versioned export contains lifecycle and analytics fields",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 10
         }
       ]
     },
@@ -1820,7 +1824,7 @@
         {
           "name": "parseChangelogReleases parses versions, dates and bullet entries",
           "result": "passed",
-          "durationMs": 36
+          "durationMs": 45
         },
         {
           "name": "parseChangelogReleases ignores the title heading and undated headings",
@@ -1830,7 +1834,7 @@
         {
           "name": "parseChangelogReleases joins wrapped continuation lines into the previous bullet",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 4
         },
         {
           "name": "parseChangelogReleases returns nothing when no release has a parsable date",
@@ -1840,32 +1844,32 @@
         {
           "name": "ChangelogPage heatmap toggles between the markdown text and the heatmap",
           "result": "passed",
-          "durationMs": 1340
+          "durationMs": 1344
         },
         {
           "name": "ChangelogPage heatmap opens on the newest release day and lists its changes",
           "result": "passed",
-          "durationMs": 192
+          "durationMs": 187
         },
         {
           "name": "ChangelogPage heatmap tapping another day shows that day's changes",
           "result": "passed",
-          "durationMs": 238
+          "durationMs": 296
         },
         {
           "name": "ChangelogPage heatmap month labels carry the year on the first column and on a year switch",
           "result": "passed",
-          "durationMs": 301
+          "durationMs": 310
         },
         {
           "name": "ChangelogPage heatmap months inside the same year keep the bare month name",
           "result": "passed",
-          "durationMs": 125
+          "durationMs": 131
         },
         {
           "name": "ChangelogPage heatmap a day without releases says so",
           "result": "passed",
-          "durationMs": 177
+          "durationMs": 132
         }
       ]
     },
@@ -1875,12 +1879,12 @@
         {
           "name": "stable backlog ids every entry has a unique, prefixed uid",
           "result": "passed",
-          "durationMs": 31
+          "durationMs": 47
         },
         {
           "name": "stable backlog ids every shipped wish points at a backlog entry or a real uuid",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 7
         },
         {
           "name": "stable backlog ids the autocompleted tag registers as a system label",
@@ -1905,7 +1909,7 @@
         {
           "name": "backfillLegacyWishUids is a no-op the second time",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 7
         },
         {
           "name": "applyShippedWishes ticks the item off, tags it and records the release",
@@ -1925,22 +1929,22 @@
         {
           "name": "applyShippedWishes ignores unshipped wishes and non-wish tasks",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "storage integration a fresh install imports the backlog with its stable uids",
           "result": "passed",
-          "durationMs": 33
+          "durationMs": 32
         },
         {
           "name": "storage integration loadTaskList auto-completes wishes whose feature shipped",
           "result": "passed",
-          "durationMs": 89
+          "durationMs": 101
         },
         {
           "name": "storage integration an install carrying pre-0.1.232 random uids is upgraded in place",
           "result": "passed",
-          "durationMs": 21
+          "durationMs": 24
         }
       ]
     },
@@ -1950,42 +1954,42 @@
         {
           "name": "falls back to the bundled report when offline",
           "result": "passed",
-          "durationMs": 991
+          "durationMs": 1100
         },
         {
           "name": "prefers the latest online report over the bundled one",
           "result": "passed",
-          "durationMs": 79
+          "durationMs": 62
         },
         {
           "name": "states current vs tested version and flags a mismatch",
           "result": "passed",
-          "durationMs": 67
+          "durationMs": 56
         },
         {
           "name": "confirms a match when tested version equals current",
           "result": "passed",
-          "durationMs": 58
+          "durationMs": 53
         },
         {
           "name": "shows all-green summary without a failure list",
           "result": "passed",
-          "durationMs": 55
+          "durationMs": 58
         },
         {
           "name": "lists every suite and its tests even when all of them pass",
           "result": "passed",
-          "durationMs": 123
+          "durationMs": 135
         },
         {
           "name": "sorts a failing suite above the green ones",
           "result": "passed",
-          "durationMs": 74
+          "durationMs": 83
         },
         {
           "name": "explains when an older report has no per-test details",
           "result": "passed",
-          "durationMs": 104
+          "durationMs": 66
         },
         {
           "name": "explains when neither online nor bundled report is available",
@@ -1995,7 +1999,7 @@
         {
           "name": "formatTestDuration milliseconds under a second, one-decimal seconds above",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 5
         }
       ]
     },
@@ -2005,12 +2009,12 @@
         {
           "name": "activity heatmap caps its colour ramp below a huge outlier",
           "result": "passed",
-          "durationMs": 2000
+          "durationMs": 2088
         },
         {
           "name": "activity heatmap legend is plain when there is no outlier",
           "result": "passed",
-          "durationMs": 784
+          "durationMs": 921
         }
       ]
     },
@@ -2020,7 +2024,7 @@
         {
           "name": "WeeklyHoursPlan model default plan totals 8:36 a day and 43:00 for the week",
           "result": "passed",
-          "durationMs": 33
+          "durationMs": 25
         },
         {
           "name": "WeeklyHoursPlan model a Monday surplus pushes Friday's theoretical end time later",
@@ -2045,47 +2049,47 @@
         {
           "name": "WeeklyHoursService first load seeds and persists the default plan",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 15
         },
         {
           "name": "WeeklyHoursService updatePlan persists a change and it survives a reload",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 7
         },
         {
           "name": "WeeklyHoursService actualFor returns a zeroed, unpersisted record for an untouched week",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 4
         },
         {
           "name": "WeeklyHoursService saveActual persists a record and it survives a reload",
           "result": "passed",
-          "durationMs": 16
+          "durationMs": 10
         },
         {
           "name": "WeeklyHoursService saveActual drops the record once it goes back to zero",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 5
         },
         {
           "name": "WeeklyHoursService saveActual replaces the existing record for the same week",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 4
         },
         {
           "name": "WeeklyActual model mondayOf normalizes a mid-week date to that week's Monday",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 1
         },
         {
           "name": "WeeklyActual model weekKey is the Monday as yyyy-MM-dd",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "WeeklyActual model toJson/fromJson round-trips weekStart and overUndertimeMinutes",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "WeeklyActual model copyWith replaces overUndertimeMinutes and keeps weekStart",
@@ -2095,32 +2099,32 @@
         {
           "name": "WeeklyHoursPlannerPage shows every weekday and the weekly total",
           "result": "passed",
-          "durationMs": 884
+          "durationMs": 929
         },
         {
           "name": "WeeklyHoursPlannerPage dragging a block handle changes the weekly total, and reset restores it",
           "result": "passed",
-          "durationMs": 358
+          "durationMs": 431
         },
         {
           "name": "WeeklyHoursPlannerPage an imported Google Calendar event shows on its weekday, translucent underneath the work blocks",
           "result": "passed",
-          "durationMs": 191
+          "durationMs": 204
         },
         {
           "name": "WeeklyHoursPlannerPage week navigation shows each week's own actual over/undertime",
           "result": "passed",
-          "durationMs": 293
+          "durationMs": 254
         },
         {
           "name": "WeeklyHoursPlannerPage typing an over/undertime value updates the weekly total immediately",
           "result": "passed",
-          "durationMs": 331
+          "durationMs": 273
         },
         {
           "name": "WeeklyHoursPlannerPage editing the over/undertime field persists it and survives a reload",
           "result": "passed",
-          "durationMs": 1126
+          "durationMs": 1105
         }
       ]
     },
@@ -2130,7 +2134,7 @@
         {
           "name": "transcribing into the add-entry Title field keeps the dialog open and editable, saving one entry",
           "result": "passed",
-          "durationMs": 2255
+          "durationMs": 2193
         }
       ]
     },
@@ -2140,17 +2144,17 @@
         {
           "name": "TestReport.fromJson is tolerant of missing keys",
           "result": "passed",
-          "durationMs": 28
+          "durationMs": 51
         },
         {
           "name": "TestReport.fromJson round-trips through toJson",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 13
         },
         {
           "name": "TestReport.fromJson failures with failed=0 means no red dot when unavailable",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "TestReport.newest picks the later generatedAt",
@@ -2165,12 +2169,12 @@
         {
           "name": "TestReport.newest a null generatedAt is treated as older than a dated report",
           "result": "passed",
-          "durationMs": 1
+          "durationMs": 2
         },
         {
           "name": "TestReport.fromMachineJsonLines counts passed, failed, skipped and collects failure details",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 8
         },
         {
           "name": "TestReport.fromMachineJsonLines all-green run has no failures",
@@ -2180,12 +2184,12 @@
         {
           "name": "TestReport.fromMachineJsonLines empty or garbage input yields an available-but-empty report",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "TestReport.fromMachineJsonLines groups every executed test per suite, with durations",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 5
         },
         {
           "name": "TestReport.fromMachineJsonLines a run without suite events still counts, with no suite detail",
@@ -2200,12 +2204,12 @@
         {
           "name": "recipients are enabled by default and round-trip the flag",
           "result": "passed",
-          "durationMs": 28
+          "durationMs": 29
         },
         {
           "name": "recipients saved before the pause switch stay enabled",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "activeRecipients skips disabled ones but keeps them in the list",
@@ -2220,22 +2224,7 @@
         {
           "name": "config JSON round-trip preserves per-recipient enabled state",
           "result": "passed",
-          "durationMs": 4
-        }
-      ]
-    },
-    {
-      "path": "test/core/done_task_order_test.dart",
-      "tests": [
-        {
-          "name": "completed tasks are sorted to the end",
-          "result": "passed",
-          "durationMs": 40
-        },
-        {
-          "name": "new tasks appear before completed tasks",
-          "result": "passed",
-          "durationMs": 6
+          "durationMs": 3
         }
       ]
     },
@@ -2245,17 +2234,32 @@
         {
           "name": "a recipient can be disabled without being removed",
           "result": "passed",
-          "durationMs": 3094
+          "durationMs": 3108
         },
         {
           "name": "re-enabling resumes a paused recipient",
           "result": "passed",
-          "durationMs": 1480
+          "durationMs": 1436
         },
         {
           "name": "editing a paused recipient does not silently resume them",
           "result": "passed",
-          "durationMs": 2528
+          "durationMs": 2657
+        }
+      ]
+    },
+    {
+      "path": "test/core/done_task_order_test.dart",
+      "tests": [
+        {
+          "name": "completed tasks are sorted to the end",
+          "result": "passed",
+          "durationMs": 29
+        },
+        {
+          "name": "new tasks appear before completed tasks",
+          "result": "passed",
+          "durationMs": 3
         }
       ]
     },
@@ -2265,12 +2269,12 @@
         {
           "name": "diffSnapshots (pure) new uid is a created event carrying the title",
           "result": "passed",
-          "durationMs": 45
+          "durationMs": 33
         },
         {
           "name": "diffSnapshots (pure) new uid the journal has seen before is a restore",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "diffSnapshots (pure) field changes group into one event per aspect",
@@ -2300,7 +2304,7 @@
         {
           "name": "diffSnapshots (pure) an explicit source is stamped on every event produced",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 1
         },
         {
           "name": "journal persistence through StorageService saves diff into the journal; first contact is silent",
@@ -2310,17 +2314,17 @@
         {
           "name": "journal persistence through StorageService reappearing after a recorded delete is a restore",
           "result": "passed",
-          "durationMs": 35
+          "durationMs": 37
         },
         {
           "name": "journal persistence through StorageService day rollover sweep records deleted events",
           "result": "passed",
-          "durationMs": 37
+          "durationMs": 27
         },
         {
           "name": "journal persistence through StorageService journal survives a reload and keeps per-item seq counting",
           "result": "passed",
-          "durationMs": 18
+          "durationMs": 24
         },
         {
           "name": "journal persistence through StorageService saveTaskList threads its source into the journaled events",
@@ -2330,17 +2334,17 @@
         {
           "name": "journal persistence through StorageService export payload carries the journal as item_events",
           "result": "passed",
-          "durationMs": 10
+          "durationMs": 13
         },
         {
           "name": "describeItemEvent covers the common lifecycle wordings",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 4
         },
         {
           "name": "describeItemEvent a non-user source is tagged on the end; user stays unadorned",
           "result": "passed",
-          "durationMs": 1
+          "durationMs": 2
         },
         {
           "name": "ItemEvent source JSON round-trip defaults to user and is omitted from JSON when so",
@@ -2350,12 +2354,12 @@
         {
           "name": "ItemEvent source JSON round-trip a non-user source round-trips through JSON",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "ItemEvent source JSON round-trip a pre-existing journal line without \"source\" defaults to user",
           "result": "passed",
-          "durationMs": 1
+          "durationMs": 2
         }
       ]
     },
@@ -2365,17 +2369,17 @@
         {
           "name": "attachments generate unique ids and default type/text",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 33
         },
         {
           "name": "toJson omits empty text/fileName/relativePath",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 6
         },
         {
           "name": "round-trips a text attachment",
           "result": "passed",
-          "durationMs": 13
+          "durationMs": 10
         },
         {
           "name": "round-trips a file-backed attachment",
@@ -2395,12 +2399,12 @@
         {
           "name": "Config persists settings to disk",
           "result": "passed",
-          "durationMs": 59
+          "durationMs": 71
         },
         {
           "name": "weekly hours planner end hour is kept above the start hour",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 4
         },
         {
           "name": "deletedItemsRetentionDays is clamped on load",
@@ -2415,7 +2419,7 @@
         {
           "name": "unknown startTool values are ignored on load",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 1
         }
       ]
     },
@@ -2425,17 +2429,17 @@
         {
           "name": "toggleDone switches task state",
           "result": "passed",
-          "durationMs": 32
+          "durationMs": 25
         },
         {
           "name": "tasks generate unique ids",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 3
         },
         {
           "name": "recurrence fields serialize and deserialize",
           "result": "passed",
-          "durationMs": 16
+          "durationMs": 14
         },
         {
           "name": "project fields default and serialize",
@@ -2445,22 +2449,22 @@
         {
           "name": "isWish defaults to false and serializes",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "isEatingHabit defaults to false and serializes",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 6
         },
         {
           "name": "attachments default to empty and are omitted from JSON",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "attachments (text, image, pdf) round-trip through JSON",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 4
         }
       ]
     },
@@ -2470,22 +2474,22 @@
         {
           "name": "importFile copies the source into attachments/<taskUid>/",
           "result": "passed",
-          "durationMs": 63
+          "durationMs": 80
         },
         {
           "name": "deleteAttachmentFile removes the copy but not the task dir",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 13
         },
         {
           "name": "deleteAttachmentFile on a text (file-less) attachment is a no-op",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "deleteAttachmentsForTask removes the whole task subdirectory",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 9
         }
       ]
     },
@@ -2495,37 +2499,37 @@
         {
           "name": "ViewFilterRules view registry approval is a registered view alongside home and wishlist",
           "result": "passed",
-          "durationMs": 22
+          "durationMs": 30
         },
         {
           "name": "ViewFilterRules view registry every view id has a builtInRules entry (possibly empty)",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "ViewFilterRules view registry home, wishlist, approval and projects describe a built-in rule",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "ViewFilterRules JSON round trip round-trips exclude and include tags",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 6
         },
         {
           "name": "ViewFilterRules JSON round trip missing keys parse as empty (isEmpty true)",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "ItemViews.passesFilterRules null or empty rules pass everything",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 8
         },
         {
           "name": "ItemViews.passesFilterRules excludeTags hides a matching task, case-insensitively",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "ItemViews.passesFilterRules includeTags keeps only a matching task",
@@ -2545,32 +2549,32 @@
         {
           "name": "ItemViews.applyFilterRules filters out excluded tasks",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 1
         },
         {
           "name": "view queries respect configured rules homeBucket applies rules on top of bucket + search",
           "result": "passed",
-          "durationMs": 10
+          "durationMs": 6
         },
         {
           "name": "view queries respect configured rules wishlist applies rules on top of the isWish flag",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "view queries respect configured rules active applies rules on top of deletedAt == null",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "view queries respect configured rules projectTasks and boardColumn apply rules",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "Config.viewFilterRules persistence round-trips through toMap/applyMap",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 6
         },
         {
           "name": "Config.viewFilterRules persistence applyMap ignores a missing or malformed key",
@@ -2585,27 +2589,27 @@
         {
           "name": "loadTaskList removes completed tasks on new day",
           "result": "passed",
-          "durationMs": 133
+          "durationMs": 189
         },
         {
           "name": "loadTaskList merges wishlist.json items into the task list",
           "result": "passed",
-          "durationMs": 34
+          "durationMs": 38
         },
         {
           "name": "loadTaskList picks up wishlist items even without a tasks file",
           "result": "passed",
-          "durationMs": 15
+          "durationMs": 28
         },
         {
           "name": "importTaskList assigns unique ids when missing or duplicated",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 8
         },
         {
           "name": "loadBinTaskList purges items older than the retention window",
           "result": "passed",
-          "durationMs": 14
+          "durationMs": 38
         },
         {
           "name": "loadBinTaskList purge deletes the expired task's attachment files",
@@ -2620,7 +2624,7 @@
         {
           "name": "dateDiffInDays ignores time of day",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 20
         }
       ]
     },
@@ -2630,7 +2634,7 @@
         {
           "name": "tasks due tomorrow are not included in today list",
           "result": "passed",
-          "durationMs": 42
+          "durationMs": 40
         },
         {
           "name": "dateDiffInDays ignores the time of day",
@@ -2650,7 +2654,7 @@
         {
           "name": "done tasks move to deleted list on day change",
           "result": "passed",
-          "durationMs": 22
+          "durationMs": 24
         }
       ]
     },
@@ -2660,17 +2664,17 @@
         {
           "name": "a single task on a day is set to 18:00",
           "result": "passed",
-          "durationMs": 41
+          "durationMs": 48
         },
         {
           "name": "tasks on the same day increment by a minute in ranking order",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 6
         },
         {
           "name": "different days each start fresh at 18:00",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "the calendar date is preserved, only the time changes",
@@ -2680,7 +2684,7 @@
         {
           "name": "tasks without a due date are left untouched",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         }
       ]
     },
@@ -2695,7 +2699,7 @@
         {
           "name": "buildSeedEvents (pure) deleted list tasks produce deleted events; restore heuristic matches _deriveTaskEvents",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "buildSeedEvents (pure) daily stats fill gaps at day-noon but never duplicate or invent unknown uids",
@@ -2705,7 +2709,7 @@
         {
           "name": "runOnce seeds once, writes the flag, and never runs twice",
           "result": "passed",
-          "durationMs": 61
+          "durationMs": 60
         },
         {
           "name": "runOnce pre-created flag opts out entirely",
@@ -2715,7 +2719,7 @@
         {
           "name": "runOnce timeline interleaves seeded past before live events by time",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 27
         }
       ]
     },
@@ -2725,37 +2729,37 @@
         {
           "name": "legacy v1 record (dueDate only) upgrades to a deadline interval",
           "result": "passed",
-          "durationMs": 58
+          "durationMs": 55
         },
         {
           "name": "toJson writes schema v2 with the interval and the dueDate mirror",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 9
         },
         {
           "name": "a real interval round-trips and keeps its duration",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 7
         },
         {
           "name": "writing dueDate collapses the interval to a deadline",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 6
         },
         {
           "name": "v2 record missing endAt falls back to the dueDate mirror",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 4
         },
         {
           "name": "allDay derives from hasExplicitTime",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 2
         },
         {
           "name": "undated tasks stay undated through the upgrade",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         }
       ]
     },
@@ -2765,17 +2769,17 @@
         {
           "name": "label_utils splits on commas/whitespace, trims, dedupes case-insensitively",
           "result": "passed",
-          "durationMs": 28
+          "durationMs": 20
         },
         {
           "name": "label_utils joins back in canonical comma-space form",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "label_utils classifies tokens into kinds",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "label_utils labelHasToken matches case-insensitively",
@@ -2800,7 +2804,7 @@
         {
           "name": "label_utils addLabelToken adds once and is idempotent",
           "result": "passed",
-          "durationMs": 1
+          "durationMs": 2
         },
         {
           "name": "label_utils removeLabelToken drops only the matching token",
@@ -2810,7 +2814,7 @@
         {
           "name": "LabelService registers unknown tokens with derived kinds and persists them",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 30
         },
         {
           "name": "LabelService re-registering known tokens is a no-op (no duplicates, no write)",
@@ -2820,12 +2824,12 @@
         {
           "name": "LabelService upsert keeps colour across a reload",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 6
         },
         {
           "name": "LabelService task saves feed the registry (dual-write)",
           "result": "passed",
-          "durationMs": 18
+          "durationMs": 15
         }
       ]
     },
@@ -2835,27 +2839,27 @@
         {
           "name": "isDue follows the off/daily/weekly schedule",
           "result": "passed",
-          "durationMs": 79
+          "durationMs": 44
         },
         {
           "name": "maybeRun is a no-op when off or without a folder",
           "result": "passed",
-          "durationMs": 12
+          "durationMs": 6
         },
         {
           "name": "maybeRun writes a restorable full backup and records the run",
           "result": "passed",
-          "durationMs": 106
+          "durationMs": 84
         },
         {
           "name": "runNow reports failure by returning null",
           "result": "passed",
-          "durationMs": 12
+          "durationMs": 11
         },
         {
           "name": "backup settings survive the config round trip",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 5
         }
       ]
     },
@@ -2865,7 +2869,7 @@
         {
           "name": "task reordering reordering updates list rankings",
           "result": "passed",
-          "durationMs": 34
+          "durationMs": 38
         }
       ]
     },
@@ -2875,12 +2879,12 @@
         {
           "name": "SafeFile writes atomically and rotates the previous content to .bak",
           "result": "passed",
-          "durationMs": 48
+          "durationMs": 43
         },
         {
           "name": "SafeFile recovers from .bak and quarantines the unreadable original",
           "result": "passed",
-          "durationMs": 15
+          "durationMs": 17
         },
         {
           "name": "SafeFile missing file (and no backup) is null, not an error",
@@ -2890,12 +2894,12 @@
         {
           "name": "SafeFile overlapping writes to the same file serialize; the last one wins",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 20
         },
         {
           "name": "corrupt stores recover instead of wiping tasks.json falls back to its .bak; the corrupt file survives later saves",
           "result": "passed",
-          "durationMs": 46
+          "durationMs": 51
         },
         {
           "name": "corrupt stores recover instead of wiping a corrupt file with no backup is quarantined, never overwritten",
@@ -2915,12 +2919,12 @@
         {
           "name": "pre-update snapshot runs once: later saves never touch the snapshot",
           "result": "passed",
-          "durationMs": 17
+          "durationMs": 21
         },
         {
           "name": "pre-update snapshot a pre-created flag opts out entirely",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 7
         },
         {
           "name": "upgrade matrix — payload shapes from earlier versions load intact earliest era: bare fields, no uid",
@@ -2935,12 +2939,12 @@
         {
           "name": "upgrade matrix — payload shapes from earlier versions load intact projects + wishlist era: projectId, kanbanStatus, isWish survive",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 10
         },
         {
           "name": "upgrade matrix — payload shapes from earlier versions load intact round-trip after upgrade: reload preserves everything and writes schema v2",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 28
         }
       ]
     },
@@ -2950,7 +2954,7 @@
         {
           "name": "home buckets date-only distance decides the tab, overdue lands in Today",
           "result": "passed",
-          "durationMs": 42
+          "durationMs": 38
         },
         {
           "name": "home buckets the where predicate narrows a bucket (search)",
@@ -2960,12 +2964,12 @@
         {
           "name": "home buckets buckets sort open tasks before done ones",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "wishlist / project queries wishlist selects only wish-flagged tasks",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "wishlist / project queries active drops soft-deleted tasks",
@@ -2975,7 +2979,7 @@
         {
           "name": "wishlist / project queries board columns filter by project and stage, skipping deleted",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "food diary foodDiary selects only eating-habit-flagged tasks",
@@ -2985,17 +2989,17 @@
         {
           "name": "food diary an eating-habit task is hidden from every other view, even with a due date and project assignment",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "waiting for approval the pre-0.1.260 waiting-for-approval spelling still gates a task",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "waiting for approval a task tagged Waiting_for_approval is hidden from every other view",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "waiting for approval waitingApproval lists only pending, non-deleted tasks",
@@ -3005,7 +3009,7 @@
         {
           "name": "waiting for approval waitingApproval applies rules on top of the structural gate",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         }
       ]
     },
@@ -3015,22 +3019,22 @@
         {
           "name": "items round-trip through the repository seam",
           "result": "passed",
-          "durationMs": 86
+          "durationMs": 84
         },
         {
           "name": "deleted items and daily stats delegate to the same stores",
           "result": "passed",
-          "durationMs": 15
+          "durationMs": 16
         },
         {
           "name": "bin items delegate to the bin store, separate from the archive",
           "result": "passed",
-          "durationMs": 15
+          "durationMs": 13
         },
         {
           "name": "history flows from saves to historyOf",
           "result": "passed",
-          "durationMs": 23
+          "durationMs": 26
         }
       ]
     },
@@ -3040,7 +3044,7 @@
         {
           "name": "app smoke test shows intro screen",
           "result": "passed",
-          "durationMs": 703
+          "durationMs": 710
         }
       ]
     },
@@ -3050,27 +3054,27 @@
         {
           "name": "shows current labels as chips",
           "result": "passed",
-          "durationMs": 684
+          "durationMs": 660
         },
         {
           "name": "deleting a chip removes just that label",
           "result": "passed",
-          "durationMs": 177
+          "durationMs": 158
         },
         {
           "name": "picking an existing label from the list adds it",
           "result": "passed",
-          "durationMs": 547
+          "durationMs": 587
         },
         {
           "name": "typing a new name offers \"Add\" and creates a custom label",
           "result": "passed",
-          "durationMs": 179
+          "durationMs": 184
         },
         {
           "name": "cancel leaves the labels unchanged",
           "result": "passed",
-          "durationMs": 210
+          "durationMs": 166
         }
       ]
     },
@@ -3080,32 +3084,32 @@
         {
           "name": "search field is enabled and filters by title",
           "result": "passed",
-          "durationMs": 2192
+          "durationMs": 2031
         },
         {
           "name": "search is case-insensitive",
           "result": "passed",
-          "durationMs": 614
+          "durationMs": 612
         },
         {
           "name": "search matches the label field",
           "result": "passed",
-          "durationMs": 596
+          "durationMs": 552
         },
         {
           "name": "search matches the assigned project name",
           "result": "passed",
-          "durationMs": 556
+          "durationMs": 629
         },
         {
           "name": "the clear button resets the search",
           "result": "passed",
-          "durationMs": 686
+          "durationMs": 654
         },
         {
           "name": "no-match search empties the list",
           "result": "passed",
-          "durationMs": 513
+          "durationMs": 594
         }
       ]
     },
@@ -3115,17 +3119,17 @@
         {
           "name": "adding a note attachment updates the task and shows in list",
           "result": "passed",
-          "durationMs": 1297
+          "durationMs": 1346
         },
         {
           "name": "tapping a note attachment opens it for editing",
           "result": "passed",
-          "durationMs": 247
+          "durationMs": 221
         },
         {
           "name": "removing an attachment clears it from the task",
           "result": "passed",
-          "durationMs": 114
+          "durationMs": 133
         }
       ]
     },
@@ -3135,12 +3139,12 @@
         {
           "name": "intro shows the slides and ends with the mode choice",
           "result": "passed",
-          "durationMs": 2069
+          "durationMs": 2140
         },
         {
           "name": "picking simple mode from the intro persists it",
           "result": "passed",
-          "durationMs": 1242
+          "durationMs": 1213
         }
       ]
     },
@@ -3150,7 +3154,7 @@
         {
           "name": "the dev-only Widget Previews drawer entry renders a mock of each Android home-screen widget",
           "result": "failed",
-          "durationMs": 4274
+          "durationMs": 4016
         }
       ]
     },
@@ -3160,7 +3164,7 @@
         {
           "name": "a Home exclude-tag rule hides matching tasks from the Today tab",
           "result": "passed",
-          "durationMs": 1505
+          "durationMs": 1596
         },
         {
           "name": "clearing the rule brings the task back",
@@ -3170,12 +3174,12 @@
         {
           "name": "Settings → Filtering rules: adding a tag updates Config and shows a chip",
           "result": "passed",
-          "durationMs": 1264
+          "durationMs": 1260
         },
         {
           "name": "Settings → Filtering rules: the Waiting for Approval view is listed with its built-in rule",
           "result": "passed",
-          "durationMs": 783
+          "durationMs": 785
         }
       ]
     },
@@ -3185,12 +3189,12 @@
         {
           "name": "by default a new task lands in the tab that is open",
           "result": "passed",
-          "durationMs": 2835
+          "durationMs": 2928
         },
         {
           "name": "a pinned default bucket files quick-added tasks there",
           "result": "passed",
-          "durationMs": 1282
+          "durationMs": 1314
         }
       ]
     },
@@ -3200,27 +3204,27 @@
         {
           "name": "double-tapping a task offers Start timer, which opens the timer already counting down the default 20 minutes",
           "result": "passed",
-          "durationMs": 2333
+          "durationMs": 2415
         },
         {
           "name": "the started timer is still editable on the dial",
           "result": "passed",
-          "durationMs": 784
+          "durationMs": 859
         },
         {
           "name": "the double-tap menu also offers a 5 / 10 / 20 minute reminder",
           "result": "passed",
-          "durationMs": 653
+          "durationMs": 624
         },
         {
           "name": "dismissing the menu starts nothing",
           "result": "passed",
-          "durationMs": 689
+          "durationMs": 769
         },
         {
           "name": "double-tapping the task whose timer is running returns to it instead of restarting",
           "result": "passed",
-          "durationMs": 913
+          "durationMs": 971
         }
       ]
     },
@@ -3230,7 +3234,7 @@
         {
           "name": "a first launch seeds the starter tasks even though the Todo.md import already filled the task list with wishes",
           "result": "passed",
-          "durationMs": 2261
+          "durationMs": 2376
         }
       ]
     },
@@ -3240,17 +3244,17 @@
         {
           "name": "mic button sits beside the add-task field",
           "result": "passed",
-          "durationMs": 1825
+          "durationMs": 1839
         },
         {
           "name": "transcribing fills the add-task field without submitting, and it stays editable",
           "result": "passed",
-          "durationMs": 1464
+          "durationMs": 1367
         },
         {
           "name": "shows a message when speech recognition is unavailable",
           "result": "passed",
-          "durationMs": 522
+          "durationMs": 580
         }
       ]
     },
@@ -3260,12 +3264,12 @@
         {
           "name": "a task with no Todoist link shows no info icon beside Note",
           "result": "passed",
-          "durationMs": 1078
+          "durationMs": 1074
         },
         {
           "name": "a task synced with Todoist shows an info icon beside Note with source, synced date and Todoist id — none of it in the description",
           "result": "passed",
-          "durationMs": 246
+          "durationMs": 250
         }
       ]
     },
@@ -3275,17 +3279,17 @@
         {
           "name": "minimalist theme uses only achromatic colours",
           "result": "passed",
-          "durationMs": 78
+          "durationMs": 64
         },
         {
           "name": "minimalist theme underlines selected chips instead of filling them",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "settings toggle flips Config.minimalistMode and persists it",
           "result": "passed",
-          "durationMs": 7333
+          "durationMs": 7580
         }
       ]
     },
@@ -3295,17 +3299,17 @@
         {
           "name": "today is the active day initially, no back-to-top arrow",
           "result": "passed",
-          "durationMs": 761
+          "durationMs": 789
         },
         {
           "name": "scrolling highlights the day at the top of the list",
           "result": "passed",
-          "durationMs": 304
+          "durationMs": 350
         },
         {
           "name": "back-to-top arrow appears when scrolled and returns to today",
           "result": "passed",
-          "durationMs": 247
+          "durationMs": 290
         }
       ]
     },
@@ -3315,7 +3319,7 @@
         {
           "name": "the widget setting is off by default and round-trips",
           "result": "passed",
-          "durationMs": 53
+          "durationMs": 65
         },
         {
           "name": "todayTasks keeps today + overdue, open ones first",
@@ -3330,22 +3334,22 @@
         {
           "name": "toggleInStorage completes a task in storage and back again",
           "result": "passed",
-          "durationMs": 73
+          "durationMs": 82
         },
         {
           "name": "a completion from the widget counts toward the streak",
           "result": "passed",
-          "durationMs": 47
+          "durationMs": 45
         },
         {
           "name": "the setting is searchable and switches Config",
           "result": "passed",
-          "durationMs": 9176
+          "durationMs": 8535
         },
         {
           "name": "an unknown id leaves storage untouched",
           "result": "passed",
-          "durationMs": 199
+          "durationMs": 203
         }
       ]
     },
@@ -3355,12 +3359,12 @@
         {
           "name": "text without a URL renders as plain text",
           "result": "passed",
-          "durationMs": 469
+          "durationMs": 470
         },
         {
           "name": "tapping a URL fires onOpenLink with the parsed Uri",
           "result": "passed",
-          "durationMs": 68
+          "durationMs": 66
         },
         {
           "name": "trailing sentence punctuation stays out of the link",
@@ -3375,37 +3379,27 @@
         {
           "name": "tapping a dashed phone number opens the dialer with tel: Uri",
           "result": "passed",
-          "durationMs": 22
+          "durationMs": 24
         },
         {
           "name": "a parenthesized area code and country code both dial cleanly",
           "result": "passed",
-          "durationMs": 24
+          "durationMs": 22
         },
         {
           "name": "a bare 11-digit number dials without needing separators",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 18
         },
         {
           "name": "an ISO due date is not treated as a phone number",
           "result": "passed",
-          "durationMs": 24
+          "durationMs": 20
         },
         {
           "name": "a short bare number stays plain text",
           "result": "passed",
-          "durationMs": 18
-        }
-      ]
-    },
-    {
-      "path": "test/home/home_drawer_home_entry_test.dart",
-      "tests": [
-        {
-          "name": "the drawer Home entry returns to the start screen",
-          "result": "passed",
-          "durationMs": 2566
+          "durationMs": 17
         }
       ]
     },
@@ -3415,72 +3409,82 @@
         {
           "name": "dial math dialAngle measures clockwise from 12 o'clock",
           "result": "passed",
-          "durationMs": 41
+          "durationMs": 36
         },
         {
           "name": "dial math dialAngleDelta takes the short way across 12 o'clock",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 5
         },
         {
           "name": "DiceTimerPage winding and releasing starts the countdown; at zero the ring actions appear and Done reports the task",
           "result": "passed",
-          "durationMs": 1152
+          "durationMs": 1158
         },
         {
           "name": "DiceTimerPage +5 min restarts the countdown and Postpone reports the task",
           "result": "passed",
-          "durationMs": 278
+          "durationMs": 324
         },
         {
           "name": "DiceTimerPage Pause freezes the countdown and Resume continues it",
           "result": "passed",
-          "durationMs": 222
+          "durationMs": 242
         },
         {
           "name": "DiceTimerPage Done stops the timer early and reports the task",
           "result": "passed",
-          "durationMs": 195
+          "durationMs": 220
         },
         {
           "name": "DiceTimerPage Done is available before the countdown is even started",
           "result": "passed",
-          "durationMs": 163
+          "durationMs": 207
         },
         {
           "name": "DiceTimerPage Cancel timer drops a running countdown without touching the task",
           "result": "passed",
-          "durationMs": 265
+          "durationMs": 304
         },
         {
           "name": "DiceTimerPage Cancel timer is offered while paused and at the ring",
           "result": "passed",
-          "durationMs": 240
+          "durationMs": 260
         },
         {
           "name": "DiceTimerPage Lock touch blocks the screen until Unlock",
           "result": "passed",
-          "durationMs": 233
+          "durationMs": 225
         },
         {
           "name": "home page dice icon rolls today's only open task and opens the dice timer",
           "result": "passed",
-          "durationMs": 1261
+          "durationMs": 1080
         },
         {
           "name": "home page dice icon shows a message when today has no open tasks",
           "result": "passed",
-          "durationMs": 502
+          "durationMs": 593
         },
         {
           "name": "home page dice icon a running timer survives leaving and is reopened by the dice",
           "result": "passed",
-          "durationMs": 690
+          "durationMs": 858
         },
         {
           "name": "home page dice icon cancelling the timer puts the dice back to rolling",
           "result": "passed",
-          "durationMs": 657
+          "durationMs": 652
+        }
+      ]
+    },
+    {
+      "path": "test/home/home_drawer_home_entry_test.dart",
+      "tests": [
+        {
+          "name": "the drawer Home entry returns to the start screen",
+          "result": "passed",
+          "durationMs": 2536
         }
       ]
     },
@@ -3490,22 +3494,22 @@
         {
           "name": "plain task shows its labels as tags",
           "result": "passed",
-          "durationMs": 690
+          "durationMs": 688
         },
         {
           "name": "task with no labels and no project shows no tags",
           "result": "passed",
-          "durationMs": 39
+          "durationMs": 43
         },
         {
           "name": "project task shows project, stage and label tags",
           "result": "passed",
-          "durationMs": 40
+          "durationMs": 42
         },
         {
           "name": "wish keeps the wish tag alongside its labels",
           "result": "passed",
-          "durationMs": 30
+          "durationMs": 37
         }
       ]
     },
@@ -3515,17 +3519,17 @@
         {
           "name": "every section starts collapsed and opens from its title",
           "result": "passed",
-          "durationMs": 1793
+          "durationMs": 1971
         },
         {
           "name": "expand all opens every section and turns into collapse all",
           "result": "passed",
-          "durationMs": 1130
+          "durationMs": 1258
         },
         {
           "name": "jumping to a collapsed section opens it",
           "result": "passed",
-          "durationMs": 932
+          "durationMs": 820
         }
       ]
     },
@@ -3535,22 +3539,22 @@
         {
           "name": "Start fresh finishes immediately with no dialog",
           "result": "passed",
-          "durationMs": 741
+          "durationMs": 727
         },
         {
           "name": "Import from Todoist requires a token first",
           "result": "passed",
-          "durationMs": 549
+          "durationMs": 498
         },
         {
           "name": "a valid token pulls in today's tasks and finishes onboarding without waiting for the rest — TodoistSyncService.startFirstLaunchImport's background phase is covered deterministically at the service level in test/sync/todoist_sync_service_test.dart",
           "result": "passed",
-          "durationMs": 5123
+          "durationMs": 5379
         },
         {
           "name": "an invalid token shows an error and does not finish",
           "result": "passed",
-          "durationMs": 4151
+          "durationMs": 4236
         }
       ]
     },
@@ -3560,22 +3564,22 @@
         {
           "name": "full mode lists the feature switches and every section",
           "result": "passed",
-          "durationMs": 1784
+          "durationMs": 1775
         },
         {
           "name": "simple mode drops the feature-owned sections and switches",
           "result": "passed",
-          "durationMs": 685
+          "durationMs": 714
         },
         {
           "name": "switching a feature off hides its settings section",
           "result": "passed",
-          "durationMs": 530
+          "durationMs": 542
         },
         {
           "name": "the simple mode switch persists and updates the page",
           "result": "passed",
-          "durationMs": 7696
+          "durationMs": 7346
         }
       ]
     },
@@ -3585,12 +3589,12 @@
         {
           "name": "Tasks section has an auto-tag switch and rules entry point",
           "result": "passed",
-          "durationMs": 2630
+          "durationMs": 2383
         },
         {
           "name": "Auto-tag rules page adds and deletes a tag group",
           "result": "passed",
-          "durationMs": 2540
+          "durationMs": 2469
         }
       ]
     },
@@ -3610,22 +3614,7 @@
         {
           "name": "an already-archived recurring occurrence is not resurrected on load, and the rest of the series is untouched",
           "result": "passed",
-          "durationMs": 2171
-        }
-      ]
-    },
-    {
-      "path": "test/home/home_schedule_add_task_test.dart",
-      "tests": [
-        {
-          "name": "schedule view adds new tasks to the highlighted day",
-          "result": "passed",
-          "durationMs": 5786
-        },
-        {
-          "name": "schedule view hides tasks still waiting for approval",
-          "result": "passed",
-          "durationMs": 621
+          "durationMs": 2118
         }
       ]
     },
@@ -3635,17 +3624,32 @@
         {
           "name": "the Notify bell asks when: 5 / 20 / 60 minutes or the default",
           "result": "passed",
-          "durationMs": 1232
+          "durationMs": 1218
         },
         {
           "name": "dismissing the sheet schedules nothing",
           "result": "passed",
-          "durationMs": 176
+          "durationMs": 203
         },
         {
           "name": "with notifications off the bell points at Settings instead",
           "result": "passed",
-          "durationMs": 121
+          "durationMs": 147
+        }
+      ]
+    },
+    {
+      "path": "test/home/home_schedule_add_task_test.dart",
+      "tests": [
+        {
+          "name": "schedule view adds new tasks to the highlighted day",
+          "result": "passed",
+          "durationMs": 5758
+        },
+        {
+          "name": "schedule view hides tasks still waiting for approval",
+          "result": "passed",
+          "durationMs": 632
         }
       ]
     },
@@ -3655,12 +3659,12 @@
         {
           "name": "settings search lists matching entries and jumps to section",
           "result": "passed",
-          "durationMs": 2165
+          "durationMs": 2264
         },
         {
           "name": "matches keywords and reports empty results",
           "result": "passed",
-          "durationMs": 831
+          "durationMs": 794
         }
       ]
     },
@@ -3670,12 +3674,12 @@
         {
           "name": "a new task is auto-tagged from a keyword in its title",
           "result": "passed",
-          "durationMs": 2884
+          "durationMs": 2917
         },
         {
           "name": "auto-tagging is skipped when the setting is off",
           "result": "passed",
-          "durationMs": 1545
+          "durationMs": 1409
         }
       ]
     },
@@ -3685,27 +3689,27 @@
         {
           "name": "with the menu-dot setting on, the hamburger icon carries a red dot when the bundled test report has failures, and Test Results opens from the Tools section",
           "result": "passed",
-          "durationMs": 2056
+          "durationMs": 2098
         },
         {
           "name": "by default the hamburger icon stays clean even with failures; the Test Results entry under Tools still shows the dot",
           "result": "passed",
-          "durationMs": 712
+          "durationMs": 632
         },
         {
           "name": "opening Test Results acknowledges the failures and clears the dots",
           "result": "passed",
-          "durationMs": 763
+          "durationMs": 718
         },
         {
           "name": "no red dot when no report is bundled",
           "result": "passed",
-          "durationMs": 475
+          "durationMs": 525
         },
         {
           "name": "no red dot when the bundled report is all green",
           "result": "passed",
-          "durationMs": 497
+          "durationMs": 441
         }
       ]
     },
@@ -3715,17 +3719,17 @@
         {
           "name": "diceAlertPlan the default is a notification, silent when notifications are off",
           "result": "passed",
-          "durationMs": 46
+          "durationMs": 41
         },
         {
           "name": "diceAlertPlan melody mode rings, and notifies as well when notifications are on",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 2
         },
         {
           "name": "diceAlertPlan vibrate mode buzzes only; silent mode does nothing at all",
           "result": "passed",
-          "durationMs": 1
+          "durationMs": 2
         },
         {
           "name": "diceAlertPlan \"also vibrate\" adds a buzz to the melody and notification modes",
@@ -3740,7 +3744,7 @@
         {
           "name": "dice timer settings round trip alert settings survive a save/load cycle",
           "result": "passed",
-          "durationMs": 18
+          "durationMs": 20
         },
         {
           "name": "dice timer settings round trip a bogus stored alert mode is ignored",
@@ -3750,27 +3754,27 @@
         {
           "name": "DiceTimerPage the dial opens at the configured default length",
           "result": "passed",
-          "durationMs": 590
+          "durationMs": 587
         },
         {
           "name": "DiceTimerPage a silent alert shows 0:00 instead of shouting",
           "result": "passed",
-          "durationMs": 210
+          "durationMs": 223
         },
         {
           "name": "DiceTimerPage an audible alert keeps the loud \"Time's up!\" face",
           "result": "passed",
-          "durationMs": 157
+          "durationMs": 195
         },
         {
           "name": "DiceTimerPage the gear opens the timer settings and changes stick",
           "result": "passed",
-          "durationMs": 2785
+          "durationMs": 2629
         },
         {
           "name": "DiceTimerSettingsList the default timer length is editable on its own",
           "result": "passed",
-          "durationMs": 1546
+          "durationMs": 1518
         }
       ]
     },
@@ -3780,12 +3784,12 @@
         {
           "name": "the Updates section switch persists to Config",
           "result": "passed",
-          "durationMs": 10096
+          "durationMs": 10095
         },
         {
           "name": "the setting is findable through settings search",
           "result": "passed",
-          "durationMs": 811
+          "durationMs": 816
         }
       ]
     },
@@ -3795,22 +3799,22 @@
         {
           "name": "first load seeds the default groups and persists them",
           "result": "passed",
-          "durationMs": 52
+          "durationMs": 45
         },
         {
           "name": "tagsFor matches whole words only, case-insensitively",
           "result": "passed",
-          "durationMs": 33
+          "durationMs": 48
         },
         {
           "name": "a tag fires on any word in its group, not just one",
           "result": "passed",
-          "durationMs": 23
+          "durationMs": 8
         },
         {
           "name": "tagsFor only adds a tag once even if several of its words match",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 3
         },
         {
           "name": "tagsFor returns nothing for blank text",
@@ -3820,7 +3824,7 @@
         {
           "name": "withAutoTags appends matched tags without duplicating existing ones",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 6
         },
         {
           "name": "withAutoTags is a no-op when auto-tagging is disabled",
@@ -3835,7 +3839,7 @@
         {
           "name": "save merges groups that share a tag and dedupes their keywords",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 5
         },
         {
           "name": "save drops groups left with an empty tag or no keywords",
@@ -3865,12 +3869,12 @@
         {
           "name": "diceOsAlarmAction a running countdown with the app away arms the OS ring",
           "result": "passed",
-          "durationMs": 51
+          "durationMs": 41
         },
         {
           "name": "diceOsAlarmAction with the app in front the ring is handled in-app, not by the OS",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "diceOsAlarmAction a silent alert never arms anything",
@@ -3880,7 +3884,7 @@
         {
           "name": "diceOsAlarmAction pausing or rewinding drops the armed ring",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "diceOsAlarmAction a ring that is already going is left alone",
@@ -3895,7 +3899,7 @@
         {
           "name": "diceRingPayload carries melody and volume when the alert plays one",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "diceRingPayload an empty task title still says something",
@@ -3905,17 +3909,17 @@
         {
           "name": "ringing away from the timer page zero takes over the screen with the alarm ring page",
           "result": "passed",
-          "durationMs": 979
+          "durationMs": 1013
         },
         {
           "name": "ringing away from the timer page the alarm screen stays away while the timer page is open",
           "result": "passed",
-          "durationMs": 225
+          "durationMs": 281
         },
         {
           "name": "ringing away from the timer page a silent alert never takes over the screen",
           "result": "passed",
-          "durationMs": 197
+          "durationMs": 200
         }
       ]
     },
@@ -3925,12 +3929,12 @@
         {
           "name": "editing description does not toggle task done",
           "result": "passed",
-          "durationMs": 1107
+          "durationMs": 1234
         },
         {
           "name": "URL in a task title opens externally instead of expanding",
           "result": "passed",
-          "durationMs": 51
+          "durationMs": 48
         }
       ]
     },
@@ -3940,12 +3944,12 @@
         {
           "name": "wishlist items appear on the Future tab tagged \"wish\"",
           "result": "passed",
-          "durationMs": 1825
+          "durationMs": 1924
         },
         {
           "name": "wishlist items do not appear on the Today tab",
           "result": "passed",
-          "durationMs": 425
+          "durationMs": 473
         }
       ]
     },
@@ -3955,27 +3959,27 @@
         {
           "name": "simple mode leaves only the task list on the home page",
           "result": "passed",
-          "durationMs": 1826
+          "durationMs": 1875
         },
         {
           "name": "full mode shows only the tools that are switched on",
           "result": "passed",
-          "durationMs": 781
+          "durationMs": 972
         },
         {
           "name": "a switched-off app-bar feature disappears on its own",
           "result": "passed",
-          "durationMs": 556
+          "durationMs": 528
         },
         {
           "name": "mode picker stores the picked mode",
           "result": "passed",
-          "durationMs": 1201
+          "durationMs": 1157
         },
         {
           "name": "features are persisted and simple mode hides them all",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 5
         }
       ]
     },
@@ -3985,62 +3989,62 @@
         {
           "name": "syncNow is a no-op when disabled or without a token",
           "result": "passed",
-          "durationMs": 47
+          "durationMs": 38
         },
         {
           "name": "a new local task is pushed to Todoist and the mapping is stable",
           "result": "passed",
-          "durationMs": 112
+          "durationMs": 138
         },
         {
           "name": "entryForLocalUid exposes the Todoist id and synced date for a synced task, and null for one never synced",
           "result": "passed",
-          "durationMs": 21
+          "durationMs": 25
         },
         {
           "name": "a label added on the Todoist side (native labels, not the description trailer) is pulled into the local task",
           "result": "passed",
-          "durationMs": 43
+          "durationMs": 47
         },
         {
           "name": "a label removed on the Todoist side is pulled into the local task",
           "result": "passed",
-          "durationMs": 41
+          "durationMs": 34
         },
         {
           "name": "the sync mapping survives a restart (no duplicate is created)",
           "result": "passed",
-          "durationMs": 30
+          "durationMs": 31
         },
         {
           "name": "editing a synced task pushes the update",
           "result": "passed",
-          "durationMs": 31
+          "durationMs": 32
         },
         {
           "name": "completing a task locally closes it on Todoist",
           "result": "passed",
-          "durationMs": 28
+          "durationMs": 27
         },
         {
           "name": "deleting a task locally deletes it on Todoist",
           "result": "passed",
-          "durationMs": 25
+          "durationMs": 30
         },
         {
           "name": "a task created in Todoist is pulled into the local list, tagged waiting for approval",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 27
         },
         {
           "name": "approving a pending task removes the tag and the removal syncs back to Todoist",
           "result": "passed",
-          "durationMs": 33
+          "durationMs": 28
         },
         {
           "name": "a task completed in Todoist is marked done locally",
           "result": "passed",
-          "durationMs": 24
+          "durationMs": 26
         },
         {
           "name": "conflicting edits on both sides favor the local edit",
@@ -4055,22 +4059,22 @@
         {
           "name": "a wishlist item pushes into a dedicated Wishlist Todoist project",
           "result": "passed",
-          "durationMs": 21
+          "durationMs": 24
         },
         {
           "name": "an undated, unprojected task pushes into a dedicated Future Todoist project",
           "result": "passed",
-          "durationMs": 21
+          "durationMs": 20
         },
         {
           "name": "a dated or projected task never lands in Wishlist or Future",
           "result": "passed",
-          "durationMs": 14
+          "durationMs": 12
         },
         {
           "name": "the wishlist flag wins over a Kanban project assignment, and toggling it off actually moves the Todoist task",
           "result": "passed",
-          "durationMs": 31
+          "durationMs": 28
         },
         {
           "name": "a task leaving the wishlist with no other project moves back to Todoist Inbox",
@@ -4085,27 +4089,27 @@
         {
           "name": "a task pulled from the Wishlist Todoist project becomes a local wishlist item",
           "result": "passed",
-          "durationMs": 12
+          "durationMs": 14
         },
         {
           "name": "a task pulled from the Future Todoist project stays unassigned locally, not flagged as a wishlist item",
           "result": "passed",
-          "durationMs": 14
+          "durationMs": 15
         },
         {
           "name": "due dates round-trip: explicit time via datetime, date-only defaults to 18:00",
           "result": "passed",
-          "durationMs": 25
+          "durationMs": 24
         },
         {
           "name": "a task with a project pushes into a same-named Todoist project",
           "result": "passed",
-          "durationMs": 12
+          "durationMs": 14
         },
         {
           "name": "renaming a Kanban project locally renames its Todoist project",
           "result": "passed",
-          "durationMs": 21
+          "durationMs": 23
         },
         {
           "name": "renaming a Todoist project pulls the new name into the matching Kanban project",
@@ -4115,17 +4119,17 @@
         {
           "name": "a project mapping that predates name-sync adopts the local name as its baseline instead of pushing a spurious rename",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 25
         },
         {
           "name": "a run that fails after pulling a new Todoist task does not delete that task on the next (successful) run",
           "result": "passed",
-          "durationMs": 20
+          "durationMs": 21
         },
         {
           "name": "an API failure records a failed sync entry and lights the flag",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 10
         },
         {
           "name": "quitting syncs exactly once until the app is resumed",
@@ -4145,17 +4149,17 @@
         {
           "name": "startFirstLaunchImport (first-launch desktop import) loads today's (and overdue) tasks synchronously, and the rest finishes in the background",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 22
         },
         {
           "name": "startFirstLaunchImport (first-launch desktop import) a task added locally while the background phase runs survives it",
           "result": "passed",
-          "durationMs": 27
+          "durationMs": 20
         },
         {
           "name": "startFirstLaunchImport (first-launch desktop import) an API failure surfaces to the caller and is logged",
           "result": "passed",
-          "durationMs": 16
+          "durationMs": 12
         }
       ]
     },
@@ -4165,12 +4169,12 @@
         {
           "name": "TodoistApiClient sends a bearer token and parses a task list",
           "result": "passed",
-          "durationMs": 52
+          "durationMs": 48
         },
         {
           "name": "TodoistApiClient walks every cursor page of a paginated list response",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 6
         },
         {
           "name": "TodoistApiClient a non-2xx response throws TodoistApiException with the status code",
@@ -4180,12 +4184,12 @@
         {
           "name": "TodoistApiClient createTask posts content, description, due date and labels",
           "result": "passed",
-          "durationMs": 11
+          "durationMs": 6
         },
         {
           "name": "TodoistApiClient updateTask with clearDue sends due_string \"no date\"",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "TodoistApiClient deleteTask sends a DELETE request to the task id",
@@ -4195,12 +4199,12 @@
         {
           "name": "TodoistApiClient updateProject posts the new name to the project id",
           "result": "passed",
-          "durationMs": 5
+          "durationMs": 7
         },
         {
           "name": "TodoistApiClient closeTask and reopenTask hit their sub-paths",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 5
         }
       ]
     },
@@ -4210,47 +4214,47 @@
         {
           "name": "shows only pending tasks, hiding already-approved ones",
           "result": "passed",
-          "durationMs": 953
+          "durationMs": 1003
         },
         {
           "name": "approve swipe shows day shortcuts; picking one approves and schedules it",
           "result": "passed",
-          "durationMs": 738
+          "durationMs": 934
         },
         {
           "name": "approve swipe countdown approves the item onto today",
           "result": "passed",
-          "durationMs": 546
+          "durationMs": 551
         },
         {
           "name": "deny swipe shows Deny plus weekday shortcuts",
           "result": "passed",
-          "durationMs": 180
+          "durationMs": 173
         },
         {
           "name": "deny-side weekday shortcut approves the item onto that day",
           "result": "passed",
-          "durationMs": 522
+          "durationMs": 532
         },
         {
           "name": "deny swipe moves the item to the bin with an undo window",
           "result": "passed",
-          "durationMs": 1005
+          "durationMs": 987
         },
         {
           "name": "undo restores a denied item",
           "result": "passed",
-          "durationMs": 989
+          "durationMs": 977
         },
         {
           "name": "the plain Approve button approves without touching the date",
           "result": "passed",
-          "durationMs": 552
+          "durationMs": 560
         },
         {
           "name": "the plain Deny button sends the item straight to the bin",
           "result": "passed",
-          "durationMs": 533
+          "durationMs": 535
         }
       ]
     },
@@ -4260,47 +4264,47 @@
         {
           "name": "the Sync tab lists every sync with duration and item count, and opening the page clears the unseen-error flag",
           "result": "passed",
-          "durationMs": 1257
+          "durationMs": 1299
         },
         {
           "name": "a failed sync puts a red dot on the App Logs drawer entry",
           "result": "passed",
-          "durationMs": 946
+          "durationMs": 994
         },
         {
           "name": "no dot without a sync error",
           "result": "passed",
-          "durationMs": 390
+          "durationMs": 410
         },
         {
           "name": "the Sync now tile runs a manual sync and shows the last sync",
           "result": "passed",
-          "durationMs": 5926
+          "durationMs": 6011
         },
         {
           "name": "the Synced mode switch persists and reveals the sync folder tile",
           "result": "passed",
-          "durationMs": 8191
+          "durationMs": 8685
         },
         {
           "name": "the Todoist sync switch reveals the token field and persists both",
           "result": "passed",
-          "durationMs": 9877
+          "durationMs": 10524
         },
         {
           "name": "Sync now runs a Todoist sync and shows the result",
           "result": "passed",
-          "durationMs": 1872
+          "durationMs": 1887
         },
         {
           "name": "a failed Todoist sync also lights the App Logs drawer dot",
           "result": "passed",
-          "durationMs": 281
+          "durationMs": 311
         },
         {
           "name": "pulling down on the home page task list runs a Todoist sync and reloads the list",
           "result": "passed",
-          "durationMs": 793
+          "durationMs": 795
         }
       ]
     },
@@ -4310,12 +4314,12 @@
         {
           "name": "tasks land in the same sections as the home tabs",
           "result": "passed",
-          "durationMs": 43
+          "durationMs": 41
         },
         {
           "name": "checkboxes, due dates and completion dates follow the Tasks-plugin format; the sentinel date is never printed",
           "result": "passed",
-          "durationMs": 3
+          "durationMs": 4
         },
         {
           "name": "deleted tasks are excluded and empty sections are skipped",
@@ -4325,7 +4329,7 @@
         {
           "name": "each section sorts open tasks before done ones, by ranking",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "multi-line titles are flattened so they cannot break the list",
@@ -4345,47 +4349,47 @@
         {
           "name": "no journal file: nothing happens, no history entry",
           "result": "passed",
-          "durationMs": 39
+          "durationMs": 40
         },
         {
           "name": "an empty ops array: nothing happens, no history entry",
           "result": "passed",
-          "durationMs": 10
+          "durationMs": 12
         },
         {
           "name": "complete op marks an open task done and re-syncs",
           "result": "passed",
-          "durationMs": 58
+          "durationMs": 62
         },
         {
           "name": "reopen op reopens a done task",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 22
         },
         {
           "name": "a stale reopen op (older than the local completion) is dropped",
           "result": "passed",
-          "durationMs": 25
+          "durationMs": 22
         },
         {
           "name": "edit op renames a task and reschedules its due date",
           "result": "passed",
-          "durationMs": 33
+          "durationMs": 50
         },
         {
           "name": "an edit op older than the local reschedule loses the date field",
           "result": "passed",
-          "durationMs": 13
+          "durationMs": 11
         },
         {
           "name": "create op adds a new task with the uid it brings",
           "result": "passed",
-          "durationMs": 19
+          "durationMs": 17
         },
         {
           "name": "a replayed create op is idempotent (no duplicate)",
           "result": "passed",
-          "durationMs": 11
+          "durationMs": 10
         },
         {
           "name": "delete op tombstones a task without hard-deleting it",
@@ -4400,12 +4404,12 @@
         {
           "name": "an op for an unknown uid is ignored, not an error",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 8
         },
         {
           "name": "malformed JSON: red history entry, journal left untouched",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 9
         },
         {
           "name": "unknown journal_version: red history entry, journal left untouched",
@@ -4425,7 +4429,7 @@
         {
           "name": "resuming the app runs the import (SyncService wiring)",
           "result": "passed",
-          "durationMs": 17
+          "durationMs": 18
         }
       ]
     },
@@ -4435,17 +4439,17 @@
         {
           "name": "syncNow writes the task file and records a success entry",
           "result": "passed",
-          "durationMs": 101
+          "durationMs": 99
         },
         {
           "name": "a vanished folder records a failure; the next success clears the flag",
           "result": "passed",
-          "durationMs": 15
+          "durationMs": 13
         },
         {
           "name": "an unchosen folder fails gracefully and points at Settings",
           "result": "passed",
-          "durationMs": 6
+          "durationMs": 5
         },
         {
           "name": "offline mode never writes or logs anything",
@@ -4455,17 +4459,17 @@
         {
           "name": "history and the unseen-error flag survive a restart; markErrorSeen clears the flag for good",
           "result": "passed",
-          "durationMs": 9
+          "durationMs": 10
         },
         {
           "name": "quitting syncs exactly once until the app is resumed",
           "result": "passed",
-          "durationMs": 26
+          "durationMs": 31
         },
         {
           "name": "the lifecycle hook does nothing in offline mode",
           "result": "passed",
-          "durationMs": 7
+          "durationMs": 9
         }
       ]
     },
@@ -4480,7 +4484,7 @@
         {
           "name": "TodoistMetadataCodec an empty visible description still keeps the trailer",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "TodoistMetadataCodec a description with no trailer parses as plain visible text",
@@ -4495,12 +4499,12 @@
         {
           "name": "TodoistMetadataCodec a hand-broken sync-data JSON line is ignored, not thrown",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "TodoistMetadataCodec includes human-readable project/label/note summary lines",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         }
       ]
     },
@@ -4510,7 +4514,7 @@
         {
           "name": "SharedPayload.fromMap parses text, subject and files",
           "result": "passed",
-          "durationMs": 46
+          "durationMs": 40
         },
         {
           "name": "SharedPayload.fromMap missing keys default to empty",
@@ -4540,7 +4544,7 @@
         {
           "name": "buildDraftTask falls back to the subject when there is no text",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "buildDraftTask a named file with no text titles itself from the file name",
@@ -4555,12 +4559,12 @@
         {
           "name": "buildDraftTask multiple files note how many more in the title",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "dedup an identical payload delivered again within the window is dropped",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "dedup a different payload is not treated as a duplicate",
@@ -4570,7 +4574,7 @@
         {
           "name": "dedup the same content is accepted again once the window has passed",
           "result": "passed",
-          "durationMs": 11
+          "durationMs": 9
         },
         {
           "name": "payload callback routing the callback receives payloads directly once attached",
@@ -4580,12 +4584,12 @@
         {
           "name": "payload callback routing payloads queued before the callback attaches are drained on attach",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 3
         },
         {
           "name": "payload callback routing an empty payload (no text, no files) is ignored",
           "result": "passed",
-          "durationMs": 2
+          "durationMs": 4
         },
         {
           "name": "payload callback routing detaching the callback queues later payloads again",
@@ -4605,22 +4609,22 @@
         {
           "name": "saveTask unregister detaches the consumer, later tasks persist directly",
           "result": "passed",
-          "durationMs": 46
+          "durationMs": 47
         },
         {
           "name": "importAttachments copies image/pdf files into permanent storage and clears the cache copy",
           "result": "passed",
-          "durationMs": 14
+          "durationMs": 24
         },
         {
           "name": "importAttachments a file type with no attachment viewer is skipped",
           "result": "passed",
-          "durationMs": 4
+          "durationMs": 3
         },
         {
           "name": "init pulls content queued on the platform side",
           "result": "passed",
-          "durationMs": 8
+          "durationMs": 7
         },
         {
           "name": "returnToPreviousApp invokes the platform channel and swallows errors",
@@ -4635,27 +4639,27 @@
         {
           "name": "prefills title and description from the shared text",
           "result": "passed",
-          "durationMs": 885
+          "durationMs": 873
         },
         {
           "name": "shows both Today and Inbox save options",
           "result": "passed",
-          "durationMs": 104
+          "durationMs": 89
         },
         {
           "name": "Save to Today persists the task due today and returns to the previous app",
-          "result": "passed",
-          "durationMs": 549
+          "result": "failed",
+          "durationMs": 729
         },
         {
           "name": "Save to Inbox leaves the task undated (Future bucket)",
           "result": "passed",
-          "durationMs": 350
+          "durationMs": 378
         },
         {
           "name": "Discard returns to the previous app without saving a task",
           "result": "passed",
-          "durationMs": 88
+          "durationMs": 100
         }
       ]
     }
