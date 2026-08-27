@@ -2444,16 +2444,36 @@ in App Logs → Todoist — onboarding has already finished by then.
   `UpdateCheck.rollback` — `previous` unless that is the running version — in both the
   update-available and up-to-date states. The rollback warns that Android blocks
   downgrades for non-debuggable builds, so the install may need an uninstall first.
-- **Automatic update check (0.1.264):** `Config.autoUpdateCheckEnabled` (Settings →
-  Updates, off by default) — when on, `_MyAppState` in `lib/main.dart` calls
-  `UpdateService.instance.checkForUpdate()` once per launch (2s after the first frame,
-  skipped while the intro/mode picker/startup chooser is still on screen). A newer build
-  shows an "Update available" confirm dialog (`appNavigatorKey.currentContext`, not
-  `_MyAppState`'s own context, since `MyApp` sits above its own `MaterialApp`/`Navigator`);
-  confirming pushes `AboutPage(autoCheckForUpdate: true)`, which runs `_UpdateSection`'s
-  check immediately on `initState` so the user lands straight on "Download & install"
-  instead of needing an extra tap. The check never downloads or installs anything by
-  itself — that still goes through the same About-page flow as a manual check.
+- **Automatic update check (0.1.264, replaced by the background poll below in
+  0.2.1):** `Config.autoUpdateCheckEnabled` (Settings → Updates) originally
+  checked once per launch and, on finding a newer build, opened a confirm
+  dialog that pushed `AboutPage` with its check pre-triggered — the user still
+  had to tap "Download & install" there themselves.
+- **Background auto-update prompt (0.2.1):** `Config.autoUpdateCheckEnabled`
+  (Settings → Updates, **on by default**) now gates `AutoUpdateChecker`
+  (`lib/services/auto_update_checker.dart`, singleton `.instance` like
+  `UpdateService`), which polls `UpdateService.checkForUpdate()` on a
+  `Timer.periodic` once a minute while the app is open. Started in
+  `_MyAppState.initState` alongside the other Android-only wiring
+  (`!kIsWeb && Platform.isAndroid` — which is false under `flutter test`'s
+  host runner, so the suite never starts a real timer) and stopped in
+  `dispose`; the setting itself is only read at launch, so flipping it in
+  Settings takes effect on the next start. A release with no APK asset is
+  skipped (nothing to auto-install); once a version is found it is reported at
+  most once — a later tick finding the same build is a no-op
+  (`_pendingUpdateVersion` in `main.dart`), onboarding screens (intro/mode
+  picker/startup chooser) suppress the prompt entirely, and a declined version
+  is not offered again until a newer one ships (`AutoUpdateChecker.dismiss`).
+  The report opens `showUpdateAvailableDialog`
+  (`lib/ui/auto_update_dialog.dart`) — "New version available. Do you want to
+  download and install it?", Yes/No — via `appNavigatorKey`, the same pattern
+  `_showAlarmRing` uses to reach the navigator from outside `build`. Yes opens
+  `UpdateDownloadDialog`, which downloads and installs immediately with no
+  further confirmation (Android's own install prompt is the only gate left)
+  and shows a progress bar; No just dismisses it. The About page's "Download &
+  install" already chained straight from download into install before this
+  and is unchanged (the `AboutPage(autoCheckForUpdate: ...)` pre-trigger the
+  old flow used is gone, since nothing navigates there automatically anymore).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a

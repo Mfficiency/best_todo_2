@@ -84,7 +84,7 @@ void main() {
     Config.showFailureDotOnMenu = false;
     Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
-    Config.autoUpdateCheckEnabled = false;
+    Config.autoUpdateCheckEnabled = true;
     Config.deletedItemsRetentionDays = 60;
     Config.weeklyHoursStartHour = 6;
     Config.weeklyHoursEndHour = 22;

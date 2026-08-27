@@ -530,11 +530,12 @@ class Config {
   /// every other value in this file — the app has no secret-storage layer.
   static String todoistApiToken = '';
 
-  /// If true, the app checks for a newer build every time it starts and, if
-  /// one is found, asks before doing anything — see Settings → Updates. Off
-  /// by default so a fresh install never phones home unasked; a manual check
-  /// from the About page always works regardless of this setting.
-  static bool autoUpdateCheckEnabled = false;
+  /// If true, the app polls GitHub for a newer build every minute while it
+  /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
+  /// appears, asks whether to download and install it — see Settings →
+  /// Updates. On by default; a manual check from the About page always works
+  /// regardless of this setting.
+  static bool autoUpdateCheckEnabled = true;
 
   /// How many days a task stays in the real Deleted bin (`deleted_bin.json`)
   /// before it is purged for good. Archived tasks (`deleted_tasks.json`,

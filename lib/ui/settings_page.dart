@@ -2078,9 +2078,10 @@ class _SettingsPageState extends State<SettingsPage> {
         SwitchListTile(
           title: const Text('Automatically check for updates'),
           subtitle: const Text(
-              'Looks for a newer version every time the app opens and asks '
-              'before installing it. Manual checks on the About page always '
-              'work regardless of this setting.'),
+              'Polls for a newer version every minute while the app is open '
+              'and asks whether to download and install it the moment one '
+              'appears. Manual checks on the About page always work '
+              'regardless of this setting.'),
           value: _autoUpdateCheckEnabled,
           onChanged: _setAutoUpdateCheckEnabled,
         ),

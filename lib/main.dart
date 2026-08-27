@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'ui/about_page.dart';
 import 'ui/alarm_ring_page.dart';
 import 'ui/alarms_page.dart';
 import 'ui/dice_timer_page.dart';
@@ -19,12 +18,14 @@ import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
+import 'ui/auto_update_dialog.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
 import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/food_diary_widget_service.dart';
+import 'services/auto_update_checker.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
@@ -236,6 +237,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final List<SharedPayload> _pendingShares = [];
   bool _shareScreenOpen = false;
 
+  /// The version currently prompted or being downloaded/installed, so a
+  /// later tick of the background update poll (still finding the same
+  /// build) does not stack a second dialog on top.
+  String? _pendingUpdateVersion;
+
   @override
   void initState() {
     super.initState();
@@ -273,57 +279,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // whatever was shared. See _queueSharedPayload.
       ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
-    }
-    // Settings → Updates → "Automatically check for updates": look up the
-    // newest build once per launch. Deferred a couple of seconds so it never
-    // competes with startup, and skipped entirely while onboarding is still
-    // on screen so the prompt can't collide with the intro/mode picker.
-    if (!kIsWeb) {
-      unawaited(Future<void>.delayed(const Duration(seconds: 2))
-          .then((_) => _maybeCheckForUpdate()));
-    }
-  }
-
-  /// Looks up the newest build and, if one is newer than the running app,
-  /// asks before doing anything — confirming opens the About page's update
-  /// section (pre-triggered, see [AboutPage.autoCheckForUpdate]) rather than
-  /// downloading or installing anything itself.
-  Future<void> _maybeCheckForUpdate() async {
-    if (!Config.autoUpdateCheckEnabled) return;
-    if (_showIntro || _showModePicker || _showStartupChoice) return;
-    UpdateInfo? update;
-    try {
-      update = await UpdateService.instance.checkForUpdate();
-    } catch (_) {
-      return;
-    }
-    if (update == null) return;
-    final info = update;
-    final navigatorContext = appNavigatorKey.currentContext;
-    if (navigatorContext == null) return;
-    final shouldUpdate = await showDialog<bool>(
-      context: navigatorContext,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Update available'),
-        content: Text('Version ${info.version} is available. Update now?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Not now'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Update'),
-          ),
-        ],
-      ),
-    );
-    if (shouldUpdate == true) {
-      appNavigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => const AboutPage(autoCheckForUpdate: true),
-        ),
-      );
+      // Settings → Updates → "Automatically check for updates" (on by
+      // default): poll GitHub for a newer build every minute while the app
+      // is open. Platform.isAndroid is false under `flutter test`'s host
+      // runner, so this never starts a real timer in the test suite.
+      if (Config.autoUpdateCheckEnabled) {
+        AutoUpdateChecker.instance.start(_onUpdateFound);
+      }
     }
   }
 
@@ -331,7 +293,36 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.setOnAlarmRing(null);
+    AutoUpdateChecker.instance.stop();
     super.dispose();
+  }
+
+  void _onUpdateFound(UpdateInfo info) {
+    // Don't collide with the intro/mode picker/startup chooser.
+    if (_showIntro || _showModePicker || _showStartupChoice) return;
+    if (_pendingUpdateVersion == info.version) return;
+    _pendingUpdateVersion = info.version;
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _promptUpdate(info));
+  }
+
+  Future<void> _promptUpdate(UpdateInfo info) async {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator == null) {
+      _pendingUpdateVersion = null;
+      return;
+    }
+    final accepted = await showUpdateAvailableDialog(navigator.context, info);
+    if (accepted == true) {
+      await showDialog<void>(
+        context: navigator.context,
+        barrierDismissible: false,
+        builder: (_) => UpdateDownloadDialog(info: info),
+      );
+    } else {
+      AutoUpdateChecker.instance.dismiss(info.version);
+    }
+    _pendingUpdateVersion = null;
   }
 
   @override

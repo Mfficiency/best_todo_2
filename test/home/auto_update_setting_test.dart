@@ -21,7 +21,7 @@ void main() {
   });
 
   tearDown(() {
-    Config.autoUpdateCheckEnabled = false;
+    Config.autoUpdateCheckEnabled = true;
   });
 
   Future<void> pumpSettings(WidgetTester tester) async {
@@ -46,7 +46,7 @@ void main() {
   }
 
   testWidgets('the Updates section switch persists to Config', (tester) async {
-    expect(Config.autoUpdateCheckEnabled, isFalse);
+    expect(Config.autoUpdateCheckEnabled, isTrue);
 
     await pumpSettings(tester);
     await openSection(tester, 'Updates');
@@ -59,12 +59,12 @@ void main() {
       await tester.pump();
     }
 
-    expect(Config.autoUpdateCheckEnabled, isTrue);
+    expect(Config.autoUpdateCheckEnabled, isFalse);
 
     // The switch was persisted, not just flipped in memory.
-    Config.autoUpdateCheckEnabled = false;
+    Config.autoUpdateCheckEnabled = true;
     await tester.runAsync(Config.load);
-    expect(Config.autoUpdateCheckEnabled, isTrue);
+    expect(Config.autoUpdateCheckEnabled, isFalse);
   });
 
   testWidgets('the setting is findable through settings search',

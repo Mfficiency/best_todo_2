@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.1] - 2026-08-27
+- "Automatically check for updates" (Settings → Updates, now on by default) actually works now: instead of a single check at launch that just opened the About page for you, the app polls GitHub every minute while it's open and, the moment a newer build appears, asks "New version available. Do you want to download and install it?" — Yes downloads and installs immediately with no further confirmation (besides Android's own install prompt), No just dismisses it until a newer build ships. The About page's "Download & install" already installed automatically after downloading and still does.
+
 ## [0.2.0] - 2026-08-27
 - Recurring tasks rebuilt: real weekly/monthly/yearly rules with multi-weekday and never/date/count endings, a Repeat button at creation time, and Google Calendar-style this-event/this-and-following/all-events editing and deleting so a single occurrence can be changed or removed without breaking or losing the rest of the series
 - Fixed: deleting a single occurrence of a recurring task is now permanent — it used to silently come back the next time the app loaded or you imported data, because that regeneration never knew it had been deleted
