@@ -156,6 +156,7 @@ class RecurrenceService {
       dueDate: date,
       hasExplicitTime: master.hasExplicitTime,
       isWish: master.isWish,
+      isEatingHabit: master.isEatingHabit,
       projectId: master.projectId,
       kanbanStatus: master.kanbanStatus,
       recurrenceParentUid: master.uid,
@@ -168,6 +169,10 @@ class RecurrenceService {
   /// [applyPlan] (or equivalent) does that.
   ///
   /// - A slot listed in [Task.recurrenceExceptionDates] is never generated.
+  /// - A slot matching a task already sitting in [archivedOrBinned] (the
+  ///   Archived Items / Deleted bin lists) is never generated either — a
+  ///   compatibility fallback for occurrences archived before a master
+  ///   started recording exceptions, so nothing already-deleted comes back.
   /// - An existing child whose slot no longer belongs to the schedule (the
   ///   rule shrank) is removed — unless it's an override, which is always
   ///   preserved so an individually-edited occurrence can never be lost to a
@@ -176,6 +181,7 @@ class RecurrenceService {
     Task master,
     List<Task> tasks, {
     DateTime? now,
+    List<Task> archivedOrBinned = const [],
   }) {
     if (master.recurrenceParentUid != null) {
       return const RecurrenceRefreshPlan([], []);
@@ -188,6 +194,12 @@ class RecurrenceService {
 
     final horizon = _horizonFor(master, now ?? DateTime.now());
     final exceptions = master.recurrenceExceptionDates.toSet();
+    for (final t in archivedOrBinned) {
+      final d = t.dueDate;
+      if (t.recurrenceParentUid == master.uid && d != null) {
+        exceptions.add(dayKey(d));
+      }
+    }
     final expected = <String, DateTime>{};
     for (final date in occurrenceDates(master, horizon: horizon).skip(1)) {
       final key = dayKey(date);
@@ -230,8 +242,16 @@ class RecurrenceService {
   }
 
   /// Runs [planRefresh] and applies it in one step — the common case.
-  static void refresh(Task master, List<Task> tasks, {DateTime? now}) {
-    applyPlan(tasks, planRefresh(master, tasks, now: now));
+  static void refresh(
+    Task master,
+    List<Task> tasks, {
+    DateTime? now,
+    List<Task> archivedOrBinned = const [],
+  }) {
+    applyPlan(
+      tasks,
+      planRefresh(master, tasks, now: now, archivedOrBinned: archivedOrBinned),
+    );
   }
 
   /// "This event" delete of the master's own occurrence (slot 0): the master
