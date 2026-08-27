@@ -1,5 +1,7 @@
 import 'package:uuid/uuid.dart';
 
+import '../utils/label_utils.dart';
+
 /// Available built-in melodies an alarm can play. The strings are stored in
 /// JSON, so keep them stable once shipped.
 const List<String> kAlarmMelodies = [
@@ -25,11 +27,18 @@ const List<int> kAlarmColors = [
   0xFF6D4C41, // brown
 ];
 
+/// Required tag carried by every alarm so Settings -> Filtering rules can
+/// match alarms through the stored tag string.
+const String kAlarmRequiredTag = 'alarm';
+
 /// A single alarm with all of its configuration.
 class Alarm {
   static final Uuid _uuid = const Uuid();
 
   static String newUid() => _uuid.v4();
+
+  static String ensureAlarmTag(String tags) =>
+      addLabelToken(tags, kAlarmRequiredTag);
 
   String uid;
 
@@ -100,6 +109,12 @@ class Alarm {
   /// (negative = before, e.g. -15 for "15 minutes before").
   int triggerOffsetMinutes;
 
+  /// Tags (comma/whitespace-separated, same convention as [Task.label]).
+  /// Every alarm carries [kAlarmRequiredTag] plus any user categorization
+  /// (e.g. "work", "medication") so Settings -> Filtering rules can match
+  /// the Alarms view's own reserved tag through the stored tag string.
+  String tags;
+
   Alarm({
     String? uid,
     required this.name,
@@ -121,8 +136,10 @@ class Alarm {
     this.itemUid,
     this.triggerAnchor = anchorEnd,
     this.triggerOffsetMinutes = 0,
+    String tags = kAlarmRequiredTag,
   })  : uid = uid ?? Alarm.newUid(),
-        repeatDays = repeatDays ?? <int>[];
+        repeatDays = repeatDays ?? <int>[],
+        tags = ensureAlarmTag(tags);
 
   /// Two digit `HH:mm` representation of the alarm time.
   String get timeLabel =>
@@ -204,6 +221,7 @@ class Alarm {
       itemUid: json['itemUid'] as String?,
       triggerAnchor: json['triggerAnchor'] as String? ?? anchorEnd,
       triggerOffsetMinutes: json['triggerOffsetMinutes'] as int? ?? 0,
+      tags: json['tags'] as String? ?? '',
     );
   }
 
@@ -225,11 +243,11 @@ class Alarm {
         'snoozeDurationMinutes': snoozeDurationMinutes,
         'snoozeMaxCount': snoozeMaxCount,
         'enabled': enabled,
-        // Reminder link — omitted for standalone alarms so their JSON stays
-        // byte-identical to pre-0.1.110 records.
+        // Reminder link: omitted for standalone alarms.
         if (itemUid != null) 'itemUid': itemUid,
         if (itemUid != null) 'triggerAnchor': triggerAnchor,
         if (itemUid != null) 'triggerOffsetMinutes': triggerOffsetMinutes,
+        'tags': ensureAlarmTag(tags),
       };
 
   Alarm copy() => Alarm.fromJson(toJson());

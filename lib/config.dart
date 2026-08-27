@@ -92,6 +92,7 @@ class Config {
     'usage_data',
     'productivity_stats',
     'test_results',
+    'weekly_hours_planner',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -106,6 +107,7 @@ class Config {
     'Usage Data',
     'Productivity Stats',
     'Test Results',
+    'Weekly Hours Planner',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -128,7 +130,7 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first nine match
+  /// Keys are persisted, so keep them stable; the first ten match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
@@ -140,6 +142,7 @@ class Config {
     'usage_data',
     'productivity_stats',
     'test_results',
+    'weekly_hours_planner',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -162,6 +165,7 @@ class Config {
     'Usage Data',
     'Productivity Stats',
     'Test Results',
+    'Weekly Hours Planner',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -184,6 +188,7 @@ class Config {
     'Charts about how you use the app',
     'Completion stats and trends',
     'Results of the latest CI test run',
+    'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
@@ -230,6 +235,20 @@ class Config {
   /// right. Off by default so the timeline gets more room (the hour is set by
   /// scrolling the timeline itself).
   static bool chronizeShowHourWheel = false;
+
+  /// First hour shown on the Weekly Hours Planner's grid (0-23). Replaces
+  /// what used to be a fixed 06:00 start.
+  static int weeklyHoursStartHour = 6;
+
+  /// Last hour shown on the Weekly Hours Planner's grid (1-24, exclusive —
+  /// 22 means the grid ends at 22:00). Always kept above [weeklyHoursStartHour].
+  static int weeklyHoursEndHour = 22;
+
+  /// Public .ics feed URL (a Google Calendar "Secret address in iCal format"
+  /// URL, or any other RFC 5545 feed) overlaid on the Weekly Hours Planner.
+  /// Empty until set in Settings; imported events render translucent,
+  /// underneath that day's work blocks.
+  static String googleCalendarUrl = '';
 
   /// If true, swipe left deletes a task and swipe right shows options.
   /// Otherwise the directions are reversed.
@@ -462,6 +481,45 @@ class Config {
   /// query (see `ItemViews.passesFilterRules`).
   static Map<String, ViewFilterRules> viewFilterRules = {};
 
+  /// How many times [ViewFilterRules.defaultsFor]'s template has been
+  /// revised; bump this whenever it changes so every install re-syncs to the
+  /// new template, not just a fresh one. Version 1 shipped an incorrect,
+  /// overly conservative template (it left Wish/Project out of several Hide
+  /// lists to avoid disturbing other behavior); version 2 corrects it to the
+  /// literal Hide/Show matrix this feature was specified with.
+  static const int _currentViewFilterRulesSeedVersion = 2;
+
+  /// How many times [seedViewFilterRuleDefaultsIfNeeded] has applied the
+  /// template to this install (0 = never). Persisted so it only (re-)applies
+  /// when [_currentViewFilterRulesSeedVersion] moves ahead of it.
+  static int viewFilterRulesSeedVersion = 0;
+
+  /// Applies [ViewFilterRules.defaultsFor] to every view — filling a gap on
+  /// a first run, or (after a template revision — see
+  /// [_currentViewFilterRulesSeedVersion]) overwriting whatever an earlier,
+  /// since-corrected template version had auto-seeded. A no-op once already
+  /// at the current version, so a rule the user has since customized by hand
+  /// is never touched again after that.
+  static void seedViewFilterRuleDefaultsIfNeeded() {
+    if (viewFilterRulesSeedVersion >= _currentViewFilterRulesSeedVersion) {
+      return;
+    }
+    final isFirstRun = viewFilterRulesSeedVersion == 0;
+    viewFilterRulesSeedVersion = _currentViewFilterRulesSeedVersion;
+    for (final id in ViewFilterRules.viewIds) {
+      if (!isFirstRun) {
+        // A template-revision re-sync: replace what an earlier template
+        // version seeded, same as a fresh install would get today.
+        final defaults = ViewFilterRules.defaultsFor(id);
+        if (defaults != null) viewFilterRules[id] = defaults;
+        continue;
+      }
+      if (viewFilterRules.containsKey(id)) continue;
+      final defaults = ViewFilterRules.defaultsFor(id);
+      if (defaults != null) viewFilterRules[id] = defaults;
+    }
+  }
+
   /// If true, tasks are kept in sync both ways with a Todoist account (see
   /// `TodoistSyncService`). Off by default; enabling without a token set is a
   /// no-op until one is entered in Settings → Todoist sync.
@@ -472,11 +530,12 @@ class Config {
   /// every other value in this file — the app has no secret-storage layer.
   static String todoistApiToken = '';
 
-  /// If true, the app checks for a newer build every time it starts and, if
-  /// one is found, asks before doing anything — see Settings → Updates. Off
-  /// by default so a fresh install never phones home unasked; a manual check
-  /// from the About page always works regardless of this setting.
-  static bool autoUpdateCheckEnabled = false;
+  /// If true, the app polls GitHub for a newer build every minute while it
+  /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
+  /// appears, asks whether to download and install it — see Settings →
+  /// Updates. On by default; a manual check from the About page always works
+  /// regardless of this setting.
+  static bool autoUpdateCheckEnabled = true;
 
   /// How many days a task stays in the real Deleted bin (`deleted_bin.json`)
   /// before it is purged for good. Archived tasks (`deleted_tasks.json`,
@@ -501,6 +560,9 @@ class Config {
         applyMap(data);
       }
     } catch (_) {}
+    final seedVersionBefore = viewFilterRulesSeedVersion;
+    seedViewFilterRuleDefaultsIfNeeded();
+    if (viewFilterRulesSeedVersion != seedVersionBefore) await save();
   }
 
   static Map<String, dynamic> toMap() {
@@ -527,6 +589,9 @@ class Config {
       'defaultDelaySeconds': defaultDelaySeconds,
       'startInScheduleView': startInScheduleView,
       'chronizeShowHourWheel': chronizeShowHourWheel,
+      'weeklyHoursStartHour': weeklyHoursStartHour,
+      'weeklyHoursEndHour': weeklyHoursEndHour,
+      'googleCalendarUrl': googleCalendarUrl,
       'startTool': startTool,
       'showStreak': showStreak,
       'streakGraceHours': streakGraceHours,
@@ -560,6 +625,7 @@ class Config {
         for (final entry in viewFilterRules.entries)
           entry.key: entry.value.toJson(),
       },
+      'viewFilterRulesSeedVersion': viewFilterRulesSeedVersion,
     };
   }
 
@@ -603,6 +669,17 @@ class Config {
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
+    weeklyHoursStartHour =
+        (data['weeklyHoursStartHour'] as num?)?.round().clamp(0, 22) ??
+            weeklyHoursStartHour;
+    weeklyHoursEndHour =
+        (data['weeklyHoursEndHour'] as num?)?.round().clamp(1, 24) ??
+            weeklyHoursEndHour;
+    if (weeklyHoursEndHour <= weeklyHoursStartHour) {
+      weeklyHoursEndHour = weeklyHoursStartHour + 1;
+    }
+    googleCalendarUrl =
+        data['googleCalendarUrl'] as String? ?? googleCalendarUrl;
     final savedStartTool = data['startTool'] as String?;
     if (savedStartTool != null && startToolOptions.contains(savedStartTool)) {
       startTool = savedStartTool;
@@ -693,6 +770,18 @@ class Config {
             entry.key as String: ViewFilterRules.fromJson(
                 Map<String, dynamic>.from(entry.value as Map)),
       };
+    }
+    final savedSeedVersion = data['viewFilterRulesSeedVersion'] as num?;
+    if (savedSeedVersion != null) {
+      viewFilterRulesSeedVersion = savedSeedVersion.round();
+    } else {
+      // Pre-migration installs only ever wrote the old boolean flag; treat
+      // it as version 1 (the incorrect template) so
+      // seedViewFilterRuleDefaultsIfNeeded re-syncs them to the current one.
+      final legacySeeded = data['viewFilterRulesSeeded'] as bool?;
+      if (legacySeeded != null) {
+        viewFilterRulesSeedVersion = legacySeeded ? 1 : 0;
+      }
     }
   }
 

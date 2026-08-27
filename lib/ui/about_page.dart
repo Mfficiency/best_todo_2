@@ -1,5 +1,3 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,15 +7,7 @@ import '../services/update_service.dart';
 import 'subpage_app_bar.dart';
 
 class AboutPage extends StatelessWidget {
-  const AboutPage({Key? key, this.autoCheckForUpdate = false})
-      : super(key: key);
-
-  /// When true, the update section runs its check as soon as this page
-  /// opens instead of waiting for a tap — used when the auto-update prompt
-  /// (Settings → Updates) has already been confirmed, so the user lands
-  /// straight on the available build instead of an extra "Check for
-  /// updates" tap.
-  final bool autoCheckForUpdate;
+  const AboutPage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +57,7 @@ class AboutPage extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              _UpdateSection(autoCheck: autoCheckForUpdate),
+              const _UpdateSection(),
             ],
           ),
         ),
@@ -92,11 +82,7 @@ enum _UpdatePhase {
 /// the one kept for a rollback. On web/desktop (or a release without an APK
 /// asset) the buttons open the download page in the browser instead.
 class _UpdateSection extends StatefulWidget {
-  const _UpdateSection({this.autoCheck = false});
-
-  /// Runs [_UpdateSectionState._check] right away instead of waiting for the
-  /// "Check for updates" tap.
-  final bool autoCheck;
+  const _UpdateSection();
 
   @override
   State<_UpdateSection> createState() => _UpdateSectionState();
@@ -105,12 +91,6 @@ class _UpdateSection extends StatefulWidget {
 class _UpdateSectionState extends State<_UpdateSection> {
   _UpdatePhase _phase = _UpdatePhase.idle;
   UpdateCheck? _result;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.autoCheck) unawaited(_check());
-  }
 
   /// The build currently being downloaded/installed — the newest one, or the
   /// rollback build when that button was tapped.

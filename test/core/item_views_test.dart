@@ -1,4 +1,5 @@
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/item_views.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -185,6 +186,16 @@ void main() {
           ItemViews.waitingApproval([waiting, approved, deletedWaiting])
               .map((t) => t.title),
           ['pending']);
+    });
+
+    test('waitingApproval applies rules on top of the structural gate', () {
+      final keep = pending('keep')..label = 'Waiting_for_approval, urgent';
+      final drop = pending('drop');
+      final result = ItemViews.waitingApproval(
+        [keep, drop],
+        rules: ViewFilterRules(includeTags: ['urgent']),
+      );
+      expect(result.map((t) => t.title), ['keep']);
     });
   });
 }

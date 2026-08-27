@@ -106,4 +106,24 @@ void main() {
     final next = alarm.nextOccurrence(from);
     expect(next, DateTime(2026, 7, 1, 9, 0));
   });
+
+  group('tags', () {
+    test('default to alarm and round-trip through JSON', () {
+      expect(Alarm(name: 'plain').tags, 'alarm');
+      final alarm = Alarm(name: 'work', tags: 'work, medication');
+      final decoded = Alarm.fromJson(alarm.toJson());
+      expect(decoded.tags, 'work, medication, alarm');
+    });
+
+    test('legacy records without tags are backfilled with alarm', () {
+      final legacy = Alarm(name: 'plain').toJson()..remove('tags');
+      expect(Alarm.fromJson(legacy).tags, 'alarm');
+    });
+
+    test('explicitly empty tags are normalized back to alarm', () {
+      final alarm = Alarm(name: 'plain', tags: '');
+      expect(alarm.tags, 'alarm');
+      expect(alarm.toJson()['tags'], 'alarm');
+    });
+  });
 }

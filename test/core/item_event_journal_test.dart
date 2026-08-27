@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:besttodo/models/item_event.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/task_change_source.dart';
 import 'package:besttodo/services/item_event_journal.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/task_detail_page.dart';
@@ -108,6 +109,32 @@ void main() {
       expect(events.single.type, ItemEvent.typeDeleted);
       expect(events.single.itemId, task.uid);
     });
+
+    test('source defaults to user and is stamped on every event produced',
+        () {
+      final task = Task(title: 'buy milk');
+      final events = ItemEventJournal.diffSnapshots(
+        before: {},
+        after: snap([task]),
+        nextSeq: (uid) => 1,
+        wasSeen: (uid) => false,
+        at: DateTime(2026, 7, 17),
+      );
+      expect(events.single.source, TaskChangeSource.user);
+    });
+
+    test('an explicit source is stamped on every event produced', () {
+      final task = Task(title: 'buy milk');
+      final events = ItemEventJournal.diffSnapshots(
+        before: {},
+        after: snap([task]),
+        nextSeq: (uid) => 1,
+        wasSeen: (uid) => false,
+        at: DateTime(2026, 7, 17),
+        source: TaskChangeSource.automation,
+      );
+      expect(events.single.source, TaskChangeSource.automation);
+    });
   });
 
   group('journal persistence through StorageService', () {
@@ -205,6 +232,20 @@ void main() {
       expect(events.last.patch.single.to, 'v3');
     });
 
+    test('saveTaskList threads its source into the journaled events',
+        () async {
+      final service = StorageService();
+      final task = Task(title: 'shared task');
+      await service.saveTaskList([]);
+      await service.saveTaskList([task], source: TaskChangeSource.share);
+      task.isDone = true;
+      await service.saveTaskList([task], source: TaskChangeSource.automation);
+
+      final events = await ItemEventJournal.instance.eventsForItem(task.uid);
+      expect(events.map((e) => e.source),
+          [TaskChangeSource.share, TaskChangeSource.automation]);
+    });
+
     test('export payload carries the journal as item_events', () async {
       final service = StorageService();
       final task = Task(title: 'exported');
@@ -227,7 +268,9 @@ void main() {
 
   group('describeItemEvent', () {
     ItemEvent event(String type,
-            {List<FieldChange> patch = const [], bool seeded = false}) =>
+            {List<FieldChange> patch = const [],
+            bool seeded = false,
+            String source = TaskChangeSource.user}) =>
         ItemEvent(
           itemId: 'x',
           seq: 1,
@@ -235,6 +278,7 @@ void main() {
           type: type,
           patch: patch,
           seeded: seeded,
+          source: source,
         );
 
     test('covers the common lifecycle wordings', () {
@@ -256,6 +300,62 @@ void main() {
           'Edited title');
       expect(describeItemEvent(event(ItemEvent.typeCreated, seeded: true)),
           'Created (reconstructed)');
+    });
+
+    test('a non-user source is tagged on the end; user stays unadorned', () {
+      expect(describeItemEvent(event(ItemEvent.typeCreated)), 'Created');
+      expect(
+          describeItemEvent(
+              event(ItemEvent.typeCreated, source: TaskChangeSource.share)),
+          'Created · Share');
+      expect(
+          describeItemEvent(event(ItemEvent.typeDeleted,
+              source: TaskChangeSource.automation)),
+          'Deleted · Automation');
+      expect(
+          describeItemEvent(
+              event(ItemEvent.typeStatusChanged,
+                  patch: [FieldChange('isDone', false, true)],
+                  source: TaskChangeSource.undo)),
+          'Completed · Undo');
+    });
+  });
+
+  group('ItemEvent source JSON round-trip', () {
+    test('defaults to user and is omitted from JSON when so', () {
+      final event = ItemEvent(
+        itemId: 'x',
+        seq: 1,
+        at: DateTime(2026, 7, 17),
+        type: ItemEvent.typeCreated,
+      );
+      expect(event.source, TaskChangeSource.user);
+      expect(event.toJson().containsKey('source'), isFalse);
+    });
+
+    test('a non-user source round-trips through JSON', () {
+      final event = ItemEvent(
+        itemId: 'x',
+        seq: 1,
+        at: DateTime(2026, 7, 17),
+        type: ItemEvent.typeCreated,
+        source: TaskChangeSource.sync,
+      );
+      final json = event.toJson();
+      expect(json['source'], TaskChangeSource.sync);
+      expect(ItemEvent.fromJson(json).source, TaskChangeSource.sync);
+    });
+
+    test('a pre-existing journal line without "source" defaults to user',
+        () {
+      final decoded = ItemEvent.fromJson({
+        'eventId': 'e1',
+        'itemId': 'x',
+        'seq': 1,
+        'at': DateTime(2026, 7, 17).toIso8601String(),
+        'type': ItemEvent.typeCreated,
+      });
+      expect(decoded.source, TaskChangeSource.user);
     });
   });
 }

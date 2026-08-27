@@ -1,5 +1,96 @@
 # Changelog
 
+## [0.2.2] - 2026-08-27
+- Mark completed-task rollover archives as automatic and label them separately from manual archives.
+- Alarms now always carry the alarm tag on creation, load, edit, and save, so existing alarms stay visible under the default Alarms Filtering rules include tag.
+
+## [0.2.1] - 2026-08-27
+- "Automatically check for updates" (Settings → Updates, now on by default) actually works now: instead of a single check at launch that just opened the About page for you, the app polls GitHub every minute while it's open and, the moment a newer build appears, asks "New version available. Do you want to download and install it?" — Yes downloads and installs immediately with no further confirmation (besides Android's own install prompt), No just dismisses it until a newer build ships. The About page's "Download & install" already installed automatically after downloading and still does.
+
+## [0.2.0] - 2026-08-27
+- Recurring tasks rebuilt: real weekly/monthly/yearly rules with multi-weekday and never/date/count endings, a Repeat button at creation time, and Google Calendar-style this-event/this-and-following/all-events editing and deleting so a single occurrence can be changed or removed without breaking or losing the rest of the series
+- Fixed: deleting a single occurrence of a recurring task is now permanent — it used to silently come back the next time the app loaded or you imported data, because that regeneration never knew it had been deleted
+- Fixed: deleting the whole series now has a full Undo (every generated occurrence, not just the first one)
+- Fixed: moving one occurrence with a swipe, drag or the dice timer's "Postpone to tomorrow" keeps it in its series instead of quietly detaching it and leaving a gap
+- Fixed: a recurring task's project assignment and Kanban column now carry over to its generated occurrences
+
+## [0.1.290] - 2026-08-27
+- Fix Filtering rules defaults to match the literal Hide/Show spec: every view now hides every other reserved tag and shows only its own by default (Home hides all nine; Wishlist/Food Diary/Alarms/Countdown show only their own tag; Waiting for Approval and Projects follow their own shorter Hide lists; Archived/Deleted only hide each other) — installs that already auto-seeded the earlier, too-conservative defaults get re-synced automatically. Added the reserved Changelog tag (no dedicated view yet) and fixed the Projects 'All Tasks' pane so the new Project default doesn't hide unassigned tasks from drag-to-assign
+- Polish the release build and quick edit flow: the custom time picker now offers a Save button on the minute step so an unchanged minute can be kept intentionally, the home app bar hides Redo when there is nothing to redo, and local release scripts reuse an existing versioned artifact unless FORCE_BUILD=1 is set
+- Local build: 2026-08-27 07:35
+
+## [0.1.289] - 2026-08-27
+- Filtering rules now actually filter: Home/Wishlist/Waiting for Approval/Projects/Food Diary/Archived Items/Deleted bin can hide or restrict by a task's real state (Wish, Project, Waiting for Approval, Archived, Deleted, Food Diary) even though that state isn't literally typed into the task's tags; Alarms and Countdown gained their own tags field plus Filtering rules entries; typing one of these reserved words onto any tag now renders as a distinct protected-colour chip everywhere tags show, since it collides with something the app already treats specially
+- Local build: 2026-08-27 07:15
+
+## [0.1.288] - 2026-08-26
+- Add a mic button beside the add-task field and the Food Diary entry's Title field for local speech-to-text: tap to start recording, tap again to stop, and the transcription is written straight into the field — fully editable, nothing auto-submits
+- Local build: 2026-08-27 06:45
+
+## [0.1.287] - 2026-08-26
+- Reordered the Tools drawer by how often each tool gets used (Food Diary and Alarms near the top, Test Results pinned last); Wishlist and Food Diary tiles now show tags first and tuck the description behind a chevron toggle instead of showing it in full, and the Food Diary add/edit dialog puts tags above the description to match the Wishlist dialog
+- Local build: 2026-08-26 20:35
+
+## [0.1.286] - 2026-08-26
+- Food Diary: each entry now has a copy-to-now button that re-logs the same meal at the current time, so recurring meals take one tap instead of retyping them
+- Local build: 2026-08-26 17:05
+
+## [0.1.285] - 2026-08-26
+- Wellbeing dashboard: the hourly chart's time axis now shows only the 0:00 / 6:00 / 12:00 / 18:00 marks instead of a crowded row of overlapping hour labels
+- Food Diary now groups entries by day and collapses past days into expandable sections, so today and undated entries stay visible at the top instead of scrolling past weeks of history
+- Local build: 2026-08-26 07:23
+
+## [0.1.284] - 2026-08-25
+- Turn Usage Data into an interactive, optional digital wellbeing dashboard with period views, phone sessions, hourly patterns, app rankings, BestTodo productivity measures, supportive insights, and gentle goals.
+- Add opt-in Android Usage Access collection so screen time stays private and is combined with the existing detailed Usage Data exports.
+- Local build: 2026-08-26 07:06
+
+## [0.1.283] - 2026-08-25
+- Task History and global Undo: every task change (create, edit, reschedule, priority/label, project, complete, archive, delete) now records who or what made it — you, sync (the Todoist integration), Android Share, or the app's own automation — visible in each task's History timeline; a new Undo/Redo pair in the app bar can step back (and forward) through recent actions, one tap per action, with bulk/paired changes like archiving or deleting undoing as a single step
+
+## [0.1.282] - 2026-08-25
+- Added a second, 1x1 Food Diary home-screen widget that is nothing but the "+" button, for pinning to the smallest widget slot next to the full Food Diary widget
+- Local build: 2026-08-25 20:46
+
+## [0.1.281] - 2026-08-25
+- Android share sheet: BestToDo now appears when sharing text, links, images or PDFs from other apps (Chrome, YouTube, Maps, Gmail, Photos, ...) and opens a small quick-add screen prefilled from the shared content, with one tap to save to Today or the Inbox, attachments preserved, and a return to the app you shared from
+- Local build: 2026-08-25 20:25
+
+## [0.1.280] - 2026-08-25
+- Weekly Hours Planner: navigate between weeks with chevrons, record each week's actual over/undertime (folds into the weekly total shown), and the Google Calendar overlay now re-syncs automatically after every edit (block drag or over/undertime entry), not only when the page opens or you tap Import in Settings
+
+## [0.1.279] - 2026-08-25
+- Added a dev-only "Widget Previews" drawer entry that mocks the Task/Alarms/Food Diary home-screen widgets in-app, so the screenshot changelog can show them off even though the real widgets are drawn by Android outside the Flutter app
+- Dev/laptop runs now seed a demo text attachment onto a starter task, and the screenshot changelog captures a task expanded on the main screen both with and without an attachment
+
+## [0.1.278] - 2026-08-25
+- Food Diary got a home-screen widget: tap the + to log a meal straight from your home screen, without opening the app — same "create entry" dialog you get inside Food Diary
+- The widget turns red once a meal checkpoint (8:00, 13:00, 20:00 — after breakfast/lunch/dinner) passes with nothing logged in that window, so a missed meal log actually gets your attention
+
+## [0.1.277] - 2026-08-25
+- Tasks can now carry attachments: add a text note, an image, or a PDF from the expanded task editor. Images open full-screen; PDFs open via the share sheet. Attachments are removable and are cleaned up automatically when a deleted task ages out of the bin.
+
+## [0.1.276] - 2026-08-25
+- Phone numbers in task descriptions and notes are now clickable too, same as URLs — tap one to open the dialer
+
+## [0.1.275] - 2026-08-25
+- Settings → Filtering rules gained a Waiting for Approval view (with its own tag rules, like every other view) and a read-only built-in-rule line under each view explaining the business logic it already enforces unconditionally — e.g. Home always excludes Waiting for Approval, Archived, and Deleted items
+- The screenshot changelog job now also captures the Weekly Hours Planner grid alongside the rest of the tool pages
+- Every screenshot changelog entry now shows the app version next to the branch it was captured from (e.g. `branch: dev v0.1.275+275`), not just the branch name
+
+## [0.1.274] - 2026-08-25
+- Weekly Hours Planner is now a vertical week grid: the five weekdays sit side by side as columns with time running top-to-bottom, sized to fill the screen so the whole hour range is visible without scrolling (replacing the old one-row-per-weekday horizontal timeline). Drag a block's edge up or down to resize it, same as before
+- Settings → Weekly Hours Planner: set the grid's default start/end hour, and paste a Google Calendar (or any .ics feed) URL to import — this week's events show translucent, underneath your work blocks, right on the planner
+- Weekly Hours Planner's Google Calendar card ("coming in a future update") is gone now that it's built
+
+## [0.1.273] - 2026-08-25
+- Waiting for Approval now has the same swipe gestures as the main list: swipe one way to approve a pending item onto today, with quick shortcuts for Tomorrow/Day After Tomorrow/Next Week/Next Month/Future; swipe the other way to deny it, with Fri/Sat/Sun/Mon shortcuts to approve it onto a specific day instead. Denying now gets an undo window before the item moves to the bin, matching every other delete swipe in the app.
+- Local build: 2026-08-25 06:49
+
+## [0.1.272] - 2026-08-25
+- Add Weekly Hours Planner tool: a Monday-to-Friday 8:36-a-day plan split into two draggable work blocks around a half-hour lunch break, with a dotted Friday line showing the theoretical clock-out time needed to keep the week at 43 hours
+- Local build: 2026-08-25 06:30
+
 ## [0.1.271] - 2026-08-25
 - Fixed a launch failure that could leave the app on a blank screen: a startup step that fails (for example saving data on a platform without file storage) no longer stops the app from opening.
 - Local build: 2026-08-25 06:14

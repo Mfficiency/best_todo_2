@@ -42,6 +42,15 @@ void main() {
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
 
+    // The drawer has grown past one screen, and the home page body carries
+    // its own Scrollables, so scroll the Drawer's own Scrollable specifically
+    // to bring Tools into view before it can be found/tapped.
+    final drawerScrollable = find.descendant(
+        of: find.byType(Drawer), matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.text('Tools'), 200,
+        scrollable: drawerScrollable.first);
+    await tester.pumpAndSettle();
+
     // Projects is not a top-level drawer entry anymore.
     expect(find.text('Projects'), findsNothing);
     expect(find.text('Tools'), findsOneWidget);
@@ -51,14 +60,12 @@ void main() {
     expect(find.text('Projects'), findsOneWidget);
 
     // Scroll the drawer (not the body list) until the entry is tappable.
-    final drawerScrollable =
-        find.ancestor(of: find.text('Tools'), matching: find.byType(Scrollable));
     await tester.scrollUntilVisible(find.text('Projects'), 50,
         scrollable: drawerScrollable.first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Projects'));
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
 
     expect(find.text('All Tasks'), findsOneWidget);

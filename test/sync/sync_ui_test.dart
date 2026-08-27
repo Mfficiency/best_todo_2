@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
@@ -245,6 +246,9 @@ void main() {
 
     await tester.enterText(
         find.widgetWithText(TextField, 'API token'), 'my-secret-token');
+    await tester.scrollUntilVisible(find.text('Save token'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save token'));
     await settleIo(tester);
 
@@ -338,9 +342,17 @@ void main() {
 
     await pumpHomeUntilLoaded(tester);
 
-    await tester.fling(
-        find.byType(RefreshIndicator), const Offset(0.0, 300.0), 1000.0);
+    // Trigger the refresh directly through RefreshIndicatorState.show()
+    // rather than simulating the drag gesture: with a lazily-built
+    // TabBarView carrying several nested Scrollables (the tab pager, a
+    // filter chip row, the task list itself), a fling on the wrong one
+    // never reaches the list's overscroll and silently no-ops. show()'s
+    // reveal animation only advances on pumped frames, so it isn't
+    // awaited directly here — just kicked off and then pumped forward.
+    unawaited(
+        tester.state<RefreshIndicatorState>(find.byType(RefreshIndicator)).show());
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     await settleIo(tester);
     await tester.pumpAndSettle();
 

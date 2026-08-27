@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:besttodo/config.dart';
 import 'package:besttodo/main.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
@@ -26,6 +27,18 @@ void main() {
 
   testWidgets('capture home page screenshot', (tester) async {
     final appBoundaryKey = GlobalKey();
+
+    // Render at a phone-portrait resolution (1080x2400 @ pixelRatio 2.0,
+    // a common Android FHD+ panel) so the screenshot changelog always shows
+    // phone-shaped screenshots regardless of the Windows CI runner's actual
+    // window size — the boundary capture below renders offscreen from the
+    // layer tree, so this virtual size is what ends up in the PNG.
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
     await tester.pumpWidget(
       RepaintBoundary(
@@ -265,6 +278,26 @@ void main() {
     await capture('archived_items_page');
     await popCurrentPage();
 
+    // Widget Previews lives directly in the drawer too (dev-only tool
+    // mocking the four Android home-screen widgets, since these
+    // integration tests run on Windows/desktop where the real RemoteViews
+    // widgets drawn by the OS home screen can't be captured).
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await ensureCenterOnScreen(
+      find.text('Widget Previews'),
+      find
+          .descendant(
+            of: find.byType(Drawer),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.text('Widget Previews'));
+    await tester.pumpAndSettle();
+    await capture('widget_previews_page');
+    await popCurrentPage();
+
     // Wishlist plus every remaining Tools entry — Projects and Productivity
     // Stats already have their own screenshots above.
     Future<void> captureTool(String label, String screenshotName) async {
@@ -295,5 +328,27 @@ void main() {
     await captureTool('Chronize', 'chronize_page');
     await captureTool('Usage Data', 'usage_data_page');
     await captureTool('Test Results', 'test_results_page');
+    await captureTool('Weekly Hours Planner', 'weekly_hours_planner_page');
+
+    // A task expanded in place on the main screen (tapping a tile toggles
+    // its inline editor, including the AttachmentsField), once for a task
+    // carrying an attachment and once for one that has none. The "with
+    // attachment" task is the dev-mode demo note seeded in
+    // home_page._loadTasks onto Config.initialTasks[1]; the "without" task
+    // is another seeded starter task nothing else in this test has touched.
+    final withAttachmentTile = find.text(Config.initialTasks[1]);
+    await tester.tap(withAttachmentTile);
+    await tester.pumpAndSettle();
+    await capture('task_open_with_attachment');
+    // Collapse via the tile's own "Collapse" button (shown while expanded)
+    // rather than tapping the tile again, which would risk the double-tap
+    // menu instead of a plain toggle. Keeps each screenshot to one open task.
+    await tester.tap(find.byTooltip('Collapse'));
+    await tester.pumpAndSettle();
+
+    final noAttachmentTile = find.text(Config.initialTasks[2]);
+    await tester.tap(noAttachmentTile);
+    await tester.pumpAndSettle();
+    await capture('task_open_no_attachment');
   });
 }

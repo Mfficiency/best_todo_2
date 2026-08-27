@@ -30,6 +30,55 @@ function Get-PubspecVersion {
   return (($versionLine.Line -split "\s+", 2)[1]).Trim()
 }
 
+function Test-IsCacheableReleaseBuild {
+  param([string[]]$ArgsForFlutter)
+
+  if ($ArgsForFlutter.Count -eq 0) {
+    return $false
+  }
+
+  if ($ArgsForFlutter.Count -gt 1) {
+    foreach ($arg in $ArgsForFlutter[1..($ArgsForFlutter.Count - 1)]) {
+      if ($arg -ne "--release") {
+        return $false
+      }
+    }
+  }
+  return $true
+}
+
+function Get-ExistingBuildArtifact {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Version,
+    [string[]]$ArgsForFlutter = @()
+  )
+
+  if ($env:FORCE_BUILD -eq "1" -or -not (Test-IsCacheableReleaseBuild $ArgsForFlutter)) {
+    return $null
+  }
+
+  $target = if ($ArgsForFlutter.Count -gt 0) { $ArgsForFlutter[0] } else { "" }
+  $candidates = switch ($target) {
+    "apk" {
+      @(
+        "github_releases/best_todo_$Version.apk",
+        "build/app/outputs/flutter-apk/best_todo_$Version.apk"
+      )
+    }
+    "web" { @("build/web-$Version") }
+    "windows" { @("build/windows/x64/runner/Release/BestToDo-$Version.exe") }
+    default { @() }
+  }
+
+  foreach ($candidate in $candidates) {
+    if (Test-Path -LiteralPath $candidate) {
+      return $candidate
+    }
+  }
+  return $null
+}
+
 function Rename-IfExists {
   param(
     [Parameter(Mandatory = $true)]
@@ -50,12 +99,23 @@ function Rename-IfExists {
 function Invoke-SingleBuild {
   param([string[]]$ArgsForFlutter)
 
+  $version = Get-PubspecVersion
+  $existingArtifact = Get-ExistingBuildArtifact -Version $version -ArgsForFlutter $ArgsForFlutter
+  if ($null -ne $existingArtifact) {
+    Write-Host "==> existing release build found: $existingArtifact"
+    Write-Host "    skipping flutter build (set FORCE_BUILD=1 to rebuild)"
+
+    if ($ArgsForFlutter.Count -gt 0 -and $ArgsForFlutter[0] -eq "apk" -and
+        $existingArtifact -like "build/app/outputs/flutter-apk/*") {
+      Invoke-Checked "dart" @("run", "tool/stage_local_release.dart", "--apk", $existingArtifact)
+    }
+    return
+  }
+
   if ($env:SKIP_PREFLIGHT -ne "1") {
     Invoke-Checked "dart" @("run", "tool/pull_test_report.dart")
     Invoke-Checked "flutter" @("test", "test/core/build_smoke_test.dart")
   }
-
-  $version = Get-PubspecVersion
 
   & flutter @("build") @ArgsForFlutter
   $buildStatus = $LASTEXITCODE

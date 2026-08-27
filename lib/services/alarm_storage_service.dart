@@ -33,6 +33,9 @@ class AlarmStorageService {
   Future<void> saveAlarms(List<Alarm> alarms) async {
     await PreUpdateBackup.ensure();
     final file = await _getLocalFile();
+    for (final alarm in alarms) {
+      alarm.tags = Alarm.ensureAlarmTag(alarm.tags);
+    }
     final jsonString = jsonEncode(alarms.map((a) => a.toJson()).toList());
     await SafeFile.writeString(file, jsonString);
   }

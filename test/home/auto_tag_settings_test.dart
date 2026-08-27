@@ -53,6 +53,9 @@ void main() {
 
     expect(find.text('Auto-tag new items'), findsOneWidget);
     final switchFinder = find.widgetWithText(SwitchListTile, 'Auto-tag new items');
+    await tester.scrollUntilVisible(switchFinder, 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
 
     await tester.tap(switchFinder);
@@ -68,7 +71,7 @@ void main() {
 
   testWidgets('Auto-tag rules page adds and deletes a tag group',
       (tester) async {
-    await AutoTagService.instance.save([]);
+    await tester.runAsync(() => AutoTagService.instance.save([]));
     await tester.pumpWidget(
         const MaterialApp(home: AutoTagRulesPage()));
     await settle(tester);
@@ -82,6 +85,7 @@ void main() {
     await tester.enterText(
         find.widgetWithText(TextField, 'Words'), 'lemon, lime');
     await tester.tap(find.text('Save'));
+    await settle(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('kitchen'), findsOneWidget);
@@ -92,7 +96,7 @@ void main() {
             .having((g) => g.keywords, 'keywords', ['lemon', 'lime']));
 
     await tester.tap(find.byTooltip('Delete tag'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.textContaining('No auto-tag rules yet'), findsOneWidget);
     expect(AutoTagService.instance.list, isEmpty);
   });

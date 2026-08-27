@@ -129,25 +129,6 @@ void main() {
     expect(find.textContaining('Go back to'), findsNothing);
   });
 
-  testWidgets(
-      'autoCheckForUpdate runs the check without a tap on "Check for updates"',
-      (tester) async {
-    UpdateService.instance.fetchOverride =
-        (url) async => releaseJson('v9.9.9-999');
-
-    await tester.pumpWidget(
-      const MaterialApp(home: AboutPage(autoCheckForUpdate: true)),
-    );
-    for (var i = 0; i < 10; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 5)));
-      await tester.pump();
-    }
-
-    expect(find.text('Version 9.9.9+999 is available.'), findsOneWidget);
-    expect(find.textContaining('Download & install'), findsOneWidget);
-  });
-
   testWidgets('a failed check shows the error and allows a retry',
       (tester) async {
     UpdateService.instance.fetchOverride =

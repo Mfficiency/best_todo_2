@@ -62,6 +62,25 @@ void main() {
     expect(restored.milestones[1].direction, MilestoneDirection.after);
   });
 
+  test('tags default to empty and round-trip through JSON', () {
+    final plain = _timerWith([]);
+    expect(plain.tags, '');
+    final tagged = CountdownTimerItem(
+      label: 'Launch',
+      target: DateTime(2026, 6, 1),
+      tags: 'work, deadline',
+    );
+    final restored = CountdownTimerItem.fromJson(tagged.toJson());
+    expect(restored.tags, 'work, deadline');
+  });
+
+  test('an empty tags string is omitted from JSON, matching a legacy '
+      'record saved before the field existed', () {
+    final plain = _timerWith([]);
+    expect(plain.toJson().containsKey('tags'), isFalse);
+    expect(CountdownTimerItem.fromJson(plain.toJson()).tags, '');
+  });
+
   test('editedAt defaults to createdAt when omitted', () {
     final created = DateTime(2026, 1, 1);
     final item = CountdownTimerItem(

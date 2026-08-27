@@ -79,9 +79,13 @@ void main() {
     // legacy wishlist.json); undated, they bucket into the Future tab and
     // render as full task tiles with a "wish" tag plus their own labels.
     expect(find.text('Buy a telescope'), findsOneWidget);
-    expect(find.text('For stargazing weekends'), findsOneWidget);
     expect(find.text('wish'), findsOneWidget);
     expect(find.text('gift'), findsOneWidget);
+    // The description sits behind a chevron toggle, tags first.
+    expect(find.text('For stargazing weekends'), findsNothing);
+    await tester.tap(find.text('Description'));
+    await tester.pump();
+    expect(find.text('For stargazing weekends'), findsOneWidget);
   });
 
   testWidgets('wishlist items do not appear on the Today tab',

@@ -42,8 +42,20 @@ class _ProjectsPageState extends State<ProjectsPage> {
   ViewFilterRules? get _rules =>
       Config.viewFilterRules[ViewFilterRules.projects];
 
+  /// [_rules] with any `includeTags` dropped, for the "All Tasks" pane only.
+  /// That pane exists to drag an *unassigned* task onto a project, so a
+  /// literal `includeTags: [Project]` default (this view's own reserved tag)
+  /// would filter the pane down to only already-assigned tasks — exactly
+  /// backwards for its purpose. `excludeTags` (Archived/Deleted/... still
+  /// hidden) keeps applying normally.
+  ViewFilterRules? get _assignPaneRules {
+    final rules = _rules;
+    if (rules == null || rules.includeTags.isEmpty) return rules;
+    return ViewFilterRules(excludeTags: rules.excludeTags);
+  }
+
   List<Task> get _activeTasks =>
-      ItemViews.active(widget.tasks, rules: _rules);
+      ItemViews.active(widget.tasks, rules: _assignPaneRules);
 
   int _taskCountForProject(Project project) =>
       ItemViews.projectTasks(widget.tasks, project.id, rules: _rules).length;

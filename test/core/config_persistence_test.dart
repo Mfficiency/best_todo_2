@@ -34,6 +34,9 @@ void main() {
     Config.showFailureDotOnMenu = true;
     Config.autoUpdateCheckEnabled = true;
     Config.deletedItemsRetentionDays = 90;
+    Config.weeklyHoursStartHour = 8;
+    Config.weeklyHoursEndHour = 20;
+    Config.googleCalendarUrl = 'https://example.com/calendar.ics';
     await Config.save();
 
     // Reset to defaults
@@ -52,6 +55,9 @@ void main() {
     Config.showFailureDotOnMenu = false;
     Config.autoUpdateCheckEnabled = false;
     Config.deletedItemsRetentionDays = 60;
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+    Config.googleCalendarUrl = '';
 
     await Config.load();
 
@@ -70,13 +76,28 @@ void main() {
     expect(Config.showFailureDotOnMenu, isTrue);
     expect(Config.autoUpdateCheckEnabled, isTrue);
     expect(Config.deletedItemsRetentionDays, 90);
+    expect(Config.weeklyHoursStartHour, 8);
+    expect(Config.weeklyHoursEndHour, 20);
+    expect(Config.googleCalendarUrl, 'https://example.com/calendar.ics');
 
     // Restore the defaults so other tests see a clean config.
     Config.showFailureDotOnMenu = false;
     Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
-    Config.autoUpdateCheckEnabled = false;
+    Config.autoUpdateCheckEnabled = true;
     Config.deletedItemsRetentionDays = 60;
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+    Config.googleCalendarUrl = '';
+  });
+
+  test('weekly hours planner end hour is kept above the start hour', () {
+    Config.applyMap({'weeklyHoursStartHour': 10, 'weeklyHoursEndHour': 9});
+    expect(Config.weeklyHoursEndHour, 11);
+
+    // Restore the defaults so other tests see a clean config.
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
   });
 
   test('deletedItemsRetentionDays is clamped on load', () {

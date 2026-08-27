@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
+import '../services/food_diary_widget_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../utils/date_time_format.dart';
-import '../utils/linkified_text.dart';
+import '../utils/description_disclosure.dart';
 import 'label_picker.dart';
+import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
 
 /// Tools → Food Diary: a pre-filtered view over the one task list — like
@@ -20,7 +23,11 @@ import 'subpage_app_bar.dart';
 /// [ItemViews.foodDiary] — and swiping one away moves it to the Archived
 /// Items list, exactly like deleting a wishlist item.
 class FoodDiaryPage extends StatefulWidget {
-  const FoodDiaryPage({Key? key}) : super(key: key);
+  /// Opens the "add entry" dialog automatically on first build, used when
+  /// arriving from the home-screen widget's "+" (`besttodofood://add`).
+  final bool autoAddEntry;
+
+  const FoodDiaryPage({Key? key, this.autoAddEntry = false}) : super(key: key);
 
   @override
   State<FoodDiaryPage> createState() => _FoodDiaryPageState();
@@ -56,6 +63,9 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       _tasks = tasks;
       _loading = false;
     });
+    if (widget.autoAddEntry) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _editEntry());
+    }
   }
 
   List<Task> _buildDevSeed() {
@@ -93,12 +103,18 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     ];
   }
 
-  Future<void> _save() => _repository.saveItems(_tasks);
+  Future<void> _save() async {
+    await _repository.saveItems(_tasks);
+    await FoodDiaryWidgetService.sync(_tasks);
+  }
 
   /// Entries sorted newest-eaten-first, undated ones (shouldn't normally
   /// happen) last.
   List<Task> _entries() {
-    final entries = ItemViews.foodDiary(_tasks);
+    final entries = ItemViews.foodDiary(
+      _tasks,
+      rules: Config.viewFilterRules[ViewFilterRules.foodDiary],
+    );
     entries.sort((a, b) {
       final aTime = a.dueDate;
       final bTime = b.dueDate;
@@ -108,6 +124,25 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       return bTime.compareTo(aTime);
     });
     return entries;
+  }
+
+  /// Groups entries by the calendar day on which they were eaten. Historical
+  /// days are rendered as collapsed sections so an established diary stays
+  /// quick to scan, while today (and any future/undated entries) remains
+  /// immediately visible.
+  List<_FoodDiaryDay> _days(List<Task> entries) {
+    final grouped = <DateTime?, List<Task>>{};
+    for (final entry in entries) {
+      final time = entry.dueDate;
+      final day = time == null
+          ? null
+          : DateTime(time.year, time.month, time.day);
+      grouped.putIfAbsent(day, () => <Task>[]).add(entry);
+    }
+    return [
+      for (final group in grouped.entries)
+        _FoodDiaryDay(day: group.key, entries: group.value),
+    ];
   }
 
   Future<void> _editEntry([Task? entry]) async {
@@ -140,6 +175,30 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       }
     });
     await _save();
+  }
+
+  /// Creates a fresh log entry from [entry], preserving the food details but
+  /// recording it at the current time. This makes recurring meals quick to
+  /// log without changing the historical entry they came from.
+  Future<void> _copyEntryToNow(Task entry) async {
+    final now = DateTime.now();
+    final copy = Task(
+      title: entry.title,
+      description: entry.description,
+      label: entry.label,
+      createdAt: now,
+      dueDate: now,
+      hasExplicitTime: true,
+      isEatingHabit: true,
+    );
+    setState(() => _tasks.insert(0, copy));
+    await _save();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text('Copied "${entry.title}" to now')),
+      );
   }
 
   /// Moves [entry] to the Archived Items list, with an undo snackbar —
@@ -187,6 +246,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   @override
   Widget build(BuildContext context) {
     final entries = _entries();
+    final days = _days(entries);
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Food Diary'),
       floatingActionButton: FloatingActionButton(
@@ -207,19 +267,95 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
                     ),
                   ),
                 )
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    return _FoodDiaryTile(
-                      key: ValueKey(entry.uid),
-                      entry: entry,
-                      onEdit: () => _editEntry(entry),
-                      onDelete: () => _deleteEntry(entry),
-                    );
-                  },
+                  children: [
+                    for (final day in days)
+                      _FoodDiaryDaySection(
+                        key: ValueKey(day.day),
+                        day: day,
+                        onEdit: _editEntry,
+                        onCopyToNow: _copyEntryToNow,
+                        onDelete: _deleteEntry,
+                      ),
+                  ],
                 ),
+    );
+  }
+}
+
+class _FoodDiaryDay {
+  final DateTime? day;
+  final List<Task> entries;
+
+  const _FoodDiaryDay({required this.day, required this.entries});
+}
+
+class _FoodDiaryDaySection extends StatelessWidget {
+  final _FoodDiaryDay day;
+  final ValueChanged<Task> onEdit;
+  final ValueChanged<Task> onCopyToNow;
+  final ValueChanged<Task> onDelete;
+
+  const _FoodDiaryDaySection({
+    super.key,
+    required this.day,
+    required this.onEdit,
+    required this.onCopyToNow,
+    required this.onDelete,
+  });
+
+  String _title(DateTime today) {
+    if (day.day == null) return 'No date';
+    if (day.day == today) return 'Today';
+    return formatTimerDate(day.day!);
+  }
+
+  List<Widget> _tiles() => [
+        for (final entry in day.entries)
+          _FoodDiaryTile(
+            key: ValueKey(entry.uid),
+            entry: entry,
+            onEdit: () => onEdit(entry),
+            onCopyToNow: () => onCopyToNow(entry),
+            onDelete: () => onDelete(entry),
+          ),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final isPast = day.day != null && day.day!.isBefore(today);
+    final title = _title(today);
+
+    if (isPast) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          key: PageStorageKey<String>('food-diary-day-$title'),
+          initiallyExpanded: false,
+          title: Text(title),
+          subtitle: Text(
+            '${day.entries.length} ${day.entries.length == 1 ? 'entry' : 'entries'}',
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          children: _tiles(),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+        ),
+        ..._tiles(),
+        const SizedBox(height: 8),
+      ],
     );
   }
 }
@@ -296,17 +432,26 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _titleController,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Title'),
-              textInputAction: TextInputAction.next,
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _titleController,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Title'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+                SpeechInputButton(controller: _titleController),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: 3,
+            // Tags sit right under the title, same as the wishlist dialog —
+            // they're what a diary entry is glanced at for; the description
+            // is the exception and lives at the bottom.
+            LabelPickerField(
+              value: _label,
+              fieldLabel: 'Tags (e.g. sugar, lactose)',
+              onChanged: (v) => setState(() => _label = v),
             ),
             const SizedBox(height: 12),
             Align(
@@ -330,10 +475,11 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
                 ),
               ],
             ),
-            LabelPickerField(
-              value: _label,
-              fieldLabel: 'Tags (e.g. sugar, lactose)',
-              onChanged: (v) => setState(() => _label = v),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(labelText: 'Description'),
+              maxLines: 3,
             ),
           ],
         ),
@@ -367,12 +513,14 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
 class _FoodDiaryTile extends StatelessWidget {
   final Task entry;
   final VoidCallback onEdit;
+  final VoidCallback onCopyToNow;
   final VoidCallback onDelete;
 
   const _FoodDiaryTile({
     Key? key,
     required this.entry,
     required this.onEdit,
+    required this.onCopyToNow,
     required this.onDelete,
   }) : super(key: key);
 
@@ -404,16 +552,17 @@ class _FoodDiaryTile extends StatelessWidget {
       child: Card(
         child: ListTile(
           title: Text(entry.title),
+          trailing: IconButton(
+            tooltip: 'Copy entry to now',
+            onPressed: onCopyToNow,
+            icon: const Icon(Icons.content_copy),
+          ),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (time != null) ...[
                 const SizedBox(height: 4),
                 Text(formatTimerDateTime(time)),
-              ],
-              if (entry.description.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                LinkifiedText(entry.description),
               ],
               if (labels.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -430,6 +579,10 @@ class _FoodDiaryTile extends StatelessWidget {
                       ),
                   ],
                 ),
+              ],
+              if (entry.description.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                DescriptionDisclosure(description: entry.description),
               ],
             ],
           ),

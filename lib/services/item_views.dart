@@ -68,15 +68,44 @@ class ItemViews {
     }
   }
 
-  /// Whether [task] passes the user-configured [rules] (Settings →
-  /// Filtering rules): hidden if it carries any [ViewFilterRules.excludeTags]
+  /// Synthetic view-membership tokens for [task] — layered onto its real
+  /// label tokens (see [passesFilterRules]) so a Filtering Rules exclude/
+  /// include tag can reference a task's state even though that state isn't a
+  /// literal token in [Task.label] (e.g. "Wish" for [Task.isWish], "Project"
+  /// for an assigned [Task.projectId]). [archived] and [binned] are supplied
+  /// by the two pages that read one specific list directly (Archived Items,
+  /// the Deleted bin) rather than the shared task pool, since neither state
+  /// is a field on [Task] itself — it's purely which list currently holds it.
+  static Set<String> stateTags(Task task,
+      {bool archived = false, bool binned = false}) {
+    final tags = <String>{};
+    if (task.isWish) tags.add(wishToken);
+    if (task.isEatingHabit) tags.add(fooddiaryToken);
+    if (task.projectId != null) tags.add(projectToken);
+    if (!isApproved(task)) tags.add(waitingApprovalToken);
+    if (archived) tags.add(archivedToken);
+    if (binned) tags.add(deletedToken);
+    return tags;
+  }
+
+  /// Whether the token set derived from [rawTags] (see [splitLabelTokens])
+  /// passes [rules]: hidden if it carries any [ViewFilterRules.excludeTags]
   /// token, or — when [ViewFilterRules.includeTags] is non-empty — kept only
   /// if it carries at least one of them. A null or empty [rules] passes
-  /// everything.
-  static bool passesFilterRules(Task task, ViewFilterRules? rules) {
+  /// everything. [extraTags] adds synthetic tokens (see [stateTags]) that
+  /// aren't literally present in [rawTags] but should still match. The
+  /// primitive [passesFilterRules] and non-Task views (Alarms, Countdown)
+  /// both build on this.
+  static bool passesTagRules(
+    String rawTags,
+    ViewFilterRules? rules, {
+    Set<String> extraTags = const {},
+  }) {
     if (rules == null || rules.isEmpty) return true;
-    final tokens =
-        splitLabelTokens(task.label).map((t) => t.toLowerCase()).toSet();
+    final tokens = {
+      ...splitLabelTokens(rawTags).map((t) => t.toLowerCase()),
+      ...extraTags.map((t) => t.toLowerCase()),
+    };
     if (rules.excludeTags.any((t) => tokens.contains(t.toLowerCase()))) {
       return false;
     }
@@ -87,10 +116,46 @@ class ItemViews {
     return true;
   }
 
+  /// Whether [task] passes the user-configured [rules] (Settings →
+  /// Filtering rules) — see [passesTagRules]. [archived]/[binned] extend the
+  /// matched token set with [stateTags]'s synthetic Archived/Deleted tags.
+  static bool passesFilterRules(
+    Task task,
+    ViewFilterRules? rules, {
+    bool archived = false,
+    bool binned = false,
+  }) =>
+      passesTagRules(
+        task.label,
+        rules,
+        extraTags: stateTags(task, archived: archived, binned: binned),
+      );
+
+  /// [items] narrowed to those whose [tagsOf] string passes [rules] (see
+  /// [passesTagRules]) — the non-[Task] equivalent of [applyFilterRules],
+  /// for a view over items with their own tag string rather than a
+  /// [Task.label] (Alarms, Countdown).
+  static List<T> applyTagRules<T>(
+    List<T> items,
+    ViewFilterRules? rules,
+    String Function(T item) tagsOf,
+  ) {
+    if (rules == null || rules.isEmpty) return items;
+    return items.where((item) => passesTagRules(tagsOf(item), rules)).toList();
+  }
+
   /// [tasks] narrowed to those passing [passesFilterRules].
-  static List<Task> applyFilterRules(List<Task> tasks, ViewFilterRules? rules) {
+  static List<Task> applyFilterRules(
+    List<Task> tasks,
+    ViewFilterRules? rules, {
+    bool archived = false,
+    bool binned = false,
+  }) {
     if (rules == null || rules.isEmpty) return tasks;
-    return tasks.where((t) => passesFilterRules(t, rules)).toList();
+    return tasks
+        .where((t) =>
+            passesFilterRules(t, rules, archived: archived, binned: binned))
+        .toList();
   }
 
   /// The tasks of home tab [tabIndex], sorted like the home list (open
@@ -125,9 +190,14 @@ class ItemViews {
 
   /// The Food Diary: eating-habit-flagged tasks, exactly like opening the
   /// wishlist. [isApproved] rather than [isVisibleInMainViews] since the
-  /// latter itself excludes eating-habit tasks.
-  static List<Task> foodDiary(List<Task> tasks) =>
-      tasks.where((t) => t.isEatingHabit && isApproved(t)).toList();
+  /// latter itself excludes eating-habit tasks. [rules] is the configured
+  /// Food Diary view filter, an extra layer on top of the structural gate,
+  /// see [passesFilterRules].
+  static List<Task> foodDiary(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isEatingHabit && isApproved(t) && passesFilterRules(t, rules))
+          .toList();
 
   /// All non-deleted tasks (the Projects page's top pane).
   static List<Task> active(List<Task> tasks, {ViewFilterRules? rules}) =>
@@ -164,7 +234,14 @@ class ItemViews {
 
   /// Tasks pulled from Todoist that are still waiting for a human decision
   /// (see [waitingApprovalToken]) — the Waiting for Approval page's list.
-  static List<Task> waitingApproval(List<Task> tasks) => tasks
-      .where((t) => t.deletedAt == null && !isApproved(t))
-      .toList();
+  /// [rules] is the configured Waiting for Approval view filter, an extra
+  /// layer on top of the structural pending/non-deleted gate, see
+  /// [passesFilterRules].
+  static List<Task> waitingApproval(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              !isApproved(t) &&
+              passesFilterRules(t, rules))
+          .toList();
 }

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/alarm.dart';
+import '../models/view_filter_rules.dart';
 import '../services/alarm_notification_service.dart';
 import '../services/alarm_service.dart';
+import '../services/item_views.dart';
 import '../services/log_service.dart';
+import '../utils/label_style.dart';
+import '../utils/label_utils.dart';
 import 'alarm_edit_page.dart';
 import 'alarm_log_page.dart';
 import 'subpage_app_bar.dart';
@@ -97,10 +102,13 @@ class _AlarmsPageState extends State<AlarmsPage> {
       body: ValueListenableBuilder<List<Alarm>>(
         valueListenable: _service.alarms,
         builder: (context, alarms, _) {
-          if (alarms.isEmpty) {
+          final rules = Config.viewFilterRules[ViewFilterRules.alarms];
+          final visible =
+              ItemViews.applyTagRules(alarms, rules, (a) => a.tags);
+          if (visible.isEmpty) {
             return const _EmptyState();
           }
-          final sorted = [...alarms]..sort((a, b) {
+          final sorted = [...visible]..sort((a, b) {
               final am = a.hour * 60 + a.minute;
               final bm = b.hour * 60 + b.minute;
               return am.compareTo(bm);
@@ -219,6 +227,17 @@ class _AlarmTile extends StatelessWidget {
                           ],
                         ],
                       ),
+                      if (alarm.tags.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 2,
+                          children: [
+                            for (final tag in splitLabelTokens(alarm.tags))
+                              _tagChip(tag),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -233,6 +252,29 @@ class _AlarmTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A small pill for one alarm tag, tinted [protectedTagColor] when the word
+/// collides with a reserved state tag (see `label_style.dart`).
+Widget _tagChip(String text) {
+  final color = protectedChipColorFor(text);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    decoration: BoxDecoration(
+      color: color?.withValues(alpha: 0.16) ??
+          const Color(0x1F000000), // subtle neutral fallback
+      borderRadius: BorderRadius.circular(8),
+      border: color == null ? null : Border.all(color: color),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        color: color,
+        fontWeight: color == null ? null : FontWeight.w600,
+      ),
+    ),
+  );
 }
 
 class _EmptyState extends StatelessWidget {

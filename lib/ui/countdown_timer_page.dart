@@ -4,11 +4,38 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/countdown_timer.dart';
+import '../models/view_filter_rules.dart';
+import '../services/item_views.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_time_format.dart';
+import '../utils/label_style.dart';
+import '../utils/label_utils.dart';
 import 'countdown_milestones_dialog.dart';
+import 'label_picker.dart';
 import 'subpage_app_bar.dart';
+
+/// A small pill for one countdown-timer tag, tinted [protectedTagColor] when
+/// the word collides with a reserved state tag (see `label_style.dart`).
+Widget _tagChip(String text) {
+  final color = protectedChipColorFor(text);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    decoration: BoxDecoration(
+      color: color?.withValues(alpha: 0.16) ?? const Color(0x1F000000),
+      borderRadius: BorderRadius.circular(8),
+      border: color == null ? null : Border.all(color: color),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        color: color,
+        fontWeight: color == null ? null : FontWeight.w600,
+      ),
+    ),
+  );
+}
 
 /// How the timer list is ordered. [manual] is the user's drag order; the rest
 /// are sorted views that can each run ascending or descending.
@@ -179,11 +206,13 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     CountdownTimerItem timer,
     String label,
     DateTime target,
+    String tags,
   ) async {
     final trimmed = label.trim();
     setState(() {
       if (trimmed.isNotEmpty) timer.label = trimmed;
       timer.target = target;
+      timer.tags = tags.trim();
       timer.editedAt = DateTime.now();
       // Re-evaluate suppression against the new target.
       _notifySuppressed.remove(timer.uid);
@@ -269,9 +298,17 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     );
   }
 
+  ViewFilterRules? get _rules =>
+      Config.viewFilterRules[ViewFilterRules.countdown];
+
   Widget _buildBody(BuildContext context) {
-    final timers = _displayTimers();
-    final canReorder = _sortField == _SortField.manual;
+    final rules = _rules;
+    final timers = _displayTimers(rules);
+    // A filter-rule-narrowed list would have its hidden timers' order
+    // scrambled by a reorder computed against only the visible subset —
+    // same reasoning as the home list, see `HomePage._reorderTask`.
+    final canReorder =
+        _sortField == _SortField.manual && (rules == null || rules.isEmpty);
     return Column(
       children: [
         Padding(
@@ -315,10 +352,12 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
         key: ValueKey(timer.uid),
         initialName: timer.label,
         initialTarget: timer.target,
+        initialTags: timer.tags,
         headerLabel: 'Edit timer',
         buttonLabel: 'Save',
         onCancel: () => setState(() => _editingUid = null),
-        onSave: (label, target) => _applyEdit(timer, label, target),
+        onSave: (label, target, tags) =>
+            _applyEdit(timer, label, target, tags),
       );
     }
 
@@ -341,10 +380,12 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   }
 
   /// The timers in their current display order: the manual (drag) order, or a
-  /// sorted copy when a sort field is active.
-  List<CountdownTimerItem> _displayTimers() {
-    if (_sortField == _SortField.manual) return _timers;
-    final sorted = [..._timers];
+  /// sorted copy when a sort field is active — narrowed by [rules] (Settings
+  /// → Filtering rules), matched against each timer's own [tags].
+  List<CountdownTimerItem> _displayTimers(ViewFilterRules? rules) {
+    final base = ItemViews.applyTagRules(_timers, rules, (t) => t.tags);
+    if (_sortField == _SortField.manual) return base;
+    final sorted = [...base];
     int compare(CountdownTimerItem a, CountdownTimerItem b) {
       switch (_sortField) {
         case _SortField.name:
@@ -369,6 +410,8 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
 
   void _onReorder(int oldIndex, int newIndex) {
     if (_sortField != _SortField.manual) return;
+    final rules = _rules;
+    if (rules != null && !rules.isEmpty) return;
     setState(() {
       if (newIndex > oldIndex) newIndex -= 1;
       final item = _timers.removeAt(oldIndex);
@@ -447,11 +490,12 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
 
   /// Commits the inline draft as a new timer and resets the composer (its key
   /// is bumped via [_draftSeq], so it rebuilds with a fresh name and date).
-  Future<void> _saveDraft(String label, DateTime target) async {
+  Future<void> _saveDraft(String label, DateTime target, String tags) async {
     final trimmed = label.trim();
     final item = CountdownTimerItem(
       label: trimmed.isEmpty ? _nextTimerName() : trimmed,
       target: target,
+      tags: tags.trim(),
     );
     setState(() {
       _timers.add(item);
@@ -499,6 +543,17 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (timer.tags.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 2,
+                    children: [
+                      for (final tag in splitLabelTokens(timer.tags))
+                        _tagChip(tag),
+                    ],
+                  ),
+                ],
               ],
             ),
             trailing: Row(
@@ -724,7 +779,8 @@ class _Breakdown {
 class _DraftTimerComposer extends StatefulWidget {
   final String initialName;
   final DateTime initialTarget;
-  final void Function(String label, DateTime target) onSave;
+  final String initialTags;
+  final void Function(String label, DateTime target, String tags) onSave;
   final String headerLabel;
   final String buttonLabel;
   final VoidCallback? onCancel;
@@ -737,6 +793,7 @@ class _DraftTimerComposer extends StatefulWidget {
     Key? key,
     required this.initialName,
     required this.initialTarget,
+    this.initialTags = '',
     required this.onSave,
     this.headerLabel = 'New timer',
     this.buttonLabel = 'Add',
@@ -751,12 +808,14 @@ class _DraftTimerComposer extends StatefulWidget {
 class _DraftTimerComposerState extends State<_DraftTimerComposer> {
   late final TextEditingController _nameController;
   late DateTime _target;
+  late String _tags;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
     _target = widget.initialTarget;
+    _tags = widget.initialTags;
   }
 
   @override
@@ -793,7 +852,7 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
     });
   }
 
-  void _save() => widget.onSave(_nameController.text, _target);
+  void _save() => widget.onSave(_nameController.text, _target, _tags);
 
   Widget _selectorsRow() {
     return LayoutBuilder(
@@ -879,6 +938,11 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
                             onPressed: widget.onCancel,
                           ),
                       ],
+                    ),
+                    LabelPickerField(
+                      value: _tags,
+                      fieldLabel: 'Tags',
+                      onChanged: (v) => setState(() => _tags = v),
                     ),
                     const SizedBox(height: 10),
                     _selectorsRow(),

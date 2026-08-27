@@ -7,8 +7,18 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 
 const List<String> _monthsShort = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 /// Formats the time of [d] honoring [Config.use24HourFormat].
@@ -97,8 +107,7 @@ class _InstantDatePickerState extends State<_InstantDatePicker> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final portrait =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
+    final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
     // Matches CalendarDatePicker's day-grid horizontal padding so the weekend
     // tint lines up with the columns, and its 52px sub-header height.
     final gridPadding = (theme.useMaterial3 && portrait) ? 12.0 : 8.0;
@@ -129,7 +138,8 @@ class _InstantDatePickerState extends State<_InstantDatePicker> {
                         Expanded(
                           child: i >= 5
                               ? DecoratedBox(
-                                  decoration: BoxDecoration(color: weekendColor),
+                                  decoration:
+                                      BoxDecoration(color: weekendColor),
                                 )
                               : const SizedBox.shrink(),
                         ),
@@ -186,7 +196,8 @@ class _MondayFirstLocalizationsDelegate
 }
 
 /// Shows a quick two-step time picker (tap an hour, then tap a minute) that
-/// closes the instant a minute is tapped — no separate OK step. Honors
+/// closes the instant a minute is tapped. A manual Save button is also offered
+/// on the minute step for keeping the existing minute. Honors
 /// [Config.use24HourFormat]. Returns null if dismissed without a selection.
 Future<TimeOfDay?> pickTimeOfDay(BuildContext context, TimeOfDay initial) {
   return showDialog<TimeOfDay>(
@@ -227,8 +238,12 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
     if (_step == _TimePickStep.hour) {
       setState(() => _step = _TimePickStep.minute);
     } else {
-      Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: _minute));
+      _save();
     }
+  }
+
+  void _save() {
+    Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: _minute));
   }
 
   /// Maps a touch point on the dial to an hour or minute value.
@@ -373,6 +388,11 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
             onPressed: () => setState(() => _step = _TimePickStep.minute),
             child: const Text('Minutes'),
           ),
+        if (!hourActive)
+          FilledButton(
+            onPressed: _save,
+            child: const Text('Save'),
+          ),
       ],
     );
   }
@@ -412,14 +432,21 @@ class _ClockPainter extends CustomPainter {
             -math.cos(sel.angle) * sel.radius);
     final accent = Paint()..color = scheme.primary;
     canvas.drawLine(
-        center, knob, Paint()
-      ..color = scheme.primary
-      ..strokeWidth = 2);
+        center,
+        knob,
+        Paint()
+          ..color = scheme.primary
+          ..strokeWidth = 2);
     canvas.drawCircle(center, 4, accent);
     canvas.drawCircle(knob, 17, accent);
 
     if (step == _TimePickStep.minute) {
-      _drawRing(canvas, center, outerR, 12, (i) => (i * 5).toString().padLeft(2, '0'),
+      _drawRing(
+          canvas,
+          center,
+          outerR,
+          12,
+          (i) => (i * 5).toString().padLeft(2, '0'),
           (i) => minute % 5 == 0 && minute ~/ 5 == i);
     } else if (use24) {
       _drawRing(canvas, center, outerR, 12, (i) => (i == 0 ? 12 : i).toString(),
@@ -461,8 +488,7 @@ class _ClockPainter extends CustomPainter {
       String Function(int) labelFor, bool Function(int) isSelected) {
     for (var i = 0; i < count; i++) {
       final ang = i / count * 2 * math.pi;
-      final pos =
-          center + Offset(math.sin(ang) * r, -math.cos(ang) * r);
+      final pos = center + Offset(math.sin(ang) * r, -math.cos(ang) * r);
       final selected = isSelected(i);
       final tp = TextPainter(
         text: TextSpan(

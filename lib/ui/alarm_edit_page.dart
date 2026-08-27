@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/alarm.dart';
 import '../services/alarm_sound.dart';
+import 'label_picker.dart';
 import 'subpage_app_bar.dart';
 
 /// Full screen editor for creating or editing an [Alarm].
@@ -140,6 +141,7 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
   void _save() {
     _draft.name = _nameController.text.trim();
     _draft.description = _descriptionController.text.trim();
+    _draft.tags = Alarm.ensureAlarmTag(_draft.tags);
     if (_draft.name.isEmpty) {
       _draft.name = 'Alarm';
     }
@@ -225,6 +227,11 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
               hintText: 'Optional note shown when the alarm rings',
             ),
           ),
+          LabelPickerField(
+            value: _draft.tags,
+            fieldLabel: 'Tags',
+            onChanged: (v) => setState(() => _draft.tags = v),
+          ),
           const SizedBox(height: 16),
           const Divider(),
 
@@ -232,9 +239,8 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Repeat'),
-            subtitle: Text(_draft.isRepeating
-                ? 'Repeats on selected days'
-                : 'Rings once'),
+            subtitle: Text(
+                _draft.isRepeating ? 'Repeats on selected days' : 'Rings once'),
             value: _draft.isRepeating,
             onChanged: (v) => setState(() => _draft.isRepeating = v),
           ),

@@ -13,6 +13,7 @@ import '../models/streak_reminder.dart';
 import '../models/sync_log_entry.dart';
 import '../models/view_filter_rules.dart';
 import '../services/auto_backup_service.dart';
+import '../services/google_calendar_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
@@ -50,7 +51,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    13,
+    14,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -67,6 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Todoist sync',
     'Sync & export',
     'Backup',
+    'Weekly Hours Planner',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -85,6 +87,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return Config.isFeatureEnabled('dice_timer');
       case 7:
         return Config.isFeatureEnabled('sms_report');
+      case 13:
+        return Config.isFeatureEnabled('weekly_hours_planner');
       default:
         return true;
     }
@@ -108,7 +112,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
   final Set<int> _collapsedSections = {
-    for (var i = 0; i < 13; i++) i,
+    for (var i = 0; i < 14; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
@@ -209,7 +213,14 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Automatically check for updates', 9,
         'auto update version release new build startup prompt install about'),
     _SettingsSearchEntry('Filtering rules', 2,
-        'view home wishlist projects archived deleted bin hide show tag exclude include only filter'),
+        'view home wishlist approval waiting for approval projects archived '
+        'deleted bin hide show tag exclude include only filter built in'),
+    _SettingsSearchEntry('Google Calendar URL', 13,
+        'ics import feed link sync events weekly hours planner overlay calendar'),
+    _SettingsSearchEntry('Weekly Hours Planner start hour', 13,
+        'grid hour range day begin flexitime'),
+    _SettingsSearchEntry('Weekly Hours Planner end hour', 13,
+        'grid hour range day end flexitime'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -265,6 +276,14 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _todoistTesting = false;
   String? _todoistTestResult;
   bool _todoistTestSucceeded = false;
+  int _weeklyHoursStartHour = Config.weeklyHoursStartHour;
+  int _weeklyHoursEndHour = Config.weeklyHoursEndHour;
+  final TextEditingController _googleCalendarUrlController =
+      TextEditingController(text: Config.googleCalendarUrl);
+  bool _gcalImporting = false;
+  String? _gcalError;
+  int? _gcalEventCount;
+  DateTime? _gcalLastImported;
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
@@ -310,6 +329,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _todoistTokenController.text = Config.todoistApiToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
     _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
+    _weeklyHoursStartHour = Config.weeklyHoursStartHour;
+    _weeklyHoursEndHour = Config.weeklyHoursEndHour;
+    _googleCalendarUrlController.text = Config.googleCalendarUrl;
   }
 
   @override
@@ -318,6 +340,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _scrollController.addListener(_updateActiveSectionFromScroll);
     _loadSmsConfig();
     _loadLastAutoBackup();
+    _loadGoogleCalendarStatus();
     // Lazy, fire-and-forget: the "Sync now" tile shows the last sync from the
     // persisted history once it arrives.
     unawaited(SyncService.instance.ensureLoaded());
@@ -1641,6 +1664,189 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _loadGoogleCalendarStatus() async {
+    final cached = await GoogleCalendarService.loadCached();
+    final lastRefreshed = await GoogleCalendarService.lastRefreshed();
+    if (!mounted) return;
+    setState(() {
+      _gcalEventCount = cached.isEmpty ? null : cached.length;
+      _gcalLastImported = lastRefreshed;
+    });
+  }
+
+  Future<void> _importGoogleCalendar() async {
+    final url = _googleCalendarUrlController.text.trim();
+    Config.googleCalendarUrl = url;
+    await Config.save();
+    if (url.isEmpty) {
+      await GoogleCalendarService.clearCache();
+      setState(() {
+        _gcalEventCount = null;
+        _gcalLastImported = null;
+        _gcalError = null;
+      });
+      widget.onSettingsChanged?.call();
+      return;
+    }
+    setState(() {
+      _gcalImporting = true;
+      _gcalError = null;
+    });
+    try {
+      final events = await GoogleCalendarService.refresh(url);
+      if (!mounted) return;
+      setState(() {
+        _gcalEventCount = events.length;
+        _gcalLastImported = DateTime.now();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _gcalError = 'Could not import that calendar URL');
+    } finally {
+      if (mounted) setState(() => _gcalImporting = false);
+    }
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _setWeeklyHoursHour({
+    required bool isStart,
+    required int hour,
+  }) async {
+    setState(() {
+      if (isStart) {
+        _weeklyHoursStartHour = hour;
+        if (_weeklyHoursEndHour <= hour) _weeklyHoursEndHour = hour + 1;
+      } else {
+        _weeklyHoursEndHour = hour;
+        if (_weeklyHoursStartHour >= hour) _weeklyHoursStartHour = hour - 1;
+      }
+    });
+    Config.weeklyHoursStartHour = _weeklyHoursStartHour;
+    Config.weeklyHoursEndHour = _weeklyHoursEndHour;
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildWeeklyHoursPlannerSection() {
+    return _buildSection(
+      index: 13,
+      title: 'Weekly Hours Planner',
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Hour range',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        ListTile(
+          title: const Text('Start hour'),
+          subtitle: const Text('First hour shown on the grid'),
+          trailing: DropdownButton<int>(
+            value: _weeklyHoursStartHour,
+            items: [
+              for (var h = 0; h < 23; h++)
+                DropdownMenuItem(
+                    value: h, child: Text(_formatHourMinute(h * 60))),
+            ],
+            onChanged: (val) {
+              if (val == null) return;
+              _setWeeklyHoursHour(isStart: true, hour: val);
+            },
+          ),
+        ),
+        ListTile(
+          title: const Text('End hour'),
+          subtitle: const Text('Last hour shown on the grid'),
+          trailing: DropdownButton<int>(
+            value: _weeklyHoursEndHour,
+            items: [
+              for (var h = 1; h <= 24; h++)
+                DropdownMenuItem(
+                  value: h,
+                  child: Text(_formatHourMinute((h % 24) * 60)),
+                ),
+            ],
+            onChanged: (val) {
+              if (val == null) return;
+              _setWeeklyHoursHour(isStart: false, hour: val);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            'Google Calendar',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            'Paste a public .ics feed URL (Google Calendar settings → '
+            '"Secret address in iCal format"). Imported events for this '
+            'week show translucent, underneath your work blocks, on the '
+            'Weekly Hours Planner.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _googleCalendarUrlController,
+            decoration: const InputDecoration(
+              labelText: 'Calendar URL',
+              hintText:
+                  'https://calendar.google.com/calendar/ical/.../basic.ics',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.url,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _gcalImporting ? null : _importGoogleCalendar,
+                icon: _gcalImporting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_download),
+                label: const Text('Import'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _gcalError ??
+                      (_gcalEventCount == null
+                          ? 'Not imported yet'
+                          : 'Imported $_gcalEventCount event'
+                              '${_gcalEventCount == 1 ? '' : 's'}'
+                              '${_gcalLastImported == null ? '' : ' · ${_formatDateTime(_gcalLastImported!)}'}'),
+                  style: _gcalError == null
+                      ? Theme.of(context).textTheme.bodySmall
+                      : TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
   Future<void> _setTodoistSyncEnabled(bool value) async {
     setState(() => _todoistSyncEnabled = value);
     Config.todoistSyncEnabled = value;
@@ -1872,9 +2078,10 @@ class _SettingsPageState extends State<SettingsPage> {
         SwitchListTile(
           title: const Text('Automatically check for updates'),
           subtitle: const Text(
-              'Looks for a newer version every time the app opens and asks '
-              'before installing it. Manual checks on the About page always '
-              'work regardless of this setting.'),
+              'Polls for a newer version every minute while the app is open '
+              'and asks whether to download and install it the moment one '
+              'appears. Manual checks on the About page always work '
+              'regardless of this setting.'),
           value: _autoUpdateCheckEnabled,
           onChanged: _setAutoUpdateCheckEnabled,
         ),
@@ -1984,7 +2191,8 @@ class _SettingsPageState extends State<SettingsPage> {
           padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(
             'Hide tasks by tag, or restrict a view to only tasks carrying a '
-            'given tag — configured separately for each view below.',
+            'given tag — configured separately for each view below, on top '
+            'of the built-in rule (if any) shown under each one.',
           ),
         ),
         for (var i = 0; i < viewIds.length; i++) ...[
@@ -2003,6 +2211,16 @@ class _SettingsPageState extends State<SettingsPage> {
               style: theme.textTheme.bodySmall,
             ),
           ),
+          if (ViewFilterRules.builtInRules[viewIds[i]]!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                ViewFilterRules.builtInRules[viewIds[i]]!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
           _buildTagRuleEditor(
             viewId: viewIds[i],
             kind: 'exclude',
@@ -2200,6 +2418,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _smsTemplateController.dispose();
     _searchController.dispose();
     _todoistTokenController.dispose();
+    _googleCalendarUrlController.dispose();
     for (final controller in _filterTagControllers.values) {
       controller.dispose();
     }
@@ -2663,6 +2882,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         _buildTodoistSyncSection(),
                         _buildExportSection(),
                         _buildBackupSection(),
+                        if (_isSectionVisible(13))
+                          _buildWeeklyHoursPlannerSection(),
                       ],
               ),
             ),

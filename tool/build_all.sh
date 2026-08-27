@@ -19,6 +19,7 @@
 #   PUSH=0             commit the release folder but don't push
 #   WINDOWS=0          skip the Windows build (APK only)
 #   ANDROID=0          skip the Android build (exe only)
+#   FORCE_BUILD=1      rebuild even when this version's artifact already exists
 #   REQUIRE_WINDOWS=1  treat a failing Windows build as fatal instead of a
 #                      warning (the default is lenient: a broken local Visual
 #                      Studio toolchain shouldn't block shipping the APK)
@@ -33,6 +34,11 @@ BUILD_ARGS="$*"
 
 WINDOWS_STATUS="skipped"
 ANDROID_STATUS="skipped"
+
+# --- 0. Pull latest from origin ----------------------------------------
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "==> pulling latest from origin/$BRANCH"
+git pull --rebase --autostash origin "$BRANCH"
 
 # --- 1. Android APK -----------------------------------------------------
 # The first target pays for the preflight (test-report pull + smoke test);
@@ -71,7 +77,6 @@ VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
 if [ "$SYNC" = "0" ]; then
   echo "==> SYNC=0: skipping git commit/push"
 else
-  BRANCH=$(git rev-parse --abbrev-ref HEAD)
   echo "==> syncing github_releases/ + CHANGELOG.md on $BRANCH"
 
   git add github_releases CHANGELOG.md
