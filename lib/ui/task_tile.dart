@@ -5,11 +5,14 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:async';
 
 import '../models/project.dart';
+import '../models/recurrence_config.dart';
 import '../models/task.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
 import '../utils/linkified_text.dart';
+import 'recurrence_editor.dart';
+import 'recurrence_scope_dialog.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -71,8 +74,11 @@ class TaskTile extends StatefulWidget {
   final void Function(int weekday)? onMoveToWeekday;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
-  final void Function(DateTime? oldDueDate, DateTime? newDueDate)?
-      onDueDateChanged;
+  final void Function(
+    DateTime? oldDueDate,
+    DateTime newDueDate,
+    RecurrenceEditScope scope,
+  )? onDueDateChanged;
   final VoidCallback? onRecurringChanged;
 
   /// Called when "Start timer" is picked from the double-tap menu. When null
@@ -118,7 +124,15 @@ class _TaskTileState extends State<TaskTile>
   double _dragOffset = 0;
   bool _dragging = false;
 
-  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+  /// A generated occurrence that's been hand-edited stops being an
+  /// interchangeable copy of the master: flagging it as an override keeps
+  /// the series' regeneration from ever touching or discarding it, even if
+  /// the schedule later shrinks past its slot.
+  void _markOverrideIfChild() {
+    if (widget.task.recurrenceParentUid != null) {
+      widget.task.recurrenceOverride = true;
+    }
+  }
 
   @override
   void initState() {
@@ -571,7 +585,10 @@ class _TaskTileState extends State<TaskTile>
                     child: TextField(
                       controller: _titleController,
                       decoration: const InputDecoration(labelText: 'Title'),
-                      onChanged: (v) => widget.task.title = v,
+                      onChanged: (v) => setState(() {
+                        widget.task.title = v;
+                        _markOverrideIfChild();
+                      }),
                     ),
                   ),
                   Focus(
@@ -584,7 +601,10 @@ class _TaskTileState extends State<TaskTile>
                           const InputDecoration(labelText: 'Description'),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
-                      onChanged: (v) => widget.task.description = v,
+                      onChanged: (v) => setState(() {
+                        widget.task.description = v;
+                        _markOverrideIfChild();
+                      }),
                     ),
                   ),
                   Focus(
@@ -596,7 +616,10 @@ class _TaskTileState extends State<TaskTile>
                       decoration: const InputDecoration(labelText: 'Note'),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
-                      onChanged: (v) => widget.task.note = v,
+                      onChanged: (v) => setState(() {
+                        widget.task.note = v;
+                        _markOverrideIfChild();
+                      }),
                     ),
                   ),
                   Focus(
@@ -606,7 +629,10 @@ class _TaskTileState extends State<TaskTile>
                     child: TextField(
                       controller: _labelController,
                       decoration: const InputDecoration(labelText: 'Label'),
-                      onChanged: (v) => widget.task.label = v,
+                      onChanged: (v) => setState(() {
+                        widget.task.label = v;
+                        _markOverrideIfChild();
+                      }),
                     ),
                   ),
                   Row(
@@ -626,12 +652,25 @@ class _TaskTileState extends State<TaskTile>
                             lastDate: DateTime.now()
                                 .add(const Duration(days: 365 * 5)),
                           );
-                          if (picked != null) {
-                            final oldDueDate = widget.task.dueDate;
-                            setState(() => widget.task.dueDate = picked);
-                            widget.onDueDateChanged?.call(oldDueDate, picked);
-                            widget.onRecurringChanged?.call();
+                          if (picked == null || !mounted) return;
+                          final oldDueDate = widget.task.dueDate;
+                          RecurrenceEditScope scope;
+                          if (isRecurringChild) {
+                            final chosen = await showRecurrenceScopeDialog(
+                              context,
+                              isDelete: false,
+                              allowAllEvents: false,
+                            );
+                            if (chosen == null || !mounted) return;
+                            scope = chosen;
+                          } else {
+                            // A standalone task, or the master of a series
+                            // (whose own date is the series anchor — moving
+                            // it always re-anchors the whole series).
+                            scope = RecurrenceEditScope.thisAndFollowing;
                           }
+                          widget.onDueDateChanged
+                              ?.call(oldDueDate, picked, scope);
                         },
                         child: const Text('Pick due date'),
                       ),
@@ -648,14 +687,6 @@ class _TaskTileState extends State<TaskTile>
                             : (value) {
                                 setState(() {
                                   widget.task.isRecurring = value;
-                                  if (value &&
-                                      widget.task.recurrenceEndDate == null) {
-                                    final start = _dateOnly(
-                                      widget.task.dueDate ?? DateTime.now(),
-                                    );
-                                    widget.task.recurrenceEndDate =
-                                        start.add(const Duration(days: 7));
-                                  }
                                   if (!value) {
                                     widget.task.recurrenceEndDate = null;
                                   }
@@ -668,60 +699,19 @@ class _TaskTileState extends State<TaskTile>
                   if (isRecurringChild)
                     const Align(
                       alignment: Alignment.centerLeft,
-                      child: Text('This is a generated recurring task.'),
+                      child: Text(
+                        'Part of a recurring series. Editing this occurrence '
+                        'only changes this one.',
+                      ),
                     ),
                   if (widget.task.isRecurring && !isRecurringChild)
-                    Row(
-                      children: [
-                        const Text('Every'),
-                        const SizedBox(width: 8),
-                        DropdownButton<int>(
-                          value: widget.task.recurrenceIntervalDays,
-                          items: const [
-                            DropdownMenuItem(value: 1, child: Text('1 day')),
-                            DropdownMenuItem(value: 2, child: Text('2 days')),
-                            DropdownMenuItem(value: 7, child: Text('7 days')),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() {
-                              widget.task.recurrenceIntervalDays = value;
-                            });
-                            widget.onRecurringChanged?.call();
-                          },
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () async {
-                            final base = _dateOnly(
-                              widget.task.recurrenceEndDate ??
-                                  widget.task.dueDate ??
-                                  DateTime.now(),
-                            );
-                            final minDate = _dateOnly(
-                              widget.task.dueDate ?? DateTime.now(),
-                            );
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate:
-                                  base.isBefore(minDate) ? minDate : base,
-                              firstDate: minDate,
-                              lastDate:
-                                  minDate.add(const Duration(days: 365 * 5)),
-                            );
-                            if (picked == null) return;
-                            setState(() {
-                              widget.task.recurrenceEndDate = picked;
-                            });
-                            widget.onRecurringChanged?.call();
-                          },
-                          child: Text(
-                            widget.task.recurrenceEndDate == null
-                                ? 'Pick end date'
-                                : 'End: ${widget.task.recurrenceEndDate!.toLocal().toString().split(' ')[0]}',
-                          ),
-                        ),
-                      ],
+                    RecurrenceEditor(
+                      config: RecurrenceConfig.fromTask(widget.task),
+                      anchorDate: widget.task.dueDate ?? DateTime.now(),
+                      onChanged: (config) {
+                        setState(() => config.applyTo(widget.task));
+                        widget.onRecurringChanged?.call();
+                      },
                     ),
                   const SizedBox(height: 8),
                 ],

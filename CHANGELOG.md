@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0] - 2026-08-27
+- Recurring tasks rebuilt: real weekly/monthly/yearly rules with multi-weekday and never/date/count endings, a Repeat button at creation time, and Google Calendar-style this-event/this-and-following/all-events editing and deleting so a single occurrence can be changed or removed without breaking or losing the rest of the series
+- Fixed: deleting a single occurrence of a recurring task is now permanent — it used to silently come back the next time the app loaded or you imported data, because that regeneration never knew it had been deleted
+- Fixed: deleting the whole series now has a full Undo (every generated occurrence, not just the first one)
+- Fixed: moving one occurrence with a swipe, drag or the dice timer's "Postpone to tomorrow" keeps it in its series instead of quietly detaching it and leaving a gap
+- Fixed: a recurring task's project assignment and Kanban column now carry over to its generated occurrences
+
 ## [0.1.234] - 2026-08-17
 - Streak challenges you have already earned now collect at the bottom of the list, under an "Earned" divider, so the card opens on what is still left to chase
 - Productivity Stats gained a "Fun stats" section at the bottom: items completed and created, completion rate, busiest day, golden hour, favourite weekday, early-bird and night-owl finishes, weekend share, fastest finish, longest wait, oldest open item and how often things were postponed

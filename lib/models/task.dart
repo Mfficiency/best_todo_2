@@ -31,6 +31,7 @@ class Task {
   DateTime? deletedAt;
   bool autoDeleted;
   bool isDone;
+
   /// When true, the schedule's time-of-day was set deliberately (e.g. placed
   /// on the Chronize timeline) and must not be overwritten by the default
   /// 18:00 deadline normalization.
@@ -52,13 +53,48 @@ class Task {
   bool get allDay => !hasExplicitTime;
 
   /// The scheduled length; zero for deadline-style tasks, null when undated.
-  Duration? get duration => (startAt == null || endAt == null)
-      ? null
-      : endAt!.difference(startAt!);
+  Duration? get duration =>
+      (startAt == null || endAt == null) ? null : endAt!.difference(startAt!);
   int? listRanking;
   bool isRecurring;
   DateTime? recurrenceEndDate;
+
+  /// Legacy day-count interval (pre-0.2 recurrence). Superseded by
+  /// [recurrenceFrequency]/[recurrenceInterval] but kept so old records still
+  /// round-trip; [fromJson] migrates a legacy value into the new fields when
+  /// it finds no [recurrenceFrequency] on disk.
   int recurrenceIntervalDays;
+
+  /// 'daily' | 'weekly' | 'monthly' | 'yearly'. Only meaningful on a master
+  /// (a task with [recurrenceParentUid] null and [isRecurring] true).
+  String recurrenceFrequency;
+
+  /// Repeat every N [recurrenceFrequency] units (e.g. every 2 weeks).
+  int recurrenceInterval;
+
+  /// For weekly recurrence only: which weekdays generate an occurrence
+  /// (1=Monday..7=Sunday). Empty means "the anchor's own weekday only".
+  List<int> recurrenceWeekdays;
+
+  /// 'never' | 'date' | 'count'. Governs which of [recurrenceEndDate] /
+  /// [recurrenceOccurrenceCount] terminates the series.
+  String recurrenceEndType;
+
+  /// Total occurrences (including the master's own) when
+  /// [recurrenceEndType] is 'count'.
+  int? recurrenceOccurrenceCount;
+
+  /// Slot dates (`yyyy-MM-dd`, the date an occurrence would otherwise fall
+  /// on) that a "delete this event" removed from the series. Regeneration
+  /// consults this so a deleted occurrence never silently reappears.
+  List<String> recurrenceExceptionDates;
+
+  /// True once a single generated occurrence has been individually edited
+  /// (moved to a different date, or otherwise customized) via "this event"
+  /// scope. Series regeneration never touches or removes an overridden
+  /// occurrence, even if it falls outside the current schedule.
+  bool recurrenceOverride;
+
   String? recurrenceParentUid;
   String? recurrenceInstanceKey;
 
@@ -100,12 +136,21 @@ class Task {
     this.isRecurring = false,
     this.recurrenceEndDate,
     this.recurrenceIntervalDays = 1,
+    this.recurrenceFrequency = 'daily',
+    this.recurrenceInterval = 1,
+    List<int>? recurrenceWeekdays,
+    this.recurrenceEndType = 'never',
+    this.recurrenceOccurrenceCount,
+    List<String>? recurrenceExceptionDates,
+    this.recurrenceOverride = false,
     this.recurrenceParentUid,
     this.recurrenceInstanceKey,
     this.isWish = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
   })  : uid = uid ?? Task.newUid(),
+        recurrenceWeekdays = recurrenceWeekdays ?? [],
+        recurrenceExceptionDates = recurrenceExceptionDates ?? [],
         // An explicit interval wins; a plain dueDate is a deadline
         // (start == end), matching what every existing caller means.
         startAt = startAt ?? dueDate,
@@ -128,6 +173,17 @@ class Task {
     var end = date('endAt');
     end ??= legacyDue;
     start ??= end;
+
+    // Recurrence schema migration: old records only carry a plain day-count
+    // interval (`recurrenceIntervalDays`) and require an end date. A record
+    // with no `recurrenceFrequency` on disk is one of those — map it onto
+    // the richer fields so it generates exactly the same occurrences as
+    // before ("every N days" is 'daily' with that interval).
+    final legacyIntervalDays = json['recurrenceIntervalDays'] as int? ?? 1;
+    final hasNewRecurrenceFields = json['recurrenceFrequency'] != null;
+    final recurrenceEndDate = json['recurrenceEndDate'] != null
+        ? DateTime.parse(json['recurrenceEndDate'] as String)
+        : null;
     return Task(
       uid: json['uid'] as String?,
       title: json['title'] as String? ?? '',
@@ -156,10 +212,20 @@ class Task {
       hasExplicitTime: json['hasExplicitTime'] as bool? ?? false,
       listRanking: json['listRanking'] as int?,
       isRecurring: json['isRecurring'] as bool? ?? false,
-      recurrenceEndDate: json['recurrenceEndDate'] != null
-          ? DateTime.parse(json['recurrenceEndDate'] as String)
-          : null,
-      recurrenceIntervalDays: json['recurrenceIntervalDays'] as int? ?? 1,
+      recurrenceEndDate: recurrenceEndDate,
+      recurrenceIntervalDays: legacyIntervalDays,
+      recurrenceFrequency: json['recurrenceFrequency'] as String? ?? 'daily',
+      recurrenceInterval: json['recurrenceInterval'] as int? ??
+          (hasNewRecurrenceFields ? 1 : legacyIntervalDays),
+      recurrenceWeekdays:
+          (json['recurrenceWeekdays'] as List?)?.map((e) => e as int).toList(),
+      recurrenceEndType: json['recurrenceEndType'] as String? ??
+          (recurrenceEndDate != null ? 'date' : 'never'),
+      recurrenceOccurrenceCount: json['recurrenceOccurrenceCount'] as int?,
+      recurrenceExceptionDates: (json['recurrenceExceptionDates'] as List?)
+          ?.map((e) => e as String)
+          .toList(),
+      recurrenceOverride: json['recurrenceOverride'] as bool? ?? false,
       recurrenceParentUid: json['recurrenceParentUid'] as String?,
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
       isWish: json['isWish'] as bool? ?? false,
@@ -191,6 +257,16 @@ class Task {
         'isRecurring': isRecurring,
         'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
         'recurrenceIntervalDays': recurrenceIntervalDays,
+        'recurrenceFrequency': recurrenceFrequency,
+        'recurrenceInterval': recurrenceInterval,
+        if (recurrenceWeekdays.isNotEmpty)
+          'recurrenceWeekdays': recurrenceWeekdays,
+        'recurrenceEndType': recurrenceEndType,
+        if (recurrenceOccurrenceCount != null)
+          'recurrenceOccurrenceCount': recurrenceOccurrenceCount,
+        if (recurrenceExceptionDates.isNotEmpty)
+          'recurrenceExceptionDates': recurrenceExceptionDates,
+        if (recurrenceOverride) 'recurrenceOverride': recurrenceOverride,
         if (recurrenceParentUid != null)
           'recurrenceParentUid': recurrenceParentUid,
         if (recurrenceInstanceKey != null)

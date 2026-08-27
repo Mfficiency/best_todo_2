@@ -10,6 +10,7 @@ other suites are per-feature silos: run the ones whose area you touched.
 | Suite | Command | Covers |
 |---|---|---|
 | `test/core/` | `flutter test test/core` | Task model + JSON round-trip, `StorageService` persistence/rollover, item-history journal (`ItemEventJournal` diff + persistence), upgrade safety (`SafeFile` atomic writes/recovery, `PreUpdateBackup` snapshot, historical payload matrix), config persistence, tab bucketing/filtering (`date_utils`), done-task ordering, reorder ranking, deadline normalization, app-boot smoke test, build-gate smoke test |
+| `test/recurrence/` | `flutter test test/recurrence` | `RecurrenceService`: occurrence-date generation (daily/weekly-multi-weekday/monthly/yearly, never/date/count endings), refresh planning (exceptions stay deleted, overrides survive a shrinking schedule, only masters generate), series-splitting operations (`promoteNextOccurrenceAsMaster`, `truncateSeriesBefore`, `reanchorSeriesFrom`) |
 | `test/alarms/` | `flutter test test/alarms` | Alarm model, `AlarmStorageService` round-trip + corruption recovery/backup, alarm editor (top save), alarm ring page, item-linked reminders (`ReminderSyncService` + task-detail reminder section) |
 | `test/projects/` | `flutter test test/projects` | Project model, `ProjectService` (seed/rename/reload/corrupt file), Projects page drag-assign, Kanban board page, task-tile project/stage tags |
 | `test/home/` | `flutter test test/home` | Home page UI: search behaviors, drawer layout (Projects under Tools), task-tile description editing, test-failure red dot on the hamburger/drawer, settings search, dice random-task timer, its alert settings and its full-screen alarm ring (`dice_timer_alarm_test.dart`), wishlist items on the Future tab, simple/full mode + the feature switches (`simple_mode_test.dart`, `settings_features_test.dart`), collapsible settings sections (`settings_collapse_test.dart`), home-screen widget payload + checkbox toggles (`widget_checkboxes_test.dart`), double-tap "Start timer" menu (`task_double_tap_timer_test.dart`), first-launch starter-task seeding next to a Todo.md import (`home_first_launch_seed_test.dart`), `LinkifiedText` URL spans (`linkified_text_test.dart`), the default bucket for quick-added tasks (`home_default_add_bucket_test.dart`), the drawer's Home entry (`home_drawer_home_entry_test.dart`), the Notify bell's 5/20/60-minute delay sheet (`task_tile_notify_delay_test.dart`) |
@@ -30,11 +31,14 @@ Pick suites by what you touched, always including core:
 - `lib/models/alarm.dart`, `lib/services/alarm_*`, `lib/ui/alarm*` → core + **alarms**
 - `lib/models/project.dart`, `lib/services/project_service.dart`,
   `lib/ui/projects_page.dart`, `lib/ui/project_board_page.dart` → core + **projects**
+- `lib/services/recurrence_service.dart`, `lib/models/recurrence_config.dart`,
+  `lib/ui/recurrence_editor.dart`, `lib/ui/recurrence_scope_dialog.dart` → core + **recurrence**
+  (+ **home**, which wires them into `home_page.dart`/`task_tile.dart`)
 - `lib/ui/home_page.dart`, `lib/ui/task_tile.dart`, `lib/ui/settings_page.dart`,
   `lib/ui/dice_timer_page.dart`
   → core + **home** (+ **projects** for `task_tile.dart`, which renders project tags;
   + **streaks** for `home_page.dart`/`settings_page.dart`, which host the flame and
-  its settings section)
+  its settings section; + **recurrence** for either file's recurring-task wiring)
 - `lib/services/streak_service.dart`, `lib/models/streak_kind.dart`,
   `lib/models/streak_reminder.dart`, `lib/ui/streak_page.dart`,
   `lib/ui/streak_flame_button.dart`, `lib/ui/streak_calendar_page.dart`,

@@ -121,8 +121,12 @@ work; records carry `schemaVersion` (current 2), v1 records upgrade on read via
 `deletedAt`, `autoDeleted` (swept at rollover vs manual delete), `isDone`,
 `hasExplicitTime` (protects a deliberately chosen time from the 18:00 normalization),
 `listRanking` (int?, omitted from JSON when null, renumbered 1-based per tab on every save),
-recurrence: `isRecurring`, `recurrenceEndDate`, `recurrenceIntervalDays` (≥1; UI offers
-1/2/7), `recurrenceParentUid` + `recurrenceInstanceKey` (`yyyy-MM-dd`) on generated children.
+recurrence (rebuilt 0.2, see §4.3 "Recurrence" below for the full model):
+`isRecurring`, `recurrenceFrequency`/`recurrenceInterval`/`recurrenceWeekdays`,
+`recurrenceEndType`/`recurrenceEndDate`/`recurrenceOccurrenceCount`,
+`recurrenceExceptionDates`, `recurrenceOverride`, `recurrenceParentUid` +
+`recurrenceInstanceKey` (`yyyy-MM-dd`) on generated children; legacy `recurrenceIntervalDays`
+kept for on-disk compat and migrated into the new fields on read.
 Projects (0.1.89): `projectId` (String?, omitted from JSON when null) + `kanbanStatus`
 (`'todo'`/`'ongoing'`/`'closed'`, constants on `Task`, defaults `'todo'`).
 Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist item
@@ -314,13 +318,48 @@ in-place. Restore from Deleted Items always resets due date to today.
 **Done:** checkbox sets `isDone` + `completedAt`, sinks to bottom with strikethrough;
 swept to Deleted at day rollover.
 
-**Recurrence:** only parents generate; children are copies with
-`recurrenceParentUid`/`recurrenceInstanceKey` per day-step until `recurrenceEndDate`.
-Moving/rescheduling a child detaches it (clears parent linkage). Regenerated after load,
-import, and any parent edit.
+**Recurrence (rebuilt 0.2, `RecurrenceService`):** logic lives in
+`lib/services/recurrence_service.dart` (unit-tested in `test/recurrence/`), not the UI layer.
+A series is one master (`recurrenceParentUid == null`, `isRecurring`) plus generated child
+occurrences (`recurrenceParentUid == master.uid`); the master's own due date is slot 0.
+Rule fields on `Task`: `recurrenceFrequency` (`daily`/`weekly`/`monthly`/`yearly`),
+`recurrenceInterval` (every N units), `recurrenceWeekdays` (weekly multi-day, 1=Mon..7=Sun),
+`recurrenceEndType` (`never`/`date`/`count`) + `recurrenceEndDate`/`recurrenceOccurrenceCount`.
+A `never`-ending series only materializes a rolling ~60-day window (regenerated as time
+passes), not the whole future. `recurrenceExceptionDates` (slot `yyyy-MM-dd` keys) marks a
+slot a "delete this event" removed — `planRefresh` never regenerates an excepted slot, so a
+deleted occurrence stays deleted across reload/import (previously the #1 bug: deletion was
+only ever applied to the live list, so the very next regeneration silently recreated it).
+`recurrenceOverride` (bool, on a child) marks an individually edited/moved occurrence;
+regeneration always preserves an override, even if the schedule later shrinks past its slot.
+Legacy `recurrenceIntervalDays` records migrate on read (`daily`, that interval).
 
-**Inline editing:** tapping a tile expands it — title/description/note/label fields,
-due-date picker, recurring switch (+interval/end for parents), a Notify bell, collapse
+Google-Calendar-style **edit/delete scope** (`RecurrenceEditScope`, `recurrence_scope_dialog.dart`):
+deleting a series member (deferred to `_requestDeleteTask` in `home_page.dart`) asks *this
+event / this and following / all events* whenever more than one occurrence exists.
+"This event" adds the slot to `recurrenceExceptionDates` (or, deleting the master itself,
+promotes the next occurrence to take over as the new master —
+`RecurrenceService.promoteNextOccurrenceAsMaster`). "This and following"/"all events" use
+`RecurrenceService.truncateSeriesBefore` to end the old series and batch-delete the tail (full
+undo restores every task removed, not just one — `_deleteTasksBatch`). Editing a child's own
+due date (the "Pick due date" button) asks the same *this event/this and following* question;
+"this event" moves just that occurrence and flags it an override (its slot stays reserved, so
+it's never duplicated or lost); "this and following" (`RecurrenceService.reanchorSeriesFrom`)
+splits the series there, turning that occurrence into a new master and shifting its
+non-override tail siblings by the same delta so they keep matching the (unchanged) pattern.
+Moving/rescheduling via a quick gesture (swipe, drag, dice postpone) keeps the occurrence in
+its series as an override rather than detaching it. Regenerated after load, import, and any
+master edit.
+
+**Creating a recurring task:** the add-task row's Repeat button (`Icons.repeat`) opens a
+Calendar-style quick sheet — Does not repeat / Daily / Weekly on `<today>` / Monthly / Yearly
+(all default to no end) / Custom... (the full `RecurrenceEditor`, also used by the tile's
+inline editor and the sheet's "Custom..." dialog) — and arms it for the next task created
+from that row only.
+
+**Inline editing:** tapping a tile expands it — title/description/note/label fields (editing
+a child field marks it an override), due-date picker, recurring switch + `RecurrenceEditor`
+(frequency/interval/weekday chips/never-date-count end) for a master, a Notify bell, collapse
 button. Edits persist on change/focus loss.
 
 **Notify bell (delay sheet 0.1.233):** the bell asks *when* first — a modal sheet headed
@@ -447,7 +486,8 @@ below; best-effort, injectable via `DiceTimerController.onRingAlert` for tests) 
 even if the page was left, though a mid-ring page exit silences melody and vibration
 (`DiceTimerController.stopAlert`) while keeping the expired state — and offers: **Done**
 (marks the task done via the home page callback), **Postpone to tomorrow** (same semantics as
-moving to the Tomorrow tab, including recurrence detach), and **+1/+5/+10 min** (stops the
+moving to the Tomorrow tab: a series member stays in its series as an override rather than
+detaching), and **+1/+5/+10 min** (stops the
 ring and restarts the countdown with that much time). With no open Today tasks (and no timer
 already running) the dice shows a "No open tasks for today" snackbar instead.
 
