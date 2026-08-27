@@ -195,6 +195,14 @@ image opens a full-screen `InteractiveViewer`; tapping a PDF (or any other file-
 hands it to `share_plus`'s `SharePlus.instance.share(ShareParams(files: [...]))`, i.e. "open"
 is implemented as the platform share sheet rather than an in-app viewer.
 
+`TaskDetailPage`'s app bar carries an info icon (tooltip "Show all task metadata") that opens
+an `AlertDialog` with two selectable-text sections: the hidden Todoist sync trailer — the same
+text `TodoistMetadataCodec.build` would append to the description when pushing this task to
+Todoist (uid, note, label, project, Kanban stage, createdAt, all normally invisible in the
+regular view) — and a pretty-printed dump of `Task.toJson()` covering every field the model
+persists (schema/internal timestamps, recurrence bookkeeping, `listRanking`, `kanbanStatus`,
+raw `attachments`, etc.), so nothing about the task stays hidden from the user who asks.
+
 Dev seed: `home_page._loadTasks` backfills a demo text attachment onto one starter task
 (`Config.initialTasks[1]`, falling back to the first non-wish/non-food-diary task) whenever
 `Config.isDev` and no task carries an attachment yet, so the "task expanded with an
