@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/countdown_timer.dart';
 import '../models/view_filter_rules.dart';
+import '../services/countdown_sync_service.dart';
+import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
@@ -53,6 +55,11 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
 
   List<CountdownTimerItem> _timers = [];
   final Set<String> _expanded = {};
+
+  /// Title of the linked task for each item-linked timer (by timer uid), for
+  /// the small "linked" indicator on its card. Populated during [_load]; not
+  /// persisted.
+  final Map<String, String> _linkedTaskTitles = {};
 
   /// Timer uids that should not fire a zero-notification: either they have
   /// already fired this session, or they were already past when the bell was
@@ -123,6 +130,22 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       await _storage.saveCountdownTimers(timers);
     } else {
       timers = loaded ?? <CountdownTimerItem>[];
+    }
+    // Item-linked timers follow their task's due date — resolved here rather
+    // than eagerly on every task save, since milestones are only ever
+    // checked while this page is open (see class doc on CountdownSyncService).
+    // Free when nothing is linked.
+    if (timers.any((t) => t.itemUid != null)) {
+      final tasks = await ItemRepository.instance.loadItems();
+      final byUid = {for (final t in tasks) t.uid: t};
+      if (CountdownSyncService.resolveAgainstTasks(timers, tasks)) {
+        await _storage.saveCountdownTimers(timers);
+      }
+      _linkedTaskTitles
+        ..clear()
+        ..addEntries(timers
+            .where((t) => t.itemUid != null && byUid[t.itemUid] != null)
+            .map((t) => MapEntry(t.uid, byUid[t.itemUid]!.title)));
     }
     // Past timers that have the bell on should not retroactively fire.
     final now = DateTime.now();
@@ -524,9 +547,28 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                 }
               });
             },
-            title: Text(
-              timer.label.trim().isEmpty ? 'Untitled timer' : timer.label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    timer.label.trim().isEmpty
+                        ? 'Untitled timer'
+                        : timer.label,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (timer.itemUid != null) ...[
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: _linkedTaskTitles[timer.uid] != null
+                        ? 'Linked to task: ${_linkedTaskTitles[timer.uid]}'
+                        : 'Linked to a task',
+                    child: const Icon(Icons.link, size: 16),
+                  ),
+                ],
+              ],
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -2,15 +2,19 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../models/alarm.dart';
+import '../models/countdown_timer.dart';
 import '../models/item_event.dart';
 import '../models/label.dart';
 import '../models/task.dart';
 import '../models/task_change_source.dart';
+import '../models/view_presentation.dart';
 import '../services/alarm_service.dart';
+import '../services/countdown_sync_service.dart';
 import '../services/item_repository.dart';
 import '../services/label_service.dart';
 import '../services/project_service.dart';
 import '../services/reminder_sync_service.dart';
+import '../services/storage_service.dart';
 import '../services/todoist_metadata_codec.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
@@ -19,7 +23,15 @@ import 'subpage_app_bar.dart';
 
 class TaskDetailPage extends StatelessWidget {
   final Task task;
-  const TaskDetailPage({Key? key, required this.task}) : super(key: key);
+
+  /// Which view this page was opened from (a [ViewFilterRules] id), or null
+  /// when the caller doesn't distinguish — see [ViewPresentation.forView].
+  /// Controls presentation only (which sections show); it never affects
+  /// which task is shown or how it's stored.
+  final String? viewId;
+
+  const TaskDetailPage({Key? key, required this.task, this.viewId})
+      : super(key: key);
 
   static String _clockLabel(DateTime at) {
     final local = at.toLocal();
@@ -37,6 +49,7 @@ class TaskDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final presentation = ViewPresentation.forView(viewId);
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
@@ -91,7 +104,9 @@ class TaskDetailPage extends StatelessWidget {
               readOnly: true,
             ),
           ],
-          TaskReminderSection(task: task),
+          if (presentation.showReminderSection) TaskReminderSection(task: task),
+          if (presentation.showCountdownSection)
+            TaskCountdownSection(task: task),
           TaskHistorySection(taskUid: task.uid),
         ],
       ),
@@ -234,6 +249,100 @@ class TaskReminderSection extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// One-tap countdown attached to this task — the Tools ▸ Countdown
+/// counterpart of [TaskReminderSection]. Attaching creates a
+/// [CountdownTimerItem] targeting the task's due date and keeps it there
+/// (`CountdownSyncService`, resolved when the Countdown page opens); detaching
+/// unlinks rather than deletes the timer, since a countdown still means
+/// something on its own. `countdown_timers.json` has no listenable singleton
+/// like `AlarmService`, so this widget owns its own load/reload state.
+class TaskCountdownSection extends StatefulWidget {
+  final Task task;
+  const TaskCountdownSection({Key? key, required this.task}) : super(key: key);
+
+  @override
+  State<TaskCountdownSection> createState() => _TaskCountdownSectionState();
+}
+
+class _TaskCountdownSectionState extends State<TaskCountdownSection> {
+  final StorageService _storage = StorageService();
+  List<CountdownTimerItem>? _timers;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final loaded = await _storage.loadCountdownTimers() ?? <CountdownTimerItem>[];
+    if (!mounted) return;
+    setState(() => _timers = loaded);
+  }
+
+  CountdownTimerItem? get _linked {
+    final timers = _timers;
+    if (timers == null) return null;
+    for (final t in timers) {
+      if (t.itemUid == widget.task.uid) return t;
+    }
+    return null;
+  }
+
+  Future<void> _attach() async {
+    final timer = CountdownSyncService.buildLinkedTimer(widget.task);
+    if (timer == null) return;
+    final timers = [...?_timers, timer];
+    await _storage.saveCountdownTimers(timers);
+    if (!mounted) return;
+    setState(() => _timers = timers);
+  }
+
+  Future<void> _detach(CountdownTimerItem timer) async {
+    timer.itemUid = null;
+    final timers = _timers!;
+    await _storage.saveCountdownTimers(timers);
+    if (!mounted) return;
+    setState(() => _timers = timers);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Nothing to target a countdown at without a scheduled time.
+    if (widget.task.dueDate == null) return const SizedBox.shrink();
+    if (_timers == null) return const SizedBox.shrink();
+    final linked = _linked;
+    if (linked == null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.hourglass_top),
+          label: const Text('Add countdown to due date'),
+          onPressed: _attach,
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Row(
+        children: [
+          const Icon(Icons.hourglass_bottom),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+                'Counting down — see Tools ▸ Countdown ("${linked.label}")'),
+          ),
+          IconButton(
+            tooltip: 'Remove countdown link',
+            icon: const Icon(Icons.link_off),
+            onPressed: () => _detach(linked),
+          ),
+        ],
+      ),
     );
   }
 }
