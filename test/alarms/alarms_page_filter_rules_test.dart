@@ -74,4 +74,21 @@ void main() {
     expect(find.text('Wake up'), findsOneWidget);
     expect(find.text('Yoga'), findsNothing);
   });
+
+  testWidgets('default Alarm include rule keeps alarms visible',
+      (tester) async {
+    Config.viewFilterRules = {
+      ViewFilterRules.alarms: ViewFilterRules(includeTags: ['Alarm']),
+    };
+    final legacy = Alarm(name: 'Wake up', hour: 7)..tags = '';
+
+    await pumpPage(
+      tester,
+      alarms: [legacy],
+      marker: 'Wake up',
+    );
+
+    expect(find.text('Wake up'), findsOneWidget);
+    expect(find.text('alarm'), findsOneWidget);
+  });
 }

@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Alarm reminder-link JSON', () {
-    test('standalone alarms serialize exactly as before (no link keys)', () {
+    test('standalone alarms omit reminder-link keys', () {
       final map = Alarm(name: 'wake up').toJson();
       expect(map.containsKey('itemUid'), isFalse);
       expect(map.containsKey('triggerAnchor'), isFalse);
@@ -67,7 +67,8 @@ void main() {
       expect(alarm.name, 'v2');
     });
 
-    test('a task without a schedule cannot get a reminder; losing the '
+    test(
+        'a task without a schedule cannot get a reminder; losing the '
         'schedule disables an existing one', () {
       final undated = Task(title: 'someday');
       expect(ReminderSyncService.buildReminder(undated), isNull);

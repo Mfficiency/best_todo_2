@@ -110,8 +110,7 @@ void main() {
             onPressed: () async {
               result = await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) =>
-                      AlarmEditPage(alarm: Alarm(name: 'Wake up')),
+                  builder: (_) => AlarmEditPage(alarm: Alarm(name: 'Wake up')),
                 ),
               );
             },
@@ -144,6 +143,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(result, isA<Alarm>());
-    expect((result as Alarm).tags, 'work');
+    expect((result as Alarm).tags, 'alarm, work');
   });
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.2] - 2026-08-27
+- Mark completed-task rollover archives as automatic and label them separately from manual archives.
+- Alarms now always carry the alarm tag on creation, load, edit, and save, so existing alarms stay visible under the default Alarms Filtering rules include tag.
+
 ## [0.2.1] - 2026-08-27
 - "Automatically check for updates" (Settings → Updates, now on by default) actually works now: instead of a single check at launch that just opened the About page for you, the app polls GitHub every minute while it's open and, the moment a newer build appears, asks "New version available. Do you want to download and install it?" — Yes downloads and installs immediately with no further confirmation (besides Android's own install prompt), No just dismisses it until a newer build ships. The About page's "Download & install" already installed automatically after downloading and still does.
 

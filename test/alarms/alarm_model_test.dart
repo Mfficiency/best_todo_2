@@ -108,19 +108,22 @@ void main() {
   });
 
   group('tags', () {
-    test('default to empty and round-trip through JSON', () {
-      expect(Alarm(name: 'plain').tags, '');
+    test('default to alarm and round-trip through JSON', () {
+      expect(Alarm(name: 'plain').tags, 'alarm');
       final alarm = Alarm(name: 'work', tags: 'work, medication');
       final decoded = Alarm.fromJson(alarm.toJson());
-      expect(decoded.tags, 'work, medication');
+      expect(decoded.tags, 'work, medication, alarm');
     });
 
-    test('an empty tags string is omitted from JSON, matching a legacy '
-        'record saved before the field existed', () {
-      final alarm = Alarm(name: 'plain');
-      expect(alarm.toJson().containsKey('tags'), isFalse);
-      final legacy = alarm.toJson();
-      expect(Alarm.fromJson(legacy).tags, '');
+    test('legacy records without tags are backfilled with alarm', () {
+      final legacy = Alarm(name: 'plain').toJson()..remove('tags');
+      expect(Alarm.fromJson(legacy).tags, 'alarm');
+    });
+
+    test('explicitly empty tags are normalized back to alarm', () {
+      final alarm = Alarm(name: 'plain', tags: '');
+      expect(alarm.tags, 'alarm');
+      expect(alarm.toJson()['tags'], 'alarm');
     });
   });
 }

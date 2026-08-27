@@ -47,7 +47,8 @@ class ArchivedItemsPage extends StatelessWidget {
         itemCount: items.length,
         itemBuilder: (context, index) {
           final task = items[index];
-          final archivedLabel = task.autoDeleted ? 'Auto-archived' : 'Archived';
+          final archivedLabel =
+              task.autoDeleted ? 'Automatically archived' : 'Archived';
           final archivedText = task.deletedAt != null
               ? '$archivedLabel: ${_formatDate(task.deletedAt!)}'
               : '$archivedLabel: Unknown date';

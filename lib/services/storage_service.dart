@@ -267,6 +267,7 @@ class StorageService {
           for (final task in doneTasks) {
             task.completedAt ??= DateTime.now();
             task.deletedAt ??= DateTime.now();
+            task.autoDeleted = true;
             deletedTasks.insert(0, task);
           }
           await saveDeletedTaskList(deletedTasks);

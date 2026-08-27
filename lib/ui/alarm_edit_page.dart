@@ -141,6 +141,7 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
   void _save() {
     _draft.name = _nameController.text.trim();
     _draft.description = _descriptionController.text.trim();
+    _draft.tags = Alarm.ensureAlarmTag(_draft.tags);
     if (_draft.name.isEmpty) {
       _draft.name = 'Alarm';
     }
@@ -238,9 +239,8 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Repeat'),
-            subtitle: Text(_draft.isRepeating
-                ? 'Repeats on selected days'
-                : 'Rings once'),
+            subtitle: Text(
+                _draft.isRepeating ? 'Repeats on selected days' : 'Rings once'),
             value: _draft.isRepeating,
             onChanged: (v) => setState(() => _draft.isRepeating = v),
           ),

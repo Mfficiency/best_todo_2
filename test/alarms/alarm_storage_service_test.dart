@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/models/alarm.dart';
@@ -42,5 +43,37 @@ void main() {
     final service = AlarmStorageService();
     final loaded = await service.loadAlarms();
     expect(loaded, isEmpty);
+  });
+
+  test('loadAlarms backfills the required alarm tag for legacy files',
+      () async {
+    final tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    final file = File('${tempDir.path}/alarms.json');
+    await file.writeAsString(jsonEncode([
+      {
+        'uid': 'legacy-alarm',
+        'name': 'Legacy',
+        'hour': 9,
+        'minute': 15,
+      }
+    ]));
+
+    final loaded = await AlarmStorageService().loadAlarms();
+
+    expect(loaded.single.tags, 'alarm');
+  });
+
+  test('saveAlarms writes the required alarm tag even after mutation',
+      () async {
+    final tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    final alarm = Alarm(name: 'Wake')..tags = '';
+
+    await AlarmStorageService().saveAlarms([alarm]);
+
+    final file = File('${tempDir.path}/alarms.json');
+    final raw = jsonDecode(await file.readAsString()) as List<dynamic>;
+    expect((raw.single as Map<String, dynamic>)['tags'], 'alarm');
   });
 }

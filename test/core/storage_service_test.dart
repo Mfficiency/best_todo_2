@@ -47,6 +47,7 @@ void main() {
     final deleted = await service.loadDeletedTaskList();
     expect(deleted.length, 1);
     expect(deleted.first.title, 'done');
+    expect(deleted.first.autoDeleted, isTrue);
   });
 
   test('loadTaskList merges wishlist.json items into the task list', () async {
