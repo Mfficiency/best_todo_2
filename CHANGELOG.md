@@ -2,6 +2,9 @@
 
 ## [0.2.5] - 2026-08-27
 - Countdown timers can now attach to a task's due date (Task Details ▸ Add countdown, mirroring the existing one-tap reminder), following it automatically and unlinking rather than deleting if the task disappears. Introduced ViewPresentation, the presentation-filter counterpart to Filtering rules' data filters, hiding the reminder/countdown attach affordances on archived and deleted items where they no longer apply.
+- Local build: 2026-08-27 23:28
+- Build duration (apk): 2m 09s
+- Build duration (windows): 1m 32s
 
 ## [0.2.4] - 2026-08-27
 - Local release builds now time themselves: `tool/build.sh`/`tool/build.ps1` record how long each `flutter build` took as a "Build duration (<target>)" line in this Changelog alongside the existing "Local build" timestamp, and append every build's duration to a new `build_history.json` (committed to the repo) so build times can be tracked across builds and machines over time.
