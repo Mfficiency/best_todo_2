@@ -193,36 +193,95 @@ void main() {
       expect(ViewFilterRules.defaultsFor('not-a-view'), isNull);
     });
 
-    test('home hides Archived/Deleted/Waiting/Fooddiary but never Wish or '
-        'Project, which legitimately still show on Home by due date', () {
+    /// Every reserved tag other than [own] — the "hide everything but your
+    /// own tag" shape every view (except Home, Archived and the bin) follows.
+    List<String> othersThan(String own) => <String>[
+          wishToken,
+          projectToken,
+          archivedToken,
+          deletedToken,
+          fooddiaryToken,
+          alarmToken,
+          countdownToken,
+          changelogToken,
+          waitingApprovalToken,
+        ].where((t) => t != own).toList();
+
+    test('home hides every reserved tag and shows nothing of its own', () {
       final defaults = ViewFilterRules.defaultsFor(ViewFilterRules.home)!;
-      expect(defaults.excludeTags, containsAll(<String>[
-        archivedToken,
-        deletedToken,
-        waitingApprovalToken,
-        fooddiaryToken,
-      ]));
-      expect(defaults.excludeTags, isNot(contains(wishToken)));
-      expect(defaults.excludeTags, isNot(contains(projectToken)));
+      expect(
+        defaults.excludeTags.toSet(),
+        <String>{
+          archivedToken,
+          deletedToken,
+          wishToken,
+          waitingApprovalToken,
+          fooddiaryToken,
+          alarmToken,
+          countdownToken,
+          changelogToken,
+          projectToken,
+        },
+      );
       expect(defaults.includeTags, isEmpty);
     });
 
-    test('wishlist shows only Wish', () {
+    test('wishlist hides every other reserved tag and shows only Wish', () {
       final defaults = ViewFilterRules.defaultsFor(ViewFilterRules.wishlist)!;
       expect(defaults.includeTags, [wishToken]);
+      expect(defaults.excludeTags.toSet(), othersThan(wishToken).toSet());
     });
 
-    test('projects never includes Project, which would hide unassigned '
-        'tasks from the drag-to-assign pane', () {
+    test('approval hides Archived/Deleted/Changelog and shows only '
+        'Waiting_for_approval', () {
+      final defaults = ViewFilterRules.defaultsFor(ViewFilterRules.approval)!;
+      expect(defaults.includeTags, [waitingApprovalToken]);
+      expect(defaults.excludeTags,
+          [archivedToken, deletedToken, changelogToken]);
+    });
+
+    test('projects hides Archived/Deleted/Waiting/Fooddiary/Alarm/Countdown/'
+        'Changelog (not Wish) and shows only Project (the literal default; '
+        'the assign pane compensates separately, see '
+        'ProjectsPage._assignPaneRules)', () {
       final defaults = ViewFilterRules.defaultsFor(ViewFilterRules.projects)!;
-      expect(defaults.includeTags, isEmpty);
-      expect(defaults.excludeTags, isNot(contains(projectToken)));
+      expect(defaults.includeTags, [projectToken]);
+      expect(
+        defaults.excludeTags.toSet(),
+        <String>{
+          archivedToken,
+          deletedToken,
+          waitingApprovalToken,
+          fooddiaryToken,
+          alarmToken,
+          countdownToken,
+          changelogToken,
+        },
+      );
+      expect(defaults.excludeTags, isNot(contains(wishToken)));
     });
 
-    test('foodDiary shows only Fooddiary', () {
+    test('foodDiary hides every other reserved tag and shows only '
+        'Fooddiary', () {
       final defaults =
           ViewFilterRules.defaultsFor(ViewFilterRules.foodDiary)!;
       expect(defaults.includeTags, [fooddiaryToken]);
+      expect(
+          defaults.excludeTags.toSet(), othersThan(fooddiaryToken).toSet());
+    });
+
+    test('alarms hides every other reserved tag and shows only Alarm', () {
+      final defaults = ViewFilterRules.defaultsFor(ViewFilterRules.alarms)!;
+      expect(defaults.includeTags, [alarmToken]);
+      expect(defaults.excludeTags.toSet(), othersThan(alarmToken).toSet());
+    });
+
+    test('countdown hides every other reserved tag and shows only '
+        'Countdown', () {
+      final defaults = ViewFilterRules.defaultsFor(ViewFilterRules.countdown)!;
+      expect(defaults.includeTags, [countdownToken]);
+      expect(
+          defaults.excludeTags.toSet(), othersThan(countdownToken).toSet());
     });
 
     test('archived and bin only hide each other, matching the drawer split',
@@ -234,12 +293,6 @@ void main() {
       final bin = ViewFilterRules.defaultsFor(ViewFilterRules.bin)!;
       expect(bin.excludeTags, [archivedToken]);
       expect(bin.includeTags, [deletedToken]);
-    });
-
-    test('alarms and countdown have no seeded default (nothing structural '
-        'to make redundant)', () {
-      expect(ViewFilterRules.defaultsFor(ViewFilterRules.alarms), isNull);
-      expect(ViewFilterRules.defaultsFor(ViewFilterRules.countdown), isNull);
     });
   });
 
@@ -366,28 +419,31 @@ void main() {
   group('Config.seedViewFilterRuleDefaultsIfNeeded', () {
     tearDown(() {
       Config.viewFilterRules = {};
-      Config.viewFilterRulesSeeded = false;
+      Config.viewFilterRulesSeedVersion = 0;
     });
 
-    test('fills every view with no entry from defaultsFor, once', () {
+    test('first run (version 0) fills every view with no entry from '
+        'defaultsFor', () {
       Config.viewFilterRules = {};
-      Config.viewFilterRulesSeeded = false;
+      Config.viewFilterRulesSeedVersion = 0;
       Config.seedViewFilterRuleDefaultsIfNeeded();
-      expect(Config.viewFilterRulesSeeded, isTrue);
+      expect(Config.viewFilterRulesSeedVersion, 2);
       expect(Config.viewFilterRules[ViewFilterRules.wishlist]?.includeTags,
           [wishToken]);
-      // No default for alarms/countdown, so no entry is created for them.
-      expect(Config.viewFilterRules.containsKey(ViewFilterRules.alarms),
-          isFalse);
+      // Every view id now has a seeded default, including Alarms/Countdown.
+      expect(Config.viewFilterRules[ViewFilterRules.alarms]?.includeTags,
+          [alarmToken]);
+      expect(Config.viewFilterRules[ViewFilterRules.countdown]?.includeTags,
+          [countdownToken]);
     });
 
-    test('never overwrites a rule the user already configured, even an '
-        'intentionally empty one', () {
+    test('first run never overwrites a rule the user already configured, '
+        'even an intentionally empty one', () {
       Config.viewFilterRules = {
         ViewFilterRules.home: ViewFilterRules(excludeTags: ['mine']),
         ViewFilterRules.wishlist: ViewFilterRules(),
       };
-      Config.viewFilterRulesSeeded = false;
+      Config.viewFilterRulesSeedVersion = 0;
       Config.seedViewFilterRuleDefaultsIfNeeded();
       expect(Config.viewFilterRules[ViewFilterRules.home]?.excludeTags,
           ['mine']);
@@ -395,11 +451,32 @@ void main() {
           isTrue);
     });
 
-    test('is a no-op once already seeded', () {
+    test('is a no-op once already at the current version', () {
       Config.viewFilterRules = {};
-      Config.viewFilterRulesSeeded = true;
+      Config.viewFilterRulesSeedVersion = 2;
       Config.seedViewFilterRuleDefaultsIfNeeded();
       expect(Config.viewFilterRules, isEmpty);
+    });
+
+    test('a template-version bump (e.g. from the fixed version 1 template) '
+        're-syncs every view to the current defaultsFor, overwriting what '
+        'the earlier template had seeded', () {
+      Config.viewFilterRules = {
+        // What the incorrect version-1 template used to seed for Home.
+        ViewFilterRules.home: ViewFilterRules(excludeTags: [
+          archivedToken,
+          deletedToken,
+          waitingApprovalToken,
+          fooddiaryToken,
+        ]),
+      };
+      Config.viewFilterRulesSeedVersion = 1;
+      Config.seedViewFilterRuleDefaultsIfNeeded();
+      expect(Config.viewFilterRulesSeedVersion, 2);
+      expect(
+        Config.viewFilterRules[ViewFilterRules.home]?.excludeTags,
+        ViewFilterRules.defaultsFor(ViewFilterRules.home)!.excludeTags,
+      );
     });
   });
 

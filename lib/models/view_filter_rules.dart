@@ -87,27 +87,35 @@ class ViewFilterRules {
     bin: '',
   };
 
-  /// Sensible starting rules for a fresh install (Settings → Filtering
-  /// rules), seeded once by `Config.seedViewFilterRuleDefaultsIfNeeded`.
-  /// Only fills gaps that never contradict a view's own documented,
-  /// already-working overlap — e.g. Home deliberately still shows a
-  /// project's or wishlist's tasks by due date (see `Task.isWish`,
-  /// `task_tile.dart`'s project chip), and the Projects page's top pane must
-  /// keep showing unassigned tasks to drag onto a project — so this never
-  /// defaults `excludeTags`/`includeTags` to something that would hide
-  /// those. Every entry here is otherwise redundant with a structural gate
-  /// the view already enforces (see [builtInRules]), so seeding it changes
-  /// nothing visible; it only makes the tag *nameable* once a rule engine
-  /// exists to match it (see `ItemViews.stateTags`). Returns null for a view
-  /// with no seeded default.
+  /// Starting rules for a fresh install (Settings → Filtering rules), seeded
+  /// once by `Config.seedViewFilterRuleDefaultsIfNeeded` — the exact Hide/
+  /// Show matrix specified for this feature: every view hides every other
+  /// view's reserved tag and shows only its own (Home has no tag of its own,
+  /// so it hides all of them and shows nothing; Archived/Deleted only ever
+  /// hide each other, since an item can legitimately be both e.g. a wish
+  /// *and* archived). This can seed a rule that changes what's currently
+  /// visible (e.g. Home now hides Wish/Project by default) — that's the
+  /// point: these are real, user-facing defaults, not merely redundant
+  /// restatements of a structural gate. `ProjectsPage` compensates for the
+  /// one place a literal `includeTags: [Project]` would otherwise break a
+  /// still-needed feature: its "All Tasks" pane, used to drag an
+  /// *unassigned* task onto a project, drops the Projects view's
+  /// `includeTags` before calling `ItemViews.active` (see
+  /// `ProjectsPage._activeTasks`) while still honoring its `excludeTags`.
+  /// Returns null for a view with no seeded default.
   static ViewFilterRules? defaultsFor(String viewId) {
     switch (viewId) {
       case home:
         return ViewFilterRules(excludeTags: [
           archivedToken,
           deletedToken,
+          wishToken,
           waitingApprovalToken,
           fooddiaryToken,
+          alarmToken,
+          countdownToken,
+          changelogToken,
+          projectToken,
         ]);
       case wishlist:
         return ViewFilterRules(
@@ -118,29 +126,70 @@ class ViewFilterRules {
             fooddiaryToken,
             alarmToken,
             countdownToken,
+            changelogToken,
+            projectToken,
           ],
           includeTags: [wishToken],
         );
       case approval:
         return ViewFilterRules(
-          excludeTags: [archivedToken, deletedToken],
+          excludeTags: [archivedToken, deletedToken, changelogToken],
           includeTags: [waitingApprovalToken],
         );
       case projects:
-        return ViewFilterRules(excludeTags: [
-          archivedToken,
-          deletedToken,
-          waitingApprovalToken,
-          fooddiaryToken,
-        ]);
-      case foodDiary:
         return ViewFilterRules(
           excludeTags: [
             archivedToken,
             deletedToken,
             waitingApprovalToken,
+            fooddiaryToken,
+            alarmToken,
+            countdownToken,
+            changelogToken,
+          ],
+          includeTags: [projectToken],
+        );
+      case foodDiary:
+        return ViewFilterRules(
+          excludeTags: [
+            archivedToken,
+            deletedToken,
+            wishToken,
+            waitingApprovalToken,
+            alarmToken,
+            countdownToken,
+            changelogToken,
+            projectToken,
           ],
           includeTags: [fooddiaryToken],
+        );
+      case alarms:
+        return ViewFilterRules(
+          excludeTags: [
+            archivedToken,
+            deletedToken,
+            wishToken,
+            waitingApprovalToken,
+            fooddiaryToken,
+            countdownToken,
+            changelogToken,
+            projectToken,
+          ],
+          includeTags: [alarmToken],
+        );
+      case countdown:
+        return ViewFilterRules(
+          excludeTags: [
+            archivedToken,
+            deletedToken,
+            wishToken,
+            waitingApprovalToken,
+            fooddiaryToken,
+            alarmToken,
+            changelogToken,
+            projectToken,
+          ],
+          includeTags: [countdownToken],
         );
       case archived:
         return ViewFilterRules(

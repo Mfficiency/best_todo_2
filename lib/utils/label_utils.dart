@@ -60,6 +60,12 @@ const String fooddiaryToken = 'Fooddiary';
 const String alarmToken = 'Alarm';
 const String countdownToken = 'Countdown';
 
+/// Reserved like the rest, but with no dedicated view/page yet (the
+/// Changelog tool shows CHANGELOG.md text, not a task list) — kept here so
+/// it still renders as a protected chip and can still be named in another
+/// view's Hide list, ahead of a future Changelog view.
+const String changelogToken = 'Changelog';
+
 /// Every reserved state token, in the order shown in Settings → Filtering
 /// rules templates. Keep [waitingApprovalToken] last — it is the only one
 /// matched case-and-spelling-insensitively via [isWaitingApprovalToken]
@@ -72,6 +78,7 @@ const List<String> protectedStateTokens = <String>[
   fooddiaryToken,
   alarmToken,
   countdownToken,
+  changelogToken,
   waitingApprovalToken,
 ];
 

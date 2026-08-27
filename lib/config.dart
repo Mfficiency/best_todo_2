@@ -481,21 +481,39 @@ class Config {
   /// query (see `ItemViews.passesFilterRules`).
   static Map<String, ViewFilterRules> viewFilterRules = {};
 
-  /// Whether [seedViewFilterRuleDefaultsIfNeeded] has already run once on
-  /// this install. Persisted so the one-time fill-in-the-gaps pass (see that
-  /// method) never repeats and never re-adds a default a user has since
-  /// deliberately removed.
-  static bool viewFilterRulesSeeded = false;
+  /// How many times [ViewFilterRules.defaultsFor]'s template has been
+  /// revised; bump this whenever it changes so every install re-syncs to the
+  /// new template, not just a fresh one. Version 1 shipped an incorrect,
+  /// overly conservative template (it left Wish/Project out of several Hide
+  /// lists to avoid disturbing other behavior); version 2 corrects it to the
+  /// literal Hide/Show matrix this feature was specified with.
+  static const int _currentViewFilterRulesSeedVersion = 2;
 
-  /// Fills any view in [viewFilterRules] that has no entry yet with
-  /// [ViewFilterRules.defaultsFor] — run once per install (guarded by
-  /// [viewFilterRulesSeeded]) so a fresh install's Settings → Filtering
-  /// rules starts pre-populated with sensible tag names, without ever
-  /// overwriting a rule a user already configured (blank or not) themselves.
+  /// How many times [seedViewFilterRuleDefaultsIfNeeded] has applied the
+  /// template to this install (0 = never). Persisted so it only (re-)applies
+  /// when [_currentViewFilterRulesSeedVersion] moves ahead of it.
+  static int viewFilterRulesSeedVersion = 0;
+
+  /// Applies [ViewFilterRules.defaultsFor] to every view — filling a gap on
+  /// a first run, or (after a template revision — see
+  /// [_currentViewFilterRulesSeedVersion]) overwriting whatever an earlier,
+  /// since-corrected template version had auto-seeded. A no-op once already
+  /// at the current version, so a rule the user has since customized by hand
+  /// is never touched again after that.
   static void seedViewFilterRuleDefaultsIfNeeded() {
-    if (viewFilterRulesSeeded) return;
-    viewFilterRulesSeeded = true;
+    if (viewFilterRulesSeedVersion >= _currentViewFilterRulesSeedVersion) {
+      return;
+    }
+    final isFirstRun = viewFilterRulesSeedVersion == 0;
+    viewFilterRulesSeedVersion = _currentViewFilterRulesSeedVersion;
     for (final id in ViewFilterRules.viewIds) {
+      if (!isFirstRun) {
+        // A template-revision re-sync: replace what an earlier template
+        // version seeded, same as a fresh install would get today.
+        final defaults = ViewFilterRules.defaultsFor(id);
+        if (defaults != null) viewFilterRules[id] = defaults;
+        continue;
+      }
       if (viewFilterRules.containsKey(id)) continue;
       final defaults = ViewFilterRules.defaultsFor(id);
       if (defaults != null) viewFilterRules[id] = defaults;
@@ -541,9 +559,9 @@ class Config {
         applyMap(data);
       }
     } catch (_) {}
-    final wasSeeded = viewFilterRulesSeeded;
+    final seedVersionBefore = viewFilterRulesSeedVersion;
     seedViewFilterRuleDefaultsIfNeeded();
-    if (!wasSeeded) await save();
+    if (viewFilterRulesSeedVersion != seedVersionBefore) await save();
   }
 
   static Map<String, dynamic> toMap() {
@@ -606,7 +624,7 @@ class Config {
         for (final entry in viewFilterRules.entries)
           entry.key: entry.value.toJson(),
       },
-      'viewFilterRulesSeeded': viewFilterRulesSeeded,
+      'viewFilterRulesSeedVersion': viewFilterRulesSeedVersion,
     };
   }
 
@@ -752,8 +770,18 @@ class Config {
                 Map<String, dynamic>.from(entry.value as Map)),
       };
     }
-    viewFilterRulesSeeded =
-        data['viewFilterRulesSeeded'] as bool? ?? viewFilterRulesSeeded;
+    final savedSeedVersion = data['viewFilterRulesSeedVersion'] as num?;
+    if (savedSeedVersion != null) {
+      viewFilterRulesSeedVersion = savedSeedVersion.round();
+    } else {
+      // Pre-migration installs only ever wrote the old boolean flag; treat
+      // it as version 1 (the incorrect template) so
+      // seedViewFilterRuleDefaultsIfNeeded re-syncs them to the current one.
+      final legacySeeded = data['viewFilterRulesSeeded'] as bool?;
+      if (legacySeeded != null) {
+        viewFilterRulesSeedVersion = legacySeeded ? 1 : 0;
+      }
+    }
   }
 
   /// Persists the current settings to disk.

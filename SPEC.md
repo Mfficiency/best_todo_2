@@ -966,20 +966,32 @@ convention as `Task.label`, editable via a `LabelPickerField` in `AlarmEditPage`
 its own list with `ItemViews.applyTagRules(items, rules, (item) => item.tags)` before display,
 rendering any tags as small pills under each row.
 
-*Seeded defaults (`Config.viewFilterRulesSeeded`, `ViewFilterRules.defaultsFor`).* A fresh
-install's Settings → Filtering rules starts pre-populated rather than empty:
-`Config.seedViewFilterRuleDefaultsIfNeeded` (called once from `Config.load`, gated by the
-persisted `viewFilterRulesSeeded` flag) fills any view with *no* entry yet with
-`ViewFilterRules.defaultsFor(viewId)` — Wishlist defaults to `includeTags: [Wish]`, Food
-Diary to `includeTags: [Fooddiary]`, Archived/Deleted bin hide each other, and so on. It never
-overwrites a rule a user already configured (even a deliberately empty one), and Home/Projects
-deliberately never default to hiding Wish/Project: a project's or a wishlist's task
-legitimately still shows on Home by its own due date (see `TaskTile`'s project chip, and
-`Task.isWish`'s doc comment), and Projects' top pane must keep showing every unassigned task
-to drag onto a project, so a default that hid either would silently break a working feature
-rather than just declutter one — those two exclusions are available to add by hand in
-Settings, just not defaulted on. Alarms/Countdown get no seeded default (nothing structural
-to make redundant yet).
+*Seeded defaults (`Config.viewFilterRulesSeedVersion`, `ViewFilterRules.defaultsFor`).* A
+fresh install's Settings → Filtering rules starts pre-populated rather than empty, with the
+literal Hide/Show matrix this feature was specified with — every view hides every other
+view's reserved tag and shows only its own: Home has no tag of its own, so it hides all nine
+(Wish, Project, Archived, Deleted, Fooddiary, Alarm, Countdown, Changelog, Waiting_for_
+approval) and shows nothing; Wishlist/Food Diary/Alarms/Countdown hide the other eight and
+show only their own tag; Waiting for Approval hides just Archived/Deleted/Changelog (its
+built-in gate already excludes everything else) and shows Waiting_for_approval; Projects
+hides everything except Wish (a wish can still be assigned to a project) and shows Project;
+Archived and the Deleted bin only ever hide *each other*, since an item can legitimately be
+both, e.g. an archived wish. This is a real, user-facing default, not a restatement of a
+structural gate — e.g. Home now hides Wish/Project-tagged tasks by default even though
+they'd otherwise show by due date. `Config.seedViewFilterRuleDefaultsIfNeeded` applies it:
+called once from `Config.load`, it fills any view with *no* entry on a fresh install
+(`viewFilterRulesSeedVersion == 0`), and — should `ViewFilterRules.defaultsFor`'s template
+itself need correcting later, the way version 1's did (it shipped too conservative, leaving
+Wish/Project out of several Hide lists to avoid disturbing other behavior) — a bump of
+`Config._currentViewFilterRulesSeedVersion` re-syncs *every* view on an install still behind
+that version, overwriting whatever the earlier template had seeded rather than only filling
+gaps; it is a no-op once already at the current version. The one place a literal default
+would break an existing feature outright: Projects' `includeTags: [Project]` would filter its
+"All Tasks" pane (used to drag an *unassigned* task onto a project) down to only
+already-assigned tasks. `ProjectsPage._assignPaneRules` compensates by dropping `includeTags`
+(keeping `excludeTags`) for that one pane only — the project board itself
+(`projectTasks`/`boardColumn`) still gets the full rule, though it's redundant there since a
+board column already filters by exact `projectId`.
 
 ### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157; unlit-until-done
 pulse 0.1.229; configurable goals 0.1.250)

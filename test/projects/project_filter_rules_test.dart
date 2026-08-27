@@ -78,4 +78,22 @@ void main() {
     expect(find.text('Visible task'), findsOneWidget);
     expect(find.text('Hidden task'), findsNothing);
   });
+
+  testWidgets(
+      'an includeTags: [Project] rule (the literal default) does not hide '
+      'unassigned tasks from the "All Tasks" assign pane, but still applies '
+      'on the project board', (tester) async {
+    Config.viewFilterRules[ViewFilterRules.projects] =
+        ViewFilterRules(includeTags: ['Project']);
+
+    final unassigned = Task(title: 'Unassigned task');
+    await tester.pumpWidget(MaterialApp(
+      home: ProjectsPage(tasks: [unassigned], onChanged: () {}),
+    ));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unassigned task'), findsOneWidget);
+  });
 }
