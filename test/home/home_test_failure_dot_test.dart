@@ -40,6 +40,13 @@ void main() {
     Config.showFailureDotOnMenu = false;
   });
 
+  // The drawer has grown past one screen, and the home page body carries its
+  // own Scrollables (task list tabs), so scrolling to a drawer entry needs a
+  // finder scoped to the Drawer's own Scrollable specifically.
+  Finder drawerScrollable() => find
+      .descendant(of: find.byType(Drawer), matching: find.byType(Scrollable))
+      .first;
+
   Future<void> pumpHomeUntilLoaded(WidgetTester tester) async {
     await tester.runAsync(() => StorageService()
         .saveTaskList([Task(title: 'Alpha', dueDate: DateTime.now())]));
@@ -77,11 +84,15 @@ void main() {
     await tester.pumpAndSettle();
 
     // Test Results now lives under the Tools expander; open it, then the
-    // entry (with its own failure dot) appears.
+    // entry (with its own failure dot) appears. Tools needs scrolling into
+    // view first.
+    await tester.scrollUntilVisible(find.text('Tools'), 200,
+        scrollable: drawerScrollable());
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Test Results'), 200,
-        scrollable: find.byType(Scrollable).first);
+        scrollable: drawerScrollable());
     await tester.pumpAndSettle();
     expect(dot, findsWidgets);
     await tester.tap(find.text('Test Results'));
@@ -112,10 +123,13 @@ void main() {
 
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Tools'), 200,
+        scrollable: drawerScrollable());
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Test Results'), 200,
-        scrollable: find.byType(Scrollable).first);
+        scrollable: drawerScrollable());
     await tester.pumpAndSettle();
     expect(dot, findsOneWidget);
   });
@@ -139,10 +153,13 @@ void main() {
 
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Tools'), 200,
+        scrollable: drawerScrollable());
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Test Results'), 200,
-        scrollable: find.byType(Scrollable).first);
+        scrollable: drawerScrollable());
     await tester.pumpAndSettle();
     await tester.tap(find.text('Test Results'));
     // The page loads through a FutureBuilder; round-pump with runAsync until

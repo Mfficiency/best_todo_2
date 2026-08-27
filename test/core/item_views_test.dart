@@ -1,4 +1,5 @@
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/item_views.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -97,6 +98,104 @@ void main() {
           ['ongoing']);
       expect(ItemViews.projectTasks(all, 'p1').map((t) => t.title),
           ['todo', 'ongoing']);
+    });
+  });
+
+  group('food diary', () {
+    test('foodDiary selects only eating-habit-flagged tasks', () {
+      final entry = Task(title: 'yogurt', isEatingHabit: true);
+      final plain = Task(title: 'chore');
+      expect(ItemViews.foodDiary([entry, plain]).map((t) => t.title),
+          ['yogurt']);
+    });
+
+    test('an eating-habit task is hidden from every other view, even with '
+        'a due date and project assignment', () {
+      final entry = Task(
+        title: 'yogurt',
+        dueDate: today,
+        isEatingHabit: true,
+        projectId: 'p1',
+      );
+      final ok = Task(title: 'normal', dueDate: today);
+      final boardTask = Task(title: 'board', projectId: 'p1');
+
+      expect(ItemViews.homeBucket([entry, ok], 0, today).map((t) => t.title),
+          ['normal']);
+      expect(ItemViews.active([entry, ok]).map((t) => t.title), ['normal']);
+      expect(
+          ItemViews.projectTasks([entry, boardTask], 'p1').map((t) => t.title),
+          ['board']);
+      expect(
+          ItemViews.boardColumn([entry, boardTask], 'p1', Task.kanbanTodo)
+              .map((t) => t.title),
+          ['board']);
+      final wishAndEating = Task(
+          title: 'wish and eating', isWish: true, isEatingHabit: true);
+      final wish = Task(title: 'wish', isWish: true);
+      expect(ItemViews.wishlist([wish, wishAndEating]).map((t) => t.title),
+          ['wish']);
+    });
+  });
+
+  group('waiting for approval', () {
+    Task pending(String title) =>
+        Task(title: title, label: 'Waiting_for_approval');
+
+    test('the pre-0.1.260 waiting-for-approval spelling still gates a task',
+        () {
+      final legacy = Task(title: 'old pending', label: 'waiting-for-approval');
+      final ok = Task(title: 'normal', dueDate: today);
+      expect(ItemViews.active([ok, legacy]).map((t) => t.title), ['normal']);
+      expect(ItemViews.waitingApproval([ok, legacy]).map((t) => t.title),
+          ['old pending']);
+    });
+
+    test('a task tagged Waiting_for_approval is hidden from every other '
+        'view', () {
+      final waiting = pending('from todoist');
+      final ok = Task(title: 'normal', dueDate: today);
+      final wish = Task(title: 'wish', isWish: true);
+      final waitingWish = pending('wish pending')..isWish = true;
+      final boardTask = Task(title: 'board', projectId: 'p1');
+      final waitingBoard = pending('board pending')..projectId = 'p1';
+
+      expect(
+          ItemViews.homeBucket([waiting..dueDate = today, ok], 0, today)
+              .map((t) => t.title),
+          ['normal']);
+      expect(ItemViews.wishlist([wish, waitingWish]).map((t) => t.title),
+          ['wish']);
+      expect(ItemViews.active([ok, waiting]).map((t) => t.title), ['normal']);
+      expect(
+          ItemViews.projectTasks([boardTask, waitingBoard], 'p1')
+              .map((t) => t.title),
+          ['board']);
+      expect(
+          ItemViews.boardColumn([boardTask, waitingBoard], 'p1',
+                  Task.kanbanTodo)
+              .map((t) => t.title),
+          ['board']);
+    });
+
+    test('waitingApproval lists only pending, non-deleted tasks', () {
+      final waiting = pending('pending');
+      final approved = Task(title: 'approved');
+      final deletedWaiting = pending('gone')..deletedAt = DateTime(2026, 7, 1);
+      expect(
+          ItemViews.waitingApproval([waiting, approved, deletedWaiting])
+              .map((t) => t.title),
+          ['pending']);
+    });
+
+    test('waitingApproval applies rules on top of the structural gate', () {
+      final keep = pending('keep')..label = 'Waiting_for_approval, urgent';
+      final drop = pending('drop');
+      final result = ItemViews.waitingApproval(
+        [keep, drop],
+        rules: ViewFilterRules(includeTags: ['urgent']),
+      );
+      expect(result.map((t) => t.title), ['keep']);
     });
   });
 }

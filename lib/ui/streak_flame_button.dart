@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/streak_kind.dart';
+import '../services/streak_flame_display.dart';
 import '../services/streak_service.dart';
 import 'streak_page.dart';
 
@@ -16,6 +17,11 @@ import 'streak_page.dart';
 /// A challenge whose action has not happened yet today burns grey and outlined
 /// no matter how long the streak is, and pulses towards white so the open day
 /// catches the eye instead of blending into the app bar.
+///
+/// Once every active challenge is done for the day the cycling stops: the
+/// button settles on one steady white flame with a faint blue cast, badged
+/// with the longest of the streaks, so a finished day reads at a glance
+/// instead of flickering through three identical "done" flames.
 class StreakFlameButton extends StatefulWidget {
   /// The "today" the streaks are evaluated against (the home page's dev date
   /// arrows move it).
@@ -39,6 +45,16 @@ class StreakFlameButton extends StatefulWidget {
   /// keeps the screenshot runs deterministic). The tests that cover the
   /// cycling and the pulse set this to true and pump fixed frames.
   static bool debugForceCycle = false;
+
+  /// The steady flame shown once every active challenge is done for the day:
+  /// white with a slight blue hue, so a finished day reads as "cooled down"
+  /// rather than as another lit challenge colour.
+  static const Color allDoneColor = Color(0xFFE8F0FF); // white, faint blue cast
+
+  /// Streak number drawn on the all-done badge. The badge takes
+  /// [allDoneColor] as its background, so the default near-white label would
+  /// be unreadable — this deep blue keeps the same hue family.
+  static const Color allDoneBadgeTextColor = Color(0xFF1B2A4A);
 
   @override
   State<StreakFlameButton> createState() => _StreakFlameButtonState();
@@ -78,8 +94,10 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
   }
 
   String _tooltip(StreakKind kind, int streak, bool doneToday) {
-    if (streak <= 0) return '${kind.label}: no streak yet';
-    final streakText = '${kind.label}: $streak-day streak';
+    final info = streakFlameInfo(kind);
+    if (!info.configured) return info.title;
+    if (streak <= 0) return '${info.short}: no streak yet';
+    final streakText = '${info.short}: $streak-day streak';
     return doneToday ? streakText : '$streakText — still open today';
   }
 
@@ -136,19 +154,46 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
         // Every challenge switched off leaves nothing to show.
         if (kinds.isEmpty) return const SizedBox.shrink();
 
-        final kind = kinds[_index % kinds.length];
+        final theme = Theme.of(context);
+        final today = widget.now ?? DateTime.now();
+        // Only kinds with an actual challenge behind them can complete the
+        // day: `complete` always is one, but an unconfigured create/plan slot
+        // (see StreakGoal) never records anything, so it would otherwise
+        // block "all done" forever.
+        final trackedKinds = kinds
+            .where((kind) =>
+                kind == StreakKind.complete ||
+                Config.streakGoals.containsKey(kind.id))
+            .toList();
+        // Nothing left open today: stop hopping and burn one steady white flame
+        // carrying the best of the streaks. A single tracked challenge keeps
+        // its own colour — there is no cycle to collapse.
+        final allDone = trackedKinds.length > 1 &&
+            trackedKinds.every((kind) => _streak.isDayDone(today, kind: kind));
+
+        final kind = allDone
+            ? trackedKinds.reduce((best, kind) =>
+                _streak.currentStreak(kind: kind, now: widget.now) >
+                        _streak.currentStreak(kind: best, now: widget.now)
+                    ? kind
+                    : best)
+            : kinds[_index % kinds.length];
         final streak = _streak.currentStreak(kind: kind, now: widget.now);
         final progress = _streak.flameProgress(kind: kind, now: widget.now);
-        final theme = Theme.of(context);
-        final doneToday =
-            _streak.isDayDone(widget.now ?? DateTime.now(), kind: kind);
+        final doneToday = allDone || _streak.isDayDone(today, kind: kind);
         // The flame is only lit once today's action happened; a streak that is
         // still riding on yesterday stays grey (and pulses) until it does.
-        final color =
-            doneToday ? kind.flameColor(progress, theme) : theme.disabledColor;
+        final color = allDone
+            ? StreakFlameButton.allDoneColor
+            : doneToday
+                ? kind.flameColor(progress, theme)
+                : theme.disabledColor;
 
         return IconButton(
-          tooltip: _tooltip(kind, streak, doneToday),
+          tooltip: allDone
+              ? 'All ${trackedKinds.length} challenges done today — '
+                  '$streak-day streak'
+              : _tooltip(kind, streak, doneToday),
           onPressed: () => _openStreakPage(kind),
           icon: AnimatedSwitcher(
             duration: const Duration(milliseconds: 350),
@@ -157,11 +202,14 @@ class _StreakFlameButtonState extends State<StreakFlameButton>
               child: ScaleTransition(scale: animation, child: child),
             ),
             child: Badge(
-              // Keyed by challenge so the switcher cross-fades on every hop.
-              key: ValueKey(kind),
+              // Keyed by challenge so the switcher cross-fades on every hop;
+              // the all-done flame keeps one key so it never cross-fades.
+              key: allDone ? const ValueKey('all-done') : ValueKey(kind),
               isLabelVisible: streak > 0,
               label: Text('$streak'),
               backgroundColor: color,
+              textColor:
+                  allDone ? StreakFlameButton.allDoneBadgeTextColor : null,
               child: _flame(kind, progress, color, doneToday),
             ),
           ),

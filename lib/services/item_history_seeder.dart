@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import 'item_event_journal.dart';
 import 'storage_service.dart';
 
@@ -72,7 +73,15 @@ class ItemHistorySeeder {
 
     ItemEvent seed(String uid, DateTime at, String type,
             [List<FieldChange>? patch]) =>
-        ItemEvent(itemId: uid, seq: 0, at: at, type: type, patch: patch, seeded: true);
+        ItemEvent(
+          itemId: uid,
+          seq: 0,
+          at: at,
+          type: type,
+          patch: patch,
+          seeded: true,
+          source: TaskChangeSource.system,
+        );
 
     for (final task in <Task>[...tasks, ...deletedTasks]) {
       final createdAt = task.createdAt;

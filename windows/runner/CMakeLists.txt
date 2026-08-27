@@ -20,6 +20,14 @@ add_executable(${BINARY_NAME} WIN32
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
 
+# Ninja doesn't otherwise know Runner.rc depends on app_icon.ico (rc.exe has
+# no depfile output), so editing just the icon leaves incremental builds
+# with the old one baked into the .exe. Declaring it here forces a rebuild
+# of the resource whenever the icon file changes.
+set_source_files_properties(Runner.rc PROPERTIES
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico"
+)
+
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MAJOR=${FLUTTER_VERSION_MAJOR}")

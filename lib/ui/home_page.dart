@@ -6,16 +6,22 @@ import 'dart:math' show Random;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
+import '../models/attachment.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/recurrence_config.dart';
+import '../models/streak_kind.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
+import '../models/view_filter_rules.dart';
 import '../services/alarm_service.dart';
 import '../services/auto_backup_service.dart';
+import '../services/auto_tag_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -27,32 +33,41 @@ import '../services/share_intent_service.dart';
 import '../services/storage_service.dart';
 import '../services/streak_service.dart';
 import '../services/sync_service.dart';
+import '../services/task_mutation_service.dart';
+import '../services/todoist_sync_service.dart';
+import '../services/food_diary_widget_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
 import '../services/wishlist_shipped.dart';
 import '../utils/date_utils.dart';
 import '../utils/task_utils.dart';
-import 'recurrence_editor.dart';
-import 'recurrence_scope_dialog.dart';
 import 'about_page.dart';
 import 'alarms_page.dart';
 import 'app_logs_page.dart';
-import 'calendar_view_page.dart' show ScheduleView;
+import 'archived_items_page.dart';
+import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
+import 'recurrence_editor.dart';
+import 'recurrence_scope_dialog.dart';
+import 'deleted_bin_page.dart';
 import 'dice_timer_page.dart';
+import 'food_diary_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
-import 'deleted_items_page.dart';
 import 'projects_page.dart';
 import 'settings_page.dart';
+import 'speech_input_button.dart';
 import 'streak_celebration.dart';
 import 'streak_flame_button.dart';
 import 'task_tile.dart';
 import 'test_results_page.dart';
 import 'usage_data_page.dart';
+import 'waiting_approval_page.dart';
+import 'weekly_hours_planner_page.dart';
+import 'widget_previews_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
 
@@ -112,7 +127,13 @@ class _HomePageState extends State<HomePage>
   /// All tasks in the app. Tasks are assigned a dueDate when created and
   /// filtered into the appropriate lists based on [_currentDate].
   final List<Task> _tasks = [];
+  /// Archived items ("Archived Items" page) — soft-deleted, capped by count,
+  /// never purged by age.
   final List<Task> _deletedTasks = [];
+  /// The real Deleted bin ("Deleted Items" page) — denials from Waiting for
+  /// Approval, or archived items sent on manually. Purged after
+  /// [Config.deletedItemsRetentionDays] days (see `StorageService.loadBinTaskList`).
+  final List<Task> _binTasks = [];
 
   final Map<String, DailyTaskStats> _dailyStatsByDay = {};
   // Item store goes through the repository seam; _storageService remains for
@@ -129,6 +150,12 @@ class _HomePageState extends State<HomePage>
   /// recurring.
   RecurrenceConfig? _pendingRecurrence;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _homeKeyboardFocusNode =
+      FocusNode(debugLabel: 'Home keyboard shortcuts');
+  final FocusNode _addTaskFocusNode = FocusNode(debugLabel: 'Add task');
+  final FocusNode _searchFocusNode = FocusNode(debugLabel: 'Task search');
+  final Map<String, TaskTileController> _taskTileControllers = {};
+  String? _focusedTaskUid;
 
   /// Picks which of today's tasks the dice timer lands on.
   final Random _diceRandom = Random();
@@ -151,10 +178,12 @@ class _HomePageState extends State<HomePage>
   final Map<int, GlobalKey> _scheduleTabAnchors = {
     for (var i = 0; i < 6; i++) i: GlobalKey(),
   };
+  final GlobalKey<ScheduleViewState> _scheduleViewKey =
+      GlobalKey<ScheduleViewState>();
   int _lastTabIndex = 0;
 
   static const int _futureTabIndex = 5;
-  static final DateTime _futureDueDate = DateTime(2300, 1, 1);
+  static final DateTime _futureDueDate = Task.futureBucketMarker;
 
   /// Day offsets for each non-future tab.
   static const List<int> _offsetDays = [0, 1, 2, 7, 30];
@@ -459,6 +488,7 @@ class _HomePageState extends State<HomePage>
           type: ItemEvent.typeCreated,
           patch: [FieldChange('title', null, second.title)],
           seeded: true,
+          source: TaskChangeSource.system,
         ),
         ItemEvent(
           itemId: second.uid,
@@ -466,6 +496,7 @@ class _HomePageState extends State<HomePage>
           at: now.subtract(const Duration(days: 14)),
           type: ItemEvent.typeScheduled,
           seeded: true,
+          source: TaskChangeSource.system,
         ),
       ]);
     }
@@ -606,7 +637,14 @@ class _HomePageState extends State<HomePage>
     // Todo.md import) into the task list as isWish tasks.
     final loaded = await _repository.loadItems();
     final loadedDeleted = await _repository.loadDeletedItems();
+    final loadedBin = await _repository.loadBinItems();
     final loadedDailyStats = await _repository.loadDailyStats();
+    // The state as it sits on disk, before any seeding/migration below
+    // mutates it — so only real, later changes become undoable, and the
+    // first save this method makes doesn't read as "everything just got
+    // created".
+    TaskMutationService.instance.noteBaseline(
+        active: loaded, deleted: loadedDeleted, bin: loadedBin);
     // A share-sheet task created while this load was reading the file can be
     // in memory (via ShareIntentService's consumer) *and* in the read result
     // (via its own save); keep the in-memory one only.
@@ -662,6 +700,27 @@ class _HomePageState extends State<HomePage>
       applyShippedWishes(seeded);
       _tasks.addAll(seeded);
     }
+    // Backfill a demo text attachment for dev installs so the task-detail
+    // "with attachment" state (AttachmentsField, expanded task tile) is
+    // visible without manual setup — and, symmetrically, the other starter
+    // tasks stay attachment-free so both states are on screen at once.
+    // Idempotent: only runs once, keyed on no task carrying an attachment yet.
+    if (Config.isDev &&
+        _tasks.isNotEmpty &&
+        !_tasks.any((t) => t.attachments.isNotEmpty)) {
+      final demoTarget = _tasks.firstWhere(
+        (t) => t.title == Config.initialTasks[1],
+        orElse: () => _tasks.firstWhere(
+          (t) => !t.isWish && !t.isEatingHabit,
+          orElse: () => _tasks.first,
+        ),
+      );
+      demoTarget.attachments.add(Attachment(
+        type: Attachment.typeText,
+        text: "Quote from Mike's Garage: \$340 for the carburetor, ask "
+            'about the timing belt while it is in the shop.',
+      ));
+    }
     // Prepopulate the Projects tool in dev builds so the cards/boards have
     // data to drag around right away.
     if (Config.isDev) {
@@ -676,7 +735,6 @@ class _HomePageState extends State<HomePage>
         _seedDevLinkedReminder();
       }
     }
-    _refreshAllRecurringTasks();
     if (loadedDeleted.isNotEmpty) {
       _deletedTasks.addAll(loadedDeleted);
       // Backfill auto-deleted seed items for dev users whose persisted
@@ -701,6 +759,11 @@ class _HomePageState extends State<HomePage>
       _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
       _saveDeletedTasks();
     }
+    _binTasks.addAll(loadedBin);
+    // Recurring-series regeneration below has to see the archive and the bin
+    // so a manually archived/binned instance's date stays skipped instead of
+    // being silently recreated — see _refreshRecurringForTask.
+    _refreshAllRecurringTasks();
     if (loadedDailyStats.isNotEmpty) {
       _dailyStatsByDay.addAll(loadedDailyStats);
     } else if (Config.isDev) {
@@ -728,11 +791,56 @@ class _HomePageState extends State<HomePage>
     if (mounted) {
       setState(() {});
     }
-    _saveTasks();
+    // Everything above (seeding, migration, recurring refresh) is the app's
+    // own doing, not something the user just did.
+    _saveTasks(source: TaskChangeSource.automation);
   }
 
   void _saveDeletedTasks() {
+    TaskMutationService.instance.noteDeletedChange(_deletedTasks);
     _repository.saveDeletedItems(_deletedTasks);
+  }
+
+  void _saveBinTasks() {
+    TaskMutationService.instance.noteBinChange(_binTasks);
+    _repository.saveBinItems(_binTasks);
+  }
+
+  /// Applies an undo/redo result to the in-memory lists in place — never
+  /// reassigning [_tasks]/[_deletedTasks]/[_binTasks], since other open
+  /// pages (Projects, Wishlist, ...) hold onto those exact list instances by
+  /// reference.
+  void _applyUndoState(TaskUndoState state) {
+    setState(() {
+      _tasks
+        ..clear()
+        ..addAll(state.active);
+      _deletedTasks
+        ..clear()
+        ..addAll(state.deleted);
+      _binTasks
+        ..clear()
+        ..addAll(state.bin);
+    });
+    _updateHomeWidget();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(state.description)),
+    );
+  }
+
+  Future<void> _undoLastAction() async {
+    final state = await TaskMutationService.instance.undo();
+    if (state == null) return;
+    _applyUndoState(state.copyWith(description: 'Undone: ${state.description}'));
+    LogService.add('HomePage._undoLastAction', state.description);
+  }
+
+  Future<void> _redoLastAction() async {
+    final state = await TaskMutationService.instance.redo();
+    if (state == null) return;
+    _applyUndoState(state.copyWith(description: 'Redone: ${state.description}'));
+    LogService.add('HomePage._redoLastAction', state.description);
   }
 
   void _saveDailyStats() {
@@ -761,9 +869,17 @@ class _HomePageState extends State<HomePage>
   /// Regenerates [task]'s series (a no-op unless [task] is itself a master —
   /// see [RecurrenceService]). The actual generation/exception/override
   /// logic lives in [RecurrenceService] so it's unit-testable outside the
-  /// widget tree; this just applies its plan to the live task list.
+  /// widget tree; this just applies its plan to the live task list, still
+  /// passing the archive and the bin so an instance archived/binned before a
+  /// master started recording exceptions stays skipped too (see the class
+  /// doc on _deletedTasks/_binTasks).
   void _refreshRecurringForTask(Task task) {
-    RecurrenceService.refresh(task, _tasks, now: _currentDate);
+    RecurrenceService.refresh(
+      task,
+      _tasks,
+      now: _currentDate,
+      archivedOrBinned: [..._deletedTasks, ..._binTasks],
+    );
   }
 
   void _refreshAllRecurringTasks() {
@@ -807,7 +923,6 @@ class _HomePageState extends State<HomePage>
   }
 
   void _trackTaskCreated(Task task) {
-    _recordStreakCreation(task);
     final dueDate = task.dueDate;
     if (dueDate == null || !_isSameDay(dueDate, _currentDate)) return;
     final stats = _getOrCreateDailyStats(_currentDate);
@@ -821,7 +936,6 @@ class _HomePageState extends State<HomePage>
 
   void _trackTaskMove(Task task, DateTime? oldDueDate, DateTime? newDueDate) {
     if (oldDueDate == null && newDueDate == null) return;
-    _recordStreakPlanning(task, oldDueDate, newDueDate);
     final currentDay = _dateOnly(_currentDate);
     final wasToday = oldDueDate != null && _isSameDay(oldDueDate, currentDay);
     final isToday = newDueDate != null && _isSameDay(newDueDate, currentDay);
@@ -874,10 +988,9 @@ class _HomePageState extends State<HomePage>
     if (task.isWish || task.isDone == wasDone) return;
     if (!Config.isFeatureEnabled('streak')) return;
     if (task.isDone) {
-      final firstOfDay = StreakService.instance.recordCompletion(_currentDate);
-      // Clearing the whole day's list is the second way to keep the planning
-      // streak (the first being moving a task to another day).
-      _recordStreakDayCleared();
+      final firstOfDay =
+          StreakService.instance.recordCompletion(_currentDate);
+      _recordGoalCompletion(task);
       if (firstOfDay &&
           Config.showStreak &&
           Config.streakCompletionAnimation &&
@@ -887,37 +1000,33 @@ class _HomePageState extends State<HomePage>
       }
     } else {
       StreakService.instance.recordUncompletion(_currentDate);
+      _recordGoalUncompletion(task);
     }
   }
 
-  /// Feeds a new task into the "create a task every day" streak, whatever day
-  /// it is due on — the point is that the list keeps being fed.
-  void _recordStreakCreation(Task task) {
-    if (task.isWish || !Config.isFeatureEnabled('streak')) return;
-    StreakService.instance.recordCreation(_currentDate);
-  }
-
-  /// Feeds a rescheduled task into the "plan ahead" streak: moving something
-  /// to another day means the day was actually planned instead of ignored.
-  void _recordStreakPlanning(
-      Task task, DateTime? oldDueDate, DateTime? newDueDate) {
-    if (task.isWish || !Config.isFeatureEnabled('streak')) return;
-    if (oldDueDate != null &&
-        newDueDate != null &&
-        _isSameDay(oldDueDate, newDueDate)) {
-      return;
+  /// Feeds a task completion into the user-configured goals of the
+  /// customizable flames (green = [StreakKind.create], blue =
+  /// [StreakKind.plan] — see [StreakGoal]). A flame with no goal configured
+  /// simply has nothing to match against and stays cold.
+  void _recordGoalCompletion(Task task) {
+    for (final kind in const [StreakKind.create, StreakKind.plan]) {
+      final goal = Config.streakGoals[kind.id];
+      if (goal != null && goal.matches(task)) {
+        StreakService.instance.recordGoal(kind, _currentDate);
+      }
     }
-    StreakService.instance.recordPlanning(_currentDate);
   }
 
-  /// Keeps the planning streak when every task due today is done — finishing
-  /// the day's list counts as having dealt with the day. No open task (an
-  /// empty day) is not an achievement, so it does not count.
-  void _recordStreakDayCleared() {
-    if (!Config.isFeatureEnabled('streak')) return;
-    final todays = _tasksDueOn(_currentDate).where((t) => !t.isWish).toList();
-    if (todays.isEmpty || todays.any((t) => !t.isDone)) return;
-    StreakService.instance.recordPlanning(_currentDate);
+  /// Reverts a task's contribution to a configured goal when it is
+  /// un-toggled, mirroring [StreakService.recordUncompletion] for the
+  /// `complete` flame.
+  void _recordGoalUncompletion(Task task) {
+    for (final kind in const [StreakKind.create, StreakKind.plan]) {
+      final goal = Config.streakGoals[kind.id];
+      if (goal != null && goal.matches(task)) {
+        StreakService.instance.recordUncompletion(_currentDate, kind: kind);
+      }
+    }
   }
 
   void _addToDeletedTasks(Task task, {bool autoDeleted = false}) {
@@ -976,9 +1085,10 @@ class _HomePageState extends State<HomePage>
     // Tasks ticked off on the home-screen widget are written to storage by the
     // widget's own isolate; on the way back into the app they are merged in.
     WidgetsBinding.instance.addObserver(this);
-    // Text shared into the app from other apps becomes a task on Today.
-    // Registering before _loadTasks means every share from here on goes
-    // through this page's in-memory list — never a second tasks.json writer.
+    // A task built by the share-sheet quick-add screen (see main.dart) is
+    // claimed here while this page is alive. Registering before _loadTasks
+    // means every share from here on goes through this page's in-memory
+    // list — never a second tasks.json writer.
     ShareIntentService.instance.registerConsumer(_addSharedTask);
     // Lets the app shell reopen a live dice timer after its full-screen alarm
     // is stopped (see main.dart), with the task's actions ready.
@@ -993,9 +1103,13 @@ class _HomePageState extends State<HomePage>
     // A sync failure from a previous run keeps its red dot on the App Logs
     // drawer entry until acknowledged; lazy load, nothing blocks startup.
     SyncService.instance.ensureLoaded();
+    TodoistSyncService.instance.ensureLoaded();
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
+    // Auto-tag rules are needed synchronously the moment a task is created,
+    // so load them eagerly too rather than on first use.
+    AutoTagService.instance.load();
     // Some tools (Chronize, Productivity Stats, ...) render the task data, so
     // the configured start tool is only opened once loading finished.
     _loadTasks().then((_) {
@@ -1019,6 +1133,8 @@ class _HomePageState extends State<HomePage>
         return const CountdownTimerPage();
       case 'wishlist':
         return const WishlistPage();
+      case 'food_diary':
+        return const FoodDiaryPage();
       case 'projects':
         return ProjectsPage(tasks: _tasks, onChanged: _saveTasks);
       case 'chronize':
@@ -1036,6 +1152,8 @@ class _HomePageState extends State<HomePage>
         );
       case 'test_results':
         return const TestResultsPage();
+      case 'weekly_hours_planner':
+        return const WeeklyHoursPlannerPage();
       case 'productivity_stats':
         return YourStatsPage(
           tasks: _tasks,
@@ -1057,9 +1175,12 @@ class _HomePageState extends State<HomePage>
       // Tools like Projects mutate tasks in place; refresh the lists when
       // coming back.
       if (mounted) setState(() {});
-      // The Wishlist tool loads and saves the task list on its own, so this
-      // page's in-memory copy is refreshed from disk when coming back.
-      if (tool == 'wishlist') _reloadTasksFromStorage();
+      // The Wishlist/Food Diary tools load and save the task list on their
+      // own, so this page's in-memory copy is refreshed from disk when
+      // coming back.
+      if (tool == 'wishlist' || tool == 'food_diary') {
+        _reloadTasksFromStorage();
+      }
     });
   }
 
@@ -1076,6 +1197,28 @@ class _HomePageState extends State<HomePage>
         ..addAll(loaded);
       _refreshAllRecurringTasks();
     });
+    // The list the widget mirrors just changed under it (a Todoist pull, an
+    // approval denied, a wishlist edit), and none of those went through
+    // _saveTasks here — so push the fresh payload.
+    _updateHomeWidget();
+  }
+
+  /// Pull-to-refresh on the task list: runs a two-way Todoist sync (a no-op
+  /// if Todoist sync isn't enabled/configured) and reloads from storage so
+  /// anything it pulled down shows up immediately.
+  Future<void> _pullToRefreshSync() async {
+    final entry = await TodoistSyncService.instance.syncNow(
+      trigger: 'pull_to_refresh',
+    );
+    await _reloadTasksFromStorage();
+    if (!mounted || entry == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(entry.success
+            ? 'Synced ${entry.itemCount} change(s) with Todoist'
+            : 'Todoist sync failed: ${entry.message}'),
+      ));
   }
 
   /// Opens the tool configured as the default start page (if any) on top of
@@ -1092,10 +1235,22 @@ class _HomePageState extends State<HomePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_mergeWidgetCompletions());
+      unawaited(_onResumed());
       // An app kept open across midnight still gets its scheduled backup.
       unawaited(AutoBackupService.maybeRun());
     }
+  }
+
+  /// Backgrounding the app (pause/hidden/detached) is also what triggers the
+  /// Todoist quit-sync (see `TodoistSyncService.onLifecycleChanged`) — if it
+  /// finished before the app came back, its pulls already sit in storage but
+  /// this page's in-memory `_tasks` doesn't know yet. Reload first so
+  /// `_mergeWidgetCompletions` (which can itself re-save `_tasks`) compares
+  /// against that fresh copy instead of overwriting a pulled task it never
+  /// saw.
+  Future<void> _onResumed() async {
+    await _reloadTasksFromStorage();
+    await _mergeWidgetCompletions();
   }
 
   @override
@@ -1105,6 +1260,9 @@ class _HomePageState extends State<HomePage>
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {
       openRunningDiceTimer = null;
     }
+    _homeKeyboardFocusNode.dispose();
+    _addTaskFocusNode.dispose();
+    _searchFocusNode.dispose();
     _tabController.dispose();
     _controller.dispose();
     _searchController.dispose();
@@ -1152,8 +1310,9 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
-    // See _reorderTask: reordering is disabled while searching.
-    if (_searchQuery.trim().isNotEmpty) return;
+    // See _reorderTask: reordering is disabled while searching or while a
+    // Home filter rule is hiding tasks.
+    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
     final fullList = _tasksForTab(pageIndex);
 
@@ -1188,15 +1347,7 @@ class _HomePageState extends State<HomePage>
   }
 
   void _scrollToScheduleAnchor(int tabIndex) {
-    final key = _scheduleTabAnchors[tabIndex];
-    final ctx = key?.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(
-      ctx,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
-      alignment: 0.0,
-    );
+    _scheduleViewKey.currentState?.scrollToSection(tabIndex);
   }
 
   void _scheduleMidnightUpdate() {
@@ -1231,6 +1382,7 @@ class _HomePageState extends State<HomePage>
     final recurrence = _pendingRecurrence;
     final task = Task(
       title: title,
+      label: AutoTagService.instance.withAutoTags(title, ''),
       createdAt: DateTime.now(),
       dueDate: dueDate,
       isRecurring: recurrence != null,
@@ -1272,8 +1424,7 @@ class _HomePageState extends State<HomePage>
       context: context,
       showDragHandle: true,
       // Six rows do not fit the default 9/16-of-the-screen sheet on a short
-      // screen (see the double-tap menu's own note above): size to content
-      // and let it scroll instead of overflowing.
+      // screen: size to content and let it scroll instead of overflowing.
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
         child: SingleChildScrollView(
@@ -1373,19 +1524,265 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// Creates a task from text shared into the app (Android share sheet) —
-  /// always due today, whatever tab or view is open.
-  void _addSharedTask(String text) {
-    final task = ShareIntentService.buildTask(text);
+  bool _isDesktopShortcutsEnabled(BuildContext context) {
+    final platform = defaultTargetPlatform;
+    final desktopPlatform = kIsWeb ||
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
+    return desktopPlatform && MediaQuery.of(context).size.width >= 700;
+  }
+
+  bool get _primaryFocusIsTextInput {
+    final context = FocusManager.instance.primaryFocus?.context;
+    return context != null && context.widget is EditableText;
+  }
+
+  TaskTileController _controllerForTask(Task task) {
+    return _taskTileControllers.putIfAbsent(
+      task.uid,
+      TaskTileController.new,
+    );
+  }
+
+  List<Task> _keyboardTasks() => _tasksForTab(_tabController.index);
+
+  int _focusedTaskIndex(List<Task> tasks) {
+    final uid = _focusedTaskUid;
+    if (uid == null) return -1;
+    return tasks.indexWhere((task) => task.uid == uid);
+  }
+
+  Task? _focusedTask() {
+    final tasks = _keyboardTasks();
+    final index = _focusedTaskIndex(tasks);
+    if (index < 0) return null;
+    return tasks[index];
+  }
+
+  Task? _ensureFocusedTask() {
+    final tasks = _keyboardTasks();
+    if (tasks.isEmpty) {
+      if (_focusedTaskUid != null) setState(() => _focusedTaskUid = null);
+      return null;
+    }
+    final currentIndex = _focusedTaskIndex(tasks);
+    if (currentIndex >= 0) return tasks[currentIndex];
+    setState(() => _focusedTaskUid = tasks.first.uid);
+    return tasks.first;
+  }
+
+  void _moveFocusedTask(int delta) {
+    final tasks = _keyboardTasks();
+    if (tasks.isEmpty) {
+      setState(() => _focusedTaskUid = null);
+      return;
+    }
+    final currentIndex = _focusedTaskIndex(tasks);
+    final nextIndex = currentIndex < 0
+        ? (delta > 0 ? 0 : tasks.length - 1)
+        : (currentIndex + delta).clamp(0, tasks.length - 1);
+    setState(() => _focusedTaskUid = tasks[nextIndex].uid);
+    _homeKeyboardFocusNode.requestFocus();
+  }
+
+  void _focusAfterKeyboardAction(int pageIndex, int originalIndex) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final tasks = _tasksForTab(pageIndex);
+      setState(() {
+        if (tasks.isEmpty) {
+          _focusedTaskUid = null;
+        } else {
+          final nextIndex = originalIndex.clamp(0, tasks.length - 1);
+          _focusedTaskUid = tasks[nextIndex].uid;
+        }
+      });
+      _homeKeyboardFocusNode.requestFocus();
+    });
+  }
+
+  void _toggleTask(Task task) {
+    final wasDone = task.isDone;
+    setState(() {
+      task.toggleDone();
+      task.completedAt = task.isDone ? DateTime.now() : null;
+    });
+    _trackTaskDoneState(task, wasDone);
+    _recordStreakToggle(task, wasDone);
+    _saveTasks();
+  }
+
+  Future<void> _openSettingsPage() {
+    return Navigator.of(context)
+        .push(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          onSettingsChanged: _updateSettings,
+          onExportTasksRequested: _exportTasks,
+          onExportSettingsRequested: _exportSettingsOnly,
+          onExportEverythingRequested: _exportEverything,
+          onImportRequested: _importAutoDetect,
+        ),
+      ),
+    )
+        .then((_) {
+      // Settings is where Todoist "Sync now" lives — a pull there (a new
+      // task, a label/edit picked up from Todoist) writes straight to
+      // storage but never touches this page's in-memory _tasks. Without
+      // this, a pulled task stays invisible until the app is fully
+      // restarted, even though the sync itself succeeded.
+      if (mounted) _reloadTasksFromStorage();
+    });
+  }
+
+  void _focusSearch() {
+    if (!Config.isFeatureEnabled('search')) return;
+    _searchFocusNode.requestFocus();
+  }
+
+  void _focusAddTask() {
+    _addTaskFocusNode.requestFocus();
+  }
+
+  void _openFocusedTask() {
+    final task = _ensureFocusedTask();
+    if (task == null) return;
+    _controllerForTask(task).open();
+    _homeKeyboardFocusNode.requestFocus();
+  }
+
+  void _handleSideArrow(LogicalKeyboardKey key) {
+    final task = _ensureFocusedTask();
+    if (task == null) return;
+    final controller = _controllerForTask(task);
+    final isRight = key == LogicalKeyboardKey.arrowRight;
+    final directionIsMove =
+        isRight ? Config.swipeLeftDelete : !Config.swipeLeftDelete;
+    final sameOpenMenu = (directionIsMove && controller.hasMoveOptions) ||
+        (!directionIsMove && controller.hasDeleteOptions);
+    if (controller.hasOptions) {
+      if (sameOpenMenu) {
+        controller.stepOptions();
+      } else {
+        controller.closeOptions();
+      }
+      return;
+    }
+    if (directionIsMove) {
+      controller.startMoveOptions();
+    } else {
+      controller.startDeleteOptions();
+    }
+  }
+
+  KeyEventResult _handleAddTaskKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final enterPressed = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    final ctrlPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final shiftPressed = HardwareKeyboard.instance.isShiftPressed;
+    if (Config.enterSavesNewTask &&
+        enterPressed &&
+        !ctrlPressed &&
+        !shiftPressed) {
+      _addTask(_controller.text);
+      return KeyEventResult.handled;
+    }
+    if (!Config.enterSavesNewTask && ctrlPressed && enterPressed) {
+      _addTask(_controller.text);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _handleHomeKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (!_isDesktopShortcutsEnabled(context)) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+    final ctrlPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+
+    if (ctrlPressed && key == LogicalKeyboardKey.comma) {
+      _openSettingsPage();
+      return KeyEventResult.handled;
+    }
+    if (ctrlPressed && key == LogicalKeyboardKey.keyF) {
+      _focusSearch();
+      return KeyEventResult.handled;
+    }
+    if (ctrlPressed && key == LogicalKeyboardKey.keyN) {
+      _focusAddTask();
+      return KeyEventResult.handled;
+    }
+
+    if (_primaryFocusIsTextInput) {
+      if (key == LogicalKeyboardKey.escape) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        _homeKeyboardFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    switch (key) {
+      case LogicalKeyboardKey.arrowUp:
+        _moveFocusedTask(-1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowDown:
+        _moveFocusedTask(1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowRight:
+      case LogicalKeyboardKey.arrowLeft:
+        _handleSideArrow(key);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.enter:
+        final task = _focusedTask();
+        final controller = task == null ? null : _controllerForTask(task);
+        if (controller?.hasOptions ?? false) {
+          controller!.confirmOptions();
+        } else {
+          _openFocusedTask();
+        }
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.space:
+        final task = _ensureFocusedTask();
+        if (task != null) _toggleTask(task);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.delete:
+        final tasks = _keyboardTasks();
+        final index = _focusedTaskIndex(tasks);
+        if (index >= 0) _deleteTask(_tabController.index, index);
+        _focusAfterKeyboardAction(_tabController.index, index);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.escape:
+        final task = _focusedTask();
+        _taskTileControllers[task?.uid]?.closeOptions();
+        return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Adds a task already built by the share-sheet quick-add screen (see
+  /// main.dart) to this page's in-memory list, whatever tab or view is open.
+  /// Ranking follows the same top/bottom setting as every other add, within
+  /// whichever bucket (Today/Inbox) the quick-add screen sent it to.
+  void _addSharedTask(Task task) {
     task.listRanking = _listRankingForNewTask(
-      0,
+      _tabIndexForDueDate(task.dueDate),
       addToTop: Config.addNewTasksToTop,
     );
     setState(() {
       _tasks.add(task);
     });
     _trackTaskCreated(task);
-    _saveTasks();
+    _saveTasks(source: TaskChangeSource.share);
     LogService.add(
         'HomePage._addSharedTask', 'Added shared task: ${task.title}');
   }
@@ -1394,8 +1791,10 @@ class _HomePageState extends State<HomePage>
   /// (date + time), preserving the chosen time of day.
   void _addTaskFromChronize(String title, DateTime dueDate) {
     if (title.trim().isEmpty) return;
+    final trimmedTitle = title.trim();
     final task = Task(
-      title: title.trim(),
+      title: trimmedTitle,
+      label: AutoTagService.instance.withAutoTags(trimmedTitle, ''),
       createdAt: DateTime.now(),
       dueDate: dueDate,
       hasExplicitTime: true,
@@ -1489,8 +1888,8 @@ class _HomePageState extends State<HomePage>
   /// Removes [toDelete] from the live list, showing one snackbar with an
   /// Undo that restores every task to its original position (and runs
   /// [onUndo], for callers that also need to roll back a rule change made
-  /// alongside the removal). After the undo window, the tasks land in the
-  /// deleted-items trash exactly like a single-task delete always has.
+  /// alongside the removal). After the undo window, the tasks land in
+  /// Archived Items exactly like a single-task delete always has.
   void _deleteTasksBatch(
     List<Task> toDelete, {
     required String label,
@@ -1543,7 +1942,8 @@ class _HomePageState extends State<HomePage>
                   ..sort((a, b) => (originalIndexes[a] ?? 0)
                       .compareTo(originalIndexes[b] ?? 0));
                 for (final t in ordered) {
-                  final at = (originalIndexes[t] ?? 0).clamp(0, _tasks.length);
+                  final at =
+                      (originalIndexes[t] ?? 0).clamp(0, _tasks.length);
                   _tasks.insert(at, t);
                 }
               });
@@ -1564,9 +1964,9 @@ class _HomePageState extends State<HomePage>
     }
     if (index >= tasks.length) return;
     final task = tasks[index];
-    // Keep the occurrence in its series (as an override, so its slot
-    // stays reserved and a later refresh neither duplicates nor discards
-    // it) rather than detaching it outright.
+    // Keep the occurrence in its series (as an override, so its slot stays
+    // reserved and a later refresh neither duplicates nor discards it)
+    // rather than detaching it outright.
     if (task.recurrenceParentUid != null) {
       task.recurrenceOverride = true;
     }
@@ -1592,9 +1992,6 @@ class _HomePageState extends State<HomePage>
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
-    // Keep the occurrence in its series (as an override, so its slot
-    // stays reserved and a later refresh neither duplicates nor discards
-    // it) rather than detaching it outright.
     if (task.recurrenceParentUid != null) {
       task.recurrenceOverride = true;
     }
@@ -1628,9 +2025,6 @@ class _HomePageState extends State<HomePage>
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
-    // Keep the occurrence in its series (as an override, so its slot
-    // stays reserved and a later refresh neither duplicates nor discards
-    // it) rather than detaching it outright.
     if (task.recurrenceParentUid != null) {
       task.recurrenceOverride = true;
     }
@@ -1655,9 +2049,10 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
-    // Reordering a search-filtered list would renumber only the visible
-    // subset and scramble the hidden tasks' order, so it is disabled.
-    if (_searchQuery.trim().isNotEmpty) return;
+    // Reordering a search- or filter-rule-narrowed list would renumber only
+    // the visible subset and scramble the hidden tasks' order, so it is
+    // disabled while either is active.
+    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -1679,6 +2074,19 @@ class _HomePageState extends State<HomePage>
     _requestDeleteTask(tasks[index]);
   }
 
+  /// A restored occurrence of a still-live series needs to (a) not be
+  /// silently regenerated a second time at its original slot and (b) clear
+  /// the exception that a "delete this event" may have recorded on the
+  /// master for that slot, or the very next refresh removes it again.
+  void _clearRecurrenceExceptionOnRestore(Task task) {
+    if (task.recurrenceParentUid == null) return;
+    task.recurrenceOverride = true;
+    final master = _findTaskByUid(task.recurrenceParentUid!);
+    if (master != null && task.recurrenceInstanceKey != null) {
+      master.recurrenceExceptionDates.remove(task.recurrenceInstanceKey);
+    }
+  }
+
   void _restoreTask(Task task) {
     setState(() {
       _deletedTasks.remove(task);
@@ -1687,17 +2095,7 @@ class _HomePageState extends State<HomePage>
       // Wishlist items stay undated so they return to the wishlist/Future
       // bucket instead of today's list.
       if (!task.isWish) task.dueDate = _currentDate;
-      // A restored occurrence of a still-live series needs to (a) not be
-      // silently regenerated a second time at its original slot and (b)
-      // clear the exception that a "delete this event" may have recorded on
-      // the master for that slot, or the very next refresh removes it again.
-      if (task.recurrenceParentUid != null) {
-        task.recurrenceOverride = true;
-        final master = _findTaskByUid(task.recurrenceParentUid!);
-        if (master != null && task.recurrenceInstanceKey != null) {
-          master.recurrenceExceptionDates.remove(task.recurrenceInstanceKey);
-        }
-      }
+      _clearRecurrenceExceptionOnRestore(task);
       _tasks.add(task);
       _refreshRecurringForTask(task);
     });
@@ -1706,15 +2104,53 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._restoreTask', 'Restored "${task.title}"');
   }
 
+  /// Sends an archived item on to the real Deleted bin, where it starts
+  /// aging toward permanent purge (see [Config.deletedItemsRetentionDays]).
+  void _moveArchivedToBin(Task task) {
+    final index = _deletedTasks.indexOf(task);
+    if (index < 0) return;
+    setState(() {
+      _deletedTasks.removeAt(index);
+      // Re-stamp the timestamp: retention is measured from bin entry, not
+      // from the original archive time.
+      task.deletedAt = DateTime.now();
+      _binTasks.insert(0, task);
+    });
+    _saveDeletedTasks();
+    _saveBinTasks();
+    LogService.add(
+        'HomePage._moveArchivedToBin', 'Moved "${task.title}" to the bin');
+  }
+
+  /// Restores a task straight out of the real Deleted bin back into the
+  /// active list, mirroring [_restoreTask].
+  void _restoreFromBin(Task task) {
+    setState(() {
+      _binTasks.remove(task);
+      task.deletedAt = null;
+      task.autoDeleted = false;
+      if (!task.isWish) task.dueDate = _currentDate;
+      _clearRecurrenceExceptionOnRestore(task);
+      _tasks.add(task);
+      _refreshRecurringForTask(task);
+    });
+    _saveTasks();
+    _saveBinTasks();
+    LogService.add(
+        'HomePage._restoreFromBin', 'Restored "${task.title}" from the bin');
+  }
+
+  /// Erases a bin item for good. Only reachable from the real Deleted bin —
+  /// archived items are sent to the bin first (see [_moveArchivedToBin]).
   void _deleteTaskPermanently(Task task) {
-    final originalIndex = _deletedTasks.indexOf(task);
+    final originalIndex = _binTasks.indexOf(task);
     if (originalIndex < 0) return;
     final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
-      _deletedTasks.removeAt(originalIndex);
+      _binTasks.removeAt(originalIndex);
     });
-    _saveDeletedTasks();
+    _saveBinTasks();
     LogService.add('HomePage._deleteTaskPermanently',
         'Queued permanent delete "${task.title}"');
 
@@ -1740,12 +2176,12 @@ class _HomePageState extends State<HomePage>
               messenger.hideCurrentSnackBar();
               if (!mounted) return;
               setState(() {
-                final insertAt = originalIndex <= _deletedTasks.length
+                final insertAt = originalIndex <= _binTasks.length
                     ? originalIndex
-                    : _deletedTasks.length;
-                _deletedTasks.insert(insertAt, task);
+                    : _binTasks.length;
+                _binTasks.insert(insertAt, task);
               });
-              _saveDeletedTasks();
+              _saveBinTasks();
               LogService.add('HomePage._deleteTaskPermanently',
                   'Restored from undo "${task.title}"');
             },
@@ -1844,9 +2280,6 @@ class _HomePageState extends State<HomePage>
 
   /// The dice timer rang and the user postponed the task to tomorrow.
   void _postponeTaskFromDice(Task task) {
-    // Keep the occurrence in its series (as an override, so its slot
-    // stays reserved and a later refresh neither duplicates nor discards
-    // it) rather than detaching it outright.
     if (task.recurrenceParentUid != null) {
       task.recurrenceOverride = true;
     }
@@ -1926,7 +2359,10 @@ class _HomePageState extends State<HomePage>
         'HomePage._changeDate', 'Changed date by $delta to $_currentDate');
   }
 
-  Future<void> _updateHomeWidget() => TaskWidgetService.sync(_tasks);
+  Future<void> _updateHomeWidget() async {
+    await TaskWidgetService.sync(_tasks);
+    await FoodDiaryWidgetService.sync(_tasks);
+  }
 
   /// Picks up completions made on the home-screen widget while the app was in
   /// the background ([Config.widgetCheckboxes]). The widget writes straight to
@@ -1959,12 +2395,12 @@ class _HomePageState extends State<HomePage>
       // stats live only here, so they catch up now.
       _trackTaskDoneState(task, !task.isDone);
     }
-    _saveTasks();
+    _saveTasks(source: TaskChangeSource.automation);
     LogService.add('HomePage._mergeWidgetCompletions',
         'Merged ${changed.length} widget completion(s)');
   }
 
-  void _saveTasks() {
+  void _saveTasks({String source = TaskChangeSource.user}) {
     for (var i = 0; i < Config.tabs.length; i++) {
       final listTasks = _tasksForTab(i, applySearch: false);
       for (var j = 0; j < listTasks.length; j++) {
@@ -1974,7 +2410,11 @@ class _HomePageState extends State<HomePage>
     // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
     // multiple tasks land on the same day so no two share a time.
     applyDefaultDeadlineTimes(_tasks);
-    _repository.saveItems(_tasks);
+    // Every task-list save funnels through here, so this is also the one
+    // place that feeds the global Undo/Redo stack (see
+    // TaskMutationService) — note the change before persisting it.
+    TaskMutationService.instance.noteActiveChange(_tasks);
+    _repository.saveItems(_tasks, source: source);
     _updateHomeWidget();
   }
 
@@ -2317,9 +2757,16 @@ class _HomePageState extends State<HomePage>
             has(ProjectService.instance.nameOf(task.projectId)));
   }
 
+  /// Whether the Home view's configured filter rules (Settings → Filtering
+  /// rules) currently hide anything.
+  bool get _homeFilterRulesActive =>
+      !(Config.viewFilterRules[ViewFilterRules.home]?.isEmpty ?? true);
+
   /// Tasks shown on [pageIndex]. While a search query is active the list is
-  /// narrowed to matching tasks; pass [applySearch] false for logic that must
-  /// see the full tab (e.g. renumbering [Task.listRanking] on save).
+  /// narrowed to matching tasks, and the configured Home filter rules (if
+  /// any) are always applied on top; pass [applySearch] false for logic that
+  /// must see the full tab regardless of either (e.g. renumbering
+  /// [Task.listRanking] on save).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
     // Tab membership is a query over the one list (ItemViews); only the
     // search predicate is home-page state.
@@ -2329,6 +2776,7 @@ class _HomePageState extends State<HomePage>
       pageIndex,
       _currentDate,
       where: query.isEmpty ? null : (task) => _matchesSearch(task, query),
+      rules: applySearch ? Config.viewFilterRules[ViewFilterRules.home] : null,
     );
   }
 
@@ -2357,6 +2805,7 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildAddTaskRow() {
+    final desktopShortcuts = _isDesktopShortcutsEnabled(context);
     final activeDate = _scheduleView ? _scheduleActiveDate : null;
     // The label names the target whenever it is not simply "the list you are
     // looking at": the schedule view's active day, or the bucket pinned in
@@ -2376,12 +2825,25 @@ class _HomePageState extends State<HomePage>
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(labelText: label),
-              onSubmitted: _addTask,
+            child: Focus(
+              onKeyEvent: _handleAddTaskKeyEvent,
+              child: TextField(
+                controller: _controller,
+                focusNode: _addTaskFocusNode,
+                decoration: InputDecoration(labelText: label),
+                keyboardType: desktopShortcuts
+                    ? TextInputType.multiline
+                    : TextInputType.text,
+                minLines: 1,
+                maxLines: desktopShortcuts ? null : 1,
+                textInputAction: desktopShortcuts
+                    ? TextInputAction.newline
+                    : TextInputAction.done,
+                onSubmitted: desktopShortcuts ? null : _addTask,
+              ),
             ),
           ),
+          SpeechInputButton(controller: _controller),
           IconButton(
             icon: Icon(
               Icons.repeat,
@@ -2410,16 +2872,7 @@ class _HomePageState extends State<HomePage>
       key: usesCustomSwipe ? ValueKey(task.uid) : null,
       task: task,
       onChanged: _saveTasks,
-      onToggle: () {
-        final wasDone = task.isDone;
-        setState(() {
-          task.toggleDone();
-          task.completedAt = task.isDone ? DateTime.now() : null;
-        });
-        _trackTaskDoneState(task, wasDone);
-        _recordStreakToggle(task, wasDone);
-        _saveTasks();
-      },
+      onToggle: () => _toggleTask(task),
       onDueDateChanged: (oldDueDate, newDueDate, scope) {
         setState(() {
           final now = DateTime.now();
@@ -2471,6 +2924,14 @@ class _HomePageState extends State<HomePage>
       pageIndex: pageIndex,
       showSwipeButton: !isAndroid,
       swipeLeftDelete: Config.swipeLeftDelete,
+      controller: _controllerForTask(task),
+      keyboardFocused: _focusedTaskUid == task.uid,
+      onFocusRequested: () {
+        setState(() => _focusedTaskUid = task.uid);
+        _homeKeyboardFocusNode.requestFocus();
+      },
+      onKeyboardActionCommitted: () =>
+          _focusAfterKeyboardAction(pageIndex, indexInTab),
     );
     if (usesCustomSwipe) return tile;
     return Dismissible(
@@ -2492,8 +2953,18 @@ class _HomePageState extends State<HomePage>
         _buildAddTaskRow(),
         Expanded(
           child: tasks.isEmpty && pageIndex == 0
-              ? const Center(child: Text('No tasks for today'))
+              ? LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
+                      child: const Center(child: Text('No tasks for today')),
+                    ),
+                  ),
+                )
               : ReorderableListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: tasks.length,
                   onReorder: (oldIndex, newIndex) =>
                       _reorderTask(pageIndex, oldIndex, newIndex),
@@ -2508,10 +2979,13 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildScheduleBody() {
     final query = _searchQuery.trim().toLowerCase();
-    final visibleTasks = query.isEmpty
-        ? _tasks
-        : _tasks.where((t) => _matchesSearch(t, query)).toList();
+    final visibleTasks = _tasks
+        .where((t) =>
+            ItemViews.isVisibleInMainViews(t) &&
+            (query.isEmpty || _matchesSearch(t, query)))
+        .toList();
     return ScheduleView(
+      key: _scheduleViewKey,
       tasks: visibleTasks,
       currentDate: _currentDate,
       scrollController: _scheduleScrollController,
@@ -2531,16 +3005,22 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// Tools listed under the drawer's Tools section, in display order. Each
-  /// key doubles as its feature key ([Config.featureKeys]) and its
-  /// [Config.startToolOptions] key, so a tool switched off in Settings
-  /// disappears here and can no longer be the start page.
+  /// Tools listed under the drawer's Tools section, in display order — most
+  /// frequently used first, so the daily-driver tools (logging, reminders,
+  /// planning) sit above the occasional ones, with the dev-facing Test
+  /// Results entry pinned at the very bottom. Each key doubles as its
+  /// feature key ([Config.featureKeys]) and its [Config.startToolOptions]
+  /// key, so a tool switched off in Settings disappears here and can no
+  /// longer be the start page.
   static const List<_ToolEntry> _toolEntries = [
+    _ToolEntry('food_diary', 'Food Diary', Icons.restaurant),
     _ToolEntry('alarms', 'Alarms', Icons.alarm),
-    _ToolEntry('countdown', 'Countdown', Icons.timer),
-    _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
+    _ToolEntry('weekly_hours_planner', 'Weekly Hours Planner',
+        Icons.calendar_view_week),
     _ToolEntry('projects', 'Projects', Icons.dashboard),
+    _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
     _ToolEntry('chronize', 'Chronize', Icons.access_time),
+    _ToolEntry('countdown', 'Countdown', Icons.timer),
     _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
     _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
@@ -2576,9 +3056,13 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    // Keeps configured flame goals (see StreakGoal) able to tell a deleted
+    // target task apart from one that just has not fired yet today.
+    StreakService.instance.syncKnownTasks(_tasks);
     final enabledTools =
         _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
-    return Scaffold(
+    final pendingApprovalCount = ItemViews.waitingApproval(_tasks).length;
+    final scaffold = Scaffold(
       key: homeScaffoldKey,
       drawer: Drawer(
         child: ListView(
@@ -2607,31 +3091,38 @@ class _HomePageState extends State<HomePage>
               title: const Text('Settings'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SettingsPage(
-                      onSettingsChanged: _updateSettings,
-                      onExportTasksRequested: _exportTasks,
-                      onExportSettingsRequested: _exportSettingsOnly,
-                      onExportEverythingRequested: _exportEverything,
-                      onImportRequested: _importAutoDetect,
-                    ),
-                  ),
-                );
+                _openSettingsPage();
               },
             ),
             if (Config.isFeatureEnabled('deleted_items'))
               ListTile(
                 leading: const Icon(Icons.delete),
-                title: const Text('Deleted Items'),
+                title: const Text('Archived Items'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => DeletedItemsPage(
-                        items: _deletedTasks,
+                      builder: (_) => ArchivedItemsPage(
+                        items: ItemViews.applyFilterRules(
+                          _deletedTasks,
+                          Config.viewFilterRules[ViewFilterRules.archived],
+                        ),
                         onRestore: _restoreTask,
-                        onDeletePermanently: _deleteTaskPermanently,
+                        onMoveToBin: _moveArchivedToBin,
+                        onOpenBin: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => DeletedBinPage(
+                                items: ItemViews.applyFilterRules(
+                                  _binTasks,
+                                  Config.viewFilterRules[ViewFilterRules.bin],
+                                ),
+                                onRestore: _restoreFromBin,
+                                onDeletePermanently: _deleteTaskPermanently,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   );
@@ -2645,6 +3136,32 @@ class _HomePageState extends State<HomePage>
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AboutPage()),
                 );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.pending_actions),
+              title: const Text('Waiting for Approval'),
+              trailing: pendingApprovalCount > 0
+                  ? CircleAvatar(
+                      radius: 10,
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      child: Text(
+                        '$pendingApprovalCount',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onError,
+                        ),
+                      ),
+                    )
+                  : null,
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                          builder: (_) => const WaitingApprovalPage()),
+                    )
+                    .then((_) => _reloadTasksFromStorage());
               },
             ),
             if (Config.isFeatureEnabled('changelog'))
@@ -2661,16 +3178,24 @@ class _HomePageState extends State<HomePage>
             if (Config.isFeatureEnabled('app_logs'))
               ValueListenableBuilder<bool>(
                 valueListenable: SyncService.instance.hasUnseenError,
-                builder: (context, syncError, _) => ListTile(
-                  leading: syncError
-                      ? _iconWithFailureDot(Icons.list_alt,
-                          dotKey: const Key('sync-error-dot'))
-                      : const Icon(Icons.list_alt),
-                  title: const Text('App Logs'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AppLogsPage()),
+                builder: (context, syncError, _) =>
+                    ValueListenableBuilder<bool>(
+                  valueListenable: TodoistSyncService.instance.hasUnseenError,
+                  builder: (context, todoistError, __) {
+                    final hasError = syncError || todoistError;
+                    return ListTile(
+                      leading: hasError
+                          ? _iconWithFailureDot(Icons.list_alt,
+                              dotKey: const Key('sync-error-dot'))
+                          : const Icon(Icons.list_alt),
+                      title: const Text('App Logs'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const AppLogsPage()),
+                        );
+                      },
                     );
                   },
                 ),
@@ -2683,6 +3208,18 @@ class _HomePageState extends State<HomePage>
                   Navigator.pop(context);
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const StartupTimesPage()),
+                  );
+                },
+              ),
+            if (Config.isDev)
+              ListTile(
+                leading: const Icon(Icons.widgets_outlined),
+                title: const Text('Widget Previews'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const WidgetPreviewsPage()),
                   );
                 },
               ),
@@ -2723,6 +3260,7 @@ class _HomePageState extends State<HomePage>
         title: Config.isFeatureEnabled('search')
             ? TextField(
                 controller: _searchController,
+                focusNode: _searchFocusNode,
                 decoration: InputDecoration(
                   hintText: 'Search tasks',
                   border: InputBorder.none,
@@ -2741,6 +3279,34 @@ class _HomePageState extends State<HomePage>
               )
             : const Text('BestToDo'),
         actions: [
+          ValueListenableBuilder<int>(
+            valueListenable: TaskMutationService.instance.revision,
+            builder: (context, _, __) {
+              final undoDescription = TaskMutationService.instance.undoDescription;
+              final redoDescription = TaskMutationService.instance.redoDescription;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.undo),
+                    tooltip: undoDescription == null
+                        ? 'Nothing to undo'
+                        : 'Undo: $undoDescription',
+                    onPressed:
+                        undoDescription == null ? null : _undoLastAction,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.redo),
+                    tooltip: redoDescription == null
+                        ? 'Nothing to redo'
+                        : 'Redo: $redoDescription',
+                    onPressed:
+                        redoDescription == null ? null : _redoLastAction,
+                  ),
+                ],
+              );
+            },
+          ),
           StreakFlameButton(
             now: _currentDate,
             onSettingsChanged: () {
@@ -2838,12 +3404,66 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       ),
-      body: _scheduleView
-          ? _buildScheduleBody()
-          : TabBarView(
-              controller: _tabController,
-              children: List.generate(Config.tabs.length, _buildTaskList),
+      body: Column(
+        children: [
+          // Shown only while the first-launch Todoist import is still
+          // pulling in everything past today (see IntroPage's import
+          // chooser) — `syncing` otherwise only flips on for the brief
+          // duration of a manual/quit-time sync, which has its own spinner
+          // in Settings and is never visible here in practice.
+          ValueListenableBuilder<bool>(
+            valueListenable: TodoistSyncService.instance.syncing,
+            builder: (context, syncing, _) {
+              if (!syncing) return const SizedBox.shrink();
+              return Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Importing the rest of your tasks from Todoist…',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _pullToRefreshSync,
+              child: _scheduleView
+                  ? _buildScheduleBody()
+                  : TabBarView(
+                      controller: _tabController,
+                      children:
+                          List.generate(Config.tabs.length, _buildTaskList),
+                    ),
             ),
+          ),
+        ],
+      ),
+    );
+    return Focus(
+      focusNode: _homeKeyboardFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleHomeKeyEvent,
+      child: scaffold,
     );
   }
 }

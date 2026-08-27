@@ -3,10 +3,13 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../config.dart';
 import '../models/countdown_timer.dart';
 import '../models/daily_task_stats.dart';
 import '../models/item_event.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
+import 'attachment_storage_service.dart';
 import 'item_event_journal.dart';
 import 'label_service.dart';
 import 'pre_update_backup.dart';
@@ -32,6 +35,7 @@ class TaskImportBundle {
 class StorageService {
   static const _fileName = 'tasks.json';
   static const _deletedFileName = 'deleted_tasks.json';
+  static const _binFileName = 'deleted_bin.json';
   static const _dailyStatsFileName = 'daily_task_stats.json';
   static const _dateFileName = 'last_opened.txt';
   static const _countdownFileName = 'countdown_timers.json';
@@ -81,6 +85,11 @@ class StorageService {
     return File('${dir.path}/$_deletedFileName');
   }
 
+  Future<File> _getBinFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_binFileName');
+  }
+
   Future<File> _getDailyStatsFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_dailyStatsFileName');
@@ -119,7 +128,10 @@ class StorageService {
     return false;
   }
 
-  Future<void> saveTaskList(List<Task> tasks) async {
+  Future<void> saveTaskList(
+    List<Task> tasks, {
+    String source = TaskChangeSource.user,
+  }) async {
     // Before this version's first-ever write, snapshot whatever the previous
     // app version left on disk (no-op after the first call).
     await PreUpdateBackup.ensure();
@@ -130,7 +142,8 @@ class StorageService {
     final baseline = _journalBaseline;
     _journalBaseline = snapshot;
     if (baseline != null) {
-      ItemEventJournal.instance.recordDiff(before: baseline, after: snapshot);
+      ItemEventJournal.instance
+          .recordDiff(before: baseline, after: snapshot, source: source);
     }
     // Structured-label dual-write: make sure every token on any task exists
     // as a first-class Label. Fire-and-forget and write-free once all tokens
@@ -165,6 +178,48 @@ class StorageService {
           await SafeFile.readWithRecovery(file, _parseTaskArray) ?? <Task>[];
       _ensureUniqueIds(tasks);
       _trimDeletedTasks(tasks);
+      return tasks;
+    } catch (_) {
+      return <Task>[];
+    }
+  }
+
+  /// The real Deleted bin: tasks denied from Waiting for Approval, or moved
+  /// on from Archived Items. Unlike the archive, entries here age out —
+  /// [loadBinTaskList] purges anything older than
+  /// [Config.deletedItemsRetentionDays] on every read and persists the
+  /// trimmed list, so the purge applies even if the bin page is never opened.
+  Future<void> saveBinTaskList(List<Task> tasks) async {
+    await PreUpdateBackup.ensure();
+    final file = await _getBinFile();
+    _trimDeletedTasks(tasks);
+    final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
+    await SafeFile.writeString(file, jsonString);
+  }
+
+  Future<List<Task>> loadBinTaskList() async {
+    try {
+      final file = await _getBinFile();
+      final tasks =
+          await SafeFile.readWithRecovery(file, _parseTaskArray) ?? <Task>[];
+      _ensureUniqueIds(tasks);
+      _trimDeletedTasks(tasks);
+      final retentionDays = Config.deletedItemsRetentionDays;
+      final cutoff =
+          DateTime.now().subtract(Duration(days: retentionDays));
+      final expired = tasks
+          .where((t) => t.deletedAt != null && t.deletedAt!.isBefore(cutoff))
+          .toList();
+      if (expired.isNotEmpty) {
+        tasks.removeWhere(expired.contains);
+        await saveBinTaskList(tasks);
+        for (final task in expired) {
+          if (task.attachments.isNotEmpty) {
+            await AttachmentStorageService.instance
+                .deleteAttachmentsForTask(task.uid);
+          }
+        }
+      }
       return tasks;
     } catch (_) {
       return <Task>[];
@@ -218,11 +273,15 @@ class StorageService {
         }
         tasks.removeWhere((t) => t.isDone);
       }
-      if (isNewDay || backfilled) await saveTaskList(tasks);
+      if (isNewDay || backfilled) {
+        await saveTaskList(tasks, source: TaskChangeSource.automation);
+      }
       await _migrateWishlistIntoTasks(tasks);
       // Wishes whose feature has since been built tick themselves off. Real
       // history (done + labelled), so this save is journalled normally.
-      if (applyShippedWishes(tasks)) await saveTaskList(tasks);
+      if (applyShippedWishes(tasks)) {
+        await saveTaskList(tasks, source: TaskChangeSource.automation);
+      }
       return tasks;
     } catch (_) {
       return <Task>[];
@@ -247,7 +306,7 @@ class StorageService {
     // Save the merged list BEFORE emptying the legacy file: saveTaskList's
     // pre-update snapshot then still captures the original wishlist.json,
     // and a crash in between merely re-merges next load (deduped by uid).
-    await saveTaskList(tasks);
+    await saveTaskList(tasks, source: TaskChangeSource.automation);
     await saveWishlist(<Task>[]);
   }
 

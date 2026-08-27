@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:besttodo/models/attachment.dart';
+import 'package:besttodo/models/shared_payload.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/share_intent_service.dart';
 import 'package:besttodo/services/storage_service.dart';
@@ -33,146 +35,299 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  group('buildTask', () {
-    test('single-line text becomes the title of a task due today', () {
-      final now = DateTime(2026, 8, 8, 14, 30);
-      final task = ShareIntentService.buildTask(
-        'https://example.com/article',
-        now: now,
+  group('SharedPayload.fromMap', () {
+    test('parses text, subject and files', () {
+      final payload = SharedPayload.fromMap({
+        'text': ' https://example.com/article ',
+        'subject': ' An article ',
+        'files': [
+          {'path': '/tmp/a.jpg', 'mimeType': 'image/jpeg'},
+          {'path': '/tmp/b.pdf', 'mimeType': 'application/pdf'},
+        ],
+      });
+      expect(payload.text, 'https://example.com/article');
+      expect(payload.subject, 'An article');
+      expect(payload.files, hasLength(2));
+      expect(payload.files[0].isImage, true);
+      expect(payload.files[1].isPdf, true);
+    });
+
+    test('missing keys default to empty', () {
+      final payload = SharedPayload.fromMap(const {});
+      expect(payload.text, '');
+      expect(payload.files, isEmpty);
+      expect(payload.isEmpty, true);
+    });
+  });
+
+  group('buildDraftTask', () {
+    test('single-line text becomes the title', () {
+      final task = ShareIntentService.buildDraftTask(
+        SharedPayload(text: 'https://example.com/article'),
       );
       expect(task.title, 'https://example.com/article');
       expect(task.description, '');
       expect(task.label, ShareIntentService.sharedLabel);
-      expect(task.dueDate, DateTime(2026, 8, 8));
-      expect(task.createdAt, now);
-      expect(task.isDone, false);
     });
 
     test('multi-line text: first line titles, full text kept as description',
         () {
-      final task = ShareIntentService.buildTask(
-        'Great article\nhttps://example.com/article',
+      final task = ShareIntentService.buildDraftTask(
+        SharedPayload(text: 'Great article\nhttps://example.com/article'),
       );
       expect(task.title, 'Great article');
       expect(task.description, 'Great article\nhttps://example.com/article');
     });
 
-    test('surrounding whitespace and blank leading lines are dropped', () {
-      final task = ShareIntentService.buildTask('  \n\n  mail@example.com  \n');
+    test('blank leading lines are dropped', () {
+      final task = ShareIntentService.buildDraftTask(
+        SharedPayload(text: '  \n\n  mail@example.com  \n'),
+      );
       expect(task.title, 'mail@example.com');
       expect(task.description, '');
     });
 
-    test('overlong first line is capped at 120 chars with full text kept', () {
+    test('overlong first line is capped at 120 chars with full text kept',
+        () {
       final longText = 'a' * 200;
-      final task = ShareIntentService.buildTask(longText);
+      final task =
+          ShareIntentService.buildDraftTask(SharedPayload(text: longText));
       expect(task.title.length, 120);
       expect(task.title.endsWith('…'), true);
       expect(task.description, longText);
     });
-  });
 
-  group('consumer routing', () {
-    test('registered consumer receives shared texts directly', () {
-      final received = <String>[];
-      ShareIntentService.instance.registerConsumer(received.add);
-      ShareIntentService.instance.handleSharedText('buy milk');
-      expect(received, ['buy milk']);
+    test('falls back to the subject when there is no text', () {
+      final task = ShareIntentService.buildDraftTask(
+        SharedPayload(text: '', subject: 'Order confirmation'),
+      );
+      expect(task.title, 'Order confirmation');
     });
 
-    test('texts queued before registration are drained on register', () {
-      ShareIntentService.instance.handleSharedText('first');
-      ShareIntentService.instance.handleSharedText('second');
-      final received = <String>[];
-      ShareIntentService.instance.registerConsumer(received.add);
-      expect(received, ['first', 'second']);
-      // Draining is one-shot: a re-register hands over nothing again.
-      final again = <String>[];
-      ShareIntentService.instance.registerConsumer(again.add);
+    test('a named file with no text titles itself from the file name', () {
+      final task = ShareIntentService.buildDraftTask(
+        SharedPayload(files: const [
+          SharedFile(path: '/tmp/vacation-plan.jpg', mimeType: 'image/jpeg'),
+        ]),
+      );
+      expect(task.title, 'vacation-plan');
+    });
+
+    test('a generated file name falls back to a generic title', () {
+      final task = ShareIntentService.buildDraftTask(
+        SharedPayload(files: const [
+          SharedFile(path: '/tmp/IMG_20260101_120000.jpg', mimeType: 'image/jpeg'),
+        ]),
+      );
+      expect(task.title, 'Shared photo');
+    });
+
+    test('multiple files note how many more in the title', () {
+      final task = ShareIntentService.buildDraftTask(
+        SharedPayload(files: const [
+          SharedFile(path: '/tmp/report.pdf', mimeType: 'application/pdf'),
+          SharedFile(path: '/tmp/appendix.pdf', mimeType: 'application/pdf'),
+        ]),
+      );
+      expect(task.title, 'report (+1 more)');
+    });
+  });
+
+  group('dedup', () {
+    test('an identical payload delivered again within the window is dropped',
+        () {
+      final received = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(received.add);
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'buy milk'));
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'buy milk'));
+      expect(received, hasLength(1));
+    });
+
+    test('a different payload is not treated as a duplicate', () {
+      final received = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(received.add);
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'buy milk'));
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'buy eggs'));
+      expect(received, hasLength(2));
+    });
+
+    test('the same content is accepted again once the window has passed',
+        () async {
+      ShareIntentService.dedupWindow = const Duration(milliseconds: 1);
+      final received = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(received.add);
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'buy milk'));
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'buy milk'));
+      expect(received, hasLength(2));
+    });
+  });
+
+  group('payload callback routing', () {
+    test('the callback receives payloads directly once attached', () {
+      final received = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(received.add);
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'buy milk'));
+      expect(received.map((p) => p.text), ['buy milk']);
+    });
+
+    test('payloads queued before the callback attaches are drained on attach',
+        () {
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'first'));
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'second'));
+      final received = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(received.add);
+      expect(received.map((p) => p.text), ['first', 'second']);
+      // Draining is one-shot: re-attaching hands over nothing again.
+      final again = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(again.add);
       expect(again, isEmpty);
     });
 
-    test('blank shared text is ignored', () {
-      final received = <String>[];
-      ShareIntentService.instance.registerConsumer(received.add);
-      ShareIntentService.instance.handleSharedText('   \n ');
+    test('an empty payload (no text, no files) is ignored', () {
+      final received = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(received.add);
+      ShareIntentService.instance.handleSharedPayload(SharedPayload(text: '   \n '));
       expect(received, isEmpty);
     });
 
-    test('unregister detaches the consumer, later texts queue again', () {
-      final received = <String>[];
-      void consumer(String text) => received.add(text);
+    test('detaching the callback queues later payloads again', () {
+      final received = <SharedPayload>[];
+      void callback(SharedPayload p) => received.add(p);
+      ShareIntentService.instance.setOnSharedPayload(callback);
+      ShareIntentService.instance.setOnSharedPayload(null);
+      ShareIntentService.instance
+          .handleSharedPayload(SharedPayload(text: 'queued'));
+      expect(received, isEmpty);
+      final lateReceived = <SharedPayload>[];
+      ShareIntentService.instance.setOnSharedPayload(lateReceived.add);
+      expect(lateReceived.map((p) => p.text), ['queued']);
+    });
+  });
+
+  group('saveTask', () {
+    test('a registered consumer claims the task', () async {
+      final received = <Task>[];
+      ShareIntentService.instance.registerConsumer(received.add);
+      final task = Task(title: 'buy milk');
+      await ShareIntentService.instance.saveTask(task);
+      expect(received, [task]);
+    });
+
+    test('without a consumer, the task is persisted directly', () async {
+      final task = Task(title: 'buy milk', dueDate: DateTime(2026, 8, 8));
+      await ShareIntentService.instance.saveTask(task);
+
+      final storage = StorageService();
+      final saved = (await storage.loadTaskList())
+          .where((t) => t.title == 'buy milk')
+          .toList();
+      expect(saved, hasLength(1));
+      // The direct-to-storage path normalizes the deadline time like the
+      // home page does on save.
+      expect(saved.single.dueDate!.hour, 18);
+    });
+
+    test('unregister detaches the consumer, later tasks persist directly',
+        () async {
+      final received = <Task>[];
+      void consumer(Task t) => received.add(t);
       ShareIntentService.instance.registerConsumer(consumer);
       ShareIntentService.instance.unregisterConsumer(consumer);
-      ShareIntentService.instance.handleSharedText('queued');
+      final task = Task(title: 'buy milk');
+      await ShareIntentService.instance.saveTask(task);
       expect(received, isEmpty);
-      final lateReceived = <String>[];
-      ShareIntentService.instance.registerConsumer(lateReceived.add);
-      expect(lateReceived, ['queued']);
-    });
 
-    test('unregister of a stale consumer keeps the newer one attached', () {
-      void stale(String text) {}
-      final received = <String>[];
-      ShareIntentService.instance.registerConsumer(stale);
-      ShareIntentService.instance.registerConsumer(received.add);
-      ShareIntentService.instance.unregisterConsumer(stale);
-      ShareIntentService.instance.handleSharedText('still delivered');
-      expect(received, ['still delivered']);
-    });
-  });
-
-  test(
-      'without a consumer, shared text is persisted to storage after the '
-      'flush delay', () async {
-    ShareIntentService.flushDelay = Duration.zero;
-    ShareIntentService.instance.handleSharedText('shared into storage');
-
-    // loadTaskList also merges the one-time Todo.md wishlist import into an
-    // empty store, so match the shared task by title instead of expecting it
-    // to be alone in the list.
-    final storage = StorageService();
-    var tries = 0;
-    var shared = <Task>[];
-    while (tries < 100) {
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      shared = (await storage.loadTaskList())
-          .where((t) => t.title == 'shared into storage')
+      final storage = StorageService();
+      final saved = (await storage.loadTaskList())
+          .where((t) => t.title == 'buy milk')
           .toList();
-      if (shared.isNotEmpty) break;
-      tries++;
-    }
-    expect(shared.length, 1);
-
-    final saved = shared.single;
-    expect(saved.isWish, false);
-    expect(saved.label, ShareIntentService.sharedLabel);
-    final now = DateTime.now();
-    expect(saved.dueDate!.year, now.year);
-    expect(saved.dueDate!.month, now.month);
-    expect(saved.dueDate!.day, now.day);
-    // The direct-to-storage path normalizes the deadline time like the home
-    // page does on save.
-    expect(saved.dueDate!.hour, 18);
+      expect(saved, hasLength(1));
+    });
   });
 
-  test('init pulls texts queued on the platform side', () async {
+  group('importAttachments', () {
+    test('copies image/pdf files into permanent storage and clears the cache '
+        'copy', () async {
+      final cacheDir = await Directory.systemTemp.createTemp();
+      final imageFile = File('${cacheDir.path}/photo.jpg')
+        ..writeAsBytesSync([1, 2, 3]);
+      final pdfFile = File('${cacheDir.path}/doc.pdf')
+        ..writeAsBytesSync([4, 5, 6]);
+
+      final attachments = await ShareIntentService.importAttachments(
+        'task-uid',
+        [
+          SharedFile(path: imageFile.path, mimeType: 'image/jpeg'),
+          SharedFile(path: pdfFile.path, mimeType: 'application/pdf'),
+        ],
+      );
+
+      expect(attachments, hasLength(2));
+      expect(attachments[0].type, Attachment.typeImage);
+      expect(attachments[1].type, Attachment.typePdf);
+      expect(await imageFile.exists(), false);
+      expect(await pdfFile.exists(), false);
+    });
+
+    test('a file type with no attachment viewer is skipped', () async {
+      final cacheDir = await Directory.systemTemp.createTemp();
+      final textFile = File('${cacheDir.path}/notes.txt')
+        ..writeAsBytesSync([1]);
+
+      final attachments = await ShareIntentService.importAttachments(
+        'task-uid',
+        [SharedFile(path: textFile.path, mimeType: 'text/plain')],
+      );
+
+      expect(attachments, isEmpty);
+      expect(await textFile.exists(), true);
+    });
+  });
+
+  test('init pulls content queued on the platform side', () async {
     final pulls = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
       pulls.add(call.method);
-      if (call.method == 'takeSharedTexts') {
-        return <Object?>['from cold start'];
+      if (call.method == 'takeSharedContent') {
+        return <Object?>[
+          {
+            'text': 'from cold start',
+            'files': <Object?>[],
+          }
+        ];
       }
       return null;
     });
-    final received = <String>[];
-    ShareIntentService.instance.registerConsumer(received.add);
+    final received = <SharedPayload>[];
+    ShareIntentService.instance.setOnSharedPayload(received.add);
     await ShareIntentService.instance.init();
-    expect(pulls, ['takeSharedTexts']);
-    expect(received, ['from cold start']);
+    expect(pulls, ['takeSharedContent']);
+    expect(received.map((p) => p.text), ['from cold start']);
     // init is once-only; a second call must not pull (and duplicate) again.
     await ShareIntentService.instance.init();
-    expect(pulls, ['takeSharedTexts']);
+    expect(pulls, ['takeSharedContent']);
+  });
+
+  test('returnToPreviousApp invokes the platform channel and swallows errors',
+      () async {
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    await ShareIntentService.instance.returnToPreviousApp();
+    expect(calls, ['returnToPreviousApp']);
   });
 }

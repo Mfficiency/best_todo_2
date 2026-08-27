@@ -1,5 +1,7 @@
 import 'package:uuid/uuid.dart';
 
+import 'attachment.dart';
+
 class Task {
   static final Uuid _uuid = const Uuid();
 
@@ -31,7 +33,6 @@ class Task {
   DateTime? deletedAt;
   bool autoDeleted;
   bool isDone;
-
   /// When true, the schedule's time-of-day was set deliberately (e.g. placed
   /// on the Chronize timeline) and must not be overwritten by the default
   /// 18:00 deadline normalization.
@@ -53,8 +54,9 @@ class Task {
   bool get allDay => !hasExplicitTime;
 
   /// The scheduled length; zero for deadline-style tasks, null when undated.
-  Duration? get duration =>
-      (startAt == null || endAt == null) ? null : endAt!.difference(startAt!);
+  Duration? get duration => (startAt == null || endAt == null)
+      ? null
+      : endAt!.difference(startAt!);
   int? listRanking;
   bool isRecurring;
   DateTime? recurrenceEndDate;
@@ -103,6 +105,28 @@ class Task {
   /// project) and, lacking a due date, buckets into the Future tab.
   bool isWish;
 
+  /// When true this task is a Food Diary entry: it shows up only in the
+  /// Food Diary tool (a pre-filtered view over the one task list, like the
+  /// wishlist) and, once deleted there, the deleted/archived lists — never
+  /// the home tabs, schedule view, projects or Todoist sync. See
+  /// [ItemViews.foodDiary] for the gate every other view honors.
+  bool isEatingHabit;
+
+  /// Sentinel due date the schedule view's "move to" tab picker uses to
+  /// place a task in the Future tab explicitly, without leaving it fully
+  /// undated. Exposed here (rather than kept private to the home page) so
+  /// other layers — e.g. Todoist sync's Future-project routing — recognize
+  /// the same bucket.
+  static final DateTime futureBucketMarker = DateTime(2300, 1, 1);
+
+  /// True for a null due date or [futureBucketMarker] — i.e. [due] belongs
+  /// to the Future tab bucket.
+  static bool isFutureBucketDue(DateTime? due) =>
+      due == null ||
+      (due.year == futureBucketMarker.year &&
+          due.month == futureBucketMarker.month &&
+          due.day == futureBucketMarker.day);
+
   /// Id of the project this task is assigned to, or null if unassigned.
   String? projectId;
 
@@ -114,6 +138,11 @@ class Task {
   static const String kanbanTodo = 'todo';
   static const String kanbanOngoing = 'ongoing';
   static const String kanbanClosed = 'closed';
+
+  /// Files and notes attached to this item (text, image, pdf — see
+  /// [Attachment]). File-backed entries point at a copy kept under the app
+  /// documents dir via `AttachmentStorageService`.
+  List<Attachment> attachments;
 
   Task({
     String? uid,
@@ -146,11 +175,14 @@ class Task {
     this.recurrenceParentUid,
     this.recurrenceInstanceKey,
     this.isWish = false,
+    this.isEatingHabit = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
+    List<Attachment>? attachments,
   })  : uid = uid ?? Task.newUid(),
         recurrenceWeekdays = recurrenceWeekdays ?? [],
         recurrenceExceptionDates = recurrenceExceptionDates ?? [],
+        attachments = attachments ?? <Attachment>[],
         // An explicit interval wins; a plain dueDate is a deadline
         // (start == end), matching what every existing caller means.
         startAt = startAt ?? dueDate,
@@ -217,8 +249,9 @@ class Task {
       recurrenceFrequency: json['recurrenceFrequency'] as String? ?? 'daily',
       recurrenceInterval: json['recurrenceInterval'] as int? ??
           (hasNewRecurrenceFields ? 1 : legacyIntervalDays),
-      recurrenceWeekdays:
-          (json['recurrenceWeekdays'] as List?)?.map((e) => e as int).toList(),
+      recurrenceWeekdays: (json['recurrenceWeekdays'] as List?)
+          ?.map((e) => e as int)
+          .toList(),
       recurrenceEndType: json['recurrenceEndType'] as String? ??
           (recurrenceEndDate != null ? 'date' : 'never'),
       recurrenceOccurrenceCount: json['recurrenceOccurrenceCount'] as int?,
@@ -229,8 +262,13 @@ class Task {
       recurrenceParentUid: json['recurrenceParentUid'] as String?,
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
       isWish: json['isWish'] as bool? ?? false,
+      isEatingHabit: json['isEatingHabit'] as bool? ?? false,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
+      attachments: (json['attachments'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((e) => Attachment.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 
@@ -272,7 +310,10 @@ class Task {
         if (recurrenceInstanceKey != null)
           'recurrenceInstanceKey': recurrenceInstanceKey,
         'isWish': isWish,
+        'isEatingHabit': isEatingHabit,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,
+        if (attachments.isNotEmpty)
+          'attachments': attachments.map((a) => a.toJson()).toList(),
       };
 }

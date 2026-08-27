@@ -159,6 +159,20 @@ class TestReport {
         'suites': suites.map((s) => s.toJson()).toList(),
       };
 
+  /// Picks whichever of two reports is more recent by [generatedAt],
+  /// treating a null/unavailable report as always older. The one place
+  /// "which run is the latest" gets decided, so build packaging, the
+  /// `ci-reports` merge, and job-summary rendering can never disagree.
+  static TestReport? newest(TestReport? a, TestReport? b) {
+    if (a == null || !a.available) return (b != null && b.available) ? b : null;
+    if (b == null || !b.available) return a;
+    final aTime = a.generatedAt;
+    final bTime = b.generatedAt;
+    if (aTime == null) return bTime == null ? a : b;
+    if (bTime == null) return a;
+    return bTime.isAfter(aTime) ? b : a;
+  }
+
   factory TestReport.fromJson(Map<String, dynamic> json) {
     return TestReport(
       available: json['available'] as bool? ?? false,

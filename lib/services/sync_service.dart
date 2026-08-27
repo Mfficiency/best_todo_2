@@ -11,6 +11,7 @@ import '../models/sync_log_entry.dart';
 import 'log_service.dart';
 import 'safe_file.dart';
 import 'storage_service.dart';
+import 'sync_import_service.dart';
 import 'sync_markdown.dart';
 
 /// One-way background sync of the task list into a user-chosen folder
@@ -60,6 +61,11 @@ class SyncService {
   @visibleForTesting
   Future<SyncLogEntry?>? pendingQuitSync;
 
+  /// The Tier 3 change-journal import started by the last resume; tests
+  /// await it, production fires and forgets.
+  @visibleForTesting
+  Future<SyncLogEntry?>? pendingResumeImport;
+
   /// Loads the persisted sync history once; safe to call from anywhere the
   /// UI first needs sync state (drawer badge, App Logs page).
   Future<void> ensureLoaded() {
@@ -97,6 +103,12 @@ class SyncService {
   void onLifecycleChanged(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _syncedThisBackground = false;
+      // Tier 3: pick up edits made in Obsidian since the app was last open
+      // (SPEC §4.7, .claude/notes/obsidian-integration.md). Same fail-soft
+      // contract as the quit-time sync — never throws into the app.
+      if (Config.syncEnabled) {
+        pendingResumeImport = SyncImportService.instance.importPending();
+      }
       return;
     }
     final quitting = state == AppLifecycleState.hidden ||
@@ -147,6 +159,15 @@ class SyncService {
     }
   }
 
+  /// Resolves [fileName] against a sync-folder path, the way every file this
+  /// feature writes or reads is located. Shared by [_writeSyncFile] and
+  /// [SyncImportService] so the two never drift on separator handling.
+  static File resolveSyncFile(String folder, String fileName) {
+    final sep = Platform.pathSeparator;
+    final prefix = '$folder${folder.endsWith(sep) ? '' : sep}';
+    return File('$prefix$fileName');
+  }
+
   Future<int> _writeSyncFile() async {
     final folder = Config.syncFolderPath.trim();
     if (folder.isEmpty) {
@@ -168,11 +189,10 @@ class SyncService {
       'task_count': tasks.length,
       'tasks': [for (final t in tasks) t.toJson()],
     });
-    final sep = Platform.pathSeparator;
-    final prefix = '$folder${folder.endsWith(sep) ? '' : sep}';
-    await SafeFile.writeString(File('$prefix$syncFileName'), payload);
     await SafeFile.writeString(
-      File('$prefix$syncMarkdownFileName'),
+        resolveSyncFile(folder, syncFileName), payload);
+    await SafeFile.writeString(
+      resolveSyncFile(folder, syncMarkdownFileName),
       SyncMarkdown.build(tasks, now, Config.versionWithBuild),
     );
     return tasks.length;
@@ -197,14 +217,28 @@ class SyncService {
     // A successful sync means the trouble is over; the dot only lingers while
     // the latest run failed.
     hasUnseenError.value = !entry.success;
+    final isImport = entry.trigger == 'import';
     LogService.add(
       'Sync',
       entry.success
-          ? 'Synced ${entry.itemCount} tasks in ${entry.durationMs} ms '
-              '(${entry.trigger})'
-          : 'Sync failed (${entry.trigger}): ${entry.message}',
+          ? (isImport
+              ? 'Imported ${entry.itemCount} change(s) from Obsidian in '
+                  '${entry.durationMs} ms'
+              : 'Synced ${entry.itemCount} tasks in ${entry.durationMs} ms '
+                  '(${entry.trigger})')
+          : (isImport
+              ? 'Import from Obsidian failed: ${entry.message}'
+              : 'Sync failed (${entry.trigger}): ${entry.message}'),
     );
     await _persist();
+  }
+
+  /// Records a history entry from a sync-adjacent service — currently just
+  /// [SyncImportService] — into the same App Logs "Sync" history as a
+  /// regular sync run, with the same fail-soft persistence.
+  Future<void> recordEntry(SyncLogEntry entry) async {
+    await ensureLoaded();
+    await _record(entry);
   }
 
   /// Called when the App Logs page opens: the error has been seen, so the

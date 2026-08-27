@@ -71,9 +71,41 @@ void main() {
     });
 
     test('failures with failed=0 means no red dot when unavailable', () {
-      final report = TestReport.fromJson(const {'available': false, 'failed': 3});
+      final report =
+          TestReport.fromJson(const {'available': false, 'failed': 3});
       // A placeholder report must never light up the dot, even if malformed.
       expect(report.hasFailures, isFalse);
+    });
+  });
+
+  group('TestReport.newest', () {
+    TestReport at(DateTime? time, {bool available = true}) => TestReport(
+          available: available,
+          generatedAt: time,
+        );
+
+    test('picks the later generatedAt', () {
+      final older = at(DateTime.utc(2026, 1, 1));
+      final newer = at(DateTime.utc(2026, 1, 2));
+      expect(TestReport.newest(older, newer), same(newer));
+      expect(TestReport.newest(newer, older), same(newer));
+    });
+
+    test('an unavailable or null report always loses', () {
+      final report = at(DateTime.utc(2026, 1, 1));
+      expect(TestReport.newest(null, report), same(report));
+      expect(TestReport.newest(report, null), same(report));
+      expect(
+          TestReport.newest(at(null, available: false), report), same(report));
+      expect(TestReport.newest(null, null), isNull);
+    });
+
+    test('a null generatedAt is treated as older than a dated report', () {
+      final dated = at(DateTime.utc(2026, 1, 1));
+      final undated = at(null);
+      expect(TestReport.newest(undated, dated), same(dated));
+      expect(TestReport.newest(dated, undated), same(dated));
+      expect(TestReport.newest(undated, undated), same(undated));
     });
   });
 
@@ -162,7 +194,8 @@ void main() {
       final core = report.suites.first;
       // Absolute CI paths are trimmed to the repo-relative suite path.
       expect(core.path, 'test/core/task_test.dart');
-      expect(core.tests, hasLength(1)); // the hidden loading entry is not a test
+      expect(
+          core.tests, hasLength(1)); // the hidden loading entry is not a test
       expect(core.tests.first.name, 'adds numbers');
       expect(core.tests.first.result, 'passed');
       expect(core.tests.first.durationMs, 240);

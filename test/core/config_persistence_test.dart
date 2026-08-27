@@ -25,12 +25,18 @@ void main() {
     Config.useIconTabs = true;
     Config.enableNotifications = true;
     Config.addNewTasksToTop = true;
+    Config.enterSavesNewTask = false;
     Config.defaultAddTabIndex = 5;
     Config.defaultDelaySeconds = 7.5;
     Config.use24HourFormat = false;
     Config.dateFormat = 'yyyy-MM-dd';
     Config.startTool = 'productivity_stats';
     Config.showFailureDotOnMenu = true;
+    Config.autoUpdateCheckEnabled = true;
+    Config.deletedItemsRetentionDays = 90;
+    Config.weeklyHoursStartHour = 8;
+    Config.weeklyHoursEndHour = 20;
+    Config.googleCalendarUrl = 'https://example.com/calendar.ics';
     await Config.save();
 
     // Reset to defaults
@@ -40,12 +46,18 @@ void main() {
     Config.useIconTabs = false;
     Config.enableNotifications = false;
     Config.addNewTasksToTop = false;
+    Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
     Config.defaultDelaySeconds = 5.0;
     Config.use24HourFormat = true;
     Config.dateFormat = Config.dateFormats.first;
     Config.startTool = 'tasks';
     Config.showFailureDotOnMenu = false;
+    Config.autoUpdateCheckEnabled = false;
+    Config.deletedItemsRetentionDays = 60;
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+    Config.googleCalendarUrl = '';
 
     await Config.load();
 
@@ -55,16 +67,51 @@ void main() {
     expect(Config.useIconTabs, isTrue);
     expect(Config.enableNotifications, isTrue);
     expect(Config.addNewTasksToTop, isTrue);
+    expect(Config.enterSavesNewTask, isFalse);
     expect(Config.defaultAddTabIndex, 5);
     expect(Config.defaultDelaySeconds, 7.5);
     expect(Config.use24HourFormat, isFalse);
     expect(Config.dateFormat, 'yyyy-MM-dd');
     expect(Config.startTool, 'productivity_stats');
     expect(Config.showFailureDotOnMenu, isTrue);
+    expect(Config.autoUpdateCheckEnabled, isTrue);
+    expect(Config.deletedItemsRetentionDays, 90);
+    expect(Config.weeklyHoursStartHour, 8);
+    expect(Config.weeklyHoursEndHour, 20);
+    expect(Config.googleCalendarUrl, 'https://example.com/calendar.ics');
 
     // Restore the defaults so other tests see a clean config.
     Config.showFailureDotOnMenu = false;
+    Config.enterSavesNewTask = true;
     Config.defaultAddTabIndex = Config.addToCurrentTab;
+    Config.autoUpdateCheckEnabled = false;
+    Config.deletedItemsRetentionDays = 60;
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+    Config.googleCalendarUrl = '';
+  });
+
+  test('weekly hours planner end hour is kept above the start hour', () {
+    Config.applyMap({'weeklyHoursStartHour': 10, 'weeklyHoursEndHour': 9});
+    expect(Config.weeklyHoursEndHour, 11);
+
+    // Restore the defaults so other tests see a clean config.
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+  });
+
+  test('deletedItemsRetentionDays is clamped on load', () {
+    Config.applyMap({'deletedItemsRetentionDays': 0});
+    expect(Config.deletedItemsRetentionDays, 1);
+
+    Config.applyMap({'deletedItemsRetentionDays': 99999});
+    expect(Config.deletedItemsRetentionDays, 3650);
+
+    Config.applyMap({'deletedItemsRetentionDays': 30});
+    expect(Config.deletedItemsRetentionDays, 30);
+
+    // Restore the default so other tests see a clean config.
+    Config.deletedItemsRetentionDays = 60;
   });
 
   test('out-of-range default add buckets are clamped on load', () {
@@ -95,4 +142,3 @@ void main() {
     Config.startTool = 'tasks';
   });
 }
-

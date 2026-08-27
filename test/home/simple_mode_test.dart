@@ -72,10 +72,10 @@ void main() {
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
 
-    // The drawer keeps the app's own service pages (deleted items, about and
+    // The drawer keeps the app's own service pages (archived items, about and
     // the diagnostics); only the optional tools are gone.
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Deleted Items'), findsOneWidget);
+    expect(find.text('Archived Items'), findsOneWidget);
     expect(find.text('About'), findsOneWidget);
     expect(find.text('Changelog'), findsOneWidget);
     expect(find.text('App Logs'), findsOneWidget);
@@ -94,6 +94,15 @@ void main() {
     expect(find.byIcon(Icons.casino), findsOneWidget);
 
     await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    // The drawer has grown past one screen, and the home page body carries
+    // its own Scrollables, so scroll the Drawer's own Scrollable specifically
+    // to bring Tools into view before it can be tapped.
+    await tester.scrollUntilVisible(find.text('Tools'), 200,
+        scrollable: find
+            .descendant(
+                of: find.byType(Drawer), matching: find.byType(Scrollable))
+            .first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();

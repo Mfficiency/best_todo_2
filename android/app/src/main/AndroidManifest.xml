@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Local speech-to-text (mic button beside the Food Diary and add-task
+         text fields) — captured on-device via Android's SpeechRecognizer. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -25,6 +28,10 @@
          the system package installer. The user still confirms the install
          and grants the one-time "install unknown apps" toggle. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Optional: the user explicitly grants Usage Access from the wellbeing
+         dashboard. Android does not show a runtime permission dialog. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        android:protectionLevel="signature|privileged|development|appop" />
     <application
         android:label="BestToDo"
         android:name="${applicationName}"
@@ -51,13 +58,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- Share-sheet entry: sharing text/links/email addresses from any
-             app offers BestToDo, which creates a task on Today from the
-             shared text. A translucent trampoline (not MainActivity itself):
-             the share sheet starts its target inside the sharing app's task,
-             and a second MainActivity there would mean a second Flutter
-             engine. ShareActivity forwards the text into the app's real
-             task and finishes. -->
+        <!-- Share-sheet entry: sharing text/links/email addresses, images or
+             PDFs from any app (Chrome, YouTube, Maps, Gmail, Photos, ...)
+             offers BestToDo, which opens the quick-add screen prefilled from
+             the shared content. A translucent trampoline (not MainActivity
+             itself): the share sheet starts its target inside the sharing
+             app's task, and a second MainActivity there would mean a second
+             Flutter engine. ShareActivity copies any shared file into the
+             app's own cache dir (a content:// URI's read grant dies with
+             this activity), forwards everything into the app's real task
+             and finishes. -->
         <activity
             android:name=".ShareActivity"
             android:exported="true"
@@ -68,6 +78,21 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
@@ -112,6 +137,26 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/alarms_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".FoodDiaryWidgetProvider"
+            android:exported="true"
+            android:label="@string/food_diary_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/food_diary_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".FoodDiaryButtonWidgetProvider"
+            android:exported="true"
+            android:label="@string/food_diary_button_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/food_diary_button_widget_info" />
         </receiver>
         <!-- Receives background taps (alarm toggles) from the home-screen widget -->
         <receiver
@@ -167,6 +212,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Package-visibility requirement (Android 11+) for the
+             speech_to_text plugin to find the device's speech recognizer. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 </manifest>

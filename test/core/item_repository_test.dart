@@ -46,6 +46,18 @@ void main() {
     expect(await repo.loadDailyStats(), isEmpty);
   });
 
+  test('bin items delegate to the bin store, separate from the archive',
+      () async {
+    final repo = ItemRepository.instance;
+    final archived = Task(title: 'archived', deletedAt: DateTime.now());
+    final binned = Task(title: 'binned', deletedAt: DateTime.now());
+    await repo.saveDeletedItems([archived]);
+    await repo.saveBinItems([binned]);
+
+    expect((await repo.loadDeletedItems()).single.title, 'archived');
+    expect((await repo.loadBinItems()).single.title, 'binned');
+  });
+
   test('history flows from saves to historyOf', () async {
     final repo = ItemRepository.instance;
     final task = Task(title: 'v1');

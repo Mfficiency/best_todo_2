@@ -8,5 +8,9 @@ void main() {
 
     expect(find.text('Privacy First'), findsOneWidget);
     expect(find.text('Next'), findsOneWidget);
+
+    // Let the deferred auto-update-check timer (main.dart) fire so it
+    // doesn't leak past the end of the test.
+    await tester.pump(const Duration(seconds: 3));
   });
 }

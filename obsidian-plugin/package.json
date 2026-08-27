@@ -1,7 +1,7 @@
 {
   "name": "besttodo-tasks",
-  "version": "0.1.0",
-  "description": "Read-only Obsidian viewer for a BestToDo synced task list",
+  "version": "0.2.0",
+  "description": "Obsidian viewer and two-way checkbox sync for a BestToDo synced task list",
   "private": true,
   "main": "main.js",
   "scripts": {
