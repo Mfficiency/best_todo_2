@@ -29,11 +29,15 @@ file is the short operational guide.
   `github_releases/` and deletes the older ones; commit the folder — the app's About page
   downloads the newest from there ("Download & install") and the other one for
   "Go back to <version>" (`UpdateService.releasesRef` = the `dev` branch)
-- Local build time: `tool/build.sh`/`tool/build.ps1` runs
-  `dart run tool/append_build_time.dart` after a successful `flutter build`,
-  writing/updating a "Local build: <time>" line in the newest CHANGELOG.md entry.
+- Local build time & duration: `tool/build.sh`/`tool/build.ps1` time the
+  `flutter build` call and, on success, run
+  `dart run tool/append_build_time.dart --duration <secs> --target <apk|windows|...>`,
+  writing/updating a "Local build: <time>" line plus a per-target
+  "Build duration (<target>): <time>" line in the newest CHANGELOG.md entry, and
+  appending `{version, target, durationSeconds, finishedAt, os}` to `build_history.json`
+  (committed, capped at the newest 1000 entries) so build times are tracked over time.
   Since CHANGELOG.md is bundled as an asset by that same build, the Changelog page
-  only ever shows the *previous* build's time — expected, not a bug.
+  only ever shows the *previous* build's time/duration — expected, not a bug.
 - Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
   (or `PUBLISH_APK=1 sh tool/build.sh apk --release` to build + publish). Creates
   release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk`; the About
