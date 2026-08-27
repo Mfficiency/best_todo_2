@@ -2,6 +2,7 @@
 
 ## [0.2.3] - 2026-08-27
 - Task Details now has an info icon in the app bar: tap it to reveal every field BestToDo keeps on the task, including the hidden Todoist sync trailer (the metadata normally appended to the description only when syncing, invisible in the normal view).
+- Local build: 2026-08-27 21:18
 
 ## [0.2.2] - 2026-08-27
 - Mark completed-task rollover archives as automatic and label them separately from manual archives.
