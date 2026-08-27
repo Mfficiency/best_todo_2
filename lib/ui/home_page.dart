@@ -3033,14 +3033,12 @@ class _HomePageState extends State<HomePage>
                     onPressed:
                         undoDescription == null ? null : _undoLastAction,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.redo),
-                    tooltip: redoDescription == null
-                        ? 'Nothing to redo'
-                        : 'Redo: $redoDescription',
-                    onPressed:
-                        redoDescription == null ? null : _redoLastAction,
-                  ),
+                  if (redoDescription != null)
+                    IconButton(
+                      icon: const Icon(Icons.redo),
+                      tooltip: 'Redo: $redoDescription',
+                      onPressed: _redoLastAction,
+                    ),
                 ],
               );
             },
