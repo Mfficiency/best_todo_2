@@ -1,0 +1,16 @@
+[
+  {
+    "version": "0.2.4+295",
+    "target": "apk",
+    "durationSeconds": 734,
+    "finishedAt": "2026-08-27T21:48:57.391826",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.4+295",
+    "target": "windows",
+    "durationSeconds": 2037,
+    "finishedAt": "2026-08-27T22:23:22.507515",
+    "os": "windows"
+  }
+]

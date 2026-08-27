@@ -2,6 +2,9 @@
 
 ## [0.2.4] - 2026-08-27
 - Local release builds now time themselves: `tool/build.sh`/`tool/build.ps1` record how long each `flutter build` took as a "Build duration (<target>)" line in this Changelog alongside the existing "Local build" timestamp, and append every build's duration to a new `build_history.json` (committed to the repo) so build times can be tracked across builds and machines over time.
+- Local build: 2026-08-27 22:23
+- Build duration (apk): 12m 14s
+- Build duration (windows): 33m 57s
 
 ## [0.2.3] - 2026-08-27
 - Task Details now has an info icon in the app bar: tap it to reveal every field BestToDo keeps on the task, including the hidden Todoist sync trailer (the metadata normally appended to the description only when syncing, invisible in the normal view).
