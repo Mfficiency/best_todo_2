@@ -27,6 +27,13 @@ class CountdownTimerItem {
   DateTime createdAt;
   DateTime editedAt;
 
+  /// Free-form user tags (comma/whitespace-separated, same convention as
+  /// [Task.label]) — lets a timer carry its own categorization independent
+  /// of the reserved "Countdown" state tag every timer implicitly carries
+  /// for Settings → Filtering rules (see `ViewFilterRules.countdown`); that
+  /// reserved tag is never written here.
+  String tags;
+
   CountdownTimerItem({
     String? uid,
     required this.label,
@@ -36,6 +43,7 @@ class CountdownTimerItem {
     List<CountdownMilestone>? milestones,
     DateTime? createdAt,
     DateTime? editedAt,
+    this.tags = '',
   })  : uid = uid ?? CountdownTimerItem.newUid(),
         milestones = milestones ?? defaultMilestones(),
         createdAt = createdAt ?? DateTime.now(),
@@ -81,6 +89,7 @@ class CountdownTimerItem {
       milestones: milestones,
       createdAt: created,
       editedAt: edited,
+      tags: json['tags'] as String? ?? '',
     );
   }
 
@@ -131,5 +140,6 @@ class CountdownTimerItem {
         'milestones': milestones.map((m) => m.toJson()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'editedAt': editedAt.toIso8601String(),
+        if (tags.isNotEmpty) 'tags': tags,
       };
 }

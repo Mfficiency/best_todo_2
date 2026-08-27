@@ -16,6 +16,93 @@ fi
 # calling it argument-less only printed its usage line on every build. Bump
 # first, then build:  dart run tool/bump_version.dart 0.1.258 "what changed"
 
+# Extract the version string from pubspec.yaml. Versioned release artifact names
+# are the cache key for deciding whether this build already exists.
+VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
+
+is_cacheable_release_build() {
+  [ "$#" -gt 0 ] || return 1
+  shift
+
+  for arg in "$@"; do
+    case "$arg" in
+      --release)
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
+existing_build_artifact() {
+  version="$1"
+  shift
+
+  [ "$FORCE_BUILD" = "1" ] && return 1
+  is_cacheable_release_build "$@" || return 1
+
+  target="$1"
+  case "$target" in
+    apk)
+      for path in \
+        "github_releases/best_todo_${version}.apk" \
+        "build/app/outputs/flutter-apk/best_todo_${version}.apk"
+      do
+        [ -e "$path" ] && printf '%s\n' "$path" && return 0
+      done
+      ;;
+    web)
+      [ -d "build/web-${version}" ] &&
+        printf '%s\n' "build/web-${version}" &&
+        return 0
+      ;;
+    windows)
+      [ -e "build/windows/x64/runner/Release/BestToDo-${version}.exe" ] &&
+        printf '%s\n' "build/windows/x64/runner/Release/BestToDo-${version}.exe" &&
+        return 0
+      ;;
+    macos)
+      [ -d "build/macos/Build/Products/Release/best_todo_2-${version}.app" ] &&
+        printf '%s\n' "build/macos/Build/Products/Release/best_todo_2-${version}.app" &&
+        return 0
+      ;;
+    linux)
+      [ -d "build/linux-${version}" ] &&
+        printf '%s\n' "build/linux-${version}" &&
+        return 0
+      ;;
+  esac
+
+  return 1
+}
+
+EXISTING_ARTIFACT=$(existing_build_artifact "$VERSION" "$@")
+if [ -n "$EXISTING_ARTIFACT" ]; then
+  echo "==> existing release build found: $EXISTING_ARTIFACT"
+  echo "    skipping flutter build (set FORCE_BUILD=1 to rebuild)"
+
+  case "$1:$EXISTING_ARTIFACT" in
+    apk:build/app/outputs/flutter-apk/*)
+      dart run tool/stage_local_release.dart --apk "$EXISTING_ARTIFACT"
+      ;;
+  esac
+
+  if [ "$PUBLISH_APK" = "1" ]; then
+    case "$EXISTING_ARTIFACT" in
+      *.apk)
+        dart run tool/publish_apk.dart --apk "$EXISTING_ARTIFACT"
+        ;;
+      *)
+        dart run tool/publish_apk.dart
+        ;;
+    esac
+  fi
+
+  exit 0
+fi
+
 # Pull the latest CI test report from GitHub into assets/test_report.json so
 # this local build bundles real test results the app can show offline. Network
 # failures are non-fatal (keeps the existing asset), so offline builds still work.
@@ -27,9 +114,6 @@ if [ "$SKIP_PREFLIGHT" != "1" ]; then
   # Run one small unit test as a build gate.
   flutter test test/core/build_smoke_test.dart
 fi
-
-# Extract the new version string from pubspec.yaml
-VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
 
 # Build using Flutter with any arguments passed to this script.
 flutter build "$@"

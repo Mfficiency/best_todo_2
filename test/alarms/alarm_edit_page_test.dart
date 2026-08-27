@@ -99,4 +99,51 @@ void main() {
     expect(saved.volume, 0.6);
     expect(saved.name, 'Wake up');
   });
+
+  testWidgets('the Tags field is editable and saving keeps the tags',
+      (tester) async {
+    Object? result;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Center(
+          child: ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      AlarmEditPage(alarm: Alarm(name: 'Wake up')),
+                ),
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final addTagChip = find.text('Add label');
+    await tester.dragUntilVisible(
+      addTagChip,
+      find.byType(ListView),
+      const Offset(0, -120),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(addTagChip);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'work');
+    await tester.pump();
+    await tester.tap(find.text('Add "work"'));
+    await tester.pump();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Save'));
+    await tester.pumpAndSettle();
+
+    expect(result, isA<Alarm>());
+    expect((result as Alarm).tags, 'work');
+  });
 }

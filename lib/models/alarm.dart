@@ -100,6 +100,13 @@ class Alarm {
   /// (negative = before, e.g. -15 for "15 minutes before").
   int triggerOffsetMinutes;
 
+  /// Free-form user tags (comma/whitespace-separated, same convention as
+  /// [Task.label]) — lets an alarm carry its own categorization (e.g.
+  /// "work", "medication") independent of the reserved "Alarm" state tag
+  /// every alarm implicitly carries for Settings → Filtering rules (see
+  /// `ViewFilterRules.alarms`); that reserved tag is never written here.
+  String tags;
+
   Alarm({
     String? uid,
     required this.name,
@@ -121,6 +128,7 @@ class Alarm {
     this.itemUid,
     this.triggerAnchor = anchorEnd,
     this.triggerOffsetMinutes = 0,
+    this.tags = '',
   })  : uid = uid ?? Alarm.newUid(),
         repeatDays = repeatDays ?? <int>[];
 
@@ -204,6 +212,7 @@ class Alarm {
       itemUid: json['itemUid'] as String?,
       triggerAnchor: json['triggerAnchor'] as String? ?? anchorEnd,
       triggerOffsetMinutes: json['triggerOffsetMinutes'] as int? ?? 0,
+      tags: json['tags'] as String? ?? '',
     );
   }
 
@@ -230,6 +239,9 @@ class Alarm {
         if (itemUid != null) 'itemUid': itemUid,
         if (itemUid != null) 'triggerAnchor': triggerAnchor,
         if (itemUid != null) 'triggerOffsetMinutes': triggerOffsetMinutes,
+        // Omitted when blank for the same byte-identical-JSON reason as the
+        // reminder-link fields above.
+        if (tags.isNotEmpty) 'tags': tags,
       };
 
   Alarm copy() => Alarm.fromJson(toJson());

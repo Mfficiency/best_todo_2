@@ -13,6 +13,8 @@ import '../services/notification_service.dart';
 import '../services/project_service.dart';
 import '../services/todoist_sync_service.dart';
 import '../utils/description_disclosure.dart';
+import '../utils/label_style.dart';
+import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'attachments_field.dart';
 import 'label_picker.dart';
@@ -548,17 +550,27 @@ class _TaskTileState extends State<TaskTile>
     super.dispose();
   }
 
-  Widget _tag(String text) {
+  /// [protected] tints the pill [protectedTagColor] — used for a chip that
+  /// names one of the app's reserved states (e.g. "wish") so it reads
+  /// consistently with how a manually typed reserved word renders in
+  /// [LabelPickerField].
+  Widget _tag(String text, {bool protected = false}) {
     final scheme = Theme.of(context).colorScheme;
+    final color = protected ? protectedTagColor : null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
+        color: color?.withValues(alpha: 0.16) ?? scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(8),
+        border: color == null ? null : Border.all(color: color),
       ),
       child: Text(
         text,
-        style: TextStyle(fontSize: 11, color: scheme.onSecondaryContainer),
+        style: TextStyle(
+          fontSize: 11,
+          color: color ?? scheme.onSecondaryContainer,
+          fontWeight: color == null ? null : FontWeight.w600,
+        ),
       ),
     );
   }
@@ -591,8 +603,9 @@ class _TaskTileState extends State<TaskTile>
                   _tag(ProjectService.instance.nameOf(task.projectId)),
                   _tag(ProjectService.stageLabel(task.kanbanStatus)),
                 ],
-                if (task.isWish) _tag('wish'),
-                for (final label in labels) _tag(label),
+                if (task.isWish) _tag('wish', protected: true),
+                for (final label in labels)
+                  _tag(label, protected: isProtectedToken(label)),
               ],
             ),
             if (task.isWish && task.description.isNotEmpty)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/label.dart';
 import '../services/label_service.dart';
+import '../utils/label_style.dart';
 import '../utils/label_utils.dart';
 
 /// Chip-based label editor: current labels render as removable chips, and an
@@ -58,6 +59,29 @@ class _LabelPickerFieldState extends State<LabelPickerField> {
     _commit(next);
   }
 
+  /// A removable chip for one token, tinted [protectedTagColor] when it names
+  /// a reserved state (see [protectedChipColorFor]) — typing one by hand is
+  /// a naming collision with something the app already gives special
+  /// meaning, so it needs to look different from a plain user tag on sight.
+  Widget _labelChip(String token, VoidCallback onDeleted) {
+    final protectedColor = protectedChipColorFor(token);
+    return InputChip(
+      label: Text(token),
+      tooltip: protectedColor == null
+          ? null
+          : 'Reserved tag — the app treats this word specially and it may '
+              'change how this item behaves',
+      backgroundColor: protectedColor == null
+          ? null
+          : protectedColor.withValues(alpha: 0.16),
+      side: protectedColor == null ? null : BorderSide(color: protectedColor),
+      labelStyle: protectedColor == null
+          ? null
+          : TextStyle(color: protectedColor, fontWeight: FontWeight.w600),
+      onDeleted: onDeleted,
+    );
+  }
+
   Future<void> _openPicker() async {
     final result = await showDialog<List<String>>(
       context: context,
@@ -84,10 +108,7 @@ class _LabelPickerFieldState extends State<LabelPickerField> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 for (var i = 0; i < _tokens.length; i++)
-                  InputChip(
-                    label: Text(_tokens[i]),
-                    onDeleted: () => _removeAt(i),
-                  ),
+                  _labelChip(_tokens[i], () => _removeAt(i)),
                 ActionChip(
                   avatar: const Icon(Icons.add, size: 18),
                   label: const Text('Add label'),
@@ -207,7 +228,15 @@ class _LabelPickerDialogState extends State<_LabelPickerDialog> {
                       for (final name in filtered)
                         CheckboxListTile(
                           value: _isSelected(name),
-                          title: Text(name),
+                          title: Text(
+                            name,
+                            style: protectedChipColorFor(name) == null
+                                ? null
+                                : TextStyle(
+                                    color: protectedChipColorFor(name),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                          ),
                           controlAffinity: ListTileControlAffinity.leading,
                           onChanged: (_) => _toggle(name),
                         ),

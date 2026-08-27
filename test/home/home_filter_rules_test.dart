@@ -173,4 +173,25 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+      'Settings → Filtering rules: Food Diary, Alarms and Countdown are '
+      'listed as views', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+
+    final filteringChip = find.widgetWithText(ChoiceChip, 'Filtering rules');
+    await tester.ensureVisible(filteringChip);
+    await tester.pumpAndSettle();
+    await tester.tap(filteringChip);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Food Diary'), findsOneWidget);
+    expect(find.text('Alarms'), findsOneWidget);
+    expect(find.text('Countdown'), findsOneWidget);
+  });
 }

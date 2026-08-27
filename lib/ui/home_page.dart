@@ -3106,6 +3106,7 @@ class _HomePageState extends State<HomePage>
                         items: ItemViews.applyFilterRules(
                           _deletedTasks,
                           Config.viewFilterRules[ViewFilterRules.archived],
+                          archived: true,
                         ),
                         onRestore: _restoreTask,
                         onMoveToBin: _moveArchivedToBin,
@@ -3116,6 +3117,7 @@ class _HomePageState extends State<HomePage>
                                 items: ItemViews.applyFilterRules(
                                   _binTasks,
                                   Config.viewFilterRules[ViewFilterRules.bin],
+                                  binned: true,
                                 ),
                                 onRestore: _restoreFromBin,
                                 onDeletePermanently: _deleteTaskPermanently,
@@ -3295,14 +3297,12 @@ class _HomePageState extends State<HomePage>
                     onPressed:
                         undoDescription == null ? null : _undoLastAction,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.redo),
-                    tooltip: redoDescription == null
-                        ? 'Nothing to redo'
-                        : 'Redo: $redoDescription',
-                    onPressed:
-                        redoDescription == null ? null : _redoLastAction,
-                  ),
+                  if (redoDescription != null)
+                    IconButton(
+                      icon: const Icon(Icons.redo),
+                      tooltip: 'Redo: $redoDescription',
+                      onPressed: _redoLastAction,
+                    ),
                 ],
               );
             },

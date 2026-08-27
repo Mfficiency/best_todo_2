@@ -481,6 +481,45 @@ class Config {
   /// query (see `ItemViews.passesFilterRules`).
   static Map<String, ViewFilterRules> viewFilterRules = {};
 
+  /// How many times [ViewFilterRules.defaultsFor]'s template has been
+  /// revised; bump this whenever it changes so every install re-syncs to the
+  /// new template, not just a fresh one. Version 1 shipped an incorrect,
+  /// overly conservative template (it left Wish/Project out of several Hide
+  /// lists to avoid disturbing other behavior); version 2 corrects it to the
+  /// literal Hide/Show matrix this feature was specified with.
+  static const int _currentViewFilterRulesSeedVersion = 2;
+
+  /// How many times [seedViewFilterRuleDefaultsIfNeeded] has applied the
+  /// template to this install (0 = never). Persisted so it only (re-)applies
+  /// when [_currentViewFilterRulesSeedVersion] moves ahead of it.
+  static int viewFilterRulesSeedVersion = 0;
+
+  /// Applies [ViewFilterRules.defaultsFor] to every view — filling a gap on
+  /// a first run, or (after a template revision — see
+  /// [_currentViewFilterRulesSeedVersion]) overwriting whatever an earlier,
+  /// since-corrected template version had auto-seeded. A no-op once already
+  /// at the current version, so a rule the user has since customized by hand
+  /// is never touched again after that.
+  static void seedViewFilterRuleDefaultsIfNeeded() {
+    if (viewFilterRulesSeedVersion >= _currentViewFilterRulesSeedVersion) {
+      return;
+    }
+    final isFirstRun = viewFilterRulesSeedVersion == 0;
+    viewFilterRulesSeedVersion = _currentViewFilterRulesSeedVersion;
+    for (final id in ViewFilterRules.viewIds) {
+      if (!isFirstRun) {
+        // A template-revision re-sync: replace what an earlier template
+        // version seeded, same as a fresh install would get today.
+        final defaults = ViewFilterRules.defaultsFor(id);
+        if (defaults != null) viewFilterRules[id] = defaults;
+        continue;
+      }
+      if (viewFilterRules.containsKey(id)) continue;
+      final defaults = ViewFilterRules.defaultsFor(id);
+      if (defaults != null) viewFilterRules[id] = defaults;
+    }
+  }
+
   /// If true, tasks are kept in sync both ways with a Todoist account (see
   /// `TodoistSyncService`). Off by default; enabling without a token set is a
   /// no-op until one is entered in Settings → Todoist sync.
@@ -520,6 +559,9 @@ class Config {
         applyMap(data);
       }
     } catch (_) {}
+    final seedVersionBefore = viewFilterRulesSeedVersion;
+    seedViewFilterRuleDefaultsIfNeeded();
+    if (viewFilterRulesSeedVersion != seedVersionBefore) await save();
   }
 
   static Map<String, dynamic> toMap() {
@@ -582,6 +624,7 @@ class Config {
         for (final entry in viewFilterRules.entries)
           entry.key: entry.value.toJson(),
       },
+      'viewFilterRulesSeedVersion': viewFilterRulesSeedVersion,
     };
   }
 
@@ -726,6 +769,18 @@ class Config {
             entry.key as String: ViewFilterRules.fromJson(
                 Map<String, dynamic>.from(entry.value as Map)),
       };
+    }
+    final savedSeedVersion = data['viewFilterRulesSeedVersion'] as num?;
+    if (savedSeedVersion != null) {
+      viewFilterRulesSeedVersion = savedSeedVersion.round();
+    } else {
+      // Pre-migration installs only ever wrote the old boolean flag; treat
+      // it as version 1 (the incorrect template) so
+      // seedViewFilterRuleDefaultsIfNeeded re-syncs them to the current one.
+      final legacySeeded = data['viewFilterRulesSeeded'] as bool?;
+      if (legacySeeded != null) {
+        viewFilterRulesSeedVersion = legacySeeded ? 1 : 0;
+      }
     }
   }
 

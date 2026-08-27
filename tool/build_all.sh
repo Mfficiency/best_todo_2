@@ -19,6 +19,7 @@
 #   PUSH=0             commit the release folder but don't push
 #   WINDOWS=0          skip the Windows build (APK only)
 #   ANDROID=0          skip the Android build (exe only)
+#   FORCE_BUILD=1      rebuild even when this version's artifact already exists
 #   REQUIRE_WINDOWS=1  treat a failing Windows build as fatal instead of a
 #                      warning (the default is lenient: a broken local Visual
 #                      Studio toolchain shouldn't block shipping the APK)
