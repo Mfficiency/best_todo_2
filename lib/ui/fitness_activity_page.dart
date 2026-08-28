@@ -38,11 +38,15 @@ class _FitnessActivityPageState extends State<FitnessActivityPage> {
       if (!mounted) return;
       setState(() {
         _denied = samples == null;
-        _previous = samples == null ? [] : FitnessActivityService.summarize(from, samples);
-        _days = samples == null ? [] : FitnessActivityService.summarize(_weekStart, samples);
+        _previous = FitnessActivityService.summarize(from, samples ?? const []);
+        _days = FitnessActivityService.summarize(_weekStart, samples ?? const []);
       });
     } catch (_) {
-      if (mounted) setState(() { _denied = true; _days = []; _previous = []; });
+      if (mounted) setState(() {
+        _denied = true;
+        _days = FitnessActivityService.summarize(_weekStart, const []);
+        _previous = FitnessActivityService.summarize(_weekStart.subtract(const Duration(days: 7)), const []);
+      });
     }
   }
 
@@ -101,7 +105,7 @@ class _FitnessActivityPageState extends State<FitnessActivityPage> {
           )),
           GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 1.35, children: [
             _metric('Steps', steps.round().toString(), _change(steps, oldSteps), Icons.directions_walk),
-            _metric('Daily average', days.isEmpty ? '—' : '${(steps / 7).round()}', 'Across all 7 calendar days', Icons.calendar_today),
+            _metric('Daily average', _denied ? '—' : '${(steps / 7).round()}', 'Across all 7 calendar days', Icons.calendar_today),
             _metric('Distance', '${distance.toStringAsFixed(1)} km', 'Recorded walking + running distance', Icons.route),
             _metric('Active energy', '${calories.round()} kcal', 'Movement energy, not total burn', Icons.local_fire_department),
             _metric('Workouts', '${workouts.round()} min', _change(workouts, _sum(previous, (d) => d.workoutMinutes.toDouble())), Icons.fitness_center),
