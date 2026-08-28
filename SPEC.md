@@ -1806,7 +1806,9 @@ the plugin ships an empty manifest and its PendingIntent targets this class) +
 four widget providers.
 
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
-`max(23, flutter.minSdkVersion)` (androidx.work via home_widget needs 23); Java/Kotlin 11
+`max(26, flutter.minSdkVersion)` (androidx.work via home_widget needs 23; the
+`health` plugin behind Tools → Fitness Activity needs 26, and Health Connect is
+Android 8+ only — raised from 23 in 0.2.9+300); Java/Kotlin 11
 with core-library desugaring; glance pinned to 1.1.1 (home_widget 0.8.1 pulls `1.+` which
 would demand compileSdk 37); NDK 28.2.13676358. **Signing:** `key.properties` if present,
 otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, password

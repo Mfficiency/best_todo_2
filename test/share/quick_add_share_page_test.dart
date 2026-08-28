@@ -80,10 +80,16 @@ void main() {
     // before its setState/pop; pumpAndSettle would hang waiting on a
     // dart:io completion the fake-async zone never services. Poll rounds of
     // a real-event-loop slice + pump until the save shows up (see
-    // CLAUDE.md's I/O-inside-testWidgets guidance).
+    // CLAUDE.md's I/O-inside-testWidgets guidance). The handler only calls
+    // returnToPreviousApp *after* that write returns, so stopping at the
+    // first round where the task is on disk races the channel call — wait
+    // for both before asserting.
     final storage = StorageService();
     var saved = <Task>[];
-    for (var i = 0; i < 300 && saved.isEmpty; i++) {
+    for (var i = 0;
+        i < 300 &&
+            (saved.isEmpty || !channelCalls.contains('returnToPreviousApp'));
+        i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();
