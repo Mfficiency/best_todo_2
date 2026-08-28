@@ -2,6 +2,9 @@
 
 ## [0.2.7] - 2026-08-28
 - The Changelog page gained a third view: a visual development-story poster tracing the app's ten biggest milestones as an illustrated timeline, alongside the existing raw changelog text and release heatmap. App-bar toggles switch between the three independently.
+- Local build: 2026-08-28 07:53
+- Build duration (apk): 3m 27s
+- Build duration (windows): 1m 04s
 
 ## [0.2.6] - 2026-08-28
 - Backups now also write a Markdown vault next to the JSON file: one note per task, project, alarm and countdown timer, readable straight in Obsidian, plus a "Views" folder describing each view's filtering rules/presentation and a "Settings" folder with a redacted settings snapshot. Every note follows the same layout — title, description, notes, then a Properties block (description/tags/created time/reminders/notification settings/other fields) and an edit history section. The JSON file remains the only thing Import restores from.
