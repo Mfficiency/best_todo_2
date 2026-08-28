@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.8] - 2026-08-28
+- Fixed two gaps that could make the background auto-update check ("Settings → Updates → Automatically check for updates") appear to never fire: it now also checks immediately on cold start and every time the app is resumed from the background, instead of waiting for the next minute-tick; and the GitHub lookup now has a hard 20s timeout, so a single stalled connection (flaky mobile data, Doze mode) can no longer silently wedge the checker for the rest of the session.
+
 ## [0.2.7] - 2026-08-28
 - The Changelog page gained a third view: a visual development-story poster tracing the app's ten biggest milestones as an illustrated timeline, alongside the existing raw changelog text and release heatmap. App-bar toggles switch between the three independently.
 - Local build: 2026-08-28 07:53

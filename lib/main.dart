@@ -329,6 +329,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
     TodoistSyncService.instance.onLifecycleChanged(state);
+    // Re-check the moment the app comes back to the foreground, not just on
+    // the next minute-tick — someone reopening the app to see if an update
+    // landed shouldn't have to wait up to a minute for the background poll.
+    if (state == AppLifecycleState.resumed &&
+        !kIsWeb &&
+        Platform.isAndroid &&
+        Config.autoUpdateCheckEnabled) {
+      unawaited(AutoUpdateChecker.instance.checkOnce(_onUpdateFound));
+    }
   }
 
   /// Queues a shared payload and, if the quick-add screen isn't already open

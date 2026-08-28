@@ -33,9 +33,12 @@ class AutoUpdateChecker {
 
   /// Starts polling every [interval] (overridable for tests via
   /// [testInterval]). Calling this again while already running restarts the
-  /// timer with the (possibly new) callback.
+  /// timer with the (possibly new) callback. Also runs one check right away
+  /// — `Timer.periodic` only fires after the first full interval elapses, so
+  /// without this, opening the app would never check until a minute later.
   void start(UpdateFoundCallback onUpdateFound, {Duration? testInterval}) {
     stop();
+    unawaited(checkOnce(onUpdateFound));
     _timer = Timer.periodic(
       testInterval ?? interval,
       (_) => checkOnce(onUpdateFound),

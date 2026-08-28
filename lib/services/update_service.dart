@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -268,23 +269,41 @@ class UpdateService {
     return check.hasUpdate ? check.latest : null;
   }
 
+  /// A background poll runs every minute (see [AutoUpdateChecker]) guarded by
+  /// a single in-flight flag; a request that never completes — flaky mobile
+  /// data, Doze-mode network suspension — would otherwise wedge that flag
+  /// forever and silently stop checking for the rest of the session. This
+  /// timeout, plus force-closing the client on it, guarantees every fetch
+  /// resolves one way or another.
+  static const Duration _fetchTimeout = Duration(seconds: 20);
+
   Future<String> _fetch(Uri url) async {
     final override = fetchOverride;
     if (override != null) return override(url);
-    final client = HttpClient();
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
-      final request = await client.getUrl(url);
-      request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
-      request.headers.set(HttpHeaders.userAgentHeader, 'BestToDo-update-check');
-      final response = await request.close();
-      final text = await response.transform(utf8.decoder).join();
-      if (response.statusCode != 200) {
-        throw HttpException('GitHub replied ${response.statusCode}', uri: url);
-      }
-      return text;
+      return await _fetchWith(client, url).timeout(
+        _fetchTimeout,
+        onTimeout: () {
+          client.close(force: true);
+          throw TimeoutException('GitHub update check timed out', _fetchTimeout);
+        },
+      );
     } finally {
       client.close();
     }
+  }
+
+  Future<String> _fetchWith(HttpClient client, Uri url) async {
+    final request = await client.getUrl(url);
+    request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    request.headers.set(HttpHeaders.userAgentHeader, 'BestToDo-update-check');
+    final response = await request.close();
+    final text = await response.transform(utf8.decoder).join();
+    if (response.statusCode != 200) {
+      throw HttpException('GitHub replied ${response.statusCode}', uri: url);
+    }
+    return text;
   }
 
   /// Downloads the release's APK into the temp dir (covered by the manifest's
