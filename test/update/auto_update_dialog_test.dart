@@ -1,3 +1,5 @@
+library;
+
 import 'package:besttodo/services/update_service.dart';
 import 'package:besttodo/ui/auto_update_dialog.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +12,6 @@ import 'package:flutter_test/flutter_test.dart';
 /// [UpdateService.downloadApk] has no test seam and hits real sockets, so
 /// only the synchronous "no APK asset" failure of [UpdateDownloadDialog] is
 /// covered.
-library;
 
 /// Captures what the "New version available" dialog handed back.
 class _Host {
