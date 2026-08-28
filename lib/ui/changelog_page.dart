@@ -15,6 +15,121 @@ class ChangelogRelease {
   final List<String> entries;
 }
 
+/// A hand-picked chapter in BestToDo's story. Unlike individual releases,
+/// these describe the larger ideas that grew across several changelog entries.
+class ChangelogMilestone {
+  const ChangelogMilestone({
+    required this.version,
+    required this.date,
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.color,
+  });
+
+  final String version;
+  final String date;
+  final String title;
+  final String description;
+  final IconData icon;
+  final Color color;
+}
+
+const List<ChangelogMilestone> changelogMilestones = [
+  ChangelogMilestone(
+    version: 'v0.1.1',
+    date: 'JUN 2025',
+    title: 'The fast to-do foundation',
+    description:
+        'Today, Tomorrow and one quick swipe made planning feel instant.',
+    icon: Icons.rocket_launch_rounded,
+    color: Color(0xFF536DFE),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.8',
+    date: 'AUG 2025',
+    title: 'Tasks left the app',
+    description:
+        'The Android home-screen widget put today\'s list one glance away.',
+    icon: Icons.widgets_rounded,
+    color: Color(0xFF7C4DFF),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.47',
+    date: 'FEB 2026',
+    title: 'Progress became visible',
+    description:
+        'Stats, completion heatmaps and goals turned small wins into momentum.',
+    icon: Icons.insights_rounded,
+    color: Color(0xFFFF6D00),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.61',
+    date: 'MAY 2026',
+    title: 'Accountability on autopilot',
+    description:
+        'Scheduled SMS reports shared the day\'s progress with the people who matter.',
+    icon: Icons.sms_rounded,
+    color: Color(0xFF00A884),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.68',
+    date: 'MAY 2026',
+    title: 'A calendar for real life',
+    description:
+        'The schedule view brought every day and deadline into one flowing timeline.',
+    icon: Icons.calendar_month_rounded,
+    color: Color(0xFF0288D1),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.70',
+    date: 'JUN 2026',
+    title: 'Time became a tool',
+    description:
+        'Countdowns and the zoomable Chronize timeline made distant plans tangible.',
+    icon: Icons.timer_rounded,
+    color: Color(0xFFD84315),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.83',
+    date: 'JUL 2026',
+    title: 'Reliable alarms arrived',
+    description:
+        'Offline alarms, snooze and diagnostics kept reminders dependable—even after reboot.',
+    icon: Icons.alarm_on_rounded,
+    color: Color(0xFFE53935),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.130',
+    date: 'AUG 2026',
+    title: 'Your data, everywhere',
+    description:
+        'Automatic backups, folder sync and Obsidian export kept plans safe and portable.',
+    icon: Icons.cloud_done_rounded,
+    color: Color(0xFF00897B),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.157',
+    date: 'AUG 2026',
+    title: 'Habits found their spark',
+    description:
+        'Three daily streaks, a yearly calendar and 26 challenges made consistency fun.',
+    icon: Icons.local_fire_department_rounded,
+    color: Color(0xFFFF8F00),
+  ),
+  ChangelogMilestone(
+    version: 'v0.1.291',
+    date: 'AUG 2026',
+    title: 'A personal productivity hub',
+    description:
+        'Projects, Todoist, food diary, wellbeing, voice input, attachments and global undo came together.',
+    icon: Icons.auto_awesome_rounded,
+    color: Color(0xFF3949AB),
+  ),
+];
+
+enum _ChangelogView { text, poster, heatmap }
+
 final RegExp _releaseHeader =
     RegExp(r'^##\s*\[([^\]]+)\]\s*-\s*(\d{4})-(\d{1,2})-(\d{1,2})');
 
@@ -78,7 +193,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
 
   final ScrollController _heatmapScrollController = ScrollController();
   Future<String>? _changelog;
-  bool _showHeatmap = false;
+  _ChangelogView _view = _ChangelogView.text;
   DateTime? _selectedDay;
 
   @override
@@ -181,13 +296,26 @@ class _ChangelogPageState extends State<ChangelogPage> {
         title: 'Changelog',
         actions: [
           IconButton(
-            icon: Icon(
-              _showHeatmap ? Icons.subject : Icons.calendar_view_month,
-            ),
-            tooltip: _showHeatmap ? 'Show changelog text' : 'Show update heatmap',
+            icon: const Icon(Icons.auto_awesome_rounded),
+            tooltip: _view == _ChangelogView.poster
+                ? 'Show changelog text'
+                : 'Show development story',
             onPressed: () {
-              setState(() => _showHeatmap = !_showHeatmap);
-              if (_showHeatmap) _scheduleScrollToRight();
+              setState(() => _view = _view == _ChangelogView.poster
+                  ? _ChangelogView.text
+                  : _ChangelogView.poster);
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.calendar_view_month),
+            tooltip: _view == _ChangelogView.heatmap
+                ? 'Show changelog text'
+                : 'Show update heatmap',
+            onPressed: () {
+              setState(() => _view = _view == _ChangelogView.heatmap
+                  ? _ChangelogView.text
+                  : _ChangelogView.heatmap);
+              if (_view == _ChangelogView.heatmap) _scheduleScrollToRight();
             },
           ),
         ],
@@ -198,11 +326,173 @@ class _ChangelogPageState extends State<ChangelogPage> {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (!_showHeatmap) {
+          if (_view == _ChangelogView.text) {
             return Markdown(data: snapshot.data!, selectable: true);
           }
+          if (_view == _ChangelogView.poster) return _buildStoryPoster();
           return _buildHeatmapView(parseChangelogReleases(snapshot.data!));
         },
+      ),
+    );
+  }
+
+  Widget _buildStoryPoster() {
+    final scheme = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: scheme.surface,
+      child: SelectionArea(
+        child: ListView(
+          key: const Key('development-story-poster'),
+          padding: const EdgeInsets.fromLTRB(18, 24, 18, 40),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        '10 MILESTONES · 15 MONTHS',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelMedium
+                            ?.copyWith(
+                                color: scheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.1,
+                              )),
+                    ),
+                    const SizedBox(height: 14),
+                    Text('The story of BestToDo',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.8,
+                            )),
+                    const SizedBox(height: 8),
+                    Text(
+                      'From a quick swipe list to a private productivity hub—one useful release at a time.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            height: 1.4,
+                          ),
+                    ),
+                    const SizedBox(height: 30),
+                    ...List.generate(changelogMilestones.length, (index) {
+                      return _buildMilestone(changelogMilestones[index], index);
+                    }),
+                    const SizedBox(height: 8),
+                    Icon(Icons.flag_rounded, color: scheme.primary, size: 30),
+                    const SizedBox(height: 8),
+                    Text('And the story keeps moving…',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            )),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMilestone(ChangelogMilestone milestone, int index) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLast = index == changelogMilestones.length - 1;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 54,
+            child: Column(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: milestone.color,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: milestone.color.withOpacity(.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(milestone.icon, color: Colors.white, size: 25),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(width: 3, color: milestone.color.withOpacity(.28)),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 20 : 26),
+              child: Card(
+                elevation: 0,
+                margin: EdgeInsets.zero,
+                color: scheme.surfaceContainerLow,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: BorderSide(color: scheme.outlineVariant.withOpacity(.65)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 5,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(milestone.date,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: milestone.color,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1,
+                                  )),
+                          Text(milestone.version,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  )),
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      Text(milestone.title,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              )),
+                      const SizedBox(height: 5),
+                      Text(milestone.description,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                height: 1.35,
+                              )),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

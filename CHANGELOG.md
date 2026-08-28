@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.291] - 2026-08-28
+- Add a visual development-story poster to the Changelog, highlighting ten major milestones with icons, release versions, dates, and a connected responsive timeline alongside the existing release notes and heatmap
+
 ## [0.1.290] - 2026-08-27
 - Fix Filtering rules defaults to match the literal Hide/Show spec: every view now hides every other reserved tag and shows only its own by default (Home hides all nine; Wishlist/Food Diary/Alarms/Countdown show only their own tag; Waiting for Approval and Projects follow their own shorter Hide lists; Archived/Deleted only hide each other) — installs that already auto-seeded the earlier, too-conservative defaults get re-synced automatically. Added the reserved Changelog tag (no dedicated view yet) and fixed the Projects 'All Tasks' pane so the new Project default doesn't hide unassigned tasks from drag-to-assign
 - Polish the release build and quick edit flow: the custom time picker now offers a Save button on the minute step so an unchanged minute can be kept intentionally, the home app bar hides Redo when there is nothing to redo, and local release scripts reuse an existing versioned artifact unless FORCE_BUILD=1 is set
