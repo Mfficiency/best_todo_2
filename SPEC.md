@@ -262,6 +262,35 @@ export cannot fake a recent backup. Backups read straight from disk
 `besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
 The Backup section also offers a "Back up now" tile and shows the last backup time.
 
+Next to that JSON file, the same run writes a same-timestamped folder
+`besttodo_backup_<yyyymmdd_hhmmss>/` — a Markdown mirror
+(`MarkdownBackupService`, `lib/services/markdown_backup_service.dart`), export-only (Import
+never reads it). One subfolder per item type — `Tasks/` (active, Archived Items and real
+Deleted-bin tasks together, tagged with a `status: active|archived|binned` field since
+they're the same kind of item and differ only in which list currently holds them),
+`Projects/`, `Alarms/` (standalone alarms only; task-linked reminders are folded into their
+task's note), `Countdown Timers/` — each holding one `.md` note per item (filename:
+sanitized title + 8-char uid suffix). Every note, whatever the type, follows the same
+layout so one Obsidian template/Dataview query covers the whole vault: YAML frontmatter
+(Obsidian's Properties panel, collapsed by default — the note's "hidden" fields: `uid`,
+`type`, `created`, `description` mirrored raw, `tags`, `reminders` — human-readable
+anchor/offset/melody/volume/vibrate summaries pairing each linked alarm's schedule with its
+notification settings — plus every other field the JSON backup carries: due date, project,
+kanban status, wish/food-diary/recurring flags, recurrence detail, attachments summary,
+etc.), then the visible body: `# Title`, the description paragraph, `## Notes`, `## Links`
+(tags rendered as `[[wikilinks]]` for Obsidian's graph view), `## Edit History` (from
+`ItemEventJournal`, one line per event with its source and field-level patch). Two more
+folders describe the app rather than its items: `Views/` — one note per
+`ViewFilterRules.viewIds` (Home, Wishlist, Waiting for Approval, Projects, Food Diary,
+Alarms, Countdown, Archived items, Deleted bin), each showing its built-in structural rule,
+its configured Settings → Filtering rules include/exclude tags (live from
+`Config.viewFilterRules`/`ViewFilterRules.defaultsFor`), and its `ViewPresentation`
+cosmetics, plus a Home-specific tab-bucketing table and a Projects-specific Kanban-column
+table — and `Settings/Settings.md` (a JSON snapshot of `Config.toMap()`, with
+`todoistApiToken` and `googleCalendarUrl` redacted — the JSON backup remains the only place
+those secrets survive a restore). Markdown-vault failures are caught and logged separately
+from the JSON write, so a Markdown bug can never fail the backup itself.
+
 ### 4.2b Item history journal (0.1.106)
 
 `ItemEventJournal` (`lib/services/item_event_journal.dart`) records every change to a

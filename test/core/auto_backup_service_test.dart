@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/auto_backup_service.dart';
+import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -26,11 +27,13 @@ void main() {
     PathProviderPlatform.instance = _FakePathProvider(docsDir.path);
     Config.autoBackupFrequency = 'off';
     Config.autoBackupDirectory = '';
+    ProjectService.instance.resetForTest();
   });
 
   tearDown(() {
     Config.autoBackupFrequency = 'off';
     Config.autoBackupDirectory = '';
+    ProjectService.instance.resetForTest();
   });
 
   test('isDue follows the off/daily/weekly schedule', () {
@@ -83,13 +86,44 @@ void main() {
     final tasks = bundle['tasks'] as List;
     expect(tasks.single['title'], 'Backed up task');
 
+    // A same-timestamped Markdown vault sits next to the JSON file.
+    final mdDir =
+        Directory('${backupDir.path}${Platform.pathSeparator}'
+            'besttodo_backup_20260806_093000');
+    expect(mdDir.existsSync(), isTrue);
+    final taskNotes = Directory('${mdDir.path}${Platform.pathSeparator}Tasks')
+        .listSync()
+        .whereType<File>()
+        .toList();
+    expect(taskNotes, hasLength(1));
+    expect(taskNotes.single.readAsStringSync(), contains('Backed up task'));
+    for (final folder in ['Projects', 'Alarms', 'Countdown Timers', 'Views']) {
+      expect(
+        Directory('${mdDir.path}${Platform.pathSeparator}$folder').existsSync(),
+        isTrue,
+      );
+    }
+    expect(
+      File('${mdDir.path}${Platform.pathSeparator}Settings'
+              '${Platform.pathSeparator}Settings.md')
+          .existsSync(),
+      isTrue,
+    );
+
     // The run was recorded, so the same day is no longer due...
     expect(await AutoBackupService.lastRun(), now);
     expect(await AutoBackupService.maybeRun(now: now), isNull);
     // ...but the next day is.
     final nextDay = now.add(const Duration(days: 1));
     expect(await AutoBackupService.maybeRun(now: nextDay), isNotNull);
-    expect(backupDir.listSync(), hasLength(2));
+    final jsonFiles = backupDir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.json'))
+        .toList();
+    final mdFolders = backupDir.listSync().whereType<Directory>().toList();
+    expect(jsonFiles, hasLength(2));
+    expect(mdFolders, hasLength(2));
   });
 
   test('runNow reports failure by returning null', () async {

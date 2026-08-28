@@ -1656,8 +1656,10 @@ class _SettingsPageState extends State<SettingsPage> {
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Text(
-            'Each backup is one timestamped file with everything — tasks, '
-            'settings and timers — and can be restored with Export → Import.',
+            'Each backup writes one timestamped JSON file with everything — '
+            'tasks, settings and timers — restorable with Export → Import — '
+            'plus a matching folder of Markdown notes (one per task, project, '
+            'alarm and timer) readable straight in Obsidian.',
           ),
         ),
       ],
