@@ -2,6 +2,9 @@
 
 ## [0.2.6] - 2026-08-28
 - Backups now also write a Markdown vault next to the JSON file: one note per task, project, alarm and countdown timer, readable straight in Obsidian, plus a "Views" folder describing each view's filtering rules/presentation and a "Settings" folder with a redacted settings snapshot. Every note follows the same layout — title, description, notes, then a Properties block (description/tags/created time/reminders/notification settings/other fields) and an edit history section. The JSON file remains the only thing Import restores from.
+- Local build: 2026-08-28 07:00
+- Build duration (apk): 3m 38s
+- Build duration (windows): 1m 49s
 
 ## [0.2.5] - 2026-08-27
 - Countdown timers can now attach to a task's due date (Task Details ▸ Add countdown, mirroring the existing one-tap reminder), following it automatically and unlinking rather than deleting if the task disappears. Introduced ViewPresentation, the presentation-filter counterpart to Filtering rules' data filters, hiding the reminder/countdown attach affordances on archived and deleted items where they no longer apply.

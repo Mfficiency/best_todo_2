@@ -26,5 +26,19 @@
     "durationSeconds": 92,
     "finishedAt": "2026-08-27T23:28:26.199962",
     "os": "windows"
+  },
+  {
+    "version": "0.2.6+297",
+    "target": "apk",
+    "durationSeconds": 218,
+    "finishedAt": "2026-08-28T06:58:43.606798",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.6+297",
+    "target": "windows",
+    "durationSeconds": 109,
+    "finishedAt": "2026-08-28T07:00:35.773220",
+    "os": "windows"
   }
 ]
