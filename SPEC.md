@@ -2823,3 +2823,22 @@ page, "Schedule view active day").
    export — every debugging pain became a permanent in-app observability tool.
 4. **Speed is a spec.** Startup is measured on every launch and charted in-app; the <1 s
    budget drove the non-blocking startup fix and the fire-and-forget diagnostics.
+
+### 10.4.1 Weekly wellbeing analysis (0.2.9)
+Usage Data defaults to a Monday–Sunday analysis. The header arrows and horizontal
+swipe move through weeks (never beyond the current week). Phone sessions are
+loaded for both the selected and preceding week so total screen time, session
+count and each ranked app state their percentage change. A seven-bar daily chart
+and the existing 24-hour chart label both axes and the summary states the
+seven-calendar-day average. Historical weeks use their complete Monday–Sunday
+window; Android Usage Access remains opt-in and all calculations stay local.
+
+### 10.5 Fitness Activity (Tools → Fitness Activity)
+Fitness Activity is a read-only Health Connect dashboard. After explicit consent
+it reads the selected and preceding Monday–Sunday windows for steps, distance,
+active calories, workouts, heart rate, resting heart rate, asleep time and
+weight. It shows totals, a true seven-day step average, sleep average over days
+with records, weekly changes, strongest day and actionable conclusions. The
+step chart labels steps and weekdays; arrows browse weeks and pull-to-refresh
+re-reads Health Connect. Missing permission/data is stated rather than treated
+as zero evidence. Health measurements are displayed without medical diagnosis.

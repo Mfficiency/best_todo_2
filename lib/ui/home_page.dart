@@ -55,6 +55,7 @@ import 'recurrence_scope_dialog.dart';
 import 'deleted_bin_page.dart';
 import 'dice_timer_page.dart';
 import 'food_diary_page.dart';
+import 'fitness_activity_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
@@ -1150,6 +1151,8 @@ class _HomePageState extends State<HomePage>
           deletedTasks: _deletedTasks,
           dailyStatsByDay: _dailyStatsByDay,
         );
+      case 'fitness_activity':
+        return const FitnessActivityPage();
       case 'test_results':
         return const TestResultsPage();
       case 'weekly_hours_planner':
@@ -3023,6 +3026,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('countdown', 'Countdown', Icons.timer),
     _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),
     _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
+    _ToolEntry('fitness_activity', 'Fitness Activity', Icons.directions_run),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
   ];
 
