@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.10] - 2026-08-28
+- Fixed the Fitness Activity dashboard rendering as a blank gray screen whenever Health Connect access wasn't granted (or wasn't available), instead of showing the connect-your-health-data prompt.
+
 ## [0.2.9] - 2026-08-28
 - Rebuild Usage & Wellbeing around practical weekly analysis: labelled axes, daily averages, week navigation and swiping, previous-week comparisons, per-app improvement trends, and clearer time-of-day context.
 - Add Tools → Fitness Activity, a read-only Health Connect dashboard for steps, distance, active calories, workouts, heart rate, sleep and weight, including weekly navigation, comparisons and plain-language conclusions.
