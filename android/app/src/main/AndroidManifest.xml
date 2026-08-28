@@ -67,7 +67,27 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Health Connect shows its own permissions-rationale screen
+                 before the consent dialog; without an activity declaring
+                 this action the health plugin's requestAuthorization()
+                 silently fails to open anything (Tools -> Fitness Activity's
+                 "Connect" button looked like it did nothing). -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+        <!-- Required alongside the intent-filter above so Health Connect's
+             own settings can show which permissions this app requested. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
         <!-- Share-sheet entry: sharing text/links/email addresses, images or
              PDFs from any app (Chrome, YouTube, Maps, Gmail, Photos, ...)
              offers BestToDo, which opens the quick-add screen prefilled from
@@ -227,6 +247,15 @@
              speech_to_text plugin to find the device's speech recognizer. -->
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <!-- Package-visibility requirement (Android 11+) for the health
+             plugin to detect whether Health Connect is installed, and to
+             find its permissions-rationale screen. Without these, checks
+             like isHealthConnectAvailable() report "not installed" even
+             when it is, and requestAuthorization() has nothing to launch. -->
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
     </queries>
 </manifest>

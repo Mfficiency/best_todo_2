@@ -16,13 +16,16 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import android.content.pm.ApplicationInfo
 
-class MainActivity : FlutterActivity() {
+// FlutterFragmentActivity (not the plain FlutterActivity) because the
+// health plugin's Health Connect permission flow needs a FragmentActivity
+// to launch its Activity Result contract on Android 14+.
+class MainActivity : FlutterFragmentActivity() {
 
     // Content shared into the app (see ShareActivity), waiting for the Dart
     // side to collect it. On a cold start the queue fills before the Flutter
@@ -149,10 +152,7 @@ class MainActivity : FlutterActivity() {
                     result.success(mode == AppOpsManager.MODE_ALLOWED)
                 }
                 "openPermissionSettings" -> {
-                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                        data = Uri.parse("package:$packageName")
-                    })
-                    result.success(null)
+                    result.success(openUsageAccessSettings())
                 }
                 "querySessions" -> {
                     val from = call.argument<Number>("from")?.toLong()
@@ -306,6 +306,33 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    // ACTION_USAGE_ACCESS_SETTINGS with a package: data URI throws
+    // ActivityNotFoundException on some OEMs (MIUI, some One UI builds) that
+    // don't register that specific action+data combination — previously
+    // uncaught, so the "Allow" button silently did nothing. Fall back to the
+    // same action without the data extra, then to this app's details page,
+    // so the user always lands somewhere they can grant the permission.
+    private fun openUsageAccessSettings(): Boolean {
+        val attempts = listOf(
+            { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }) },
+            { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+            { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }) },
+        )
+        for (attempt in attempts) {
+            try {
+                attempt()
+                return true
+            } catch (_: Exception) {
+                continue
+            }
+        }
+        return false
     }
 
     private fun queryUsageSessions(from: Long, to: Long): List<Map<String, Any>> {

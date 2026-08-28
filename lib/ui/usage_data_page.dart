@@ -27,6 +27,15 @@ String wellbeingHourLabel(double value) {
   return '$hour:00';
 }
 
+/// Returns a y-axis label (in minutes, or hours once past 60) for the
+/// wellbeing chart's screen-time values.
+String wellbeingMinuteLabel(double value) {
+  final minutes = value.round();
+  if (minutes <= 0) return '0';
+  if (minutes % 60 == 0) return '${minutes ~/ 60}h';
+  return '${minutes}m';
+}
+
 /// Tools → Usage Data: exports everything the app has ever recorded as
 /// detailed CSV files — a Digital-Wellbeing-style data dump covering the full
 /// history available on this device.
@@ -231,7 +240,16 @@ class _UsageDataPageState extends State<UsageDataPage>
       if (!_usagePermission) Card(margin: const EdgeInsets.only(top: 16), color: Theme.of(context).colorScheme.primaryContainer, child: ListTile(
         leading: const Icon(Icons.insights), title: const Text('See your whole-phone picture'),
         subtitle: const Text('Optionally allow Android Usage Access. BestTodo reads totals locally and never blocks apps.'),
-        trailing: FilledButton(onPressed: () async { await DigitalWellbeingService.openPermissionSettings(); }, child: const Text('Allow')),
+        trailing: FilledButton(onPressed: () async {
+          final opened = await DigitalWellbeingService.openPermissionSettings();
+          if (!opened && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Couldn\'t open Usage Access settings automatically. '
+                  'Open Settings → Apps → Special access → Usage access → BestTodo.'),
+              duration: Duration(seconds: 6),
+            ));
+          }
+        }, child: const Text('Allow')),
       )),
       if (_loadingPhone) const LinearProgressIndicator(),
       const SizedBox(height: 20),
@@ -250,7 +268,12 @@ class _UsageDataPageState extends State<UsageDataPage>
       const SizedBox(height: 8), SizedBox(height: 150, child: BarChart(BarChartData(
         maxY: (byHour.reduce((a, b) => a > b ? a : b).clamp(10, 600)).toDouble(),
         barTouchData: BarTouchData(enabled: true), gridData: const FlGridData(show: false), borderData: FlBorderData(show: false),
-        titlesData: FlTitlesData(leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(wellbeingHourLabel(v), style: const TextStyle(fontSize: 10))))),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32, getTitlesWidget: (v, _) => Text(wellbeingMinuteLabel(v), style: const TextStyle(fontSize: 10)))),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(wellbeingHourLabel(v), style: const TextStyle(fontSize: 10)))),
+        ),
         barGroups: List.generate(24, (h) => BarChartGroupData(x: h, barRods: [BarChartRodData(toY: byHour[h].toDouble(), width: 7, color: h >= 22 || h < 6 ? Colors.orange : Colors.deepPurple, borderRadius: BorderRadius.circular(3))])),
       ))),
       const SizedBox(height: 20), Text('Most used', style: Theme.of(context).textTheme.titleLarge),
@@ -399,7 +422,10 @@ class _UsageDataPageState extends State<UsageDataPage>
       appBar: buildSubpageAppBar(context, title: 'Usage & Wellbeing'),
       body: datasets == null
           ? const Center(child: CircularProgressIndicator())
-          : ListView(children: [_buildDashboard()]),
+          : ListView(
+              padding: const EdgeInsets.only(bottom: 96),
+              children: [_buildDashboard()],
+            ),
       floatingActionButton: datasets == null
           ? null
           : FloatingActionButton.extended(

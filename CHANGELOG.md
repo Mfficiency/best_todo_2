@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.11] - 2026-08-28
+- Usage & Wellbeing: the "When you use your phone" chart now shows minute/hour numbers on its vertical axis instead of a blank axis
+- Fixed the "Allow" button for Android Usage Access doing nothing on some devices (it now falls back to alternate settings screens and tells you where to grant it manually if none of them can be opened)
+- Fixed Fitness Activity's "Connect" button doing nothing: the Android manifest was missing the `<queries>`/permissions-rationale entries Health Connect needs to show its own consent screen, so requesting access silently failed every time; the page now also tells you to install Health Connect when it isn't on the device instead of just re-showing the same prompt
+
 ## [0.2.10] - 2026-08-28
 - Fixed the Fitness Activity dashboard rendering as a blank gray screen whenever Health Connect access wasn't granted (or wasn't available), instead of showing the connect-your-health-data prompt.
 - Local build: 2026-08-28 21:04

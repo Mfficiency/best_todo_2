@@ -11,17 +11,36 @@ class FitnessActivityPage extends StatefulWidget {
   State<FitnessActivityPage> createState() => _FitnessActivityPageState();
 }
 
-class _FitnessActivityPageState extends State<FitnessActivityPage> {
+class _FitnessActivityPageState extends State<FitnessActivityPage>
+    with WidgetsBindingObserver {
   late DateTime _weekStart;
   List<FitnessDay>? _days;
   List<FitnessDay>? _previous;
   bool _denied = false;
+  bool _notInstalled = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _weekStart = _monday(DateTime.now());
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check after the user comes back from the Play Store (installing
+    // Health Connect) or the OS permissions screen, same idea as the Usage
+    // & Wellbeing page.
+    if (state == AppLifecycleState.resumed && (_notInstalled || _denied)) {
+      _load();
+    }
   }
 
   DateTime _monday(DateTime date) {
@@ -30,8 +49,19 @@ class _FitnessActivityPageState extends State<FitnessActivityPage> {
   }
 
   Future<void> _load() async {
-    setState(() { _days = null; _denied = false; });
+    setState(() { _days = null; _denied = false; _notInstalled = false; });
     try {
+      final available = await FitnessActivityService.isAvailable();
+      if (!available) {
+        if (!mounted) return;
+        setState(() {
+          _notInstalled = true;
+          _days = FitnessActivityService.summarize(_weekStart, const []);
+          _previous = FitnessActivityService.summarize(
+              _weekStart.subtract(const Duration(days: 7)), const []);
+        });
+        return;
+      }
       final from = _weekStart.subtract(const Duration(days: 7));
       final samples = await FitnessActivityService.read(
           from, _weekStart.add(const Duration(days: 7)));
@@ -41,13 +71,24 @@ class _FitnessActivityPageState extends State<FitnessActivityPage> {
         _previous = FitnessActivityService.summarize(from, samples ?? const []);
         _days = FitnessActivityService.summarize(_weekStart, samples ?? const []);
       });
-    } catch (_) {
-      if (mounted) setState(() {
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
         _denied = true;
         _days = FitnessActivityService.summarize(_weekStart, const []);
         _previous = FitnessActivityService.summarize(_weekStart.subtract(const Duration(days: 7)), const []);
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not read Health Connect data: $e')));
     }
+  }
+
+  Future<void> _connect() async {
+    if (_notInstalled) {
+      await FitnessActivityService.promptInstall();
+      return;
+    }
+    await _load();
   }
 
   String _range(DateTime start) {
@@ -98,14 +139,18 @@ class _FitnessActivityPageState extends State<FitnessActivityPage> {
             Expanded(child: Column(children: [const Text('WEEK', style: TextStyle(fontSize: 11, letterSpacing: 1.5)), Text(_range(_weekStart), style: Theme.of(context).textTheme.titleMedium)])),
             IconButton(tooltip: 'Next week', onPressed: _weekStart.isBefore(_monday(DateTime.now())) ? () { _weekStart = _weekStart.add(const Duration(days: 7)); _load(); } : null, icon: const Icon(Icons.chevron_right)),
           ]),
-          if (_denied) Card(color: Theme.of(context).colorScheme.primaryContainer, child: ListTile(
+          if (_notInstalled) Card(color: Theme.of(context).colorScheme.primaryContainer, child: ListTile(
+            leading: const Icon(Icons.health_and_safety), title: const Text('Install Health Connect'),
+            subtitle: const Text('Steps, distance, calories, workouts, heart rate, sleep and weight come from the Health Connect app, which isn\'t installed on this device yet.'),
+            trailing: FilledButton(onPressed: _connect, child: const Text('Install')),
+          )) else if (_denied) Card(color: Theme.of(context).colorScheme.primaryContainer, child: ListTile(
             leading: const Icon(Icons.health_and_safety), title: const Text('Connect your health data'),
             subtitle: const Text('Grant read-only Health Connect access to show steps, distance, calories, workouts, heart rate, sleep and weight. Data stays on your device.'),
-            trailing: FilledButton(onPressed: _load, child: const Text('Connect')),
+            trailing: FilledButton(onPressed: _connect, child: const Text('Connect')),
           )),
           GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 1.35, children: [
             _metric('Steps', steps.round().toString(), _change(steps, oldSteps), Icons.directions_walk),
-            _metric('Daily average', _denied ? '—' : '${(steps / 7).round()}', 'Across all 7 calendar days', Icons.calendar_today),
+            _metric('Daily average', _denied || _notInstalled ? '—' : '${(steps / 7).round()}', 'Across all 7 calendar days', Icons.calendar_today),
             _metric('Distance', '${distance.toStringAsFixed(1)} km', 'Recorded walking + running distance', Icons.route),
             _metric('Active energy', '${calories.round()} kcal', 'Movement energy, not total burn', Icons.local_fire_department),
             _metric('Workouts', '${workouts.round()} min', _change(workouts, _sum(previous, (d) => d.workoutMinutes.toDouble())), Icons.fitness_center),

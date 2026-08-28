@@ -45,6 +45,19 @@ class FitnessActivityService {
 
   static final Health _health = Health();
 
+  /// Whether the Health Connect app is installed on this device. Must be
+  /// checked before requesting authorization — calling that (or any other
+  /// getter/setter) while Health Connect isn't installed throws instead of
+  /// just reporting "denied", which made the Fitness Activity page's
+  /// "Connect" button look like it silently did nothing.
+  static Future<bool> isAvailable() async {
+    await _health.configure();
+    return _health.isHealthConnectAvailable();
+  }
+
+  /// Sends the user to the Play Store to install Health Connect.
+  static Future<void> promptInstall() => _health.installHealthConnect();
+
   static Future<List<FitnessSample>?> read(DateTime from, DateTime to) async {
     await _health.configure();
     final granted = await _health.requestAuthorization(types);
