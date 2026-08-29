@@ -20,6 +20,39 @@ class _FakePathProvider extends PathProviderPlatform {
 void main() {
   late Directory tempDir;
 
+  test('formats exports as a readable list grouped and ordered by day', () {
+    final previous24HourFormat = Config.use24HourFormat;
+    final previousDateFormat = Config.dateFormat;
+    addTearDown(() {
+      Config.use24HourFormat = previous24HourFormat;
+      Config.dateFormat = previousDateFormat;
+    });
+    Config.use24HourFormat = true;
+    Config.dateFormat = 'yyyy-MM-dd';
+    final text = foodDiaryExportText([
+      Task(
+        title: 'Dinner',
+        description: 'With friends',
+        label: 'restaurant',
+        dueDate: DateTime(2026, 8, 29, 19, 30),
+      ),
+      Task(title: 'Breakfast', dueDate: DateTime(2026, 8, 29, 8)),
+      Task(title: 'Older lunch', dueDate: DateTime(2026, 8, 28, 12, 15)),
+    ]);
+
+    expect(text, contains('# Food Diary\n\n## 2026-08-29'));
+    expect(
+      text.indexOf('08:00 — Breakfast'),
+      lessThan(text.indexOf('19:30 — Dinner')),
+    );
+    expect(
+      text.indexOf('## 2026-08-29'),
+      lessThan(text.indexOf('## 2026-08-28')),
+    );
+    expect(text, contains('  - Tags: restaurant'));
+    expect(text, contains('  - Notes: With friends'));
+  });
+
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);

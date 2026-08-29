@@ -2,6 +2,7 @@
 
 ## [0.2.12] - 2026-08-29
 - Food Diary entry cards now use light blue, warm yellow and Bordeaux-inspired hues for morning, noon/daytime and evening meals, with matching darker tints in dark mode.
+- Food Diary can export a readable Markdown log grouped by day, and its small home-screen “+” widget now turns red when a meal checkpoint is missed.
 
 ## [0.2.11] - 2026-08-28
 - Usage & Wellbeing: the "When you use your phone" chart now shows minute/hour numbers on its vertical axis instead of a blank axis
