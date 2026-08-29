@@ -530,6 +530,21 @@ class _FoodDiaryTile extends StatelessWidget {
       .where((label) => label.isNotEmpty)
       .toList();
 
+  /// Gives the diary a quick visual rhythm without making the card content
+  /// harder to read. Morning runs until noon, the daytime/noon tint continues
+  /// until 18:00, and the Bordeaux tint marks the evening.
+  Color _cardColor(BuildContext context, DateTime? time) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hour = time?.hour ?? 12;
+    if (hour < 12) {
+      return isDark ? const Color(0xFF17324A) : const Color(0xFFE3F2FD);
+    }
+    if (hour < 18) {
+      return isDark ? const Color(0xFF403817) : const Color(0xFFFFF8D6);
+    }
+    return isDark ? const Color(0xFF451E2D) : const Color(0xFFF3E1E6);
+  }
+
   @override
   Widget build(BuildContext context) {
     final labels = _labels();
@@ -550,6 +565,7 @@ class _FoodDiaryTile extends StatelessWidget {
       ),
       onDismissed: (_) => onDelete(),
       child: Card(
+        color: _cardColor(context, time),
         child: ListTile(
           title: Text(entry.title),
           trailing: IconButton(

@@ -137,6 +137,44 @@ void main() {
     expect(find.text('Yesterday dinner'), findsOneWidget);
   });
 
+  testWidgets('tints entry cards for morning, noon and evening',
+      (tester) async {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Morning meal',
+          dueDate: day.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Noon meal',
+          dueDate: day.add(const Duration(hours: 13)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Evening meal',
+          dueDate: day.add(const Duration(hours: 19)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Morning meal',
+    );
+
+    Card cardFor(String title) => tester.widget<Card>(
+          find.ancestor(of: find.text(title), matching: find.byType(Card)),
+        );
+
+    expect(cardFor('Morning meal').color, const Color(0xFFE3F2FD));
+    expect(cardFor('Noon meal').color, const Color(0xFFFFF8D6));
+    expect(cardFor('Evening meal').color, const Color(0xFFF3E1E6));
+  });
+
   testWidgets('add dialog creates a tagged entry with a title and time',
       (tester) async {
     await pumpFoodDiary(

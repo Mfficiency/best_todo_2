@@ -2295,6 +2295,11 @@ export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swip
 (`ItemRepository.loadDeletedItems`/`saveDeletedItems`) with an undo snackbar, exactly
 like a wishlist delete — never the plain task list, never the real bin directly.
 
+Entry cards are visually keyed to their logged time (0.2.12): before 12:00 uses a
+light-blue hue, 12:00–17:59 a warm yellow hue, and 18:00 onward a pale
+Bordeaux-inspired hue. Dark theme uses darker equivalents of the same three hues;
+an entry without a time receives the daytime/noon treatment.
+
 Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 `featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
 drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
