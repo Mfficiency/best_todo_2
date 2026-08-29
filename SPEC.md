@@ -2551,7 +2551,10 @@ in App Logs → Todoist — onboarding has already finished by then.
   (`!kIsWeb && Platform.isAndroid` — which is false under `flutter test`'s
   host runner, so the suite never starts a real timer) and stopped in
   `dispose`; the setting itself is only read at launch, so flipping it in
-  Settings takes effect on the next start. A release with no APK asset is
+  Settings takes effect on the next start. Since 0.2.13, loading a legacy
+  settings file with no `autoUpdateCheckEnabled` key explicitly restores the
+  default `true`; a stored `false` remains a respected user opt-out. A release
+  with no APK asset is
   skipped (nothing to auto-install); once a version is found it is reported at
   most once — a later tick finding the same build is a no-op
   (`_pendingUpdateVersion` in `main.dart`), onboarding screens (intro/mode
