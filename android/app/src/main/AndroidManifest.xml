@@ -42,6 +42,8 @@
     <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <!-- Lets the user explicitly allow browsing records older than 30 days. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
     <application
         android:label="BestToDo"
         android:name="${applicationName}"
@@ -254,6 +256,7 @@
              like isHealthConnectAvailable() report "not installed" even
              when it is, and requestAuthorization() has nothing to launch. -->
         <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="com.sec.android.app.shealth" />
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>

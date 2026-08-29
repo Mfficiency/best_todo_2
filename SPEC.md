@@ -2858,4 +2858,8 @@ weight. It shows totals, a true seven-day step average, sleep average over days
 with records, weekly changes, strongest day and actionable conclusions. The
 step chart labels steps and weekdays; arrows browse weeks and pull-to-refresh
 re-reads Health Connect. Missing permission/data is stated rather than treated
-as zero evidence. Health measurements are displayed without medical diagnosis.
+as zero evidence. Tapping the week range can jump to any historical week and
+requests Android's separate history permission for records older than 30 days.
+The dashboard and Settings shortcut open Health Connect's source settings so
+Samsung Health can share phone, restored cloud, and Galaxy Watch records.
+Health measurements are displayed without medical diagnosis.
