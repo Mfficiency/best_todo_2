@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/task.dart';
@@ -13,6 +16,44 @@ import '../utils/description_disclosure.dart';
 import 'label_picker.dart';
 import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
+
+/// A scan-friendly Markdown export: newest day first, meals chronological
+/// within each day, with details indented beneath the meal they belong to.
+String foodDiaryExportText(List<Task> entries) {
+  final sorted = List<Task>.from(entries)
+    ..sort((a, b) {
+      final aTime = a.dueDate;
+      final bTime = b.dueDate;
+      if (aTime == null && bTime == null) return a.title.compareTo(b.title);
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      final aDay = DateTime(aTime.year, aTime.month, aTime.day);
+      final bDay = DateTime(bTime.year, bTime.month, bTime.day);
+      final byDay = bDay.compareTo(aDay);
+      return byDay != 0 ? byDay : aTime.compareTo(bTime);
+    });
+  final lines = <String>['# Food Diary', ''];
+  String? currentDay;
+  for (final entry in sorted) {
+    final time = entry.dueDate;
+    final day = time == null ? 'No date' : formatTimerDate(time);
+    if (day != currentDay) {
+      if (currentDay != null) lines.add('');
+      lines.add('## $day');
+      currentDay = day;
+    }
+    final timeLabel = time == null ? 'Time not recorded' : formatTimerTime(time);
+    lines.add('- **$timeLabel — ${entry.title}**');
+    if (entry.label.trim().isNotEmpty) {
+      lines.add('  - Tags: ${entry.label.trim()}');
+    }
+    if (entry.description.trim().isNotEmpty) {
+      final description = entry.description.trim().replaceAll('\n', '\n    ');
+      lines.add('  - Notes: $description');
+    }
+  }
+  return '${lines.join('\n').trimRight()}\n';
+}
 
 /// Tools → Food Diary: a pre-filtered view over the one task list — like
 /// opening the wishlist — showing only tasks flagged [Task.isEatingHabit].
@@ -106,6 +147,42 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   Future<void> _save() async {
     await _repository.saveItems(_tasks);
     await FoodDiaryWidgetService.sync(_tasks);
+  }
+
+  String _timestampForFilename() {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  }
+
+  Future<void> _exportEntries() async {
+    final entries = _entries();
+    if (entries.isEmpty) return;
+    final downloads = await getDownloadsDirectory();
+    final directory = await getDirectoryPath(initialDirectory: downloads?.path);
+    if (!mounted) return;
+    if (directory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export canceled')),
+      );
+      return;
+    }
+    final separator = Platform.pathSeparator;
+    final path = '$directory${directory.endsWith(separator) ? '' : separator}'
+        'food_diary_${_timestampForFilename()}.md';
+    try {
+      await File(path).writeAsString(foodDiaryExportText(entries), flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exported to $path')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to export food diary')),
+      );
+    }
   }
 
   /// Entries sorted newest-eaten-first, undated ones (shouldn't normally
@@ -248,7 +325,17 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     final entries = _entries();
     final days = _days(entries);
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Food Diary'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Food Diary',
+        actions: [
+          IconButton(
+            tooltip: 'Export food diary',
+            onPressed: entries.isEmpty ? null : _exportEntries,
+            icon: const Icon(Icons.download_outlined),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         tooltip: 'Add food diary entry',
         onPressed: () => _editEntry(),
@@ -530,6 +617,21 @@ class _FoodDiaryTile extends StatelessWidget {
       .where((label) => label.isNotEmpty)
       .toList();
 
+  /// Gives the diary a quick visual rhythm without making the card content
+  /// harder to read. Morning runs until noon, the daytime/noon tint continues
+  /// until 18:00, and the Bordeaux tint marks the evening.
+  Color _cardColor(BuildContext context, DateTime? time) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hour = time?.hour ?? 12;
+    if (hour < 12) {
+      return isDark ? const Color(0xFF17324A) : const Color(0xFFE3F2FD);
+    }
+    if (hour < 18) {
+      return isDark ? const Color(0xFF403817) : const Color(0xFFFFF8D6);
+    }
+    return isDark ? const Color(0xFF451E2D) : const Color(0xFFF3E1E6);
+  }
+
   @override
   Widget build(BuildContext context) {
     final labels = _labels();
@@ -550,6 +652,7 @@ class _FoodDiaryTile extends StatelessWidget {
       ),
       onDismissed: (_) => onDelete(),
       child: Card(
+        color: _cardColor(context, time),
         child: ListTile(
           title: Text(entry.title),
           trailing: IconButton(

@@ -1769,7 +1769,9 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   `targetCellHeight` = 1, `resizeMode="none"`) and drawing nothing but a "+" that fills the
   cell. Tapping it is the same foreground `besttodofood://add` launch intent as the full
   widget's "+" — there is no room for status text at this size, so it carries no other tap
-  target, pushes no data, and (`updatePeriodMillis="0"`) never redraws itself once placed.
+  target. Since 0.2.12 it reads the full widget's persisted checkpoint flags, redraws
+  every 30 minutes, and turns red when any started meal window has no entry; tapping it
+  remains an immediate shortcut to the add-entry dialog.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
 `Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
@@ -2295,6 +2297,16 @@ export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swip
 (`ItemRepository.loadDeletedItems`/`saveDeletedItems`) with an undo snackbar, exactly
 like a wishlist delete — never the plain task list, never the real bin directly.
 
+Entry cards are visually keyed to their logged time (0.2.12): before 12:00 uses a
+light-blue hue, 12:00–17:59 a warm yellow hue, and 18:00 onward a pale
+Bordeaux-inspired hue. Dark theme uses darker equivalents of the same three hues;
+an entry without a time receives the daytime/noon treatment.
+
+The app-bar export action (0.2.12) writes a human-readable Markdown file: newest day
+first, entries chronological within each day, with time/title as the prominent line and
+tags/notes indented below. The small 1x1 Food Diary “+” widget uses the same missed-meal
+red background as the full widget and is refreshed whenever Flutter syncs diary data.
+
 Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 `featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
 drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
@@ -2539,7 +2551,10 @@ in App Logs → Todoist — onboarding has already finished by then.
   (`!kIsWeb && Platform.isAndroid` — which is false under `flutter test`'s
   host runner, so the suite never starts a real timer) and stopped in
   `dispose`; the setting itself is only read at launch, so flipping it in
-  Settings takes effect on the next start. A release with no APK asset is
+  Settings takes effect on the next start. Since 0.2.13, loading a legacy
+  settings file with no `autoUpdateCheckEnabled` key explicitly restores the
+  default `true`; a stored `false` remains a respected user opt-out. A release
+  with no APK asset is
   skipped (nothing to auto-install); once a version is found it is reported at
   most once — a later tick finding the same build is a no-op
   (`_pendingUpdateVersion` in `main.dart`), onboarding screens (intro/mode

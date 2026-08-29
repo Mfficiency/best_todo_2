@@ -71,4 +71,21 @@ void main() {
 
     expect(result, [false, false, false]);
   });
+
+  test('a started unlogged checkpoint marks the widget as missed', () {
+    expect(
+      FoodDiaryWidgetService.hasMissedCheckpoint(
+        [true, false, false],
+        DateTime(2026, 8, 25, 13),
+      ),
+      isTrue,
+    );
+    expect(
+      FoodDiaryWidgetService.hasMissedCheckpoint(
+        [true, true, false],
+        DateTime(2026, 8, 25, 19),
+      ),
+      isFalse,
+    );
+  });
 }

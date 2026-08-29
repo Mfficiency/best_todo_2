@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13] - 2026-08-29
+- “Automatically check for updates” is now reliably enabled by default, including when loading an older settings file that does not contain the setting yet; an explicit opt-out remains respected.
+
+## [0.2.12] - 2026-08-29
+- Food Diary entry cards now use light blue, warm yellow and Bordeaux-inspired hues for morning, noon/daytime and evening meals, with matching darker tints in dark mode.
+- Food Diary can export a readable Markdown log grouped by day, and its small home-screen “+” widget now turns red when a meal checkpoint is missed.
+
 ## [0.2.11] - 2026-08-28
 - Usage & Wellbeing: the "When you use your phone" chart now shows minute/hour numbers on its vertical axis instead of a blank axis
 - Fixed the "Allow" button for Android Usage Access doing nothing on some devices (it now falls back to alternate settings screens and tells you where to grant it manually if none of them can be opened)

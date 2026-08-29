@@ -18,6 +18,7 @@ class FoodDiaryWidgetService {
   static const String appGroupId = 'group.homeScreenApp';
   static const String iOSWidgetName = 'FoodDiaryWidgetProvider';
   static const String androidWidgetName = 'FoodDiaryWidgetProvider';
+  static const String androidButtonWidgetName = 'FoodDiaryButtonWidgetProvider';
 
   /// URI scheme of the clicks coming back from the widget.
   static const String scheme = 'besttodofood';
@@ -61,6 +62,16 @@ class FoodDiaryWidgetService {
     return hasEntry;
   }
 
+  /// Whether at least one checkpoint that has started is still unlogged.
+  /// Shared by in-app previews; Android providers mirror this against their
+  /// live clock when they redraw without Flutter running.
+  static bool hasMissedCheckpoint(List<bool> hasEntry, DateTime now) {
+    for (var i = 0; i < checkpointHours.length; i++) {
+      if (now.hour >= checkpointHours[i] && !hasEntry[i]) return true;
+    }
+    return false;
+  }
+
   /// Recomputes today's per-window "logged something" flags from [tasks]
   /// and pushes them to the widget. Failures are swallowed like the other
   /// widget services: platforms without the plugin must keep working.
@@ -77,6 +88,7 @@ class FoodDiaryWidgetService {
       }
       await HomeWidget.updateWidget(
           iOSName: iOSWidgetName, androidName: androidWidgetName);
+      await HomeWidget.updateWidget(androidName: androidButtonWidgetName);
     } catch (_) {}
   }
 }
