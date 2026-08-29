@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:health/health.dart';
 
 /// A normalized Health Connect sample. Keeping the dashboard independent of
@@ -44,6 +45,7 @@ class FitnessActivityService {
   ];
 
   static final Health _health = Health();
+  static const MethodChannel _channel = MethodChannel('besttodo/health');
 
   /// Whether the Health Connect app is installed on this device. Must be
   /// checked before requesting authorization — calling that (or any other
@@ -58,10 +60,22 @@ class FitnessActivityService {
   /// Sends the user to the Play Store to install Health Connect.
   static Future<void> promptInstall() => _health.installHealthConnect();
 
+  /// Opens Android's Health Connect data-source screen. Samsung Health can be
+  /// selected there as a source, which is how Galaxy Watch measurements are
+  /// made available to other apps without giving this app Samsung credentials.
+  static Future<bool> openDataSources() async =>
+      await _channel.invokeMethod<bool>('openDataSources') ?? false;
+
   static Future<List<FitnessSample>?> read(DateTime from, DateTime to) async {
     await _health.configure();
     final granted = await _health.requestAuthorization(types);
     if (!granted) return null;
+    // Health Connect otherwise limits reads to the most recent 30 days. This
+    // separate system permission lets the week picker browse everything that
+    // Samsung Health (or another source) has synced to the phone.
+    if (from.isBefore(DateTime.now().subtract(const Duration(days: 30)))) {
+      await _health.requestHealthDataHistoryAuthorization();
+    }
     final points = await _health.getHealthDataFromTypes(
       types: types,
       startTime: from,

@@ -100,6 +100,14 @@ void main() {
     Config.weeklyHoursEndHour = 22;
   });
 
+  test('automatic update checks default on when the setting is absent', () {
+    Config.autoUpdateCheckEnabled = false;
+
+    Config.applyMap(<String, dynamic>{});
+
+    expect(Config.autoUpdateCheckEnabled, isTrue);
+  });
+
   test('deletedItemsRetentionDays is clamped on load', () {
     Config.applyMap({'deletedItemsRetentionDays': 0});
     expect(Config.deletedItemsRetentionDays, 1);

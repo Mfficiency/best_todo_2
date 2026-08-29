@@ -168,6 +168,15 @@ class MainActivity : FlutterFragmentActivity() {
         }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/health",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openDataSources" -> result.success(openHealthDataSources())
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/alarm_ring",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -306,6 +315,26 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
         }
+    }
+
+    private fun openHealthDataSources(): Boolean {
+        val attempts = listOf(
+            Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"),
+            Intent("android.health.connect.action.HEALTH_HOME_SETTINGS"),
+            packageManager.getLaunchIntentForPackage("com.google.android.apps.healthdata"),
+            packageManager.getLaunchIntentForPackage("com.sec.android.app.shealth"),
+        )
+        for (intent in attempts) {
+            if (intent == null) continue
+            try {
+                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (_: Exception) {
+                // Try the next action/package; availability differs by Android
+                // and One UI version.
+            }
+        }
+        return false
     }
 
     // ACTION_USAGE_ACCESS_SETTINGS with a package: data URI throws

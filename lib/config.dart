@@ -755,8 +755,10 @@ class Config {
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
     todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
-    autoUpdateCheckEnabled =
-        data['autoUpdateCheckEnabled'] ?? autoUpdateCheckEnabled;
+    // Settings files from before automatic checks existed have no key. Use
+    // the product default explicitly rather than whatever mutable value is
+    // currently in memory, while still respecting a saved opt-out.
+    autoUpdateCheckEnabled = data['autoUpdateCheckEnabled'] as bool? ?? true;
     deletedItemsRetentionDays =
         (data['deletedItemsRetentionDays'] as num?)?.round().clamp(1, 3650) ??
             deletedItemsRetentionDays;

@@ -20,6 +20,39 @@ class _FakePathProvider extends PathProviderPlatform {
 void main() {
   late Directory tempDir;
 
+  test('formats exports as a readable list grouped and ordered by day', () {
+    final previous24HourFormat = Config.use24HourFormat;
+    final previousDateFormat = Config.dateFormat;
+    addTearDown(() {
+      Config.use24HourFormat = previous24HourFormat;
+      Config.dateFormat = previousDateFormat;
+    });
+    Config.use24HourFormat = true;
+    Config.dateFormat = 'yyyy-MM-dd';
+    final text = foodDiaryExportText([
+      Task(
+        title: 'Dinner',
+        description: 'With friends',
+        label: 'restaurant',
+        dueDate: DateTime(2026, 8, 29, 19, 30),
+      ),
+      Task(title: 'Breakfast', dueDate: DateTime(2026, 8, 29, 8)),
+      Task(title: 'Older lunch', dueDate: DateTime(2026, 8, 28, 12, 15)),
+    ]);
+
+    expect(text, contains('# Food Diary\n\n## 2026-08-29'));
+    expect(
+      text.indexOf('08:00 — Breakfast'),
+      lessThan(text.indexOf('19:30 — Dinner')),
+    );
+    expect(
+      text.indexOf('## 2026-08-29'),
+      lessThan(text.indexOf('## 2026-08-28')),
+    );
+    expect(text, contains('  - Tags: restaurant'));
+    expect(text, contains('  - Notes: With friends'));
+  });
+
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
@@ -135,6 +168,44 @@ void main() {
 
     expect(find.text('Yesterday breakfast'), findsOneWidget);
     expect(find.text('Yesterday dinner'), findsOneWidget);
+  });
+
+  testWidgets('tints entry cards for morning, noon and evening',
+      (tester) async {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Morning meal',
+          dueDate: day.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Noon meal',
+          dueDate: day.add(const Duration(hours: 13)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Evening meal',
+          dueDate: day.add(const Duration(hours: 19)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Morning meal',
+    );
+
+    Card cardFor(String title) => tester.widget<Card>(
+          find.ancestor(of: find.text(title), matching: find.byType(Card)),
+        );
+
+    expect(cardFor('Morning meal').color, const Color(0xFFE3F2FD));
+    expect(cardFor('Noon meal').color, const Color(0xFFFFF8D6));
+    expect(cardFor('Evening meal').color, const Color(0xFFF3E1E6));
   });
 
   testWidgets('add dialog creates a tagged entry with a title and time',

@@ -354,20 +354,29 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
   /// nothing but the "+" button, shown here at roughly its real on-screen
   /// size (one home-screen grid cell) rather than stretched to [_widgetFrame]'s
   /// width like the other mocks.
-  Widget _buildFoodDiaryButtonWidget() => Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        alignment: Alignment.center,
-        child: const Text(
-          '+',
-          style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 28),
-        ),
-      );
+  Widget _buildFoodDiaryButtonWidget() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final hasEntry = FoodDiaryWidgetService.computeHasEntry(
+      _foodDiaryPreviewEntries(),
+      today,
+    );
+    final missed = FoodDiaryWidgetService.hasMissedCheckpoint(hasEntry, now);
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: missed ? const Color(0xFFB71C1C) : Colors.black,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: Alignment.center,
+      child: const Text(
+        '+',
+        style: TextStyle(
+            color: Colors.white, fontWeight: FontWeight.bold, fontSize: 28),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

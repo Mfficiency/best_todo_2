@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fixed 1x1 (40dp is one home-screen grid cell); no resize handles and no
-     periodic redraw since the button never shows dynamic state. -->
+<!-- Fixed 1x1 (40dp is one home-screen grid cell); no resize handles. Android
+     periodically redraws it so a newly missed meal can turn it red even when
+     Flutter has not been opened. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="40dp"
     android:minHeight="40dp"
     android:targetCellWidth="1"
     android:targetCellHeight="1"
-    android:updatePeriodMillis="0"
+    android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/food_diary_button_widget_layout"
     android:resizeMode="none"
     android:widgetCategory="home_screen">
