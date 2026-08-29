@@ -2,6 +2,9 @@
 
 ## [0.2.14] - 2026-08-29
 - Fitness Activity can now request full Health Connect history, jump directly to any past week, and open Health Connect's data-source settings so Samsung Health and Galaxy Watch records can be connected; Settings also has a direct Health data & smart watch shortcut.
+- Local build: 2026-08-29 14:32
+- Build duration (apk): 10m 36s
+- Build duration (windows): 5m 41s
 
 ## [0.2.13] - 2026-08-29
 - “Automatically check for updates” is now reliably enabled by default, including when loading an older settings file that does not contain the setting yet; an explicit opt-out remains respected.
