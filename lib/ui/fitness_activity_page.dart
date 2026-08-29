@@ -91,6 +91,34 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
     await _load();
   }
 
+  Future<void> _pickWeek() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _weekStart,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      helpText: 'Choose any week in your health history',
+    );
+    if (picked == null) return;
+    setState(() => _weekStart = _monday(picked));
+    await _load();
+  }
+
+  Future<void> _openSources() async {
+    try {
+      final opened = await FitnessActivityService.openDataSources();
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Health data settings are not available on this device.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open health data settings.')));
+      }
+    }
+  }
+
   String _range(DateTime start) {
     final end = start.add(const Duration(days: 6));
     return '${start.day}/${start.month} – ${end.day}/${end.month}/${end.year}';
@@ -136,9 +164,20 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
         child: ListView(padding: const EdgeInsets.all(12), children: [
           Row(children: [
             IconButton(tooltip: 'Previous week', onPressed: () { _weekStart = _weekStart.subtract(const Duration(days: 7)); _load(); }, icon: const Icon(Icons.chevron_left)),
-            Expanded(child: Column(children: [const Text('WEEK', style: TextStyle(fontSize: 11, letterSpacing: 1.5)), Text(_range(_weekStart), style: Theme.of(context).textTheme.titleMedium)])),
+            Expanded(child: InkWell(
+              onTap: _pickWeek,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Column(children: [const Text('WEEK', style: TextStyle(fontSize: 11, letterSpacing: 1.5)), Text(_range(_weekStart), style: Theme.of(context).textTheme.titleMedium), const Text('Tap to browse all history', style: TextStyle(fontSize: 11))])),
+            )),
             IconButton(tooltip: 'Next week', onPressed: _weekStart.isBefore(_monday(DateTime.now())) ? () { _weekStart = _weekStart.add(const Duration(days: 7)); _load(); } : null, icon: const Icon(Icons.chevron_right)),
           ]),
+          Card(child: ListTile(
+            leading: const Icon(Icons.watch_outlined),
+            title: const Text('Smart watch & health data sources'),
+            subtitle: const Text('Open Health Connect to allow Samsung Health to share Galaxy Watch data and manage connected sources.'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: _openSources,
+          )),
           if (_notInstalled) Card(color: Theme.of(context).colorScheme.primaryContainer, child: ListTile(
             leading: const Icon(Icons.health_and_safety), title: const Text('Install Health Connect'),
             subtitle: const Text('Steps, distance, calories, workouts, heart rate, sleep and weight come from the Health Connect app, which isn\'t installed on this device yet.'),

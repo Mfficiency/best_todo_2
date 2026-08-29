@@ -1,5 +1,7 @@
 # Changelog
 
+- Fitness Activity can now request full Health Connect history, jump directly to any past week, and open Health Connect's data-source settings so Samsung Health and Galaxy Watch records can be connected; Settings also has a direct Health data & smart watch shortcut.
+
 ## [0.2.11] - 2026-08-28
 - Usage & Wellbeing: the "When you use your phone" chart now shows minute/hour numbers on its vertical axis instead of a blank axis
 - Fixed the "Allow" button for Android Usage Access doing nothing on some devices (it now falls back to alternate settings screens and tells you where to grant it manually if none of them can be opened)

@@ -24,6 +24,7 @@ import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
 import 'auto_tag_rules_page.dart';
 import 'dice_timer_settings.dart';
+import 'fitness_activity_page.dart';
 import 'sms_report_log_page.dart';
 import 'streak_goal_dialog.dart';
 import 'subpage_app_bar.dart';
@@ -141,6 +142,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'Simple mode', 1, 'full mode basic minimal features hide tools'),
     _SettingsSearchEntry(
         'Show the mode picker again', 1, 'simple full first start choose'),
+    _SettingsSearchEntry('Health data & smart watch', 1,
+        'samsung health galaxy watch health connect steps history cloud'),
     _SettingsSearchEntry('Add new tasks at top', 4, 'bottom order insert'),
     _SettingsSearchEntry('Desktop keyboard shortcuts', 4,
         'hotkeys ctrl enter arrows keyboard windows'),
@@ -1033,6 +1036,16 @@ class _SettingsPageState extends State<SettingsPage> {
               const Text('Choose simple or full mode on the welcome screen'),
           trailing: const Icon(Icons.restart_alt),
           onTap: () => MyApp.of(context)?.restartModePicker(),
+        ),
+        ListTile(
+          leading: const Icon(Icons.watch_outlined),
+          title: const Text('Health data & smart watch'),
+          subtitle: const Text(
+              'View all Health Connect history or connect Samsung Health and your watch'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const FitnessActivityPage(),
+          )),
         ),
         const Divider(height: 1),
         if (_simpleMode)
