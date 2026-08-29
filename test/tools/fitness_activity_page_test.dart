@@ -28,13 +28,23 @@ void main() {
     expect(find.byType(ErrorWidget), findsNothing);
 
     // Scroll to reveal the chart and insights, built further down the
-    // ListView, and confirm they render without throwing too.
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    // ListView (a sliver only realizes children near the viewport, so a
+    // fixed single drag is brittle whenever content above the chart grows —
+    // drag repeatedly instead of guessing a large-enough one-shot offset).
+    await tester.dragUntilVisible(
+      find.byType(BarChart),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(BarChart), findsOneWidget);
 
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.dragUntilVisible(
+      find.text('What the data says'),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('What the data says'), findsOneWidget);
