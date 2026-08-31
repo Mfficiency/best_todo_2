@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.16] - 2026-08-31
+- Fitness Activity is redesigned in a Samsung Health-inspired style: a rounded gradient hero card bundles the week picker, total steps and the bar chart, and every metric tile/record now has a colored circular icon badge.
+- Personal bests are now also detected automatically from up to a year of Health Connect history (most steps/distance/active energy in a day, longest workout, longest sleep, highest heart rate, lowest resting heart rate), shown in a new "Auto-detected records" section above your manually logged ones.
+
 ## [0.2.15] - 2026-08-31
 - Food Diary day headers now show the day of the week alongside the date (e.g. "Mon, 31.08.2026").
 - Fitness Activity now has a manual "Weight & personal bests" section: log your weight and record personal bests (name, value, unit, date, note), with edit/delete and undo, kept separate from the read-only Health Connect data.

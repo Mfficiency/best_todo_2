@@ -30,6 +30,22 @@ class FitnessDay {
       : heartRates.reduce((a, b) => a + b) / heartRates.length;
 }
 
+/// Which health metric an [AutoPersonalBest] was computed from — lets the UI
+/// pick an icon/color without string-matching a label.
+enum AutoBestMetric { steps, distance, calories, workout, sleep, heartRate, restingHeartRate }
+
+/// A personal-best record derived automatically from Health Connect history,
+/// as opposed to [PersonalBest] which the user types in by hand.
+class AutoPersonalBest {
+  final AutoBestMetric metric;
+  final String label;
+  final double value;
+  final String unit;
+  final DateTime date;
+
+  const AutoPersonalBest(this.metric, this.label, this.value, this.unit, this.date);
+}
+
 class FitnessActivityService {
   FitnessActivityService._();
 
@@ -133,5 +149,100 @@ class FitnessActivityService {
       }
     }
     return days;
+  }
+
+  /// Scans every sample (typically a wide window, e.g. the last year) and
+  /// picks the single best day/session per metric — "most steps in a day",
+  /// "longest workout", etc. — the way Samsung Health surfaces personal
+  /// records automatically instead of requiring them to be typed in.
+  /// Per-day totals (steps/distance/calories) are bucketed by calendar day
+  /// first since Health Connect reports those in many small chunks; workouts,
+  /// sleep and heart-rate readings are compared sample-by-sample since a
+  /// single session is the meaningful unit there. Returns only the metrics
+  /// that had at least one sample.
+  static List<AutoPersonalBest> computeAutoBests(List<FitnessSample> samples) {
+    DateTime dayOf(DateTime t) => DateTime(t.year, t.month, t.day);
+
+    final stepsByDay = <DateTime, double>{};
+    final distanceByDay = <DateTime, double>{};
+    final caloriesByDay = <DateTime, double>{};
+    AutoPersonalBest? bestWorkout;
+    AutoPersonalBest? bestSleep;
+    AutoPersonalBest? maxHeartRate;
+    AutoPersonalBest? minRestingHeartRate;
+
+    for (final sample in samples) {
+      final day = dayOf(sample.from);
+      switch (sample.type) {
+        case HealthDataType.STEPS:
+          stepsByDay[day] = (stepsByDay[day] ?? 0) + sample.value;
+          break;
+        case HealthDataType.DISTANCE_DELTA:
+          distanceByDay[day] = (distanceByDay[day] ?? 0) + sample.value / 1000;
+          break;
+        case HealthDataType.ACTIVE_ENERGY_BURNED:
+          caloriesByDay[day] = (caloriesByDay[day] ?? 0) + sample.value;
+          break;
+        case HealthDataType.WORKOUT:
+          final minutes = sample.to.difference(sample.from).inMinutes.toDouble();
+          if (bestWorkout == null || minutes > bestWorkout.value) {
+            bestWorkout = AutoPersonalBest(
+                AutoBestMetric.workout, 'Longest workout', minutes, 'min', day);
+          }
+          break;
+        case HealthDataType.SLEEP_ASLEEP:
+          final hours = sample.to.difference(sample.from).inMinutes / 60;
+          if (bestSleep == null || hours > bestSleep.value) {
+            bestSleep = AutoPersonalBest(
+                AutoBestMetric.sleep, 'Longest sleep', hours, 'h', day);
+          }
+          break;
+        case HealthDataType.HEART_RATE:
+          if (maxHeartRate == null || sample.value > maxHeartRate.value) {
+            maxHeartRate = AutoPersonalBest(AutoBestMetric.heartRate,
+                'Highest heart rate', sample.value, 'bpm', day);
+          }
+          break;
+        case HealthDataType.RESTING_HEART_RATE:
+          if (minRestingHeartRate == null || sample.value < minRestingHeartRate.value) {
+            minRestingHeartRate = AutoPersonalBest(AutoBestMetric.restingHeartRate,
+                'Lowest resting heart rate', sample.value, 'bpm', day);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    AutoPersonalBest? bestSteps;
+    stepsByDay.forEach((day, value) {
+      if (bestSteps == null || value > bestSteps!.value) {
+        bestSteps = AutoPersonalBest(AutoBestMetric.steps, 'Most steps in a day', value, 'steps', day);
+      }
+    });
+    AutoPersonalBest? bestDistance;
+    distanceByDay.forEach((day, value) {
+      if (bestDistance == null || value > bestDistance!.value) {
+        bestDistance = AutoPersonalBest(
+            AutoBestMetric.distance, 'Longest distance in a day', value, 'km', day);
+      }
+    });
+    AutoPersonalBest? bestCalories;
+    caloriesByDay.forEach((day, value) {
+      if (bestCalories == null || value > bestCalories!.value) {
+        bestCalories = AutoPersonalBest(
+            AutoBestMetric.calories, 'Most active energy in a day', value, 'kcal', day);
+      }
+    });
+
+    return [
+      bestSteps,
+      bestDistance,
+      bestCalories,
+      bestWorkout,
+      bestSleep,
+      maxHeartRate,
+      minRestingHeartRate,
+    ].whereType<AutoPersonalBest>().toList();
   }
 }
