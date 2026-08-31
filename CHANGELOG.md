@@ -3,6 +3,9 @@
 ## [0.2.15] - 2026-08-31
 - Food Diary day headers now show the day of the week alongside the date (e.g. "Mon, 31.08.2026").
 - Fitness Activity now has a manual "Weight & personal bests" section: log your weight and record personal bests (name, value, unit, date, note), with edit/delete and undo, kept separate from the read-only Health Connect data.
+- Local build: 2026-08-31 19:16
+- Build duration (apk): 11m 35s
+- Build duration (windows): 4m 58s
 
 ## [0.2.14] - 2026-08-29
 - Fitness Activity can now request full Health Connect history, jump directly to any past week, and open Health Connect's data-source settings so Samsung Health and Galaxy Watch records can be connected; Settings also has a direct Health data & smart watch shortcut.
