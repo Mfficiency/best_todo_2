@@ -1,8 +1,16 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../models/health_metrics.dart';
 import '../services/fitness_activity_service.dart';
+import '../services/health_tracking_service.dart';
+import '../utils/date_time_format.dart';
 import 'subpage_app_bar.dart';
+
+/// Trims a whole-number value down to no decimals, e.g. 72.0 -> "72" but
+/// 71.5 -> "71.5". Shared by the weight and personal-best displays/dialogs.
+String _formatNumber(double value) =>
+    value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toString();
 
 class FitnessActivityPage extends StatefulWidget {
   const FitnessActivityPage({super.key});
@@ -25,6 +33,8 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
     WidgetsBinding.instance.addObserver(this);
     _weekStart = _monday(DateTime.now());
     _load();
+    HealthTrackingService.instance.loadWeightEntries();
+    HealthTrackingService.instance.loadPersonalBests();
   }
 
   @override
@@ -134,6 +144,182 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
     return '${percent >= 0 ? '+' : ''}$percent% vs previous week${percent == 0 ? '' : improving ? ' · improving' : ' · down'}';
   }
 
+  Future<void> _editWeightEntry([WeightEntry? entry]) async {
+    final result = await showDialog<_WeightEntryResult>(
+      context: context,
+      builder: (context) => _WeightEntryDialog(entry: entry),
+    );
+    if (result == null) return;
+    final saved = entry == null
+        ? WeightEntry(
+            date: result.date, weightKg: result.weightKg, note: result.note)
+        : entry.copyWith(
+            date: result.date, weightKg: result.weightKg, note: result.note);
+    await HealthTrackingService.instance.saveWeightEntry(saved);
+  }
+
+  void _deleteWeightEntry(WeightEntry entry) {
+    HealthTrackingService.instance.deleteWeightEntry(entry.id);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: const Text('Weight entry deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => HealthTrackingService.instance.saveWeightEntry(entry),
+        ),
+      ));
+  }
+
+  Future<void> _editPersonalBest([PersonalBest? best]) async {
+    final result = await showDialog<_PersonalBestResult>(
+      context: context,
+      builder: (context) => _PersonalBestDialog(best: best),
+    );
+    if (result == null) return;
+    final saved = best == null
+        ? PersonalBest(
+            name: result.name,
+            value: result.value,
+            unit: result.unit,
+            date: result.date,
+            note: result.note)
+        : best.copyWith(
+            name: result.name,
+            value: result.value,
+            unit: result.unit,
+            date: result.date,
+            note: result.note);
+    await HealthTrackingService.instance.savePersonalBest(saved);
+  }
+
+  void _deletePersonalBest(PersonalBest best) {
+    HealthTrackingService.instance.deletePersonalBest(best.id);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: const Text('Personal best deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => HealthTrackingService.instance.savePersonalBest(best),
+        ),
+      ));
+  }
+
+  Widget _buildWeightSection() {
+    return ValueListenableBuilder<List<WeightEntry>>(
+      valueListenable: HealthTrackingService.instance.weightEntries,
+      builder: (context, entries, _) {
+        final latest = entries.isEmpty ? null : entries.first;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                      child: Text('Weight',
+                          style: Theme.of(context).textTheme.titleMedium)),
+                  IconButton(
+                    tooltip: 'Log weight',
+                    onPressed: () => _editWeightEntry(),
+                    icon: const Icon(Icons.add),
+                  ),
+                ]),
+                if (latest == null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: Text('No weight logged yet. Add your first entry.'),
+                  )
+                else
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${_formatNumber(latest.weightKg)} kg',
+                        style: Theme.of(context).textTheme.headlineSmall),
+                    subtitle: Text('Logged ${formatTimerDate(latest.date)}'
+                        '${latest.note.isNotEmpty ? ' · ${latest.note}' : ''}'),
+                    onTap: () => _editWeightEntry(latest),
+                    trailing: IconButton(
+                      tooltip: 'Delete',
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      onPressed: () => _deleteWeightEntry(latest),
+                    ),
+                  ),
+                if (entries.length > 1) ...[
+                  const Divider(height: 1),
+                  for (final entry in entries.skip(1).take(6))
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${_formatNumber(entry.weightKg)} kg'),
+                      subtitle: Text('${formatTimerDate(entry.date)}'
+                          '${entry.note.isNotEmpty ? ' · ${entry.note}' : ''}'),
+                      onTap: () => _editWeightEntry(entry),
+                      trailing: IconButton(
+                        tooltip: 'Delete',
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        onPressed: () => _deleteWeightEntry(entry),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPersonalBestsSection() {
+    return ValueListenableBuilder<List<PersonalBest>>(
+      valueListenable: HealthTrackingService.instance.personalBests,
+      builder: (context, bests, _) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                      child: Text('Personal bests',
+                          style: Theme.of(context).textTheme.titleMedium)),
+                  IconButton(
+                    tooltip: 'Add personal best',
+                    onPressed: () => _editPersonalBest(),
+                    icon: const Icon(Icons.add),
+                  ),
+                ]),
+                if (bests.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: Text('No personal bests recorded yet.'),
+                  )
+                else
+                  for (final best in bests)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.emoji_events_outlined),
+                      title: Text(best.name),
+                      subtitle: Text(
+                          '${_formatNumber(best.value)} ${best.unit} · ${formatTimerDate(best.date)}'
+                          '${best.note.isNotEmpty ? ' · ${best.note}' : ''}'),
+                      onTap: () => _editPersonalBest(best),
+                      trailing: IconButton(
+                        tooltip: 'Delete',
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        onPressed: () => _deletePersonalBest(best),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _metric(String title, String value, String comparison, IconData icon) =>
       Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(
         crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -217,9 +403,239 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
               subtitle: const Text('Measurements are displayed, not medically interpreted.'),
             )),
           ],
+          const SizedBox(height: 16),
+          Text('Your weight & personal bests', style: Theme.of(context).textTheme.titleLarge),
+          const Text('Logged manually — separate from the Health Connect data above.'),
+          const SizedBox(height: 8),
+          _buildWeightSection(),
+          const SizedBox(height: 12),
+          _buildPersonalBestsSection(),
           const SizedBox(height: 40),
         ]),
       ),
+    );
+  }
+}
+
+class _WeightEntryResult {
+  final DateTime date;
+  final double weightKg;
+  final String note;
+
+  const _WeightEntryResult(this.date, this.weightKg, this.note);
+}
+
+/// Add/edit dialog owning its text controllers, so the dialog's exit
+/// animation never touches a disposed one (see food_diary's rule).
+class _WeightEntryDialog extends StatefulWidget {
+  final WeightEntry? entry;
+
+  const _WeightEntryDialog({this.entry});
+
+  @override
+  State<_WeightEntryDialog> createState() => _WeightEntryDialogState();
+}
+
+class _WeightEntryDialogState extends State<_WeightEntryDialog> {
+  late final TextEditingController _weightController;
+  late final TextEditingController _noteController;
+  late DateTime _date;
+
+  @override
+  void initState() {
+    super.initState();
+    _weightController = TextEditingController(
+        text: widget.entry == null ? '' : _formatNumber(widget.entry!.weightKg));
+    _noteController = TextEditingController(text: widget.entry?.note ?? '');
+    _date = widget.entry?.date ?? DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    _weightController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final date = await pickDateInstantly(context, _date);
+    if (date == null || !mounted) return;
+    setState(() => _date =
+        DateTime(date.year, date.month, date.day, _date.hour, _date.minute));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.entry == null ? 'Log weight' : 'Edit weight'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _weightController,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Weight (kg)'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text(formatTimerDate(_date)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _noteController,
+              decoration: const InputDecoration(labelText: 'Note (optional)'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final weight = double.tryParse(
+                _weightController.text.trim().replaceAll(',', '.'));
+            if (weight == null || weight <= 0) return;
+            Navigator.of(context).pop(_WeightEntryResult(
+                _date, weight, _noteController.text.trim()));
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PersonalBestResult {
+  final String name;
+  final double value;
+  final String unit;
+  final DateTime date;
+  final String note;
+
+  const _PersonalBestResult(
+      this.name, this.value, this.unit, this.date, this.note);
+}
+
+/// Add/edit dialog owning its text controllers, so the dialog's exit
+/// animation never touches a disposed one (see food_diary's rule).
+class _PersonalBestDialog extends StatefulWidget {
+  final PersonalBest? best;
+
+  const _PersonalBestDialog({this.best});
+
+  @override
+  State<_PersonalBestDialog> createState() => _PersonalBestDialogState();
+}
+
+class _PersonalBestDialogState extends State<_PersonalBestDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _valueController;
+  late final TextEditingController _unitController;
+  late final TextEditingController _noteController;
+  late DateTime _date;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.best?.name ?? '');
+    _valueController = TextEditingController(
+        text: widget.best == null ? '' : _formatNumber(widget.best!.value));
+    _unitController = TextEditingController(text: widget.best?.unit ?? '');
+    _noteController = TextEditingController(text: widget.best?.note ?? '');
+    _date = widget.best?.date ?? DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _valueController.dispose();
+    _unitController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final date = await pickDateInstantly(context, _date);
+    if (date == null || !mounted) return;
+    setState(() => _date =
+        DateTime(date.year, date.month, date.day, _date.hour, _date.minute));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.best == null ? 'Add personal best' : 'Edit personal best'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                  labelText: 'Name (e.g. Bench press, 5K run)'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _valueController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Value'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _unitController,
+                    decoration:
+                        const InputDecoration(labelText: 'Unit (e.g. kg, min)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text(formatTimerDate(_date)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _noteController,
+              decoration: const InputDecoration(labelText: 'Note (optional)'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final name = _nameController.text.trim();
+            final value = double.tryParse(
+                _valueController.text.trim().replaceAll(',', '.'));
+            if (name.isEmpty || value == null) return;
+            Navigator.of(context).pop(_PersonalBestResult(name, value,
+                _unitController.text.trim(), _date, _noteController.text.trim()));
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

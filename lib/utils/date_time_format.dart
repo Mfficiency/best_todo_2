@@ -21,6 +21,19 @@ const List<String> _monthsShort = [
   'Dec',
 ];
 
+const List<String> _weekdaysShort = [
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
+];
+
+/// Short weekday abbreviation for [d], e.g. "Mon".
+String formatWeekdayShort(DateTime d) => _weekdaysShort[d.weekday - 1];
+
 /// Formats the time of [d] honoring [Config.use24HourFormat].
 String formatTimerTime(DateTime d) {
   final mm = d.minute.toString().padLeft(2, '0');

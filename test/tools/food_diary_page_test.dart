@@ -5,6 +5,7 @@ import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/food_diary_page.dart';
+import 'package:besttodo/utils/date_time_format.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -158,11 +159,15 @@ void main() {
       marker: 'Today lunch',
     );
 
-    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Today · ${formatWeekdayShort(now)}'), findsOneWidget);
     expect(find.text('2 entries'), findsOneWidget);
     expect(find.text('Yesterday breakfast'), findsNothing);
     expect(find.text('Yesterday dinner'), findsNothing);
 
+    expect(
+      find.text('${formatWeekdayShort(yesterday)}, ${formatTimerDate(yesterday)}'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('2 entries'));
     await tester.pumpAndSettle();
 

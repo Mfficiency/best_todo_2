@@ -394,8 +394,9 @@ class _FoodDiaryDaySection extends StatelessWidget {
 
   String _title(DateTime today) {
     if (day.day == null) return 'No date';
-    if (day.day == today) return 'Today';
-    return formatTimerDate(day.day!);
+    final weekday = formatWeekdayShort(day.day!);
+    if (day.day == today) return 'Today · $weekday';
+    return '$weekday, ${formatTimerDate(day.day!)}';
   }
 
   List<Widget> _tiles() => [

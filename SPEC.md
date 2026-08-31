@@ -2302,6 +2302,11 @@ light-blue hue, 12:00–17:59 a warm yellow hue, and 18:00 onward a pale
 Bordeaux-inspired hue. Dark theme uses darker equivalents of the same three hues;
 an entry without a time receives the daytime/noon treatment.
 
+Each day-grouping header shows the weekday alongside the date (0.2.15), via
+`formatWeekdayShort` (`lib/utils/date_time_format.dart`): "Today · Mon" for
+today, "$weekday, $date" (honoring `Config.dateFormat`) for every other day,
+"No date" unchanged for undated entries.
+
 The app-bar export action (0.2.12) writes a human-readable Markdown file: newest day
 first, entries chronological within each day, with time/title as the prominent line and
 tags/notes indented below. The small 1x1 Food Diary “+” widget uses the same missed-meal
@@ -2863,3 +2868,21 @@ requests Android's separate history permission for records older than 30 days.
 The dashboard and Settings shortcut open Health Connect's source settings so
 Samsung Health can share phone, restored cloud, and Galaxy Watch records.
 Health measurements are displayed without medical diagnosis.
+
+Below the Health Connect data, a "Your weight & personal bests" section
+(0.2.15) holds manually-entered records, kept separate from the read-only
+Health Connect data above. `HealthTrackingService`
+(`lib/services/health_tracking_service.dart`) persists two lists as
+`ValueNotifier`s, each to its own JSON file in the app documents
+directory — `WeightEntry` (`lib/models/health_metrics.dart`: id, date,
+weightKg, note) to `weight_log.json`, `PersonalBest` (id, name, value,
+unit, date, note — `unit` is free-form so it covers both weight PRs like
+"80 kg" and time PRs like "22.5 min") to `personal_bests.json`. Both lists
+are sorted newest-first; `save*` upserts by id, `delete*` removes by id.
+The Weight card shows the latest entry large with up to 6 older entries
+below a divider; the Personal Bests card lists every record. Each card's
+"+" opens an add/edit `AlertDialog` (its own `StatefulWidget` owning the
+text controllers, per the task_detail/food_diary rule) with a
+`pickDateInstantly` date field; tapping a row reopens it prefilled for
+editing. Deleting shows a snackbar with Undo that re-saves the same
+record (same id, so it lands back in the same slot once re-sorted).
