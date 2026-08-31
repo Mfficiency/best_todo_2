@@ -2856,33 +2856,61 @@ seven-calendar-day average. Historical weeks use their complete Monday–Sunday
 window; Android Usage Access remains opt-in and all calculations stay local.
 
 ### 10.5 Fitness Activity (Tools → Fitness Activity)
-Fitness Activity is a read-only Health Connect dashboard. After explicit consent
-it reads the selected and preceding Monday–Sunday windows for steps, distance,
-active calories, workouts, heart rate, resting heart rate, asleep time and
-weight. It shows totals, a true seven-day step average, sleep average over days
-with records, weekly changes, strongest day and actionable conclusions. The
-step chart labels steps and weekdays; arrows browse weeks and pull-to-refresh
-re-reads Health Connect. Missing permission/data is stated rather than treated
-as zero evidence. Tapping the week range can jump to any historical week and
-requests Android's separate history permission for records older than 30 days.
-The dashboard and Settings shortcut open Health Connect's source settings so
-Samsung Health can share phone, restored cloud, and Galaxy Watch records.
-Health measurements are displayed without medical diagnosis.
+Fitness Activity is a read-only Health Connect dashboard, styled after Samsung
+Health (0.2.16): the week picker, big step total and the bar chart are bundled
+into one rounded gradient "hero" card (`colorScheme.primaryContainer` →
+`secondaryContainer`), and every metric tile and personal-best row carries a
+colored circular icon badge (`_iconBadge`) instead of a plain leading icon.
+After explicit consent it reads the selected and preceding Monday–Sunday
+windows for steps, distance, active calories, workouts, heart rate, resting
+heart rate, asleep time and weight. It shows totals, a true seven-day step
+average, sleep average over days with records, weekly changes, strongest day
+and actionable conclusions. The step chart labels steps and weekdays; arrows
+browse weeks and pull-to-refresh re-reads Health Connect (and re-scans the
+auto personal-bests history, see below). Missing permission/data is stated
+rather than treated as zero evidence. Tapping the week range can jump to any
+historical week and requests Android's separate history permission for
+records older than 30 days. The dashboard and Settings shortcut open Health
+Connect's source settings so Samsung Health can share phone, restored cloud,
+and Galaxy Watch records. Health measurements are displayed without medical
+diagnosis.
 
-Below the Health Connect data, a "Your weight & personal bests" section
-(0.2.15) holds manually-entered records, kept separate from the read-only
-Health Connect data above. `HealthTrackingService`
-(`lib/services/health_tracking_service.dart`) persists two lists as
-`ValueNotifier`s, each to its own JSON file in the app documents
-directory — `WeightEntry` (`lib/models/health_metrics.dart`: id, date,
-weightKg, note) to `weight_log.json`, `PersonalBest` (id, name, value,
+Below the Health Connect data, a "Weight & personal bests" area holds three
+things: the Weight card, an "Auto-detected records" card, then a "Your
+personal bests" card of manually-entered records.
+
+Personal bests are calculated automatically (0.2.16) from Health Connect
+history: on page load (and on force-refresh via pull-to-refresh or the
+section's refresh icon) the page fetches roughly the last 365 days of samples
+and calls `FitnessActivityService.computeAutoBests`, a pure function that
+scans them for the single best day/session per metric — most steps in a day,
+longest distance in a day, most active energy in a day (bucketed by calendar
+day, since Health Connect reports those in many small chunks), longest single
+workout, longest sleep session, highest heart rate reading and lowest resting
+heart rate reading (compared sample-by-sample, since a session is the
+meaningful unit there) — returning one `AutoPersonalBest` (metric, label,
+value, unit, date) per metric that had at least one sample. The "Auto-detected
+records" card renders one row per result via `_autoBestTile`, each with an
+icon/color from the `AutoBestMetric` → `(IconData, Color)` `_autoBestStyle`
+map (steps=blue walk icon, distance=orange route, calories=deep-orange flame,
+workout=teal dumbbell, sleep=indigo moon, heart rate=pink heart, resting heart
+rate=purple outlined heart), and is hidden entirely once loaded if history had
+no samples for any metric; while the year of history is still loading it shows
+a "Scanning your history for personal bests…" placeholder instead.
+
+Manually-entered records stay exactly as before, kept separate from both the
+read-only Health Connect data and the auto-detected records.
+`HealthTrackingService` (`lib/services/health_tracking_service.dart`)
+persists two lists as `ValueNotifier`s, each to its own JSON file in the app
+documents directory — `WeightEntry` (`lib/models/health_metrics.dart`: id,
+date, weightKg, note) to `weight_log.json`, `PersonalBest` (id, name, value,
 unit, date, note — `unit` is free-form so it covers both weight PRs like
 "80 kg" and time PRs like "22.5 min") to `personal_bests.json`. Both lists
 are sorted newest-first; `save*` upserts by id, `delete*` removes by id.
 The Weight card shows the latest entry large with up to 6 older entries
-below a divider; the Personal Bests card lists every record. Each card's
-"+" opens an add/edit `AlertDialog` (its own `StatefulWidget` owning the
-text controllers, per the task_detail/food_diary rule) with a
-`pickDateInstantly` date field; tapping a row reopens it prefilled for
-editing. Deleting shows a snackbar with Undo that re-saves the same
-record (same id, so it lands back in the same slot once re-sorted).
+below a divider; the "Your personal bests" card lists every manually-entered
+record. Each card's "+" opens an add/edit `AlertDialog` (its own
+`StatefulWidget` owning the text controllers, per the task_detail/food_diary
+rule) with a `pickDateInstantly` date field; tapping a row reopens it
+prefilled for editing. Deleting shows a snackbar with Undo that re-saves the
+same record (same id, so it lands back in the same slot once re-sorted).

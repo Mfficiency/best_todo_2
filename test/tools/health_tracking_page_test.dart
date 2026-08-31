@@ -45,7 +45,7 @@ void main() {
     }
     await tester.pumpAndSettle();
     await tester.dragUntilVisible(
-      find.text('Your weight & personal bests'),
+      find.text('Weight & personal bests'),
       find.byType(ListView),
       const Offset(0, -300),
     );

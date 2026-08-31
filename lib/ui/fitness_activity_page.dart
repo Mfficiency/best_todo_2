@@ -27,12 +27,17 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
   bool _denied = false;
   bool _notInstalled = false;
 
+  List<AutoPersonalBest> _autoBests = [];
+  bool _autoBestsLoading = false;
+  bool _autoBestsLoaded = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _weekStart = _monday(DateTime.now());
     _load();
+    _loadAutoBests();
     HealthTrackingService.instance.loadWeightEntries();
     HealthTrackingService.instance.loadPersonalBests();
   }
@@ -91,6 +96,47 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not read Health Connect data: $e')));
     }
+  }
+
+  /// Fetches roughly a year of Health Connect history and derives personal
+  /// bests from it (see [FitnessActivityService.computeAutoBests]), so the
+  /// "Personal bests" section fills itself in instead of requiring manual
+  /// entry. Runs once per page lifetime unless [force]d, e.g. by pull-to-refresh.
+  Future<void> _loadAutoBests({bool force = false}) async {
+    if (_autoBestsLoaded && !force) return;
+    if (!mounted) return;
+    setState(() => _autoBestsLoading = true);
+    try {
+      final available = await FitnessActivityService.isAvailable();
+      if (!available) {
+        if (!mounted) return;
+        setState(() {
+          _autoBests = [];
+          _autoBestsLoading = false;
+          _autoBestsLoaded = true;
+        });
+        return;
+      }
+      final to = DateTime.now();
+      final from = to.subtract(const Duration(days: 365));
+      final samples = await FitnessActivityService.read(from, to);
+      if (!mounted) return;
+      setState(() {
+        _autoBests = FitnessActivityService.computeAutoBests(samples ?? const []);
+        _autoBestsLoading = false;
+        _autoBestsLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _autoBestsLoading = false;
+        _autoBestsLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([_load(), _loadAutoBests(force: true)]);
   }
 
   Future<void> _connect() async {
@@ -271,6 +317,83 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
     );
   }
 
+  static const Map<AutoBestMetric, (IconData, Color)> _autoBestStyle = {
+    AutoBestMetric.steps: (Icons.directions_walk, Colors.blue),
+    AutoBestMetric.distance: (Icons.route, Colors.orange),
+    AutoBestMetric.calories: (Icons.local_fire_department, Colors.deepOrange),
+    AutoBestMetric.workout: (Icons.fitness_center, Colors.teal),
+    AutoBestMetric.sleep: (Icons.bedtime, Colors.indigo),
+    AutoBestMetric.heartRate: (Icons.favorite, Colors.pink),
+    AutoBestMetric.restingHeartRate: (Icons.favorite_border, Colors.purple),
+  };
+
+  Widget _iconBadge(IconData icon, Color color, {double size = 40}) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.16), shape: BoxShape.circle),
+        child: Icon(icon, color: color, size: size * 0.5),
+      );
+
+  Widget _autoBestTile(AutoPersonalBest best) {
+    final (icon, color) = _autoBestStyle[best.metric]!;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: _iconBadge(icon, color),
+      title: Text(best.label),
+      subtitle: Text(formatTimerDate(best.date)),
+      trailing: Text(
+        '${_formatNumber(best.value)} ${best.unit}',
+        style: Theme.of(context)
+            .textTheme
+            .titleMedium
+            ?.copyWith(fontWeight: FontWeight.bold, color: color),
+      ),
+    );
+  }
+
+  Widget _buildAutoBestsSection() {
+    if (_autoBestsLoading && _autoBests.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(14),
+          child: Row(children: [
+            SizedBox(
+                width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+            SizedBox(width: 12),
+            Text('Scanning your history for personal bests…'),
+          ]),
+        ),
+      );
+    }
+    if (_autoBests.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(
+                  child: Text('Auto-detected records',
+                      style: Theme.of(context).textTheme.titleMedium)),
+              Tooltip(
+                message: 'Refresh from Health Connect history',
+                child: IconButton(
+                  onPressed: () => _loadAutoBests(force: true),
+                  icon: const Icon(Icons.refresh),
+                ),
+              ),
+            ]),
+            const Text('Calculated automatically from your last 12 months of Health Connect data.'),
+            const SizedBox(height: 4),
+            for (final best in _autoBests)
+              _autoBestTile(best),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPersonalBestsSection() {
     return ValueListenableBuilder<List<PersonalBest>>(
       valueListenable: HealthTrackingService.instance.personalBests,
@@ -283,7 +406,7 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
               children: [
                 Row(children: [
                   Expanded(
-                      child: Text('Personal bests',
+                      child: Text('Your personal bests',
                           style: Theme.of(context).textTheme.titleMedium)),
                   IconButton(
                     tooltip: 'Add personal best',
@@ -291,6 +414,7 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
                     icon: const Icon(Icons.add),
                   ),
                 ]),
+                const Text('Manually logged — e.g. a gym lift or race time.'),
                 if (bests.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 4),
@@ -300,7 +424,7 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
                   for (final best in bests)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.emoji_events_outlined),
+                      leading: _iconBadge(Icons.emoji_events, Colors.amber),
                       title: Text(best.name),
                       subtitle: Text(
                           '${_formatNumber(best.value)} ${best.unit} · ${formatTimerDate(best.date)}'
@@ -320,14 +444,23 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
     );
   }
 
-  Widget _metric(String title, String value, String comparison, IconData icon) =>
-      Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Icon(icon, size: 19), const SizedBox(width: 6), Expanded(child: Text(title))]),
-          const SizedBox(height: 7), Text(value, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-          Text(comparison, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      )));
+  Widget _metric(String title, String value, String comparison, IconData icon, Color color) =>
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Padding(padding: const EdgeInsets.all(14), child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _iconBadge(icon, color, size: 34),
+            const SizedBox(height: 8),
+            Text(value, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            Text(title, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(comparison, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        )),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -346,17 +479,68 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Fitness Activity'),
       body: days == null ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: _refresh,
         child: ListView(padding: const EdgeInsets.all(12), children: [
-          Row(children: [
-            IconButton(tooltip: 'Previous week', onPressed: () { _weekStart = _weekStart.subtract(const Duration(days: 7)); _load(); }, icon: const Icon(Icons.chevron_left)),
-            Expanded(child: InkWell(
-              onTap: _pickWeek,
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Column(children: [const Text('WEEK', style: TextStyle(fontSize: 11, letterSpacing: 1.5)), Text(_range(_weekStart), style: Theme.of(context).textTheme.titleMedium), const Text('Tap to browse all history', style: TextStyle(fontSize: 11))])),
-            )),
-            IconButton(tooltip: 'Next week', onPressed: _weekStart.isBefore(_monday(DateTime.now())) ? () { _weekStart = _weekStart.add(const Duration(days: 7)); _load(); } : null, icon: const Icon(Icons.chevron_right)),
-          ]),
+          // Samsung Health-style hero card: rounded, tinted, big total number
+          // with a round accent icon, the week picker, and the bar chart all
+          // bundled into one surface instead of separate flat rows.
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Theme.of(context).colorScheme.primaryContainer,
+                  Theme.of(context).colorScheme.secondaryContainer,
+                ],
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                IconButton(tooltip: 'Previous week', onPressed: () { _weekStart = _weekStart.subtract(const Duration(days: 7)); _load(); }, icon: const Icon(Icons.chevron_left)),
+                Expanded(child: InkWell(
+                  onTap: _pickWeek,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Column(children: [
+                    const Text('WEEK', style: TextStyle(fontSize: 11, letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+                    Text(_range(_weekStart), style: Theme.of(context).textTheme.titleSmall),
+                  ])),
+                )),
+                IconButton(tooltip: 'Next week', onPressed: _weekStart.isBefore(_monday(DateTime.now())) ? () { _weekStart = _weekStart.add(const Duration(days: 7)); _load(); } : null, icon: const Icon(Icons.chevron_right)),
+                _iconBadge(Icons.directions_run, Theme.of(context).colorScheme.primary, size: 44),
+              ]),
+              const SizedBox(height: 4),
+              Text(steps.round().toString(),
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text('steps this week', style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 6),
+              Text(
+                '${distance.toStringAsFixed(1)} km  ·  ${calories.round()} kcal  ·  ${workouts.round()} min active',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              SizedBox(height: 190, child: BarChart(BarChartData(
+                minY: 0, maxY: maxSteps, gridData: const FlGridData(show: true, drawVerticalLine: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 36, getTitlesWidget: (v, _) => Text(v == 0 ? '0' : '${(v/1000).round()}k', style: const TextStyle(fontSize: 10)))),
+                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(const ['M','T','W','T','F','S','S'][v.toInt().clamp(0,6)])))),
+                barGroups: List.generate(7, (i) => BarChartGroupData(x: i, barRods: [
+                  BarChartRodData(
+                    toY: days[i].steps.toDouble(),
+                    width: 18,
+                    borderRadius: BorderRadius.circular(6),
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ])),
+              ))),
+              const Text('steps · day of week', style: TextStyle(fontSize: 11)),
+              const SizedBox(height: 4),
+            ]),
+          ),
+          const SizedBox(height: 12),
           Card(child: ListTile(
             leading: const Icon(Icons.watch_outlined),
             title: const Text('Smart watch & health data sources'),
@@ -373,24 +557,15 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
             subtitle: const Text('Grant read-only Health Connect access to show steps, distance, calories, workouts, heart rate, sleep and weight. Data stays on your device.'),
             trailing: FilledButton(onPressed: _connect, child: const Text('Connect')),
           )),
-          GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 1.35, children: [
-            _metric('Steps', steps.round().toString(), _change(steps, oldSteps), Icons.directions_walk),
-            _metric('Daily average', _denied || _notInstalled ? '—' : '${(steps / 7).round()}', 'Across all 7 calendar days', Icons.calendar_today),
-            _metric('Distance', '${distance.toStringAsFixed(1)} km', 'Recorded walking + running distance', Icons.route),
-            _metric('Active energy', '${calories.round()} kcal', 'Movement energy, not total burn', Icons.local_fire_department),
-            _metric('Workouts', '${workouts.round()} min', _change(workouts, _sum(previous, (d) => d.workoutMinutes.toDouble())), Icons.fitness_center),
-            _metric('Sleep average', sleep == 0 ? '—' : '${sleep.toStringAsFixed(1)} h', _change(sleep, oldSleep), Icons.bedtime),
+          const SizedBox(height: 4),
+          GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 1.15, mainAxisSpacing: 8, crossAxisSpacing: 8, children: [
+            _metric('Steps', steps.round().toString(), _change(steps, oldSteps), Icons.directions_walk, Colors.blue),
+            _metric('Daily average', _denied || _notInstalled ? '—' : '${(steps / 7).round()}', 'Across all 7 calendar days', Icons.calendar_today, Colors.purple),
+            _metric('Distance', '${distance.toStringAsFixed(1)} km', 'Recorded walking + running distance', Icons.route, Colors.orange),
+            _metric('Active energy', '${calories.round()} kcal', 'Movement energy, not total burn', Icons.local_fire_department, Colors.deepOrange),
+            _metric('Workouts', '${workouts.round()} min', _change(workouts, _sum(previous, (d) => d.workoutMinutes.toDouble())), Icons.fitness_center, Colors.teal),
+            _metric('Sleep average', sleep == 0 ? '—' : '${sleep.toStringAsFixed(1)} h', _change(sleep, oldSleep), Icons.bedtime, Colors.indigo),
           ]),
-          const SizedBox(height: 12), Text('Steps by day', style: Theme.of(context).textTheme.titleLarge),
-          const Text('Vertical axis: steps · horizontal axis: day of week'),
-          SizedBox(height: 210, child: BarChart(BarChartData(
-            minY: 0, maxY: maxSteps, gridData: const FlGridData(show: true, drawVerticalLine: false),
-            borderData: FlBorderData(show: true, border: const Border(left: BorderSide(), bottom: BorderSide())),
-            titlesData: FlTitlesData(topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              leftTitles: AxisTitles(axisNameWidget: const Text('steps'), sideTitles: SideTitles(showTitles: true, reservedSize: 42, getTitlesWidget: (v, _) => Text(v == 0 ? '0' : '${(v/1000).round()}k', style: const TextStyle(fontSize: 10)))),
-              bottomTitles: AxisTitles(axisNameWidget: const Text('day'), sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(const ['M','T','W','T','F','S','S'][v.toInt().clamp(0,6)])))),
-            barGroups: List.generate(7, (i) => BarChartGroupData(x: i, barRods: [BarChartRodData(toY: days[i].steps.toDouble(), width: 18, borderRadius: BorderRadius.circular(3))])),
-          ))),
           const SizedBox(height: 16), Text('What the data says', style: Theme.of(context).textTheme.titleLarge),
           Card(child: Column(children: [
             ListTile(leading: Icon(steps >= oldSteps ? Icons.trending_up : Icons.trending_down), title: Text(_change(steps, oldSteps)), subtitle: Text(steps == 0 ? 'No step records were available for this week.' : 'Your strongest day was ${const ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][days.indexWhere((d) => d.steps == days.map((x) => x.steps).reduce((a,b) => a > b ? a : b))]} with ${days.map((d) => d.steps).reduce((a,b) => a > b ? a : b)} steps.')),
@@ -404,10 +579,11 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
             )),
           ],
           const SizedBox(height: 16),
-          Text('Your weight & personal bests', style: Theme.of(context).textTheme.titleLarge),
-          const Text('Logged manually — separate from the Health Connect data above.'),
+          Text('Weight & personal bests', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           _buildWeightSection(),
+          const SizedBox(height: 12),
+          _buildAutoBestsSection(),
           const SizedBox(height: 12),
           _buildPersonalBestsSection(),
           const SizedBox(height: 40),
