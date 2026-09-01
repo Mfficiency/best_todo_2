@@ -20,6 +20,7 @@ class ViewFilterRules {
   static const String approval = 'approval';
   static const String projects = 'projects';
   static const String foodDiary = 'fooddiary';
+  static const String research = 'research';
   static const String alarms = 'alarms';
   static const String countdown = 'countdown';
   static const String archived = 'archived';
@@ -31,6 +32,7 @@ class ViewFilterRules {
     approval,
     projects,
     foodDiary,
+    research,
     alarms,
     countdown,
     archived,
@@ -43,6 +45,7 @@ class ViewFilterRules {
     approval: 'Waiting for Approval',
     projects: 'Projects',
     foodDiary: 'Food Diary',
+    research: 'Research',
     alarms: 'Alarms',
     countdown: 'Countdown',
     archived: 'Archived items',
@@ -55,6 +58,7 @@ class ViewFilterRules {
     approval: 'Tools → Waiting for Approval',
     projects: 'Tools → Projects, including every project board',
     foodDiary: 'Tools → Food Diary',
+    research: 'Tools → Research',
     alarms: 'Alarms, filtered by the tags set on each alarm',
     countdown: 'Countdown, filtered by the tags set on each timer',
     archived: 'Archived Items (the drawer entry)',
@@ -80,6 +84,8 @@ class ViewFilterRules {
         'still Waiting for Approval — enforced regardless of the rule '
         'below.',
     foodDiary: 'Always shows Food Diary entries only, and always excludes '
+        'Waiting for Approval — enforced regardless of the rule below.',
+    research: 'Always shows Research items only, and always excludes '
         'Waiting for Approval — enforced regardless of the rule below.',
     alarms: '',
     countdown: '',
@@ -112,6 +118,7 @@ class ViewFilterRules {
           wishToken,
           waitingApprovalToken,
           fooddiaryToken,
+          researchToken,
           alarmToken,
           countdownToken,
           changelogToken,
@@ -124,6 +131,7 @@ class ViewFilterRules {
             deletedToken,
             waitingApprovalToken,
             fooddiaryToken,
+            researchToken,
             alarmToken,
             countdownToken,
             changelogToken,
@@ -143,6 +151,7 @@ class ViewFilterRules {
             deletedToken,
             waitingApprovalToken,
             fooddiaryToken,
+            researchToken,
             alarmToken,
             countdownToken,
             changelogToken,
@@ -156,12 +165,28 @@ class ViewFilterRules {
             deletedToken,
             wishToken,
             waitingApprovalToken,
+            researchToken,
             alarmToken,
             countdownToken,
             changelogToken,
             projectToken,
           ],
           includeTags: [fooddiaryToken],
+        );
+      case research:
+        return ViewFilterRules(
+          excludeTags: [
+            archivedToken,
+            deletedToken,
+            wishToken,
+            waitingApprovalToken,
+            fooddiaryToken,
+            alarmToken,
+            countdownToken,
+            changelogToken,
+            projectToken,
+          ],
+          includeTags: [researchToken],
         );
       case alarms:
         return ViewFilterRules(
@@ -171,6 +196,7 @@ class ViewFilterRules {
             wishToken,
             waitingApprovalToken,
             fooddiaryToken,
+            researchToken,
             countdownToken,
             changelogToken,
             projectToken,
@@ -185,6 +211,7 @@ class ViewFilterRules {
             wishToken,
             waitingApprovalToken,
             fooddiaryToken,
+            researchToken,
             alarmToken,
             changelogToken,
             projectToken,

@@ -164,10 +164,13 @@ void main() {
     });
   });
 
-  group('ViewFilterRules new view ids (fooddiary/alarms/countdown)', () {
-    test('foodDiary, alarms and countdown are registered views', () {
+  group('ViewFilterRules new view ids (fooddiary/research/alarms/countdown)',
+      () {
+    test('foodDiary, research, alarms and countdown are registered views',
+        () {
       for (final id in [
         ViewFilterRules.foodDiary,
+        ViewFilterRules.research,
         ViewFilterRules.alarms,
         ViewFilterRules.countdown,
       ]) {
@@ -178,10 +181,12 @@ void main() {
       }
     });
 
-    test('foodDiary describes a built-in rule; alarms/countdown do not '
-        '(they filter their own item list directly)', () {
+    test('foodDiary and research describe a built-in rule; alarms/countdown '
+        'do not (they filter their own item list directly)', () {
       expect(ViewFilterRules.builtInRules[ViewFilterRules.foodDiary],
           isNotEmpty);
+      expect(
+          ViewFilterRules.builtInRules[ViewFilterRules.research], isNotEmpty);
       expect(ViewFilterRules.builtInRules[ViewFilterRules.alarms], isEmpty);
       expect(
           ViewFilterRules.builtInRules[ViewFilterRules.countdown], isEmpty);
@@ -201,6 +206,7 @@ void main() {
           archivedToken,
           deletedToken,
           fooddiaryToken,
+          researchToken,
           alarmToken,
           countdownToken,
           changelogToken,
@@ -217,6 +223,7 @@ void main() {
           wishToken,
           waitingApprovalToken,
           fooddiaryToken,
+          researchToken,
           alarmToken,
           countdownToken,
           changelogToken,
@@ -253,6 +260,7 @@ void main() {
           deletedToken,
           waitingApprovalToken,
           fooddiaryToken,
+          researchToken,
           alarmToken,
           countdownToken,
           changelogToken,
@@ -268,6 +276,13 @@ void main() {
       expect(defaults.includeTags, [fooddiaryToken]);
       expect(
           defaults.excludeTags.toSet(), othersThan(fooddiaryToken).toSet());
+    });
+
+    test('research hides every other reserved tag and shows only '
+        'Research', () {
+      final defaults = ViewFilterRules.defaultsFor(ViewFilterRules.research)!;
+      expect(defaults.includeTags, [researchToken]);
+      expect(defaults.excludeTags.toSet(), othersThan(researchToken).toSet());
     });
 
     test('alarms hides every other reserved tag and shows only Alarm', () {
@@ -311,6 +326,7 @@ void main() {
       expect(isProtectedToken('archived'), isTrue);
       expect(isProtectedToken('deleted'), isTrue);
       expect(isProtectedToken('fooddiary'), isTrue);
+      expect(isProtectedToken('research'), isTrue);
       expect(isProtectedToken('alarm'), isTrue);
       expect(isProtectedToken('countdown'), isTrue);
       expect(isProtectedToken('waiting_for_approval'), isTrue);
@@ -333,6 +349,11 @@ void main() {
         ItemViews.stateTags(task),
         {wishToken, fooddiaryToken, projectToken, waitingApprovalToken},
       );
+    });
+
+    test('surfaces Research', () {
+      final task = Task(title: 'x', isResearch: true);
+      expect(ItemViews.stateTags(task), {researchToken});
     });
 
     test('archived/binned are supplied by the caller, not derived from the '
@@ -416,6 +437,25 @@ void main() {
     });
   });
 
+  group('ItemViews.research respects rules', () {
+    test('rules narrow the research items on top of isResearch', () {
+      final keep = Task(title: 'keep', isResearch: true, label: 'papers');
+      final drop = Task(title: 'drop', isResearch: true, label: 'links');
+      final notResearch = Task(title: 'not research', label: 'papers');
+      final result = ItemViews.research(
+        [keep, drop, notResearch],
+        rules: ViewFilterRules(includeTags: ['papers']),
+      );
+      expect(result, [keep]);
+    });
+
+    test('isVisibleInMainViews excludes research items, like food diary '
+        'entries', () {
+      final task = Task(title: 'x', isResearch: true);
+      expect(ItemViews.isVisibleInMainViews(task), isFalse);
+    });
+  });
+
   group('Config.seedViewFilterRuleDefaultsIfNeeded', () {
     tearDown(() {
       Config.viewFilterRules = {};
@@ -427,7 +467,7 @@ void main() {
       Config.viewFilterRules = {};
       Config.viewFilterRulesSeedVersion = 0;
       Config.seedViewFilterRuleDefaultsIfNeeded();
-      expect(Config.viewFilterRulesSeedVersion, 2);
+      expect(Config.viewFilterRulesSeedVersion, 3);
       expect(Config.viewFilterRules[ViewFilterRules.wishlist]?.includeTags,
           [wishToken]);
       // Every view id now has a seeded default, including Alarms/Countdown.
@@ -435,6 +475,8 @@ void main() {
           [alarmToken]);
       expect(Config.viewFilterRules[ViewFilterRules.countdown]?.includeTags,
           [countdownToken]);
+      expect(Config.viewFilterRules[ViewFilterRules.research]?.includeTags,
+          [researchToken]);
     });
 
     test('first run never overwrites a rule the user already configured, '
@@ -453,7 +495,7 @@ void main() {
 
     test('is a no-op once already at the current version', () {
       Config.viewFilterRules = {};
-      Config.viewFilterRulesSeedVersion = 2;
+      Config.viewFilterRulesSeedVersion = 3;
       Config.seedViewFilterRuleDefaultsIfNeeded();
       expect(Config.viewFilterRules, isEmpty);
     });
@@ -472,7 +514,7 @@ void main() {
       };
       Config.viewFilterRulesSeedVersion = 1;
       Config.seedViewFilterRuleDefaultsIfNeeded();
-      expect(Config.viewFilterRulesSeedVersion, 2);
+      expect(Config.viewFilterRulesSeedVersion, 3);
       expect(
         Config.viewFilterRules[ViewFilterRules.home]?.excludeTags,
         ViewFilterRules.defaultsFor(ViewFilterRules.home)!.excludeTags,

@@ -530,6 +530,35 @@ local `createdAt` over "now" (the pull time): `_remoteCreatedAt` reads `added_at
 unified API v1 field) or, defensively, `created_at` (the older REST v2 spelling), falling
 back to `DateTime.now()` if the API sends neither.
 
+**Double-tap quick-tag menu → Research tool (0.2.22):** double-tapping a pending row
+(hand-rolled tap-timing detection via `_lastTapAt`/`kDoubleTapTimeout`, mirroring
+`TaskTile`'s own double-tap menu — a real `onDoubleTap` `GestureDetector` would delay every
+single tap by the double-tap timeout) shows a `showModalBottomSheet` listing every
+configured `ApprovalQuickTag` (`lib/models/approval_quick_tag.dart`); tapping one both
+approves the item (`removeWaitingApprovalToken`) and flips the `Task` flag its `target`
+names — `wishlistTarget` → `isWish = true`, `researchTarget` → `isResearch = true` — so it
+lands straight in that tool instead of the home tabs. `ApprovalQuickTagService`
+(`lib/services/approval_quick_tag_service.dart`, JSON file `approval_quick_tags.json`,
+`ValueNotifier`-backed like `AutoTagService`) seeds the default Wishlist/Research pair on
+first run and is fully user-editable at Settings ▸ Tasks ▸ **Approval quick tags**
+(`lib/ui/approval_quick_tags_page.dart`, mirrors `AutoTagRulesPage`'s list/add/edit/delete
+shape): each entry is a button label plus a `target` chosen from a fixed dropdown
+(`ApprovalQuickTag.targets`) — free-form destinations aren't supported since routing means
+flipping one of `Task`'s own membership flags, and only two exist today.
+
+**Research tool** (`lib/ui/research_page.dart`, Tools ▸ Research): a `Task.isResearch`
+gated view exactly like the Food Diary — `ItemViews.research` selects `isResearch &&
+isApproved`, and `ItemViews.isVisibleInMainViews` excludes research items from every main
+view (home tabs, schedule view, wishlist, projects, Todoist sync), so an item only shows up
+here (or, once deleted, Archived Items) — never on the home tabs. Items arrive either
+double-tap-approved from Waiting for Approval, or typed directly with the page's own FAB
+(title, description, `LabelPickerField` tags — no due date, no checkbox, just a log line
+like a Food Diary entry). `researchToken` (`'Research'`) is a `protectedStateTokens` entry
+and a full `ViewFilterRules` view id (`ViewFilterRules.research`), threaded through every
+other view's default Hide list the same way `fooddiaryToken` is — bumped
+`_currentViewFilterRulesSeedVersion` to 3 so existing installs re-sync their Filtering
+rules defaults to include it.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**

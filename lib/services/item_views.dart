@@ -37,11 +37,12 @@ class ItemViews {
   /// Whether [task] belongs to every main view — home tabs, schedule view,
   /// wishlist, projects, the home-screen widget, Todoist sync — as opposed
   /// to being gated into exactly one dedicated tool. Combines the Todoist
-  /// approval gate with the Food Diary gate ([Task.isEatingHabit]): a food
-  /// diary entry is visible only in the Food Diary tool itself and, once
-  /// deleted there, the deleted/archived lists.
+  /// approval gate with the Food Diary gate ([Task.isEatingHabit]) and the
+  /// Research gate ([Task.isResearch]): a food diary entry or a research
+  /// item is visible only in its own tool and, once deleted there, the
+  /// deleted/archived lists.
   static bool isVisibleInMainViews(Task task) =>
-      isApproved(task) && !task.isEatingHabit;
+      isApproved(task) && !task.isEatingHabit && !task.isResearch;
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
@@ -81,6 +82,7 @@ class ItemViews {
     final tags = <String>{};
     if (task.isWish) tags.add(wishToken);
     if (task.isEatingHabit) tags.add(fooddiaryToken);
+    if (task.isResearch) tags.add(researchToken);
     if (task.projectId != null) tags.add(projectToken);
     if (!isApproved(task)) tags.add(waitingApprovalToken);
     if (archived) tags.add(archivedToken);
@@ -197,6 +199,17 @@ class ItemViews {
       tasks
           .where((t) =>
               t.isEatingHabit && isApproved(t) && passesFilterRules(t, rules))
+          .toList();
+
+  /// The Research tool: research-flagged tasks, exactly like opening the
+  /// Food Diary. [isApproved] rather than [isVisibleInMainViews] since the
+  /// latter itself excludes research tasks. [rules] is the configured
+  /// Research view filter, an extra layer on top of the structural gate, see
+  /// [passesFilterRules].
+  static List<Task> research(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isResearch && isApproved(t) && passesFilterRules(t, rules))
           .toList();
 
   /// All non-deleted tasks (the Projects page's top pane).

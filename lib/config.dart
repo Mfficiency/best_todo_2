@@ -87,6 +87,7 @@ class Config {
     'countdown',
     'wishlist',
     'food_diary',
+    'research',
     'projects',
     'chronize',
     'usage_data',
@@ -103,6 +104,7 @@ class Config {
     'Countdown',
     'Wishlist',
     'Food Diary',
+    'Research',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -132,13 +134,14 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first ten match
+  /// Keys are persisted, so keep them stable; the first eleven match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
     'countdown',
     'wishlist',
     'food_diary',
+    'research',
     'projects',
     'chronize',
     'usage_data',
@@ -163,6 +166,7 @@ class Config {
     'Countdown',
     'Wishlist',
     'Food Diary',
+    'Research',
     'Projects',
     'Chronize',
     'Usage Data',
@@ -187,6 +191,7 @@ class Config {
     'Countdown timers with milestones',
     'Wishlist of someday items',
     'Track what you eat, separate from your tasks',
+    'Research items pulled out of the task list, in their own tool',
     'Project boards for grouping tasks',
     'Timeline planner for the day',
     'Charts about how you use the app',
@@ -491,8 +496,10 @@ class Config {
   /// new template, not just a fresh one. Version 1 shipped an incorrect,
   /// overly conservative template (it left Wish/Project out of several Hide
   /// lists to avoid disturbing other behavior); version 2 corrects it to the
-  /// literal Hide/Show matrix this feature was specified with.
-  static const int _currentViewFilterRulesSeedVersion = 2;
+  /// literal Hide/Show matrix this feature was specified with; version 3
+  /// adds the Research view (Research quick-approved from the Waiting for
+  /// Approval page) to the matrix.
+  static const int _currentViewFilterRulesSeedVersion = 3;
 
   /// How many times [seedViewFilterRuleDefaultsIfNeeded] has applied the
   /// template to this install (0 = never). Persisted so it only (re-)applies
