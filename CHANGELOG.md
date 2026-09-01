@@ -2,6 +2,9 @@
 
 ## [0.2.20] - 2026-09-01
 - Waiting for Approval's group-by-conversation view now groups retroactively: items pulled in before source titles existed no longer all pile into one "Unspecified" bucket — they're clustered by the hour they were created in instead, so a batch pulled in the same run still groups together.
+- Local build: 2026-09-01 19:39
+- Build duration (apk): 3m 03s
+- Build duration (windows): 1m 22s
 
 ## [0.2.19] - 2026-09-01
 - In-app updates now download in the background via Android's own DownloadManager instead of a socket held open by the app: the download keeps going if you background the app, and rides out a Wi-Fi/mobile data handover mid-download instead of failing. It still installs automatically the moment it finishes (including on the next launch, if the app was closed while it finished) — both the auto-update prompt's Yes and the About page's "Download & install"/rollback buttons use it, and the old blocking "Downloading..." dialog is gone in favor of a quick background notice.
