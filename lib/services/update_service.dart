@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 
@@ -78,6 +78,52 @@ class UpdateCheck {
       return null;
     }
     return candidate;
+  }
+}
+
+/// State of a download handed off to Android's `DownloadManager`. The OS
+/// service — not the Dart isolate — owns the transfer, so it keeps running
+/// while the app is backgrounded and survives switching between Wi-Fi and
+/// mobile data mid-download (DownloadManager resumes on whatever network
+/// comes back, using HTTP range requests).
+enum DownloadStatus { pending, running, paused, successful, failed }
+
+/// One snapshot of a background download, as reported by
+/// [UpdateService.queryDownload].
+class DownloadProgress {
+  DownloadProgress({
+    required this.status,
+    this.bytesDownloaded = 0,
+    this.bytesTotal,
+    this.localPath,
+    this.reason,
+  });
+
+  final DownloadStatus status;
+  final int bytesDownloaded;
+  final int? bytesTotal;
+
+  /// Filesystem path of the downloaded APK, set once [status] is
+  /// [DownloadStatus.successful].
+  final String? localPath;
+
+  /// `DownloadManager.COLUMN_REASON` value on a paused/failed download —
+  /// opaque, only useful in an error message.
+  final String? reason;
+
+  static DownloadStatus statusFromWire(String value) {
+    switch (value) {
+      case 'successful':
+        return DownloadStatus.successful;
+      case 'failed':
+        return DownloadStatus.failed;
+      case 'running':
+        return DownloadStatus.running;
+      case 'paused':
+        return DownloadStatus.paused;
+      default:
+        return DownloadStatus.pending;
+    }
   }
 }
 
@@ -306,45 +352,112 @@ class UpdateService {
     return text;
   }
 
-  /// Downloads the release's APK into the temp dir (covered by the manifest's
-  /// FileProvider cache-path) and reports progress. Throws on failure.
-  Future<File> downloadApk(
-    UpdateInfo info, {
-    void Function(int received, int? total)? onProgress,
-  }) async {
+  /// Test seam: replaces the real `besttodo/update` platform-channel call
+  /// used by [startBackgroundDownload], [queryDownload] and [cancelDownload].
+  Future<dynamic> Function(String method, Map<String, dynamic> args)?
+      downloadChannelOverride;
+
+  Future<dynamic> _invokeDownloadChannel(
+      String method, Map<String, dynamic> args) {
+    final override = downloadChannelOverride;
+    if (override != null) return override(method, args);
+    return _channel.invokeMethod(method, args);
+  }
+
+  static const String _pendingDownloadPrefsKey = 'update_pending_download';
+
+  /// Hands [info]'s APK to Android's `DownloadManager` and returns its
+  /// download id. The transfer then runs as a system service, independent of
+  /// the app process — it keeps going if the app is backgrounded and rides
+  /// out a Wi-Fi/mobile handover, unlike a plain HTTP socket held open by the
+  /// app. Progress is polled with [queryDownload]/[watchDownload].
+  Future<int> startBackgroundDownload(UpdateInfo info) async {
     final url = info.apkUrl;
     if (url == null) {
       throw StateError('This release has no APK to download');
     }
-    final dir = await getTemporaryDirectory();
-    final file = File(
-        '${dir.path}/BestToDo-update-${info.version.replaceAll('+', '-')}.apk');
-    final client = HttpClient();
-    try {
-      final request = await client.getUrl(Uri.parse(url));
-      request.headers.set(HttpHeaders.userAgentHeader, 'BestToDo-update-check');
-      final response = await request.close();
-      if (response.statusCode != 200) {
-        throw HttpException('Download failed (HTTP ${response.statusCode})',
-            uri: Uri.parse(url));
+    final fileName =
+        'BestToDo-update-${info.version.replaceAll('+', '-')}.apk';
+    final result = await _invokeDownloadChannel(
+        'startBackgroundDownload', {'url': url, 'fileName': fileName});
+    return (result as Map)['downloadId'] as int;
+  }
+
+  /// One snapshot of [downloadId]'s progress.
+  Future<DownloadProgress> queryDownload(int downloadId) async {
+    final raw = await _invokeDownloadChannel(
+        'queryDownload', {'downloadId': downloadId});
+    final map = Map<Object?, Object?>.from(raw as Map);
+    return DownloadProgress(
+      status: DownloadProgress.statusFromWire(
+          map['status'] as String? ?? 'failed'),
+      bytesDownloaded: (map['bytesDownloaded'] as num?)?.toInt() ?? 0,
+      bytesTotal: (map['bytesTotal'] as num?)?.toInt(),
+      localPath: map['localPath'] as String?,
+      reason: map['reason']?.toString(),
+    );
+  }
+
+  /// Removes a download from `DownloadManager` (and its partial file).
+  Future<void> cancelDownload(int downloadId) =>
+      _invokeDownloadChannel('cancelDownload', {'downloadId': downloadId});
+
+  /// Polls [downloadId] until it reaches a terminal status, yielding every
+  /// snapshot along the way.
+  Stream<DownloadProgress> watchDownload(
+    int downloadId, {
+    Duration interval = const Duration(milliseconds: 700),
+  }) async* {
+    while (true) {
+      final progress = await queryDownload(downloadId);
+      yield progress;
+      if (progress.status == DownloadStatus.successful ||
+          progress.status == DownloadStatus.failed) {
+        return;
       }
-      final total =
-          response.contentLength > 0 ? response.contentLength : info.apkSizeBytes;
-      final sink = file.openWrite();
-      var received = 0;
-      try {
-        await for (final chunk in response) {
-          sink.add(chunk);
-          received += chunk.length;
-          onProgress?.call(received, total);
-        }
-      } finally {
-        await sink.close();
-      }
-      return file;
-    } finally {
-      client.close();
+      await Future<void>.delayed(interval);
     }
+  }
+
+  /// Starts a background download of [info] and streams its progress,
+  /// persisting the download id so [pendingDownload] can find it again if
+  /// the app is closed and reopened before it finishes (cleared once the
+  /// download reaches a terminal status).
+  Stream<DownloadProgress> downloadInBackground(
+    UpdateInfo info, {
+    Duration interval = const Duration(milliseconds: 700),
+  }) async* {
+    final id = await startBackgroundDownload(info);
+    await _savePendingDownload(id, info.version);
+    await for (final progress in watchDownload(id, interval: interval)) {
+      yield progress;
+      if (progress.status == DownloadStatus.successful ||
+          progress.status == DownloadStatus.failed) {
+        await clearPendingDownload();
+      }
+    }
+  }
+
+  Future<void> _savePendingDownload(int downloadId, String version) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingDownloadPrefsKey,
+        jsonEncode({'downloadId': downloadId, 'version': version}));
+  }
+
+  Future<void> clearPendingDownload() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingDownloadPrefsKey);
+  }
+
+  /// A download started in an earlier app run that had not finished (or
+  /// whose completion was never seen) by the time the app closed, as
+  /// `{downloadId, version}` — null when there is none. The caller resumes
+  /// watching it with [watchDownload].
+  Future<Map<String, dynamic>?> pendingDownload() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_pendingDownloadPrefsKey);
+    if (raw == null) return null;
+    return jsonDecode(raw) as Map<String, dynamic>;
   }
 
   /// Hands the downloaded APK to the Android package installer. Returns

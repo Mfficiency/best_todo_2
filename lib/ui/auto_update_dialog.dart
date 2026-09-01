@@ -30,80 +30,32 @@ Future<bool?> showUpdateAvailableDialog(
   );
 }
 
-/// Downloads [info]'s APK and hands it to the installer as soon as it opens,
-/// showing progress while it works. Pops itself on success; on failure it
-/// swaps to an error message with a dismiss button instead of closing on its
-/// own, so the failure is not missed.
-class UpdateDownloadDialog extends StatefulWidget {
-  const UpdateDownloadDialog({super.key, required this.info});
-
-  final UpdateInfo info;
-
-  @override
-  State<UpdateDownloadDialog> createState() => _UpdateDownloadDialogState();
-}
-
-class _UpdateDownloadDialogState extends State<UpdateDownloadDialog> {
-  int _received = 0;
-  int? _total;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _total = widget.info.apkSizeBytes;
-    _run();
-  }
-
-  Future<void> _run() async {
-    try {
-      final file = await UpdateService.instance.downloadApk(
-        widget.info,
-        onProgress: (received, total) {
-          if (!mounted) return;
-          setState(() {
-            _received = received;
-            _total = total ?? _total;
-          });
-        },
-      );
-      await UpdateService.instance.installApk(file.path);
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = '$e');
+/// Starts [info]'s download on Android's `DownloadManager` and installs it
+/// the moment it finishes — no blocking dialog, since the transfer itself now
+/// runs as a system service independent of the app (see
+/// [UpdateService.downloadInBackground]): it keeps going if the app is
+/// backgrounded and rides out a Wi-Fi/mobile handover mid-download. Progress
+/// and failures surface as brief snackbars instead of a modal that would
+/// otherwise sit in front of the app for the whole download.
+Future<void> downloadUpdateInBackground(
+    BuildContext context, UpdateInfo info) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  messenger?.showSnackBar(SnackBar(
+    content: Text('Downloading v${info.version} in the background…'),
+  ));
+  try {
+    await for (final progress
+        in UpdateService.instance.downloadInBackground(info)) {
+      if (progress.status == DownloadStatus.successful &&
+          progress.localPath != null) {
+        await UpdateService.instance.installApk(progress.localPath!);
+      } else if (progress.status == DownloadStatus.failed) {
+        messenger?.showSnackBar(SnackBar(
+          content: Text('Update download failed${progress.reason != null ? ' (${progress.reason})' : ''}.'),
+        ));
+      }
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final error = _error;
-    if (error != null) {
-      return AlertDialog(
-        title: const Text('Update failed'),
-        content: Text(error),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      );
-    }
-    final total = _total;
-    final progress = (total != null && total > 0) ? _received / total : null;
-    return AlertDialog(
-      title: Text('Downloading v${widget.info.version}…'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          LinearProgressIndicator(value: progress),
-          const SizedBox(height: 12),
-          Text(progress != null
-              ? '${(progress * 100).toStringAsFixed(0)}%'
-              : ''),
-        ],
-      ),
-    );
+  } catch (e) {
+    messenger?.showSnackBar(SnackBar(content: Text('Update download failed: $e')));
   }
 }

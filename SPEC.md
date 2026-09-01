@@ -1858,7 +1858,8 @@ About page; the user still confirms every install) and `INTERNET` (0.1.139 — d
 get it implicitly, so "Check for updates" worked in development and failed on every release
 APK until it was declared in the main manifest). An `androidx.core.content.FileProvider`
 (authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
-dirs) shares the downloaded update APK with the system installer as a `content://` URI.
++ external-files dirs) shares the downloaded update APK with the system installer as a
+`content://` URI.
 
 **Receivers/services:** android_alarm_manager_plus `AlarmService` +
 **`AlarmBroadcastReceiver`** (its absence was the original "SMS never sent" root cause —
@@ -1897,7 +1898,15 @@ the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the 
 installer via the FileProvider (ACTION_VIEW, `application/vnd.android.package-archive`);
 when the one-time "install unknown apps" toggle is missing (O+,
 `canRequestPackageInstalls()` false) it opens that settings screen and returns
-`"needs-permission"` so the Dart side tells the user to grant it and retry.
+`"needs-permission"` so the Dart side tells the user to grant it and retry. The same channel
+also hosts `startBackgroundDownload`/`queryDownload`/`cancelDownload` (0.2.x — see "Background
+downloads via DownloadManager" below), which hand the APK transfer to Android's
+`DownloadManager` instead of a Dart-side socket: it is enqueued into the app's
+`getExternalFilesDir(null)/updates/` (DownloadManager runs as a separate system process and
+cannot write into the app's *internal* `filesDir`, only its external one), with
+`VISIBILITY_VISIBLE_NOTIFY_COMPLETED` and both `NETWORK_WIFI`/`NETWORK_MOBILE` allowed so it
+keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
+cursor back into a status/progress map.
 
 **Share-sheet task capture** (0.1.145; quick-add screen, images/PDFs, Today/Inbox
 choice, redelivery dedup added later): BestToDo appears in Android's share sheet for
@@ -2588,10 +2597,11 @@ in App Logs → Todoist — onboarding has already finished by then.
   injectable `fetchOverride` for tests) maps a tag back to `x.y.z+build` and compares
   numeric components (unparseable versions — 'unknown' in tests — compare as all-zero).
   The About page's "Check for updates" section then walks check → "Version x available" →
-  download to the temp dir with a progress bar → hand to the installer over the
-  `besttodo/update` channel (§9); a `needs-permission` reply keeps an "Install update"
-  button up for the retry after granting. Web/desktop or a release without an APK asset
-  falls back to opening the release page in the browser.
+  download (in the background via `DownloadManager` — see "Background downloads via
+  DownloadManager" below — with a progress bar fed by its polled status) → hand to the
+  installer over the `besttodo/update` channel (§9); a `needs-permission` reply keeps an
+  "Install update" button up for the retry after granting. Web/desktop or a release without
+  an APK asset falls back to opening the release page in the browser.
 - **Update source + rollback (0.1.146):** `checkReleases()` reads the repo folder first —
   `contents/github_releases?ref=dev` (unauthenticated; `dev` is where every build lands
   first, and the API's `download_url` is already percent-encoded, which matters because
@@ -2629,13 +2639,34 @@ in App Logs → Todoist — onboarding has already finished by then.
   The report opens `showUpdateAvailableDialog`
   (`lib/ui/auto_update_dialog.dart`) — "New version available. Do you want to
   download and install it?", Yes/No — via `appNavigatorKey`, the same pattern
-  `_showAlarmRing` uses to reach the navigator from outside `build`. Yes opens
-  `UpdateDownloadDialog`, which downloads and installs immediately with no
-  further confirmation (Android's own install prompt is the only gate left)
-  and shows a progress bar; No just dismisses it. The About page's "Download &
-  install" already chained straight from download into install before this
-  and is unchanged (the `AboutPage(autoCheckForUpdate: ...)` pre-trigger the
-  old flow used is gone, since nothing navigates there automatically anymore).
+  `_showAlarmRing` uses to reach the navigator from outside `build`. Yes starts
+  the background download below (installing immediately once it finishes, no
+  further confirmation — Android's own install prompt is the only gate left);
+  No just dismisses it. The About page's "Download & install" already chained
+  straight from download into install before this and is unchanged (the
+  `AboutPage(autoCheckForUpdate: ...)` pre-trigger the old flow used is gone,
+  since nothing navigates there automatically anymore).
+- **Background downloads via DownloadManager (0.2.x):** both download paths —
+  the auto-update Yes and the About page's "Download & install"/rollback
+  buttons — go through `UpdateService.downloadInBackground()` instead of a
+  Dart-side `HttpClient` socket. It calls the new `besttodo/update` methods
+  (`startBackgroundDownload` → `watchDownload`, a `Stream<DownloadProgress>`
+  polling `queryDownload` every 700 ms until a terminal status) so the APK
+  transfer runs as an Android system service: it survives the app being
+  backgrounded and DownloadManager itself resumes the transfer (HTTP range
+  requests) across a Wi-Fi/mobile handover, which a socket held open by the
+  app process cannot. `downloadInBackground` also persists `{downloadId,
+  version}` via `shared_preferences` (cleared once the download reaches a
+  terminal status); `_MyAppState.initState` calls
+  `UpdateService.pendingDownload()`/resumes watching it on the next launch, so
+  a download that finished (or is still running) after the app was closed
+  still gets installed instead of silently going nowhere. The old blocking
+  `UpdateDownloadDialog` modal is gone — `downloadUpdateInBackground`
+  (`lib/ui/auto_update_dialog.dart`) instead shows a transient snackbar via
+  `ScaffoldMessenger`, since the transfer no longer needs the app in the
+  foreground at all. `UpdateService.downloadChannelOverride` is the test seam
+  for the three new channel methods, mirroring `fetchOverride` for the
+  release-JSON lookup.
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a

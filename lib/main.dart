@@ -286,6 +286,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (Config.autoUpdateCheckEnabled) {
         AutoUpdateChecker.instance.start(_onUpdateFound);
       }
+      // A background update download from an earlier run may have kept
+      // going (or already finished) while the app was closed — it runs as
+      // an Android system service, not tied to this process. Pick it back
+      // up so "install when ready" still holds after a restart.
+      unawaited(_resumePendingUpdateDownload());
     }
   }
 
@@ -313,16 +318,47 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return;
     }
     final accepted = await showUpdateAvailableDialog(navigator.context, info);
-    if (accepted == true) {
-      await showDialog<void>(
-        context: navigator.context,
-        barrierDismissible: false,
-        builder: (_) => UpdateDownloadDialog(info: info),
-      );
-    } else {
+    if (accepted != true) {
       AutoUpdateChecker.instance.dismiss(info.version);
+      _pendingUpdateVersion = null;
+      return;
     }
-    _pendingUpdateVersion = null;
+    // The download runs in the background (Android's DownloadManager, not
+    // this dialog), so don't await it here — but keep _pendingUpdateVersion
+    // set for its whole duration, so a poll tick that lands mid-download
+    // doesn't pop the "New version available" dialog again for the same
+    // build.
+    unawaited(
+      downloadUpdateInBackground(navigator.context, info).whenComplete(() {
+        if (_pendingUpdateVersion == info.version) {
+          _pendingUpdateVersion = null;
+        }
+      }),
+    );
+  }
+
+  /// Resumes watching a background download an earlier app run started but
+  /// didn't see finish, installing it if it completed while the app was
+  /// closed.
+  Future<void> _resumePendingUpdateDownload() async {
+    final pending = await UpdateService.instance.pendingDownload();
+    if (pending == null) return;
+    final downloadId = pending['downloadId'] as int;
+    try {
+      await for (final progress
+          in UpdateService.instance.watchDownload(downloadId)) {
+        if (progress.status == DownloadStatus.successful &&
+            progress.localPath != null) {
+          await UpdateService.instance.clearPendingDownload();
+          await UpdateService.instance.installApk(progress.localPath!);
+        } else if (progress.status == DownloadStatus.failed) {
+          await UpdateService.instance.clearPendingDownload();
+        }
+      }
+    } catch (_) {
+      // Nothing to recover here — the next auto-update poll offers a fresh
+      // download if one is still needed.
+    }
   }
 
   @override

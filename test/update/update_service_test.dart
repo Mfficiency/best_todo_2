@@ -1,14 +1,21 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:besttodo/services/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Pure logic of the in-app updater: version comparison, tag parsing and the
 /// release-JSON → [UpdateInfo] mapping. Network and installer are platform
 /// seams covered by `about_page_update_test.dart` (via [fetchOverride]) and
 /// on hardware.
 void main() {
-  setUp(UpdateService.resetForTest);
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    UpdateService.resetForTest();
+    SharedPreferences.setMockInitialValues({});
+  });
 
   group('compareVersions', () {
     test('orders by major/minor/patch then build', () {
@@ -266,6 +273,170 @@ void main() {
           () => UpdateService.instance
               .checkForUpdate(currentVersion: '0.1.131+103'),
           throwsA(isA<FormatException>()));
+    });
+  });
+
+  /// Downloads are handed off to Android's `DownloadManager` (native side —
+  /// see `MainActivity.kt`), which is what makes them survive the app being
+  /// backgrounded and a Wi-Fi/mobile handover mid-download. Here that native
+  /// channel is faked through [UpdateService.downloadChannelOverride], so
+  /// these only cover the Dart-side plumbing: request shape, wire-status
+  /// mapping, polling until a terminal status, and the pending-download
+  /// bookkeeping used to resume after a restart.
+  group('background download (DownloadManager)', () {
+    UpdateInfo makeInfo({String? apkUrl = 'https://example.com/BestToDo.apk'}) =>
+        UpdateInfo(
+          version: '0.1.150+120',
+          releaseName: 'BestToDo 0.1.150+120',
+          htmlUrl: 'https://example.com/release',
+          apkUrl: apkUrl,
+        );
+
+    test('startBackgroundDownload sends the apk url and a versioned file name',
+        () async {
+      String? method;
+      Map<String, dynamic>? args;
+      UpdateService.instance.downloadChannelOverride = (m, a) async {
+        method = m;
+        args = a;
+        return {'downloadId': 42};
+      };
+      final id =
+          await UpdateService.instance.startBackgroundDownload(makeInfo());
+      expect(method, 'startBackgroundDownload');
+      expect(args!['url'], 'https://example.com/BestToDo.apk');
+      expect(args!['fileName'], 'BestToDo-update-0.1.150-120.apk');
+      expect(id, 42);
+    });
+
+    test('throws instead of calling the channel when the release has no APK',
+        () async {
+      var called = false;
+      UpdateService.instance.downloadChannelOverride = (m, a) async {
+        called = true;
+        return {'downloadId': 1};
+      };
+      await expectLater(
+        UpdateService.instance.startBackgroundDownload(makeInfo(apkUrl: null)),
+        throwsA(isA<StateError>()),
+      );
+      expect(called, isFalse);
+    });
+
+    test('queryDownload maps the DownloadManager wire status', () async {
+      UpdateService.instance.downloadChannelOverride = (m, a) async => {
+            'status': 'running',
+            'bytesDownloaded': 512,
+            'bytesTotal': 2048,
+            'localPath': null,
+            'reason': null,
+          };
+      final progress = await UpdateService.instance.queryDownload(42);
+      expect(progress.status, DownloadStatus.running);
+      expect(progress.bytesDownloaded, 512);
+      expect(progress.bytesTotal, 2048);
+      expect(progress.localPath, isNull);
+    });
+
+    test('watchDownload polls until a terminal status', () async {
+      final responses = [
+        {'status': 'pending', 'bytesDownloaded': 0, 'bytesTotal': 2048},
+        {'status': 'running', 'bytesDownloaded': 1024, 'bytesTotal': 2048},
+        {
+          'status': 'successful',
+          'bytesDownloaded': 2048,
+          'bytesTotal': 2048,
+          'localPath': '/data/updates/BestToDo.apk',
+        },
+      ];
+      var i = 0;
+      UpdateService.instance.downloadChannelOverride = (m, a) async {
+        final response = responses[i];
+        if (i < responses.length - 1) i++;
+        return response;
+      };
+      final progresses = await UpdateService.instance
+          .watchDownload(42, interval: const Duration(milliseconds: 1))
+          .toList();
+      expect(progresses.map((p) => p.status), [
+        DownloadStatus.pending,
+        DownloadStatus.running,
+        DownloadStatus.successful,
+      ]);
+      expect(progresses.last.localPath, '/data/updates/BestToDo.apk');
+    });
+
+    test('watchDownload stops as soon as the download fails', () async {
+      UpdateService.instance.downloadChannelOverride = (m, a) async => {
+            'status': 'failed',
+            'bytesDownloaded': 0,
+            'bytesTotal': 0,
+            'reason': '1008',
+          };
+      final progresses = await UpdateService.instance
+          .watchDownload(1, interval: const Duration(milliseconds: 1))
+          .toList();
+      expect(progresses, hasLength(1));
+      expect(progresses.single.status, DownloadStatus.failed);
+      expect(progresses.single.reason, '1008');
+    });
+
+    test(
+        'downloadInBackground clears the pending download once it finishes',
+        () async {
+      UpdateService.instance.downloadChannelOverride = (method, args) async {
+        if (method == 'startBackgroundDownload') return {'downloadId': 7};
+        return {
+          'status': 'successful',
+          'bytesDownloaded': 100,
+          'bytesTotal': 100,
+          'localPath': '/data/updates/BestToDo.apk',
+        };
+      };
+      final progresses = await UpdateService.instance
+          .downloadInBackground(makeInfo(),
+              interval: const Duration(milliseconds: 1))
+          .toList();
+      expect(progresses.single.status, DownloadStatus.successful);
+      expect(await UpdateService.instance.pendingDownload(), isNull);
+    });
+
+    test(
+        'downloadInBackground records the download while it is still running, '
+        'so a later launch can find it', () async {
+      var queryCount = 0;
+      UpdateService.instance.downloadChannelOverride = (method, args) async {
+        if (method == 'startBackgroundDownload') return {'downloadId': 9};
+        queryCount++;
+        if (queryCount == 1) {
+          return {
+            'status': 'running',
+            'bytesDownloaded': 10,
+            'bytesTotal': 100,
+          };
+        }
+        return {
+          'status': 'successful',
+          'bytesDownloaded': 100,
+          'bytesTotal': 100,
+          'localPath': '/data/updates/BestToDo.apk',
+        };
+      };
+      final iterator = StreamIterator(UpdateService.instance.downloadInBackground(
+          makeInfo(),
+          interval: const Duration(milliseconds: 1)));
+
+      expect(await iterator.moveNext(), isTrue);
+      expect(iterator.current.status, DownloadStatus.running);
+      final pending = await UpdateService.instance.pendingDownload();
+      expect(pending, isNotNull);
+      expect(pending!['downloadId'], 9);
+      expect(pending['version'], '0.1.150+120');
+
+      expect(await iterator.moveNext(), isTrue);
+      expect(iterator.current.status, DownloadStatus.successful);
+      expect(await iterator.moveNext(), isFalse);
+      expect(await UpdateService.instance.pendingDownload(), isNull);
     });
   });
 }
