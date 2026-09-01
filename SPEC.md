@@ -479,17 +479,29 @@ recognizer that would compete with the header's `InkWell` for the same tap.
 
 `Task.pendingSourceTitle` (`lib/models/task.dart`) is the field behind "From:" and the
 grouping key: set only by `TodoistSyncService._taskFromRemote` (both call sites — the
-first-launch pull and the "brand-new Todoist tasks" step), it's the *name of the Todoist
-project* the pulled task lived in, excluding Inbox (every task not otherwise filed lands
-there, so its name carries no signal) — a usable proxy for "which conversation created
-this" **if** whatever creates the Todoist tasks (e.g. a Claude session with Todoist
-access, the same shape as "Propose for next" above) files each conversation's tasks into
-a Todoist project named for that conversation, rather than dropping them in Inbox. No
-BestToDo-side change is needed beyond that filing convention — group titles and the
-"From:" line pick it up automatically on the next sync. It's local-only display
-metadata: never pushed back to Todoist, and never touches the sync fingerprints (adding
-it to a synced task doesn't trigger a push). A task with no source title (created any
-other way, or pulled before this field existed) shows "Unspecified" and groups there.
+first-launch pull and the "brand-new Todoist tasks" step). Two sources feed it, checked
+in this order:
+
+1. **A `[Source: <title>]` marker** (0.2.18): a leading line on the pulled task's Todoist
+   description, recognized by `_sourceMarkerPattern`/`_extractSourceMarker`
+   (case-insensitive, tolerant of surrounding whitespace) and stripped from the visible
+   description before it becomes `Task.description` — so it never shows up in the task
+   body. Lets a routine that fans one run out across many small, unrelated conversations
+   (the Pocket-to-Todoist ingestion routine this was built for — see
+   `.claude/notes/pocket-todoist-ingestion.md`) name each task's source without creating
+   a dedicated Todoist project per conversation, which would litter the project list.
+2. **The Todoist project name** the task lived in, excluding Inbox (every task not
+   otherwise filed lands there, so its name carries no signal) — the fallback for a task
+   that *is* filed into a real per-conversation/per-topic Todoist project instead (e.g.
+   "Propose for next" above's shape: a Claude session with Todoist access using a project
+   as the grouping unit).
+
+Either way, no BestToDo-side change is needed beyond the creating routine adopting one of
+these two conventions — group titles and the "From:" line pick it up automatically on the
+next sync. It's local-only display metadata: never pushed back to Todoist, and never
+touches the sync fingerprints (adding it to a synced task doesn't trigger a push). A task
+with no source title (created any other way, or pulled before this field existed) shows
+"Unspecified" and groups there.
 
 `_taskFromRemote` also now prefers the pulled task's own Todoist-side creation time for
 local `createdAt` over "now" (the pull time): `_remoteCreatedAt` reads `added_at` (the

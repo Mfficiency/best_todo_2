@@ -908,6 +908,26 @@ class TodoistSyncService {
     }
   }
 
+  /// Recognizes a leading `[Source: <conversation title>]` line an external
+  /// ingestion routine can prepend to a freshly created Todoist task's
+  /// description — see `.claude/notes/pocket-todoist-ingestion.md` (the
+  /// Pocket-to-Todoist approval-queue routine this was built for). Lets a
+  /// routine that fans a single run out across many small conversations name
+  /// each task's source without needing a dedicated Todoist project per
+  /// conversation (which would litter the project list). Returns the
+  /// description with the marker line removed, and the extracted title (null
+  /// if there was none).
+  static final RegExp _sourceMarkerPattern =
+      RegExp(r'^\[Source:\s*([^\]]+)\][ \t]*\n?', caseSensitive: false);
+
+  (String, String?) _extractSourceMarker(String description) {
+    final match = _sourceMarkerPattern.firstMatch(description);
+    if (match == null) return (description, null);
+    final title = match.group(1)!.trim();
+    final rest = description.substring(match.end).trimLeft();
+    return (rest, title.isEmpty ? null : title);
+  }
+
   /// Builds a brand-new local task from a Todoist-side task this app has
   /// never seen before — first-launch import and step 4's "brand-new
   /// Todoist tasks" pull both funnel through here. Every such task is a
@@ -920,7 +940,9 @@ class TodoistSyncService {
   /// with the project the task came from, a proxy for "which conversation
   /// created this" the Waiting for Approval page groups by (see that
   /// field's doc). Passed in rather than looked up here since building it
-  /// needs the same `remoteProjects` fetch every call site already has.
+  /// needs the same `remoteProjects` fetch every call site already has. A
+  /// [_sourceMarkerPattern] line in the description wins over the project
+  /// name when both are present.
   Task _taskFromRemote(
     Map<String, dynamic> remoteTask,
     Map<String, String> todoistToLocalProject, {
@@ -930,6 +952,8 @@ class TodoistSyncService {
       remoteTask['description'] as String? ?? '',
     );
     final meta = parts.meta;
+    final (visibleDescription, markerSourceTitle) =
+        _extractSourceMarker(parts.visible);
     final remoteProjectId = remoteTask['project_id'] == null
         ? null
         : _idOf(remoteTask['project_id']);
@@ -937,13 +961,12 @@ class TodoistSyncService {
         remoteProjectId == null ? null : todoistToLocalProject[remoteProjectId];
     final task = Task(
       title: remoteTask['content'] as String? ?? '',
-      description: parts.visible,
+      description: visibleDescription,
       note: meta?['note'] as String? ?? '',
       label: addLabelToken(_labelsFromRemote(remoteTask), waitingApprovalToken),
       createdAt: _remoteCreatedAt(remoteTask) ?? DateTime.now(),
-      pendingSourceTitle: remoteProjectId == null
-          ? null
-          : remoteProjectNames[remoteProjectId],
+      pendingSourceTitle: markerSourceTitle ??
+          (remoteProjectId == null ? null : remoteProjectNames[remoteProjectId]),
       projectId: (mapped == _wishlistProjectKey || mapped == _futureProjectKey)
           ? null
           : mapped,

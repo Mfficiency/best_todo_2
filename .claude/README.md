@@ -32,6 +32,7 @@ When you change something, update its canonical doc — never fork a second copy
 | [`notes/environment.md`](notes/environment.md) | Setting up a dev machine, a CI runner, or a fresh AI sandbox (Flutter install recipe, what's not available where). |
 | [`notes/alarm-work-spec.md`](notes/alarm-work-spec.md) | Touching anything in the alarm/SMS/background pipeline. Session-by-session history of the reliability arc — the bugs, root causes, and why each mechanism exists. |
 | [`notes/obsidian-integration.md`](notes/obsidian-integration.md) | Building on the Obsidian integration. All three tiers have shipped: Tier 1 (Markdown export), Tier 2 (Obsidian plugin viewer), Tier 3 (two-way checkbox sync via a change journal) — this note is the as-built record of the conflict rules and failure modes. |
+| [`notes/pocket-todoist-ingestion.md`](notes/pocket-todoist-ingestion.md) | Touching the Waiting for Approval queue or anything that fills it. Documents the external Claude Routine (Pocket → Todoist, out-of-repo) that creates those items, and the `[Source: ...]` description-marker convention it and `TodoistSyncService` agree on for `Task.pendingSourceTitle`. |
 | [`notes/remote-pc-wake.md`](notes/remote-pc-wake.md) | You need to wake the maintainer's Windows build machine remotely (Wake-on-LAN setup, relay options) and then trigger a local build/publish on it — e.g. `tool/wake_on_lan.py`. |
 
 ## How to rebuild the app from scratch

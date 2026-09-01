@@ -400,6 +400,46 @@ void main() {
     expect(tasks.single.pendingSourceTitle, isNull);
   });
 
+  test('a leading [Source: ...] marker in the description sets the pending '
+      'source title and is stripped from the visible description', () async {
+    fake.seedTask(
+      content: 'Book flights',
+      description: '[Source: Trip planning]\nBook the Tuesday flight',
+    );
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks.single.pendingSourceTitle, 'Trip planning');
+    expect(tasks.single.description, 'Book the Tuesday flight');
+  });
+
+  test('a [Source: ...] marker wins over the Todoist project name', () async {
+    const projectId = 'remote-conversation-project';
+    fake.projects[projectId] = {'id': projectId, 'name': 'Trip planning'};
+    fake.seedTask(
+      content: 'Book flights',
+      description: '[Source: Actual conversation title]',
+      projectId: projectId,
+    );
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks.single.pendingSourceTitle, 'Actual conversation title');
+  });
+
+  test('a description with no [Source: ...] marker is left untouched',
+      () async {
+    fake.seedTask(content: 'From Todoist', description: 'entered on the go');
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks.single.description, 'entered on the go');
+    expect(tasks.single.pendingSourceTitle, isNull);
+  });
+
   test('a pulled task adopts its Todoist-side creation time when the API '
       'reports one', () async {
     final id = fake.seedTask(content: 'From Todoist');
