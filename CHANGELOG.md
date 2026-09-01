@@ -2,8 +2,9 @@
 
 ## [0.2.18] - 2026-09-01
 - Todoist sync now recognizes a leading [Source: <title>] marker on a pulled task's description, letting an external ingestion routine (e.g. the Pocket-to-Todoist approval workflow) name which conversation created a pending item without needing a dedicated Todoist project per conversation.
-- Local build: 2026-09-01 15:47
+- Local build: 2026-09-01 15:49
 - Build duration (apk): 5m 33s
+- Build duration (windows): 1m 34s
 
 ## [0.2.17] - 2026-09-01
 - Waiting for Approval: tap a pending item to expand its creation date, source conversation and Todoist sync info; toggle grouping by conversation; long-press to multi-select and bulk approve or deny items or whole groups.
