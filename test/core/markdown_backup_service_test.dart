@@ -238,6 +238,7 @@ void main() {
         'Waiting for Approval.md',
         'Projects.md',
         'Food Diary.md',
+        'Research.md',
         'Alarms.md',
         'Countdown.md',
         'Archived items.md',

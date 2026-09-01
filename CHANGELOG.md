@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.22] - 2026-09-01
+- Waiting for Approval: double-tap a pending item for a quick-tag menu (Wishlist/Research by default, editable in Settings > Tasks > Approval quick tags) that approves it straight into that tool. Added a new Research tool (Tools drawer) for items approved this way or added directly.
+
 ## [0.2.21] - 2026-09-01
 - Waiting for Approval's tap-to-expand panel now shows everything about the item, not just where it came from: its note, due date, start/end time window, attachment count and every label tag (colored the same as everywhere else in the app) — plus a "View full details" link into the full Task Details page for attachments, reminders and its complete journal history.
 - Local build: 2026-09-01 20:18

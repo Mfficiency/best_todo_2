@@ -123,6 +123,14 @@ class Task {
   /// [ItemViews.foodDiary] for the gate every other view honors.
   bool isEatingHabit;
 
+  /// When true this task is a Research item: it shows up only in the
+  /// Research tool (a pre-filtered view over the one task list, like the
+  /// wishlist/Food Diary) — never the home tabs, schedule view, projects or
+  /// Todoist sync. See [ItemViews.research] for the gate every other view
+  /// honors. Set automatically when a Waiting for Approval item is approved
+  /// via the "Research" quick tag (see `waiting_approval_page.dart`).
+  bool isResearch;
+
   /// Sentinel due date the schedule view's "move to" tab picker uses to
   /// place a task in the Future tab explicitly, without leaving it fully
   /// undated. Exposed here (rather than kept private to the home page) so
@@ -188,6 +196,7 @@ class Task {
     this.recurrenceInstanceKey,
     this.isWish = false,
     this.isEatingHabit = false,
+    this.isResearch = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
     List<Attachment>? attachments,
@@ -276,6 +285,7 @@ class Task {
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
       isWish: json['isWish'] as bool? ?? false,
       isEatingHabit: json['isEatingHabit'] as bool? ?? false,
+      isResearch: json['isResearch'] as bool? ?? false,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
@@ -326,6 +336,7 @@ class Task {
           'recurrenceInstanceKey': recurrenceInstanceKey,
         'isWish': isWish,
         'isEatingHabit': isEatingHabit,
+        'isResearch': isResearch,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,
         if (attachments.isNotEmpty)

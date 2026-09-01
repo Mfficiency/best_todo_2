@@ -22,6 +22,7 @@ import '../services/streak_service.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import 'approval_quick_tags_page.dart';
 import 'auto_tag_rules_page.dart';
 import 'dice_timer_settings.dart';
 import 'fitness_activity_page.dart';
@@ -163,6 +164,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'Auto-tag new items', 4, 'tags labels keywords automatic'),
     _SettingsSearchEntry(
         'Auto-tag rules', 4, 'tags labels keywords dictionary work bike'),
+    _SettingsSearchEntry('Approval quick tags', 4,
+        'waiting for approval double tap wishlist research quick tags'),
     _SettingsSearchEntry('Widget progress line', 8, 'home screen completion'),
     _SettingsSearchEntry('Check off tasks on the widget', 8,
         'home screen checkbox tick complete done interactive'),
@@ -2853,6 +2856,19 @@ class _SettingsPageState extends State<SettingsPage> {
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const AutoTagRulesPage(),
+                                ),
+                              ),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.checklist_outlined),
+                              title: const Text('Approval quick tags'),
+                              subtitle: const Text(
+                                  'Double-tap a Waiting for Approval item for '
+                                  'buttons that approve it straight into a tool'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ApprovalQuickTagsPage(),
                                 ),
                               ),
                             ),

@@ -59,6 +59,7 @@ import 'fitness_activity_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
+import 'research_page.dart';
 import 'settings_page.dart';
 import 'speech_input_button.dart';
 import 'streak_celebration.dart';
@@ -1136,6 +1137,8 @@ class _HomePageState extends State<HomePage>
         return const WishlistPage();
       case 'food_diary':
         return const FoodDiaryPage();
+      case 'research':
+        return const ResearchPage();
       case 'projects':
         return ProjectsPage(tasks: _tasks, onChanged: _saveTasks);
       case 'chronize':
@@ -1178,10 +1181,10 @@ class _HomePageState extends State<HomePage>
       // Tools like Projects mutate tasks in place; refresh the lists when
       // coming back.
       if (mounted) setState(() {});
-      // The Wishlist/Food Diary tools load and save the task list on their
-      // own, so this page's in-memory copy is refreshed from disk when
-      // coming back.
-      if (tool == 'wishlist' || tool == 'food_diary') {
+      // The Wishlist/Food Diary/Research tools load and save the task list
+      // on their own, so this page's in-memory copy is refreshed from disk
+      // when coming back.
+      if (tool == 'wishlist' || tool == 'food_diary' || tool == 'research') {
         _reloadTasksFromStorage();
       }
     });
@@ -3022,6 +3025,7 @@ class _HomePageState extends State<HomePage>
         Icons.calendar_view_week),
     _ToolEntry('projects', 'Projects', Icons.dashboard),
     _ToolEntry('wishlist', 'Wishlist', Icons.favorite_border),
+    _ToolEntry('research', 'Research', Icons.science_outlined),
     _ToolEntry('chronize', 'Chronize', Icons.access_time),
     _ToolEntry('countdown', 'Countdown', Icons.timer),
     _ToolEntry('productivity_stats', 'Productivity Stats', Icons.insights),

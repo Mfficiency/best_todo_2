@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 
 import '../config.dart';
+import '../models/approval_quick_tag.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
+import '../services/approval_quick_tag_service.dart';
 import '../services/food_diary_widget_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -123,6 +126,10 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   Future<void> _load() async {
     final tasks = await _repository.loadItems();
+    // Self-contained like the task list load: the double-tap quick-tag menu
+    // needs this loaded before it can render, and this page is the only
+    // place it's shown.
+    await ApprovalQuickTagService.instance.load();
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
@@ -214,6 +221,28 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     _save();
     LogService.add('WaitingApprovalPage._approve',
         'Approved "${task.title}", due ${task.dueDate}');
+  }
+
+  /// Approves [task] and routes it straight into the tool [tag] names
+  /// (Wishlist/Research today — see [ApprovalQuickTag.targets]) by flipping
+  /// that tool's membership flag on the task, exactly like the plain
+  /// Approve button plus a manual flag toggle would. Reached by
+  /// double-tapping a pending item — see [_PendingTaskTileState._showQuickTagMenu].
+  void _approveWithQuickTag(Task task, ApprovalQuickTag tag) {
+    setState(() {
+      task.label = removeWaitingApprovalToken(task.label);
+      switch (tag.target) {
+        case ApprovalQuickTag.wishlistTarget:
+          task.isWish = true;
+          break;
+        case ApprovalQuickTag.researchTarget:
+          task.isResearch = true;
+          break;
+      }
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._approve',
+        'Approved "${task.title}" into ${tag.target}');
   }
 
   /// Denies the task by sending it straight to the real Deleted bin — unlike
@@ -434,6 +463,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         onApprove: () => _approve(task),
         onApproveWithDate: (tabIndex) => _approveWithDate(task, tabIndex),
         onApproveToWeekday: (weekday) => _approveToWeekday(task, weekday),
+        onApproveWithQuickTag: (tag) => _approveWithQuickTag(task, tag),
         onDeny: () => _deny(task),
         onToggleSelected: () => _toggleSelected(task),
         onStartSelection: () => _startSelection(task),
@@ -551,9 +581,12 @@ class _ApprovalGroupHeader extends StatelessWidget {
 /// that don't touch the due date.
 ///
 /// Tapping the tile toggles an inline details panel (creation date, source
-/// conversation, Todoist sync info); long-pressing it starts multi-select,
-/// during which the leading icon becomes a checkbox, tapping toggles
-/// selection instead of expanding, and the swipe gestures are disabled.
+/// conversation, Todoist sync info); double-tapping it shows the quick-tag
+/// menu (Settings > Tasks > Approval quick tags — Wishlist/Research by
+/// default), which approves the item straight into that tool; long-pressing
+/// it starts multi-select, during which the leading icon becomes a
+/// checkbox, tapping toggles selection instead of expanding, and the swipe
+/// gestures are disabled.
 class _PendingTaskTile extends StatefulWidget {
   final Task task;
   final bool selecting;
@@ -562,6 +595,7 @@ class _PendingTaskTile extends StatefulWidget {
   final VoidCallback onApprove;
   final void Function(int tabIndex) onApproveWithDate;
   final void Function(int weekday) onApproveToWeekday;
+  final void Function(ApprovalQuickTag tag) onApproveWithQuickTag;
   final VoidCallback onDeny;
   final VoidCallback onToggleSelected;
   final VoidCallback onStartSelection;
@@ -576,6 +610,7 @@ class _PendingTaskTile extends StatefulWidget {
     required this.onApprove,
     required this.onApproveWithDate,
     required this.onApproveToWeekday,
+    required this.onApproveWithQuickTag,
     required this.onDeny,
     required this.onToggleSelected,
     required this.onStartSelection,
@@ -649,6 +684,78 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
   void _selectWeekday(int weekday) {
     _closeOptions();
     widget.onApproveToWeekday(weekday);
+  }
+
+  /// Wall-clock moment of the previous tap, for the hand-rolled double-tap
+  /// detection in [_handleTap] — mirrors `TaskTile`'s own double-tap menu.
+  /// A real `onDoubleTap` recognizer would hold the gesture arena for the
+  /// double-tap timeout on every tap, delaying the expand-on-tap by ~300 ms.
+  DateTime? _lastTapAt;
+
+  void _handleTap() {
+    if (widget.selecting) {
+      widget.onToggleSelected();
+      return;
+    }
+    final now = DateTime.now();
+    final last = _lastTapAt;
+    _lastTapAt = now;
+    if (last != null && now.difference(last) < kDoubleTapTimeout) {
+      _lastTapAt = null;
+      // Second tap of a double tap: take back the expansion toggle the
+      // first tap made, then show the quick-tag menu.
+      widget.onToggleExpanded();
+      _showQuickTagMenu();
+      return;
+    }
+    widget.onToggleExpanded();
+  }
+
+  /// Quick-tag menu shown on a double tap: one button per configured
+  /// [ApprovalQuickTag] (Settings > Tasks > Approval quick tags). Tapping
+  /// one approves the item straight into the tool it names.
+  Future<void> _showQuickTagMenu() async {
+    final tags = ApprovalQuickTagService.instance.list;
+    if (tags.isEmpty) return;
+    final task = widget.task;
+    final picked = await showModalBottomSheet<ApprovalQuickTag>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(sheetContext)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              for (final tag in tags)
+                ListTile(
+                  leading: const Icon(Icons.sell_outlined),
+                  title: Text(tag.label),
+                  subtitle: Text('Approve into '
+                      '${ApprovalQuickTag.targetLabels[tag.target] ?? tag.target}'),
+                  onTap: () => Navigator.of(sheetContext).pop(tag),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    widget.onApproveWithQuickTag(picked);
   }
 
   /// One label chip, colored like every other tag chip in the app
@@ -772,7 +879,7 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
               color: Theme.of(context).colorScheme.error,
               onPressed: widget.onDeny,
             ),
-      onTap: widget.selecting ? widget.onToggleSelected : widget.onToggleExpanded,
+      onTap: _handleTap,
       onLongPress: widget.selecting ? null : widget.onStartSelection,
     );
 
