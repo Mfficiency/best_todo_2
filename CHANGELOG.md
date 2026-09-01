@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.17] - 2026-09-01
+- Waiting for Approval: tap a pending item to expand its creation date, source conversation and Todoist sync info; toggle grouping by conversation; long-press to multi-select and bulk approve or deny items or whole groups.
+
 ## [0.2.16] - 2026-08-31
 - Fitness Activity is redesigned in a Samsung Health-inspired style: a rounded gradient hero card bundles the week picker, total steps and the bar chart, and every metric tile/record now has a colored circular icon badge.
 - Personal bests are now also detected automatically from up to a year of Health Connect history (most steps/distance/active energy in a day, longest workout, longest sleep, highest heart rate, lowest resting heart rate), shown in a new "Auto-detected records" section above your manually logged ones.

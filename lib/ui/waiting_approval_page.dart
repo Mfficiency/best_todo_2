@@ -11,6 +11,7 @@ import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/task_widget_service.dart';
+import '../services/todoist_sync_service.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
@@ -36,6 +37,19 @@ const _pendingSwipeWeekdayOptions = <_PendingWeekdayOption>[
   _PendingWeekdayOption('Mon', DateTime.monday),
 ];
 
+/// Group title shown for a pending item with no [Task.pendingSourceTitle]
+/// (created before this field existed, or pulled from Todoist's Inbox).
+const String _unspecifiedGroupTitle = 'Unspecified';
+
+String _two(int v) => v.toString().padLeft(2, '0');
+
+/// `yyyy-MM-dd HH:mm` in local time — matches `TaskTile`'s sync-info dialog
+/// formatting so date/time strings look the same everywhere in the app.
+String _formatDateTime(DateTime dt) {
+  final d = dt.toLocal();
+  return '${d.year}-${_two(d.month)}-${_two(d.day)} ${_two(d.hour)}:${_two(d.minute)}';
+}
+
 /// Tasks pulled in via the Todoist workflow land here first — tagged with
 /// [waitingApprovalToken] and hidden from every other list (home tabs,
 /// wishlist, project boards; see `ItemViews`) — until approved or denied.
@@ -57,6 +71,24 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// but always persists the whole list.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
+
+  /// Whether the list is shown grouped by [Task.pendingSourceTitle] (a proxy
+  /// for the conversation that created each batch of items) instead of one
+  /// flat list. Toggled from the app bar; not persisted — each visit starts
+  /// on the flat list, matching the page's previous-only behavior.
+  bool _groupByConversation = false;
+
+  /// Which pending items are inline-expanded (creation date, source
+  /// conversation, Todoist sync info). Several can be open at once.
+  final Set<String> _expandedUids = <String>{};
+
+  /// The uids currently selected in multi-select mode; empty means the page
+  /// isn't in selection mode. Long-pressing a tile (or a group header)
+  /// starts a selection; tapping other tiles/headers toggles them in and
+  /// out while selecting.
+  final Set<String> _selectedUids = <String>{};
+
+  bool get _selecting => _selectedUids.isNotEmpty;
 
   @override
   void initState() {
@@ -86,6 +118,19 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         _tasks,
         rules: Config.viewFilterRules[ViewFilterRules.approval],
       );
+
+  /// [pending] partitioned by [Task.pendingSourceTitle], in first-seen
+  /// order; a task with no source title (or a blank one) falls into
+  /// [_unspecifiedGroupTitle].
+  Map<String, List<Task>> _groupedPending(List<Task> pending) {
+    final grouped = <String, List<Task>>{};
+    for (final task in pending) {
+      final title = task.pendingSourceTitle?.trim();
+      final key = (title == null || title.isEmpty) ? _unspecifiedGroupTitle : title;
+      grouped.putIfAbsent(key, () => <Task>[]).add(task);
+    }
+    return grouped;
+  }
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -195,31 +240,281 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       );
   }
 
+  void _toggleGrouping() =>
+      setState(() => _groupByConversation = !_groupByConversation);
+
+  void _toggleExpanded(Task task) {
+    setState(() {
+      if (!_expandedUids.remove(task.uid)) _expandedUids.add(task.uid);
+    });
+  }
+
+  void _startSelection(Task task) => setState(() => _selectedUids.add(task.uid));
+
+  void _toggleSelected(Task task) {
+    setState(() {
+      if (!_selectedUids.remove(task.uid)) _selectedUids.add(task.uid);
+    });
+  }
+
+  void _cancelSelection() => setState(_selectedUids.clear);
+
+  void _startSelectionForGroup(List<Task> tasks) {
+    setState(() {
+      for (final task in tasks) {
+        _selectedUids.add(task.uid);
+      }
+    });
+  }
+
+  /// Tapping a group header while selecting toggles the whole group: fully
+  /// selects it if any item was unselected, clears it if every item already
+  /// was.
+  void _toggleGroupSelected(List<Task> tasks) {
+    setState(() {
+      final allSelected = tasks.every((t) => _selectedUids.contains(t.uid));
+      for (final task in tasks) {
+        if (allSelected) {
+          _selectedUids.remove(task.uid);
+        } else {
+          _selectedUids.add(task.uid);
+        }
+      }
+    });
+  }
+
+  /// Approves every selected item in one go, exactly like the single plain
+  /// Approve button (no due date is touched).
+  void _approveSelection() {
+    final targets =
+        _pending().where((t) => _selectedUids.contains(t.uid)).toList();
+    if (targets.isEmpty) return;
+    setState(() {
+      for (final task in targets) {
+        task.label = removeWaitingApprovalToken(task.label);
+      }
+      _selectedUids.clear();
+    });
+    _save();
+    LogService.add(
+        'WaitingApprovalPage._approve', 'Approved ${targets.length} item(s)');
+  }
+
+  /// Denies every selected item in one go, with a single combined undo
+  /// snackbar — the bulk equivalent of [_deny].
+  void _denySelection() {
+    final targets =
+        _pending().where((t) => _selectedUids.contains(t.uid)).toList();
+    if (targets.isEmpty) return;
+    final originalIndices = <Task, int>{
+      for (final task in targets) task: _tasks.indexOf(task),
+    }..removeWhere((_, index) => index < 0);
+    if (originalIndices.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() {
+      for (final task in originalIndices.keys) {
+        _tasks.remove(task);
+      }
+      _selectedUids.clear();
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._deny',
+        'Denied ${originalIndices.length} item(s)');
+
+    late Timer timer;
+    timer = Timer(Config.delayDuration, () async {
+      final binned = await _repository.loadBinItems();
+      for (final task in originalIndices.keys) {
+        task.deletedAt = DateTime.now();
+        task.autoDeleted = false;
+        binned.insert(0, task);
+      }
+      while (binned.length > 100) {
+        binned.removeLast();
+      }
+      await _repository.saveBinItems(binned);
+      messenger.hideCurrentSnackBar();
+    });
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(originalIndices.length == 1
+              ? 'Denied "${originalIndices.keys.first.title}"'
+              : 'Denied ${originalIndices.length} items'),
+          duration: Config.delayDuration,
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
+              setState(() {
+                final byIndex = originalIndices.entries.toList()
+                  ..sort((a, b) => a.value.compareTo(b.value));
+                for (final entry in byIndex) {
+                  final index = entry.value.clamp(0, _tasks.length);
+                  _tasks.insert(index, entry.key);
+                }
+              });
+              _save();
+            },
+          ),
+        ),
+      );
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    if (_selecting) {
+      return AppBar(
+        leading: IconButton(
+          tooltip: 'Cancel selection',
+          icon: const Icon(Icons.close),
+          onPressed: _cancelSelection,
+        ),
+        title: Text('${_selectedUids.length} selected'),
+        actions: [
+          IconButton(
+            tooltip: 'Approve selected',
+            icon: const Icon(Icons.check_circle_outline),
+            onPressed: _approveSelection,
+          ),
+          IconButton(
+            tooltip: 'Deny selected',
+            icon: const Icon(Icons.cancel_outlined),
+            onPressed: _denySelection,
+          ),
+        ],
+      );
+    }
+    return buildSubpageAppBar(
+      context,
+      title: 'Waiting for Approval',
+      actions: [
+        IconButton(
+          tooltip:
+              _groupByConversation ? 'Show as one list' : 'Group by conversation',
+          icon: Icon(
+              _groupByConversation ? Icons.view_list : Icons.view_agenda_outlined),
+          onPressed: _toggleGrouping,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTile(Task task) => _PendingTaskTile(
+        key: ValueKey(task.uid),
+        task: task,
+        selecting: _selecting,
+        selected: _selectedUids.contains(task.uid),
+        expanded: _expandedUids.contains(task.uid),
+        onApprove: () => _approve(task),
+        onApproveWithDate: (tabIndex) => _approveWithDate(task, tabIndex),
+        onApproveToWeekday: (weekday) => _approveToWeekday(task, weekday),
+        onDeny: () => _deny(task),
+        onToggleSelected: () => _toggleSelected(task),
+        onStartSelection: () => _startSelection(task),
+        onToggleExpanded: () => _toggleExpanded(task),
+      );
+
+  Widget _buildFlatList(List<Task> pending) => ListView.builder(
+        itemCount: pending.length,
+        itemBuilder: (context, index) => _buildTile(pending[index]),
+      );
+
+  Widget _buildGroupedList(List<Task> pending) {
+    final grouped = _groupedPending(pending);
+    return ListView(
+      children: [
+        for (final entry in grouped.entries) ...[
+          _ApprovalGroupHeader(
+            title: entry.key,
+            count: entry.value.length,
+            selecting: _selecting,
+            allSelected: entry.value.every((t) => _selectedUids.contains(t.uid)),
+            onTap: _selecting
+                ? () => _toggleGroupSelected(entry.value)
+                : null,
+            onLongPress: _selecting
+                ? null
+                : () => _startSelectionForGroup(entry.value),
+          ),
+          for (final task in entry.value) _buildTile(task),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pending = _loading ? <Task>[] : _pending();
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Waiting for Approval'),
+      appBar: _buildAppBar(context),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : pending.isEmpty
               ? const Center(child: Text('Nothing waiting for approval'))
-              : ListView.builder(
-                  itemCount: pending.length,
-                  itemBuilder: (context, index) {
-                    final task = pending[index];
-                    return _PendingTaskTile(
-                      key: ValueKey(task.uid),
-                      task: task,
-                      onApprove: () => _approve(task),
-                      onApproveWithDate: (tabIndex) =>
-                          _approveWithDate(task, tabIndex),
-                      onApproveToWeekday: (weekday) =>
-                          _approveToWeekday(task, weekday),
-                      onDeny: () => _deny(task),
-                    );
-                  },
-                ),
+              : _groupByConversation
+                  ? _buildGroupedList(pending)
+                  : _buildFlatList(pending),
+    );
+  }
+}
+
+/// Header row above a conversation group's items in the grouped view: the
+/// group's title, its item count and, while selecting, a checkbox that
+/// selects/deselects the whole group at once. Long-pressing it (outside
+/// selection mode) starts a selection with the whole group already checked.
+class _ApprovalGroupHeader extends StatelessWidget {
+  final String title;
+  final int count;
+  final bool selecting;
+  final bool allSelected;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  const _ApprovalGroupHeader({
+    required this.title,
+    required this.count,
+    required this.selecting,
+    required this.allSelected,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+        child: Row(
+          children: [
+            if (selecting) ...[
+              // A plain icon rather than a real Checkbox: a Checkbox owns
+              // its own tap recognizer, which would compete with this row's
+              // InkWell for the same tap and risk firing [onTap] twice.
+              Icon(
+                allSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Text(
+                '$title ($count)',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -233,20 +528,37 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 /// Directions follow [Config.swipeLeftDelete] like the home list. The plain
 /// leading/trailing Approve/Deny icon buttons stay as one-tap alternatives
 /// that don't touch the due date.
+///
+/// Tapping the tile toggles an inline details panel (creation date, source
+/// conversation, Todoist sync info); long-pressing it starts multi-select,
+/// during which the leading icon becomes a checkbox, tapping toggles
+/// selection instead of expanding, and the swipe gestures are disabled.
 class _PendingTaskTile extends StatefulWidget {
   final Task task;
+  final bool selecting;
+  final bool selected;
+  final bool expanded;
   final VoidCallback onApprove;
   final void Function(int tabIndex) onApproveWithDate;
   final void Function(int weekday) onApproveToWeekday;
   final VoidCallback onDeny;
+  final VoidCallback onToggleSelected;
+  final VoidCallback onStartSelection;
+  final VoidCallback onToggleExpanded;
 
   const _PendingTaskTile({
     Key? key,
     required this.task,
+    required this.selecting,
+    required this.selected,
+    required this.expanded,
     required this.onApprove,
     required this.onApproveWithDate,
     required this.onApproveToWeekday,
     required this.onDeny,
+    required this.onToggleSelected,
+    required this.onStartSelection,
+    required this.onToggleExpanded,
   }) : super(key: key);
 
   @override
@@ -318,6 +630,34 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     widget.onApproveToWeekday(weekday);
   }
 
+  /// Creation date, source conversation and Todoist sync info shown when
+  /// [widget.expanded] is true.
+  Widget _buildDetails(BuildContext context) {
+    final task = widget.task;
+    final theme = Theme.of(context);
+    final detailStyle = theme.textTheme.bodySmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final entry = TodoistSyncService.instance.entryForLocalUid(task.uid);
+    final lines = <String>[];
+    if (task.createdAt != null) {
+      lines.add('Created: ${_formatDateTime(task.createdAt!)}');
+    }
+    final source = task.pendingSourceTitle?.trim();
+    lines.add('From: ${source != null && source.isNotEmpty ? source : _unspecifiedGroupTitle}');
+    if (entry != null) {
+      lines.add('Synced from Todoist: ${_formatDateTime(entry.syncedAt)}');
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final line in lines) Text(line, style: detailStyle),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final task = widget.task;
@@ -327,18 +667,27 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
           ? LinkifiedText(task.description)
           : null,
       isThreeLine: task.description.isNotEmpty,
-      leading: IconButton(
-        icon: const Icon(Icons.check_circle_outline),
-        tooltip: 'Approve',
-        color: Colors.green,
-        onPressed: widget.onApprove,
-      ),
-      trailing: IconButton(
-        icon: const Icon(Icons.cancel_outlined),
-        tooltip: 'Deny',
-        color: Theme.of(context).colorScheme.error,
-        onPressed: widget.onDeny,
-      ),
+      leading: widget.selecting
+          ? Checkbox(
+              value: widget.selected,
+              onChanged: (_) => widget.onToggleSelected(),
+            )
+          : IconButton(
+              icon: const Icon(Icons.check_circle_outline),
+              tooltip: 'Approve',
+              color: Colors.green,
+              onPressed: widget.onApprove,
+            ),
+      trailing: widget.selecting
+          ? null
+          : IconButton(
+              icon: const Icon(Icons.cancel_outlined),
+              tooltip: 'Deny',
+              color: Theme.of(context).colorScheme.error,
+              onPressed: widget.onDeny,
+            ),
+      onTap: widget.selecting ? widget.onToggleSelected : widget.onToggleExpanded,
+      onLongPress: widget.selecting ? null : widget.onStartSelection,
     );
 
     final stackTile = Stack(
@@ -402,10 +751,18 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
       ],
     );
 
+    final tileWithDetails = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        stackTile,
+        if (widget.expanded) _buildDetails(context),
+      ],
+    );
+
     final slide = AnimatedSlide(
       offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
       duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
-      child: stackTile,
+      child: tileWithDetails,
     );
 
     Widget? background;
@@ -469,7 +826,7 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     );
 
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-    if (isAndroid || kIsWeb) {
+    if ((isAndroid || kIsWeb) && !widget.selecting) {
       content = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragStart: (_) {
@@ -512,6 +869,14 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
       );
     }
 
-    return content;
+    return widget.selected
+        ? Container(
+            color: Theme.of(context)
+                .colorScheme
+                .primaryContainer
+                .withValues(alpha: 0.4),
+            child: content,
+          )
+        : content;
   }
 }

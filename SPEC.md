@@ -447,6 +447,55 @@ while options are open cancels, as on the home list. The original leading/traili
 Approve/Deny icon buttons are unchanged: they stay one-tap alternatives that lift the
 approval gate (or deny) without touching `dueDate`.
 
+**Inline expand, group-by-conversation and multi-select (0.2.17):** tapping a pending
+row (outside multi-select) toggles an inline details panel below it — no navigation, no
+dialog — showing `Created: <local createdAt>`, `From: <Task.pendingSourceTitle>` (or
+"Unspecified" when null), and, if the task has a `TodoistSyncMapEntry`, a
+`Synced from Todoist:` line, mirroring `TaskTile`'s sync-info dialog fields but inline.
+Several rows can be expanded at once (`_WaitingApprovalPageState._expandedUids`, a
+`Set<String>` of uids).
+
+An app-bar icon button (`Icons.view_agenda_outlined` / `Icons.view_list`, tooltip
+"Group by conversation" / "Show as one list") toggles `_groupByConversation` between the
+original flat `ListView.builder` and a grouped `ListView` built the same way as
+`WishlistPage`'s release sections: `_groupedPending` buckets the pending list by
+`Task.pendingSourceTitle` (first-seen order; a null/blank title groups under
+"Unspecified"), and each `_ApprovalGroupHeader` shows `<title> (<count>)`. Not persisted —
+every visit starts on the flat list.
+
+Long-pressing a row (outside selection) starts multi-select — the same shape as
+`WishlistPage`'s swipe-triggered selection, but click-and-hold here since a pending row's
+swipe gestures are already spoken for (approve/deny). While selecting
+(`_selectedUids.isNotEmpty`), the app bar becomes "N selected" with Approve-selected
+(strips the token, like the plain Approve button — no date is touched) and
+Deny-selected (bulk `_deny`, one combined undo snackbar) actions; a row's leading icon
+becomes a `Checkbox` and its trailing Deny icon disappears (bulk actions live in the app
+bar only), and its swipe gestures are disabled for the duration. Tapping another row
+toggles it in/out of the selection; tapping a group header (grouped view) selects/
+deselects every item in that group at once, and long-pressing a header (outside
+selection) starts a selection with the whole group pre-checked — the header's checkbox
+is a plain `Icon` rather than a real `Checkbox`, since a `Checkbox` owns its own tap
+recognizer that would compete with the header's `InkWell` for the same tap.
+
+`Task.pendingSourceTitle` (`lib/models/task.dart`) is the field behind "From:" and the
+grouping key: set only by `TodoistSyncService._taskFromRemote` (both call sites — the
+first-launch pull and the "brand-new Todoist tasks" step), it's the *name of the Todoist
+project* the pulled task lived in, excluding Inbox (every task not otherwise filed lands
+there, so its name carries no signal) — a usable proxy for "which conversation created
+this" **if** whatever creates the Todoist tasks (e.g. a Claude session with Todoist
+access, the same shape as "Propose for next" above) files each conversation's tasks into
+a Todoist project named for that conversation, rather than dropping them in Inbox. No
+BestToDo-side change is needed beyond that filing convention — group titles and the
+"From:" line pick it up automatically on the next sync. It's local-only display
+metadata: never pushed back to Todoist, and never touches the sync fingerprints (adding
+it to a synced task doesn't trigger a push). A task with no source title (created any
+other way, or pulled before this field existed) shows "Unspecified" and groups there.
+
+`_taskFromRemote` also now prefers the pulled task's own Todoist-side creation time for
+local `createdAt` over "now" (the pull time): `_remoteCreatedAt` reads `added_at` (the
+unified API v1 field) or, defensively, `created_at` (the older REST v2 spelling), falling
+back to `DateTime.now()` if the API sends neither.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**

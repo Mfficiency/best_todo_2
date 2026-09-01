@@ -272,4 +272,201 @@ void main() {
     expect(binned.single['title'], 'From Todoist');
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets(
+      'tapping a pending item expands it, showing creation date and source; '
+      'tapping again collapses it', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 15, 9, 30),
+          pendingSourceTitle: 'Trip planning',
+        ),
+      ],
+      marker: 'From Todoist',
+    );
+
+    expect(find.textContaining('Created:'), findsNothing);
+
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
+
+    expect(find.textContaining('Created: 2026-01-15 09:30'), findsOneWidget);
+    expect(find.textContaining('From: Trip planning'), findsOneWidget);
+
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
+
+    expect(find.textContaining('Created:'), findsNothing);
+  });
+
+  testWidgets(
+      'an item with no source title shows Unspecified when expanded',
+      (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      marker: 'From Todoist',
+    );
+
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
+
+    expect(find.textContaining('From: Unspecified'), findsOneWidget);
+  });
+
+  testWidgets(
+      'the grouping toggle switches between one list and grouped by '
+      'conversation', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Book flights',
+          label: waitingApprovalToken,
+          pendingSourceTitle: 'Trip planning',
+        ),
+        Task(title: 'Buy groceries', label: waitingApprovalToken),
+      ],
+      marker: 'Book flights',
+    );
+
+    expect(find.text('Trip planning (1)'), findsNothing);
+
+    await tester.tap(find.byTooltip('Group by conversation'));
+    await tester.pump();
+
+    expect(find.text('Trip planning (1)'), findsOneWidget);
+    expect(find.text('Unspecified (1)'), findsOneWidget);
+    expect(find.text('Book flights'), findsOneWidget);
+    expect(find.text('Buy groceries'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Show as one list'));
+    await tester.pump();
+
+    expect(find.text('Trip planning (1)'), findsNothing);
+    expect(find.text('Book flights'), findsOneWidget);
+  });
+
+  testWidgets(
+      'long-pressing an item starts multi-select; Approve selected approves '
+      'every checked item', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(title: 'From Todoist', label: waitingApprovalToken),
+        Task(title: 'Second item', label: waitingApprovalToken),
+      ],
+      marker: 'From Todoist',
+    );
+
+    await tester.longPress(find.text('From Todoist'));
+    await tester.pump();
+    expect(find.text('1 selected'), findsOneWidget);
+
+    await tester.tap(find.text('Second item'));
+    await tester.pump();
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Approve selected'));
+    await tester.pump();
+    await settleWrites(tester);
+
+    expect(find.text('Nothing waiting for approval'), findsOneWidget);
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(
+      saved.every((t) => !(t['label'] as String).contains('approval')),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+      'long-press then Deny selected sends every checked item to the bin',
+      (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(title: 'From Todoist', label: waitingApprovalToken),
+        Task(title: 'Second item', label: waitingApprovalToken),
+      ],
+      marker: 'From Todoist',
+    );
+
+    await tester.longPress(find.text('From Todoist'));
+    await tester.pump();
+    await tester.tap(find.text('Second item'));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Deny selected'));
+    await tester.pump();
+    await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
+    await settleWrites(tester);
+
+    expect(find.text('Nothing waiting for approval'), findsOneWidget);
+    final binned = await readJsonList(tester, 'deleted_bin.json');
+    expect(
+      binned.map((t) => t['title']),
+      containsAll(['From Todoist', 'Second item']),
+    );
+  });
+
+  testWidgets('canceling a selection returns to the normal app bar',
+      (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      marker: 'From Todoist',
+    );
+
+    await tester.longPress(find.text('From Todoist'));
+    await tester.pump();
+    expect(find.text('1 selected'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Cancel selection'));
+    await tester.pump();
+
+    expect(find.text('Waiting for Approval'), findsOneWidget);
+    expect(find.byTooltip('Approve'), findsOneWidget);
+  });
+
+  testWidgets(
+      'long-pressing a group header selects every item in that group at '
+      'once', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Book flights',
+          label: waitingApprovalToken,
+          pendingSourceTitle: 'Trip planning',
+        ),
+        Task(
+          title: 'Book hotel',
+          label: waitingApprovalToken,
+          pendingSourceTitle: 'Trip planning',
+        ),
+        Task(title: 'Buy groceries', label: waitingApprovalToken),
+      ],
+      marker: 'Book flights',
+    );
+
+    await tester.tap(find.byTooltip('Group by conversation'));
+    await tester.pump();
+
+    await tester.longPress(find.text('Trip planning (2)'));
+    await tester.pump();
+
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Approve selected'));
+    await tester.pump();
+    await settleWrites(tester);
+
+    expect(find.text('Book flights'), findsNothing);
+    expect(find.text('Book hotel'), findsNothing);
+    expect(find.text('Buy groceries'), findsOneWidget);
+  });
 }

@@ -20,6 +20,17 @@ class Task {
   String note;
   String label;
   DateTime? createdAt;
+
+  /// Name of the Todoist project this task was pulled in under, captured
+  /// only for a task built by `TodoistSyncService._taskFromRemote` (a fresh
+  /// Todoist pull, gated by [waitingApprovalToken] until approved/denied —
+  /// see `label_utils.dart`). A conversation with Todoist access that files
+  /// its tasks into a project named for itself makes that project name a
+  /// usable proxy for "which conversation created this", which the Waiting
+  /// for Approval page groups and displays by; a task created any other way
+  /// (in-app, or Todoist's own Inbox) just leaves this null. Never pushed
+  /// back to Todoist — purely local display metadata.
+  String? pendingSourceTitle;
   DateTime? completedAt;
   DateTime? movedAt;
   DateTime? rescheduledAt;
@@ -151,6 +162,7 @@ class Task {
     this.note = '',
     this.label = '',
     this.createdAt,
+    this.pendingSourceTitle,
     this.completedAt,
     this.movedAt,
     this.rescheduledAt,
@@ -225,6 +237,7 @@ class Task {
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : null,
+      pendingSourceTitle: json['pendingSourceTitle'] as String?,
       completedAt: json['completedAt'] != null
           ? DateTime.parse(json['completedAt'] as String)
           : null,
@@ -280,6 +293,8 @@ class Task {
         'note': note,
         'label': label,
         'createdAt': createdAt?.toIso8601String(),
+        if (pendingSourceTitle != null)
+          'pendingSourceTitle': pendingSourceTitle,
         'completedAt': completedAt?.toIso8601String(),
         'movedAt': movedAt?.toIso8601String(),
         'rescheduledAt': rescheduledAt?.toIso8601String(),

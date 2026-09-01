@@ -290,6 +290,12 @@ class TodoistSyncService {
       for (final p in remoteProjects)
         (p['name'] as String? ?? '').toLowerCase(): _idOf(p['id']),
     };
+    // Inbox is excluded: every task not otherwise assigned lands there, so
+    // its name is never a useful "which conversation" signal.
+    final remoteProjectIdToName = {
+      for (final p in remoteProjects)
+        if (p['is_inbox_project'] != true) _idOf(p['id']): p['name'] as String? ?? '',
+    };
     // Same recognition as `_runSync` — see its comment.
     final todoistToLocalProject = <String, String>{
       for (final e in _projectMap.entries) e.value: e.key,
@@ -316,7 +322,8 @@ class TodoistSyncService {
       for (final r in remote) {
         final id = _idOf(r['id']);
         if (_taskMap.any((e) => e.todoistId == id)) continue;
-        final task = _taskFromRemote(r, todoistToLocalProject);
+        final task = _taskFromRemote(r, todoistToLocalProject,
+            remoteProjectNames: remoteProjectIdToName);
         pulled.add(task);
         _taskMap.add(TodoistSyncMapEntry(
           localUid: task.uid,
@@ -465,6 +472,12 @@ class TodoistSyncService {
     final remoteProjectNameToId = {
       for (final p in remoteProjects)
         (p['name'] as String? ?? '').toLowerCase(): _idOf(p['id']),
+    };
+    // Inbox is excluded: every task not otherwise assigned lands there, so
+    // its name is never a useful "which conversation" signal.
+    final remoteProjectIdToName = {
+      for (final p in remoteProjects)
+        if (p['is_inbox_project'] != true) _idOf(p['id']): p['name'] as String? ?? '',
     };
     final todoistToLocalProject = {
       for (final e in _projectMap.entries) e.value: e.key,
@@ -679,7 +692,8 @@ class TodoistSyncService {
         continue;
       }
 
-      final newTask = _taskFromRemote(remoteTask, todoistToLocalProject);
+      final newTask = _taskFromRemote(remoteTask, todoistToLocalProject,
+          remoteProjectNames: remoteProjectIdToName);
       allLocal.add(newTask);
       _taskMap.add(TodoistSyncMapEntry(
         localUid: newTask.uid,
@@ -900,10 +914,18 @@ class TodoistSyncService {
   /// task "created with the Todoist workflow", so it gets stamped with
   /// [waitingApprovalToken] and stays out of every list until a human
   /// approves or denies it in the Waiting for Approval page.
+  ///
+  /// [remoteProjectNames] maps every fetched Todoist project id to its name
+  /// (built once per sync run) — used to stamp [Task.pendingSourceTitle]
+  /// with the project the task came from, a proxy for "which conversation
+  /// created this" the Waiting for Approval page groups by (see that
+  /// field's doc). Passed in rather than looked up here since building it
+  /// needs the same `remoteProjects` fetch every call site already has.
   Task _taskFromRemote(
     Map<String, dynamic> remoteTask,
-    Map<String, String> todoistToLocalProject,
-  ) {
+    Map<String, String> todoistToLocalProject, {
+    Map<String, String> remoteProjectNames = const {},
+  }) {
     final parts = TodoistMetadataCodec.parse(
       remoteTask['description'] as String? ?? '',
     );
@@ -918,7 +940,10 @@ class TodoistSyncService {
       description: parts.visible,
       note: meta?['note'] as String? ?? '',
       label: addLabelToken(_labelsFromRemote(remoteTask), waitingApprovalToken),
-      createdAt: DateTime.now(),
+      createdAt: _remoteCreatedAt(remoteTask) ?? DateTime.now(),
+      pendingSourceTitle: remoteProjectId == null
+          ? null
+          : remoteProjectNames[remoteProjectId],
       projectId: (mapped == _wishlistProjectKey || mapped == _futureProjectKey)
           ? null
           : mapped,
@@ -927,6 +952,18 @@ class TodoistSyncService {
     );
     _applyRemoteDue(task, remoteTask['due']);
     return task;
+  }
+
+  /// The task's own creation time on Todoist's side, when the API includes
+  /// one — the unified API v1 (Sync-API-shaped) field is `added_at`; the
+  /// older REST v2 spelling `created_at` is checked too in case Todoist ever
+  /// serves either. Null (falling back to "now", the pull time) if neither
+  /// parses.
+  DateTime? _remoteCreatedAt(Map<String, dynamic> remoteTask) {
+    final raw =
+        remoteTask['added_at'] as String? ?? remoteTask['created_at'] as String?;
+    if (raw == null) return null;
+    return DateTime.tryParse(raw)?.toLocal();
   }
 
   String _labelsFromRemote(Map<String, dynamic> remoteTask) {

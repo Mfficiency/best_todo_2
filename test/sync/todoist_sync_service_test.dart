@@ -377,6 +377,41 @@ void main() {
     expect(fake.tasks.values.single['labels'], isEmpty);
   });
 
+  test('a task pulled from its own Todoist project is tagged with that '
+      'project name as its pending source title', () async {
+    const projectId = 'remote-conversation-project';
+    fake.projects[projectId] = {'id': projectId, 'name': 'Trip planning'};
+    fake.seedTask(content: 'Book flights', projectId: projectId);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks.single.pendingSourceTitle, 'Trip planning');
+  });
+
+  test('a task pulled from Todoist Inbox carries no pending source title',
+      () async {
+    final inboxId = fake.seedInboxProject();
+    fake.seedTask(content: 'From Todoist', projectId: inboxId);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks.single.pendingSourceTitle, isNull);
+  });
+
+  test('a pulled task adopts its Todoist-side creation time when the API '
+      'reports one', () async {
+    final id = fake.seedTask(content: 'From Todoist');
+    fake.tasks[id]!['added_at'] = '2026-01-15T09:30:00.000000Z';
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.itemCount, 1);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks.single.createdAt,
+        DateTime.parse('2026-01-15T09:30:00.000000Z').toLocal());
+  });
+
   test('approving a pending task removes the tag and the removal syncs back '
       'to Todoist', () async {
     fake.seedTask(content: 'From Todoist');
