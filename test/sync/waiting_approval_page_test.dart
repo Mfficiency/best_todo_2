@@ -319,6 +319,51 @@ void main() {
   });
 
   testWidgets(
+      'expanding a pending item shows its note, due date and every label '
+      'tag', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: '$waitingApprovalToken urgent',
+          note: 'Call the vet first',
+          dueDate: DateTime(2026, 3, 1),
+        ),
+      ],
+      marker: 'From Todoist',
+    );
+
+    expect(find.textContaining('Note:'), findsNothing);
+
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
+
+    expect(find.textContaining('Note: Call the vet first'), findsOneWidget);
+    expect(find.textContaining('Due: 2026-03-01'), findsOneWidget);
+    expect(find.text(waitingApprovalToken), findsOneWidget);
+    expect(find.text('urgent'), findsOneWidget);
+  });
+
+  testWidgets(
+      'the expanded panel\'s "View full details" button opens the Task '
+      'Details page', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      marker: 'From Todoist',
+    );
+
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
+
+    await tester.tap(find.text('View full details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Task Details'), findsOneWidget);
+  });
+
+  testWidgets(
       'the grouping toggle switches between one list and grouped by '
       'conversation', (tester) async {
     await pumpPending(

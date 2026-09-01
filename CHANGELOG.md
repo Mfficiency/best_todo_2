@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.21] - 2026-09-01
+- Waiting for Approval's tap-to-expand panel now shows everything about the item, not just where it came from: its note, due date, start/end time window, attachment count and every label tag (colored the same as everywhere else in the app) — plus a "View full details" link into the full Task Details page for attachments, reminders and its complete journal history.
+
 ## [0.2.20] - 2026-09-01
 - Waiting for Approval's group-by-conversation view now groups retroactively: items pulled in before source titles existed no longer all pile into one "Unspecified" bucket — they're clustered by the hour they were created in instead, so a batch pulled in the same run still groups together.
 - Local build: 2026-09-01 19:39

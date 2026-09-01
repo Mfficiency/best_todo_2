@@ -454,6 +454,18 @@ and, if the task has a `TodoistSyncMapEntry`, a `Synced from Todoist:` line, mir
 `TaskTile`'s sync-info dialog fields but inline. Several rows can be expanded at once
 (`_WaitingApprovalPageState._expandedUids`, a `Set<String>` of uids).
 
+**Every detail, inline (0.2.21):** the same panel also shows `Note:` (if set), `Due:`
+(`dueDate`, if set), `Start:`/`End:` (if the task has a real start/end interval, not just a
+deadline-style due date) and an `Attachments: <count>` line, followed by a `Wrap` of every
+label tag on the task (`splitLabelTokens(task.label)`, approval-gate token included) —
+each chip colored exactly like `TaskTile._tag`/`TaskLabelLine` (`protectedChipColorFor`,
+deep-orange outline for a reserved token, `secondaryContainer` fill otherwise). The row's
+title and description are already visible above the panel unconditionally, so nothing
+further is needed there. A trailing "View full details" button pushes `TaskDetailPage`
+(the same page `DeletedBinPage`/`ArchivedItemsPage`/`ProjectBoardPage` use) for what still
+doesn't fit inline: the attachments viewer, the reminder toggle and the task's full
+journal history.
+
 An app-bar icon button (`Icons.view_agenda_outlined` / `Icons.view_list`, tooltip
 "Group by conversation" / "Show as one list") toggles `_groupByConversation` between the
 original flat `ListView.builder` and a grouped `ListView` built the same way as

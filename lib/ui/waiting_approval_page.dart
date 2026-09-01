@@ -12,9 +12,11 @@ import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/todoist_sync_service.dart';
+import '../utils/label_style.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
+import 'task_detail_page.dart';
 
 /// A pending item's swipe options: the approve side (lift the approval gate
 /// and schedule it) or the deny side (drop it, or approve it onto one of a
@@ -649,8 +651,35 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     widget.onApproveToWeekday(weekday);
   }
 
-  /// Creation date, source conversation and Todoist sync info shown when
-  /// [widget.expanded] is true.
+  /// One label chip, colored like every other tag chip in the app
+  /// ([TaskTile._tag], [TaskLabelLine]) — the approval gate token itself
+  /// included, since it's still one of the task's real labels.
+  Widget _tag(BuildContext context, String text) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = protectedChipColorFor(text);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color?.withValues(alpha: 0.16) ?? scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+        border: color == null ? null : Border.all(color: color),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          color: color ?? scheme.onSecondaryContainer,
+          fontWeight: color == null ? null : FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  /// Every detail linked to the item, shown when [widget.expanded] is true:
+  /// creation date, source conversation, Todoist sync info, note, due date/
+  /// time window and every label tag — plus a link to [TaskDetailPage] for
+  /// the rest (attachments, reminder, full journal history) so nothing about
+  /// the task is more than one tap away from this row.
   Widget _buildDetails(BuildContext context) {
     final task = widget.task;
     final theme = Theme.of(context);
@@ -665,12 +694,51 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     if (entry != null) {
       lines.add('Synced from Todoist: ${_formatDateTime(entry.syncedAt)}');
     }
+    if (task.note.isNotEmpty) lines.add('Note: ${task.note}');
+    if (task.dueDate != null) {
+      lines.add('Due: ${task.dueDate!.toLocal().toString().split(' ')[0]}');
+    }
+    final duration = task.duration;
+    if (task.startAt != null &&
+        task.endAt != null &&
+        duration != null &&
+        duration > Duration.zero) {
+      lines.add('Start: ${_formatDateTime(task.startAt!)}');
+      lines.add('End: ${_formatDateTime(task.endAt!)}');
+    }
+    if (task.attachments.isNotEmpty) {
+      lines.add('Attachments: ${task.attachments.length}');
+    }
+    final tags = splitLabelTokens(task.label);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final line in lines) Text(line, style: detailStyle),
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [for (final tag in tags) _tag(context, tag)],
+            ),
+          ],
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('View full details'),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TaskDetailPage(task: task),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
