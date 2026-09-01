@@ -2,6 +2,9 @@
 
 ## [0.2.19] - 2026-09-01
 - In-app updates now download in the background via Android's own DownloadManager instead of a socket held open by the app: the download keeps going if you background the app, and rides out a Wi-Fi/mobile data handover mid-download instead of failing. It still installs automatically the moment it finishes (including on the next launch, if the app was closed while it finished) — both the auto-update prompt's Yes and the About page's "Download & install"/rollback buttons use it, and the old blocking "Downloading..." dialog is gone in favor of a quick background notice.
+- Local build: 2026-09-01 16:37
+- Build duration (apk): 8m 12s
+- Build duration (windows): 2m 51s
 
 ## [0.2.18] - 2026-09-01
 - Todoist sync now recognizes a leading [Source: <title>] marker on a pulled task's description, letting an external ingestion routine (e.g. the Pocket-to-Todoist approval workflow) name which conversation created a pending item without needing a dedicated Todoist project per conversation.
