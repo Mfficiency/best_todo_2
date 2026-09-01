@@ -352,6 +352,64 @@ void main() {
   });
 
   testWidgets(
+      'items with no source title but a creation time group by the hour '
+      'they were created in, retroactively standing in for the missing '
+      'title', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Old item A',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 15, 9, 12),
+        ),
+        Task(
+          title: 'Old item B',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 15, 9, 47),
+        ),
+        Task(
+          title: 'Old item C',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 15, 14, 3),
+        ),
+      ],
+      marker: 'Old item A',
+    );
+
+    await tester.tap(find.byTooltip('Group by conversation'));
+    await tester.pump();
+
+    // A and B share an hour bucket; C, created five hours later, gets its
+    // own group. None of them fall into "Unspecified" — they all have a
+    // creation time to key off.
+    expect(find.text('2026-01-15 09:00 (2)'), findsOneWidget);
+    expect(find.text('2026-01-15 14:00 (1)'), findsOneWidget);
+    expect(find.text('Unspecified'), findsNothing);
+  });
+
+  testWidgets(
+      'the details panel for an untitled-source item shows its hour group '
+      'instead of Unspecified', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Old item',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 15, 9, 12),
+        ),
+      ],
+      marker: 'Old item',
+    );
+
+    await tester.tap(find.text('Old item'));
+    await tester.pump();
+
+    expect(find.textContaining('From: 2026-01-15 09:00'), findsOneWidget);
+  });
+
+  testWidgets(
       'long-pressing an item starts multi-select; Approve selected approves '
       'every checked item', (tester) async {
     await pumpPending(

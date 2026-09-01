@@ -37,8 +37,8 @@ const _pendingSwipeWeekdayOptions = <_PendingWeekdayOption>[
   _PendingWeekdayOption('Mon', DateTime.monday),
 ];
 
-/// Group title shown for a pending item with no [Task.pendingSourceTitle]
-/// (created before this field existed, or pulled from Todoist's Inbox).
+/// Group title shown for a pending item with neither [Task.pendingSourceTitle]
+/// nor [Task.createdAt] to fall back on — nothing left to group it by.
 const String _unspecifiedGroupTitle = 'Unspecified';
 
 String _two(int v) => v.toString().padLeft(2, '0');
@@ -48,6 +48,30 @@ String _two(int v) => v.toString().padLeft(2, '0');
 String _formatDateTime(DateTime dt) {
   final d = dt.toLocal();
   return '${d.year}-${_two(d.month)}-${_two(d.day)} ${_two(d.hour)}:${_two(d.minute)}';
+}
+
+/// `yyyy-MM-dd HH:00` in local time — [createdAt] rounded down to the hour
+/// it falls in, used to cluster pending items that predate
+/// [Task.pendingSourceTitle]. A single sync run (or a batch typed/pasted in
+/// one sitting) creates all its items within seconds of each other, so the
+/// creation hour doubles as a proxy for "came from the same batch" — it also
+/// naturally keeps different days apart, which covers the plain
+/// group-by-date case.
+String? _hourGroupLabel(DateTime? createdAt) {
+  if (createdAt == null) return null;
+  final d = createdAt.toLocal();
+  return '${d.year}-${_two(d.month)}-${_two(d.day)} ${_two(d.hour)}:00';
+}
+
+/// The group a pending [task] belongs to: its [Task.pendingSourceTitle] when
+/// present (the normal case for items created since that field existed);
+/// otherwise the hour it was created in ([_hourGroupLabel]); otherwise
+/// [_unspecifiedGroupTitle] for items with no creation time to fall back on
+/// either (created before [Task.createdAt] existed).
+String _groupKeyFor(Task task) {
+  final title = task.pendingSourceTitle?.trim();
+  if (title != null && title.isNotEmpty) return title;
+  return _hourGroupLabel(task.createdAt) ?? _unspecifiedGroupTitle;
 }
 
 /// Tasks pulled in via the Todoist workflow land here first — tagged with
@@ -72,10 +96,9 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   List<Task> _tasks = <Task>[];
   bool _loading = true;
 
-  /// Whether the list is shown grouped by [Task.pendingSourceTitle] (a proxy
-  /// for the conversation that created each batch of items) instead of one
-  /// flat list. Toggled from the app bar; not persisted — each visit starts
-  /// on the flat list, matching the page's previous-only behavior.
+  /// Whether the list is shown grouped by [_groupKeyFor] instead of one flat
+  /// list. Toggled from the app bar; not persisted — each visit starts on the
+  /// flat list, matching the page's previous-only behavior.
   bool _groupByConversation = false;
 
   /// Which pending items are inline-expanded (creation date, source
@@ -119,15 +142,11 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         rules: Config.viewFilterRules[ViewFilterRules.approval],
       );
 
-  /// [pending] partitioned by [Task.pendingSourceTitle], in first-seen
-  /// order; a task with no source title (or a blank one) falls into
-  /// [_unspecifiedGroupTitle].
+  /// [pending] partitioned by [_groupKeyFor], in first-seen order.
   Map<String, List<Task>> _groupedPending(List<Task> pending) {
     final grouped = <String, List<Task>>{};
     for (final task in pending) {
-      final title = task.pendingSourceTitle?.trim();
-      final key = (title == null || title.isEmpty) ? _unspecifiedGroupTitle : title;
-      grouped.putIfAbsent(key, () => <Task>[]).add(task);
+      grouped.putIfAbsent(_groupKeyFor(task), () => <Task>[]).add(task);
     }
     return grouped;
   }
@@ -642,8 +661,7 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     if (task.createdAt != null) {
       lines.add('Created: ${_formatDateTime(task.createdAt!)}');
     }
-    final source = task.pendingSourceTitle?.trim();
-    lines.add('From: ${source != null && source.isNotEmpty ? source : _unspecifiedGroupTitle}');
+    lines.add('From: ${_groupKeyFor(task)}');
     if (entry != null) {
       lines.add('Synced from Todoist: ${_formatDateTime(entry.syncedAt)}');
     }

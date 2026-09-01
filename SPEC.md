@@ -449,19 +449,29 @@ approval gate (or deny) without touching `dueDate`.
 
 **Inline expand, group-by-conversation and multi-select (0.2.17):** tapping a pending
 row (outside multi-select) toggles an inline details panel below it — no navigation, no
-dialog — showing `Created: <local createdAt>`, `From: <Task.pendingSourceTitle>` (or
-"Unspecified" when null), and, if the task has a `TodoistSyncMapEntry`, a
-`Synced from Todoist:` line, mirroring `TaskTile`'s sync-info dialog fields but inline.
-Several rows can be expanded at once (`_WaitingApprovalPageState._expandedUids`, a
-`Set<String>` of uids).
+dialog — showing `Created: <local createdAt>`, `From: <_groupKeyFor(task)>` (see below),
+and, if the task has a `TodoistSyncMapEntry`, a `Synced from Todoist:` line, mirroring
+`TaskTile`'s sync-info dialog fields but inline. Several rows can be expanded at once
+(`_WaitingApprovalPageState._expandedUids`, a `Set<String>` of uids).
 
 An app-bar icon button (`Icons.view_agenda_outlined` / `Icons.view_list`, tooltip
 "Group by conversation" / "Show as one list") toggles `_groupByConversation` between the
 original flat `ListView.builder` and a grouped `ListView` built the same way as
 `WishlistPage`'s release sections: `_groupedPending` buckets the pending list by
-`Task.pendingSourceTitle` (first-seen order; a null/blank title groups under
-"Unspecified"), and each `_ApprovalGroupHeader` shows `<title> (<count>)`. Not persisted —
-every visit starts on the flat list.
+`_groupKeyFor(task)` (first-seen order), and each `_ApprovalGroupHeader` shows
+`<title> (<count>)`. Not persisted — every visit starts on the flat list.
+
+**Retroactive grouping fallback (0.2.20):** `_groupKeyFor` (top-level function in
+`waiting_approval_page.dart`) picks the group key in three tiers, so items created before
+`Task.pendingSourceTitle` existed still land in a useful group instead of one giant
+catch-all: (1) `Task.pendingSourceTitle`, trimmed, when non-blank — the normal case; (2)
+otherwise, if `Task.createdAt` is set, the creation hour rounded down
+(`_hourGroupLabel`, `yyyy-MM-dd HH:00` local time) — a single sync run or batch-typed
+conversation creates all its items within seconds of each other, so the hour doubles as a
+same-batch proxy while also keeping different days apart; (3) otherwise (no `createdAt`
+either — items from before that field existed) `_unspecifiedGroupTitle`
+("Unspecified"). The same three-tier value backs both the group header and the details
+panel's "From:" line, so they always agree.
 
 Long-pressing a row (outside selection) starts multi-select — the same shape as
 `WishlistPage`'s swipe-triggered selection, but click-and-hold here since a pending row's
@@ -500,8 +510,8 @@ Either way, no BestToDo-side change is needed beyond the creating routine adopti
 these two conventions — group titles and the "From:" line pick it up automatically on the
 next sync. It's local-only display metadata: never pushed back to Todoist, and never
 touches the sync fingerprints (adding it to a synced task doesn't trigger a push). A task
-with no source title (created any other way, or pulled before this field existed) shows
-"Unspecified" and groups there.
+with no source title falls through `_groupKeyFor`'s creation-hour and "Unspecified" tiers
+described above instead of piling straight into one catch-all group.
 
 `_taskFromRemote` also now prefers the pulled task's own Todoist-side creation time for
 local `createdAt` over "now" (the pull time): `_remoteCreatedAt` reads `added_at` (the
