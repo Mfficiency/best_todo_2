@@ -195,6 +195,14 @@ image opens a full-screen `InteractiveViewer`; tapping a PDF (or any other file-
 hands it to `share_plus`'s `SharePlus.instance.share(ShareParams(files: [...]))`, i.e. "open"
 is implemented as the platform share sheet rather than an in-app viewer.
 
+`TaskDetailPage`'s app bar carries an info icon (tooltip "Show all task metadata") that opens
+an `AlertDialog` with two selectable-text sections: the hidden Todoist sync trailer — the same
+text `TodoistMetadataCodec.build` would append to the description when pushing this task to
+Todoist (uid, note, label, project, Kanban stage, createdAt, all normally invisible in the
+regular view) — and a pretty-printed dump of `Task.toJson()` covering every field the model
+persists (schema/internal timestamps, recurrence bookkeeping, `listRanking`, `kanbanStatus`,
+raw `attachments`, etc.), so nothing about the task stays hidden from the user who asks.
+
 Dev seed: `home_page._loadTasks` backfills a demo text attachment onto one starter task
 (`Config.initialTasks[1]`, falling back to the first non-wish/non-food-diary task) whenever
 `Config.isDev` and no task carries an attachment yet, so the "task expanded with an
@@ -253,6 +261,35 @@ export cannot fake a recent backup. Backups read straight from disk
 (`readTaskListRaw` etc., not the home page's in-memory list), are written as
 `besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
 The Backup section also offers a "Back up now" tile and shows the last backup time.
+
+Next to that JSON file, the same run writes a same-timestamped folder
+`besttodo_backup_<yyyymmdd_hhmmss>/` — a Markdown mirror
+(`MarkdownBackupService`, `lib/services/markdown_backup_service.dart`), export-only (Import
+never reads it). One subfolder per item type — `Tasks/` (active, Archived Items and real
+Deleted-bin tasks together, tagged with a `status: active|archived|binned` field since
+they're the same kind of item and differ only in which list currently holds them),
+`Projects/`, `Alarms/` (standalone alarms only; task-linked reminders are folded into their
+task's note), `Countdown Timers/` — each holding one `.md` note per item (filename:
+sanitized title + 8-char uid suffix). Every note, whatever the type, follows the same
+layout so one Obsidian template/Dataview query covers the whole vault: YAML frontmatter
+(Obsidian's Properties panel, collapsed by default — the note's "hidden" fields: `uid`,
+`type`, `created`, `description` mirrored raw, `tags`, `reminders` — human-readable
+anchor/offset/melody/volume/vibrate summaries pairing each linked alarm's schedule with its
+notification settings — plus every other field the JSON backup carries: due date, project,
+kanban status, wish/food-diary/recurring flags, recurrence detail, attachments summary,
+etc.), then the visible body: `# Title`, the description paragraph, `## Notes`, `## Links`
+(tags rendered as `[[wikilinks]]` for Obsidian's graph view), `## Edit History` (from
+`ItemEventJournal`, one line per event with its source and field-level patch). Two more
+folders describe the app rather than its items: `Views/` — one note per
+`ViewFilterRules.viewIds` (Home, Wishlist, Waiting for Approval, Projects, Food Diary,
+Alarms, Countdown, Archived items, Deleted bin), each showing its built-in structural rule,
+its configured Settings → Filtering rules include/exclude tags (live from
+`Config.viewFilterRules`/`ViewFilterRules.defaultsFor`), and its `ViewPresentation`
+cosmetics, plus a Home-specific tab-bucketing table and a Projects-specific Kanban-column
+table — and `Settings/Settings.md` (a JSON snapshot of `Config.toMap()`, with
+`todoistApiToken` and `googleCalendarUrl` redacted — the JSON backup remains the only place
+those secrets survive a restore). Markdown-vault failures are caught and logged separately
+from the JSON write, so a Markdown bug can never fail the backup itself.
 
 ### 4.2b Item history journal (0.1.106)
 
@@ -410,6 +447,121 @@ while options are open cancels, as on the home list. The original leading/traili
 Approve/Deny icon buttons are unchanged: they stay one-tap alternatives that lift the
 approval gate (or deny) without touching `dueDate`.
 
+**Inline expand, group-by-conversation and multi-select (0.2.17):** tapping a pending
+row (outside multi-select) toggles an inline details panel below it — no navigation, no
+dialog — showing `Created: <local createdAt>`, `From: <_groupKeyFor(task)>` (see below),
+and, if the task has a `TodoistSyncMapEntry`, a `Synced from Todoist:` line, mirroring
+`TaskTile`'s sync-info dialog fields but inline. Several rows can be expanded at once
+(`_WaitingApprovalPageState._expandedUids`, a `Set<String>` of uids).
+
+**Every detail, inline (0.2.21):** the same panel also shows `Note:` (if set), `Due:`
+(`dueDate`, if set), `Start:`/`End:` (if the task has a real start/end interval, not just a
+deadline-style due date) and an `Attachments: <count>` line, followed by a `Wrap` of every
+label tag on the task (`splitLabelTokens(task.label)`, approval-gate token included) —
+each chip colored exactly like `TaskTile._tag`/`TaskLabelLine` (`protectedChipColorFor`,
+deep-orange outline for a reserved token, `secondaryContainer` fill otherwise). The row's
+title and description are already visible above the panel unconditionally, so nothing
+further is needed there. A trailing "View full details" button pushes `TaskDetailPage`
+(the same page `DeletedBinPage`/`ArchivedItemsPage`/`ProjectBoardPage` use) for what still
+doesn't fit inline: the attachments viewer, the reminder toggle and the task's full
+journal history.
+
+An app-bar icon button (`Icons.view_agenda_outlined` / `Icons.view_list`, tooltip
+"Group by conversation" / "Show as one list") toggles `_groupByConversation` between the
+original flat `ListView.builder` and a grouped `ListView` built the same way as
+`WishlistPage`'s release sections: `_groupedPending` buckets the pending list by
+`_groupKeyFor(task)` (first-seen order), and each `_ApprovalGroupHeader` shows
+`<title> (<count>)`. Not persisted — every visit starts on the flat list.
+
+**Retroactive grouping fallback (0.2.20):** `_groupKeyFor` (top-level function in
+`waiting_approval_page.dart`) picks the group key in three tiers, so items created before
+`Task.pendingSourceTitle` existed still land in a useful group instead of one giant
+catch-all: (1) `Task.pendingSourceTitle`, trimmed, when non-blank — the normal case; (2)
+otherwise, if `Task.createdAt` is set, the creation hour rounded down
+(`_hourGroupLabel`, `yyyy-MM-dd HH:00` local time) — a single sync run or batch-typed
+conversation creates all its items within seconds of each other, so the hour doubles as a
+same-batch proxy while also keeping different days apart; (3) otherwise (no `createdAt`
+either — items from before that field existed) `_unspecifiedGroupTitle`
+("Unspecified"). The same three-tier value backs both the group header and the details
+panel's "From:" line, so they always agree.
+
+Long-pressing a row (outside selection) starts multi-select — the same shape as
+`WishlistPage`'s swipe-triggered selection, but click-and-hold here since a pending row's
+swipe gestures are already spoken for (approve/deny). While selecting
+(`_selectedUids.isNotEmpty`), the app bar becomes "N selected" with Approve-selected
+(strips the token, like the plain Approve button — no date is touched) and
+Deny-selected (bulk `_deny`, one combined undo snackbar) actions; a row's leading icon
+becomes a `Checkbox` and its trailing Deny icon disappears (bulk actions live in the app
+bar only), and its swipe gestures are disabled for the duration. Tapping another row
+toggles it in/out of the selection; tapping a group header (grouped view) selects/
+deselects every item in that group at once, and long-pressing a header (outside
+selection) starts a selection with the whole group pre-checked — the header's checkbox
+is a plain `Icon` rather than a real `Checkbox`, since a `Checkbox` owns its own tap
+recognizer that would compete with the header's `InkWell` for the same tap.
+
+`Task.pendingSourceTitle` (`lib/models/task.dart`) is the field behind "From:" and the
+grouping key: set only by `TodoistSyncService._taskFromRemote` (both call sites — the
+first-launch pull and the "brand-new Todoist tasks" step). Two sources feed it, checked
+in this order:
+
+1. **A `[Source: <title>]` marker** (0.2.18): a leading line on the pulled task's Todoist
+   description, recognized by `_sourceMarkerPattern`/`_extractSourceMarker`
+   (case-insensitive, tolerant of surrounding whitespace) and stripped from the visible
+   description before it becomes `Task.description` — so it never shows up in the task
+   body. Lets a routine that fans one run out across many small, unrelated conversations
+   (the Pocket-to-Todoist ingestion routine this was built for — see
+   `.claude/notes/pocket-todoist-ingestion.md`) name each task's source without creating
+   a dedicated Todoist project per conversation, which would litter the project list.
+2. **The Todoist project name** the task lived in, excluding Inbox (every task not
+   otherwise filed lands there, so its name carries no signal) — the fallback for a task
+   that *is* filed into a real per-conversation/per-topic Todoist project instead (e.g.
+   "Propose for next" above's shape: a Claude session with Todoist access using a project
+   as the grouping unit).
+
+Either way, no BestToDo-side change is needed beyond the creating routine adopting one of
+these two conventions — group titles and the "From:" line pick it up automatically on the
+next sync. It's local-only display metadata: never pushed back to Todoist, and never
+touches the sync fingerprints (adding it to a synced task doesn't trigger a push). A task
+with no source title falls through `_groupKeyFor`'s creation-hour and "Unspecified" tiers
+described above instead of piling straight into one catch-all group.
+
+`_taskFromRemote` also now prefers the pulled task's own Todoist-side creation time for
+local `createdAt` over "now" (the pull time): `_remoteCreatedAt` reads `added_at` (the
+unified API v1 field) or, defensively, `created_at` (the older REST v2 spelling), falling
+back to `DateTime.now()` if the API sends neither.
+
+**Quick-tag buttons in the expanded details panel → Research tool (0.2.22, moved from a
+double-tap menu to the details panel in 0.2.23):** tapping a pending row (the same plain
+tap that toggles the inline details panel — see 0.2.21 above) now shows, as the panel's
+first row, one button per configured `ApprovalQuickTag` (`lib/models/approval_quick_tag.dart`)
+— `_PendingTaskTileState._buildQuickTags`, a `Wrap` of `OutlinedButton.icon`s. Tapping one
+both approves the item (`removeWaitingApprovalToken`) and flips the `Task` flag its
+`target` names — `wishlistTarget` → `isWish = true`, `researchTarget` → `isResearch =
+true` — so it lands straight in that tool instead of the home tabs. (0.2.22 originally
+reached this from a double-tap `showModalBottomSheet`, hand-rolled tap-timing detection
+included — dropped for the simpler single-tap-then-tap-a-button flow, which needs no
+custom gesture handling at all.) `ApprovalQuickTagService`
+(`lib/services/approval_quick_tag_service.dart`, JSON file `approval_quick_tags.json`,
+`ValueNotifier`-backed like `AutoTagService`) seeds the default Wishlist/Research pair on
+first run and is fully user-editable at Settings ▸ Tasks ▸ **Approval quick tags**
+(`lib/ui/approval_quick_tags_page.dart`, mirrors `AutoTagRulesPage`'s list/add/edit/delete
+shape): each entry is a button label plus a `target` chosen from a fixed dropdown
+(`ApprovalQuickTag.targets`) — free-form destinations aren't supported since routing means
+flipping one of `Task`'s own membership flags, and only two exist today.
+
+**Research tool** (`lib/ui/research_page.dart`, Tools ▸ Research): a `Task.isResearch`
+gated view exactly like the Food Diary — `ItemViews.research` selects `isResearch &&
+isApproved`, and `ItemViews.isVisibleInMainViews` excludes research items from every main
+view (home tabs, schedule view, wishlist, projects, Todoist sync), so an item only shows up
+here (or, once deleted, Archived Items) — never on the home tabs. Items arrive either
+quick-tag-approved from Waiting for Approval, or typed directly with the page's own FAB
+(title, description, `LabelPickerField` tags — no due date, no checkbox, just a log line
+like a Food Diary entry). `researchToken` (`'Research'`) is a `protectedStateTokens` entry
+and a full `ViewFilterRules` view id (`ViewFilterRules.research`), threaded through every
+other view's default Hide list the same way `fooddiaryToken` is — bumped
+`_currentViewFilterRulesSeedVersion` to 3 so existing installs re-sync their Filtering
+rules defaults to include it.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**
@@ -553,6 +705,24 @@ event type. `WishlistPage` and `WaitingApprovalPage` (whose `_deny` writes the b
 reference with the home page — and are deliberately left out of this undo stack: wiring
 a second, independently-timed reader/writer into the same before/after baseline risks
 misreading ordinary staleness between the two pages as a real edit.
+
+### 4.2i Presentation filters / view configuration (0.2.5)
+
+`ViewPresentation` (`lib/models/view_presentation.dart`) is the presentation counterpart to
+`ViewFilterRules` (§4.4): where `ViewFilterRules` decides *which* items belong in a view
+(data filter), `ViewPresentation` decides *how* the items a view already selected are shown
+and edited (presentation filter) — the two-part split the item-model redesign calls for.
+Keyed by the same view ids (`ViewPresentation.forView(viewId)`); every field defaults to
+today's actual behavior, so a view that hasn't adopted it renders exactly as before. First
+(and so far only) consumer: `TaskDetailPage` — shared by the Projects board, Archived Items
+and the Deleted bin — takes an optional `viewId` that controls whether the item-linked
+capability sections (`TaskReminderSection`, `TaskCountdownSection`) render; archived/deleted
+items hide both, since offering to attach a *new* reminder or countdown to something already
+over is never useful (an existing linked reminder is already gone by then via
+`ReminderSyncService`). See `docs/architecture/presentation-layer-decision.md` for why this
+step stopped at one real consumer instead of rewriting every view's tile widget onto a shared
+config — `TaskTile` (Home) and the other bespoke tiles (Wishlist, Alarms, Countdown, Food
+Diary, Waiting for Approval, Projects) are unchanged.
 
 ### 4.3 Home page UX
 
@@ -1699,22 +1869,28 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   `edit?id=`); tapping anywhere else opens the Food Diary list (`besttodofood://open`). Both
   are foreground `HomeWidgetLaunchIntent`s, unlike the other two widgets' background
   toggles — logging food always needs the UI, so there is no background isolate path here.
-  Turns the whole background red once a meal checkpoint (8:00/13:00/20:00 — breakfast/lunch/
-  dinner) has passed today with nothing logged in that window (dueDate falling in
-  `[checkpoint, nextCheckpoint)`, last window running to midnight). `FoodDiaryWidgetService`
-  (`lib/services/food_diary_widget_service.dart`) pushes only "was anything logged in each
-  window today" booleans plus the date they describe, synced from `FoodDiaryPage._save`,
+  Turns the whole background red once today's running entry count falls behind a checkpoint
+  schedule (0.2.25): at least 1 entry logged by 8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00
+  (`checkpointMinutes`/`requiredCounts`) — a plain "log something roughly every few hours"
+  cadence, not tied to any particular meal. `FoodDiaryWidgetService`
+  (`lib/services/food_diary_widget_service.dart`) pushes only the raw "how many entries
+  today" count plus the date it describes, synced from `FoodDiaryPage._save`,
   `home_page._updateHomeWidget` and `WaitingApprovalPage._save`; whether a checkpoint has
-  *passed* is deliberately decided in Kotlin against the live clock (`food_diary_widget_
-  info.xml` sets `updatePeriodMillis` = 30 min), so the color is right even when the widget
-  redraws on its own schedule with the app never opened — a purely Flutter-computed flag
-  would go stale the moment the clock crosses a checkpoint without a save happening.
+  *passed*, and so whether the count is behind, is deliberately decided in Kotlin against the
+  live clock (`food_diary_widget_info.xml` sets `updatePeriodMillis` = 30 min), so the color
+  is right even when the widget redraws on its own schedule with the app never opened — a
+  purely Flutter-computed flag would go stale the moment the clock crosses a checkpoint
+  without a save happening. The same four checkpoints also carve the day into breakfast
+  (before 8:00) / lunch (8:00–13:00) / snack (13:00–16:30) / dinner (from 16:30) windows,
+  reused by the add-entry dialog's "copy from yesterday" shortcuts (see §10.6a).
 - **Food Diary button widget** (`FoodDiaryButtonWidgetProvider.kt`): a companion to the
   Food Diary widget above, fixed at 1x1 (`minWidth`/`minHeight` = 40dp, `targetCellWidth`/
   `targetCellHeight` = 1, `resizeMode="none"`) and drawing nothing but a "+" that fills the
   cell. Tapping it is the same foreground `besttodofood://add` launch intent as the full
   widget's "+" — there is no room for status text at this size, so it carries no other tap
-  target, pushes no data, and (`updatePeriodMillis="0"`) never redraws itself once placed.
+  target. Since 0.2.12 it redraws every 30 minutes and turns red on the same running-count
+  schedule as the full widget (0.2.25); tapping it remains an immediate shortcut to the
+  add-entry dialog.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
 `Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
@@ -1722,12 +1898,13 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
 be captured by the desktop screenshot integration test (`integration_test/
 home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
 from the same data/logic the real widgets use — `TaskWidgetService.todayTasks`, the sorted
-`AlarmService.instance.list`, `FoodDiaryWidgetService.computeHasEntry` plus the same
-checkpoint-passed-against-the-live-clock check `FoodDiaryWidgetProvider.kt` does — so the
-colors/text stay in sync with the Kotlin providers without duplicating their logic. The Food
-Diary mock falls back to two in-memory (never saved) demo entries when no Food Diary tasks
-exist yet, the same way `FoodDiaryPage` seeds its own copy on first open. The button-widget
-mock is static (just the "+"), matching what the Kotlin provider actually draws.
+`AlarmService.instance.list`, `FoodDiaryWidgetService.computeEntryCount`/`isBehindSchedule`
+plus the same checkpoint-passed-against-the-live-clock check `FoodDiaryWidgetProvider.kt`
+does — so the colors/text stay in sync with the Kotlin providers without duplicating their
+logic. The Food Diary mock falls back to two in-memory (never saved) demo entries when no
+Food Diary tasks exist yet, the same way `FoodDiaryPage` seeds its own copy on first open.
+The button-widget mock shares the same red/black logic as the full widget's mock, just
+without any status text, matching what the Kotlin provider actually draws.
 
 ## 9. Android platform config
 
@@ -1740,7 +1917,8 @@ About page; the user still confirms every install) and `INTERNET` (0.1.139 — d
 get it implicitly, so "Check for updates" worked in development and failed on every release
 APK until it was declared in the main manifest). An `androidx.core.content.FileProvider`
 (authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
-dirs) shares the downloaded update APK with the system installer as a `content://` URI.
++ external-files dirs) shares the downloaded update APK with the system installer as a
+`content://` URI.
 
 **Receivers/services:** android_alarm_manager_plus `AlarmService` +
 **`AlarmBroadcastReceiver`** (its absence was the original "SMS never sent" root cause —
@@ -1751,7 +1929,9 @@ the plugin ships an empty manifest and its PendingIntent targets this class) +
 four widget providers.
 
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
-`max(23, flutter.minSdkVersion)` (androidx.work via home_widget needs 23); Java/Kotlin 11
+`max(26, flutter.minSdkVersion)` (androidx.work via home_widget needs 23; the
+`health` plugin behind Tools → Fitness Activity needs 26, and Health Connect is
+Android 8+ only — raised from 23 in 0.2.9+300); Java/Kotlin 11
 with core-library desugaring; glance pinned to 1.1.1 (home_widget 0.8.1 pulls `1.+` which
 would demand compileSdk 37); NDK 28.2.13676358. **Signing:** `key.properties` if present,
 otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, password
@@ -1777,7 +1957,15 @@ the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the 
 installer via the FileProvider (ACTION_VIEW, `application/vnd.android.package-archive`);
 when the one-time "install unknown apps" toggle is missing (O+,
 `canRequestPackageInstalls()` false) it opens that settings screen and returns
-`"needs-permission"` so the Dart side tells the user to grant it and retry.
+`"needs-permission"` so the Dart side tells the user to grant it and retry. The same channel
+also hosts `startBackgroundDownload`/`queryDownload`/`cancelDownload` (0.2.x — see "Background
+downloads via DownloadManager" below), which hand the APK transfer to Android's
+`DownloadManager` instead of a Dart-side socket: it is enqueued into the app's
+`getExternalFilesDir(null)/updates/` (DownloadManager runs as a separate system process and
+cannot write into the app's *internal* `filesDir`, only its external one), with
+`VISIBILITY_VISIBLE_NOTIFY_COMPLETED` and both `NETWORK_WIFI`/`NETWORK_MOBILE` allowed so it
+keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
+cursor back into a status/progress map.
 
 **Share-sheet task capture** (0.1.145; quick-add screen, images/PDFs, Today/Inbox
 choice, redelivery dedup added later): BestToDo appears in Android's share sheet for
@@ -1856,7 +2044,7 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 (5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
 
 ### 10.2 Countdown timers (Tools → Countdown)
-`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags}`
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags,itemUid}`
 in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
 target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
 name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
@@ -1865,6 +2053,17 @@ decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timer
 (orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
 they never retro-fire; suppression is per-session).
+
+**Item-linked timers (0.2.5):** `itemUid` (nullable, mirroring `Alarm.itemUid`, §5.1) makes a
+countdown attach to a task instead of standing alone — Task Details offers a one-tap "Add
+countdown to due date" (`TaskCountdownSection`, next to the reminder section), and a linked
+timer's card shows a small link icon (tooltip names the task). Unlike reminders, the link is
+resolved *lazily*: `CountdownSyncService.resolveAgainstTasks` runs once when the Countdown
+page loads (free when nothing is linked), not on every task save — milestone notifications
+are foreground-only (this page's own ticker), so there is no background path that needs the
+target kept correct between app opens. A linked timer's `target` follows the task's due date;
+a timer whose task disappears is **unlinked**, not deleted — a countdown still means
+something on its own once detached. See `docs/architecture/presentation-layer-decision.md`.
 
 `tags` (free-form, `Task.label`'s comma/whitespace convention, empty string omitted from
 JSON) is editable via a `LabelPickerField` in the composer, and filterable in Settings →
@@ -2227,14 +2426,40 @@ export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swip
 (`ItemRepository.loadDeletedItems`/`saveDeletedItems`) with an undo snackbar, exactly
 like a wishlist delete — never the plain task list, never the real bin directly.
 
+Entry cards are visually keyed to their logged time (0.2.12): before 12:00 uses a
+light-blue hue, 12:00–17:59 a warm yellow hue, and 18:00 onward a pale
+Bordeaux-inspired hue. Dark theme uses darker equivalents of the same three hues;
+an entry without a time receives the daytime/noon treatment.
+
+Each day-grouping header shows the weekday alongside the date (0.2.15), via
+`formatWeekdayShort` (`lib/utils/date_time_format.dart`): "Today · Mon" for
+today, "$weekday, $date" (honoring `Config.dateFormat`) for every other day,
+"No date" unchanged for undated entries.
+
+The app-bar export action (0.2.12) writes a human-readable Markdown file: newest day
+first, entries chronological within each day, with time/title as the prominent line and
+tags/notes indented below. The small 1x1 Food Diary “+” widget uses the same behind-
+schedule red background as the full widget and is refreshed whenever Flutter syncs diary
+data.
+
+The add dialog, when creating a new entry (not editing), shows a row of four small icon
+buttons above the title field (0.2.25) — `_CopyYesterdayRow` — one per meal
+(`Icons.free_breakfast`/`lunch_dining`/`icecream`/`dinner_dining`, icons rather than
+labels to keep the row compact). Each fills the title/tags/description from yesterday's
+matching meal (`FoodDiaryWidgetService.latestEntryPerMealWindow`, the same breakfast/
+lunch/snack/dinner windows the widget's checkpoints carve the day into — the later entry
+wins when a window has more than one) without touching the time field, so logging a
+repeat meal is a tap plus Save; a button is disabled (with a tooltip explaining why) when
+yesterday has nothing logged for that meal.
+
 Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 `featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
 drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
 on return (the tool loads/saves the list on its own, like Wishlist).
 
 A home-screen widget mirrors the tool (§8, "Food Diary widget") — its "+" opens this
-same add dialog and its background goes red once a meal checkpoint has passed with
-nothing logged.
+same add dialog and its background goes red once today's entry count falls behind the
+checkpoint schedule.
 
 **Dev seed (0.1.270):** when no `isEatingHabit` task exists yet and `Config.isDev`, the
 page seeds three entries spread across the day (breakfast/lunch/dinner, each with its own
@@ -2402,18 +2627,31 @@ in App Logs → Todoist — onboarding has already finished by then.
   increases per distributed build; passing a bare `x.y.z` carries the current build number
   forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
   dropped by accident.
-- **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → `flutter build $@` →
-  on success, `dart run tool/append_build_time.dart` → rename artifacts with the version
-  (`best_todo_<VERSION>.apk`, `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart`
-  for an APK build → optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`.
-- **Local build time (0.1.240):** `tool/append_build_time.dart` writes/updates a
-  `- Local build: yyyy-mm-dd HH:MM` bullet inside the *newest* CHANGELOG.md section
-  (`withBuildTimeNote`: replaces the existing line for that version on a repeat build
-  instead of piling one up per build; inserted right after that section's other entries).
-  Runs after `flutter build`, which already bundled CHANGELOG.md as an asset for *this*
-  build — so a build only ever shows the previous build's timestamp on the Changelog page,
-  never its own; that's expected, not a bug. No-ops (prints, doesn't touch the file) when
-  CHANGELOG.md has no `## [version] - date` heading yet.
+- **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → times
+  `flutter build $@` → on success, `dart run tool/append_build_time.dart --duration <secs>
+  --target $1` → rename artifacts with the version (`best_todo_<VERSION>.apk`,
+  `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart` for an APK build →
+  optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`. `tool/build.ps1` mirrors
+  this with `[System.Diagnostics.Stopwatch]` for the timing.
+- **Local build time & duration (0.1.240; duration + build_history.json added later):**
+  `tool/append_build_time.dart` writes/updates a `- Local build: yyyy-mm-dd HH:MM` bullet
+  inside the *newest* CHANGELOG.md section (`withBuildTimeNote`: replaces the existing line
+  for that version on a repeat build instead of piling one up per build; inserted right
+  after that section's other entries). When called with `--duration <secs> --target
+  <name>` (both `build.sh` and `build.ps1` always pass these on a successful build) it also
+  writes/updates a `- Build duration (<target>): <1h 02m|3m 05s|45s>` bullet in the same
+  section, keyed by target so an `apk` and a `windows` build each keep their own line
+  instead of overwriting each other (`withBuildDurationNote`), and appends
+  `{version, target, durationSeconds, finishedAt, os}` to `build_history.json` at the repo
+  root (`historyRecord`/`appendHistoryRecord`; JSON array, capped at the newest
+  `maxHistoryEntries` = 1000, oldest dropped first) — committed (not gitignored) alongside
+  `github_releases/` + CHANGELOG.md by `tool/build_all.sh`/`build.ps1`'s `all` sync step, so
+  build durations are tracked across builds, versions and machines over time. Runs after
+  `flutter build`, which already bundled CHANGELOG.md as an asset for *this* build — so a
+  build only ever shows the previous build's timestamp/duration on the Changelog page,
+  never its own; that's expected, not a bug. No-ops on the CHANGELOG.md note (prints,
+  doesn't touch the file) when it has no `## [version] - date` heading yet; the
+  `--duration`/`--target` args are optional so a bare call still only records the timestamp.
 - **Kept builds in the repo (0.1.146):** `tool/stage_local_release.dart` copies the built
   APK to `github_releases/best_todo_<x.y.z+build>.apk` and deletes everything but the
   newest two (`--keep`, `--dir`, `--apk`, `--dry-run`; ordering by the numeric name
@@ -2429,10 +2667,11 @@ in App Logs → Todoist — onboarding has already finished by then.
   injectable `fetchOverride` for tests) maps a tag back to `x.y.z+build` and compares
   numeric components (unparseable versions — 'unknown' in tests — compare as all-zero).
   The About page's "Check for updates" section then walks check → "Version x available" →
-  download to the temp dir with a progress bar → hand to the installer over the
-  `besttodo/update` channel (§9); a `needs-permission` reply keeps an "Install update"
-  button up for the retry after granting. Web/desktop or a release without an APK asset
-  falls back to opening the release page in the browser.
+  download (in the background via `DownloadManager` — see "Background downloads via
+  DownloadManager" below — with a progress bar fed by its polled status) → hand to the
+  installer over the `besttodo/update` channel (§9); a `needs-permission` reply keeps an
+  "Install update" button up for the retry after granting. Web/desktop or a release without
+  an APK asset falls back to opening the release page in the browser.
 - **Update source + rollback (0.1.146):** `checkReleases()` reads the repo folder first —
   `contents/github_releases?ref=dev` (unauthenticated; `dev` is where every build lands
   first, and the API's `download_url` is already percent-encoded, which matters because
@@ -2458,7 +2697,10 @@ in App Logs → Todoist — onboarding has already finished by then.
   (`!kIsWeb && Platform.isAndroid` — which is false under `flutter test`'s
   host runner, so the suite never starts a real timer) and stopped in
   `dispose`; the setting itself is only read at launch, so flipping it in
-  Settings takes effect on the next start. A release with no APK asset is
+  Settings takes effect on the next start. Since 0.2.13, loading a legacy
+  settings file with no `autoUpdateCheckEnabled` key explicitly restores the
+  default `true`; a stored `false` remains a respected user opt-out. A release
+  with no APK asset is
   skipped (nothing to auto-install); once a version is found it is reported at
   most once — a later tick finding the same build is a no-op
   (`_pendingUpdateVersion` in `main.dart`), onboarding screens (intro/mode
@@ -2467,13 +2709,34 @@ in App Logs → Todoist — onboarding has already finished by then.
   The report opens `showUpdateAvailableDialog`
   (`lib/ui/auto_update_dialog.dart`) — "New version available. Do you want to
   download and install it?", Yes/No — via `appNavigatorKey`, the same pattern
-  `_showAlarmRing` uses to reach the navigator from outside `build`. Yes opens
-  `UpdateDownloadDialog`, which downloads and installs immediately with no
-  further confirmation (Android's own install prompt is the only gate left)
-  and shows a progress bar; No just dismisses it. The About page's "Download &
-  install" already chained straight from download into install before this
-  and is unchanged (the `AboutPage(autoCheckForUpdate: ...)` pre-trigger the
-  old flow used is gone, since nothing navigates there automatically anymore).
+  `_showAlarmRing` uses to reach the navigator from outside `build`. Yes starts
+  the background download below (installing immediately once it finishes, no
+  further confirmation — Android's own install prompt is the only gate left);
+  No just dismisses it. The About page's "Download & install" already chained
+  straight from download into install before this and is unchanged (the
+  `AboutPage(autoCheckForUpdate: ...)` pre-trigger the old flow used is gone,
+  since nothing navigates there automatically anymore).
+- **Background downloads via DownloadManager (0.2.x):** both download paths —
+  the auto-update Yes and the About page's "Download & install"/rollback
+  buttons — go through `UpdateService.downloadInBackground()` instead of a
+  Dart-side `HttpClient` socket. It calls the new `besttodo/update` methods
+  (`startBackgroundDownload` → `watchDownload`, a `Stream<DownloadProgress>`
+  polling `queryDownload` every 700 ms until a terminal status) so the APK
+  transfer runs as an Android system service: it survives the app being
+  backgrounded and DownloadManager itself resumes the transfer (HTTP range
+  requests) across a Wi-Fi/mobile handover, which a socket held open by the
+  app process cannot. `downloadInBackground` also persists `{downloadId,
+  version}` via `shared_preferences` (cleared once the download reaches a
+  terminal status); `_MyAppState.initState` calls
+  `UpdateService.pendingDownload()`/resumes watching it on the next launch, so
+  a download that finished (or is still running) after the app was closed
+  still gets installed instead of silently going nowhere. The old blocking
+  `UpdateDownloadDialog` modal is gone — `downloadUpdateInBackground`
+  (`lib/ui/auto_update_dialog.dart`) instead shows a transient snackbar via
+  `ScaffoldMessenger`, since the transfer no longer needs the app in the
+  foreground at all. `UpdateService.downloadChannelOverride` is the test seam
+  for the three new channel methods, mirroring `fetchOverride` for the
+  release-JSON lookup.
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
@@ -2744,3 +3007,72 @@ page, "Schedule view active day").
    export — every debugging pain became a permanent in-app observability tool.
 4. **Speed is a spec.** Startup is measured on every launch and charted in-app; the <1 s
    budget drove the non-blocking startup fix and the fire-and-forget diagnostics.
+
+### 10.4.1 Weekly wellbeing analysis (0.2.9)
+Usage Data defaults to a Monday–Sunday analysis. The header arrows and horizontal
+swipe move through weeks (never beyond the current week). Phone sessions are
+loaded for both the selected and preceding week so total screen time, session
+count and each ranked app state their percentage change. A seven-bar daily chart
+and the existing 24-hour chart label both axes and the summary states the
+seven-calendar-day average. Historical weeks use their complete Monday–Sunday
+window; Android Usage Access remains opt-in and all calculations stay local.
+
+### 10.5 Fitness Activity (Tools → Fitness Activity)
+Fitness Activity is a read-only Health Connect dashboard, styled after Samsung
+Health (0.2.16): the week picker, big step total and the bar chart are bundled
+into one rounded gradient "hero" card (`colorScheme.primaryContainer` →
+`secondaryContainer`), and every metric tile and personal-best row carries a
+colored circular icon badge (`_iconBadge`) instead of a plain leading icon.
+After explicit consent it reads the selected and preceding Monday–Sunday
+windows for steps, distance, active calories, workouts, heart rate, resting
+heart rate, asleep time and weight. It shows totals, a true seven-day step
+average, sleep average over days with records, weekly changes, strongest day
+and actionable conclusions. The step chart labels steps and weekdays; arrows
+browse weeks and pull-to-refresh re-reads Health Connect (and re-scans the
+auto personal-bests history, see below). Missing permission/data is stated
+rather than treated as zero evidence. Tapping the week range can jump to any
+historical week and requests Android's separate history permission for
+records older than 30 days. The dashboard and Settings shortcut open Health
+Connect's source settings so Samsung Health can share phone, restored cloud,
+and Galaxy Watch records. Health measurements are displayed without medical
+diagnosis.
+
+Below the Health Connect data, a "Weight & personal bests" area holds three
+things: the Weight card, an "Auto-detected records" card, then a "Your
+personal bests" card of manually-entered records.
+
+Personal bests are calculated automatically (0.2.16) from Health Connect
+history: on page load (and on force-refresh via pull-to-refresh or the
+section's refresh icon) the page fetches roughly the last 365 days of samples
+and calls `FitnessActivityService.computeAutoBests`, a pure function that
+scans them for the single best day/session per metric — most steps in a day,
+longest distance in a day, most active energy in a day (bucketed by calendar
+day, since Health Connect reports those in many small chunks), longest single
+workout, longest sleep session, highest heart rate reading and lowest resting
+heart rate reading (compared sample-by-sample, since a session is the
+meaningful unit there) — returning one `AutoPersonalBest` (metric, label,
+value, unit, date) per metric that had at least one sample. The "Auto-detected
+records" card renders one row per result via `_autoBestTile`, each with an
+icon/color from the `AutoBestMetric` → `(IconData, Color)` `_autoBestStyle`
+map (steps=blue walk icon, distance=orange route, calories=deep-orange flame,
+workout=teal dumbbell, sleep=indigo moon, heart rate=pink heart, resting heart
+rate=purple outlined heart), and is hidden entirely once loaded if history had
+no samples for any metric; while the year of history is still loading it shows
+a "Scanning your history for personal bests…" placeholder instead.
+
+Manually-entered records stay exactly as before, kept separate from both the
+read-only Health Connect data and the auto-detected records.
+`HealthTrackingService` (`lib/services/health_tracking_service.dart`)
+persists two lists as `ValueNotifier`s, each to its own JSON file in the app
+documents directory — `WeightEntry` (`lib/models/health_metrics.dart`: id,
+date, weightKg, note) to `weight_log.json`, `PersonalBest` (id, name, value,
+unit, date, note — `unit` is free-form so it covers both weight PRs like
+"80 kg" and time PRs like "22.5 min") to `personal_bests.json`. Both lists
+are sorted newest-first; `save*` upserts by id, `delete*` removes by id.
+The Weight card shows the latest entry large with up to 6 older entries
+below a divider; the "Your personal bests" card lists every manually-entered
+record. Each card's "+" opens an add/edit `AlertDialog` (its own
+`StatefulWidget` owning the text controllers, per the task_detail/food_diary
+rule) with a `pickDateInstantly` date field; tapping a row reopens it
+prefilled for editing. Deleting shows a snackbar with Undo that re-saves the
+same record (same id, so it lands back in the same slot once re-sorted).

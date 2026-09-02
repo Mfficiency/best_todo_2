@@ -150,20 +150,29 @@ class _UpdateSectionState extends State<_UpdateSection> {
           : '';
     });
     try {
-      final file = await UpdateService.instance.downloadApk(
-        info,
-        onProgress: (received, total) {
-          if (!mounted) return;
+      // Handed off to Android's DownloadManager (see UpdateService), so the
+      // transfer keeps going even if this page — or the app — is backgrounded,
+      // and rides out a Wi-Fi/mobile handover mid-download.
+      await for (final progress
+          in UpdateService.instance.downloadInBackground(info)) {
+        if (!mounted) return;
+        if (progress.status == DownloadStatus.failed) {
           setState(() {
-            _received = received;
-            _total = total ?? _total;
+            _phase = _UpdatePhase.error;
+            _note = 'Download failed${progress.reason != null ? ' (${progress.reason})' : ''}';
           });
-        },
-      );
-      if (!mounted) return;
-      _apkPath = file.path;
-      setState(() => _phase = _UpdatePhase.readyToInstall);
-      await _install();
+          return;
+        }
+        setState(() {
+          _received = progress.bytesDownloaded;
+          _total = progress.bytesTotal ?? _total;
+        });
+        if (progress.status == DownloadStatus.successful) {
+          _apkPath = progress.localPath;
+          setState(() => _phase = _UpdatePhase.readyToInstall);
+          await _install();
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -265,6 +274,13 @@ class _UpdateSectionState extends State<_UpdateSection> {
         ));
         children.add(const SizedBox(height: 8));
         children.add(LinearProgressIndicator(value: progress));
+        children.add(const SizedBox(height: 8));
+        children.add(Text(
+          'Runs in the background — feel free to leave this page or the app, '
+          'it installs automatically once it\'s ready.',
+          style: Theme.of(context).textTheme.bodySmall,
+          textAlign: TextAlign.center,
+        ));
       case _UpdatePhase.readyToInstall:
         children.add(Text(
           'Version ${_target?.version} downloaded.',

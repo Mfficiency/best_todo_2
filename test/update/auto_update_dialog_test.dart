@@ -1,16 +1,18 @@
+library;
+
 import 'package:besttodo/services/update_service.dart';
 import 'package:besttodo/ui/auto_update_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// The background auto-update prompt (`main.dart`'s `AutoUpdateChecker`
-/// wiring): the "New version available" Yes/No dialog, and the download
-/// dialog's failure path. The success path (an actual APK download) is
-/// deliberately not exercised here — same as `about_page_update_test.dart`,
-/// [UpdateService.downloadApk] has no test seam and hits real sockets, so
-/// only the synchronous "no APK asset" failure of [UpdateDownloadDialog] is
-/// covered.
-library;
+/// wiring): the "New version available" Yes/No dialog, and
+/// [downloadUpdateInBackground]'s failure path. The success path (an actual
+/// background download via Android's `DownloadManager`) is exercised through
+/// [UpdateService.downloadChannelOverride] in `update_service_test.dart`
+/// instead — here only the synchronous "no APK asset" failure is covered,
+/// since that's what reaches this widget without a platform channel.
 
 /// Captures what the "New version available" dialog handed back.
 class _Host {
@@ -39,6 +41,11 @@ Future<_Host> _openAvailableDialog(WidgetTester tester, UpdateInfo info) async {
 }
 
 void main() {
+  setUp(() {
+    UpdateService.resetForTest();
+    SharedPreferences.setMockInitialValues({});
+  });
+
   final info = UpdateInfo(
     version: '9.9.9+999',
     releaseName: 'BestToDo 9.9.9+999',
@@ -78,8 +85,8 @@ void main() {
   });
 
   testWidgets(
-      'download dialog reports the failure when the release has no APK',
-      (tester) async {
+      'a background download with no APK asset reports failure as a snackbar '
+      'instead of blocking the app', (tester) async {
     final noApk = UpdateInfo(
       version: '9.9.9+999',
       releaseName: 'BestToDo 9.9.9+999',
@@ -91,11 +98,7 @@ void main() {
         home: Builder(
           builder: (context) => Scaffold(
             body: ElevatedButton(
-              onPressed: () => showDialog<void>(
-                context: context,
-                barrierDismissible: false,
-                builder: (_) => UpdateDownloadDialog(info: noApk),
-              ),
+              onPressed: () => downloadUpdateInBackground(context, noApk),
               child: const Text('open'),
             ),
           ),
@@ -105,12 +108,10 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Update failed'), findsOneWidget);
+    // Non-blocking: the button (and the rest of the app behind it) stays
+    // interactive — there is no barrier-blocking dialog to dismiss.
+    expect(find.text('open'), findsOneWidget);
     expect(find.textContaining('This release has no APK to download'),
         findsOneWidget);
-
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    expect(find.text('Update failed'), findsNothing);
   });
 }

@@ -115,17 +115,23 @@ if [ "$SKIP_PREFLIGHT" != "1" ]; then
   flutter test test/core/build_smoke_test.dart
 fi
 
-# Build using Flutter with any arguments passed to this script.
+# Build using Flutter with any arguments passed to this script, timing it so
+# the duration can be recorded alongside the finish time.
+BUILD_START=$(date +%s)
 flutter build "$@"
 BUILD_STATUS=$?
+BUILD_DURATION=$(( $(date +%s) - BUILD_START ))
 
-# Record when this build finished in CHANGELOG.md (a "- Local build: <time>"
-# line in the newest version's section, updated in place on repeat builds).
-# CHANGELOG.md is bundled as an app asset by the `flutter build` above, so
-# this build's own asset already froze the old text -- only the *next* build
-# will show this timestamp. That's expected.
+# Record when this build finished (and how long it took) in CHANGELOG.md: a
+# "- Local build: <time>" line plus a "- Build duration (<target>): <time>"
+# line in the newest version's section, each updated in place on repeat
+# builds. Also appends a record to build_history.json (committed, so build
+# times are tracked across builds/machines over time). CHANGELOG.md is
+# bundled as an app asset by the `flutter build` above, so this build's own
+# asset already froze the old text -- only the *next* build will show this
+# timestamp/duration. That's expected.
 if [ "$BUILD_STATUS" -eq 0 ]; then
-  dart run tool/append_build_time.dart
+  dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1"
 else
   # Don't rename or stage artifacts left over from an earlier build.
   echo "flutter build $* failed (status $BUILD_STATUS)" >&2

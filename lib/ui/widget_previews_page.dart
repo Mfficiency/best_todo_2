@@ -291,29 +291,28 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
   }
 
   /// Mirrors `FoodDiaryWidgetProvider.kt` / `food_diary_widget_layout.xml`.
-  /// Whether a checkpoint has *passed* is decided against the live clock,
-  /// same as the Kotlin provider does at draw time.
+  /// Whether the running count is behind schedule is decided against the
+  /// live clock, same as the Kotlin provider does at draw time.
   Widget _buildFoodDiaryWidget() {
     final entries = _foodDiaryPreviewEntries();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final hasEntry = FoodDiaryWidgetService.computeHasEntry(entries, today);
-    const checkpointLabels = ['8:00', '13:00', '20:00'];
-    final missed = <String>[];
-    var loggedCount = 0;
-    for (var i = 0; i < FoodDiaryWidgetService.checkpointHours.length; i++) {
-      if (hasEntry[i]) loggedCount++;
-      final started = now.hour >= FoodDiaryWidgetService.checkpointHours[i];
-      if (started && !hasEntry[i]) missed.add(checkpointLabels[i]);
+    final entryCount = FoodDiaryWidgetService.computeEntryCount(entries, today);
+    final behind = FoodDiaryWidgetService.isBehindSchedule(entryCount, now);
+    final nowMinutes = now.hour * 60 + now.minute;
+    var required = 0;
+    for (var i = 0; i < FoodDiaryWidgetService.checkpointMinutes.length; i++) {
+      if (nowMinutes >= FoodDiaryWidgetService.checkpointMinutes[i]) {
+        required = FoodDiaryWidgetService.requiredCounts[i];
+      }
     }
 
-    final backgroundColor =
-        missed.isEmpty ? Colors.black : const Color(0xFFB71C1C);
-    final status = missed.isNotEmpty
-        ? 'Missing: ${missed.join(', ')}'
-        : (loggedCount == 0
+    final backgroundColor = behind ? const Color(0xFFB71C1C) : Colors.black;
+    final status = behind
+        ? 'Only $entryCount logged today, need $required by now'
+        : (entryCount == 0
             ? 'Nothing logged yet today'
-            : '$loggedCount/3 meals logged today');
+            : '$entryCount logged today');
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 360),
@@ -354,20 +353,29 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
   /// nothing but the "+" button, shown here at roughly its real on-screen
   /// size (one home-screen grid cell) rather than stretched to [_widgetFrame]'s
   /// width like the other mocks.
-  Widget _buildFoodDiaryButtonWidget() => Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        alignment: Alignment.center,
-        child: const Text(
-          '+',
-          style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 28),
-        ),
-      );
+  Widget _buildFoodDiaryButtonWidget() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final entryCount = FoodDiaryWidgetService.computeEntryCount(
+      _foodDiaryPreviewEntries(),
+      today,
+    );
+    final behind = FoodDiaryWidgetService.isBehindSchedule(entryCount, now);
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: behind ? const Color(0xFFB71C1C) : Colors.black,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: Alignment.center,
+      child: const Text(
+        '+',
+        style: TextStyle(
+            color: Colors.white, fontWeight: FontWeight.bold, fontSize: 28),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

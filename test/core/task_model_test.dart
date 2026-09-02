@@ -116,6 +116,16 @@ void main() {
     expect(Task.fromJson(task.toJson()).isEatingHabit, isTrue);
   });
 
+  test('isResearch defaults to false and serializes', () {
+    final task = Task(title: 'Plain');
+    expect(task.isResearch, isFalse);
+    expect(Task.fromJson(<String, dynamic>{'title': 'legacy'}).isResearch,
+        isFalse);
+
+    task.isResearch = true;
+    expect(Task.fromJson(task.toJson()).isResearch, isTrue);
+  });
+
   test('attachments default to empty and are omitted from JSON', () {
     final task = Task(title: 'Plain');
     expect(task.attachments, isEmpty);

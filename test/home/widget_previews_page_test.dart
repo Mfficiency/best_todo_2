@@ -74,18 +74,26 @@ void main() {
         find.descendant(
             of: previewsPage, matching: find.text('Food Diary widget')),
         findsOneWidget);
-    expect(
-        find.descendant(
-            of: previewsPage,
-            matching: find.text('Food Diary button widget')),
-        findsOneWidget);
-    // Today's seeded task shows up in the task-widget mock.
+    // Today's seeded task shows up in the task-widget mock while the top of the
+    // preview list is still built.
     expect(
         find.descendant(
             of: previewsPage, matching: find.textContaining('Buy milk')),
         findsOneWidget);
     // AlarmService seeds a small dev alarm list the first time it loads.
     expect(find.descendant(of: previewsPage, matching: find.text('Wake up')),
+        findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Food Diary button widget'),
+      200,
+      scrollable:
+          find.descendant(of: previewsPage, matching: find.byType(Scrollable)),
+    );
+    await tester.pumpAndSettle();
+    expect(
+        find.descendant(
+            of: previewsPage,
+            matching: find.text('Food Diary button widget')),
         findsOneWidget);
   });
 }

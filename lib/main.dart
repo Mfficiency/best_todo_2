@@ -286,6 +286,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (Config.autoUpdateCheckEnabled) {
         AutoUpdateChecker.instance.start(_onUpdateFound);
       }
+      // A background update download from an earlier run may have kept
+      // going (or already finished) while the app was closed — it runs as
+      // an Android system service, not tied to this process. Pick it back
+      // up so "install when ready" still holds after a restart.
+      unawaited(_resumePendingUpdateDownload());
     }
   }
 
@@ -301,6 +306,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // Don't collide with the intro/mode picker/startup chooser.
     if (_showIntro || _showModePicker || _showStartupChoice) return;
     if (_pendingUpdateVersion == info.version) return;
+    unawaited(_maybePromptUpdate(info));
+  }
+
+  /// Prompts for [info], unless it is already downloading (an earlier run's
+  /// background download resumed by [_resumePendingUpdateDownload]) or was
+  /// already downloaded — either way there is nothing to ask the user again,
+  /// since `_pendingUpdateVersion` alone can't catch this on a fresh launch:
+  /// it starts out null every time the process restarts, while the download
+  /// itself, run by Android's `DownloadManager`, survives across restarts.
+  Future<void> _maybePromptUpdate(UpdateInfo info) async {
+    if (await UpdateService.instance.wasDownloaded(info.version)) {
+      _pendingUpdateVersion = info.version;
+      return;
+    }
+    if (_pendingUpdateVersion == info.version) return;
     _pendingUpdateVersion = info.version;
     WidgetsBinding.instance.scheduleFrame();
     WidgetsBinding.instance.addPostFrameCallback((_) => _promptUpdate(info));
@@ -313,22 +333,71 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return;
     }
     final accepted = await showUpdateAvailableDialog(navigator.context, info);
-    if (accepted == true) {
-      await showDialog<void>(
-        context: navigator.context,
-        barrierDismissible: false,
-        builder: (_) => UpdateDownloadDialog(info: info),
-      );
-    } else {
+    if (accepted != true) {
       AutoUpdateChecker.instance.dismiss(info.version);
+      _pendingUpdateVersion = null;
+      return;
     }
-    _pendingUpdateVersion = null;
+    // The download runs in the background (Android's DownloadManager, not
+    // this dialog), so don't await it here — but keep _pendingUpdateVersion
+    // set for its whole duration, so a poll tick that lands mid-download
+    // doesn't pop the "New version available" dialog again for the same
+    // build.
+    unawaited(
+      downloadUpdateInBackground(navigator.context, info).whenComplete(() {
+        if (_pendingUpdateVersion == info.version) {
+          _pendingUpdateVersion = null;
+        }
+      }),
+    );
+  }
+
+  /// Resumes watching a background download an earlier app run started but
+  /// didn't see finish, installing it if it completed while the app was
+  /// closed.
+  Future<void> _resumePendingUpdateDownload() async {
+    final pending = await UpdateService.instance.pendingDownload();
+    if (pending == null) return;
+    final downloadId = pending['downloadId'] as int;
+    final version = pending['version'] as String?;
+    // Block a poll tick that lands while this is watching from re-prompting
+    // "New version available" for the very build already downloading.
+    if (version != null) _pendingUpdateVersion = version;
+    try {
+      await for (final progress
+          in UpdateService.instance.watchDownload(downloadId)) {
+        if (progress.status == DownloadStatus.successful &&
+            progress.localPath != null) {
+          if (version != null) {
+            await UpdateService.instance.markVersionDownloaded(version);
+          }
+          await UpdateService.instance.clearPendingDownload();
+          await UpdateService.instance.installApk(progress.localPath!);
+        } else if (progress.status == DownloadStatus.failed) {
+          await UpdateService.instance.clearPendingDownload();
+        }
+      }
+    } catch (_) {
+      // Nothing to recover here — the next auto-update poll offers a fresh
+      // download if one is still needed.
+    } finally {
+      if (_pendingUpdateVersion == version) _pendingUpdateVersion = null;
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
     TodoistSyncService.instance.onLifecycleChanged(state);
+    // Re-check the moment the app comes back to the foreground, not just on
+    // the next minute-tick — someone reopening the app to see if an update
+    // landed shouldn't have to wait up to a minute for the background poll.
+    if (state == AppLifecycleState.resumed &&
+        !kIsWeb &&
+        Platform.isAndroid &&
+        Config.autoUpdateCheckEnabled) {
+      unawaited(AutoUpdateChecker.instance.checkOnce(_onUpdateFound));
+    }
   }
 
   /// Queues a shared payload and, if the quick-add screen isn't already open

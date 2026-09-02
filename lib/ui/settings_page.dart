@@ -22,8 +22,10 @@ import '../services/streak_service.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import 'approval_quick_tags_page.dart';
 import 'auto_tag_rules_page.dart';
 import 'dice_timer_settings.dart';
+import 'fitness_activity_page.dart';
 import 'sms_report_log_page.dart';
 import 'streak_goal_dialog.dart';
 import 'subpage_app_bar.dart';
@@ -141,6 +143,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'Simple mode', 1, 'full mode basic minimal features hide tools'),
     _SettingsSearchEntry(
         'Show the mode picker again', 1, 'simple full first start choose'),
+    _SettingsSearchEntry('Health data & smart watch', 1,
+        'samsung health galaxy watch health connect steps history cloud'),
     _SettingsSearchEntry('Add new tasks at top', 4, 'bottom order insert'),
     _SettingsSearchEntry('Desktop keyboard shortcuts', 4,
         'hotkeys ctrl enter arrows keyboard windows'),
@@ -160,6 +164,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'Auto-tag new items', 4, 'tags labels keywords automatic'),
     _SettingsSearchEntry(
         'Auto-tag rules', 4, 'tags labels keywords dictionary work bike'),
+    _SettingsSearchEntry('Approval quick tags', 4,
+        'waiting for approval expand details wishlist research quick tags'),
     _SettingsSearchEntry('Widget progress line', 8, 'home screen completion'),
     _SettingsSearchEntry('Check off tasks on the widget', 8,
         'home screen checkbox tick complete done interactive'),
@@ -1034,6 +1040,16 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: const Icon(Icons.restart_alt),
           onTap: () => MyApp.of(context)?.restartModePicker(),
         ),
+        ListTile(
+          leading: const Icon(Icons.watch_outlined),
+          title: const Text('Health data & smart watch'),
+          subtitle: const Text(
+              'View all Health Connect history or connect Samsung Health and your watch'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const FitnessActivityPage(),
+          )),
+        ),
         const Divider(height: 1),
         if (_simpleMode)
           Padding(
@@ -1656,8 +1672,10 @@ class _SettingsPageState extends State<SettingsPage> {
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Text(
-            'Each backup is one timestamped file with everything — tasks, '
-            'settings and timers — and can be restored with Export → Import.',
+            'Each backup writes one timestamped JSON file with everything — '
+            'tasks, settings and timers — restorable with Export → Import — '
+            'plus a matching folder of Markdown notes (one per task, project, '
+            'alarm and timer) readable straight in Obsidian.',
           ),
         ),
       ],
@@ -2838,6 +2856,19 @@ class _SettingsPageState extends State<SettingsPage> {
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const AutoTagRulesPage(),
+                                ),
+                              ),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.checklist_outlined),
+                              title: const Text('Approval quick tags'),
+                              subtitle: const Text(
+                                  'Tap a Waiting for Approval item for buttons '
+                                  'that approve it straight into a tool'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ApprovalQuickTagsPage(),
                                 ),
                               ),
                             ),

@@ -1,5 +1,6 @@
 package com.mfficiency.best_todo_2
 
+import android.app.DownloadManager
 import android.app.NotificationManager
 import android.app.AppOpsManager
 import android.app.usage.UsageEvents
@@ -16,13 +17,16 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import android.content.pm.ApplicationInfo
 
-class MainActivity : FlutterActivity() {
+// FlutterFragmentActivity (not the plain FlutterActivity) because the
+// health plugin's Health Connect permission flow needs a FragmentActivity
+// to launch its Activity Result contract on Android 14+.
+class MainActivity : FlutterFragmentActivity() {
 
     // Content shared into the app (see ShareActivity), waiting for the Dart
     // side to collect it. On a cold start the queue fills before the Flutter
@@ -149,10 +153,7 @@ class MainActivity : FlutterActivity() {
                     result.success(mode == AppOpsManager.MODE_ALLOWED)
                 }
                 "openPermissionSettings" -> {
-                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                        data = Uri.parse("package:$packageName")
-                    })
-                    result.success(null)
+                    result.success(openUsageAccessSettings())
                 }
                 "querySessions" -> {
                     val from = call.argument<Number>("from")?.toLong()
@@ -163,6 +164,15 @@ class MainActivity : FlutterActivity() {
                         result.success(queryUsageSessions(from, to))
                     }
                 }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/health",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openDataSources" -> result.success(openHealthDataSources())
                 else -> result.notImplemented()
             }
         }
@@ -233,6 +243,135 @@ class MainActivity : FlutterActivity() {
             "besttodo/update",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                // Hands the update APK to Android's DownloadManager instead
+                // of downloading it on the Dart side: the transfer then runs
+                // as a system service, so it survives the app being
+                // backgrounded and DownloadManager itself resumes the
+                // transfer (via HTTP range requests) when the network drops
+                // or switches between Wi-Fi and mobile mid-download — a raw
+                // socket held open by the app process would just break.
+                "startBackgroundDownload" -> {
+                    val url = call.argument<String>("url")
+                    val fileName = call.argument<String>("fileName")
+                    if (url == null || fileName == null) {
+                        result.error("bad-args", "url/fileName missing", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        // DownloadManager runs as a separate system process
+                        // (the downloads provider), which cannot write into
+                        // this app's private *internal* storage (filesDir) —
+                        // only into the app's own slice of *external*
+                        // storage, which needs no runtime permission and is
+                        // still private to this app. getExternalFilesDir is
+                        // null only if external storage isn't currently
+                        // available (e.g. a removed SD card on very old
+                        // devices).
+                        val baseDir = getExternalFilesDir(null)
+                        if (baseDir == null) {
+                            result.error(
+                                "download-failed", "External storage unavailable", null
+                            )
+                            return@setMethodCallHandler
+                        }
+                        val destDir = File(baseDir, "updates")
+                        destDir.mkdirs()
+                        val destFile = File(destDir, fileName)
+                        if (destFile.exists()) destFile.delete()
+                        val downloadManager =
+                            getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                        val request = DownloadManager.Request(Uri.parse(url))
+                            .setTitle("BestToDo update")
+                            .setDestinationUri(Uri.fromFile(destFile))
+                            .setNotificationVisibility(
+                                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                            )
+                            .setAllowedNetworkTypes(
+                                DownloadManager.Request.NETWORK_WIFI or
+                                    DownloadManager.Request.NETWORK_MOBILE
+                            )
+                            .setAllowedOverMetered(true)
+                            .setAllowedOverRoaming(true)
+                        val id = downloadManager.enqueue(request)
+                        result.success(mapOf("downloadId" to id))
+                    } catch (e: Exception) {
+                        result.error("download-failed", e.message, null)
+                    }
+                }
+                // Snapshot of a download started by startBackgroundDownload:
+                // status ("pending"/"running"/"paused"/"successful"/"failed"),
+                // bytesDownloaded/bytesTotal for a progress bar, and the
+                // local file path once successful.
+                "queryDownload" -> {
+                    val id = call.argument<Number>("downloadId")?.toLong()
+                    if (id == null) {
+                        result.error("bad-args", "downloadId missing", null)
+                        return@setMethodCallHandler
+                    }
+                    val downloadManager =
+                        getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val cursor = downloadManager.query(
+                        DownloadManager.Query().setFilterById(id)
+                    )
+                    cursor.use {
+                        if (!it.moveToFirst()) {
+                            result.success(
+                                mapOf(
+                                    "status" to "failed",
+                                    "bytesDownloaded" to 0,
+                                    "bytesTotal" to 0,
+                                    "reason" to "not-found",
+                                )
+                            )
+                            return@setMethodCallHandler
+                        }
+                        val statusCode = it.getInt(
+                            it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
+                        )
+                        val status = when (statusCode) {
+                            DownloadManager.STATUS_SUCCESSFUL -> "successful"
+                            DownloadManager.STATUS_FAILED -> "failed"
+                            DownloadManager.STATUS_RUNNING -> "running"
+                            DownloadManager.STATUS_PAUSED -> "paused"
+                            else -> "pending"
+                        }
+                        val bytesDownloaded = it.getLong(
+                            it.getColumnIndexOrThrow(
+                                DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
+                            )
+                        )
+                        val bytesTotal = it.getLong(
+                            it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                        )
+                        val reason = it.getInt(
+                            it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)
+                        )
+                        val localUri = it.getString(
+                            it.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI)
+                        )
+                        result.success(
+                            mapOf(
+                                "status" to status,
+                                "bytesDownloaded" to bytesDownloaded,
+                                "bytesTotal" to bytesTotal,
+                                "localPath" to localUri?.let { uri -> Uri.parse(uri).path },
+                                "reason" to reason,
+                            )
+                        )
+                    }
+                }
+                // Cancels a download and deletes its partial file.
+                "cancelDownload" -> {
+                    val id = call.argument<Number>("downloadId")?.toLong()
+                    if (id == null) {
+                        result.error("bad-args", "downloadId missing", null)
+                        return@setMethodCallHandler
+                    }
+                    val downloadManager =
+                        getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    downloadManager.remove(id)
+                    result.success(null)
+                }
                 // Hands a downloaded update APK to the system package
                 // installer. Returns "needs-permission" (after opening the
                 // "install unknown apps" settings screen for this app) when
@@ -306,6 +445,53 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    private fun openHealthDataSources(): Boolean {
+        val attempts = listOf(
+            Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"),
+            Intent("android.health.connect.action.HEALTH_HOME_SETTINGS"),
+            packageManager.getLaunchIntentForPackage("com.google.android.apps.healthdata"),
+            packageManager.getLaunchIntentForPackage("com.sec.android.app.shealth"),
+        )
+        for (intent in attempts) {
+            if (intent == null) continue
+            try {
+                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (_: Exception) {
+                // Try the next action/package; availability differs by Android
+                // and One UI version.
+            }
+        }
+        return false
+    }
+
+    // ACTION_USAGE_ACCESS_SETTINGS with a package: data URI throws
+    // ActivityNotFoundException on some OEMs (MIUI, some One UI builds) that
+    // don't register that specific action+data combination — previously
+    // uncaught, so the "Allow" button silently did nothing. Fall back to the
+    // same action without the data extra, then to this app's details page,
+    // so the user always lands somewhere they can grant the permission.
+    private fun openUsageAccessSettings(): Boolean {
+        val attempts = listOf(
+            { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }) },
+            { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+            { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }) },
+        )
+        for (attempt in attempts) {
+            try {
+                attempt()
+                return true
+            } catch (_: Exception) {
+                continue
+            }
+        }
+        return false
     }
 
     private fun queryUsageSessions(from: Long, to: Long): List<Map<String, Any>> {

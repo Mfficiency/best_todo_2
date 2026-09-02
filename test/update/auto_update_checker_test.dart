@@ -105,4 +105,22 @@ void main() {
 
     expect(calls, 0);
   });
+
+  test('start() checks immediately instead of waiting for the first tick',
+      () async {
+    UpdateService.instance.fetchOverride =
+        (url) async => releaseJson('v9.9.9-999');
+
+    UpdateInfo? found;
+    // A long testInterval proves any result came from the immediate check
+    // start() fires, not from the periodic timer ticking.
+    AutoUpdateChecker.instance
+        .start((info) => found = info, testInterval: const Duration(minutes: 5));
+    addTearDown(AutoUpdateChecker.instance.stop);
+
+    // Let the fire-and-forget immediate check's microtasks/awaits flush.
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(found?.version, '9.9.9+999');
+  });
 }

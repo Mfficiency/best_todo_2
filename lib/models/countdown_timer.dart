@@ -34,6 +34,16 @@ class CountdownTimerItem {
   /// reserved tag is never written here.
   String tags;
 
+  /// Uid of the task this countdown targets, or null for a standalone timer
+  /// (every timer that existed before this field). A linked timer's [target]
+  /// is kept in sync with the task's due date by `CountdownSyncService`,
+  /// resolved when the Countdown page loads — countdown milestones are a
+  /// foreground-only feature (no background delivery to keep current), so
+  /// there is no eager sync-on-save path to maintain, unlike [Alarm.itemUid]'s
+  /// reminders. Unlike a reminder, a countdown still means something on its
+  /// own once its task disappears, so it is unlinked rather than deleted.
+  String? itemUid;
+
   CountdownTimerItem({
     String? uid,
     required this.label,
@@ -44,6 +54,7 @@ class CountdownTimerItem {
     DateTime? createdAt,
     DateTime? editedAt,
     this.tags = '',
+    this.itemUid,
   })  : uid = uid ?? CountdownTimerItem.newUid(),
         milestones = milestones ?? defaultMilestones(),
         createdAt = createdAt ?? DateTime.now(),
@@ -90,6 +101,7 @@ class CountdownTimerItem {
       createdAt: created,
       editedAt: edited,
       tags: json['tags'] as String? ?? '',
+      itemUid: json['itemUid'] as String?,
     );
   }
 
@@ -141,5 +153,7 @@ class CountdownTimerItem {
         'createdAt': createdAt.toIso8601String(),
         'editedAt': editedAt.toIso8601String(),
         if (tags.isNotEmpty) 'tags': tags,
+        // Item link: omitted for standalone timers.
+        if (itemUid != null) 'itemUid': itemUid,
       };
 }

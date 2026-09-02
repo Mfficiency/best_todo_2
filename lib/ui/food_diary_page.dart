@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/task.dart';
@@ -13,6 +16,44 @@ import '../utils/description_disclosure.dart';
 import 'label_picker.dart';
 import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
+
+/// A scan-friendly Markdown export: newest day first, meals chronological
+/// within each day, with details indented beneath the meal they belong to.
+String foodDiaryExportText(List<Task> entries) {
+  final sorted = List<Task>.from(entries)
+    ..sort((a, b) {
+      final aTime = a.dueDate;
+      final bTime = b.dueDate;
+      if (aTime == null && bTime == null) return a.title.compareTo(b.title);
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      final aDay = DateTime(aTime.year, aTime.month, aTime.day);
+      final bDay = DateTime(bTime.year, bTime.month, bTime.day);
+      final byDay = bDay.compareTo(aDay);
+      return byDay != 0 ? byDay : aTime.compareTo(bTime);
+    });
+  final lines = <String>['# Food Diary', ''];
+  String? currentDay;
+  for (final entry in sorted) {
+    final time = entry.dueDate;
+    final day = time == null ? 'No date' : formatTimerDate(time);
+    if (day != currentDay) {
+      if (currentDay != null) lines.add('');
+      lines.add('## $day');
+      currentDay = day;
+    }
+    final timeLabel = time == null ? 'Time not recorded' : formatTimerTime(time);
+    lines.add('- **$timeLabel — ${entry.title}**');
+    if (entry.label.trim().isNotEmpty) {
+      lines.add('  - Tags: ${entry.label.trim()}');
+    }
+    if (entry.description.trim().isNotEmpty) {
+      final description = entry.description.trim().replaceAll('\n', '\n    ');
+      lines.add('  - Notes: $description');
+    }
+  }
+  return '${lines.join('\n').trimRight()}\n';
+}
 
 /// Tools → Food Diary: a pre-filtered view over the one task list — like
 /// opening the wishlist — showing only tasks flagged [Task.isEatingHabit].
@@ -108,6 +149,48 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     await FoodDiaryWidgetService.sync(_tasks);
   }
 
+  static DateTime _yesterday() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+  }
+
+  String _timestampForFilename() {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  }
+
+  Future<void> _exportEntries() async {
+    final entries = _entries();
+    if (entries.isEmpty) return;
+    final downloads = await getDownloadsDirectory();
+    final directory = await getDirectoryPath(initialDirectory: downloads?.path);
+    if (!mounted) return;
+    if (directory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export canceled')),
+      );
+      return;
+    }
+    final separator = Platform.pathSeparator;
+    final path = '$directory${directory.endsWith(separator) ? '' : separator}'
+        'food_diary_${_timestampForFilename()}.md';
+    try {
+      await File(path).writeAsString(foodDiaryExportText(entries), flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exported to $path')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to export food diary')),
+      );
+    }
+  }
+
   /// Entries sorted newest-eaten-first, undated ones (shouldn't normally
   /// happen) last.
   List<Task> _entries() {
@@ -146,9 +229,16 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   }
 
   Future<void> _editEntry([Task? entry]) async {
+    // Only a fresh "add" needs yesterday's meals to copy from — editing an
+    // existing entry keeps the dialog focused on that entry.
+    final yesterdayMeals = entry == null
+        ? FoodDiaryWidgetService.latestEntryPerMealWindow(
+            _tasks, _yesterday())
+        : const <Task?>[null, null, null, null];
     final result = await showDialog<_FoodDiaryEditResult>(
       context: context,
-      builder: (context) => _FoodDiaryEditDialog(entry: entry),
+      builder: (context) =>
+          _FoodDiaryEditDialog(entry: entry, yesterdayMeals: yesterdayMeals),
     );
     if (result == null) return;
     setState(() {
@@ -248,7 +338,17 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     final entries = _entries();
     final days = _days(entries);
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Food Diary'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Food Diary',
+        actions: [
+          IconButton(
+            tooltip: 'Export food diary',
+            onPressed: entries.isEmpty ? null : _exportEntries,
+            icon: const Icon(Icons.download_outlined),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         tooltip: 'Add food diary entry',
         onPressed: () => _editEntry(),
@@ -307,8 +407,9 @@ class _FoodDiaryDaySection extends StatelessWidget {
 
   String _title(DateTime today) {
     if (day.day == null) return 'No date';
-    if (day.day == today) return 'Today';
-    return formatTimerDate(day.day!);
+    final weekday = formatWeekdayShort(day.day!);
+    if (day.day == today) return 'Today · $weekday';
+    return '$weekday, ${formatTimerDate(day.day!)}';
   }
 
   List<Widget> _tiles() => [
@@ -375,7 +476,16 @@ class _FoodDiaryEditResult {
 class _FoodDiaryEditDialog extends StatefulWidget {
   final Task? entry;
 
-  const _FoodDiaryEditDialog({required this.entry});
+  /// Yesterday's latest breakfast/lunch/snack/dinner entries (`null` where
+  /// nothing was logged in that window), in
+  /// [FoodDiaryWidgetService.mealNames] order. Only populated — and only
+  /// shown — when adding a new entry.
+  final List<Task?> yesterdayMeals;
+
+  const _FoodDiaryEditDialog({
+    required this.entry,
+    this.yesterdayMeals = const <Task?>[null, null, null, null],
+  });
 
   @override
   State<_FoodDiaryEditDialog> createState() => _FoodDiaryEditDialogState();
@@ -422,6 +532,19 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
     });
   }
 
+  /// Fills the title/tags/description from yesterday's meal at [index] —
+  /// the current time is left untouched, so this just makes a recurring
+  /// meal quick to re-log without retyping it.
+  void _copyYesterdayMeal(int index) {
+    final meal = widget.yesterdayMeals[index];
+    if (meal == null) return;
+    setState(() {
+      _titleController.text = meal.title;
+      _descriptionController.text = meal.description;
+      _label = meal.label;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -445,6 +568,13 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
                 SpeechInputButton(controller: _titleController),
               ],
             ),
+            if (widget.entry == null) ...[
+              const SizedBox(height: 4),
+              _CopyYesterdayRow(
+                meals: widget.yesterdayMeals,
+                onCopy: _copyYesterdayMeal,
+              ),
+            ],
             // Tags sit right under the title, same as the wishlist dialog —
             // they're what a diary entry is glanced at for; the description
             // is the exception and lives at the bottom.
@@ -507,6 +637,44 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
   }
 }
 
+/// Row of four small icon buttons — breakfast/lunch/snack/dinner — that
+/// fill the add-entry dialog's title/tags/description from yesterday's
+/// matching meal, one tap away. Icons rather than labels so the row stays
+/// compact next to the title field; a button is disabled when yesterday has
+/// nothing logged for that meal.
+class _CopyYesterdayRow extends StatelessWidget {
+  static const _icons = [
+    Icons.free_breakfast,
+    Icons.lunch_dining,
+    Icons.icecream,
+    Icons.dinner_dining,
+  ];
+
+  final List<Task?> meals;
+  final ValueChanged<int> onCopy;
+
+  const _CopyYesterdayRow({required this.meals, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < _icons.length; i++)
+          IconButton(
+            tooltip: meals[i] == null
+                ? 'No ${FoodDiaryWidgetService.mealNames[i].toLowerCase()} logged yesterday'
+                : 'Copy yesterday\'s ${FoodDiaryWidgetService.mealNames[i].toLowerCase()}: '
+                    '${meals[i]!.title}',
+            visualDensity: VisualDensity.compact,
+            onPressed: meals[i] == null ? null : () => onCopy(i),
+            icon: Icon(_icons[i], size: 20),
+          ),
+      ],
+    );
+  }
+}
+
 /// One food diary entry: title, time, description and tags — no checkbox,
 /// no due-date semantics, just a log line. Swipe (either direction) opens a
 /// confirm-free delete, matching the app's general swipe-to-delete feel.
@@ -530,6 +698,21 @@ class _FoodDiaryTile extends StatelessWidget {
       .where((label) => label.isNotEmpty)
       .toList();
 
+  /// Gives the diary a quick visual rhythm without making the card content
+  /// harder to read. Morning runs until noon, the daytime/noon tint continues
+  /// until 18:00, and the Bordeaux tint marks the evening.
+  Color _cardColor(BuildContext context, DateTime? time) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hour = time?.hour ?? 12;
+    if (hour < 12) {
+      return isDark ? const Color(0xFF17324A) : const Color(0xFFE3F2FD);
+    }
+    if (hour < 18) {
+      return isDark ? const Color(0xFF403817) : const Color(0xFFFFF8D6);
+    }
+    return isDark ? const Color(0xFF451E2D) : const Color(0xFFF3E1E6);
+  }
+
   @override
   Widget build(BuildContext context) {
     final labels = _labels();
@@ -550,6 +733,7 @@ class _FoodDiaryTile extends StatelessWidget {
       ),
       onDismissed: (_) => onDelete(),
       child: Card(
+        color: _cardColor(context, time),
         child: ListTile(
           title: Text(entry.title),
           trailing: IconButton(
