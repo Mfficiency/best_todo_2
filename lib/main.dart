@@ -306,6 +306,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // Don't collide with the intro/mode picker/startup chooser.
     if (_showIntro || _showModePicker || _showStartupChoice) return;
     if (_pendingUpdateVersion == info.version) return;
+    unawaited(_maybePromptUpdate(info));
+  }
+
+  /// Prompts for [info], unless it is already downloading (an earlier run's
+  /// background download resumed by [_resumePendingUpdateDownload]) or was
+  /// already downloaded — either way there is nothing to ask the user again,
+  /// since `_pendingUpdateVersion` alone can't catch this on a fresh launch:
+  /// it starts out null every time the process restarts, while the download
+  /// itself, run by Android's `DownloadManager`, survives across restarts.
+  Future<void> _maybePromptUpdate(UpdateInfo info) async {
+    if (await UpdateService.instance.wasDownloaded(info.version)) {
+      _pendingUpdateVersion = info.version;
+      return;
+    }
+    if (_pendingUpdateVersion == info.version) return;
     _pendingUpdateVersion = info.version;
     WidgetsBinding.instance.scheduleFrame();
     WidgetsBinding.instance.addPostFrameCallback((_) => _promptUpdate(info));
@@ -344,11 +359,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final pending = await UpdateService.instance.pendingDownload();
     if (pending == null) return;
     final downloadId = pending['downloadId'] as int;
+    final version = pending['version'] as String?;
+    // Block a poll tick that lands while this is watching from re-prompting
+    // "New version available" for the very build already downloading.
+    if (version != null) _pendingUpdateVersion = version;
     try {
       await for (final progress
           in UpdateService.instance.watchDownload(downloadId)) {
         if (progress.status == DownloadStatus.successful &&
             progress.localPath != null) {
+          if (version != null) {
+            await UpdateService.instance.markVersionDownloaded(version);
+          }
           await UpdateService.instance.clearPendingDownload();
           await UpdateService.instance.installApk(progress.localPath!);
         } else if (progress.status == DownloadStatus.failed) {
@@ -358,6 +380,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     } catch (_) {
       // Nothing to recover here — the next auto-update poll offers a fresh
       // download if one is still needed.
+    } finally {
+      if (_pendingUpdateVersion == version) _pendingUpdateVersion = null;
     }
   }
 

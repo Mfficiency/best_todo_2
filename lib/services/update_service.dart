@@ -366,6 +366,15 @@ class UpdateService {
 
   static const String _pendingDownloadPrefsKey = 'update_pending_download';
 
+  /// Version whose APK was last downloaded successfully (handed to the
+  /// installer), so a re-prompt for the same build — the auto-checker polls
+  /// every minute, and a fresh app launch has no in-memory record of what an
+  /// earlier run already fetched — can be skipped instead of asking the user
+  /// to download it again. Naturally stops mattering once that version is
+  /// actually installed, since `checkForUpdate` then no longer reports it as
+  /// newer than the running app.
+  static const String _downloadedVersionPrefsKey = 'update_downloaded_version';
+
   /// Hands [info]'s APK to Android's `DownloadManager` and returns its
   /// download id. The transfer then runs as a system service, independent of
   /// the app process — it keeps going if the app is backgrounded and rides
@@ -431,8 +440,10 @@ class UpdateService {
     await _savePendingDownload(id, info.version);
     await for (final progress in watchDownload(id, interval: interval)) {
       yield progress;
-      if (progress.status == DownloadStatus.successful ||
-          progress.status == DownloadStatus.failed) {
+      if (progress.status == DownloadStatus.successful) {
+        await markVersionDownloaded(info.version);
+        await clearPendingDownload();
+      } else if (progress.status == DownloadStatus.failed) {
         await clearPendingDownload();
       }
     }
@@ -447,6 +458,24 @@ class UpdateService {
   Future<void> clearPendingDownload() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingDownloadPrefsKey);
+  }
+
+  /// Records that [version]'s APK was downloaded and handed to the
+  /// installer, so [wasDownloaded] recognizes it on a later check even after
+  /// [clearPendingDownload] has dropped the in-progress record.
+  Future<void> markVersionDownloaded(String version) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_downloadedVersionPrefsKey, version);
+  }
+
+  /// True when [version] is either downloading right now or was already
+  /// downloaded and handed to the installer — the two cases in which the app
+  /// should not ask the user to download it again.
+  Future<bool> wasDownloaded(String version) async {
+    final pending = await pendingDownload();
+    if (pending != null && pending['version'] == version) return true;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_downloadedVersionPrefsKey) == version;
   }
 
   /// A download started in an earlier app run that had not finished (or

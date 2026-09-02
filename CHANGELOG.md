@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.24] - 2026-09-02
+- Background update downloads now survive an app restart: closing the app mid-download and reopening it no longer re-prompts to download the same build — it picks the download back up (or, if it already finished, installs it) instead of asking again.
+
 ## [0.2.23] - 2026-09-02
 - Waiting for Approval: the quick-tag buttons (Wishlist/Research by default) that approve a pending item straight into a tool now show at the top of its expanded details panel on a single tap, instead of behind a separate double-tap menu.
 - Local build: 2026-09-02 12:49

@@ -399,6 +399,49 @@ void main() {
           .toList();
       expect(progresses.single.status, DownloadStatus.successful);
       expect(await UpdateService.instance.pendingDownload(), isNull);
+      // The pending record is gone, but the version stays remembered as
+      // downloaded — that's what stops a re-prompt on the next check.
+      expect(await UpdateService.instance.wasDownloaded('0.1.150+120'), isTrue);
+    });
+
+    test(
+        'wasDownloaded is true for a version that is still downloading',
+        () async {
+      UpdateService.instance.downloadChannelOverride = (method, args) async {
+        if (method == 'startBackgroundDownload') return {'downloadId': 11};
+        return {'status': 'running', 'bytesDownloaded': 10, 'bytesTotal': 100};
+      };
+      final iterator = StreamIterator(UpdateService.instance.downloadInBackground(
+          makeInfo(),
+          interval: const Duration(milliseconds: 1)));
+      expect(await iterator.moveNext(), isTrue);
+      expect(await UpdateService.instance.wasDownloaded('0.1.150+120'), isTrue);
+      expect(await UpdateService.instance.wasDownloaded('0.1.151+121'), isFalse);
+      await iterator.cancel();
+    });
+
+    test('wasDownloaded is false for a different, unrelated version',
+        () async {
+      await UpdateService.instance.markVersionDownloaded('0.1.150+120');
+      expect(await UpdateService.instance.wasDownloaded('0.1.151+121'), isFalse);
+    });
+
+    test(
+        'a failed download does not mark the version as downloaded',
+        () async {
+      UpdateService.instance.downloadChannelOverride = (method, args) async {
+        if (method == 'startBackgroundDownload') return {'downloadId': 12};
+        return {
+          'status': 'failed',
+          'bytesDownloaded': 0,
+          'bytesTotal': 100,
+          'reason': '1008',
+        };
+      };
+      await UpdateService.instance
+          .downloadInBackground(makeInfo(), interval: const Duration(milliseconds: 1))
+          .toList();
+      expect(await UpdateService.instance.wasDownloaded('0.1.150+120'), isFalse);
     });
 
     test(
