@@ -39,14 +39,20 @@ void assignDevProjectSeed(List<Task> seedTasks, List<Project> projects) {
   }
 }
 
-/// Ensures every task's deadline time defaults to 18:00. When several tasks
-/// fall on the same calendar day the time is incremented by a minute
-/// (18:01, 18:02, ...) so that no two tasks on the same day share a time.
-///
-/// Ordering within a day follows [listRanking] (then [Task.uid] for a stable
-/// result), so the earliest-ranked task keeps 18:00. Tasks without a due date
-/// are left untouched. The calendar date itself is never changed; only the
+/// Ensures every task's deadline time defaults into the 18:00+ range, with
+/// several tasks on the same calendar day incrementing by a minute (18:01,
+/// 18:02, ...) so that no two share a time. Tasks without a due date are
+/// left untouched. The calendar date itself is never changed; only the
 /// time-of-day component is normalized.
+///
+/// A task that already sits on a distinct default-range slot keeps it as-is,
+/// even if its [listRanking] relative to its day-mates has since changed —
+/// this runs on every task-list save (see HomePage._saveTasks), so without
+/// that stability, completing or deleting one task would reshuffle every
+/// other same-day task's time as an unrelated, invisible side effect. Only a
+/// task that's new to the default range, or actually collides with another,
+/// gets assigned a fresh slot — in [listRanking] order (then [Task.uid] for
+/// a stable tie-break) among just those needing one.
 void applyDefaultDeadlineTimes(List<Task> tasks) {
   final byDay = <String, List<Task>>{};
   for (final task in tasks) {
@@ -56,24 +62,42 @@ void applyDefaultDeadlineTimes(List<Task> tasks) {
     byDay.putIfAbsent(key, () => <Task>[]).add(task);
   }
 
+  const lastMinuteOfDay = 24 * 60 - 1;
+
   for (final dayTasks in byDay.values) {
-    dayTasks.sort((a, b) {
-      final ra = a.listRanking ?? 1 << 31;
-      final rb = b.listRanking ?? 1 << 31;
-      if (ra != rb) return ra.compareTo(rb);
-      return a.uid.compareTo(b.uid);
-    });
     // Tasks with an explicitly chosen time (e.g. placed on the Chronize
-    // timeline) keep their time; only the remaining tasks get the 18:00, 18:01…
-    // default slots, assigned in listRanking order.
-    var slot = 0;
-    for (final task in dayTasks) {
-      if (task.hasExplicitTime) continue;
+    // timeline) are never touched here.
+    final candidates = dayTasks.where((t) => !t.hasExplicitTime).toList()
+      ..sort((a, b) {
+        final ra = a.listRanking ?? 1 << 31;
+        final rb = b.listRanking ?? 1 << 31;
+        if (ra != rb) return ra.compareTo(rb);
+        return a.uid.compareTo(b.uid);
+      });
+
+    final usedMinutes = <int>{};
+    final needsSlot = <Task>[];
+    for (final task in candidates) {
       final due = task.dueDate!;
-      // Cap at 23:59 so the time never spills into the next calendar day.
-      final minutes =
-          (defaultDeadlineMinutesOfDay + slot).clamp(0, 24 * 60 - 1);
+      final minute = due.hour * 60 + due.minute;
+      if (minute >= defaultDeadlineMinutesOfDay && usedMinutes.add(minute)) {
+        continue; // Already on a unique default-range slot — leave it.
+      }
+      needsSlot.add(task);
+    }
+
+    var slot = 0;
+    for (final task in needsSlot) {
+      var minutes =
+          (defaultDeadlineMinutesOfDay + slot).clamp(0, lastMinuteOfDay);
+      while (usedMinutes.contains(minutes) && minutes < lastMinuteOfDay) {
+        slot++;
+        minutes =
+            (defaultDeadlineMinutesOfDay + slot).clamp(0, lastMinuteOfDay);
+      }
+      usedMinutes.add(minutes);
       slot++;
+      final due = task.dueDate!;
       final hour = minutes ~/ 60;
       final minute = minutes % 60;
       final updated = DateTime(due.year, due.month, due.day, hour, minute);
