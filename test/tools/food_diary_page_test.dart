@@ -41,7 +41,13 @@ void main() {
       Task(title: 'Older lunch', dueDate: DateTime(2026, 8, 28, 12, 15)),
     ]);
 
-    expect(text, contains('# Food Diary\n\n## 2026-08-29'));
+    expect(text, startsWith('# Food Diary\n\n## Summary\n'));
+    expect(
+      text,
+      contains('- 3 entries across 2 days (2026-08-28 – 2026-08-29)'),
+    );
+    expect(text, contains('- Tags: restaurant (1)'));
+    expect(text, contains('\n\n## 2026-08-29'));
     expect(
       text.indexOf('08:00 — Breakfast'),
       lessThan(text.indexOf('19:30 — Dinner')),
@@ -388,6 +394,52 @@ void main() {
     });
     expect(added['description'], 'With banana');
     expect(added['label'], 'gluten');
+  });
+
+  testWidgets(
+      'nutritionist view groups by day, expanded, with a tag summary',
+      (tester) async {
+    final now = DateTime.now();
+    final yesterday = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Today lunch',
+          label: 'sugar',
+          dueDate: DateTime(now.year, now.month, now.day, 12),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Yesterday breakfast',
+          label: 'sugar, dairy',
+          dueDate: yesterday.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Today lunch',
+    );
+
+    // Diary view starts with yesterday collapsed.
+    expect(find.text('Yesterday breakfast'), findsNothing);
+
+    await tester.tap(find.byTooltip('Switch to nutritionist view'));
+    await tester.pumpAndSettle();
+
+    // Nutritionist view shows every day expanded, no tap needed.
+    expect(find.textContaining('Today lunch'), findsOneWidget);
+    expect(find.textContaining('Yesterday breakfast'), findsOneWidget);
+    expect(find.text('2 entries across 2 days'), findsOneWidget);
+    expect(find.text('sugar (2)'), findsOneWidget);
+    expect(find.text('dairy (1)'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Switch to diary view'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yesterday breakfast'), findsNothing);
   });
 
   testWidgets(

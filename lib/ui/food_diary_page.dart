@@ -17,8 +17,59 @@ import 'label_picker.dart';
 import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
 
-/// A scan-friendly Markdown export: newest day first, meals chronological
-/// within each day, with details indented beneath the meal they belong to.
+/// Tag -> occurrence count across [entries], most frequent first and
+/// alphabetical among ties, using the same splitting rule [_FoodDiaryTile]
+/// uses for its chips. Shared by the export summary and the nutritionist
+/// view's summary card, so both surface the same pattern.
+List<MapEntry<String, int>> _sortedFoodDiaryTagCounts(List<Task> entries) {
+  final counts = <String, int>{};
+  for (final entry in entries) {
+    for (final tag in entry.label.split(RegExp(r'[,\s]+'))) {
+      final trimmed = tag.trim();
+      if (trimmed.isEmpty) continue;
+      counts[trimmed] = (counts[trimmed] ?? 0) + 1;
+    }
+  }
+  return counts.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      return byCount != 0 ? byCount : a.key.compareTo(b.key);
+    });
+}
+
+/// A summary block (entry/day counts, date range, tag frequency) that leads
+/// both the Markdown export and the nutritionist view — the "here's the
+/// pattern at a glance" a nutritionist looks for before reading the log.
+List<String> _foodDiarySummaryLines(List<Task> sorted) {
+  final dated = sorted.where((t) => t.dueDate != null).toList();
+  final days = <DateTime>{
+    for (final entry in dated)
+      DateTime(entry.dueDate!.year, entry.dueDate!.month, entry.dueDate!.day),
+  };
+  final entryWord = sorted.length == 1 ? 'entry' : 'entries';
+  var summary = '- ${sorted.length} $entryWord';
+  if (days.isNotEmpty) {
+    final dayWord = days.length == 1 ? 'day' : 'days';
+    final oldest =
+        dated.map((t) => t.dueDate!).reduce((a, b) => a.isBefore(b) ? a : b);
+    final newest =
+        dated.map((t) => t.dueDate!).reduce((a, b) => a.isAfter(b) ? a : b);
+    summary += ' across ${days.length} $dayWord'
+        ' (${formatTimerDate(oldest)} – ${formatTimerDate(newest)})';
+  }
+  final lines = <String>['## Summary', summary];
+  final tags = _sortedFoodDiaryTagCounts(sorted);
+  if (tags.isNotEmpty) {
+    lines.add(
+        '- Tags: ${tags.map((t) => '${t.key} (${t.value})').join(', ')}');
+  }
+  return lines;
+}
+
+/// A scan-friendly Markdown export: a summary block first (entry/day counts,
+/// date range, tag frequency — the pattern a nutritionist looks for), then
+/// newest day first with meals chronological within each day, details
+/// indented beneath the meal they belong to.
 String foodDiaryExportText(List<Task> entries) {
   final sorted = List<Task>.from(entries)
     ..sort((a, b) {
@@ -33,6 +84,10 @@ String foodDiaryExportText(List<Task> entries) {
       return byDay != 0 ? byDay : aTime.compareTo(bTime);
     });
   final lines = <String>['# Food Diary', ''];
+  if (sorted.isNotEmpty) {
+    lines.addAll(_foodDiarySummaryLines(sorted));
+    lines.add('');
+  }
   String? currentDay;
   for (final entry in sorted) {
     final time = entry.dueDate;
@@ -81,6 +136,12 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   /// subset but always persists the whole list.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
+
+  /// Off (default) shows the day-to-day logging UI (collapsed past days,
+  /// swipe-to-delete, tap-to-edit). On swaps in [_NutritionistView]: every
+  /// day expanded and a tag-frequency summary up top, meant for reviewing
+  /// the whole log rather than logging a meal.
+  bool _nutritionistView = false;
 
   @override
   void initState() {
@@ -343,6 +404,15 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
         title: 'Food Diary',
         actions: [
           IconButton(
+            tooltip: _nutritionistView
+                ? 'Switch to diary view'
+                : 'Switch to nutritionist view',
+            onPressed: () =>
+                setState(() => _nutritionistView = !_nutritionistView),
+            icon: Icon(
+                _nutritionistView ? Icons.menu_book : Icons.health_and_safety),
+          ),
+          IconButton(
             tooltip: 'Export food diary',
             onPressed: entries.isEmpty ? null : _exportEntries,
             icon: const Icon(Icons.download_outlined),
@@ -367,19 +437,21 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
                     ),
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  children: [
-                    for (final day in days)
-                      _FoodDiaryDaySection(
-                        key: ValueKey(day.day),
-                        day: day,
-                        onEdit: _editEntry,
-                        onCopyToNow: _copyEntryToNow,
-                        onDelete: _deleteEntry,
-                      ),
-                  ],
-                ),
+              : _nutritionistView
+                  ? _NutritionistView(entries: entries, days: days)
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                      children: [
+                        for (final day in days)
+                          _FoodDiaryDaySection(
+                            key: ValueKey(day.day),
+                            day: day,
+                            onEdit: _editEntry,
+                            onCopyToNow: _copyEntryToNow,
+                            onDelete: _deleteEntry,
+                          ),
+                      ],
+                    ),
     );
   }
 }
@@ -457,6 +529,137 @@ class _FoodDiaryDaySection extends StatelessWidget {
         ..._tiles(),
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+/// A read-oriented layout of the same entries a nutritionist would want to
+/// review: a tag-frequency summary up top, then every day grouped and fully
+/// expanded (unlike the diary view, nothing collapses) with full-length
+/// notes, no swipe-to-delete or per-entry actions.
+class _NutritionistView extends StatelessWidget {
+  final List<Task> entries;
+  final List<_FoodDiaryDay> days;
+
+  const _NutritionistView({super.key, required this.entries, required this.days});
+
+  @override
+  Widget build(BuildContext context) {
+    final tagCounts = _sortedFoodDiaryTagCounts(entries);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Summary', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text('${entries.length} '
+                    '${entries.length == 1 ? 'entry' : 'entries'} across '
+                    '${days.length} ${days.length == 1 ? 'day' : 'days'}'),
+                if (tagCounts.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final tag in tagCounts)
+                        Chip(
+                          label: Text('${tag.key} (${tag.value})'),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final day in days)
+          _NutritionistDaySection(key: ValueKey(day.day), day: day),
+      ],
+    );
+  }
+}
+
+class _NutritionistDaySection extends StatelessWidget {
+  final _FoodDiaryDay day;
+
+  const _NutritionistDaySection({super.key, required this.day});
+
+  String _title(DateTime today) {
+    if (day.day == null) return 'No date';
+    final weekday = formatWeekdayShort(day.day!);
+    if (day.day == today) return 'Today · $weekday';
+    return '$weekday, ${formatTimerDate(day.day!)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_title(today), style: Theme.of(context).textTheme.titleMedium),
+            const Divider(),
+            for (final entry in day.entries) _NutritionistEntryRow(entry: entry),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NutritionistEntryRow extends StatelessWidget {
+  final Task entry;
+
+  const _NutritionistEntryRow({super.key, required this.entry});
+
+  List<String> _labels() => entry.label
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final time = entry.dueDate;
+    final labels = _labels();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            time == null
+                ? entry.title
+                : '${formatTimerTime(time)} — ${entry.title}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          if (labels.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(labels.join(', '),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ),
+          if (entry.description.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(entry.description),
+            ),
+        ],
+      ),
     );
   }
 }
