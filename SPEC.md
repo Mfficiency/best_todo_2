@@ -2436,11 +2436,25 @@ Each day-grouping header shows the weekday alongside the date (0.2.15), via
 today, "$weekday, $date" (honoring `Config.dateFormat`) for every other day,
 "No date" unchanged for undated entries.
 
-The app-bar export action (0.2.12) writes a human-readable Markdown file: newest day
-first, entries chronological within each day, with time/title as the prominent line and
-tags/notes indented below. The small 1x1 Food Diary “+” widget uses the same behind-
-schedule red background as the full widget and is refreshed whenever Flutter syncs diary
-data.
+The app-bar export action (0.2.12) writes a human-readable Markdown file: a `## Summary`
+block first (0.2.26 — entry/day counts, the covered date range, and tag frequency sorted
+most-common-first, e.g. `- Tags: sugar (5), dairy (3)`), then newest day first, entries
+chronological within each day, with time/title as the prominent line and tags/notes
+indented below. The small 1x1 Food Diary “+” widget uses the same behind-schedule red
+background as the full widget and is refreshed whenever Flutter syncs diary data.
+
+**Nutritionist view (0.2.26).** A second app-bar action (`Icons.health_and_safety` /
+`Icons.menu_book`, tooltip "Switch to nutritionist/diary view") toggles `_nutritionistView`
+and swaps the body for `_NutritionistView` — a read-oriented layout meant for reviewing the
+whole log rather than logging a meal. It leads with the same summary card the export's
+`## Summary` block carries (entry/day counts, tag frequency as chips), then renders every
+day grouped, same as the diary view, but always fully expanded — no `ExpansionTile`
+collapsing history away — with each entry's full notes shown inline (no
+`DescriptionDisclosure` chevron) and no swipe-to-delete or copy-to-now actions, since the
+view is for reading, not editing. Off by default; toggling back to the diary view restores
+the normal collapsed-history logging UI. `_sortedFoodDiaryTagCounts`/
+`_foodDiarySummaryLines` back both this view and the export so they report the same tag
+counts.
 
 The add dialog, when creating a new entry (not editing), shows a row of four small icon
 buttons above the title field (0.2.25) — `_CopyYesterdayRow` — one per meal
