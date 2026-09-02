@@ -1869,24 +1869,28 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   `edit?id=`); tapping anywhere else opens the Food Diary list (`besttodofood://open`). Both
   are foreground `HomeWidgetLaunchIntent`s, unlike the other two widgets' background
   toggles — logging food always needs the UI, so there is no background isolate path here.
-  Turns the whole background red once a meal checkpoint (8:00/13:00/20:00 — breakfast/lunch/
-  dinner) has passed today with nothing logged in that window (dueDate falling in
-  `[checkpoint, nextCheckpoint)`, last window running to midnight). `FoodDiaryWidgetService`
-  (`lib/services/food_diary_widget_service.dart`) pushes only "was anything logged in each
-  window today" booleans plus the date they describe, synced from `FoodDiaryPage._save`,
+  Turns the whole background red once today's running entry count falls behind a checkpoint
+  schedule (0.2.25): at least 1 entry logged by 8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00
+  (`checkpointMinutes`/`requiredCounts`) — a plain "log something roughly every few hours"
+  cadence, not tied to any particular meal. `FoodDiaryWidgetService`
+  (`lib/services/food_diary_widget_service.dart`) pushes only the raw "how many entries
+  today" count plus the date it describes, synced from `FoodDiaryPage._save`,
   `home_page._updateHomeWidget` and `WaitingApprovalPage._save`; whether a checkpoint has
-  *passed* is deliberately decided in Kotlin against the live clock (`food_diary_widget_
-  info.xml` sets `updatePeriodMillis` = 30 min), so the color is right even when the widget
-  redraws on its own schedule with the app never opened — a purely Flutter-computed flag
-  would go stale the moment the clock crosses a checkpoint without a save happening.
+  *passed*, and so whether the count is behind, is deliberately decided in Kotlin against the
+  live clock (`food_diary_widget_info.xml` sets `updatePeriodMillis` = 30 min), so the color
+  is right even when the widget redraws on its own schedule with the app never opened — a
+  purely Flutter-computed flag would go stale the moment the clock crosses a checkpoint
+  without a save happening. The same four checkpoints also carve the day into breakfast
+  (before 8:00) / lunch (8:00–13:00) / snack (13:00–16:30) / dinner (from 16:30) windows,
+  reused by the add-entry dialog's "copy from yesterday" shortcuts (see §10.6a).
 - **Food Diary button widget** (`FoodDiaryButtonWidgetProvider.kt`): a companion to the
   Food Diary widget above, fixed at 1x1 (`minWidth`/`minHeight` = 40dp, `targetCellWidth`/
   `targetCellHeight` = 1, `resizeMode="none"`) and drawing nothing but a "+" that fills the
   cell. Tapping it is the same foreground `besttodofood://add` launch intent as the full
   widget's "+" — there is no room for status text at this size, so it carries no other tap
-  target. Since 0.2.12 it reads the full widget's persisted checkpoint flags, redraws
-  every 30 minutes, and turns red when any started meal window has no entry; tapping it
-  remains an immediate shortcut to the add-entry dialog.
+  target. Since 0.2.12 it redraws every 30 minutes and turns red on the same running-count
+  schedule as the full widget (0.2.25); tapping it remains an immediate shortcut to the
+  add-entry dialog.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
 `Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
@@ -1894,12 +1898,13 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
 be captured by the desktop screenshot integration test (`integration_test/
 home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
 from the same data/logic the real widgets use — `TaskWidgetService.todayTasks`, the sorted
-`AlarmService.instance.list`, `FoodDiaryWidgetService.computeHasEntry` plus the same
-checkpoint-passed-against-the-live-clock check `FoodDiaryWidgetProvider.kt` does — so the
-colors/text stay in sync with the Kotlin providers without duplicating their logic. The Food
-Diary mock falls back to two in-memory (never saved) demo entries when no Food Diary tasks
-exist yet, the same way `FoodDiaryPage` seeds its own copy on first open. The button-widget
-mock is static (just the "+"), matching what the Kotlin provider actually draws.
+`AlarmService.instance.list`, `FoodDiaryWidgetService.computeEntryCount`/`isBehindSchedule`
+plus the same checkpoint-passed-against-the-live-clock check `FoodDiaryWidgetProvider.kt`
+does — so the colors/text stay in sync with the Kotlin providers without duplicating their
+logic. The Food Diary mock falls back to two in-memory (never saved) demo entries when no
+Food Diary tasks exist yet, the same way `FoodDiaryPage` seeds its own copy on first open.
+The button-widget mock shares the same red/black logic as the full widget's mock, just
+without any status text, matching what the Kotlin provider actually draws.
 
 ## 9. Android platform config
 
@@ -2433,8 +2438,19 @@ today, "$weekday, $date" (honoring `Config.dateFormat`) for every other day,
 
 The app-bar export action (0.2.12) writes a human-readable Markdown file: newest day
 first, entries chronological within each day, with time/title as the prominent line and
-tags/notes indented below. The small 1x1 Food Diary “+” widget uses the same missed-meal
-red background as the full widget and is refreshed whenever Flutter syncs diary data.
+tags/notes indented below. The small 1x1 Food Diary “+” widget uses the same behind-
+schedule red background as the full widget and is refreshed whenever Flutter syncs diary
+data.
+
+The add dialog, when creating a new entry (not editing), shows a row of four small icon
+buttons above the title field (0.2.25) — `_CopyYesterdayRow` — one per meal
+(`Icons.free_breakfast`/`lunch_dining`/`icecream`/`dinner_dining`, icons rather than
+labels to keep the row compact). Each fills the title/tags/description from yesterday's
+matching meal (`FoodDiaryWidgetService.latestEntryPerMealWindow`, the same breakfast/
+lunch/snack/dinner windows the widget's checkpoints carve the day into — the later entry
+wins when a window has more than one) without touching the time field, so logging a
+repeat meal is a tap plus Save; a button is disabled (with a tooltip explaining why) when
+yesterday has nothing logged for that meal.
 
 Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 `featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
@@ -2442,8 +2458,8 @@ drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from st
 on return (the tool loads/saves the list on its own, like Wishlist).
 
 A home-screen widget mirrors the tool (§8, "Food Diary widget") — its "+" opens this
-same add dialog and its background goes red once a meal checkpoint has passed with
-nothing logged.
+same add dialog and its background goes red once today's entry count falls behind the
+checkpoint schedule.
 
 **Dev seed (0.1.270):** when no `isEatingHabit` task exists yet and `Config.isDev`, the
 page seeds three entries spread across the day (breakfast/lunch/dinner, each with its own

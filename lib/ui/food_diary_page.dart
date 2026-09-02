@@ -149,6 +149,12 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     await FoodDiaryWidgetService.sync(_tasks);
   }
 
+  static DateTime _yesterday() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+  }
+
   String _timestampForFilename() {
     final now = DateTime.now();
     String two(int value) => value.toString().padLeft(2, '0');
@@ -223,9 +229,16 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   }
 
   Future<void> _editEntry([Task? entry]) async {
+    // Only a fresh "add" needs yesterday's meals to copy from — editing an
+    // existing entry keeps the dialog focused on that entry.
+    final yesterdayMeals = entry == null
+        ? FoodDiaryWidgetService.latestEntryPerMealWindow(
+            _tasks, _yesterday())
+        : const <Task?>[null, null, null, null];
     final result = await showDialog<_FoodDiaryEditResult>(
       context: context,
-      builder: (context) => _FoodDiaryEditDialog(entry: entry),
+      builder: (context) =>
+          _FoodDiaryEditDialog(entry: entry, yesterdayMeals: yesterdayMeals),
     );
     if (result == null) return;
     setState(() {
@@ -463,7 +476,16 @@ class _FoodDiaryEditResult {
 class _FoodDiaryEditDialog extends StatefulWidget {
   final Task? entry;
 
-  const _FoodDiaryEditDialog({required this.entry});
+  /// Yesterday's latest breakfast/lunch/snack/dinner entries (`null` where
+  /// nothing was logged in that window), in
+  /// [FoodDiaryWidgetService.mealNames] order. Only populated — and only
+  /// shown — when adding a new entry.
+  final List<Task?> yesterdayMeals;
+
+  const _FoodDiaryEditDialog({
+    required this.entry,
+    this.yesterdayMeals = const <Task?>[null, null, null, null],
+  });
 
   @override
   State<_FoodDiaryEditDialog> createState() => _FoodDiaryEditDialogState();
@@ -510,6 +532,19 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
     });
   }
 
+  /// Fills the title/tags/description from yesterday's meal at [index] —
+  /// the current time is left untouched, so this just makes a recurring
+  /// meal quick to re-log without retyping it.
+  void _copyYesterdayMeal(int index) {
+    final meal = widget.yesterdayMeals[index];
+    if (meal == null) return;
+    setState(() {
+      _titleController.text = meal.title;
+      _descriptionController.text = meal.description;
+      _label = meal.label;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -533,6 +568,13 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
                 SpeechInputButton(controller: _titleController),
               ],
             ),
+            if (widget.entry == null) ...[
+              const SizedBox(height: 4),
+              _CopyYesterdayRow(
+                meals: widget.yesterdayMeals,
+                onCopy: _copyYesterdayMeal,
+              ),
+            ],
             // Tags sit right under the title, same as the wishlist dialog —
             // they're what a diary entry is glanced at for; the description
             // is the exception and lives at the bottom.
@@ -590,6 +632,44 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
           },
           child: const Text('Save'),
         ),
+      ],
+    );
+  }
+}
+
+/// Row of four small icon buttons — breakfast/lunch/snack/dinner — that
+/// fill the add-entry dialog's title/tags/description from yesterday's
+/// matching meal, one tap away. Icons rather than labels so the row stays
+/// compact next to the title field; a button is disabled when yesterday has
+/// nothing logged for that meal.
+class _CopyYesterdayRow extends StatelessWidget {
+  static const _icons = [
+    Icons.free_breakfast,
+    Icons.lunch_dining,
+    Icons.icecream,
+    Icons.dinner_dining,
+  ];
+
+  final List<Task?> meals;
+  final ValueChanged<int> onCopy;
+
+  const _CopyYesterdayRow({required this.meals, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < _icons.length; i++)
+          IconButton(
+            tooltip: meals[i] == null
+                ? 'No ${FoodDiaryWidgetService.mealNames[i].toLowerCase()} logged yesterday'
+                : 'Copy yesterday\'s ${FoodDiaryWidgetService.mealNames[i].toLowerCase()}: '
+                    '${meals[i]!.title}',
+            visualDensity: VisualDensity.compact,
+            onPressed: meals[i] == null ? null : () => onCopy(i),
+            icon: Icon(_icons[i], size: 20),
+          ),
       ],
     );
   }

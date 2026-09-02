@@ -335,4 +335,78 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets(
+      'add dialog copy-from-yesterday button fills the fields without '
+      'changing the time', (tester) async {
+    final now = DateTime.now();
+    final yesterday =
+        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Oatmeal',
+          description: 'With banana',
+          label: 'gluten',
+          dueDate: yesterday.add(const Duration(hours: 7, minutes: 30)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+      ],
+      marker: 'Oatmeal',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+
+    final breakfastButton =
+        find.byTooltip("Copy yesterday's breakfast: Oatmeal");
+    expect(breakfastButton, findsOneWidget);
+
+    await tester.tap(breakfastButton);
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.widgetWithText(TextField, 'Title')).controller?.text,
+      'Oatmeal',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    final saved = (await readJsonList(tester, 'tasks.json'))
+        .cast<Map<String, dynamic>>();
+    final oatmealEntries =
+        saved.where((t) => t['title'] == 'Oatmeal').toList();
+    expect(oatmealEntries, hasLength(2));
+    // The new entry keeps the dialog's own time ("now"), not yesterday's.
+    final added = oatmealEntries.firstWhere((t) {
+      final due = DateTime.parse(t['dueDate'] as String);
+      return DateTime(due.year, due.month, due.day) ==
+          DateTime(now.year, now.month, now.day);
+    });
+    expect(added['description'], 'With banana');
+    expect(added['label'], 'gluten');
+  });
+
+  testWidgets(
+      'add dialog copy-from-yesterday button is disabled when nothing was '
+      'logged for that meal', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [Task(title: 'Greek yogurt', isEatingHabit: true)],
+      marker: 'Greek yogurt',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+
+    final breakfastButton =
+        find.byTooltip('No breakfast logged yesterday');
+    expect(breakfastButton, findsOneWidget);
+    final button = tester.widget<IconButton>(
+        find.ancestor(of: breakfastButton, matching: find.byType(IconButton)));
+    expect(button.onPressed, isNull);
+  });
 }
