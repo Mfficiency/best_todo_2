@@ -6,11 +6,12 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/approval_quick_tag.dart';
 
-/// The Waiting for Approval page's double-tap quick-tag menu: a user-editable
-/// list of tag -> tool mappings (see `ApprovalQuickTag`). Double-tapping a
-/// pending item there offers one button per entry; tapping it approves the
-/// item and flips the matching `Task` flag ([Task.isWish]/[Task.isResearch])
-/// so it lands directly in that tool instead of the home tabs.
+/// The Waiting for Approval page's quick-tag buttons: a user-editable list
+/// of tag -> tool mappings (see `ApprovalQuickTag`). Tapping a pending item
+/// there to expand its details shows one button per entry at the top of the
+/// panel; tapping a button approves the item and flips the matching `Task`
+/// flag ([Task.isWish]/[Task.isResearch]) so it lands directly in that tool
+/// instead of the home tabs.
 ///
 /// Seeded with the two tools that exist today (Wishlist, Research) on first
 /// run, persisted to `approval_quick_tags.json`, and fully user-editable

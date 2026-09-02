@@ -6,9 +6,9 @@ import 'subpage_app_bar.dart';
 
 /// Settings > Tasks > Approval quick tags. Lets the user view/add/edit/
 /// delete the tag -> tool dictionary [ApprovalQuickTagService] shows as
-/// buttons when a Waiting for Approval item is double-tapped
-/// (`waiting_approval_page.dart`) — e.g. tapping "Research" there approves
-/// the item and sends it straight to the Research tool.
+/// buttons at the top of a Waiting for Approval item's expanded details
+/// panel (`waiting_approval_page.dart`) — e.g. tapping "Research" there
+/// approves the item and sends it straight to the Research tool.
 class ApprovalQuickTagsPage extends StatefulWidget {
   const ApprovalQuickTagsPage({Key? key}) : super(key: key);
 
@@ -60,8 +60,8 @@ class _ApprovalQuickTagsPageState extends State<ApprovalQuickTagsPage> {
                 padding: EdgeInsets.all(24),
                 child: Text(
                   'No quick tags yet. Tap + to add one: a button that '
-                  'approves a pending item straight into a tool when '
-                  'double-tapped in Waiting for Approval.',
+                  'approves a pending item straight into a tool, shown at '
+                  'the top of its expanded details in Waiting for Approval.',
                   textAlign: TextAlign.center,
                 ),
               ),

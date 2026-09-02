@@ -165,7 +165,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry(
         'Auto-tag rules', 4, 'tags labels keywords dictionary work bike'),
     _SettingsSearchEntry('Approval quick tags', 4,
-        'waiting for approval double tap wishlist research quick tags'),
+        'waiting for approval expand details wishlist research quick tags'),
     _SettingsSearchEntry('Widget progress line', 8, 'home screen completion'),
     _SettingsSearchEntry('Check off tasks on the widget', 8,
         'home screen checkbox tick complete done interactive'),
@@ -2863,8 +2863,8 @@ class _SettingsPageState extends State<SettingsPage> {
                               leading: const Icon(Icons.checklist_outlined),
                               title: const Text('Approval quick tags'),
                               subtitle: const Text(
-                                  'Double-tap a Waiting for Approval item for '
-                                  'buttons that approve it straight into a tool'),
+                                  'Tap a Waiting for Approval item for buttons '
+                                  'that approve it straight into a tool'),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(

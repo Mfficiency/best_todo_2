@@ -66,45 +66,37 @@ void main() {
     }) as List<dynamic>;
   }
 
-  /// Two quick taps on [finder]'s position — close enough together to count
-  /// as a double tap. Mirrors `task_double_tap_timer_test.dart`'s helper.
-  Future<void> doubleTap(WidgetTester tester, Finder finder) async {
-    final center = tester.getCenter(finder);
-    await tester.tapAt(center);
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.tapAt(center);
-    await tester.pumpAndSettle();
-  }
-
   testWidgets(
-      'double-tapping a pending item shows the default Wishlist/Research '
-      'quick-tag menu', (tester) async {
+      'a single tap expands the item and shows the default Wishlist/'
+      'Research quick-tag buttons', (tester) async {
     await pumpPending(
       tester,
       tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
       marker: 'From Todoist',
     );
 
-    await doubleTap(tester, find.text('From Todoist'));
+    expect(find.text('Wishlist'), findsNothing);
+
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
 
     expect(find.text('Wishlist'), findsOneWidget);
     expect(find.text('Research'), findsOneWidget);
-    expect(find.textContaining('Approve into Wishlist'), findsOneWidget);
-    expect(find.textContaining('Approve into Research'), findsOneWidget);
   });
 
   testWidgets(
-      'picking the Research quick tag approves the item and flags it as '
-      'research, out of the pending list', (tester) async {
+      'tapping the Research quick-tag button approves the item and flags '
+      'it as research, out of the pending list', (tester) async {
     await pumpPending(
       tester,
       tasks: [Task(title: 'Look into RSS readers', label: waitingApprovalToken)],
       marker: 'Look into RSS readers',
     );
 
-    await doubleTap(tester, find.text('Look into RSS readers'));
+    await tester.tap(find.text('Look into RSS readers'));
+    await tester.pump();
     await tester.tap(find.text('Research'));
-    await tester.pumpAndSettle();
+    await tester.pump();
     await settleWrites(tester);
 
     expect(find.text('Look into RSS readers'), findsNothing);
@@ -115,17 +107,18 @@ void main() {
   });
 
   testWidgets(
-      'picking the Wishlist quick tag approves the item and flags it as a '
-      'wish', (tester) async {
+      'tapping the Wishlist quick-tag button approves the item and flags '
+      'it as a wish', (tester) async {
     await pumpPending(
       tester,
       tasks: [Task(title: 'Someday: learn pottery', label: waitingApprovalToken)],
       marker: 'Someday: learn pottery',
     );
 
-    await doubleTap(tester, find.text('Someday: learn pottery'));
+    await tester.tap(find.text('Someday: learn pottery'));
+    await tester.pump();
     await tester.tap(find.text('Wishlist'));
-    await tester.pumpAndSettle();
+    await tester.pump();
     await settleWrites(tester);
 
     expect(find.text('Someday: learn pottery'), findsNothing);
@@ -134,21 +127,21 @@ void main() {
     expect(saved.single['isWish'], isTrue);
   });
 
-  testWidgets('dismissing the quick-tag menu approves nothing',
-      (tester) async {
+  testWidgets('collapsing the panel again touches nothing', (tester) async {
     await pumpPending(
       tester,
       tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
       marker: 'From Todoist',
     );
 
-    await doubleTap(tester, find.text('From Todoist'));
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
     expect(find.text('Wishlist'), findsOneWidget);
 
-    await tester.tapAt(const Offset(10, 10));
-    await tester.pumpAndSettle();
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
 
-    expect(find.text('From Todoist'), findsOneWidget);
+    expect(find.text('Wishlist'), findsNothing);
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['label'], contains('approval'));
   });
@@ -165,15 +158,32 @@ void main() {
       marker: 'From Todoist',
     );
 
-    await doubleTap(tester, find.text('From Todoist'));
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
     expect(find.text('Wishlist'), findsNothing);
     expect(find.text('Rabbit hole'), findsOneWidget);
 
     await tester.tap(find.text('Rabbit hole'));
-    await tester.pumpAndSettle();
+    await tester.pump();
     await settleWrites(tester);
 
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['isResearch'], isTrue);
+  });
+
+  testWidgets('no quick tags configured means no button row, just the rest '
+      'of the panel', (tester) async {
+    await tester.runAsync(() => ApprovalQuickTagService.instance.save([]));
+    await pumpPending(
+      tester,
+      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      marker: 'From Todoist',
+    );
+
+    await tester.tap(find.text('From Todoist'));
+    await tester.pump();
+
+    expect(find.byType(OutlinedButton), findsNothing);
+    expect(find.textContaining('From:'), findsOneWidget);
   });
 }
