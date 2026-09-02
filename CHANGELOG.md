@@ -3,6 +3,9 @@
 ## [0.2.25] - 2026-09-02
 - Food Diary widgets (both the full widget and the 1x1 "+" button) now turn red based on a running log-count schedule instead of fixed meal slots: at least 1 entry logged by 8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00
 - Add-entry dialog gained four small icon buttons (breakfast/lunch/snack/dinner) that copy yesterday's matching meal's title/tags/description in one tap, so logging a repeat meal no longer means retyping it
+- Local build: 2026-09-02 14:28
+- Build duration (apk): 2m 28s
+- Build duration (windows): 1m 18s
 
 ## [0.2.24] - 2026-09-02
 - Background update downloads now survive an app restart: closing the app mid-download and reopening it no longer re-prompts to download the same build — it picks the download back up (or, if it already finished, installs it) instead of asking again.
