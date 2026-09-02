@@ -3,6 +3,9 @@
 ## [0.2.26] - 2026-09-02
 - Food Diary gained a nutritionist view: a new app-bar toggle swaps the day-to-day log for a read-oriented layout with every day fully expanded, full notes shown inline, and a tag-frequency summary up top
 - The Food Diary Markdown export now leads with a summary block (entry/day counts, date range, tag frequency) so the file is ready to hand to a nutritionist as-is
+- Local build: 2026-09-02 19:10
+- Build duration (apk): 3m 26s
+- Build duration (windows): 2m 28s
 
 ## [0.2.25] - 2026-09-02
 - Food Diary widgets (both the full widget and the 1x1 "+" button) now turn red based on a running log-count schedule instead of fixed meal slots: at least 1 entry logged by 8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00
