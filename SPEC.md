@@ -530,14 +530,17 @@ local `createdAt` over "now" (the pull time): `_remoteCreatedAt` reads `added_at
 unified API v1 field) or, defensively, `created_at` (the older REST v2 spelling), falling
 back to `DateTime.now()` if the API sends neither.
 
-**Double-tap quick-tag menu → Research tool (0.2.22):** double-tapping a pending row
-(hand-rolled tap-timing detection via `_lastTapAt`/`kDoubleTapTimeout`, mirroring
-`TaskTile`'s own double-tap menu — a real `onDoubleTap` `GestureDetector` would delay every
-single tap by the double-tap timeout) shows a `showModalBottomSheet` listing every
-configured `ApprovalQuickTag` (`lib/models/approval_quick_tag.dart`); tapping one both
-approves the item (`removeWaitingApprovalToken`) and flips the `Task` flag its `target`
-names — `wishlistTarget` → `isWish = true`, `researchTarget` → `isResearch = true` — so it
-lands straight in that tool instead of the home tabs. `ApprovalQuickTagService`
+**Quick-tag buttons in the expanded details panel → Research tool (0.2.22, moved from a
+double-tap menu to the details panel in 0.2.23):** tapping a pending row (the same plain
+tap that toggles the inline details panel — see 0.2.21 above) now shows, as the panel's
+first row, one button per configured `ApprovalQuickTag` (`lib/models/approval_quick_tag.dart`)
+— `_PendingTaskTileState._buildQuickTags`, a `Wrap` of `OutlinedButton.icon`s. Tapping one
+both approves the item (`removeWaitingApprovalToken`) and flips the `Task` flag its
+`target` names — `wishlistTarget` → `isWish = true`, `researchTarget` → `isResearch =
+true` — so it lands straight in that tool instead of the home tabs. (0.2.22 originally
+reached this from a double-tap `showModalBottomSheet`, hand-rolled tap-timing detection
+included — dropped for the simpler single-tap-then-tap-a-button flow, which needs no
+custom gesture handling at all.) `ApprovalQuickTagService`
 (`lib/services/approval_quick_tag_service.dart`, JSON file `approval_quick_tags.json`,
 `ValueNotifier`-backed like `AutoTagService`) seeds the default Wishlist/Research pair on
 first run and is fully user-editable at Settings ▸ Tasks ▸ **Approval quick tags**
@@ -551,7 +554,7 @@ gated view exactly like the Food Diary — `ItemViews.research` selects `isResea
 isApproved`, and `ItemViews.isVisibleInMainViews` excludes research items from every main
 view (home tabs, schedule view, wishlist, projects, Todoist sync), so an item only shows up
 here (or, once deleted, Archived Items) — never on the home tabs. Items arrive either
-double-tap-approved from Waiting for Approval, or typed directly with the page's own FAB
+quick-tag-approved from Waiting for Approval, or typed directly with the page's own FAB
 (title, description, `LabelPickerField` tags — no due date, no checkbox, just a log line
 like a Food Diary entry). `researchToken` (`'Research'`) is a `protectedStateTokens` entry
 and a full `ViewFilterRules` view id (`ViewFilterRules.research`), threaded through every

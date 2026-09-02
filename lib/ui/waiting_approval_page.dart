@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -126,9 +125,9 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   Future<void> _load() async {
     final tasks = await _repository.loadItems();
-    // Self-contained like the task list load: the double-tap quick-tag menu
-    // needs this loaded before it can render, and this page is the only
-    // place it's shown.
+    // Self-contained like the task list load: the quick-tag buttons at the
+    // top of the expanded details panel need this loaded before they can
+    // render, and this page is the only place they're shown.
     await ApprovalQuickTagService.instance.load();
     if (!mounted) return;
     setState(() {
@@ -226,8 +225,9 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// Approves [task] and routes it straight into the tool [tag] names
   /// (Wishlist/Research today — see [ApprovalQuickTag.targets]) by flipping
   /// that tool's membership flag on the task, exactly like the plain
-  /// Approve button plus a manual flag toggle would. Reached by
-  /// double-tapping a pending item — see [_PendingTaskTileState._showQuickTagMenu].
+  /// Approve button plus a manual flag toggle would. Reached from the quick-
+  /// tag buttons at the top of the expanded details panel — see
+  /// [_PendingTaskTileState._buildQuickTags].
   void _approveWithQuickTag(Task task, ApprovalQuickTag tag) {
     setState(() {
       task.label = removeWaitingApprovalToken(task.label);
@@ -581,12 +581,13 @@ class _ApprovalGroupHeader extends StatelessWidget {
 /// that don't touch the due date.
 ///
 /// Tapping the tile toggles an inline details panel (creation date, source
-/// conversation, Todoist sync info); double-tapping it shows the quick-tag
-/// menu (Settings > Tasks > Approval quick tags — Wishlist/Research by
-/// default), which approves the item straight into that tool; long-pressing
-/// it starts multi-select, during which the leading icon becomes a
-/// checkbox, tapping toggles selection instead of expanding, and the swipe
-/// gestures are disabled.
+/// conversation, Todoist sync info) whose very first row is a set of
+/// quick-tag buttons (Settings > Tasks > Approval quick tags —
+/// Wishlist/Research by default): tapping one approves the item straight
+/// into that tool instead of scrolling down to the plain Approve button.
+/// Long-pressing the tile starts multi-select, during which the leading
+/// icon becomes a checkbox, tapping toggles selection instead of expanding,
+/// and the swipe gestures are disabled.
 class _PendingTaskTile extends StatefulWidget {
   final Task task;
   final bool selecting;
@@ -686,76 +687,36 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     widget.onApproveToWeekday(weekday);
   }
 
-  /// Wall-clock moment of the previous tap, for the hand-rolled double-tap
-  /// detection in [_handleTap] — mirrors `TaskTile`'s own double-tap menu.
-  /// A real `onDoubleTap` recognizer would hold the gesture arena for the
-  /// double-tap timeout on every tap, delaying the expand-on-tap by ~300 ms.
-  DateTime? _lastTapAt;
-
   void _handleTap() {
     if (widget.selecting) {
       widget.onToggleSelected();
-      return;
-    }
-    final now = DateTime.now();
-    final last = _lastTapAt;
-    _lastTapAt = now;
-    if (last != null && now.difference(last) < kDoubleTapTimeout) {
-      _lastTapAt = null;
-      // Second tap of a double tap: take back the expansion toggle the
-      // first tap made, then show the quick-tag menu.
+    } else {
       widget.onToggleExpanded();
-      _showQuickTagMenu();
-      return;
     }
-    widget.onToggleExpanded();
   }
 
-  /// Quick-tag menu shown on a double tap: one button per configured
-  /// [ApprovalQuickTag] (Settings > Tasks > Approval quick tags). Tapping
-  /// one approves the item straight into the tool it names.
-  Future<void> _showQuickTagMenu() async {
+  /// Quick-tag buttons shown as the first row of the expanded details panel:
+  /// one per configured [ApprovalQuickTag] (Settings > Tasks > Approval
+  /// quick tags). Tapping one approves the item straight into the tool it
+  /// names, without touching the plain Approve button.
+  Widget _buildQuickTags(BuildContext context) {
     final tags = ApprovalQuickTagService.instance.list;
-    if (tags.isEmpty) return;
-    final task = widget.task;
-    final picked = await showModalBottomSheet<ApprovalQuickTag>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(
-                  task.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(sheetContext)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ),
-              for (final tag in tags)
-                ListTile(
-                  leading: const Icon(Icons.sell_outlined),
-                  title: Text(tag.label),
-                  subtitle: Text('Approve into '
-                      '${ApprovalQuickTag.targetLabels[tag.target] ?? tag.target}'),
-                  onTap: () => Navigator.of(sheetContext).pop(tag),
-                ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
+    if (tags.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final tag in tags)
+            OutlinedButton.icon(
+              onPressed: () => widget.onApproveWithQuickTag(tag),
+              icon: const Icon(Icons.sell_outlined, size: 16),
+              label: Text(tag.label),
+            ),
+        ],
       ),
     );
-    if (picked == null || !mounted) return;
-    widget.onApproveWithQuickTag(picked);
   }
 
   /// One label chip, colored like every other tag chip in the app
@@ -783,10 +744,11 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
   }
 
   /// Every detail linked to the item, shown when [widget.expanded] is true:
-  /// creation date, source conversation, Todoist sync info, note, due date/
-  /// time window and every label tag — plus a link to [TaskDetailPage] for
-  /// the rest (attachments, reminder, full journal history) so nothing about
-  /// the task is more than one tap away from this row.
+  /// the quick-tag buttons ([_buildQuickTags]) first, then creation date,
+  /// source conversation, Todoist sync info, note, due date/time window and
+  /// every label tag — plus a link to [TaskDetailPage] for the rest
+  /// (attachments, reminder, full journal history) so nothing about the
+  /// task is more than one tap away from this row.
   Widget _buildDetails(BuildContext context) {
     final task = widget.task;
     final theme = Theme.of(context);
@@ -822,6 +784,7 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildQuickTags(context),
           for (final line in lines) Text(line, style: detailStyle),
           if (tags.isNotEmpty) ...[
             const SizedBox(height: 6),
