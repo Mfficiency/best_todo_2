@@ -2,6 +2,9 @@
 
 ## [0.2.23] - 2026-09-02
 - Waiting for Approval: the quick-tag buttons (Wishlist/Research by default) that approve a pending item straight into a tool now show at the top of its expanded details panel on a single tap, instead of behind a separate double-tap menu.
+- Local build: 2026-09-02 12:49
+- Build duration (apk): 3m 27s
+- Build duration (windows): 1m 32s
 
 ## [0.2.22] - 2026-09-01
 - Waiting for Approval: double-tap a pending item for a quick-tag menu (Wishlist/Research by default, editable in Settings > Tasks > Approval quick tags) that approves it straight into that tool. Added a new Research tool (Tools drawer) for items approved this way or added directly.
