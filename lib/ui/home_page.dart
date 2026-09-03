@@ -838,6 +838,60 @@ class _HomePageState extends State<HomePage>
     LogService.add('HomePage._undoLastAction', state.description);
   }
 
+  /// Long-press on the Undo button: shows every action still on the undo
+  /// stack (most recent first) so the user can jump straight back to a
+  /// specific point instead of tapping Undo repeatedly and guessing.
+  void _showUndoHistory() {
+    final history = TaskMutationService.instance.undoHistory;
+    if (history.isEmpty) return;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(sheetContext).size.height * 0.6,
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: history.length + 1,
+            itemBuilder: (context, i) {
+              if (i == 0) {
+                return const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text('Previous actions',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                );
+              }
+              final entry = history[i - 1];
+              return ListTile(
+                leading: Text('$i'),
+                title: Text(entry.description),
+                subtitle: Text(_undoHistoryTimeLabel(entry.at)),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _undoToHistoryEntry(i - 1);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _undoHistoryTimeLabel(DateTime at) {
+    final local = at.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+  }
+
+  Future<void> _undoToHistoryEntry(int index) async {
+    final state = await TaskMutationService.instance.undoTo(index);
+    if (state == null) return;
+    _applyUndoState(state.copyWith(description: 'Undone: ${state.description}'));
+    LogService.add('HomePage._undoToHistoryEntry', state.description);
+  }
+
   Future<void> _redoLastAction() async {
     final state = await TaskMutationService.instance.redo();
     if (state == null) return;
@@ -3297,13 +3351,25 @@ class _HomePageState extends State<HomePage>
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.undo),
-                    tooltip: undoDescription == null
+                  Tooltip(
+                    message: undoDescription == null
                         ? 'Nothing to undo'
-                        : 'Undo: $undoDescription',
-                    onPressed:
-                        undoDescription == null ? null : _undoLastAction,
+                        : 'Undo: $undoDescription\n(long-press for history)',
+                    // The Tooltip must wrap the long-press GestureDetector,
+                    // not the other way around: Tooltip installs its own
+                    // long-press recognizer to show on touch devices, and
+                    // whichever recognizer sits closest to the button wins
+                    // that gesture — putting ours innermost is what lets it
+                    // fire instead of just popping the tooltip bubble.
+                    child: GestureDetector(
+                      onLongPress:
+                          undoDescription == null ? null : _showUndoHistory,
+                      child: IconButton(
+                        icon: const Icon(Icons.undo),
+                        onPressed:
+                            undoDescription == null ? null : _undoLastAction,
+                      ),
+                    ),
                   ),
                   if (redoDescription != null)
                     IconButton(

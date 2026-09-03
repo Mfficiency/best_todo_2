@@ -257,5 +257,33 @@
     "durationSeconds": 78,
     "finishedAt": "2026-09-02T14:28:23.955204",
     "os": "windows"
+  },
+  {
+    "version": "0.2.26+317",
+    "target": "apk",
+    "durationSeconds": 206,
+    "finishedAt": "2026-09-02T19:08:02.232370",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.26+317",
+    "target": "windows",
+    "durationSeconds": 148,
+    "finishedAt": "2026-09-02T19:10:33.565531",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.27+318",
+    "target": "apk",
+    "durationSeconds": 198,
+    "finishedAt": "2026-09-03T05:28:17.699671",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.27+318",
+    "target": "windows",
+    "durationSeconds": 89,
+    "finishedAt": "2026-09-03T05:29:50.483535",
+    "os": "windows"
   }
 ]

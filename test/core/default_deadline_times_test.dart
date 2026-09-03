@@ -63,4 +63,41 @@ void main() {
 
     expect(tasks.single.dueDate, isNull);
   });
+
+  test(
+      'a same-day task keeps its time when a sibling\'s rank changes '
+      '(e.g. completing one task must not reschedule another)', () {
+    final tasks = [
+      Task(title: 'a', dueDate: DateTime(2026, 6, 3, 8), listRanking: 1),
+      Task(title: 'b', dueDate: DateTime(2026, 6, 3, 8), listRanking: 2),
+    ];
+    applyDefaultDeadlineTimes(tasks);
+    expect(tasks[0].dueDate, DateTime(2026, 6, 3, 18, 0));
+    expect(tasks[1].dueDate, DateTime(2026, 6, 3, 18, 1));
+
+    // Simulate completing 'a': HomePage._saveTasks renumbers listRanking on
+    // every save, and a done task sorts to the back of its tab.
+    tasks[0].isDone = true;
+    tasks[0].listRanking = 2;
+    tasks[1].listRanking = 1;
+    applyDefaultDeadlineTimes(tasks);
+
+    // 'b' was never touched by the user — its time must not have moved.
+    expect(tasks[1].dueDate, DateTime(2026, 6, 3, 18, 1));
+    expect(tasks[0].dueDate, DateTime(2026, 6, 3, 18, 0));
+  });
+
+  test(
+      'a genuine collision on the default range still resolves to distinct times',
+      () {
+    final tasks = [
+      Task(title: 'a', dueDate: DateTime(2026, 6, 3, 18, 0), listRanking: 1),
+      Task(title: 'b', dueDate: DateTime(2026, 6, 3, 18, 0), listRanking: 2),
+    ];
+
+    applyDefaultDeadlineTimes(tasks);
+
+    expect(tasks[0].dueDate, DateTime(2026, 6, 3, 18, 0));
+    expect(tasks[1].dueDate, DateTime(2026, 6, 3, 18, 1));
+  });
 }

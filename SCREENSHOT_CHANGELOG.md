@@ -42,6 +42,544 @@ Jump to a screenshot from the most recent run:
 
 ---
 
+## 2026.09.03 05:35:26 | branch: dev v0.2.27+318 | source: de1522d
+
+- Folder: `docs/screenshots/home/20260903-033525-de1522d`
+
+### Alarms Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - alarms_page](docs/screenshots/home/20260903-033525-de1522d/alarms_page.png)
+
+### Archived Items Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - archived_items_page](docs/screenshots/home/20260903-033525-de1522d/archived_items_page.png)
+
+### Chronize Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - chronize_page](docs/screenshots/home/20260903-033525-de1522d/chronize_page.png)
+
+### Countdown Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - countdown_page](docs/screenshots/home/20260903-033525-de1522d/countdown_page.png)
+
+### Food Diary Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - food_diary_page](docs/screenshots/home/20260903-033525-de1522d/food_diary_page.png)
+
+### Home Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - home_page](docs/screenshots/home/20260903-033525-de1522d/home_page.png)
+
+### Menu Open
+![2026.09.03 05:35:26 - dev v0.2.27+318 - menu_open](docs/screenshots/home/20260903-033525-de1522d/menu_open.png)
+
+### Project Board Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - project_board_page](docs/screenshots/home/20260903-033525-de1522d/project_board_page.png)
+
+### Project Edit Dialog
+![2026.09.03 05:35:26 - dev v0.2.27+318 - project_edit_dialog](docs/screenshots/home/20260903-033525-de1522d/project_edit_dialog.png)
+
+### Projects Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - projects_page](docs/screenshots/home/20260903-033525-de1522d/projects_page.png)
+
+### Search Active
+![2026.09.03 05:35:26 - dev v0.2.27+318 - search_active](docs/screenshots/home/20260903-033525-de1522d/search_active.png)
+
+### Settings Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_page](docs/screenshots/home/20260903-033525-de1522d/settings_page.png)
+
+### Settings Section Appearance
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_appearance](docs/screenshots/home/20260903-033525-de1522d/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_backup](docs/screenshots/home/20260903-033525-de1522d/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_dice_timer](docs/screenshots/home/20260903-033525-de1522d/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_filtering_rules](docs/screenshots/home/20260903-033525-de1522d/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_mode_features](docs/screenshots/home/20260903-033525-de1522d/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_notifications](docs/screenshots/home/20260903-033525-de1522d/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_sms_report](docs/screenshots/home/20260903-033525-de1522d/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_streak](docs/screenshots/home/20260903-033525-de1522d/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_sync_export](docs/screenshots/home/20260903-033525-de1522d/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_tasks](docs/screenshots/home/20260903-033525-de1522d/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_todoist_sync](docs/screenshots/home/20260903-033525-de1522d/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_updates](docs/screenshots/home/20260903-033525-de1522d/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.09.03 05:35:26 - dev v0.2.27+318 - settings_section_widget](docs/screenshots/home/20260903-033525-de1522d/settings_section_widget.png)
+
+### Task Open No Attachment
+![2026.09.03 05:35:26 - dev v0.2.27+318 - task_open_no_attachment](docs/screenshots/home/20260903-033525-de1522d/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.09.03 05:35:26 - dev v0.2.27+318 - task_open_with_attachment](docs/screenshots/home/20260903-033525-de1522d/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - test_results_page](docs/screenshots/home/20260903-033525-de1522d/test_results_page.png)
+
+### Usage Data Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - usage_data_page](docs/screenshots/home/20260903-033525-de1522d/usage_data_page.png)
+
+### Weekly Hours Planner Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - weekly_hours_planner_page](docs/screenshots/home/20260903-033525-de1522d/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - widget_previews_page](docs/screenshots/home/20260903-033525-de1522d/widget_previews_page.png)
+
+### Wishlist Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - wishlist_page](docs/screenshots/home/20260903-033525-de1522d/wishlist_page.png)
+
+### Your Stats Page
+![2026.09.03 05:35:26 - dev v0.2.27+318 - your_stats_page](docs/screenshots/home/20260903-033525-de1522d/your_stats_page.png)
+
+---
+
+
+
+---
+
+## 2026.09.03 05:26:42 | branch: dev v0.2.27+318 | source: fe82266
+
+- Folder: `docs/screenshots/home/20260903-032641-fe82266`
+
+### Alarms Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - alarms_page](docs/screenshots/home/20260903-032641-fe82266/alarms_page.png)
+
+### Archived Items Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - archived_items_page](docs/screenshots/home/20260903-032641-fe82266/archived_items_page.png)
+
+### Chronize Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - chronize_page](docs/screenshots/home/20260903-032641-fe82266/chronize_page.png)
+
+### Countdown Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - countdown_page](docs/screenshots/home/20260903-032641-fe82266/countdown_page.png)
+
+### Food Diary Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - food_diary_page](docs/screenshots/home/20260903-032641-fe82266/food_diary_page.png)
+
+### Home Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - home_page](docs/screenshots/home/20260903-032641-fe82266/home_page.png)
+
+### Menu Open
+![2026.09.03 05:26:42 - dev v0.2.27+318 - menu_open](docs/screenshots/home/20260903-032641-fe82266/menu_open.png)
+
+### Project Board Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - project_board_page](docs/screenshots/home/20260903-032641-fe82266/project_board_page.png)
+
+### Project Edit Dialog
+![2026.09.03 05:26:42 - dev v0.2.27+318 - project_edit_dialog](docs/screenshots/home/20260903-032641-fe82266/project_edit_dialog.png)
+
+### Projects Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - projects_page](docs/screenshots/home/20260903-032641-fe82266/projects_page.png)
+
+### Search Active
+![2026.09.03 05:26:42 - dev v0.2.27+318 - search_active](docs/screenshots/home/20260903-032641-fe82266/search_active.png)
+
+### Settings Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_page](docs/screenshots/home/20260903-032641-fe82266/settings_page.png)
+
+### Settings Section Appearance
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_appearance](docs/screenshots/home/20260903-032641-fe82266/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_backup](docs/screenshots/home/20260903-032641-fe82266/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_dice_timer](docs/screenshots/home/20260903-032641-fe82266/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_filtering_rules](docs/screenshots/home/20260903-032641-fe82266/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_mode_features](docs/screenshots/home/20260903-032641-fe82266/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_notifications](docs/screenshots/home/20260903-032641-fe82266/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_sms_report](docs/screenshots/home/20260903-032641-fe82266/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_streak](docs/screenshots/home/20260903-032641-fe82266/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_sync_export](docs/screenshots/home/20260903-032641-fe82266/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_tasks](docs/screenshots/home/20260903-032641-fe82266/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_todoist_sync](docs/screenshots/home/20260903-032641-fe82266/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_updates](docs/screenshots/home/20260903-032641-fe82266/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.09.03 05:26:42 - dev v0.2.27+318 - settings_section_widget](docs/screenshots/home/20260903-032641-fe82266/settings_section_widget.png)
+
+### Task Open No Attachment
+![2026.09.03 05:26:42 - dev v0.2.27+318 - task_open_no_attachment](docs/screenshots/home/20260903-032641-fe82266/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.09.03 05:26:42 - dev v0.2.27+318 - task_open_with_attachment](docs/screenshots/home/20260903-032641-fe82266/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - test_results_page](docs/screenshots/home/20260903-032641-fe82266/test_results_page.png)
+
+### Usage Data Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - usage_data_page](docs/screenshots/home/20260903-032641-fe82266/usage_data_page.png)
+
+### Weekly Hours Planner Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - weekly_hours_planner_page](docs/screenshots/home/20260903-032641-fe82266/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - widget_previews_page](docs/screenshots/home/20260903-032641-fe82266/widget_previews_page.png)
+
+### Wishlist Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - wishlist_page](docs/screenshots/home/20260903-032641-fe82266/wishlist_page.png)
+
+### Your Stats Page
+![2026.09.03 05:26:42 - dev v0.2.27+318 - your_stats_page](docs/screenshots/home/20260903-032641-fe82266/your_stats_page.png)
+
+---
+
+
+
+---
+
+## 2026.09.02 19:16:03 | branch: dev v0.2.26+317 | source: b0e3e1e
+
+- Folder: `docs/screenshots/home/20260902-171602-b0e3e1e`
+
+### Alarms Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - alarms_page](docs/screenshots/home/20260902-171602-b0e3e1e/alarms_page.png)
+
+### Archived Items Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - archived_items_page](docs/screenshots/home/20260902-171602-b0e3e1e/archived_items_page.png)
+
+### Chronize Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - chronize_page](docs/screenshots/home/20260902-171602-b0e3e1e/chronize_page.png)
+
+### Countdown Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - countdown_page](docs/screenshots/home/20260902-171602-b0e3e1e/countdown_page.png)
+
+### Food Diary Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - food_diary_page](docs/screenshots/home/20260902-171602-b0e3e1e/food_diary_page.png)
+
+### Home Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - home_page](docs/screenshots/home/20260902-171602-b0e3e1e/home_page.png)
+
+### Menu Open
+![2026.09.02 19:16:03 - dev v0.2.26+317 - menu_open](docs/screenshots/home/20260902-171602-b0e3e1e/menu_open.png)
+
+### Project Board Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - project_board_page](docs/screenshots/home/20260902-171602-b0e3e1e/project_board_page.png)
+
+### Project Edit Dialog
+![2026.09.02 19:16:03 - dev v0.2.26+317 - project_edit_dialog](docs/screenshots/home/20260902-171602-b0e3e1e/project_edit_dialog.png)
+
+### Projects Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - projects_page](docs/screenshots/home/20260902-171602-b0e3e1e/projects_page.png)
+
+### Search Active
+![2026.09.02 19:16:03 - dev v0.2.26+317 - search_active](docs/screenshots/home/20260902-171602-b0e3e1e/search_active.png)
+
+### Settings Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_page](docs/screenshots/home/20260902-171602-b0e3e1e/settings_page.png)
+
+### Settings Section Appearance
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_appearance](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_backup](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_dice_timer](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_filtering_rules](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_mode_features](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_notifications](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_sms_report](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_streak](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_sync_export](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_tasks](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_todoist_sync](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_updates](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.09.02 19:16:03 - dev v0.2.26+317 - settings_section_widget](docs/screenshots/home/20260902-171602-b0e3e1e/settings_section_widget.png)
+
+### Task Open No Attachment
+![2026.09.02 19:16:03 - dev v0.2.26+317 - task_open_no_attachment](docs/screenshots/home/20260902-171602-b0e3e1e/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.09.02 19:16:03 - dev v0.2.26+317 - task_open_with_attachment](docs/screenshots/home/20260902-171602-b0e3e1e/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - test_results_page](docs/screenshots/home/20260902-171602-b0e3e1e/test_results_page.png)
+
+### Usage Data Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - usage_data_page](docs/screenshots/home/20260902-171602-b0e3e1e/usage_data_page.png)
+
+### Weekly Hours Planner Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - weekly_hours_planner_page](docs/screenshots/home/20260902-171602-b0e3e1e/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - widget_previews_page](docs/screenshots/home/20260902-171602-b0e3e1e/widget_previews_page.png)
+
+### Wishlist Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - wishlist_page](docs/screenshots/home/20260902-171602-b0e3e1e/wishlist_page.png)
+
+### Your Stats Page
+![2026.09.02 19:16:03 - dev v0.2.26+317 - your_stats_page](docs/screenshots/home/20260902-171602-b0e3e1e/your_stats_page.png)
+
+---
+
+
+
+---
+
+## 2026.09.02 19:03:42 | branch: dev v0.2.26+317 | source: 24eee09
+
+- Folder: `docs/screenshots/home/20260902-170341-24eee09`
+
+### Alarms Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - alarms_page](docs/screenshots/home/20260902-170341-24eee09/alarms_page.png)
+
+### Archived Items Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - archived_items_page](docs/screenshots/home/20260902-170341-24eee09/archived_items_page.png)
+
+### Chronize Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - chronize_page](docs/screenshots/home/20260902-170341-24eee09/chronize_page.png)
+
+### Countdown Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - countdown_page](docs/screenshots/home/20260902-170341-24eee09/countdown_page.png)
+
+### Food Diary Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - food_diary_page](docs/screenshots/home/20260902-170341-24eee09/food_diary_page.png)
+
+### Home Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - home_page](docs/screenshots/home/20260902-170341-24eee09/home_page.png)
+
+### Menu Open
+![2026.09.02 19:03:42 - dev v0.2.26+317 - menu_open](docs/screenshots/home/20260902-170341-24eee09/menu_open.png)
+
+### Project Board Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - project_board_page](docs/screenshots/home/20260902-170341-24eee09/project_board_page.png)
+
+### Project Edit Dialog
+![2026.09.02 19:03:42 - dev v0.2.26+317 - project_edit_dialog](docs/screenshots/home/20260902-170341-24eee09/project_edit_dialog.png)
+
+### Projects Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - projects_page](docs/screenshots/home/20260902-170341-24eee09/projects_page.png)
+
+### Search Active
+![2026.09.02 19:03:42 - dev v0.2.26+317 - search_active](docs/screenshots/home/20260902-170341-24eee09/search_active.png)
+
+### Settings Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_page](docs/screenshots/home/20260902-170341-24eee09/settings_page.png)
+
+### Settings Section Appearance
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_appearance](docs/screenshots/home/20260902-170341-24eee09/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_backup](docs/screenshots/home/20260902-170341-24eee09/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_dice_timer](docs/screenshots/home/20260902-170341-24eee09/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_filtering_rules](docs/screenshots/home/20260902-170341-24eee09/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_mode_features](docs/screenshots/home/20260902-170341-24eee09/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_notifications](docs/screenshots/home/20260902-170341-24eee09/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_sms_report](docs/screenshots/home/20260902-170341-24eee09/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_streak](docs/screenshots/home/20260902-170341-24eee09/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_sync_export](docs/screenshots/home/20260902-170341-24eee09/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_tasks](docs/screenshots/home/20260902-170341-24eee09/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_todoist_sync](docs/screenshots/home/20260902-170341-24eee09/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_updates](docs/screenshots/home/20260902-170341-24eee09/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.09.02 19:03:42 - dev v0.2.26+317 - settings_section_widget](docs/screenshots/home/20260902-170341-24eee09/settings_section_widget.png)
+
+### Task Open No Attachment
+![2026.09.02 19:03:42 - dev v0.2.26+317 - task_open_no_attachment](docs/screenshots/home/20260902-170341-24eee09/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.09.02 19:03:42 - dev v0.2.26+317 - task_open_with_attachment](docs/screenshots/home/20260902-170341-24eee09/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - test_results_page](docs/screenshots/home/20260902-170341-24eee09/test_results_page.png)
+
+### Usage Data Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - usage_data_page](docs/screenshots/home/20260902-170341-24eee09/usage_data_page.png)
+
+### Weekly Hours Planner Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - weekly_hours_planner_page](docs/screenshots/home/20260902-170341-24eee09/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - widget_previews_page](docs/screenshots/home/20260902-170341-24eee09/widget_previews_page.png)
+
+### Wishlist Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - wishlist_page](docs/screenshots/home/20260902-170341-24eee09/wishlist_page.png)
+
+### Your Stats Page
+![2026.09.02 19:03:42 - dev v0.2.26+317 - your_stats_page](docs/screenshots/home/20260902-170341-24eee09/your_stats_page.png)
+
+---
+
+
+
+---
+
+## 2026.09.02 16:56:29 | branch: dev v0.2.25+316 | source: baf0df3
+
+- Folder: `docs/screenshots/home/20260902-145629-baf0df3`
+
+### Alarms Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - alarms_page](docs/screenshots/home/20260902-145629-baf0df3/alarms_page.png)
+
+### Archived Items Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - archived_items_page](docs/screenshots/home/20260902-145629-baf0df3/archived_items_page.png)
+
+### Chronize Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - chronize_page](docs/screenshots/home/20260902-145629-baf0df3/chronize_page.png)
+
+### Countdown Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - countdown_page](docs/screenshots/home/20260902-145629-baf0df3/countdown_page.png)
+
+### Food Diary Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - food_diary_page](docs/screenshots/home/20260902-145629-baf0df3/food_diary_page.png)
+
+### Home Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - home_page](docs/screenshots/home/20260902-145629-baf0df3/home_page.png)
+
+### Menu Open
+![2026.09.02 16:56:29 - dev v0.2.25+316 - menu_open](docs/screenshots/home/20260902-145629-baf0df3/menu_open.png)
+
+### Project Board Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - project_board_page](docs/screenshots/home/20260902-145629-baf0df3/project_board_page.png)
+
+### Project Edit Dialog
+![2026.09.02 16:56:29 - dev v0.2.25+316 - project_edit_dialog](docs/screenshots/home/20260902-145629-baf0df3/project_edit_dialog.png)
+
+### Projects Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - projects_page](docs/screenshots/home/20260902-145629-baf0df3/projects_page.png)
+
+### Search Active
+![2026.09.02 16:56:29 - dev v0.2.25+316 - search_active](docs/screenshots/home/20260902-145629-baf0df3/search_active.png)
+
+### Settings Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_page](docs/screenshots/home/20260902-145629-baf0df3/settings_page.png)
+
+### Settings Section Appearance
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_appearance](docs/screenshots/home/20260902-145629-baf0df3/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_backup](docs/screenshots/home/20260902-145629-baf0df3/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_dice_timer](docs/screenshots/home/20260902-145629-baf0df3/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_filtering_rules](docs/screenshots/home/20260902-145629-baf0df3/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_mode_features](docs/screenshots/home/20260902-145629-baf0df3/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_notifications](docs/screenshots/home/20260902-145629-baf0df3/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_sms_report](docs/screenshots/home/20260902-145629-baf0df3/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_streak](docs/screenshots/home/20260902-145629-baf0df3/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_sync_export](docs/screenshots/home/20260902-145629-baf0df3/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_tasks](docs/screenshots/home/20260902-145629-baf0df3/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_todoist_sync](docs/screenshots/home/20260902-145629-baf0df3/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_updates](docs/screenshots/home/20260902-145629-baf0df3/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.09.02 16:56:29 - dev v0.2.25+316 - settings_section_widget](docs/screenshots/home/20260902-145629-baf0df3/settings_section_widget.png)
+
+### Task Open No Attachment
+![2026.09.02 16:56:29 - dev v0.2.25+316 - task_open_no_attachment](docs/screenshots/home/20260902-145629-baf0df3/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.09.02 16:56:29 - dev v0.2.25+316 - task_open_with_attachment](docs/screenshots/home/20260902-145629-baf0df3/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - test_results_page](docs/screenshots/home/20260902-145629-baf0df3/test_results_page.png)
+
+### Usage Data Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - usage_data_page](docs/screenshots/home/20260902-145629-baf0df3/usage_data_page.png)
+
+### Weekly Hours Planner Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - weekly_hours_planner_page](docs/screenshots/home/20260902-145629-baf0df3/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - widget_previews_page](docs/screenshots/home/20260902-145629-baf0df3/widget_previews_page.png)
+
+### Wishlist Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - wishlist_page](docs/screenshots/home/20260902-145629-baf0df3/wishlist_page.png)
+
+### Your Stats Page
+![2026.09.02 16:56:29 - dev v0.2.25+316 - your_stats_page](docs/screenshots/home/20260902-145629-baf0df3/your_stats_page.png)
 ## 2026.09.02 15:57:17 | branch: staging v0.2.25+316 | source: 9c26232
 
 - Folder: `docs/screenshots/home/20260902-135716-9c26232`

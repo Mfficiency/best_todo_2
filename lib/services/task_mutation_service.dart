@@ -31,6 +31,18 @@ class TaskUndoState {
       );
 }
 
+/// One entry in [TaskMutationService.undoHistory] — a past action's
+/// description and when it happened, for the "long-press the Undo button"
+/// history list. Deliberately doesn't expose the underlying snapshots: the
+/// list is for picking a point to jump back to via [TaskMutationService.undoTo],
+/// not for inspecting task data directly.
+class UndoHistoryEntry {
+  final String description;
+  final DateTime at;
+
+  const UndoHistoryEntry({required this.description, required this.at});
+}
+
 typedef _Snapshot = Map<String, Map<String, dynamic>>;
 
 class _UndoEntry {
@@ -106,6 +118,15 @@ class TaskMutationService {
       _undoStack.isEmpty ? null : _undoStack.last.description;
   String? get redoDescription =>
       _redoStack.isEmpty ? null : _redoStack.last.description;
+
+  /// Past actions, most recent first, for the Undo button's long-press
+  /// history list. Index 0 is what a single tap of Undo would revert next;
+  /// picking index N via [undoTo] reverts that action and everything more
+  /// recent than it.
+  List<UndoHistoryEntry> get undoHistory => [
+        for (final entry in _undoStack.reversed)
+          UndoHistoryEntry(description: entry.description, at: entry.at),
+      ];
 
   static _Snapshot _snapshot(List<Task> tasks) =>
       {for (final t in tasks) t.uid: t.toJson()};
@@ -247,6 +268,21 @@ class TaskMutationService {
         description: entry.description);
   }
 
+  /// Reverts back to and including the action at [index] in [undoHistory]
+  /// (0 = the most recent action, same one a plain [undo] call would
+  /// revert). Undoes one step at a time through the existing [undo] path so
+  /// each intermediate step still persists and journals normally. Returns
+  /// the final task lists to apply to the UI, or null when [index] is out
+  /// of range.
+  Future<TaskUndoState?> undoTo(int index) async {
+    if (index < 0 || index >= _undoStack.length) return null;
+    TaskUndoState? result;
+    for (var i = 0; i <= index; i++) {
+      result = await undo();
+    }
+    return result;
+  }
+
   static List<Task> _toTasks(_Snapshot snapshot) =>
       snapshot.values.map(Task.fromJson).toList();
 
@@ -261,9 +297,36 @@ class TaskMutationService {
     if (identical(a, b)) return true;
     if (a.length != b.length) return false;
     for (final entry in a.entries) {
-      if (!mapEquals(b[entry.key], entry.value)) return false;
+      if (!_deepJsonEquals(b[entry.key], entry.value)) return false;
     }
     return true;
+  }
+
+  /// Structural equality for `Task.toJson()` output. Plain [mapEquals]
+  /// compares nested List/Map values with `==`, which is identity for
+  /// collections — and `Task.toJson()` rebuilds a fresh `attachments` list
+  /// (fresh maps too) on every call, so a task with an attachment would
+  /// register as "changed" by that check on literally every save, whether
+  /// or not anything about it actually changed.
+  static bool _deepJsonEquals(Object? a, Object? b) {
+    if (identical(a, b)) return true;
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_deepJsonEquals(a[key], b[key])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_deepJsonEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
   }
 
   /// Clears every stack and cached baseline. Tests only.
@@ -322,6 +385,17 @@ class TaskMutationService {
             ? json['title'] as String
             : 'task';
 
+    // listRanking is bookkeeping, not a user-visible edit: every task after
+    // the one actually touched gets renumbered on every save (see
+    // HomePage._saveTasks), so without this a single delete or complete
+    // would describe (and undo) as "... , Edited N tasks" for every task
+    // that merely shifted position.
+    bool sameIgnoringRanking(Map<String, dynamic> a, Map<String, dynamic> b) {
+      final aFiltered = Map<String, dynamic>.from(a)..remove('listRanking');
+      final bFiltered = Map<String, dynamic>.from(b)..remove('listRanking');
+      return _deepJsonEquals(aFiltered, bFiltered);
+    }
+
     for (final uid in afterAll.keys) {
       final after = afterAll[uid]!;
       final title = titleOf(after);
@@ -361,7 +435,7 @@ class TaskMutationService {
         moved.add(title);
       } else if (before['label'] != after['label']) {
         labeled.add(title);
-      } else if (!mapEquals(before, after)) {
+      } else if (!sameIgnoringRanking(before, after)) {
         edited.add(title);
       }
     }
