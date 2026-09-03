@@ -2,6 +2,9 @@
 
 ## [0.2.27] - 2026-09-03
 - Food Diary can now copy a chosen set of days straight to the clipboard as plain text (bullet points and new lines, no Markdown) via a new app-bar action, for pasting a handful of meals into a message instead of sharing the whole export file
+- Local build: 2026-09-03 05:29
+- Build duration (apk): 3m 18s
+- Build duration (windows): 1m 29s
 
 ## [0.2.26] - 2026-09-02
 - Food Diary gained a nutritionist view: a new app-bar toggle swaps the day-to-day log for a read-oriented layout with every day fully expanded, full notes shown inline, and a tag-frequency summary up top
