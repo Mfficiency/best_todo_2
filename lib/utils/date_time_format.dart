@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config.dart';
 
@@ -259,6 +260,25 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
     Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: _minute));
   }
 
+  /// Snaps an angle to a minute the way Android's clock dial does: the
+  /// 5-minute marks (the labeled ones) get a ~14° capture zone, about 3.5x
+  /// wider than the ~4° given to each of the four unlabeled minutes between
+  /// them. Plain nearest-minute rounding gives every minute an equal 6° of
+  /// arc, which is too little margin for a fingertip to reliably land on
+  /// the round numbers people are actually aiming for.
+  int _snapMinute(double angleRadians) {
+    final deg = angleRadians * 180 / math.pi;
+    final base = (deg / 30).floor() * 30;
+    final rel = deg - base;
+    final minuteBase = (base ~/ 30 * 5) % 60;
+    if (rel < 8) return minuteBase % 60;
+    if (rel < 12) return (minuteBase + 1) % 60;
+    if (rel < 16) return (minuteBase + 2) % 60;
+    if (rel < 20) return (minuteBase + 3) % 60;
+    if (rel < 24) return (minuteBase + 4) % 60;
+    return (minuteBase + 5) % 60;
+  }
+
   /// Maps a touch point on the dial to an hour or minute value.
   void _updateFromPosition(Offset p) {
     const center = Offset(_dialSize / 2, _dialSize / 2);
@@ -267,8 +287,11 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
     if (ang < 0) ang += 2 * math.pi;
 
     if (_step == _TimePickStep.minute) {
-      final m = (ang / (2 * math.pi) * 60).round() % 60;
-      if (m != _minute) setState(() => _minute = m);
+      final m = _snapMinute(ang);
+      if (m != _minute) {
+        HapticFeedback.selectionClick();
+        setState(() => _minute = m);
+      }
       return;
     }
 
@@ -285,7 +308,10 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
       final h12 = pos == 0 ? 12 : pos;
       h = (h12 % 12) + (_hour >= 12 ? 12 : 0);
     }
-    if (h != _hour) setState(() => _hour = h);
+    if (h != _hour) {
+      HapticFeedback.selectionClick();
+      setState(() => _hour = h);
+    }
   }
 
   String _hourLabel() {

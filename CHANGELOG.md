@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.27] - 2026-09-03
+- The time picker's clock dial is easier to hit correctly: minutes now snap with a wider "sticky" zone around the labeled 5-minute marks (matching how Android's own clock dial biases touches), and both the hour and minute rings give a light haptic tick on every value change so you can feel the picker land instead of only seeing it.
+
 ## [0.2.26] - 2026-09-02
 - Food Diary gained a nutritionist view: a new app-bar toggle swaps the day-to-day log for a read-oriented layout with every day fully expanded, full notes shown inline, and a tag-frequency summary up top
 - The Food Diary Markdown export now leads with a summary block (entry/day counts, date range, tag frequency) so the file is ready to hand to a nutritionist as-is
