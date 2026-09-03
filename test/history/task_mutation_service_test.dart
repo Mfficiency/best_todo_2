@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:besttodo/models/attachment.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/models/task_change_source.dart';
 import 'package:besttodo/services/item_event_journal.dart';
@@ -41,6 +42,37 @@ void main() {
       service.noteActiveChange(tasks);
       await _settle();
       expect(service.canUndo, isFalse);
+    });
+
+    test(
+        'an unchanged task carrying an attachment produces no undo entry '
+        '(Task.toJson() rebuilds a fresh attachments list every call, so a '
+        'naive == comparison would call it "changed" on every save)', () async {
+      final withAttachment = Task(title: 'has file', attachments: [
+        Attachment(type: Attachment.typeText, text: 'note', fileName: ''),
+      ]);
+      final tasks = [withAttachment];
+      service.noteBaseline(active: tasks, deleted: const [], bin: const []);
+      service.noteActiveChange(tasks);
+      await _settle();
+      expect(service.canUndo, isFalse);
+    });
+
+    test(
+        'completing one task does not flag an unrelated task with an '
+        'attachment as edited', () async {
+      final withAttachment = Task(title: 'has file', attachments: [
+        Attachment(type: Attachment.typeText, text: 'note', fileName: ''),
+      ]);
+      final other = Task(title: 'plain');
+      final tasks = [withAttachment, other];
+      service.noteBaseline(active: tasks, deleted: const [], bin: const []);
+
+      other.isDone = true;
+      service.noteActiveChange(tasks);
+      await _settle();
+
+      expect(service.undoDescription, 'Completed "plain"');
     });
 
     test('a real change pushes exactly one undo entry', () async {
@@ -216,6 +248,72 @@ void main() {
       expect(service.canUndo, isFalse);
     });
 
+    test('undoHistory lists past actions most-recent-first', () async {
+      final tasks = <Task>[];
+      service.noteBaseline(active: tasks, deleted: const [], bin: const []);
+
+      tasks.add(Task(title: 'first'));
+      service.noteActiveChange(tasks);
+      await _settle();
+      tasks.add(Task(title: 'second'));
+      service.noteActiveChange(tasks);
+      await _settle();
+
+      final history = service.undoHistory;
+      expect(history.map((e) => e.description),
+          ['Created "second"', 'Created "first"']);
+    });
+
+    test('undoTo(0) behaves exactly like a single undo', () async {
+      final tasks = [Task(title: 'a')];
+      service.noteBaseline(active: tasks, deleted: const [], bin: const []);
+      tasks.add(Task(title: 'b'));
+      service.noteActiveChange(tasks);
+      await _settle();
+
+      final result = await service.undoTo(0);
+      expect(result!.active.map((t) => t.title), ['a']);
+      expect(service.canUndo, isFalse);
+    });
+
+    test('undoTo(index) walks back through every action up to and including it',
+        () async {
+      final tasks = <Task>[];
+      service.noteBaseline(active: tasks, deleted: const [], bin: const []);
+
+      tasks.add(Task(title: 'first'));
+      service.noteActiveChange(tasks);
+      await _settle();
+      tasks.add(Task(title: 'second'));
+      service.noteActiveChange(tasks);
+      await _settle();
+      tasks.add(Task(title: 'third'));
+      service.noteActiveChange(tasks);
+      await _settle();
+
+      // Index 1 is "Created second" — jumping there should undo it and
+      // everything more recent (third), leaving only "first", in one call.
+      final result = await service.undoTo(1);
+      expect(result!.active.map((t) => t.title), ['first']);
+      // "Created first" is still on the stack — undoTo reverts down to and
+      // including the picked entry, not past it.
+      expect(service.canUndo, isTrue);
+      expect(service.undoDescription, 'Created "first"');
+      expect(service.canRedo, isTrue);
+    });
+
+    test('undoTo with an out-of-range index is a no-op', () async {
+      final tasks = [Task(title: 'a')];
+      service.noteBaseline(active: tasks, deleted: const [], bin: const []);
+      tasks.add(Task(title: 'b'));
+      service.noteActiveChange(tasks);
+      await _settle();
+
+      expect(await service.undoTo(-1), isNull);
+      expect(await service.undoTo(5), isNull);
+      expect(service.canUndo, isTrue);
+    });
+
     test('a fresh mutation after an undo clears the redo stack', () async {
       final tasks = [Task(title: 'a')];
       service.noteBaseline(active: tasks, deleted: const [], bin: const []);
@@ -301,6 +399,35 @@ void main() {
         afterDeleted: const {},
       );
       expect(description, 'Completed 2 tasks');
+    });
+
+    test(
+        'a listRanking-only shift on other tasks is not counted as an edit '
+        '(a single delete should describe/undo as one step, not "+ Edited N tasks")',
+        () {
+      final deleted = Task(title: 'gone');
+      final b = Task(title: 'b');
+      final c = Task(title: 'c');
+      final before = [
+        Task(uid: deleted.uid, title: 'gone', listRanking: 1),
+        Task(uid: b.uid, title: 'b', listRanking: 2),
+        Task(uid: c.uid, title: 'c', listRanking: 3),
+      ];
+      // Deleting the first task renumbers the rest, same as
+      // HomePage._saveTasks does for every remaining tab entry.
+      final after = [
+        Task(uid: b.uid, title: 'b', listRanking: 1),
+        Task(uid: c.uid, title: 'c', listRanking: 2),
+      ];
+      final description = TaskMutationService.describeChange(
+        beforeActive: snap(before),
+        afterActive: snap(after),
+        beforeDeleted: const {},
+        afterDeleted: const {},
+        beforeBin: const {},
+        afterBin: snap([Task(uid: deleted.uid, title: 'gone')]),
+      );
+      expect(description, 'Deleted "gone"');
     });
 
     test('an empty diff describes as "Updated tasks"', () {

@@ -74,8 +74,18 @@ class DigitalWellbeingService {
     return await _channel.invokeMethod<bool>('hasPermission') ?? false;
   }
 
-  static Future<void> openPermissionSettings() async {
-    if (Platform.isAndroid) await _channel.invokeMethod('openPermissionSettings');
+  /// Opens Android's usage-access settings for this app. Returns false if
+  /// the platform side couldn't find any settings screen to open (a device
+  /// quirk, not a permission-denied) so the caller can tell the user to
+  /// grant it manually instead of silently doing nothing.
+  static Future<bool> openPermissionSettings() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await _channel.invokeMethod<bool>('openPermissionSettings') ??
+          false;
+    } on PlatformException {
+      return false;
+    }
   }
 
   static Future<List<PhoneUsageSession>> sessions(

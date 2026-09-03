@@ -7,9 +7,10 @@
 #                      github_releases/ (keeping the newest two), which is
 #                      where the app's About page looks for updates.
 #   2. Windows exe  -> build/windows/x64/runner/Release/BestToDo-<version>.exe
-#   3. git sync     -> commits github_releases/ + CHANGELOG.md and pushes the
-#                      current branch, so the staged APK is actually reachable
-#                      by the app (it downloads over HTTPS from the branch).
+#   3. git sync     -> commits github_releases/ + CHANGELOG.md + build_history.json
+#                      and pushes the current branch, so the staged APK is
+#                      actually reachable by the app (it downloads over HTTPS
+#                      from the branch).
 #
 # Every argument is forwarded to `flutter build <target>`, so pass --release
 # (or --debug, --profile, --split-per-abi ...) exactly as you would normally.
@@ -80,6 +81,7 @@ else
   echo "==> syncing github_releases/ + CHANGELOG.md on $BRANCH"
 
   git add github_releases CHANGELOG.md
+  [ -e build_history.json ] && git add build_history.json
 
   if git diff --cached --quiet; then
     echo "    nothing to commit (github_releases/ already up to date)"

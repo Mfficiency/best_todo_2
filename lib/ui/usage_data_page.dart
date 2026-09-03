@@ -27,6 +27,15 @@ String wellbeingHourLabel(double value) {
   return '$hour:00';
 }
 
+/// Returns a y-axis label (in minutes, or hours once past 60) for the
+/// wellbeing chart's screen-time values.
+String wellbeingMinuteLabel(double value) {
+  final minutes = value.round();
+  if (minutes <= 0) return '0';
+  if (minutes % 60 == 0) return '${minutes ~/ 60}h';
+  return '${minutes}m';
+}
+
 /// Tools → Usage Data: exports everything the app has ever recorded as
 /// detailed CSV files — a Digital-Wellbeing-style data dump covering the full
 /// history available on this device.
@@ -54,6 +63,7 @@ class _UsageDataPageState extends State<UsageDataPage>
   bool _usagePermission = false;
   bool _loadingPhone = true;
   String _period = 'Week';
+  int _weekOffset = 0;
   DateTimeRange? _customRange;
   List<PhoneUsageSession> _phoneSessions = const [];
   List<UsageEvent> _events = const [];
@@ -133,7 +143,9 @@ class _UsageDataPageState extends State<UsageDataPage>
       case 'Month': return DateTime(now.year, now.month, 1);
       case 'Year': return DateTime(now.year, 1, 1);
       case 'Custom': return _customRange?.start ?? today;
-      default: return today.subtract(Duration(days: today.weekday - 1));
+      default: return today
+          .subtract(Duration(days: today.weekday - 1))
+          .add(Duration(days: _weekOffset * 7));
     }
   }
 
@@ -141,7 +153,8 @@ class _UsageDataPageState extends State<UsageDataPage>
     final permitted = await _tryLoad(DigitalWellbeingService.hasPermission, false);
     final sessions = permitted
         ? await _tryLoad(() => DigitalWellbeingService.sessions(
-            _periodStart, _period == 'Custom' ? (_customRange?.end ?? DateTime.now()) : DateTime.now()), <PhoneUsageSession>[])
+            _period == 'Week' ? _periodStart.subtract(const Duration(days: 7)) : _periodStart,
+            _period == 'Week' ? _periodStart.add(const Duration(days: 7)) : (_period == 'Custom' ? (_customRange?.end ?? DateTime.now()) : DateTime.now())), <PhoneUsageSession>[])
         : <PhoneUsageSession>[];
     if (!mounted) return;
     setState(() {
@@ -169,20 +182,31 @@ class _UsageDataPageState extends State<UsageDataPage>
 
   Widget _buildDashboard() {
     final start = _periodStart;
-    final end = _period == 'Custom' ? (_customRange?.end ?? DateTime.now()) : DateTime.now();
+    final end = _period == 'Week' ? start.add(const Duration(days: 7)) : (_period == 'Custom' ? (_customRange?.end ?? DateTime.now()) : DateTime.now());
     final events = _events.where((e) => !e.at.isBefore(start) && !e.at.isAfter(end)).toList();
-    final total = _phoneSessions.fold(Duration.zero, (v, s) => v + s.duration);
+    final currentSessions = _phoneSessions.where((s) => !s.startedAt.isBefore(start) && s.startedAt.isBefore(end)).toList();
+    final previousStart = start.subtract(end.difference(start));
+    final previousSessions = _phoneSessions.where((s) => !s.startedAt.isBefore(previousStart) && s.startedAt.isBefore(start)).toList();
+    final total = currentSessions.fold(Duration.zero, (v, s) => v + s.duration);
+    final previousTotal = previousSessions.fold(Duration.zero, (v, s) => v + s.duration);
     final completed = events.where((e) => e.source == 'task' && e.type == 'completed').length;
     final created = events.where((e) => e.source == 'task' && e.type == 'created').length;
-    final pickups = _phoneSessions.length;
+    final pickups = currentSessions.length;
+    final previousPickups = previousSessions.length;
     final byHour = List<int>.filled(24, 0);
-    for (final s in _phoneSessions) { byHour[s.startedAt.hour] += s.duration.inMinutes; }
+    for (final s in currentSessions) { byHour[s.startedAt.hour] += s.duration.inMinutes; }
     final byApp = <String, Duration>{};
-    for (final s in _phoneSessions) { byApp[s.appName] = (byApp[s.appName] ?? Duration.zero) + s.duration; }
+    final previousByApp = <String, Duration>{};
+    for (final s in currentSessions) { byApp[s.appName] = (byApp[s.appName] ?? Duration.zero) + s.duration; }
+    for (final s in previousSessions) { previousByApp[s.appName] = (previousByApp[s.appName] ?? Duration.zero) + s.duration; }
     final apps = byApp.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final lateMinutes = _phoneSessions.where((s) => s.startedAt.hour >= _goals.noPhoneStartHour || s.startedAt.hour < 6)
+    final lateMinutes = currentSessions.where((s) => s.startedAt.hour >= _goals.noPhoneStartHour || s.startedAt.hour < 6)
         .fold(0, (v, s) => v + s.duration.inMinutes);
-    return Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    final daily = List<int>.filled(7, 0);
+    for (final s in currentSessions) { final i = DateTime(s.startedAt.year,s.startedAt.month,s.startedAt.day).difference(start).inDays; if (i >= 0 && i < 7) daily[i] += s.duration.inMinutes; }
+    String comparison(int now, int before) => before == 0 ? (now == 0 ? 'No data' : 'First measured period') : '${((now-before) * 100 / before).abs().round()}% ${now <= before ? 'lower · improving' : 'higher'} than previous week';
+    return GestureDetector(onHorizontalDragEnd: _period == 'Week' ? (details) { if ((details.primaryVelocity ?? 0) > 150) { setState(() => _weekOffset--); _loadPhoneUsage(); } else if ((details.primaryVelocity ?? 0) < -150 && _weekOffset < 0) { setState(() => _weekOffset++); _loadPhoneUsage(); } } : null,
+    child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Digital wellbeing', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
       const Text('Your phone and BestTodo, together. Private on this device.'),
       const SizedBox(height: 12),
@@ -195,9 +219,14 @@ class _UsageDataPageState extends State<UsageDataPage>
             if (picked == null || !mounted) return;
             _customRange = DateTimeRange(start: picked.start, end: picked.end.add(const Duration(days: 1)));
           }
-          setState(() { _period = v.first; _loadingPhone = true; }); _loadPhoneUsage();
+          setState(() { _period = v.first; _weekOffset = 0; _loadingPhone = true; }); _loadPhoneUsage();
         },
       )),
+      if (_period == 'Week') Row(children: [
+        IconButton(tooltip: 'Previous week', onPressed: () { setState(() => _weekOffset--); _loadPhoneUsage(); }, icon: const Icon(Icons.chevron_left)),
+        Expanded(child: Text('${UsageDataService.dayKey(start)} → ${UsageDataService.dayKey(end.subtract(const Duration(days: 1)))}', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium)),
+        IconButton(tooltip: 'Next week', onPressed: _weekOffset < 0 ? () { setState(() => _weekOffset++); _loadPhoneUsage(); } : null, icon: const Icon(Icons.chevron_right)),
+      ]),
       const SizedBox(height: 16),
       Row(children: [
         _metric(_duration(total), 'Screen time', Icons.phone_android, Colors.deepPurple), const SizedBox(width: 8),
@@ -207,23 +236,49 @@ class _UsageDataPageState extends State<UsageDataPage>
         _metric('$completed', 'Tasks completed', Icons.task_alt, Colors.green), const SizedBox(width: 8),
         _metric(created == 0 ? '—' : '${(completed * 100 / created).round()}%', 'Completion / created', Icons.trending_up, Colors.blue),
       ]),
+      if (_period == 'Week') Padding(padding: const EdgeInsets.only(top: 8), child: Text('Screen time: ${comparison(total.inMinutes, previousTotal.inMinutes)} · Sessions: ${comparison(pickups, previousPickups)}. Daily average: ${_duration(Duration(minutes: total.inMinutes ~/ 7))}.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
       if (!_usagePermission) Card(margin: const EdgeInsets.only(top: 16), color: Theme.of(context).colorScheme.primaryContainer, child: ListTile(
         leading: const Icon(Icons.insights), title: const Text('See your whole-phone picture'),
         subtitle: const Text('Optionally allow Android Usage Access. BestTodo reads totals locally and never blocks apps.'),
-        trailing: FilledButton(onPressed: () async { await DigitalWellbeingService.openPermissionSettings(); }, child: const Text('Allow')),
+        trailing: FilledButton(onPressed: () async {
+          final opened = await DigitalWellbeingService.openPermissionSettings();
+          if (!opened && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Couldn\'t open Usage Access settings automatically. '
+                  'Open Settings → Apps → Special access → Usage access → BestTodo.'),
+              duration: Duration(seconds: 6),
+            ));
+          }
+        }, child: const Text('Allow')),
       )),
       if (_loadingPhone) const LinearProgressIndicator(),
       const SizedBox(height: 20),
+      if (_period == 'Week') ...[
+        Text('Screen time by day', style: Theme.of(context).textTheme.titleLarge),
+        const Text('Vertical axis: minutes · horizontal axis: day of week'),
+        SizedBox(height: 170, child: BarChart(BarChartData(
+          maxY: daily.reduce((a,b) => a > b ? a : b).clamp(60, 1440).toDouble(),
+          gridData: const FlGridData(show: true, drawVerticalLine: false), borderData: FlBorderData(show: true, border: const Border(left: BorderSide(), bottom: BorderSide())),
+          titlesData: FlTitlesData(topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), leftTitles: const AxisTitles(axisNameWidget: Text('minutes'), sideTitles: SideTitles(showTitles: true, reservedSize: 36)), bottomTitles: AxisTitles(axisNameWidget: const Text('day'), sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v,_) => Text(const ['M','T','W','T','F','S','S'][v.toInt().clamp(0,6)])))),
+          barGroups: List.generate(7, (i) => BarChartGroupData(x: i, barRods: [BarChartRodData(toY: daily[i].toDouble(), width: 17)])),
+        ))), const SizedBox(height: 20),
+      ],
       Text('When you use your phone', style: Theme.of(context).textTheme.titleLarge),
+      const Text('Vertical axis: minutes · horizontal axis: time of day'),
       const SizedBox(height: 8), SizedBox(height: 150, child: BarChart(BarChartData(
         maxY: (byHour.reduce((a, b) => a > b ? a : b).clamp(10, 600)).toDouble(),
         barTouchData: BarTouchData(enabled: true), gridData: const FlGridData(show: false), borderData: FlBorderData(show: false),
-        titlesData: FlTitlesData(leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(wellbeingHourLabel(v), style: const TextStyle(fontSize: 10))))),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32, getTitlesWidget: (v, _) => Text(wellbeingMinuteLabel(v), style: const TextStyle(fontSize: 10)))),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(wellbeingHourLabel(v), style: const TextStyle(fontSize: 10)))),
+        ),
         barGroups: List.generate(24, (h) => BarChartGroupData(x: h, barRods: [BarChartRodData(toY: byHour[h].toDouble(), width: 7, color: h >= 22 || h < 6 ? Colors.orange : Colors.deepPurple, borderRadius: BorderRadius.circular(3))])),
       ))),
       const SizedBox(height: 20), Text('Most used', style: Theme.of(context).textTheme.titleLarge),
       if (apps.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Usage appears here after Android access is enabled.')),
-      ...apps.take(5).map((a) => ListTile(contentPadding: EdgeInsets.zero, leading: CircleAvatar(child: Text(a.key.characters.first.toUpperCase())), title: Text(a.key), subtitle: LinearProgressIndicator(value: total.inSeconds == 0 ? 0 : a.value.inSeconds / total.inSeconds), trailing: Text(_duration(a.value)))),
+      ...apps.take(8).map((a) { final old = previousByApp[a.key] ?? Duration.zero; return ListTile(contentPadding: EdgeInsets.zero, leading: CircleAvatar(child: Text(a.key.characters.first.toUpperCase())), title: Text(a.key), subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [LinearProgressIndicator(value: total.inSeconds == 0 ? 0 : a.value.inSeconds / total.inSeconds), if (_period == 'Week') Text(comparison(a.value.inMinutes, old.inMinutes))]), trailing: Text(_duration(a.value))); }),
       const SizedBox(height: 12), Text('Supportive insights', style: Theme.of(context).textTheme.titleLarge),
       Card(child: Column(children: [
         ListTile(leading: const Icon(Icons.bedtime_outlined, color: Colors.indigo), title: Text(lateMinutes > 0 ? '${_duration(Duration(minutes: lateMinutes))} after your wind-down time' : 'Your late-night use looks calm'), subtitle: Text(lateMinutes > 30 ? 'Try placing your most-used app off the home screen after ${_goals.noPhoneStartHour}:00.' : 'No action needed — keep the routine that works for you.')),
@@ -231,7 +286,7 @@ class _UsageDataPageState extends State<UsageDataPage>
       ])),
       Card(child: SwitchListTile(value: _goals.enabled, onChanged: (v) async { final next = _goals.copyWith(enabled: v); await DigitalWellbeingService.saveGoals(next); setState(() => _goals = next); }, title: const Text('Gentle goals & challenges'), subtitle: Text('Daily target ${_goals.dailyMinutes ~/ 60}h ${_goals.dailyMinutes % 60}m · ${_goals.pickupLimit} pickups · wind down ${_goals.noPhoneStartHour}:00'))),
       const SizedBox(height: 12), ExpansionTile(title: const Text('Export & inspect raw usage data'), subtitle: const Text('Choose detailed CSV datasets'), children: datasetsTiles()),
-    ]));
+    ])));
   }
 
   List<Widget> datasetsTiles() => [
@@ -367,7 +422,10 @@ class _UsageDataPageState extends State<UsageDataPage>
       appBar: buildSubpageAppBar(context, title: 'Usage & Wellbeing'),
       body: datasets == null
           ? const Center(child: CircularProgressIndicator())
-          : ListView(children: [_buildDashboard()]),
+          : ListView(
+              padding: const EdgeInsets.only(bottom: 96),
+              children: [_buildDashboard()],
+            ),
       floatingActionButton: datasets == null
           ? null
           : FloatingActionButton.extended(

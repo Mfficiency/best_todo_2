@@ -173,4 +173,25 @@ void main() {
       expect(find.text('No updates on this day.'), findsOneWidget);
     });
   });
+
+  group('ChangelogPage development story', () {
+    testWidgets('shows ten hand-picked milestones and returns to the text',
+        (tester) async {
+      await tester.pumpWidget(_wrap(_sampleChangelog));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Show development story'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('development-story-poster')), findsOneWidget);
+      expect(find.text('The story of BestToDo'), findsOneWidget);
+      expect(find.text('10 MILESTONES · 15 MONTHS'), findsOneWidget);
+      expect(changelogMilestones, hasLength(10));
+      expect(find.text('The fast to-do foundation'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Show changelog text'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('development-story-poster')), findsNothing);
+    });
+  });
 }

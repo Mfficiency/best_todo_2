@@ -81,6 +81,21 @@ void main() {
     expect(CountdownTimerItem.fromJson(plain.toJson()).tags, '');
   });
 
+  test('standalone timers omit the item-link key', () {
+    final plain = _timerWith([]);
+    expect(plain.toJson().containsKey('itemUid'), isFalse);
+  });
+
+  test('a linked timer round-trips its item link', () {
+    final item = CountdownTimerItem(
+      label: 'Launch',
+      target: DateTime(2026, 6, 1),
+      itemUid: 'task-1',
+    );
+    final restored = CountdownTimerItem.fromJson(item.toJson());
+    expect(restored.itemUid, 'task-1');
+  });
+
   test('editedAt defaults to createdAt when omitted', () {
     final created = DateTime(2026, 1, 1);
     final item = CountdownTimerItem(

@@ -59,6 +59,7 @@ const String deletedToken = 'Deleted';
 const String fooddiaryToken = 'Fooddiary';
 const String alarmToken = 'Alarm';
 const String countdownToken = 'Countdown';
+const String researchToken = 'Research';
 
 /// Reserved like the rest, but with no dedicated view/page yet (the
 /// Changelog tool shows CHANGELOG.md text, not a task list) — kept here so
@@ -78,6 +79,7 @@ const List<String> protectedStateTokens = <String>[
   fooddiaryToken,
   alarmToken,
   countdownToken,
+  researchToken,
   changelogToken,
   waitingApprovalToken,
 ];

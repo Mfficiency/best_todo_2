@@ -39,4 +39,13 @@ void main() {
     expect(wellbeingHourLabel(6.5), isEmpty);
     expect(wellbeingHourLabel(24), isEmpty);
   });
+
+  test('wellbeing minute axis labels minutes and whole hours', () {
+    expect(wellbeingMinuteLabel(0), '0');
+    expect(wellbeingMinuteLabel(-5), '0');
+    expect(wellbeingMinuteLabel(45), '45m');
+    expect(wellbeingMinuteLabel(60), '1h');
+    expect(wellbeingMinuteLabel(150), '150m');
+    expect(wellbeingMinuteLabel(180), '3h');
+  });
 }

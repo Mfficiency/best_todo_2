@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
@@ -74,7 +75,10 @@ class DeletedBinPage extends StatelessWidget {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => TaskDetailPage(task: task),
+                        builder: (_) => TaskDetailPage(
+                          task: task,
+                          viewId: ViewFilterRules.bin,
+                        ),
                       ),
                     );
                   },

@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/task.dart';
@@ -13,6 +17,143 @@ import '../utils/description_disclosure.dart';
 import 'label_picker.dart';
 import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
+
+/// The day-grouping header text shared by the diary view, the nutritionist
+/// view and the copy-days dialog: "Today · Mon" for [today], "$weekday,
+/// $date" (honoring `Config.dateFormat`) for any other day, "No date" for
+/// undated entries.
+String _foodDiaryDayTitle(DateTime? day, DateTime today) {
+  if (day == null) return 'No date';
+  final weekday = formatWeekdayShort(day);
+  if (day == today) return 'Today · $weekday';
+  return '$weekday, ${formatTimerDate(day)}';
+}
+
+/// Tag -> occurrence count across [entries], most frequent first and
+/// alphabetical among ties, using the same splitting rule [_FoodDiaryTile]
+/// uses for its chips. Shared by the export summary and the nutritionist
+/// view's summary card, so both surface the same pattern.
+List<MapEntry<String, int>> _sortedFoodDiaryTagCounts(List<Task> entries) {
+  final counts = <String, int>{};
+  for (final entry in entries) {
+    for (final tag in entry.label.split(RegExp(r'[,\s]+'))) {
+      final trimmed = tag.trim();
+      if (trimmed.isEmpty) continue;
+      counts[trimmed] = (counts[trimmed] ?? 0) + 1;
+    }
+  }
+  return counts.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      return byCount != 0 ? byCount : a.key.compareTo(b.key);
+    });
+}
+
+/// A summary block (entry/day counts, date range, tag frequency) that leads
+/// both the Markdown export and the nutritionist view — the "here's the
+/// pattern at a glance" a nutritionist looks for before reading the log.
+List<String> _foodDiarySummaryLines(List<Task> sorted) {
+  final dated = sorted.where((t) => t.dueDate != null).toList();
+  final days = <DateTime>{
+    for (final entry in dated)
+      DateTime(entry.dueDate!.year, entry.dueDate!.month, entry.dueDate!.day),
+  };
+  final entryWord = sorted.length == 1 ? 'entry' : 'entries';
+  var summary = '- ${sorted.length} $entryWord';
+  if (days.isNotEmpty) {
+    final dayWord = days.length == 1 ? 'day' : 'days';
+    final oldest =
+        dated.map((t) => t.dueDate!).reduce((a, b) => a.isBefore(b) ? a : b);
+    final newest =
+        dated.map((t) => t.dueDate!).reduce((a, b) => a.isAfter(b) ? a : b);
+    summary += ' across ${days.length} $dayWord'
+        ' (${formatTimerDate(oldest)} – ${formatTimerDate(newest)})';
+  }
+  final lines = <String>['## Summary', summary];
+  final tags = _sortedFoodDiaryTagCounts(sorted);
+  if (tags.isNotEmpty) {
+    lines.add(
+        '- Tags: ${tags.map((t) => '${t.key} (${t.value})').join(', ')}');
+  }
+  return lines;
+}
+
+/// Sorts entries newest day first, chronologically within a day — shared by
+/// the Markdown export and the plain-text copy so both read the same way.
+List<Task> _sortedForExport(List<Task> entries) {
+  return List<Task>.from(entries)
+    ..sort((a, b) {
+      final aTime = a.dueDate;
+      final bTime = b.dueDate;
+      if (aTime == null && bTime == null) return a.title.compareTo(b.title);
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      final aDay = DateTime(aTime.year, aTime.month, aTime.day);
+      final bDay = DateTime(bTime.year, bTime.month, bTime.day);
+      final byDay = bDay.compareTo(aDay);
+      return byDay != 0 ? byDay : aTime.compareTo(bTime);
+    });
+}
+
+/// A scan-friendly Markdown export: a summary block first (entry/day counts,
+/// date range, tag frequency — the pattern a nutritionist looks for), then
+/// newest day first with meals chronological within each day, details
+/// indented beneath the meal they belong to.
+String foodDiaryExportText(List<Task> entries) {
+  final sorted = _sortedForExport(entries);
+  final lines = <String>['# Food Diary', ''];
+  if (sorted.isNotEmpty) {
+    lines.addAll(_foodDiarySummaryLines(sorted));
+    lines.add('');
+  }
+  String? currentDay;
+  for (final entry in sorted) {
+    final time = entry.dueDate;
+    final day = time == null ? 'No date' : formatTimerDate(time);
+    if (day != currentDay) {
+      if (currentDay != null) lines.add('');
+      lines.add('## $day');
+      currentDay = day;
+    }
+    final timeLabel = time == null ? 'Time not recorded' : formatTimerTime(time);
+    lines.add('- **$timeLabel — ${entry.title}**');
+    if (entry.label.trim().isNotEmpty) {
+      lines.add('  - Tags: ${entry.label.trim()}');
+    }
+    if (entry.description.trim().isNotEmpty) {
+      final description = entry.description.trim().replaceAll('\n', '\n    ');
+      lines.add('  - Notes: $description');
+    }
+  }
+  return '${lines.join('\n').trimRight()}\n';
+}
+
+/// A plain-text (no Markdown syntax) rendering of [entries] for copying to
+/// the clipboard — a day header line, then a bullet per entry, blank lines
+/// between days. Meant for pasting just a handful of days into a message
+/// rather than sharing the whole exported file; same day-grouped,
+/// newest-day-first ordering as [foodDiaryExportText].
+String foodDiaryPlainText(List<Task> entries) {
+  final sorted = _sortedForExport(entries);
+  final lines = <String>[];
+  String? currentDay;
+  for (final entry in sorted) {
+    final time = entry.dueDate;
+    final day = time == null ? 'No date' : formatTimerDate(time);
+    if (day != currentDay) {
+      if (currentDay != null) lines.add('');
+      lines.add(day);
+      currentDay = day;
+    }
+    final timeLabel = time == null ? 'Time not recorded' : formatTimerTime(time);
+    lines.add('- $timeLabel — ${entry.title}');
+    if (entry.label.trim().isNotEmpty) lines.add('  ${entry.label.trim()}');
+    if (entry.description.trim().isNotEmpty) {
+      lines.add('  ${entry.description.trim().replaceAll('\n', '\n  ')}');
+    }
+  }
+  return lines.join('\n').trimRight();
+}
 
 /// Tools → Food Diary: a pre-filtered view over the one task list — like
 /// opening the wishlist — showing only tasks flagged [Task.isEatingHabit].
@@ -40,6 +181,12 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   /// subset but always persists the whole list.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
+
+  /// Off (default) shows the day-to-day logging UI (collapsed past days,
+  /// swipe-to-delete, tap-to-edit). On swaps in [_NutritionistView]: every
+  /// day expanded and a tag-frequency summary up top, meant for reviewing
+  /// the whole log rather than logging a meal.
+  bool _nutritionistView = false;
 
   @override
   void initState() {
@@ -108,6 +255,78 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     await FoodDiaryWidgetService.sync(_tasks);
   }
 
+  static DateTime _yesterday() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+  }
+
+  String _timestampForFilename() {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  }
+
+  Future<void> _exportEntries() async {
+    final entries = _entries();
+    if (entries.isEmpty) return;
+    final downloads = await getDownloadsDirectory();
+    final directory = await getDirectoryPath(initialDirectory: downloads?.path);
+    if (!mounted) return;
+    if (directory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export canceled')),
+      );
+      return;
+    }
+    final separator = Platform.pathSeparator;
+    final path = '$directory${directory.endsWith(separator) ? '' : separator}'
+        'food_diary_${_timestampForFilename()}.md';
+    try {
+      await File(path).writeAsString(foodDiaryExportText(entries), flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exported to $path')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to export food diary')),
+      );
+    }
+  }
+
+  /// Lets the user pick a subset of days, then puts [foodDiaryPlainText] for
+  /// just those days on the clipboard — for pasting a handful of meals into
+  /// a message rather than sharing the whole exported file.
+  Future<void> _copyDays() async {
+    final entries = _entries();
+    if (entries.isEmpty) return;
+    final days = _days(entries);
+    final selectedDays = await showDialog<Set<DateTime?>>(
+      context: context,
+      builder: (context) => _CopyDaysDialog(days: days),
+    );
+    if (selectedDays == null || selectedDays.isEmpty) return;
+    final selectedEntries = entries.where((entry) {
+      final time = entry.dueDate;
+      final day =
+          time == null ? null : DateTime(time.year, time.month, time.day);
+      return selectedDays.contains(day);
+    }).toList();
+    if (selectedEntries.isEmpty) return;
+    await Clipboard.setData(
+        ClipboardData(text: foodDiaryPlainText(selectedEntries)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Copied ${selectedDays.length} '
+            '${selectedDays.length == 1 ? 'day' : 'days'} to clipboard'),
+      ));
+  }
+
   /// Entries sorted newest-eaten-first, undated ones (shouldn't normally
   /// happen) last.
   List<Task> _entries() {
@@ -146,9 +365,16 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
   }
 
   Future<void> _editEntry([Task? entry]) async {
+    // Only a fresh "add" needs yesterday's meals to copy from — editing an
+    // existing entry keeps the dialog focused on that entry.
+    final yesterdayMeals = entry == null
+        ? FoodDiaryWidgetService.latestEntryPerMealWindow(
+            _tasks, _yesterday())
+        : const <Task?>[null, null, null, null];
     final result = await showDialog<_FoodDiaryEditResult>(
       context: context,
-      builder: (context) => _FoodDiaryEditDialog(entry: entry),
+      builder: (context) =>
+          _FoodDiaryEditDialog(entry: entry, yesterdayMeals: yesterdayMeals),
     );
     if (result == null) return;
     setState(() {
@@ -248,7 +474,31 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     final entries = _entries();
     final days = _days(entries);
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Food Diary'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Food Diary',
+        actions: [
+          IconButton(
+            tooltip: _nutritionistView
+                ? 'Switch to diary view'
+                : 'Switch to nutritionist view',
+            onPressed: () =>
+                setState(() => _nutritionistView = !_nutritionistView),
+            icon: Icon(
+                _nutritionistView ? Icons.menu_book : Icons.health_and_safety),
+          ),
+          IconButton(
+            tooltip: 'Copy days as text',
+            onPressed: entries.isEmpty ? null : _copyDays,
+            icon: const Icon(Icons.copy_all_outlined),
+          ),
+          IconButton(
+            tooltip: 'Export food diary',
+            onPressed: entries.isEmpty ? null : _exportEntries,
+            icon: const Icon(Icons.download_outlined),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         tooltip: 'Add food diary entry',
         onPressed: () => _editEntry(),
@@ -267,19 +517,21 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
                     ),
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  children: [
-                    for (final day in days)
-                      _FoodDiaryDaySection(
-                        key: ValueKey(day.day),
-                        day: day,
-                        onEdit: _editEntry,
-                        onCopyToNow: _copyEntryToNow,
-                        onDelete: _deleteEntry,
-                      ),
-                  ],
-                ),
+              : _nutritionistView
+                  ? _NutritionistView(entries: entries, days: days)
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                      children: [
+                        for (final day in days)
+                          _FoodDiaryDaySection(
+                            key: ValueKey(day.day),
+                            day: day,
+                            onEdit: _editEntry,
+                            onCopyToNow: _copyEntryToNow,
+                            onDelete: _deleteEntry,
+                          ),
+                      ],
+                    ),
     );
   }
 }
@@ -289,6 +541,72 @@ class _FoodDiaryDay {
   final List<Task> entries;
 
   const _FoodDiaryDay({required this.day, required this.entries});
+}
+
+/// Lets the user pick which logged days to copy (all checked to start, so a
+/// full copy is one tap), then hands the picked day-keys back to
+/// [_FoodDiaryPageState._copyDays] to build [foodDiaryPlainText] from just
+/// those days.
+class _CopyDaysDialog extends StatefulWidget {
+  final List<_FoodDiaryDay> days;
+
+  const _CopyDaysDialog({required this.days});
+
+  @override
+  State<_CopyDaysDialog> createState() => _CopyDaysDialogState();
+}
+
+class _CopyDaysDialogState extends State<_CopyDaysDialog> {
+  late final Set<DateTime?> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.days.map((day) => day.day).toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return AlertDialog(
+      title: const Text('Copy days as text'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final day in widget.days)
+              CheckboxListTile(
+                value: _selected.contains(day.day),
+                title: Text(_foodDiaryDayTitle(day.day, today)),
+                subtitle: Text('${day.entries.length} '
+                    '${day.entries.length == 1 ? 'entry' : 'entries'}'),
+                onChanged: (checked) => setState(() {
+                  if (checked ?? false) {
+                    _selected.add(day.day);
+                  } else {
+                    _selected.remove(day.day);
+                  }
+                }),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(_selected),
+          child: const Text('Copy'),
+        ),
+      ],
+    );
+  }
 }
 
 class _FoodDiaryDaySection extends StatelessWidget {
@@ -304,12 +622,6 @@ class _FoodDiaryDaySection extends StatelessWidget {
     required this.onCopyToNow,
     required this.onDelete,
   });
-
-  String _title(DateTime today) {
-    if (day.day == null) return 'No date';
-    if (day.day == today) return 'Today';
-    return formatTimerDate(day.day!);
-  }
 
   List<Widget> _tiles() => [
         for (final entry in day.entries)
@@ -327,7 +639,7 @@ class _FoodDiaryDaySection extends StatelessWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final isPast = day.day != null && day.day!.isBefore(today);
-    final title = _title(today);
+    final title = _foodDiaryDayTitle(day.day, today);
 
     if (isPast) {
       return Card(
@@ -360,6 +672,131 @@ class _FoodDiaryDaySection extends StatelessWidget {
   }
 }
 
+/// A read-oriented layout of the same entries a nutritionist would want to
+/// review: a tag-frequency summary up top, then every day grouped and fully
+/// expanded (unlike the diary view, nothing collapses) with full-length
+/// notes, no swipe-to-delete or per-entry actions.
+class _NutritionistView extends StatelessWidget {
+  final List<Task> entries;
+  final List<_FoodDiaryDay> days;
+
+  const _NutritionistView({super.key, required this.entries, required this.days});
+
+  @override
+  Widget build(BuildContext context) {
+    final tagCounts = _sortedFoodDiaryTagCounts(entries);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Summary', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text('${entries.length} '
+                    '${entries.length == 1 ? 'entry' : 'entries'} across '
+                    '${days.length} ${days.length == 1 ? 'day' : 'days'}'),
+                if (tagCounts.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final tag in tagCounts)
+                        Chip(
+                          label: Text('${tag.key} (${tag.value})'),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final day in days)
+          _NutritionistDaySection(key: ValueKey(day.day), day: day),
+      ],
+    );
+  }
+}
+
+class _NutritionistDaySection extends StatelessWidget {
+  final _FoodDiaryDay day;
+
+  const _NutritionistDaySection({super.key, required this.day});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_foodDiaryDayTitle(day.day, today),
+                style: Theme.of(context).textTheme.titleMedium),
+            const Divider(),
+            for (final entry in day.entries) _NutritionistEntryRow(entry: entry),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NutritionistEntryRow extends StatelessWidget {
+  final Task entry;
+
+  const _NutritionistEntryRow({super.key, required this.entry});
+
+  List<String> _labels() => entry.label
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final time = entry.dueDate;
+    final labels = _labels();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            time == null
+                ? entry.title
+                : '${formatTimerTime(time)} — ${entry.title}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          if (labels.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(labels.join(', '),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ),
+          if (entry.description.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(entry.description),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FoodDiaryEditResult {
   final String title;
   final String description;
@@ -375,7 +812,16 @@ class _FoodDiaryEditResult {
 class _FoodDiaryEditDialog extends StatefulWidget {
   final Task? entry;
 
-  const _FoodDiaryEditDialog({required this.entry});
+  /// Yesterday's latest breakfast/lunch/snack/dinner entries (`null` where
+  /// nothing was logged in that window), in
+  /// [FoodDiaryWidgetService.mealNames] order. Only populated — and only
+  /// shown — when adding a new entry.
+  final List<Task?> yesterdayMeals;
+
+  const _FoodDiaryEditDialog({
+    required this.entry,
+    this.yesterdayMeals = const <Task?>[null, null, null, null],
+  });
 
   @override
   State<_FoodDiaryEditDialog> createState() => _FoodDiaryEditDialogState();
@@ -422,6 +868,19 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
     });
   }
 
+  /// Fills the title/tags/description from yesterday's meal at [index] —
+  /// the current time is left untouched, so this just makes a recurring
+  /// meal quick to re-log without retyping it.
+  void _copyYesterdayMeal(int index) {
+    final meal = widget.yesterdayMeals[index];
+    if (meal == null) return;
+    setState(() {
+      _titleController.text = meal.title;
+      _descriptionController.text = meal.description;
+      _label = meal.label;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -445,6 +904,13 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
                 SpeechInputButton(controller: _titleController),
               ],
             ),
+            if (widget.entry == null) ...[
+              const SizedBox(height: 4),
+              _CopyYesterdayRow(
+                meals: widget.yesterdayMeals,
+                onCopy: _copyYesterdayMeal,
+              ),
+            ],
             // Tags sit right under the title, same as the wishlist dialog —
             // they're what a diary entry is glanced at for; the description
             // is the exception and lives at the bottom.
@@ -507,6 +973,44 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
   }
 }
 
+/// Row of four small icon buttons — breakfast/lunch/snack/dinner — that
+/// fill the add-entry dialog's title/tags/description from yesterday's
+/// matching meal, one tap away. Icons rather than labels so the row stays
+/// compact next to the title field; a button is disabled when yesterday has
+/// nothing logged for that meal.
+class _CopyYesterdayRow extends StatelessWidget {
+  static const _icons = [
+    Icons.free_breakfast,
+    Icons.lunch_dining,
+    Icons.icecream,
+    Icons.dinner_dining,
+  ];
+
+  final List<Task?> meals;
+  final ValueChanged<int> onCopy;
+
+  const _CopyYesterdayRow({required this.meals, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < _icons.length; i++)
+          IconButton(
+            tooltip: meals[i] == null
+                ? 'No ${FoodDiaryWidgetService.mealNames[i].toLowerCase()} logged yesterday'
+                : 'Copy yesterday\'s ${FoodDiaryWidgetService.mealNames[i].toLowerCase()}: '
+                    '${meals[i]!.title}',
+            visualDensity: VisualDensity.compact,
+            onPressed: meals[i] == null ? null : () => onCopy(i),
+            icon: Icon(_icons[i], size: 20),
+          ),
+      ],
+    );
+  }
+}
+
 /// One food diary entry: title, time, description and tags — no checkbox,
 /// no due-date semantics, just a log line. Swipe (either direction) opens a
 /// confirm-free delete, matching the app's general swipe-to-delete feel.
@@ -530,6 +1034,21 @@ class _FoodDiaryTile extends StatelessWidget {
       .where((label) => label.isNotEmpty)
       .toList();
 
+  /// Gives the diary a quick visual rhythm without making the card content
+  /// harder to read. Morning runs until noon, the daytime/noon tint continues
+  /// until 18:00, and the Bordeaux tint marks the evening.
+  Color _cardColor(BuildContext context, DateTime? time) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hour = time?.hour ?? 12;
+    if (hour < 12) {
+      return isDark ? const Color(0xFF17324A) : const Color(0xFFE3F2FD);
+    }
+    if (hour < 18) {
+      return isDark ? const Color(0xFF403817) : const Color(0xFFFFF8D6);
+    }
+    return isDark ? const Color(0xFF451E2D) : const Color(0xFFF3E1E6);
+  }
+
   @override
   Widget build(BuildContext context) {
     final labels = _labels();
@@ -550,6 +1069,7 @@ class _FoodDiaryTile extends StatelessWidget {
       ),
       onDismissed: (_) => onDelete(),
       child: Card(
+        color: _cardColor(context, time),
         child: ListTile(
           title: Text(entry.title),
           trailing: IconButton(

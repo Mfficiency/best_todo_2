@@ -32,6 +32,18 @@
          dashboard. Android does not show a runtime permission dialog. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         android:protectionLevel="signature|privileged|development|appop" />
+    <!-- Read-only Health Connect access for Tools -> Fitness Activity. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <!-- Lets the user explicitly allow browsing records older than 30 days. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
     <application
         android:label="BestToDo"
         android:name="${applicationName}"
@@ -57,7 +69,27 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Health Connect shows its own permissions-rationale screen
+                 before the consent dialog; without an activity declaring
+                 this action the health plugin's requestAuthorization()
+                 silently fails to open anything (Tools -> Fitness Activity's
+                 "Connect" button looked like it did nothing). -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+        <!-- Required alongside the intent-filter above so Health Connect's
+             own settings can show which permissions this app requested. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
         <!-- Share-sheet entry: sharing text/links/email addresses, images or
              PDFs from any app (Chrome, YouTube, Maps, Gmail, Photos, ...)
              offers BestToDo, which opens the quick-add screen prefilled from
@@ -217,6 +249,16 @@
              speech_to_text plugin to find the device's speech recognizer. -->
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <!-- Package-visibility requirement (Android 11+) for the health
+             plugin to detect whether Health Connect is installed, and to
+             find its permissions-rationale screen. Without these, checks
+             like isHealthConnectAvailable() report "not installed" even
+             when it is, and requestAuthorization() has nothing to launch. -->
+        <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="com.sec.android.app.shealth" />
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
     </queries>
 </manifest>

@@ -20,6 +20,17 @@ class Task {
   String note;
   String label;
   DateTime? createdAt;
+
+  /// Name of the Todoist project this task was pulled in under, captured
+  /// only for a task built by `TodoistSyncService._taskFromRemote` (a fresh
+  /// Todoist pull, gated by [waitingApprovalToken] until approved/denied —
+  /// see `label_utils.dart`). A conversation with Todoist access that files
+  /// its tasks into a project named for itself makes that project name a
+  /// usable proxy for "which conversation created this", which the Waiting
+  /// for Approval page groups and displays by; a task created any other way
+  /// (in-app, or Todoist's own Inbox) just leaves this null. Never pushed
+  /// back to Todoist — purely local display metadata.
+  String? pendingSourceTitle;
   DateTime? completedAt;
   DateTime? movedAt;
   DateTime? rescheduledAt;
@@ -112,6 +123,14 @@ class Task {
   /// [ItemViews.foodDiary] for the gate every other view honors.
   bool isEatingHabit;
 
+  /// When true this task is a Research item: it shows up only in the
+  /// Research tool (a pre-filtered view over the one task list, like the
+  /// wishlist/Food Diary) — never the home tabs, schedule view, projects or
+  /// Todoist sync. See [ItemViews.research] for the gate every other view
+  /// honors. Set automatically when a Waiting for Approval item is approved
+  /// via the "Research" quick tag (see `waiting_approval_page.dart`).
+  bool isResearch;
+
   /// Sentinel due date the schedule view's "move to" tab picker uses to
   /// place a task in the Future tab explicitly, without leaving it fully
   /// undated. Exposed here (rather than kept private to the home page) so
@@ -151,6 +170,7 @@ class Task {
     this.note = '',
     this.label = '',
     this.createdAt,
+    this.pendingSourceTitle,
     this.completedAt,
     this.movedAt,
     this.rescheduledAt,
@@ -176,6 +196,7 @@ class Task {
     this.recurrenceInstanceKey,
     this.isWish = false,
     this.isEatingHabit = false,
+    this.isResearch = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
     List<Attachment>? attachments,
@@ -225,6 +246,7 @@ class Task {
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : null,
+      pendingSourceTitle: json['pendingSourceTitle'] as String?,
       completedAt: json['completedAt'] != null
           ? DateTime.parse(json['completedAt'] as String)
           : null,
@@ -263,6 +285,7 @@ class Task {
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
       isWish: json['isWish'] as bool? ?? false,
       isEatingHabit: json['isEatingHabit'] as bool? ?? false,
+      isResearch: json['isResearch'] as bool? ?? false,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
@@ -280,6 +303,8 @@ class Task {
         'note': note,
         'label': label,
         'createdAt': createdAt?.toIso8601String(),
+        if (pendingSourceTitle != null)
+          'pendingSourceTitle': pendingSourceTitle,
         'completedAt': completedAt?.toIso8601String(),
         'movedAt': movedAt?.toIso8601String(),
         'rescheduledAt': rescheduledAt?.toIso8601String(),
@@ -311,6 +336,7 @@ class Task {
           'recurrenceInstanceKey': recurrenceInstanceKey,
         'isWish': isWish,
         'isEatingHabit': isEatingHabit,
+        'isResearch': isResearch,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,
         if (attachments.isNotEmpty)

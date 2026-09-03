@@ -42,8 +42,10 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // androidx.work (pulled in transitively via glance/home_widget)
-        // requires a minSdk of at least 23.
-        minSdk = maxOf(23, flutter.minSdkVersion)
+        // requires a minSdk of at least 23; the `health` plugin (Tools ->
+        // Fitness Activity) requires 26. Health Connect itself is Android 8+
+        // only, so 26 is the floor for that feature to work at all.
+        minSdk = maxOf(26, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -161,9 +163,9 @@ dependencies {
 // the manifest merger then refused this app's minSdk 23 and every
 // `assembleRelease` failed at `:app:processReleaseMainManifest`, with no code
 // change of ours involved. Pinned to the last line that still supports 23, so
-// a new upstream pre-release can't take the build out again. Raising minSdk to
-// 24 would also fix it, but that drops Android 6 devices — a product decision,
-// not a build fix.
+// a new upstream pre-release can't take the build out again. (minSdk is 26 as
+// of 0.2.9+300 — see defaultConfig — so the work-runtime clash no longer bites,
+// but the pins stay put to keep the toolchain bump deliberate.)
 configurations.all {
     resolutionStrategy {
         force("androidx.glance:glance-appwidget:1.1.1")

@@ -1,5 +1,150 @@
 # Changelog
 
+## [0.2.27] - 2026-09-03
+- Food Diary can now copy a chosen set of days straight to the clipboard as plain text (bullet points and new lines, no Markdown) via a new app-bar action, for pasting a handful of meals into a message instead of sharing the whole export file
+- Local build: 2026-09-03 05:29
+- Build duration (apk): 3m 18s
+- Build duration (windows): 1m 29s
+
+## [0.2.26] - 2026-09-02
+- Food Diary gained a nutritionist view: a new app-bar toggle swaps the day-to-day log for a read-oriented layout with every day fully expanded, full notes shown inline, and a tag-frequency summary up top
+- The Food Diary Markdown export now leads with a summary block (entry/day counts, date range, tag frequency) so the file is ready to hand to a nutritionist as-is
+- Local build: 2026-09-02 19:10
+- Build duration (apk): 3m 26s
+- Build duration (windows): 2m 28s
+
+## [0.2.25] - 2026-09-02
+- Food Diary widgets (both the full widget and the 1x1 "+" button) now turn red based on a running log-count schedule instead of fixed meal slots: at least 1 entry logged by 8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00
+- Add-entry dialog gained four small icon buttons (breakfast/lunch/snack/dinner) that copy yesterday's matching meal's title/tags/description in one tap, so logging a repeat meal no longer means retyping it
+- Local build: 2026-09-02 14:28
+- Build duration (apk): 2m 28s
+- Build duration (windows): 1m 18s
+
+## [0.2.24] - 2026-09-02
+- Background update downloads now survive an app restart: closing the app mid-download and reopening it no longer re-prompts to download the same build — it picks the download back up (or, if it already finished, installs it) instead of asking again.
+- Local build: 2026-09-02 13:28
+- Build duration (apk): 2m 14s
+- Build duration (windows): 1m 18s
+
+## [0.2.23] - 2026-09-02
+- Waiting for Approval: the quick-tag buttons (Wishlist/Research by default) that approve a pending item straight into a tool now show at the top of its expanded details panel on a single tap, instead of behind a separate double-tap menu.
+- Local build: 2026-09-02 12:49
+- Build duration (apk): 3m 27s
+- Build duration (windows): 1m 32s
+
+## [0.2.22] - 2026-09-01
+- Waiting for Approval: double-tap a pending item for a quick-tag menu (Wishlist/Research by default, editable in Settings > Tasks > Approval quick tags) that approves it straight into that tool. Added a new Research tool (Tools drawer) for items approved this way or added directly.
+- Local build: 2026-09-01 23:09
+- Build duration (apk): 3m 01s
+- Build duration (windows): 1m 30s
+
+## [0.2.21] - 2026-09-01
+- Waiting for Approval's tap-to-expand panel now shows everything about the item, not just where it came from: its note, due date, start/end time window, attachment count and every label tag (colored the same as everywhere else in the app) — plus a "View full details" link into the full Task Details page for attachments, reminders and its complete journal history.
+- Local build: 2026-09-01 20:18
+- Build duration (apk): 2m 24s
+- Build duration (windows): 1m 19s
+
+## [0.2.20] - 2026-09-01
+- Waiting for Approval's group-by-conversation view now groups retroactively: items pulled in before source titles existed no longer all pile into one "Unspecified" bucket — they're clustered by the hour they were created in instead, so a batch pulled in the same run still groups together.
+- Local build: 2026-09-01 19:39
+- Build duration (apk): 3m 03s
+- Build duration (windows): 1m 22s
+
+## [0.2.19] - 2026-09-01
+- In-app updates now download in the background via Android's own DownloadManager instead of a socket held open by the app: the download keeps going if you background the app, and rides out a Wi-Fi/mobile data handover mid-download instead of failing. It still installs automatically the moment it finishes (including on the next launch, if the app was closed while it finished) — both the auto-update prompt's Yes and the About page's "Download & install"/rollback buttons use it, and the old blocking "Downloading..." dialog is gone in favor of a quick background notice.
+- Local build: 2026-09-01 16:37
+- Build duration (apk): 8m 12s
+- Build duration (windows): 2m 51s
+
+## [0.2.18] - 2026-09-01
+- Todoist sync now recognizes a leading [Source: <title>] marker on a pulled task's description, letting an external ingestion routine (e.g. the Pocket-to-Todoist approval workflow) name which conversation created a pending item without needing a dedicated Todoist project per conversation.
+- Local build: 2026-09-01 15:49
+- Build duration (apk): 5m 33s
+- Build duration (windows): 1m 34s
+
+## [0.2.17] - 2026-09-01
+- Waiting for Approval: tap a pending item to expand its creation date, source conversation and Todoist sync info; toggle grouping by conversation; long-press to multi-select and bulk approve or deny items or whole groups.
+
+## [0.2.16] - 2026-08-31
+- Fitness Activity is redesigned in a Samsung Health-inspired style: a rounded gradient hero card bundles the week picker, total steps and the bar chart, and every metric tile/record now has a colored circular icon badge.
+- Personal bests are now also detected automatically from up to a year of Health Connect history (most steps/distance/active energy in a day, longest workout, longest sleep, highest heart rate, lowest resting heart rate), shown in a new "Auto-detected records" section above your manually logged ones.
+
+## [0.2.15] - 2026-08-31
+- Food Diary day headers now show the day of the week alongside the date (e.g. "Mon, 31.08.2026").
+- Fitness Activity now has a manual "Weight & personal bests" section: log your weight and record personal bests (name, value, unit, date, note), with edit/delete and undo, kept separate from the read-only Health Connect data.
+- Local build: 2026-08-31 19:16
+- Build duration (apk): 11m 35s
+- Build duration (windows): 4m 58s
+
+## [0.2.14] - 2026-08-29
+- Fitness Activity can now request full Health Connect history, jump directly to any past week, and open Health Connect's data-source settings so Samsung Health and Galaxy Watch records can be connected; Settings also has a direct Health data & smart watch shortcut.
+- Local build: 2026-08-29 14:32
+- Build duration (apk): 10m 36s
+- Build duration (windows): 5m 41s
+
+## [0.2.13] - 2026-08-29
+- “Automatically check for updates” is now reliably enabled by default, including when loading an older settings file that does not contain the setting yet; an explicit opt-out remains respected.
+
+## [0.2.12] - 2026-08-29
+- Food Diary entry cards now use light blue, warm yellow and Bordeaux-inspired hues for morning, noon/daytime and evening meals, with matching darker tints in dark mode.
+- Food Diary can export a readable Markdown log grouped by day, and its small home-screen “+” widget now turns red when a meal checkpoint is missed.
+
+## [0.2.11] - 2026-08-28
+- Usage & Wellbeing: the "When you use your phone" chart now shows minute/hour numbers on its vertical axis instead of a blank axis
+- Fixed the "Allow" button for Android Usage Access doing nothing on some devices (it now falls back to alternate settings screens and tells you where to grant it manually if none of them can be opened)
+- Fixed Fitness Activity's "Connect" button doing nothing: the Android manifest was missing the `<queries>`/permissions-rationale entries Health Connect needs to show its own consent screen, so requesting access silently failed every time; the page now also tells you to install Health Connect when it isn't on the device instead of just re-showing the same prompt
+- Local build: 2026-08-28 21:55
+- Build duration (apk): 3m 38s
+- Build duration (windows): 58s
+
+## [0.2.10] - 2026-08-28
+- Fixed the Fitness Activity dashboard rendering as a blank gray screen whenever Health Connect access wasn't granted (or wasn't available), instead of showing the connect-your-health-data prompt.
+- Local build: 2026-08-28 21:04
+- Build duration (apk): 17m 13s
+- Build duration (windows): 1m 17s
+
+## [0.2.9] - 2026-08-28
+- Rebuild Usage & Wellbeing around practical weekly analysis: labelled axes, daily averages, week navigation and swiping, previous-week comparisons, per-app improvement trends, and clearer time-of-day context.
+- Add Tools → Fitness Activity, a read-only Health Connect dashboard for steps, distance, active calories, workouts, heart rate, sleep and weight, including weekly navigation, comparisons and plain-language conclusions.
+- Minimum supported Android version is now 8.0 (API 26), up from 6.0 (API 23). Health Connect — which the new Fitness Activity dashboard reads — is Android 8+ only, and its plugin refuses to build below API 26.
+- Local build: 2026-08-28 19:32
+- Build duration (apk): 31m 03s
+- Build duration (windows): 5m 06s
+
+## [0.2.8] - 2026-08-28
+- Fixed two gaps that could make the background auto-update check ("Settings → Updates → Automatically check for updates") appear to never fire: it now also checks immediately on cold start and every time the app is resumed from the background, instead of waiting for the next minute-tick; and the GitHub lookup now has a hard 20s timeout, so a single stalled connection (flaky mobile data, Doze mode) can no longer silently wedge the checker for the rest of the session.
+- Local build: 2026-08-28 17:09
+- Build duration (apk): 3m 41s
+- Build duration (windows): 1m 59s
+
+## [0.2.7] - 2026-08-28
+- The Changelog page gained a third view: a visual development-story poster tracing the app's ten biggest milestones as an illustrated timeline, alongside the existing raw changelog text and release heatmap. App-bar toggles switch between the three independently.
+- Local build: 2026-08-28 07:53
+- Build duration (apk): 3m 27s
+- Build duration (windows): 1m 04s
+
+## [0.2.6] - 2026-08-28
+- Backups now also write a Markdown vault next to the JSON file: one note per task, project, alarm and countdown timer, readable straight in Obsidian, plus a "Views" folder describing each view's filtering rules/presentation and a "Settings" folder with a redacted settings snapshot. Every note follows the same layout — title, description, notes, then a Properties block (description/tags/created time/reminders/notification settings/other fields) and an edit history section. The JSON file remains the only thing Import restores from.
+- Local build: 2026-08-28 07:00
+- Build duration (apk): 3m 38s
+- Build duration (windows): 1m 49s
+
+## [0.2.5] - 2026-08-27
+- Countdown timers can now attach to a task's due date (Task Details ▸ Add countdown, mirroring the existing one-tap reminder), following it automatically and unlinking rather than deleting if the task disappears. Introduced ViewPresentation, the presentation-filter counterpart to Filtering rules' data filters, hiding the reminder/countdown attach affordances on archived and deleted items where they no longer apply.
+- Local build: 2026-08-27 23:28
+- Build duration (apk): 2m 09s
+- Build duration (windows): 1m 32s
+
+## [0.2.4] - 2026-08-27
+- Local release builds now time themselves: `tool/build.sh`/`tool/build.ps1` record how long each `flutter build` took as a "Build duration (<target>)" line in this Changelog alongside the existing "Local build" timestamp, and append every build's duration to a new `build_history.json` (committed to the repo) so build times can be tracked across builds and machines over time.
+- Local build: 2026-08-27 22:23
+- Build duration (apk): 12m 14s
+- Build duration (windows): 33m 57s
+
+## [0.2.3] - 2026-08-27
+- Task Details now has an info icon in the app bar: tap it to reveal every field BestToDo keeps on the task, including the hidden Todoist sync trailer (the metadata normally appended to the description only when syncing, invisible in the normal view).
+- Local build: 2026-08-27 21:22
+
 ## [0.2.2] - 2026-08-27
 - Mark completed-task rollover archives as automatic and label them separately from manual archives.
 - Alarms now always carry the alarm tag on creation, load, edit, and save, so existing alarms stay visible under the default Alarms Filtering rules include tag.

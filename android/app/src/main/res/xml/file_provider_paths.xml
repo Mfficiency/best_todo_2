@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Paths the update FileProvider may share. The updater writes the
-     downloaded APK into the cache dir (Flutter's getTemporaryDirectory). -->
+<!-- Paths the update FileProvider may share. Background updates land in
+     the app's external-files updates/ dir (DownloadManager's destination,
+     set in MainActivity's startBackgroundDownload — DownloadManager runs as
+     a separate process and can only write into an app's *external* private
+     storage, not its internal filesDir) — external-files-path covers that.
+     cache-path/files-path are kept for anything still writing into
+     Flutter's getTemporaryDirectory or internal storage. -->
 <paths>
     <cache-path name="cache" path="." />
     <files-path name="files" path="." />
+    <external-files-path name="external_files" path="." />
 </paths>

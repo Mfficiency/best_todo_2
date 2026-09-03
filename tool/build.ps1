@@ -117,11 +117,16 @@ function Invoke-SingleBuild {
     Invoke-Checked "flutter" @("test", "test/core/build_smoke_test.dart")
   }
 
+  $buildStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   & flutter @("build") @ArgsForFlutter
   $buildStatus = $LASTEXITCODE
+  $buildStopwatch.Stop()
+  $buildDurationSeconds = [int][Math]::Round($buildStopwatch.Elapsed.TotalSeconds)
 
   if ($buildStatus -eq 0) {
-    Invoke-Checked "dart" @("run", "tool/append_build_time.dart")
+    $target = if ($ArgsForFlutter.Count -gt 0) { $ArgsForFlutter[0] } else { "" }
+    Invoke-Checked "dart" @("run", "tool/append_build_time.dart",
+      "--duration", "$buildDurationSeconds", "--target", $target)
   } else {
     Write-Error "flutter build $($ArgsForFlutter -join ' ') failed (status $buildStatus)"
     exit $buildStatus
@@ -195,6 +200,9 @@ function Invoke-BuildAll {
 
     Write-Host "==> syncing github_releases/ + CHANGELOG.md on $branch"
     Invoke-Checked "git" @("add", "github_releases", "CHANGELOG.md")
+    if (Test-Path -LiteralPath "build_history.json") {
+      Invoke-Checked "git" @("add", "build_history.json")
+    }
 
     & git diff --cached --quiet
     $hasNoCachedDiff = ($LASTEXITCODE -eq 0)

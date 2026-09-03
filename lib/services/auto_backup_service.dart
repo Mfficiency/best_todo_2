@@ -5,15 +5,22 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/item_event.dart';
+import 'alarm_storage_service.dart';
 import 'item_event_journal.dart';
 import 'log_service.dart';
+import 'markdown_backup_service.dart';
+import 'project_service.dart';
 import 'storage_service.dart';
 
 /// Scheduled full backups to a folder the user picked in Settings → Backup.
 ///
 /// Each backup is one timestamped JSON file with the exact "Export
 /// Everything" shape (settings + task bundle + countdown timers), so any
-/// backup file can be restored through the regular Import button.
+/// backup file can be restored through the regular Import button. Next to
+/// it, a same-timestamped folder holds a human-readable Markdown mirror
+/// (see [MarkdownBackupService]) — one note per task/project/alarm/timer,
+/// plus a description of the views and settings in effect. That folder is
+/// export-only: Import never reads it, only the JSON file.
 ///
 /// [maybeRun] is called when the home page has loaded and whenever the app
 /// resumes; it is a no-op unless [Config.autoBackupFrequency] and
@@ -107,10 +114,30 @@ class AutoBackupService {
         'countdown_timers': (timers ?? []).map((t) => t.toJson()).toList(),
       };
       final sep = Platform.pathSeparator;
-      final path = '$directory${directory.endsWith(sep) ? '' : sep}'
-          'besttodo_backup_${_timestampForFilename(moment)}.json';
+      final stamp = _timestampForFilename(moment);
+      final directoryPrefix = '$directory${directory.endsWith(sep) ? '' : sep}';
+      final path = '${directoryPrefix}besttodo_backup_$stamp.json';
       final file = File(path);
       await file.writeAsString(jsonEncode(payload), flush: true);
+      try {
+        await ProjectService.instance.load();
+        final alarms = await AlarmStorageService().loadAlarms();
+        final binTasks = await storage.loadBinTaskList();
+        await MarkdownBackupService.writeVault(
+          root: Directory('${directoryPrefix}besttodo_backup_$stamp'),
+          tasks: tasks,
+          archivedTasks: deletedTasks,
+          binTasks: binTasks,
+          projects: ProjectService.instance.list,
+          alarms: alarms,
+          timers: timers ?? const [],
+          itemEvents: itemEvents,
+        );
+      } catch (e) {
+        // The JSON file above is the one thing Import restores from; the
+        // Markdown mirror is a bonus and must never fail the backup.
+        LogService.add('backup', 'Markdown backup failed: $e');
+      }
       try {
         final marker = await _markerFile();
         await marker.writeAsString(moment.toIso8601String(), flush: true);

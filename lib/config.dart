@@ -87,9 +87,11 @@ class Config {
     'countdown',
     'wishlist',
     'food_diary',
+    'research',
     'projects',
     'chronize',
     'usage_data',
+    'fitness_activity',
     'productivity_stats',
     'test_results',
     'weekly_hours_planner',
@@ -102,9 +104,11 @@ class Config {
     'Countdown',
     'Wishlist',
     'Food Diary',
+    'Research',
     'Projects',
     'Chronize',
     'Usage Data',
+    'Fitness Activity',
     'Productivity Stats',
     'Test Results',
     'Weekly Hours Planner',
@@ -130,16 +134,18 @@ class Config {
   static bool modeChosen = false;
 
   /// Optional features that can be switched off individually in full mode.
-  /// Keys are persisted, so keep them stable; the first ten match
+  /// Keys are persisted, so keep them stable; the first eleven match
   /// [startToolOptions] tool keys.
   static const List<String> featureKeys = [
     'alarms',
     'countdown',
     'wishlist',
     'food_diary',
+    'research',
     'projects',
     'chronize',
     'usage_data',
+    'fitness_activity',
     'productivity_stats',
     'test_results',
     'weekly_hours_planner',
@@ -160,9 +166,11 @@ class Config {
     'Countdown',
     'Wishlist',
     'Food Diary',
+    'Research',
     'Projects',
     'Chronize',
     'Usage Data',
+    'Fitness Activity',
     'Productivity Stats',
     'Test Results',
     'Weekly Hours Planner',
@@ -183,9 +191,11 @@ class Config {
     'Countdown timers with milestones',
     'Wishlist of someday items',
     'Track what you eat, separate from your tasks',
+    'Research items pulled out of the task list, in their own tool',
     'Project boards for grouping tasks',
     'Timeline planner for the day',
     'Charts about how you use the app',
+    'Weekly movement and workout activity from Health Connect',
     'Completion stats and trends',
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
@@ -486,8 +496,10 @@ class Config {
   /// new template, not just a fresh one. Version 1 shipped an incorrect,
   /// overly conservative template (it left Wish/Project out of several Hide
   /// lists to avoid disturbing other behavior); version 2 corrects it to the
-  /// literal Hide/Show matrix this feature was specified with.
-  static const int _currentViewFilterRulesSeedVersion = 2;
+  /// literal Hide/Show matrix this feature was specified with; version 3
+  /// adds the Research view (Research quick-approved from the Waiting for
+  /// Approval page) to the matrix.
+  static const int _currentViewFilterRulesSeedVersion = 3;
 
   /// How many times [seedViewFilterRuleDefaultsIfNeeded] has applied the
   /// template to this install (0 = never). Persisted so it only (re-)applies
@@ -750,8 +762,10 @@ class Config {
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
     todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
-    autoUpdateCheckEnabled =
-        data['autoUpdateCheckEnabled'] ?? autoUpdateCheckEnabled;
+    // Settings files from before automatic checks existed have no key. Use
+    // the product default explicitly rather than whatever mutable value is
+    // currently in memory, while still respecting a saved opt-out.
+    autoUpdateCheckEnabled = data['autoUpdateCheckEnabled'] as bool? ?? true;
     deletedItemsRetentionDays =
         (data['deletedItemsRetentionDays'] as num?)?.round().clamp(1, 3650) ??
             deletedItemsRetentionDays;
