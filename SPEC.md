@@ -2456,6 +2456,18 @@ the normal collapsed-history logging UI. `_sortedFoodDiaryTagCounts`/
 `_foodDiarySummaryLines` back both this view and the export so they report the same tag
 counts.
 
+**Copy days as text (0.2.27).** A third app-bar action (`Icons.copy_all_outlined`, tooltip
+"Copy days as text") opens `_CopyDaysDialog`: a checkbox per logged day (all checked to
+start, so copying everything is one tap), each labeled with `_foodDiaryDayTitle` and its
+entry count. "Copy" puts `foodDiaryPlainText` for just the checked days on the clipboard
+and shows a "Copied N day(s) to clipboard" snackbar; "Cancel" or an empty selection closes
+the dialog with no clipboard write. `foodDiaryPlainText` is deliberately not
+`foodDiaryExportText`: no `#`/`##` headers, no `**bold**`, no summary block — a plain day
+header line, a `- ` bullet per entry (`$time — $title`), tags/notes as plain indented
+lines, blank lines between days — meant for pasting a handful of meals straight into a
+message rather than sharing the whole exported file. Both share `_sortedForExport` for the
+newest-day-first, chronological-within-a-day ordering.
+
 The add dialog, when creating a new entry (not editing), shows a row of four small icon
 buttons above the title field (0.2.25) — `_CopyYesterdayRow` — one per meal
 (`Icons.free_breakfast`/`lunch_dining`/`icecream`/`dinner_dining`, icons rather than
