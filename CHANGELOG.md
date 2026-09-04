@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.28] - 2026-09-04
+- The time picker's 24-hour dial (alarms, tasks, quiet hours, streak reminders, SMS report time, countdown/food diary times) is now a single ring of all 24 hours instead of the old double-ring (inner/outer) layout
+
 ## [0.2.27] - 2026-09-03
 - Food Diary can now copy a chosen set of days straight to the clipboard as plain text (bullet points and new lines, no Markdown) via a new app-bar action, for pasting a handful of meals into a message instead of sharing the whole export file
 - Local build: 2026-09-03 05:29

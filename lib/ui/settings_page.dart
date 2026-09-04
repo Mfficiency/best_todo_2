@@ -22,6 +22,7 @@ import '../services/streak_service.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import '../utils/date_time_format.dart';
 import 'approval_quick_tags_page.dart';
 import 'auto_tag_rules_page.dart';
 import 'dice_timer_settings.dart';
@@ -436,9 +437,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _pickSmsTime() async {
     final cfg = _smsConfig;
     if (cfg == null) return;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: cfg.hour, minute: cfg.minute),
+    final picked = await pickTimeOfDay(
+      context,
+      TimeOfDay(hour: cfg.hour, minute: cfg.minute),
     );
     if (picked == null) return;
     setState(() {
@@ -586,9 +587,9 @@ class _SettingsPageState extends State<SettingsPage> {
     required bool isStart,
   }) async {
     final current = isStart ? _quietHoursStartMinutes : _quietHoursEndMinutes;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
+    final picked = await pickTimeOfDay(
+      context,
+      TimeOfDay(
         hour: current ~/ 60,
         minute: current % 60,
       ),
@@ -895,9 +896,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _pickStreakReminderTime(int index) async {
     if (index < 0 || index >= Config.streakReminders.length) return;
     final reminder = Config.streakReminders[index];
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
+    final picked = await pickTimeOfDay(
+      context,
+      TimeOfDay(
         hour: reminder.minutes ~/ 60,
         minute: reminder.minutes % 60,
       ),
