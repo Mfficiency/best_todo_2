@@ -2,6 +2,9 @@
 
 ## [0.2.30] - 2026-09-04
 - Waiting for Approval gained a sort menu (newest first, oldest first, alphabetical) — newest first by default — and each conversation group's header now always leads with its date, even when it already has a source title
+- Local build: 2026-09-04 14:14
+- Build duration (apk): 5m 59s
+- Build duration (windows): 2m 57s
 
 ## [0.2.29] - 2026-09-04
 - The time picker's 24-hour dial (alarms, tasks, quiet hours, streak reminders, SMS report time, countdown/food diary times) is now a single ring of all 24 hours instead of the old double-ring (inner/outer) layout
