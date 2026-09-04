@@ -101,9 +101,10 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   bool _loading = true;
 
   /// Whether the list is shown grouped by [_groupKeyFor] instead of one flat
-  /// list. Toggled from the app bar; not persisted — each visit starts on the
-  /// flat list, matching the page's previous-only behavior.
-  bool _groupByConversation = false;
+  /// list. Toggled from the app bar; not persisted — each visit starts
+  /// grouped, the more useful default once a conversation has more than a
+  /// couple of pending items.
+  bool _groupByConversation = true;
 
   /// Which pending items are inline-expanded (creation date, source
   /// conversation, Todoist sync info). Several can be open at once.
