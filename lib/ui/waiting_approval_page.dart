@@ -45,7 +45,19 @@ const _pendingSwipeWeekdayOptions = <_PendingWeekdayOption>[
 /// nor [Task.createdAt] to fall back on — nothing left to group it by.
 const String _unspecifiedGroupTitle = 'Unspecified';
 
+/// How the pending list (and, in grouped view, each group's items and the
+/// groups themselves) is ordered. [newest] is the default — most recently
+/// created items first.
+enum _SortMode { newest, oldest, alphabetical }
+
 String _two(int v) => v.toString().padLeft(2, '0');
+
+/// `yyyy-MM-dd` in local time — the date-only prefix shown first in every
+/// group header, regardless of what the group's title is.
+String _formatDateOnly(DateTime dt) {
+  final d = dt.toLocal();
+  return '${d.year}-${_two(d.month)}-${_two(d.day)}';
+}
 
 /// `yyyy-MM-dd HH:mm` in local time — matches `TaskTile`'s sync-info dialog
 /// formatting so date/time strings look the same everywhere in the app.
@@ -106,6 +118,11 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// couple of pending items.
   bool _groupByConversation = true;
 
+  /// Current ordering of the pending list (and, in grouped view, each
+  /// group's items and the groups themselves — see [_groupedPending]).
+  /// Toggled from the app bar; not persisted, same as [_groupByConversation].
+  _SortMode _sortMode = _SortMode.newest;
+
   /// Which pending items are inline-expanded (creation date, source
   /// conversation, Todoist sync info). Several can be open at once.
   final Set<String> _expandedUids = <String>{};
@@ -151,6 +168,32 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         rules: Config.viewFilterRules[ViewFilterRules.approval],
       );
 
+  /// [Task.createdAt] for sort comparisons, with a fixed epoch fallback for
+  /// items that predate the field — they sort as the oldest of the bunch
+  /// either way.
+  DateTime _sortDate(Task task) =>
+      task.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// [pending] ordered per [_sortMode]. Groups (see [_groupedPending]) form
+  /// from this order, so sorting also decides which group appears first —
+  /// whichever group its first item (per the chosen order) belongs to.
+  List<Task> _sortedPending(List<Task> pending) {
+    final sorted = List<Task>.from(pending);
+    switch (_sortMode) {
+      case _SortMode.newest:
+        sorted.sort((a, b) => _sortDate(b).compareTo(_sortDate(a)));
+        break;
+      case _SortMode.oldest:
+        sorted.sort((a, b) => _sortDate(a).compareTo(_sortDate(b)));
+        break;
+      case _SortMode.alphabetical:
+        sorted.sort((a, b) =>
+            a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        break;
+    }
+    return sorted;
+  }
+
   /// [pending] partitioned by [_groupKeyFor], in first-seen order.
   Map<String, List<Task>> _groupedPending(List<Task> pending) {
     final grouped = <String, List<Task>>{};
@@ -159,6 +202,13 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     }
     return grouped;
   }
+
+  /// Whether [key] is a real [Task.pendingSourceTitle] rather than one of
+  /// [_groupKeyFor]'s date-based fallbacks (an hour label, or
+  /// [_unspecifiedGroupTitle]) — those already show a date of their own, so
+  /// the group header only needs the extra leading date for a title group.
+  bool _groupNeedsLeadingDate(String key, Task sample) =>
+      sample.pendingSourceTitle?.trim() == key;
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -293,6 +343,8 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   void _toggleGrouping() =>
       setState(() => _groupByConversation = !_groupByConversation);
+
+  void _setSortMode(_SortMode mode) => setState(() => _sortMode = mode);
 
   void _toggleExpanded(Task task) {
     setState(() {
@@ -444,6 +496,26 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       context,
       title: 'Waiting for Approval',
       actions: [
+        PopupMenuButton<_SortMode>(
+          tooltip: 'Sort',
+          icon: const Icon(Icons.sort),
+          initialValue: _sortMode,
+          onSelected: _setSortMode,
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: _SortMode.newest,
+              child: Text('Newest first'),
+            ),
+            PopupMenuItem(
+              value: _SortMode.oldest,
+              child: Text('Oldest first'),
+            ),
+            PopupMenuItem(
+              value: _SortMode.alphabetical,
+              child: Text('Alphabetical'),
+            ),
+          ],
+        ),
         IconButton(
           tooltip:
               _groupByConversation ? 'Show as one list' : 'Group by conversation',
@@ -482,6 +554,9 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       children: [
         for (final entry in grouped.entries) ...[
           _ApprovalGroupHeader(
+            date: _groupNeedsLeadingDate(entry.key, entry.value.first)
+                ? entry.value.first.createdAt
+                : null,
             title: entry.key,
             count: entry.value.length,
             selecting: _selecting,
@@ -501,7 +576,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   @override
   Widget build(BuildContext context) {
-    final pending = _loading ? <Task>[] : _pending();
+    final pending = _loading ? <Task>[] : _sortedPending(_pending());
     return Scaffold(
       appBar: _buildAppBar(context),
       body: _loading
@@ -520,6 +595,11 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 /// selects/deselects the whole group at once. Long-pressing it (outside
 /// selection mode) starts a selection with the whole group already checked.
 class _ApprovalGroupHeader extends StatelessWidget {
+  /// The group's leading date — always shown ahead of [title], even though
+  /// [title] (a [Task.pendingSourceTitle], usually) already gives the group
+  /// a name of its own. Taken from whichever item currently sorts first
+  /// within the group, so it tracks the active sort mode.
+  final DateTime? date;
   final String title;
   final int count;
   final bool selecting;
@@ -528,6 +608,7 @@ class _ApprovalGroupHeader extends StatelessWidget {
   final VoidCallback? onLongPress;
 
   const _ApprovalGroupHeader({
+    required this.date,
     required this.title,
     required this.count,
     required this.selecting,
@@ -557,7 +638,9 @@ class _ApprovalGroupHeader extends StatelessWidget {
             ],
             Expanded(
               child: Text(
-                '$title ($count)',
+                date != null
+                    ? '${_formatDateOnly(date!)}  $title ($count)'
+                    : '$title ($count)',
                 style: Theme.of(context)
                     .textTheme
                     .titleSmall

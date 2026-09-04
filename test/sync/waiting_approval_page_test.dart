@@ -568,4 +568,75 @@ void main() {
     expect(find.text('Book hotel'), findsNothing);
     expect(find.text('Buy groceries'), findsOneWidget);
   });
+
+  testWidgets(
+      'defaults to newest first, and the sort menu switches to oldest first '
+      'or alphabetical', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Banana',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 3, 10),
+        ),
+        Task(
+          title: 'Apple',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 2, 10),
+        ),
+        Task(
+          title: 'Cherry',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 10),
+        ),
+      ],
+      marker: 'Banana',
+    );
+
+    // One flat list makes vertical order easy to compare.
+    await tester.tap(find.byTooltip('Show as one list'));
+    await tester.pump();
+
+    double topOf(String text) => tester.getTopLeft(find.text(text)).dy;
+
+    // Default: newest created at the top.
+    expect(topOf('Banana'), lessThan(topOf('Apple')));
+    expect(topOf('Apple'), lessThan(topOf('Cherry')));
+
+    await tester.tap(find.byTooltip('Sort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Oldest first'));
+    await tester.pumpAndSettle();
+
+    expect(topOf('Cherry'), lessThan(topOf('Apple')));
+    expect(topOf('Apple'), lessThan(topOf('Banana')));
+
+    await tester.tap(find.byTooltip('Sort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alphabetical'));
+    await tester.pumpAndSettle();
+
+    expect(topOf('Apple'), lessThan(topOf('Banana')));
+    expect(topOf('Banana'), lessThan(topOf('Cherry')));
+  });
+
+  testWidgets(
+      'a title group with a creation time shows its date before the title',
+      (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Book flights',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 15, 9, 30),
+          pendingSourceTitle: 'Trip planning',
+        ),
+      ],
+      marker: 'Book flights',
+    );
+
+    expect(find.text('2026-01-15  Trip planning (1)'), findsOneWidget);
+  });
 }
