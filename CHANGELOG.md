@@ -2,6 +2,9 @@
 
 ## [0.2.29] - 2026-09-04
 - The time picker's 24-hour dial (alarms, tasks, quiet hours, streak reminders, SMS report time, countdown/food diary times) is now a single ring of all 24 hours instead of the old double-ring (inner/outer) layout
+- Local build: 2026-09-04 11:34
+- Build duration (apk): 5m 32s
+- Build duration (windows): 2m 20s
 
 ## [0.2.28] - 2026-09-04
 - Waiting for Approval now opens grouped by conversation by default instead of as one flat list
