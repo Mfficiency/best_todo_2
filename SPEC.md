@@ -467,11 +467,13 @@ doesn't fit inline: the attachments viewer, the reminder toggle and the task's f
 journal history.
 
 An app-bar icon button (`Icons.view_agenda_outlined` / `Icons.view_list`, tooltip
-"Group by conversation" / "Show as one list") toggles `_groupByConversation` between the
-original flat `ListView.builder` and a grouped `ListView` built the same way as
-`WishlistPage`'s release sections: `_groupedPending` buckets the pending list by
+"Group by conversation" / "Show as one list") toggles `_groupByConversation` between a
+grouped `ListView` built the same way as `WishlistPage`'s release sections and the
+original flat `ListView.builder`: `_groupedPending` buckets the pending list by
 `_groupKeyFor(task)` (first-seen order), and each `_ApprovalGroupHeader` shows
-`<title> (<count>)`. Not persisted — every visit starts on the flat list.
+`<title> (<count>)`. Not persisted — every visit starts grouped (default flipped 0.2.28;
+was flat by default before), the more useful default once a conversation has more than a
+couple of pending items.
 
 **Retroactive grouping fallback (0.2.20):** `_groupKeyFor` (top-level function in
 `waiting_approval_page.dart`) picks the group key in three tiers, so items created before

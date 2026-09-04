@@ -364,8 +364,8 @@ void main() {
   });
 
   testWidgets(
-      'the grouping toggle switches between one list and grouped by '
-      'conversation', (tester) async {
+      'the grouping toggle switches between grouped by conversation (the '
+      'default) and one list', (tester) async {
     await pumpPending(
       tester,
       tasks: [
@@ -379,11 +379,6 @@ void main() {
       marker: 'Book flights',
     );
 
-    expect(find.text('Trip planning (1)'), findsNothing);
-
-    await tester.tap(find.byTooltip('Group by conversation'));
-    await tester.pump();
-
     expect(find.text('Trip planning (1)'), findsOneWidget);
     expect(find.text('Unspecified (1)'), findsOneWidget);
     expect(find.text('Book flights'), findsOneWidget);
@@ -394,6 +389,13 @@ void main() {
 
     expect(find.text('Trip planning (1)'), findsNothing);
     expect(find.text('Book flights'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Group by conversation'));
+    await tester.pump();
+
+    expect(find.text('Trip planning (1)'), findsOneWidget);
+    expect(find.text('Book flights'), findsOneWidget);
+    expect(find.text('Buy groceries'), findsOneWidget);
   });
 
   testWidgets(
@@ -421,9 +423,6 @@ void main() {
       ],
       marker: 'Old item A',
     );
-
-    await tester.tap(find.byTooltip('Group by conversation'));
-    await tester.pump();
 
     // A and B share an hour bucket; C, created five hours later, gets its
     // own group. None of them fall into "Unspecified" — they all have a
@@ -555,9 +554,6 @@ void main() {
       ],
       marker: 'Book flights',
     );
-
-    await tester.tap(find.byTooltip('Group by conversation'));
-    await tester.pump();
 
     await tester.longPress(find.text('Trip planning (2)'));
     await tester.pump();
