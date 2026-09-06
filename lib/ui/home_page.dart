@@ -41,6 +41,7 @@ import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
 import '../services/wishlist_shipped.dart';
 import '../utils/date_utils.dart';
+import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'alarms_page.dart';
@@ -261,6 +262,7 @@ class _HomePageState extends State<HomePage>
             description: isAuto
                 ? 'Seeded dev auto-deleted task'
                 : 'Seeded dev manually-deleted task',
+            label: demoToken,
             createdAt: deletedAt.subtract(const Duration(days: 3)),
             completedAt:
                 isAuto ? deletedAt.subtract(const Duration(hours: 1)) : null,
@@ -306,6 +308,7 @@ class _HomePageState extends State<HomePage>
         Task(
           title: titles[i],
           description: 'Seeded dev auto-deleted backfill',
+          label: demoToken,
           createdAt: deletedAt.subtract(const Duration(days: 3)),
           completedAt: deletedAt.subtract(const Duration(hours: 1)),
           movedAt: deletedAt.subtract(const Duration(days: 2)),
@@ -365,6 +368,7 @@ class _HomePageState extends State<HomePage>
         Task(
           title: title,
           description: _devFutureTaskMarker,
+          label: demoToken,
           createdAt: now,
           dueDate: base.add(Duration(days: offset)),
           listRanking: i + 1,
@@ -388,7 +392,7 @@ class _HomePageState extends State<HomePage>
           uid: legacy.uid,
           title: legacy.title,
           description: legacy.description,
-          label: legacyTodoImportLabel,
+          label: addLabelToken(legacyTodoImportLabel, demoToken),
           createdAt: now,
           isWish: true,
         ),
@@ -408,6 +412,7 @@ class _HomePageState extends State<HomePage>
     _tasks.add(Task(
       title: 'Deep work block',
       description: 'Dev seed: a task with a real time range',
+      label: demoToken,
       createdAt: DateTime.now(),
       startAt: DateTime(day.year, day.month, day.day, 9),
       endAt: DateTime(day.year, day.month, day.day, 10, 30),
@@ -425,7 +430,7 @@ class _HomePageState extends State<HomePage>
     _tasks.add(Task(
       title: 'Learn to sail',
       description: 'Dev seed: a wishlist item',
-      label: 'priority-medium',
+      label: addLabelToken('priority-medium', demoToken),
       createdAt: DateTime.now(),
       isWish: true,
     ));
@@ -451,6 +456,7 @@ class _HomePageState extends State<HomePage>
     if (service.list.any((a) => a.itemUid == target.uid)) return;
     final reminder = ReminderSyncService.buildReminder(target);
     if (reminder == null) return;
+    reminder.tags = addLabelToken(reminder.tags, demoToken);
     service.alarms.value = [...service.list, reminder];
   }
 
@@ -475,8 +481,17 @@ class _HomePageState extends State<HomePage>
     // Give the sample board tasks one label of every kind, so the structured
     // label registry fills itself on the first save and the kinds are
     // inspectable on the task-detail page (and as tags on the home tiles).
-    if (sample.label.isEmpty) sample.label = 'urgent, priority-high';
-    if (second != null && second.label.isEmpty) second.label = 'gift, old';
+    // Both already carry the dev-seed `demo` token from
+    // `_buildDevFutureTasksSeed`, so "no real label yet" means no token
+    // besides that one rather than a literally empty string.
+    bool hasOnlyDemoLabel(Task task) => splitLabelTokens(task.label)
+        .every((t) => t.toLowerCase() == demoToken);
+    if (hasOnlyDemoLabel(sample)) {
+      sample.label = addLabelToken('urgent, priority-high', demoToken);
+    }
+    if (second != null && hasOnlyDemoLabel(second)) {
+      second.label = addLabelToken('gift, old', demoToken);
+    }
     final now = DateTime.now();
     // The second board task gets pre-journal, seeded events so the
     // "(reconstructed)" rendering of the history backfill is visible in dev
@@ -665,6 +680,7 @@ class _HomePageState extends State<HomePage>
               title: t,
               dueDate: _currentDate,
               createdAt: DateTime.now(),
+              label: demoToken,
             )),
       );
       _tasks.addAll(
@@ -673,6 +689,7 @@ class _HomePageState extends State<HomePage>
             title: t,
             createdAt: DateTime.now(),
             dueDate: _futureDueDate,
+            label: demoToken,
           ),
         ),
       );

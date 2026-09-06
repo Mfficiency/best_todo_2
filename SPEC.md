@@ -1051,7 +1051,10 @@ desktop/web where storage may not persist; skipped as soon as any seeded task ca
 task exists* (0.1.138): `loadItems()` merges the one-time Todo.md import into the task
 list as wishes, so a plain `isEmpty` check saw a fresh install as an existing one and
 skipped the starter tasks (and the dev range/history/reminder seeds) entirely. The starter
-tasks are inserted ahead of the imported wishes.
+tasks are inserted ahead of the imported wishes. Every seed described above (and every other
+dev/demo filler item — alarms, countdown timers, Food Diary entries) carries the `demo` label
+token (0.2.31) so it stays filterable via Settings → Filtering rules; see §4.4's "The `demo`
+tag" note.
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
 
@@ -1170,6 +1173,25 @@ every protected token as `Label.kindSystem`. Typing one does not, on its own, fl
 underlying flag (e.g. typing "Wish" onto a task does not set `isWish`) except
 `Waiting_for_approval`, which — unchanged from before — is the one token that *is* the literal
 mechanism (§4.2e).
+
+*The `demo` tag (0.2.31).* Separately from the eight `protectedStateTokens`, `demoToken`
+(`'demo'`, classified `Label.kindSystem` alongside `old`/`autocompleted` rather than added to
+`protectedStateTokens`, so it renders as a plain chip, not the deep-orange protected one) is
+stamped onto every task/alarm/timer the app ever generates for itself instead of the user: the
+first-run starter tasks (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
+seed — `home_page.dart`'s `_buildDevDeletedSeed`/`_buildDevAutoDeletedBackfill`/
+`_buildDevFutureTasksSeed`/`_buildDevWishlistSeed`/`_seedDevRangeTask`/`_seedDevWishItem`/
+`_seedDevLinkedReminder`'s reminder alarm, `AlarmService._buildDevSeed`,
+`CountdownTimerPage._devSeedTimers`, `FoodDiaryPage._buildDevSeed` and `WishlistPage._load`'s
+dev fallback. Existing tokens on those items (`old`, `priority-medium`, …) are kept —
+`addLabelToken` appends `demo` alongside them rather than replacing the label. The point: once
+one of these seeded items is saved to disk it is a normal record indistinguishable from
+anything the user typed, and outlives whatever produced it — including `Config.isDev` going
+back to `false` on a later release build (the reported case: rich dev-only seed data
+reappearing on a production phone) — so `demo` is what lets a Settings → Filtering rules
+exclude rule (any view) hide it regardless of how it got there. `_seedDevItemHistory` special-
+cases its "no real label yet" check (`hasOnlyDemoLabel`) since its target tasks now always
+carry `demo` from `_buildDevFutureTasksSeed`.
 
 *Food Diary, Alarms and Countdown as filterable views.* Food Diary
 (`ItemViews.foodDiary(tasks, {rules})`) works exactly like Wishlist: an extra rules layer on

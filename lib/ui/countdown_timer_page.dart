@@ -168,15 +168,18 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
         label: 'New Year',
         target: DateTime(now.year + 1, 1, 1, 0, 0),
         notifyRoundNumbers: true,
+        tags: demoToken,
       ),
       CountdownTimerItem(
         label: 'Project deadline',
         target: now.add(const Duration(days: 30, hours: 6)),
         notifyOnZero: true,
+        tags: demoToken,
       ),
       CountdownTimerItem(
         label: 'Coffee break',
         target: now.add(const Duration(minutes: 15)),
+        tags: demoToken,
       ),
     ];
   }

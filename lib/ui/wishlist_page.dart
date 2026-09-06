@@ -251,7 +251,7 @@ class _WishlistPageState extends State<WishlistPage> {
       tasks.add(Task(
         title: 'Learn to sail',
         description: 'Dev seed: a wishlist item',
-        label: 'priority-medium',
+        label: addLabelToken('priority-medium', demoToken),
         createdAt: DateTime.now(),
         isWish: true,
       ));

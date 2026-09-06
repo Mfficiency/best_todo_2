@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../config.dart';
 import '../models/alarm.dart';
+import '../utils/label_utils.dart';
 import 'alarm_notification_service.dart';
 import 'alarm_storage_service.dart';
 import 'alarm_widget_service.dart';
@@ -49,6 +50,7 @@ class AlarmService {
           isRepeating: true,
           repeatDays: const [1, 2, 3, 4, 5],
           color: 0xFF005FDD,
+          tags: demoToken,
         ),
         Alarm(
           name: 'Midday stretch',
@@ -56,6 +58,7 @@ class AlarmService {
           minute: 30,
           color: 0xFF43A047,
           snoozeEnabled: false,
+          tags: demoToken,
         ),
         Alarm(
           name: 'Wind down',
@@ -66,6 +69,7 @@ class AlarmService {
           color: 0xFF8E24AA,
           enabled: false,
           vibrate: false,
+          tags: demoToken,
         ),
       ];
 
