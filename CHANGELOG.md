@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.31] - 2026-09-06
+- Every starter task and dev/demo filler item (first-run starter tasks, and the various dev-only seed tasks, alarms, countdown timers and food diary entries) is now stamped with a `demo` tag, so it can be hidden from any view via Settings → Filtering rules even if it somehow ends up on a production install
+
 ## [0.2.30] - 2026-09-04
 - Waiting for Approval gained a sort menu (newest first, oldest first, alphabetical) — newest first by default — and each conversation group's header now always leads with its date, even when it already has a source title
 - Local build: 2026-09-04 14:14

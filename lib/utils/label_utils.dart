@@ -14,6 +14,19 @@ const String legacyImportToken = 'old';
 /// because the feature behind it shipped (see `wishlist_shipped.dart`).
 const String autoCompletedToken = 'autocompleted';
 
+/// Label token stamped on every task/alarm/timer the app generates for
+/// itself rather than the user: the first-run starter tasks
+/// (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
+/// seed (`home_page.dart`'s `_buildDev*`/`_seedDev*` methods,
+/// `AlarmService._buildDevSeed`, `CountdownTimerPage._devSeedTimers`,
+/// `FoodDiaryPage._buildDevSeed`, `WishlistPage._load`'s dev fallback). Once
+/// one of these is saved to disk it is a normal record indistinguishable
+/// from anything the user typed, and outlives whatever produced it —
+/// including `Config.isDev` going back to false on a later release build —
+/// so this token is how a Settings → Filtering rules exclude rule can still
+/// hide it everywhere.
+const String demoToken = 'demo';
+
 /// Label token stamped on every task newly pulled in from Todoist (see
 /// `TodoistSyncService._taskFromRemote`). Keeps it out of every list —
 /// home tabs, wishlist, project boards — until a human approves or denies
@@ -131,6 +144,7 @@ String labelKindFor(String token) {
   if (priorityTokens.contains(lower)) return Label.kindPriority;
   if (lower == legacyImportToken ||
       lower == autoCompletedToken ||
+      lower == demoToken ||
       isProtectedToken(token)) {
     return Label.kindSystem;
   }

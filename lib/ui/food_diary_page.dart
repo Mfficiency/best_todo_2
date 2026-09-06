@@ -14,6 +14,7 @@ import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../utils/date_time_format.dart';
 import '../utils/description_disclosure.dart';
+import '../utils/label_utils.dart';
 import 'label_picker.dart';
 import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
@@ -223,7 +224,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       Task(
         title: 'Oatmeal with banana',
         description: 'Dev seed: a food diary entry',
-        label: 'gluten',
+        label: addLabelToken('gluten', demoToken),
         createdAt: now,
         dueDate: at(8, 0),
         hasExplicitTime: true,
@@ -232,7 +233,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       Task(
         title: 'Grilled chicken salad',
         description: 'Dev seed: a food diary entry',
-        label: 'dairy-free',
+        label: addLabelToken('dairy-free', demoToken),
         createdAt: now,
         dueDate: at(13, 0),
         hasExplicitTime: true,
@@ -241,7 +242,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       Task(
         title: 'Greek yogurt with honey',
         description: 'Dev seed: a food diary entry',
-        label: 'sugar, lactose',
+        label: addLabelToken('sugar, lactose', demoToken),
         createdAt: now,
         dueDate: at(19, 30),
         hasExplicitTime: true,
