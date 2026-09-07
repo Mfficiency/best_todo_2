@@ -3,6 +3,9 @@
 ## [0.2.32] - 2026-09-07
 - Demo/dev-seed items (the `demo` tag) are now hidden from every view by default the moment a build stops being a dev build — no Settings → Filtering rules configuration needed any more
 - The Food Diary "+" widget and its full status widget now pulse red instead of sitting at a flat red when today's logged entries fall behind schedule
+- Local build: 2026-09-07 12:44
+- Build duration (apk): 7m 03s
+- Build duration (windows): 2m 49s
 
 ## [0.2.31] - 2026-09-06
 - Every starter task and dev/demo filler item (first-run starter tasks, and the various dev-only seed tasks, alarms, countdown timers and food diary entries) is now stamped with a `demo` tag, so it can be hidden from any view via Settings → Filtering rules even if it somehow ends up on a production install
