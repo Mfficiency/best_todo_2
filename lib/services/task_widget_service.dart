@@ -54,7 +54,9 @@ class TaskWidgetService {
     final current = now ?? DateTime.now();
     final today = DateTime(current.year, current.month, current.day);
     final due = tasks.where((t) {
-      if (t.deletedAt != null || !ItemViews.isVisibleInMainViews(t)) {
+      if (t.deletedAt != null ||
+          !ItemViews.isVisibleInMainViews(t) ||
+          !ItemViews.passesFilterRules(t, null)) {
         return false;
       }
       if (t.dueDate == null) return false;

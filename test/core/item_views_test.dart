@@ -1,6 +1,8 @@
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/item_views.dart';
+import 'package:besttodo/utils/label_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -196,6 +198,50 @@ void main() {
         rules: ViewFilterRules(includeTags: ['urgent']),
       );
       expect(result.map((t) => t.title), ['keep']);
+    });
+  });
+
+  group('demo items hidden outside dev builds', () {
+    setUp(() => Config.hideDemoItems = true);
+    tearDown(() => Config.hideDemoItems = false);
+
+    test('a demo-tagged task is hidden from home even with no rules '
+        'configured', () {
+      final demo = Task(title: 'seed', dueDate: today, label: demoToken);
+      final real = Task(title: 'real', dueDate: today);
+      expect(ItemViews.homeBucket([demo, real], 0, today).map((t) => t.title),
+          ['real']);
+      expect(ItemViews.active([demo, real]).map((t) => t.title), ['real']);
+    });
+
+    test('a demo-tagged task stays hidden even when Filtering rules would '
+        'otherwise show everything', () {
+      final demo = Task(title: 'seed', dueDate: today, label: demoToken);
+      final real = Task(title: 'real', dueDate: today);
+      final rules = ViewFilterRules(); // empty: no exclude/include configured
+      expect(
+          ItemViews.homeBucket([demo, real], 0, today, rules: rules)
+              .map((t) => t.title),
+          ['real']);
+    });
+
+    test('demo items are visible again once hideDemoItems is off (dev '
+        'builds)', () {
+      Config.hideDemoItems = false;
+      final demo = Task(title: 'seed', dueDate: today, label: demoToken);
+      expect(ItemViews.homeBucket([demo], 0, today).map((t) => t.title),
+          ['seed']);
+    });
+
+    test('applyTagRules and applyFilterRules also drop demo items with no '
+        'rules configured', () {
+      expect(ItemViews.applyTagRules(['real', demoToken], null, (t) => t),
+          ['real']);
+
+      final demo = Task(title: 'seed', label: demoToken);
+      final real = Task(title: 'real');
+      expect(ItemViews.applyFilterRules([demo, real], null).map((t) => t.title),
+          ['real']);
     });
   });
 }

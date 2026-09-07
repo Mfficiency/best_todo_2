@@ -18,6 +18,16 @@ class Config {
   /// Uses the `dart.vm.product` flag to detect production builds.
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
+  /// Whether every demo/dev-seed item (see `demoToken` in `label_utils.dart`)
+  /// is hidden from every view, regardless of any Settings → Filtering rules
+  /// configuration. Defaults to hidden outside dev builds — from the moment
+  /// a build stops being a dev build, seeded sample data (which can persist
+  /// to disk and outlive [isDev] going back to false on a later release) is
+  /// gone from the app's own views without the user having to configure
+  /// anything. A plain mutable flag rather than deriving straight from the
+  /// compile-time [isDev] so tests can exercise the production behavior.
+  static bool hideDemoItems = !isDev;
+
   static String _appVersion = 'unknown';
   static String _buildNumber = '';
   static Future<void>? _versionLoadFuture;
