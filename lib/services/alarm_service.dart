@@ -6,6 +6,7 @@ import '../utils/label_utils.dart';
 import 'alarm_notification_service.dart';
 import 'alarm_storage_service.dart';
 import 'alarm_widget_service.dart';
+import 'item_views.dart';
 
 /// Single source of truth for alarms shared between the alarms page and the
 /// home-screen widget click handling. Holds the alarms in a [ValueNotifier] so
@@ -73,6 +74,13 @@ class AlarmService {
         ),
       ];
 
+  /// [source] with demo/dev-seed alarms dropped outside dev builds (see
+  /// `demoToken`) — the home-screen widget is a production surface, so a
+  /// leftover demo alarm from a build that used to be a dev build must not
+  /// show up there, even though it can still ring (scheduling is untouched).
+  static List<Alarm> _widgetVisible(List<Alarm> source) =>
+      ItemViews.applyTagRules(source, null, (a) => a.tags);
+
   /// Re-reads alarms from disk, optionally persisting afterwards. Used after a
   /// background widget toggle modified the stored data.
   Future<void> reload({bool persist = true, String? trigger}) async {
@@ -118,7 +126,7 @@ class AlarmService {
     if (persist) {
       await _storage.saveAlarms(alarms.value);
     }
-    await AlarmWidgetService.sync(alarms.value);
+    await AlarmWidgetService.sync(_widgetVisible(alarms.value));
     // Awaited so callers running in short-lived background isolates don't get
     // torn down before the OS schedule is updated.
     await AlarmNotificationService.rescheduleAll(alarms.value,
@@ -136,7 +144,7 @@ class AlarmService {
     if (idx < 0) return;
     alarms[idx].enabled = !alarms[idx].enabled;
     await storage.saveAlarms(alarms);
-    await AlarmWidgetService.sync(alarms);
+    await AlarmWidgetService.sync(_widgetVisible(alarms));
     // Keep the in-memory list aligned if it has been loaded in this isolate.
     if (instance._loaded) {
       instance.alarms.value = alarms;

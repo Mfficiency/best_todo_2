@@ -1,3 +1,4 @@
+import '../config.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../utils/date_utils.dart';
@@ -94,20 +95,29 @@ class ItemViews {
   /// passes [rules]: hidden if it carries any [ViewFilterRules.excludeTags]
   /// token, or — when [ViewFilterRules.includeTags] is non-empty — kept only
   /// if it carries at least one of them. A null or empty [rules] passes
-  /// everything. [extraTags] adds synthetic tokens (see [stateTags]) that
-  /// aren't literally present in [rawTags] but should still match. The
+  /// everything except a [demoToken]-carrying item while [Config.hideDemoItems]
+  /// is set (see below). [extraTags] adds synthetic tokens (see [stateTags])
+  /// that aren't literally present in [rawTags] but should still match. The
   /// primitive [passesFilterRules] and non-Task views (Alarms, Countdown)
   /// both build on this.
+  ///
+  /// Demo/dev-seed items ([demoToken]) are hidden from every view by default
+  /// outside dev builds ([Config.hideDemoItems]) — no Settings → Filtering
+  /// rules configuration required — since they can otherwise reappear on a
+  /// production phone if [Config.isDev] was ever true when they were seeded
+  /// to disk (see [demoToken]'s doc). This check runs ahead of and
+  /// independent from [rules] so it can never be configured away.
   static bool passesTagRules(
     String rawTags,
     ViewFilterRules? rules, {
     Set<String> extraTags = const {},
   }) {
-    if (rules == null || rules.isEmpty) return true;
     final tokens = {
       ...splitLabelTokens(rawTags).map((t) => t.toLowerCase()),
       ...extraTags.map((t) => t.toLowerCase()),
     };
+    if (Config.hideDemoItems && tokens.contains(demoToken)) return false;
+    if (rules == null || rules.isEmpty) return true;
     if (rules.excludeTags.any((t) => tokens.contains(t.toLowerCase()))) {
       return false;
     }
@@ -136,24 +146,33 @@ class ItemViews {
   /// [items] narrowed to those whose [tagsOf] string passes [rules] (see
   /// [passesTagRules]) — the non-[Task] equivalent of [applyFilterRules],
   /// for a view over items with their own tag string rather than a
-  /// [Task.label] (Alarms, Countdown).
+  /// [Task.label] (Alarms, Countdown). Returns [items] itself, unfiltered,
+  /// only when there is truly nothing to filter — empty [rules] and demo
+  /// hiding off; otherwise every item is re-checked, since demo hiding can
+  /// still apply with no [rules] configured at all.
   static List<T> applyTagRules<T>(
     List<T> items,
     ViewFilterRules? rules,
     String Function(T item) tagsOf,
   ) {
-    if (rules == null || rules.isEmpty) return items;
+    if ((rules == null || rules.isEmpty) && !Config.hideDemoItems) {
+      return items;
+    }
     return items.where((item) => passesTagRules(tagsOf(item), rules)).toList();
   }
 
-  /// [tasks] narrowed to those passing [passesFilterRules].
+  /// [tasks] narrowed to those passing [passesFilterRules]. Returns [tasks]
+  /// itself, unfiltered, only when there is truly nothing to filter — see
+  /// [applyTagRules].
   static List<Task> applyFilterRules(
     List<Task> tasks,
     ViewFilterRules? rules, {
     bool archived = false,
     bool binned = false,
   }) {
-    if (rules == null || rules.isEmpty) return tasks;
+    if ((rules == null || rules.isEmpty) && !Config.hideDemoItems) {
+      return tasks;
+    }
     return tasks
         .where((t) =>
             passesFilterRules(t, rules, archived: archived, binned: binned))

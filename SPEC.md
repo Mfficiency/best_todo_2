@@ -1193,6 +1193,22 @@ exclude rule (any view) hide it regardless of how it got there. `_seedDevItemHis
 cases its "no real label yet" check (`hasOnlyDemoLabel`) since its target tasks now always
 carry `demo` from `_buildDevFutureTasksSeed`.
 
+*Demo items hidden by default outside dev builds.* `Config.hideDemoItems` (defaults to
+`!Config.isDev`, but a plain mutable flag rather than deriving straight from the compile-time
+`isDev` so tests can flip it) makes the `demo` tag self-enforcing rather than opt-in: once true,
+`ItemViews.passesTagRules` hides a `demo`-carrying item ahead of and independent from whatever
+`ViewFilterRules` says, so no Settings → Filtering rules configuration is required — production
+never shows seeded sample data, from the very first release build. `applyTagRules`/
+`applyFilterRules` (used by the Alarms/Countdown pages and the Archived/Bin views) lost their
+"rules empty → return the same list instance" shortcut for exactly this reason: demo hiding can
+still apply when there are no rules configured at all. Three home-screen widgets that build
+their payload straight from the task/alarm list rather than going through a `ViewFilterRules`
+lookup — `TaskWidgetService.todayTasks` (adds an explicit `ItemViews.passesFilterRules(t, null)`
+check), `FoodDiaryWidgetService.sync` (already routed through `ItemViews.foodDiary`, so it
+inherited the behavior for free) and `AlarmService`'s two `AlarmWidgetService.sync` call sites
+(wrapped in a `_widgetVisible` helper) — are covered the same way, so a demo alarm or task never
+reaches the home screen in production even though scheduling/notifications for it are untouched.
+
 *Food Diary, Alarms and Countdown as filterable views.* Food Diary
 (`ItemViews.foodDiary(tasks, {rules})`) works exactly like Wishlist: an extra rules layer on
 top of its `isEatingHabit` gate. Alarms and Countdown aren't task lists, so each gained its
@@ -1893,10 +1909,11 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   `edit?id=`); tapping anywhere else opens the Food Diary list (`besttodofood://open`). Both
   are foreground `HomeWidgetLaunchIntent`s, unlike the other two widgets' background
   toggles — logging food always needs the UI, so there is no background isolate path here.
-  Turns the whole background red once today's running entry count falls behind a checkpoint
-  schedule (0.2.25): at least 1 entry logged by 8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00
-  (`checkpointMinutes`/`requiredCounts`) — a plain "log something roughly every few hours"
-  cadence, not tied to any particular meal. `FoodDiaryWidgetService`
+  Pulses red (alternating a bright and a dim red, see below) once today's running entry count
+  falls behind a checkpoint schedule (0.2.25; pulsing since 0.2.32): at least 1 entry logged by
+  8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00 (`checkpointMinutes`/`requiredCounts`) — a plain
+  "log something roughly every few hours" cadence, not tied to any particular meal.
+  `FoodDiaryWidgetService`
   (`lib/services/food_diary_widget_service.dart`) pushes only the raw "how many entries
   today" count plus the date it describes, synced from `FoodDiaryPage._save`,
   `home_page._updateHomeWidget` and `WaitingApprovalPage._save`; whether a checkpoint has
@@ -1912,9 +1929,30 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   `targetCellHeight` = 1, `resizeMode="none"`) and drawing nothing but a "+" that fills the
   cell. Tapping it is the same foreground `besttodofood://add` launch intent as the full
   widget's "+" — there is no room for status text at this size, so it carries no other tap
-  target. Since 0.2.12 it redraws every 30 minutes and turns red on the same running-count
-  schedule as the full widget (0.2.25); tapping it remains an immediate shortcut to the
-  add-entry dialog.
+  target. Since 0.2.12 it redraws every 30 minutes and pulses red on the same running-count
+  schedule as the full widget (0.2.25, pulsing since 0.2.32); tapping it remains an immediate
+  shortcut to the add-entry dialog.
+
+*Pulsing red, not flat red (0.2.32).* `FoodDiaryAlert.kt` (shared by both providers) alternates
+the background between a bright and a dim red every 900ms (`pulseColor`, `pulseIntervalMs`) so a
+missed checkpoint actually catches the eye instead of sitting there as a flat color that blends
+into the background after the first glance. AppWidgets have no real animation API — no
+`Animatable.start()` reaches a `RemoteViews`-hosted `View` from outside its own process — so the
+pulse is faked: each `onUpdate` that finds the alert active schedules a *non-wakeup* elapsed-
+realtime alarm (`AlarmManager.setExact(ELAPSED_REALTIME, …)`) that re-broadcasts
+`ACTION_APPWIDGET_UPDATE` at its own provider (an explicit-`Intent` self-target, so it lands
+regardless of Android 8+'s implicit-broadcast restrictions and needs no extra manifest
+receiver). Non-wakeup on purpose: the loop only actually ticks while the device is already
+awake — i.e. while someone could plausibly be looking at the home screen — so it costs nothing
+while the phone sleeps, and the two providers already hold `SCHEDULE_EXACT_ALARM`/
+`USE_EXACT_ALARM` for the alarm feature. Each tick recomputes `FoodDiaryAlert.status` fresh
+(never assumes the previous tick's alert still holds) and reschedules only while still behind;
+the moment it isn't, or the last widget instance of that kind is removed (an empty
+`appWidgetIds` breaks the reschedule chain), the loop stops itself. `widget_previews_page.dart`'s
+in-app mock does not reproduce the pulse (`FoodDiaryWidgetService.isBehindSchedule` only ever
+returns the static behind/not-behind boolean) — it still shows flat red for "behind", since the
+mock exists to keep the *data* in sync with the Kotlin providers, not to fully replicate a
+`RemoteViews` animation loop outside the Flutter tree.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
 `Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
