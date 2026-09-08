@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.34] - 2026-09-08
+- Wishlist item editor: added a paste-from-clipboard button on the description field
+
 ## [0.2.33] - 2026-09-08
 - Reordered the navigation drawer: Home, Settings, Waiting for Approval, Food Diary, Tools, Changelog, About, Archived Items — Food Diary is now its own top-level entry instead of living inside Tools
 - Local build: 2026-09-08 20:19

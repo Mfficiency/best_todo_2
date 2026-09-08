@@ -828,6 +828,23 @@ class _WishEditDialogState extends State<_WishEditDialog> {
     super.dispose();
   }
 
+  /// Pastes clipboard text into the description field at the current
+  /// selection (or appended, if the field has no active selection).
+  Future<void> _pasteDescription() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty) return;
+    final controller = _descriptionController;
+    final selection = controller.selection;
+    final insertAt = selection.isValid ? selection.start : controller.text.length;
+    final removeTo = selection.isValid ? selection.end : controller.text.length;
+    final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
+    controller.text = newText;
+    controller.selection = TextSelection.collapsed(
+      offset: (insertAt + pasted.length).clamp(0, newText.length),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -875,7 +892,14 @@ class _WishEditDialogState extends State<_WishEditDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: InputDecoration(
+                labelText: 'Description',
+                suffixIcon: IconButton(
+                  tooltip: 'Paste from clipboard',
+                  icon: const Icon(Icons.content_paste),
+                  onPressed: _pasteDescription,
+                ),
+              ),
               maxLines: 3,
             ),
           ],
