@@ -852,9 +852,13 @@ offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback
 build; sections scrolled out of view are unmounted, which is fine because the section
 spanning the top is always attached.
 
-**Drawer:** Home, Settings, Archived Items (→ Deleted bin, §4.2g), About, Changelog, App Logs, Startup Times,
-Tools ▸ (Food Diary, Alarms, Weekly Hours Planner, Projects, Wishlist, Chronize, Countdown,
-Productivity Stats, Usage Data, Test Results — most-used first, Test Results pinned last).
+**Drawer (reordered 0.2.33):** Home, Settings, Waiting for Approval, Food Diary, Tools ▸
+(Alarms, Weekly Hours Planner, Projects, Wishlist, Research, Chronize, Countdown,
+Productivity Stats, Usage Data, Fitness Activity, Test Results — most-used first, Test
+Results pinned last), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
+Startup Times, Widget Previews (dev build only). Food Diary is a standalone entry (own
+`ListTile`, gated on `Config.isFeatureEnabled('food_diary')`) rather than a `_toolEntries`
+member, so it always sits above Tools instead of inside it.
 **Home** (0.1.233) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the

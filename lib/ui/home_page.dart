@@ -3090,7 +3090,6 @@ class _HomePageState extends State<HomePage>
   /// key, so a tool switched off in Settings disappears here and can no
   /// longer be the start page.
   static const List<_ToolEntry> _toolEntries = [
-    _ToolEntry('food_diary', 'Food Diary', Icons.restaurant),
     _ToolEntry('alarms', 'Alarms', Icons.alarm),
     _ToolEntry('weekly_hours_planner', 'Weekly Hours Planner',
         Icons.calendar_view_week),
@@ -3173,6 +3172,82 @@ class _HomePageState extends State<HomePage>
                 _openSettingsPage();
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.pending_actions),
+              title: const Text('Waiting for Approval'),
+              trailing: pendingApprovalCount > 0
+                  ? CircleAvatar(
+                      radius: 10,
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      child: Text(
+                        '$pendingApprovalCount',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onError,
+                        ),
+                      ),
+                    )
+                  : null,
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                          builder: (_) => const WaitingApprovalPage()),
+                    )
+                    .then((_) => _reloadTasksFromStorage());
+              },
+            ),
+            if (Config.isFeatureEnabled('food_diary'))
+              ListTile(
+                leading: const Icon(Icons.restaurant),
+                title: const Text('Food Diary'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openTool('food_diary');
+                },
+              ),
+            if (enabledTools.isNotEmpty)
+              ExpansionTile(
+                leading: const Icon(Icons.build),
+                title: const Text('Tools'),
+                childrenPadding: const EdgeInsets.only(left: 16),
+                children: [
+                  for (final tool in enabledTools)
+                    ListTile(
+                      leading: tool.key == 'test_results' &&
+                              TestReportService.instance.hasUnseenFailures
+                          ? _iconWithFailureDot(tool.icon)
+                          : Icon(tool.icon),
+                      title: Text(tool.label),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openTool(tool.key);
+                      },
+                    ),
+                ],
+              ),
+            if (Config.isFeatureEnabled('changelog'))
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Changelog'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ChangelogPage()),
+                  );
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AboutPage()),
+                );
+              },
+            ),
             if (Config.isFeatureEnabled('deleted_items'))
               ListTile(
                 leading: const Icon(Icons.delete),
@@ -3206,53 +3281,6 @@ class _HomePageState extends State<HomePage>
                         },
                       ),
                     ),
-                  );
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.info),
-              title: const Text('About'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AboutPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.pending_actions),
-              title: const Text('Waiting for Approval'),
-              trailing: pendingApprovalCount > 0
-                  ? CircleAvatar(
-                      radius: 10,
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                      child: Text(
-                        '$pendingApprovalCount',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.onError,
-                        ),
-                      ),
-                    )
-                  : null,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context)
-                    .push(
-                      MaterialPageRoute(
-                          builder: (_) => const WaitingApprovalPage()),
-                    )
-                    .then((_) => _reloadTasksFromStorage());
-              },
-            ),
-            if (Config.isFeatureEnabled('changelog'))
-              ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('Changelog'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ChangelogPage()),
                   );
                 },
               ),
@@ -3303,26 +3331,6 @@ class _HomePageState extends State<HomePage>
                         builder: (_) => const WidgetPreviewsPage()),
                   );
                 },
-              ),
-            if (enabledTools.isNotEmpty)
-              ExpansionTile(
-                leading: const Icon(Icons.build),
-                title: const Text('Tools'),
-                childrenPadding: const EdgeInsets.only(left: 16),
-                children: [
-                  for (final tool in enabledTools)
-                    ListTile(
-                      leading: tool.key == 'test_results' &&
-                              TestReportService.instance.hasUnseenFailures
-                          ? _iconWithFailureDot(tool.icon)
-                          : Icon(tool.icon),
-                      title: Text(tool.label),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openTool(tool.key);
-                      },
-                    ),
-                ],
               ),
           ],
         ),

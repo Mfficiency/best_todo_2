@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.33] - 2026-09-08
+- Reordered the navigation drawer: Home, Settings, Waiting for Approval, Food Diary, Tools, Changelog, About, Archived Items — Food Diary is now its own top-level entry instead of living inside Tools
+
 ## [0.2.32] - 2026-09-07
 - Demo/dev-seed items (the `demo` tag) are now hidden from every view by default the moment a build stops being a dev build — no Settings → Filtering rules configuration needed any more
 - The Food Diary "+" widget and its full status widget now pulse red instead of sitting at a flat red when today's logged entries fall behind schedule
