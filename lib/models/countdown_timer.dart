@@ -1,12 +1,21 @@
 import 'package:uuid/uuid.dart';
 
+import '../utils/label_utils.dart';
 import 'countdown_milestone.dart';
+
+/// Required tag carried by every timer so Settings -> Filtering rules can
+/// match the Countdown view's own reserved tag (`countdownToken`) through
+/// the stored tag string — mirrors `Alarm.kAlarmRequiredTag`.
+const String kCountdownRequiredTag = 'countdown';
 
 /// A single countdown timer counting toward (or up from) a target moment.
 class CountdownTimerItem {
   static final Uuid _uuid = const Uuid();
 
   static String newUid() => _uuid.v4();
+
+  static String ensureCountdownTag(String tags) =>
+      addLabelToken(tags, kCountdownRequiredTag);
 
   String uid;
   String label;
@@ -27,11 +36,11 @@ class CountdownTimerItem {
   DateTime createdAt;
   DateTime editedAt;
 
-  /// Free-form user tags (comma/whitespace-separated, same convention as
-  /// [Task.label]) — lets a timer carry its own categorization independent
-  /// of the reserved "Countdown" state tag every timer implicitly carries
-  /// for Settings → Filtering rules (see `ViewFilterRules.countdown`); that
-  /// reserved tag is never written here.
+  /// Tags (comma/whitespace-separated, same convention as [Task.label]).
+  /// Every timer carries [kCountdownRequiredTag] plus any user categorization
+  /// so Settings → Filtering rules can match the Countdown view's own
+  /// reserved tag (see `ViewFilterRules.countdown`) through the stored tag
+  /// string.
   String tags;
 
   /// Uid of the task this countdown targets, or null for a standalone timer
@@ -53,9 +62,10 @@ class CountdownTimerItem {
     List<CountdownMilestone>? milestones,
     DateTime? createdAt,
     DateTime? editedAt,
-    this.tags = '',
+    String tags = kCountdownRequiredTag,
     this.itemUid,
   })  : uid = uid ?? CountdownTimerItem.newUid(),
+        tags = ensureCountdownTag(tags),
         milestones = milestones ?? defaultMilestones(),
         createdAt = createdAt ?? DateTime.now(),
         editedAt = editedAt ?? createdAt ?? DateTime.now();
@@ -152,7 +162,7 @@ class CountdownTimerItem {
         'milestones': milestones.map((m) => m.toJson()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'editedAt': editedAt.toIso8601String(),
-        if (tags.isNotEmpty) 'tags': tags,
+        'tags': ensureCountdownTag(tags),
         // Item link: omitted for standalone timers.
         if (itemUid != null) 'itemUid': itemUid,
       };

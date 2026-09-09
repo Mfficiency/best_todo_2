@@ -238,7 +238,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     setState(() {
       if (trimmed.isNotEmpty) timer.label = trimmed;
       timer.target = target;
-      timer.tags = tags.trim();
+      timer.tags = CountdownTimerItem.ensureCountdownTag(tags.trim());
       timer.editedAt = DateTime.now();
       // Re-evaluate suppression against the new target.
       _notifySuppressed.remove(timer.uid);

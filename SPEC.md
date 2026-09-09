@@ -1220,7 +1220,18 @@ own `tags` field (`Alarm.tags`, `CountdownTimerItem.tags` — free-form, same co
 convention as `Task.label`, editable via a `LabelPickerField` in `AlarmEditPage` and the
 `_DraftTimerComposer` used for both adding and inline-editing a timer) and each page filters
 its own list with `ItemViews.applyTagRules(items, rules, (item) => item.tags)` before display,
-rendering any tags as small pills under each row.
+rendering any tags as small pills under each row. Since the default seeded rule for each view
+is `includeTags: [ownReservedToken]` (below), and `applyTagRules` matches only against the
+item's own `tags` string (unlike `Task`'s `passesFilterRules`, it has no synthetic `stateTags`
+to fall back on), every alarm/timer must carry its view's reserved token literally in `tags` or
+that default rule would hide it outright. Both models enforce this the same way: a required
+tag (`Alarm.kAlarmRequiredTag`/`CountdownTimerItem.kCountdownRequiredTag`, `'alarm'`/
+`'countdown'`) is folded into `tags` by the constructor and again by `toJson()`
+(`ensureAlarmTag`/`ensureCountdownTag`), so it round-trips even through a legacy record saved
+without it and survives a `LabelPickerField` edit that clears the field. (0.2.40 fix: the
+countdown side of this was missing until then — every `CountdownTimerItem` skipped the
+required-tag step Alarm already had, so the seeded `includeTags: [Countdown]` rule hid every
+timer, old and new alike, the moment `viewFilterRulesSeedVersion` re-synced it.)
 
 *Seeded defaults (`Config.viewFilterRulesSeedVersion`, `ViewFilterRules.defaultsFor`).* A
 fresh install's Settings → Filtering rules starts pre-populated rather than empty, with the
@@ -2131,11 +2142,14 @@ target kept correct between app opens. A linked timer's `target` follows the tas
 a timer whose task disappears is **unlinked**, not deleted — a countdown still means
 something on its own once detached. See `docs/architecture/presentation-layer-decision.md`.
 
-`tags` (free-form, `Task.label`'s comma/whitespace convention, empty string omitted from
-JSON) is editable via a `LabelPickerField` in the composer, and filterable in Settings →
-Filtering rules → Countdown (`ItemViews.applyTagRules`, see §4.4). Filtering narrows the
-displayed list only — reorder is disabled while a Countdown filter rule is active, same
-reasoning as Home (§4.4).
+`tags` (free-form, `Task.label`'s comma/whitespace convention) is editable via a
+`LabelPickerField` in the composer, and filterable in Settings → Filtering rules → Countdown
+(`ItemViews.applyTagRules`, see §4.4). Every timer also always carries the required
+`'countdown'` token (`CountdownTimerItem.kCountdownRequiredTag`/`ensureCountdownTag`, folded in
+by the constructor and `toJson()`, mirroring `Alarm.kAlarmRequiredTag`) so the seeded
+`includeTags: [Countdown]` default rule matches it — see §4.4. Filtering narrows the displayed
+list only — reorder is disabled while a Countdown filter rule is active, same reasoning as Home
+(§4.4).
 
 **Milestone notifications** (# icon → `showCountdownMilestonesDialog`, per-timer, 0.1.105;
 replaced the fixed power-of-ten-seconds ladder of 0.1.103). `notifyRoundNumbers` is now the

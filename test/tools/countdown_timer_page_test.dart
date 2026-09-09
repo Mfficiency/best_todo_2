@@ -113,4 +113,38 @@ void main() {
     final decoration = chipContainer.decoration as BoxDecoration;
     expect(decoration.border, isNotNull);
   });
+
+  testWidgets(
+      'the seeded default Countdown include rule keeps existing timers '
+      'visible and does not hide a newly added one',
+      (tester) async {
+    // Reproduces the disappearing-countdowns bug: the seeded default rule
+    // for the Countdown view is `includeTags: [Countdown]`
+    // (`ViewFilterRules.defaultsFor`), so every timer must carry the
+    // reserved "countdown" tag itself, not just live in the countdown list.
+    Config.viewFilterRules = {
+      ViewFilterRules.countdown: ViewFilterRules.defaultsFor(
+        ViewFilterRules.countdown,
+      )!,
+    };
+    final existing = CountdownTimerItem(
+      label: 'Existing timer',
+      target: DateTime.now().add(const Duration(days: 5)),
+    );
+
+    await pumpPage(
+      tester,
+      timers: [existing],
+      marker: 'Existing timer',
+    );
+    expect(find.text('Existing timer'), findsOneWidget);
+
+    // Add a new timer through the composer and confirm it stays visible too.
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Fresh timer');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Add'));
+    await tester.pump();
+
+    expect(find.text('Fresh timer'), findsOneWidget);
+    expect(find.text('Existing timer'), findsOneWidget);
+  });
 }
