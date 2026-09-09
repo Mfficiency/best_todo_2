@@ -2,6 +2,9 @@
 
 ## [0.2.40] - 2026-09-09
 - Fixed countdown timers disappearing and new ones failing to show: unlike alarms, timers never carried the reserved "countdown" tag their own Settings → Filtering rules default (`includeTags: [Countdown]`) requires, so that seeded rule hid every timer, old and new — every timer now always carries the tag, same as alarms already do
+- Local build: 2026-09-09 23:05
+- Build duration (apk): 8m 44s
+- Build duration (windows): 1m 31s
 
 ## [0.2.39] - 2026-09-09
 - "mlr"-tagged tasks now show only in the Worklist tool — they no longer also appear on the regular home tabs, schedule view, Wishlist, Projects or the Markdown export
