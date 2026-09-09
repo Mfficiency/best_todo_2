@@ -2,6 +2,9 @@
 
 ## [0.2.39] - 2026-09-09
 - "mlr"-tagged tasks now show only in the Worklist tool — they no longer also appear on the regular home tabs, schedule view, Wishlist, Projects or the Markdown export
+- Local build: 2026-09-09 19:35
+- Build duration (apk): 8m 47s
+- Build duration (windows): 1m 15s
 
 ## [0.2.38] - 2026-09-09
 - Fixed Worklist showing every task (not just "mlr"-tagged ones) while in schedule view — that layout built its list straight from the full task list instead of going through the same tag filter as the normal tab view
