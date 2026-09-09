@@ -90,6 +90,32 @@ void main() {
   });
 
   testWidgets(
+      'Worklist stays filtered to mlr in schedule view too', (tester) async {
+    final today = DateTime.now();
+    await tester.runAsync(() => StorageService().saveTaskList([
+          Task(title: 'Tagged worklist item', dueDate: today, label: 'mlr'),
+          Task(title: 'Unrelated task', dueDate: today),
+        ]));
+
+    await pumpHome(
+      tester,
+      const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist'),
+      marker: 'Tagged worklist item',
+    );
+
+    // Switching to the schedule view (one long day-grouped list, an
+    // alternative to the tab-per-bucket layout) used to read straight from
+    // the full task list instead of going through the same tag filter as
+    // the tab view, leaking every other task into a supposedly filtered
+    // instance.
+    await tester.tap(find.byTooltip('Schedule view'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tagged worklist item'), findsOneWidget);
+    expect(find.text('Unrelated task'), findsNothing);
+  });
+
+  testWidgets(
       'Worklist hides the streak flame and dice icons and uses an orange '
       'accent', (tester) async {
     await tester.runAsync(() => StorageService().saveTaskList([

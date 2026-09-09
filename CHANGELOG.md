@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.38] - 2026-09-09
+- Fixed Worklist showing every task (not just "mlr"-tagged ones) while in schedule view — that layout built its list straight from the full task list instead of going through the same tag filter as the normal tab view
+
 ## [0.2.37] - 2026-09-09
 - Worklist: hid the streak flame and dice-timer icons (and the double-tap "Start timer" menu) — it now shows only the tabs, add-task row and search, and tints its accent color orange so it's visually distinct from the real home screen
 - Local build: 2026-09-09 17:48

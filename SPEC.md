@@ -2704,7 +2704,7 @@ Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (inde
 "Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
 at the end of `_sectionTitles` to avoid renumbering the other twelve.
 
-### 10.6c Worklist (0.2.36, streak/dice hidden + orange accent 0.2.37)
+### 10.6c Worklist (0.2.36, streak/dice hidden + orange accent 0.2.37, schedule-view filter leak fixed 0.2.38)
 Tools ▸ Worklist: the home screen itself — same tabs, add-task row, search,
 drag-reorder, swipe, undo/redo, schedule view — narrowed to tasks whose label
 carries the `mlr` tag, minus the streak flame and dice timer, and tinted
@@ -2720,6 +2720,15 @@ null for the regular home page):
   `listRanking` renumbering loop above all) still see the *whole* tab, so a
   filtered instance renumbering only its visible subset can never scramble the
   ranking of the tasks it isn't showing.
+- `_buildScheduleBody` (the schedule-view body, an alternative to the
+  tab-per-bucket layout, toggled by the calendar icon or auto-selected when
+  `Config.startInScheduleView` is on) built its own `visibleTasks` straight
+  off `_tasks`, filtered only by `isVisibleInMainViews`/search — it never
+  applied `tagFilter`. That leaked every task into Worklist whenever schedule
+  view was active (immediately, for anyone with `startInScheduleView` on),
+  even though the tab-per-bucket layout was correctly filtered. Fixed by
+  folding the same `tagFilter == null || labelHasToken(t.label, tagFilter)`
+  check into its `visibleTasks` predicate.
 - Drag-reorder (`_reorderTask`/`_reorderTaskInSection`) already refused to run
   while a search query or a Home filter rule narrowed the tab (renumbering a
   subset would scramble the rest); the same guard, factored into a

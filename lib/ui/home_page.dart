@@ -3119,10 +3119,12 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildScheduleBody() {
     final query = _searchQuery.trim().toLowerCase();
+    final tagFilter = widget.tagFilter;
     final visibleTasks = _tasks
         .where((t) =>
             ItemViews.isVisibleInMainViews(t) &&
-            (query.isEmpty || _matchesSearch(t, query)))
+            (query.isEmpty || _matchesSearch(t, query)) &&
+            (tagFilter == null || labelHasToken(t.label, tagFilter)))
         .toList();
     return ScheduleView(
       key: _scheduleViewKey,
