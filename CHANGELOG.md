@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.36] - 2026-09-09
+- New tool: Worklist — the home screen (tabs, add-task row, search, everything) narrowed to only tasks tagged "mlr"
+
 ## [0.2.35] - 2026-09-09
 - Wishlist: added a "Build" swipe action that sends an item to the build automation (opens a GitHub issue; a daily routine implements it and pushes to dev)
 - Settings → Wishlist build: new section for the GitHub token the "Build" action uses (save + test connection)

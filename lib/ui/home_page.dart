@@ -115,7 +115,24 @@ class _RecurrenceRuleSnapshot {
 class HomePage extends StatefulWidget {
   final int initialTabIndex;
 
-  const HomePage({Key? key, this.initialTabIndex = 0}) : super(key: key);
+  /// When set, this instance shows only tasks whose label carries this tag
+  /// (see [ItemViews.homeBucket]/`_tasksForTab`) — the same tab layout, add
+  /// row and interactions as the regular home screen, narrowed to one tag.
+  /// Used by the Worklist tool (`tagFilter: 'mlr'`). A task created from this
+  /// instance's add-task row is stamped with the tag automatically. Null (the
+  /// default) is the regular, unfiltered home page.
+  final String? tagFilter;
+
+  /// App-bar/drawer-header title used in place of "BestToDo" while
+  /// [tagFilter] is set.
+  final String? toolTitle;
+
+  const HomePage({
+    Key? key,
+    this.initialTabIndex = 0,
+    this.tagFilter,
+    this.toolTitle,
+  }) : super(key: key);
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -1161,11 +1178,16 @@ class _HomePageState extends State<HomePage>
     // A task built by the share-sheet quick-add screen (see main.dart) is
     // claimed here while this page is alive. Registering before _loadTasks
     // means every share from here on goes through this page's in-memory
-    // list — never a second tasks.json writer.
-    ShareIntentService.instance.registerConsumer(_addSharedTask);
-    // Lets the app shell reopen a live dice timer after its full-screen alarm
-    // is stopped (see main.dart), with the task's actions ready.
-    openRunningDiceTimer = _reopenRunningDiceTimer;
+    // list — never a second tasks.json writer. These are process-wide
+    // singleton slots, so only the primary (unfiltered) home instance claims
+    // them — a tag-filtered instance like Worklist would otherwise steal them
+    // away from the real home page while it's open.
+    if (widget.tagFilter == null) {
+      ShareIntentService.instance.registerConsumer(_addSharedTask);
+      // Lets the app shell reopen a live dice timer after its full-screen
+      // alarm is stopped (see main.dart), with the task's actions ready.
+      openRunningDiceTimer = _reopenRunningDiceTimer;
+    }
     // CI embeds its test results as a bundled asset; builds whose test run
     // had unacknowledged failures get a red dot on the Test Results drawer
     // entry — and on the hamburger icon itself when the "Red dot on menu"
@@ -1237,6 +1259,11 @@ class _HomePageState extends State<HomePage>
           deletedItems: _deletedTasks,
           dailyStatsByDay: _dailyStatsByDay,
         );
+      case 'worklist':
+        // The home screen itself, narrowed to one tag: same tabs, add row,
+        // search and interactions, just a second HomePage instance with its
+        // own in-memory copy of the (shared, on-disk) task list.
+        return const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist');
     }
     return null;
   }
@@ -1254,8 +1281,13 @@ class _HomePageState extends State<HomePage>
       if (mounted) setState(() {});
       // The Wishlist/Food Diary/Research tools load and save the task list
       // on their own, so this page's in-memory copy is refreshed from disk
-      // when coming back.
-      if (tool == 'wishlist' || tool == 'food_diary' || tool == 'research') {
+      // when coming back. Worklist is a second full HomePage instance with
+      // its own in-memory list backed by the same storage, so it needs the
+      // same refresh.
+      if (tool == 'wishlist' ||
+          tool == 'food_diary' ||
+          tool == 'research' ||
+          tool == 'worklist') {
         _reloadTasksFromStorage();
       }
     });
@@ -1301,6 +1333,10 @@ class _HomePageState extends State<HomePage>
   /// Opens the tool configured as the default start page (if any) on top of
   /// the task list, so backing out of it lands on the tasks as usual.
   void _maybeOpenStartTool() {
+    // A tag-filtered instance (Worklist) is itself already a tool opened on
+    // top of the real home page — it must not also open the configured
+    // default start tool on top of itself.
+    if (widget.tagFilter != null) return;
     if (Config.startTool == 'tasks') return;
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1387,9 +1423,8 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
-    // See _reorderTask: reordering is disabled while searching or while a
-    // Home filter rule is hiding tasks.
-    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
+    // See _reorderTask: reordering is disabled whenever a tab is narrowed.
+    if (_tabNarrowed) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
     final fullList = _tasksForTab(pageIndex);
 
@@ -1457,9 +1492,16 @@ class _HomePageState extends State<HomePage>
         : _dueDateForTab(_addTargetTabIndex());
     final rankingTabIndex = _tabIndexForDueDate(dueDate);
     final recurrence = _pendingRecurrence;
+    var label = AutoTagService.instance.withAutoTags(title, '');
+    // A task typed directly into a tag-filtered instance (Worklist) is
+    // stamped with that tag so it immediately shows up in the filtered view
+    // it was just added from.
+    if (widget.tagFilter != null) {
+      label = addLabelToken(label, widget.tagFilter!);
+    }
     final task = Task(
       title: title,
-      label: AutoTagService.instance.withAutoTags(title, ''),
+      label: label,
       createdAt: DateTime.now(),
       dueDate: dueDate,
       isRecurring: recurrence != null,
@@ -2126,10 +2168,10 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
-    // Reordering a search- or filter-rule-narrowed list would renumber only
-    // the visible subset and scramble the hidden tasks' order, so it is
-    // disabled while either is active.
-    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
+    // Reordering a narrowed list would renumber only the visible subset and
+    // scramble the hidden tasks' order, so it is disabled while narrowed —
+    // see _tabNarrowed.
+    if (_tabNarrowed) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -2839,20 +2881,39 @@ class _HomePageState extends State<HomePage>
   bool get _homeFilterRulesActive =>
       !(Config.viewFilterRules[ViewFilterRules.home]?.isEmpty ?? true);
 
+  /// Whether any tab is currently showing a narrowed subset — a search
+  /// query, configured Home filter rules, or [widget.tagFilter] (Worklist).
+  /// Reordering is disabled whenever this is true: renumbering only the
+  /// visible subset would scramble the hidden tasks' [Task.listRanking] —
+  /// see [_reorderTask].
+  bool get _tabNarrowed =>
+      _searchQuery.trim().isNotEmpty ||
+      _homeFilterRulesActive ||
+      widget.tagFilter != null;
+
   /// Tasks shown on [pageIndex]. While a search query is active the list is
-  /// narrowed to matching tasks, and the configured Home filter rules (if
-  /// any) are always applied on top; pass [applySearch] false for logic that
-  /// must see the full tab regardless of either (e.g. renumbering
-  /// [Task.listRanking] on save).
+  /// narrowed to matching tasks, [widget.tagFilter] (Worklist) narrows it to
+  /// one tag, and the configured Home filter rules (if any) are always
+  /// applied on top; pass [applySearch] false for logic that must see the
+  /// full tab regardless of any of these (e.g. renumbering [Task.listRanking]
+  /// on save — see [_reorderTask]'s doc on why a narrowed list must never
+  /// drive that renumbering).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
     // Tab membership is a query over the one list (ItemViews); only the
-    // search predicate is home-page state.
+    // search predicate and the tag filter are home-page state.
     final query = applySearch ? _searchQuery.trim().toLowerCase() : '';
+    final tagFilter = applySearch ? widget.tagFilter : null;
+    bool Function(Task task)? where;
+    if (query.isNotEmpty || tagFilter != null) {
+      where = (task) =>
+          (query.isEmpty || _matchesSearch(task, query)) &&
+          (tagFilter == null || labelHasToken(task.label, tagFilter));
+    }
     return ItemViews.homeBucket(
       _tasks,
       pageIndex,
       _currentDate,
-      where: query.isEmpty ? null : (task) => _matchesSearch(task, query),
+      where: where,
       rules: applySearch ? Config.viewFilterRules[ViewFilterRules.home] : null,
     );
   }
@@ -3102,6 +3163,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
     _ToolEntry('fitness_activity', 'Fitness Activity', Icons.directions_run),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
+    _ToolEntry('worklist', 'Worklist', Icons.checklist),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —
@@ -3137,8 +3199,13 @@ class _HomePageState extends State<HomePage>
     // Keeps configured flame goals (see StreakGoal) able to tell a deleted
     // target task apart from one that just has not fired yet today.
     StreakService.instance.syncKnownTasks(_tasks);
-    final enabledTools =
-        _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
+    final enabledTools = _toolEntries
+        // A tag-filtered instance (Worklist) is itself the Worklist tool, so
+        // it never lists itself among the tools it can open.
+        .where((t) =>
+            Config.isFeatureEnabled(t.key) &&
+            !(widget.tagFilter != null && t.key == 'worklist'))
+        .toList();
     final pendingApprovalCount = ItemViews.waitingApproval(_tasks).length;
     final scaffold = Scaffold(
       key: homeScaffoldKey,
@@ -3149,7 +3216,7 @@ class _HomePageState extends State<HomePage>
               padding: const EdgeInsets.all(16), // adjust as you like
               color: Theme.of(context).colorScheme.primary,
               child: Text(
-                'BestToDo v${Config.version}',
+                '${widget.toolTitle ?? 'BestToDo'} v${Config.version}',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onPrimary,
                   fontSize: 18,
@@ -3366,7 +3433,7 @@ class _HomePageState extends State<HomePage>
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
-            : const Text('BestToDo'),
+            : Text(widget.toolTitle ?? 'BestToDo'),
         actions: [
           ValueListenableBuilder<int>(
             valueListenable: TaskMutationService.instance.revision,
