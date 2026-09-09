@@ -118,9 +118,12 @@ class HomePage extends StatefulWidget {
   /// When set, this instance shows only tasks whose label carries this tag
   /// (see [ItemViews.homeBucket]/`_tasksForTab`) — the same tab layout, add
   /// row and interactions as the regular home screen, narrowed to one tag.
-  /// Used by the Worklist tool (`tagFilter: 'mlr'`). A task created from this
-  /// instance's add-task row is stamped with the tag automatically. Null (the
-  /// default) is the regular, unfiltered home page.
+  /// Used by the Worklist tool (`tagFilter: worklistToken`). A task created
+  /// from this instance's add-task row is stamped with the tag
+  /// automatically. Null (the default) is the regular, unfiltered home page
+  /// — which, when [tagFilter] names [worklistToken], is also where those
+  /// tasks are hidden from (see [ItemViews.isVisibleInMainViews]): a task
+  /// tagged `mlr` shows only inside this Worklist instance, nowhere else.
   final String? tagFilter;
 
   /// App-bar/drawer-header title used in place of "BestToDo" while
@@ -1264,7 +1267,7 @@ class _HomePageState extends State<HomePage>
         // The home screen itself, narrowed to one tag: same tabs, add row,
         // search and interactions, just a second HomePage instance with its
         // own in-memory copy of the (shared, on-disk) task list.
-        return const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist');
+        return const HomePage(tagFilter: worklistToken, toolTitle: 'Worklist');
     }
     return null;
   }
@@ -2916,6 +2919,7 @@ class _HomePageState extends State<HomePage>
       _currentDate,
       where: where,
       rules: applySearch ? Config.viewFilterRules[ViewFilterRules.home] : null,
+      includeWorklistItems: widget.tagFilter != null,
     );
   }
 
@@ -3122,7 +3126,8 @@ class _HomePageState extends State<HomePage>
     final tagFilter = widget.tagFilter;
     final visibleTasks = _tasks
         .where((t) =>
-            ItemViews.isVisibleInMainViews(t) &&
+            ItemViews.isVisibleInMainViews(t,
+                includeWorklistItems: tagFilter != null) &&
             (query.isEmpty || _matchesSearch(t, query)) &&
             (tagFilter == null || labelHasToken(t.label, tagFilter)))
         .toList();

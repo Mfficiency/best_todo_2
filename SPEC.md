@@ -2769,6 +2769,23 @@ null for the regular home page):
   from a filtered instance still syncs/creates against the *full* list, never
   the mlr-only subset.
 
+**mlr tasks are exclusive to Worklist (0.2.39)**: an `mlr`-tagged task shows
+*only* inside Worklist now — everywhere else treats it like a Food Diary
+entry or Research item (10.6a/10.6b): hidden from the regular home tabs,
+schedule view, Wishlist, Projects/board and the Todoist Markdown export, even
+if it also carries a due date, `isWish`, or a `projectId`. Same mechanism as
+those two gates: `label_utils.dart`'s `worklistToken` (`'mlr'`) and
+`hasWorklistToken`, folded into `ItemViews.isVisibleInMainViews` as a fourth
+condition (`includeWorklistItems || !hasWorklistToken(task.label)`).
+`ItemViews.homeBucket` gained the `includeWorklistItems` parameter so the one
+caller that *is* the dedicated tool can still see them: `_tasksForTab` passes
+`includeWorklistItems: widget.tagFilter != null`, and `_buildScheduleBody`'s
+own direct `isVisibleInMainViews` call does the same off its local
+`tagFilter`. Every other `ItemViews` query (`wishlist`, `active`,
+`projectTasks`, `boardColumn`) and `TaskWidgetService.todayTasks` call
+`isVisibleInMainViews` with the gate left on, so they need no changes to
+pick up the exclusion.
+
 Registered like every other tool: `worklist` key in
 `Config.startToolOptions`/`featureKeys` (and their label/description arrays,
 appended after `weekly_hours_planner`), a `_ToolEntry` in home_page's drawer

@@ -105,6 +105,16 @@ bool isProtectedToken(String token) {
       protectedStateTokens.any((t) => t.toLowerCase() == lower);
 }
 
+/// Label token identifying a Worklist item (`home_page.dart`'s
+/// `tagFilter: 'mlr'`). Like [waitingApprovalToken], this gates the task out
+/// of every other view — home tabs, schedule view, wishlist, project boards,
+/// the home-screen widget — so it only ever appears inside the Worklist tool
+/// itself (see [ItemViews.isVisibleInMainViews]).
+const String worklistToken = 'mlr';
+
+/// Whether [label] carries the Worklist gate.
+bool hasWorklistToken(String label) => labelHasToken(label, worklistToken);
+
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[
   'priority-low',

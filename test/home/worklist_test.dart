@@ -140,6 +140,21 @@ void main() {
     );
   });
 
+  testWidgets(
+      'the regular (unfiltered) home page hides mlr-tagged tasks — they '
+      'show only in the Worklist tool', (tester) async {
+    final today = DateTime.now();
+    await tester.runAsync(() => StorageService().saveTaskList([
+          Task(title: 'Tagged worklist item', dueDate: today, label: 'mlr'),
+          Task(title: 'Unrelated task', dueDate: today),
+        ]));
+
+    await pumpHome(tester, const HomePage(), marker: 'Unrelated task');
+
+    expect(find.text('Unrelated task'), findsOneWidget);
+    expect(find.text('Tagged worklist item'), findsNothing);
+  });
+
   testWidgets('Worklist is listed under Tools in the drawer', (tester) async {
     await tester.runAsync(() => StorageService()
         .saveTaskList([Task(title: 'Alpha', dueDate: DateTime.now())]));

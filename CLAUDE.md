@@ -117,3 +117,13 @@ file is the short operational guide.
 - Don't introduce new deprecation warnings; existing `withOpacity`/
   `onWillAccept` infos are legacy and get cleaned opportunistically.
 - Changelog entries are user-facing bullet points under `## [x.y.z] - date`.
+- **Standing rule — MLR tag is Worklist-exclusive**: any task tagged/labeled
+  `mlr` shows *only* inside the Worklist tool, never in the regular home
+  tabs, schedule view, Wishlist, Projects/board, or the Markdown export —
+  the user has asked for this once and it does not need to be requested
+  again. Enforced structurally in `ItemViews.isVisibleInMainViews`
+  (`lib/services/item_views.dart`), the same gate Food Diary/Research use,
+  via `worklistToken`/`hasWorklistToken` in `lib/utils/label_utils.dart`.
+  When touching task-visibility filtering (home tabs, schedule view,
+  wishlist, projects, the home-screen widget), preserve this gate rather
+  than reintroducing a path that reads `_tasks`/the task list unfiltered.

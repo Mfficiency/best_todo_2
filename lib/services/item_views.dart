@@ -38,12 +38,19 @@ class ItemViews {
   /// Whether [task] belongs to every main view — home tabs, schedule view,
   /// wishlist, projects, the home-screen widget, Todoist sync — as opposed
   /// to being gated into exactly one dedicated tool. Combines the Todoist
-  /// approval gate with the Food Diary gate ([Task.isEatingHabit]) and the
-  /// Research gate ([Task.isResearch]): a food diary entry or a research
-  /// item is visible only in its own tool and, once deleted there, the
-  /// deleted/archived lists.
-  static bool isVisibleInMainViews(Task task) =>
-      isApproved(task) && !task.isEatingHabit && !task.isResearch;
+  /// approval gate with the Food Diary gate ([Task.isEatingHabit]), the
+  /// Research gate ([Task.isResearch]) and the Worklist gate
+  /// ([hasWorklistToken]): a food diary entry, research item, or task tagged
+  /// `mlr` is visible only in its own tool and, once deleted there, the
+  /// deleted/archived lists. [includeWorklistItems] lifts the Worklist gate
+  /// for the one caller that is that dedicated tool — the Worklist instance
+  /// of the home page itself (see [homeBucket]).
+  static bool isVisibleInMainViews(Task task,
+          {bool includeWorklistItems = false}) =>
+      isApproved(task) &&
+      !task.isEatingHabit &&
+      !task.isResearch &&
+      (includeWorklistItems || !hasWorklistToken(task.label));
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
@@ -182,16 +189,21 @@ class ItemViews {
   /// The tasks of home tab [tabIndex], sorted like the home list (open
   /// first, then by ranking). [where] adds an extra predicate (search).
   /// [rules] is the configured Home view filter, see [passesFilterRules].
+  /// [includeWorklistItems] is true only for the Worklist tool's own
+  /// instance of the home page, which reuses this same bucketing — see
+  /// [isVisibleInMainViews].
   static List<Task> homeBucket(
     List<Task> tasks,
     int tabIndex,
     DateTime today, {
     bool Function(Task task)? where,
     ViewFilterRules? rules,
+    bool includeWorklistItems = false,
   }) {
     final list = tasks
         .where((t) =>
-            isVisibleInMainViews(t) &&
+            isVisibleInMainViews(t,
+                includeWorklistItems: includeWorklistItems) &&
             (where == null || where(t)) &&
             inHomeBucket(t, tabIndex, today) &&
             passesFilterRules(t, rules))

@@ -213,7 +213,7 @@ class Config {
     'Completion stats and trends',
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
-    'The home screen, narrowed to tasks tagged "mlr"',
+    'The home screen, showing only tasks tagged "mlr" (hidden everywhere else)',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',

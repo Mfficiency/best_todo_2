@@ -140,6 +140,61 @@ void main() {
     });
   });
 
+  group('worklist (mlr tag)', () {
+    test('a task tagged mlr is hidden from every other view, even with a '
+        'due date and project assignment', () {
+      final worklistTask = Task(
+        title: 'mlr item',
+        dueDate: today,
+        label: 'mlr',
+        projectId: 'p1',
+      );
+      final ok = Task(title: 'normal', dueDate: today);
+      final boardTask = Task(title: 'board', projectId: 'p1');
+
+      expect(
+          ItemViews.homeBucket([worklistTask, ok], 0, today)
+              .map((t) => t.title),
+          ['normal']);
+      expect(ItemViews.active([worklistTask, ok]).map((t) => t.title),
+          ['normal']);
+      expect(
+          ItemViews.projectTasks([worklistTask, boardTask], 'p1')
+              .map((t) => t.title),
+          ['board']);
+      expect(
+          ItemViews.boardColumn(
+                  [worklistTask, boardTask], 'p1', Task.kanbanTodo)
+              .map((t) => t.title),
+          ['board']);
+      final wishAndMlr =
+          Task(title: 'wish and mlr', isWish: true, label: 'mlr');
+      final wish = Task(title: 'wish', isWish: true);
+      expect(ItemViews.wishlist([wish, wishAndMlr]).map((t) => t.title),
+          ['wish']);
+    });
+
+    test('homeBucket shows mlr tasks again when includeWorklistItems is set '
+        '(the Worklist tool itself)', () {
+      final worklistTask =
+          Task(title: 'mlr item', dueDate: today, label: 'mlr');
+      final ok = Task(title: 'normal', dueDate: today);
+      expect(
+          ItemViews.homeBucket([worklistTask, ok], 0, today,
+                  includeWorklistItems: true)
+              .map((t) => t.title)
+              .toSet(),
+          {'mlr item', 'normal'});
+    });
+
+    test('mlr tag matching is case-insensitive', () {
+      final worklistTask = Task(title: 'MLR item', dueDate: today, label: 'MLR');
+      expect(
+          ItemViews.homeBucket([worklistTask], 0, today).map((t) => t.title),
+          isEmpty);
+    });
+  });
+
   group('waiting for approval', () {
     Task pending(String title) =>
         Task(title: title, label: 'Waiting_for_approval');
