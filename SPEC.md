@@ -2704,12 +2704,14 @@ Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (inde
 "Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
 at the end of `_sectionTitles` to avoid renumbering the other twelve.
 
-### 10.6c Worklist (0.2.36)
+### 10.6c Worklist (0.2.36, streak/dice hidden + orange accent 0.2.37)
 Tools ▸ Worklist: the home screen itself — same tabs, add-task row, search,
-drag-reorder, swipe, undo/redo, schedule view, streak flame, dice timer button —
-narrowed to tasks whose label carries the `mlr` tag. Unlike every other tool
-(a dedicated page), Worklist is a *second `HomePage` instance*: `_buildToolPage`'s
-`'worklist'` case returns `const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
+drag-reorder, swipe, undo/redo, schedule view — narrowed to tasks whose label
+carries the `mlr` tag, minus the streak flame and dice timer, and tinted
+orange so it's visually distinct from the real home screen at a glance.
+Unlike every other tool (a dedicated page), Worklist is a *second `HomePage`
+instance*: `_buildToolPage`'s `'worklist'` case returns
+`const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
 `HomePage` gained two optional constructor fields, `tagFilter`/`toolTitle` (both
 null for the regular home page):
 - `_tasksForTab` folds `tagFilter` into its `where` predicate alongside search
@@ -2731,6 +2733,21 @@ null for the regular home page):
   after its full-screen alarm — so `initState` only claims them when
   `tagFilter == null`; a second instance would otherwise steal them from the
   primary home page for as long as it stays open.
+- The app-bar `StreakFlameButton` and dice-roll `IconButton` are both wrapped
+  in `widget.tagFilter == null` guards (rather than a `Config` feature flag,
+  which is app-wide) so a filtered instance simply never renders them; the
+  streak-completion celebration overlay (`_recordStreakToggle`) and the
+  task tile's double-tap "Start timer" menu (`onStartTimer`) get the same
+  guard, so no dice/streak UI is reachable from within Worklist even though
+  the underlying `StreakService` singleton still records completions made
+  there (it's the same tasks, same day — the primary home page's flame
+  should still reflect them).
+- `build()`'s final return wraps the page in a `Theme` that swaps in
+  `ColorScheme.fromSeed(seedColor: Colors.orange)` (keeping the ambient
+  theme's brightness/other settings via `copyWith`) whenever
+  `tagFilter != null`, tinting buttons, the selected-tab indicator, etc.
+  orange — the same per-page accent-override mechanism `alarm_ring_page.dart`
+  uses for its per-alarm colour.
 - `_maybeOpenStartTool` no-ops when `tagFilter != null` (a filtered instance
   must not also open the configured default start tool on top of itself), and
   the drawer's Tools list hides the `worklist` entry from within a filtered

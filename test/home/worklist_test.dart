@@ -5,6 +5,7 @@ import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/home_page.dart';
+import 'package:besttodo/ui/streak_flame_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -86,6 +87,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('New worklist item'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Worklist hides the streak flame and dice icons and uses an orange '
+      'accent', (tester) async {
+    await tester.runAsync(() => StorageService().saveTaskList([
+          Task(
+              title: 'Tagged worklist item',
+              dueDate: DateTime.now(),
+              label: 'mlr'),
+        ]));
+
+    await pumpHome(
+      tester,
+      const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist'),
+      marker: 'Tagged worklist item',
+    );
+
+    expect(find.byType(StreakFlameButton), findsNothing);
+    expect(find.byIcon(Icons.casino), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+          (w) => w is Theme && w.data.colorScheme.primary == Colors.orange),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Worklist is listed under Tools in the drawer', (tester) async {
