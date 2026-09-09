@@ -1843,8 +1843,10 @@ explicit user-chosen time.
 Social-accountability feature: a scheduled daily SMS with today's completed/uncompleted
 counts and remaining list. Config (`sms_report_config.json`): enabled (default off), time
 (default 22:00), message template with tokens `{hello}{nickname}{completed}{uncompleted}
-{date}{list}`, recipients (nickname+phone+`enabled`), `subscriptionId` (-1 = default SIM;
-dual-SIM support), optional completion-rate threshold (only send on days below X%).
+{date}{list}`, recipients (nickname+phone+`enabled`), `templates` — a library of named
+alternate templates (§7's "Per-recipient templates and timing"), `subscriptionId` (-1 =
+default SIM; dual-SIM support), optional completion-rate threshold (only send on days
+below X%).
 
 **Recipient pause switch (0.1.117):** each recipient carries `enabled` (default true;
 missing key in older payloads reads as true). Settings shows a `Switch` per row next to
@@ -1854,24 +1856,62 @@ so it never has to be re-typed; editing a paused recipient preserves the flag.
 now" both skip paused contacts; an all-disabled list logs "Skipped — all N recipient(s)
 disabled" and the send diag reports "Sent x/y (N disabled)".
 
-**Scheduling:** exact **one-shot self-re-arming chain** (`oneShotAt` →
-`setExactAndAllowWhileIdle`, fixed id `0x517D`), NOT `periodic` (maps to `setRepeating`:
-inexact since API 19, deferred indefinitely in Doze — this was a real bug). The callback
-(background isolate; binding+registrant first) logs "Alarm fired" (proves background
-delivery), **re-arms tomorrow before running the report** (crash-safe chain), then sends.
-`applyFromConfig()` on every launch restores a force-stopped chain; ≥1 min headroom
-prevents same-day double-fire.
+**Per-recipient templates and timing:** each `SmsRecipient` also carries an optional
+`templateId` and optional `hour`/`minute`. `SmsReportConfig.templates` is a named library
+of `SmsMessageTemplate` (`id`, `name`, `body`) a recipient can be pointed at instead of the
+config's single default `template`; `SmsReportConfig.templateBodyFor(recipient)` resolves
+the body to send — the named template if `templateId` matches one, else the default
+(including when the template was since deleted, which also clears the recipient's
+`templateId` in Settings so nothing dangles). `SmsReportConfig.timeFor(recipient)` resolves
+the (hour, minute) to send at — the recipient's own `hour`/`minute` if both are set, else
+the config's global send time. Recipients saved before either feature existed have no
+`templateId`/`hour`/`minute` and so behave exactly as before (default template, global
+time) — purely additive, nothing to migrate. Settings' recipient dialog exposes both: a
+"Message template" dropdown (Default + each named template) and a "Custom send time"
+switch revealing a time picker when on; the "Named templates" section (its own
+add/edit/delete list, separate from the default template editor) manages the library.
+
+**Scheduling:** one exact **one-shot self-re-arming alarm per distinct time slot** in use
+(`oneShotAt` → `setExactAndAllowWhileIdle`), NOT `periodic` (maps to `setRepeating`: inexact
+since API 19, deferred indefinitely in Doze — this was a real bug). A "slot" is a distinct
+`hour*60+minute` among all active recipients' effective times
+(`SmsReportScheduler.activeSlotMinutes`) — recipients without their own time share the
+config's global slot, so a single-time setup (the common case, and every config before
+per-recipient timing) still arms exactly one alarm, unchanged. Each slot's alarm id is
+`0x20002000 + minuteOfDay` (`SmsReportScheduler`'s private `_kSmsSlotAlarmBase` range,
+1440 possible ids, documented alongside `alarm_ids.dart`'s id-space layout to avoid
+collision with the primary alarm/watchdog id ranges); the legacy single fixed id (`0x517D`,
+`kSmsReportAlarmId`) is only kept around so `schedule()`/`cancel()` can clear an alarm still
+pending under it after an app update. The currently-armed slot ids are tracked in a small
+`SharedPreferences` registry (`sms_report_slot_alarm_ids_v1`) so `schedule()` can cancel
+slots no longer in use (a recipient's time changed, or they were disabled/removed) —
+the same "registry of ids, cancel-stale-then-arm-new" idiom `AlarmWatchdog` uses for its
+own alarms.
+
+The callback (background isolate; binding+registrant first) receives the id of the alarm
+that fired (`android_alarm_manager_plus` passes it through, same as `alarmWatchdogCallback`)
+and decodes it back into a minute-of-day; logs "Alarm fired [for slot HH:MM]" (proves
+background delivery), **re-arms every slot's next occurrence before running the report**
+(`applyFromConfig()` recomputes and re-schedules the whole set — crash-safe, and correct
+per-slot: `_nextFireTime` only rolls a slot to tomorrow once it is no longer >1 min in the
+future, so firing one slot's alarm mid-day does not disturb a later slot's same-day
+firing). `SmsReportService.runDailyReport(slotMinuteOfDay: ...)` then sends only to the
+recipients whose effective time matches that slot — each slot's own alarm, so no
+cross-slot bookkeeping/dedup is needed. "Send test now" and the alarm callback's initial
+`applyFromConfig()` call `runDailyReport()` with no slot, which processes every active
+recipient regardless of timing (unchanged manual/test behavior). `applyFromConfig()` on
+every launch restores a force-stopped chain; ≥1 min headroom prevents same-day double-fire.
 
 **Permissions strategy:** requested in the **foreground** when the user enables the report
 (SMS, exact alarm, ignore-battery-optimizations, notifications) — a background isolate has
 no Activity and cannot show a permission dialog, so the send would be silently skipped.
 
-**Sending:** per enabled recipient, render template, auto-multipart when >160 ASCII / >70 unicode
-chars (carriers silently drop over-length single parts), send via `another_telephony` with
-a 20 s status-listener timeout. Everything logged to `sms_report_log.json` (500 entries,
-send + diag kinds) with an in-app viewer and export. "Send test now" calls the report
-directly — the fact that test-send worked while the alarm never fired was the diagnostic
-clue for the missing-receiver bug.
+**Sending:** per matched recipient, render their resolved template (`templateBodyFor`),
+auto-multipart when >160 ASCII / >70 unicode chars (carriers silently drop over-length
+single parts), send via `another_telephony` with a 20 s status-listener timeout. Everything
+logged to `sms_report_log.json` (500 entries, send + diag kinds) with an in-app viewer and
+export. "Send test now" calls the report directly — the fact that test-send worked while
+the alarm never fired was the diagnostic clue for the missing-receiver bug.
 
 ## 8. Home-screen widgets (Android)
 

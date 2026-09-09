@@ -120,7 +120,14 @@ class SmsReportService {
 
   /// Loads config, computes summary, sends SMS to each recipient, logs each.
   /// Returns the number of successful sends.
-  static Future<int> runDailyReport() async {
+  ///
+  /// [slotMinuteOfDay] (0..1439, `hour * 60 + minute`) scopes the run to
+  /// only the recipients whose effective send time ([SmsReportConfig.timeFor])
+  /// falls in that slot — how the per-recipient-timing alarm chain in
+  /// [SmsReportScheduler] fires one time slot at a time. Null (manual "Send
+  /// test now") processes every active recipient regardless of their time,
+  /// same as before per-recipient timing existed.
+  static Future<int> runDailyReport({int? slotMinuteOfDay}) async {
     final config = await SmsReportConfigService.load();
 
     if (!config.enabled) {
@@ -131,12 +138,25 @@ class SmsReportService {
       await _diag('Skipped — no recipients configured', success: false);
       return 0;
     }
-    final recipients = config.activeRecipients;
+    var recipients = config.activeRecipients;
     if (recipients.isEmpty) {
       await _diag(
           'Skipped — all ${config.recipients.length} recipient(s) disabled',
           success: false);
       return 0;
+    }
+    if (slotMinuteOfDay != null) {
+      recipients = recipients
+          .where((r) =>
+              _minuteOfDay(config.timeFor(r)) == slotMinuteOfDay)
+          .toList();
+      if (recipients.isEmpty) {
+        await _diag(
+            'Skipped — no active recipients scheduled for '
+            '${_fmtMinuteOfDay(slotMinuteOfDay)}',
+            success: false);
+        return 0;
+      }
     }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       await _diag('Skipped — not on Android', success: false);
@@ -200,7 +220,7 @@ class SmsReportService {
         continue;
       }
       final message = renderTemplate(
-        template: config.template,
+        template: config.templateBodyFor(recipient),
         recipient: recipient,
         summary: summary,
       );
@@ -263,8 +283,10 @@ class SmsReportService {
     }
 
     final total = summary.completedCount + summary.uncompletedCount;
-    final paused = config.recipients.length - recipients.length;
-    await _diag('Sent $sent/${recipients.length}'
+    final paused = config.recipients.length - config.activeRecipients.length;
+    final slotLabel =
+        slotMinuteOfDay == null ? '' : ' • slot ${_fmtMinuteOfDay(slotMinuteOfDay)}';
+    await _diag('Sent $sent/${recipients.length}$slotLabel'
         '${paused > 0 ? ' ($paused disabled)' : ''} • '
         '${summary.completedCount}/$total done (${thresholdCheck.percent}%)');
     return sent;
@@ -274,4 +296,6 @@ class SmsReportService {
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
   static String _two(int n) => n.toString().padLeft(2, '0');
+  static int _minuteOfDay(({int hour, int minute}) t) => t.hour * 60 + t.minute;
+  static String _fmtMinuteOfDay(int m) => '${_two(m ~/ 60)}:${_two(m % 60)}';
 }

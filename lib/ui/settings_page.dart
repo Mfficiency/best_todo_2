@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../main.dart';
+import '../models/sms_message_template.dart';
 import '../models/sms_recipient.dart';
 import '../models/sms_report_config.dart';
 import '../models/streak_kind.dart';
@@ -461,32 +462,174 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _editSmsRecipient({SmsRecipient? existing, int? index}) async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
     final nicknameController =
         TextEditingController(text: existing?.nickname ?? '');
     final phoneController =
         TextEditingController(text: existing?.phoneNumber ?? '');
+    final validTemplateIds = cfg.templates.map((t) => t.id).toSet();
+    String? selectedTemplateId;
+    if (existing != null && validTemplateIds.contains(existing.templateId)) {
+      selectedTemplateId = existing.templateId;
+    }
+    var customTime = existing?.hour != null && existing?.minute != null;
+    var pickedHour = existing?.hour ?? cfg.hour;
+    var pickedMinute = existing?.minute ?? cfg.minute;
 
     final result = await showDialog<SmsRecipient>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(existing == null ? 'Add recipient' : 'Edit recipient'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nicknameController,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Nickname'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(existing == null ? 'Add recipient' : 'Edit recipient'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nicknameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Nickname'),
+                ),
+                TextField(
+                  controller: phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: '+1234567890',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: selectedTemplateId,
+                  decoration:
+                      const InputDecoration(labelText: 'Message template'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Default'),
+                    ),
+                    ...cfg.templates.map((t) => DropdownMenuItem<String?>(
+                          value: t.id,
+                          child: Text(t.name.isEmpty ? '(unnamed)' : t.name),
+                        )),
+                  ],
+                  onChanged: (v) =>
+                      setDialogState(() => selectedTemplateId = v),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Custom send time'),
+                  subtitle: Text(customTime
+                      ? _formatHour24(pickedHour, pickedMinute)
+                      : 'Use the report\'s send time'),
+                  value: customTime,
+                  onChanged: (v) => setDialogState(() => customTime = v),
+                ),
+                if (customTime)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_formatHour24(pickedHour, pickedMinute)),
+                    trailing: const Icon(Icons.schedule),
+                    onTap: () async {
+                      final picked = await pickTimeOfDay(
+                        context,
+                        TimeOfDay(hour: pickedHour, minute: pickedMinute),
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          pickedHour = picked.hour;
+                          pickedMinute = picked.minute;
+                        });
+                      }
+                    },
+                  ),
+              ],
             ),
-            TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone number',
-                hintText: '+1234567890',
-              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final phone = phoneController.text.trim();
+                if (phone.isEmpty) return;
+                Navigator.of(context).pop(SmsRecipient(
+                  nickname: nicknameController.text.trim(),
+                  phoneNumber: phone,
+                  // Editing must not silently re-enable a paused recipient.
+                  enabled: existing?.enabled ?? true,
+                  templateId: selectedTemplateId,
+                  hour: customTime ? pickedHour : null,
+                  minute: customTime ? pickedMinute : null,
+                ));
+              },
+              child: const Text('Save'),
             ),
           ],
+        ),
+      ),
+    );
+
+    if (result == null) return;
+    setState(() {
+      if (index == null) {
+        cfg.recipients.add(result);
+      } else {
+        cfg.recipients[index] = result;
+      }
+    });
+    await _persistSms();
+  }
+
+  String? _smsTemplateName(SmsReportConfig cfg, String? id) {
+    if (id == null) return null;
+    for (final t in cfg.templates) {
+      if (t.id == id) return t.name;
+    }
+    return null;
+  }
+
+  Future<void> _editSmsTemplate(
+      {SmsMessageTemplate? existing, int? index}) async {
+    final cfg = _smsConfig;
+    if (cfg == null) return;
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final bodyController =
+        TextEditingController(text: existing?.body ?? kDefaultSmsTemplate);
+
+    final result = await showDialog<SmsMessageTemplate>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(existing == null ? 'Add template' : 'Edit template'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Tokens: {hello} {nickname} {completed} {uncompleted} {date} {list}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              TextField(
+                controller: bodyController,
+                maxLines: 8,
+                minLines: 4,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -495,13 +638,13 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           TextButton(
             onPressed: () {
-              final phone = phoneController.text.trim();
-              if (phone.isEmpty) return;
-              Navigator.of(context).pop(SmsRecipient(
-                nickname: nicknameController.text.trim(),
-                phoneNumber: phone,
-                // Editing must not silently re-enable a paused recipient.
-                enabled: existing?.enabled ?? true,
+              final name = nameController.text.trim();
+              if (name.isEmpty) return;
+              Navigator.of(context).pop(SmsMessageTemplate(
+                id: existing?.id ??
+                    'tpl_${DateTime.now().microsecondsSinceEpoch}',
+                name: name,
+                body: bodyController.text,
               ));
             },
             child: const Text('Save'),
@@ -511,13 +654,26 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     if (result == null) return;
+    setState(() {
+      if (index == null) {
+        cfg.templates.add(result);
+      } else {
+        cfg.templates[index] = result;
+      }
+    });
+    await _persistSms();
+  }
+
+  /// Deleting a template must not leave dangling references — recipients
+  /// pointed at it fall back to the default template instead.
+  Future<void> _removeSmsTemplate(int index) async {
     final cfg = _smsConfig;
     if (cfg == null) return;
     setState(() {
-      if (index == null) {
-        cfg.recipients.add(result);
-      } else {
-        cfg.recipients[index] = result;
+      final removedId = cfg.templates[index].id;
+      cfg.templates.removeAt(index);
+      for (final r in cfg.recipients) {
+        if (r.templateId == removedId) r.templateId = null;
       }
     });
     await _persistSms();
@@ -1340,13 +1496,21 @@ class _SettingsPageState extends State<SettingsPage> {
             final r = cfg.recipients[i];
             final label = r.nickname.isEmpty ? '(no nickname)' : r.nickname;
             final dimmed = Theme.of(context).disabledColor;
+            final subtitleParts = [
+              r.enabled ? r.phoneNumber : '${r.phoneNumber} • disabled',
+            ];
+            if (r.hour != null && r.minute != null) {
+              subtitleParts.add(_formatHour24(r.hour!, r.minute!));
+            }
+            final templateName = _smsTemplateName(cfg, r.templateId);
+            if (templateName != null) subtitleParts.add(templateName);
             return ListTile(
               title: Text(
                 label,
                 style: r.enabled ? null : TextStyle(color: dimmed),
               ),
               subtitle: Text(
-                r.enabled ? r.phoneNumber : '${r.phoneNumber} • disabled',
+                subtitleParts.join(' • '),
                 style: r.enabled ? null : TextStyle(color: dimmed),
               ),
               trailing: Row(
@@ -1420,6 +1584,69 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                'Named templates',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Add template',
+                icon: const Icon(Icons.add),
+                onPressed: () => _editSmsTemplate(),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Give a recipient their own message by choosing one of these '
+            'when editing them; recipients left on "Default" use the '
+            'template above.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        if (cfg.templates.isEmpty)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text('No named templates yet'),
+          )
+        else
+          ...List<Widget>.generate(cfg.templates.length, (i) {
+            final t = cfg.templates[i];
+            return ListTile(
+              title: Text(t.name.isEmpty ? '(unnamed)' : t.name),
+              subtitle: Text(
+                t.body.replaceAll('\n', ' '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Edit template',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.edit),
+                    onPressed: () => _editSmsTemplate(existing: t, index: i),
+                  ),
+                  IconButton(
+                    tooltip: 'Remove template',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _removeSmsTemplate(i),
+                  ),
+                ],
+              ),
+            );
+          }),
         ListTile(
           leading: const Icon(Icons.history),
           title: const Text('Sent message history'),

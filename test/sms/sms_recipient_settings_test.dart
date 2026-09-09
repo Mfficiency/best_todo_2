@@ -138,4 +138,42 @@ void main() {
     final saved = await tester.runAsync(() => SmsReportConfigService.load());
     expect(saved!.activeRecipients.single.nickname, 'Ann');
   });
+
+  testWidgets('a named template can be added and removed', (tester) async {
+    await openRecipients(tester);
+
+    await tapVisible(tester, find.byTooltip('Add template'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Cheerful');
+    await tester.tap(find.text('Save'));
+    await settle(tester);
+
+    expect(find.text('Cheerful'), findsOneWidget);
+    var saved = await tester.runAsync(() => SmsReportConfigService.load());
+    expect(saved!.templates.single.name, 'Cheerful');
+
+    await tapVisible(tester, find.byTooltip('Remove template'));
+    await settle(tester);
+
+    expect(find.text('Cheerful'), findsNothing);
+    saved = await tester.runAsync(() => SmsReportConfigService.load());
+    expect(saved!.templates, isEmpty);
+  });
+
+  testWidgets('a recipient can be given their own send time', (tester) async {
+    await openRecipients(tester);
+
+    await tapVisible(tester, find.byTooltip('Edit recipient').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Custom send time'), findsOneWidget);
+    await tester.tap(find.text('Custom send time'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await settle(tester);
+
+    final saved = await tester.runAsync(() => SmsReportConfigService.load());
+    final ann = saved!.recipients.firstWhere((r) => r.nickname == 'Ann');
+    expect(ann.hour, isNotNull);
+    expect(ann.minute, isNotNull);
+  });
 }

@@ -1,3 +1,4 @@
+import 'sms_message_template.dart';
 import 'sms_recipient.dart';
 
 /// Default template tokens:
@@ -20,6 +21,11 @@ class SmsReportConfig {
   String template;
   List<SmsRecipient> recipients;
 
+  /// Named alternate templates a recipient can be pointed at via
+  /// [SmsRecipient.templateId] instead of [template] (the default, still
+  /// used by every recipient that doesn't choose one of these).
+  List<SmsMessageTemplate> templates;
+
   /// Android SIM subscription id for sending. -1 = system default.
   /// On dual-SIM devices try 0, 1, or actual subscription ids from
   /// Android Settings → SIMs if the default fails silently.
@@ -40,18 +46,42 @@ class SmsReportConfig {
     this.minute = 0,
     this.template = kDefaultSmsTemplate,
     List<SmsRecipient>? recipients,
+    List<SmsMessageTemplate>? templates,
     this.subscriptionId = -1,
     this.thresholdEnabled = false,
     this.completionThresholdPercent = 50,
-  }) : recipients = recipients ?? <SmsRecipient>[];
+  })  : recipients = recipients ?? <SmsRecipient>[],
+        templates = templates ?? <SmsMessageTemplate>[];
 
   /// Recipients the daily report actually sends to — paused ones stay in the
   /// list (and in Settings) but are skipped.
   List<SmsRecipient> get activeRecipients =>
       recipients.where((r) => r.enabled).toList();
 
+  /// The message body [recipient] should be sent — their chosen named
+  /// template, or [template] when they have none (or it was since deleted).
+  String templateBodyFor(SmsRecipient recipient) {
+    final id = recipient.templateId;
+    if (id != null && id.isNotEmpty) {
+      for (final t in templates) {
+        if (t.id == id) return t.body;
+      }
+    }
+    return template;
+  }
+
+  /// The (hour, minute) [recipient] should be messaged at — their own
+  /// override, or the report's global send time when they have none.
+  ({int hour, int minute}) timeFor(SmsRecipient recipient) {
+    final h = recipient.hour;
+    final m = recipient.minute;
+    if (h != null && m != null) return (hour: h, minute: m);
+    return (hour: hour, minute: minute);
+  }
+
   factory SmsReportConfig.fromJson(Map<String, dynamic> json) {
     final list = json['recipients'];
+    final templateList = json['templates'];
     return SmsReportConfig(
       enabled: json['enabled'] as bool? ?? false,
       hour: (json['hour'] as num?)?.toInt().clamp(0, 23) ?? 22,
@@ -63,6 +93,13 @@ class SmsReportConfig {
               .map((e) => SmsRecipient.fromJson(Map<String, dynamic>.from(e)))
               .toList()
           : <SmsRecipient>[],
+      templates: templateList is List
+          ? templateList
+              .whereType<Map>()
+              .map((e) =>
+                  SmsMessageTemplate.fromJson(Map<String, dynamic>.from(e)))
+              .toList()
+          : <SmsMessageTemplate>[],
       subscriptionId: (json['subscriptionId'] as num?)?.toInt() ?? -1,
       thresholdEnabled: json['thresholdEnabled'] as bool? ?? false,
       completionThresholdPercent:
@@ -77,6 +114,7 @@ class SmsReportConfig {
         'minute': minute,
         'template': template,
         'recipients': recipients.map((r) => r.toJson()).toList(),
+        'templates': templates.map((t) => t.toJson()).toList(),
         'subscriptionId': subscriptionId,
         'thresholdEnabled': thresholdEnabled,
         'completionThresholdPercent': completionThresholdPercent,

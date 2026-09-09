@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.37] - 2026-09-09
+- SMS report: recipients can now be given their own named message template (Settings → SMS report → Named templates) and/or their own send time, independent of the report's default template and send time
+
 ## [0.2.36] - 2026-09-09
 - New tool: Worklist — the home screen (tabs, add-task row, search, everything) narrowed to only tasks tagged "mlr"
 
