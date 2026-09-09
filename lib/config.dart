@@ -552,6 +552,15 @@ class Config {
   /// every other value in this file — the app has no secret-storage layer.
   static String todoistApiToken = '';
 
+  /// GitHub fine-grained personal access token, scoped to Issues on this
+  /// repo only. Used by `GithubWishlistService` for exactly one call: opening
+  /// a `wishlist-build`-labeled issue when a wishlist item is sent to the
+  /// build automation (Tools → Wishlist → swipe → Build). See
+  /// `.claude/notes/automation.md` for the routine that watches those issues.
+  /// Stored in plain text like [todoistApiToken] — same no-secret-storage
+  /// caveat applies.
+  static String githubWishlistToken = '';
+
   /// If true, the app polls GitHub for a newer build every minute while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
   /// appears, asks whether to download and install it — see Settings →
@@ -640,6 +649,7 @@ class Config {
       'syncFolderPath': syncFolderPath,
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
+      'githubWishlistToken': githubWishlistToken,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
@@ -772,6 +782,8 @@ class Config {
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
     todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
+    githubWishlistToken =
+        data['githubWishlistToken'] as String? ?? githubWishlistToken;
     // Settings files from before automatic checks existed have no key. Use
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.

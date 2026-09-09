@@ -13,6 +13,7 @@ import '../models/streak_reminder.dart';
 import '../models/sync_log_entry.dart';
 import '../models/view_filter_rules.dart';
 import '../services/auto_backup_service.dart';
+import '../services/github_wishlist_service.dart';
 import '../services/google_calendar_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
@@ -54,7 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    14,
+    15,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -72,6 +73,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Sync & export',
     'Backup',
     'Weekly Hours Planner',
+    'Wishlist build',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -115,7 +117,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
   final Set<int> _collapsedSections = {
-    for (var i = 0; i < 14; i++) i,
+    for (var i = 0; i < 15; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
@@ -228,6 +230,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'grid hour range day begin flexitime'),
     _SettingsSearchEntry('Weekly Hours Planner end hour', 13,
         'grid hour range day end flexitime'),
+    _SettingsSearchEntry('GitHub token', 14,
+        'wishlist build automation issue pat personal access token next build'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -283,6 +287,12 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _todoistTesting = false;
   String? _todoistTestResult;
   bool _todoistTestSucceeded = false;
+  final TextEditingController _githubTokenController =
+      TextEditingController(text: Config.githubWishlistToken);
+  bool _githubTokenObscured = true;
+  bool _githubTesting = false;
+  String? _githubTestResult;
+  bool _githubTestSucceeded = false;
   int _weeklyHoursStartHour = Config.weeklyHoursStartHour;
   int _weeklyHoursEndHour = Config.weeklyHoursEndHour;
   final TextEditingController _googleCalendarUrlController =
@@ -334,6 +344,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _syncFolderPath = Config.syncFolderPath;
     _todoistSyncEnabled = Config.todoistSyncEnabled;
     _todoistTokenController.text = Config.todoistApiToken;
+    _githubTokenController.text = Config.githubWishlistToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
     _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
     _weeklyHoursStartHour = Config.weeklyHoursStartHour;
@@ -2082,6 +2093,138 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _persistGithubToken() async {
+    Config.githubWishlistToken = _githubTokenController.text.trim();
+    await Config.save();
+  }
+
+  Future<void> _saveGithubToken() async {
+    await _persistGithubToken();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('GitHub token saved')),
+    );
+  }
+
+  Future<void> _testGithubConnection() async {
+    final token = _githubTokenController.text.trim();
+    if (token.isEmpty) {
+      setState(() {
+        _githubTestResult = 'Enter a token first';
+        _githubTestSucceeded = false;
+      });
+      return;
+    }
+    setState(() {
+      _githubTesting = true;
+      _githubTestResult = null;
+    });
+    try {
+      await GithubWishlistService.instance.testConnection(token);
+      if (!mounted) return;
+      setState(() {
+        _githubTestResult = 'Connected';
+        _githubTestSucceeded = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _githubTestResult = e is GithubApiException
+            ? (e.statusCode == 401
+                ? 'Invalid token'
+                : e.statusCode == 404
+                    ? 'Token can\'t see the repo — check the Issues permission'
+                    : e.message)
+            : e.toString();
+        _githubTestSucceeded = false;
+      });
+    } finally {
+      if (mounted) setState(() => _githubTesting = false);
+    }
+  }
+
+  /// Settings → Wishlist build: the GitHub token used by Tools → Wishlist's
+  /// "Send to build" swipe action to open a `wishlist-build`-labeled issue.
+  /// A daily Claude Code Remote routine (5pm, plus on demand) picks those up,
+  /// implements the item and pushes straight to `dev` — see
+  /// `.claude/notes/automation.md`.
+  Widget _buildWishlistBuildSection() {
+    return _buildSection(
+      index: 14,
+      title: 'Wishlist build',
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Text(
+            'Lets Tools → Wishlist\'s "Send to build" action open a GitHub '
+            'issue for a wishlist item, which the daily build automation '
+            'picks up, implements and pushes to dev. Create a fine-grained '
+            'personal access token at github.com/settings/tokens, scoped to '
+            'the ${GithubWishlistService.owner}/${GithubWishlistService.repo} '
+            'repository only with "Issues" set to Read and write — no other '
+            'permissions needed.',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _githubTokenController,
+            obscureText: _githubTokenObscured,
+            decoration: InputDecoration(
+              labelText: 'GitHub token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip: _githubTokenObscured ? 'Show token' : 'Hide token',
+                icon: Icon(_githubTokenObscured
+                    ? Icons.visibility
+                    : Icons.visibility_off),
+                onPressed: () => setState(
+                    () => _githubTokenObscured = !_githubTokenObscured),
+              ),
+            ),
+            onSubmitted: (_) => _saveGithubToken(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _saveGithubToken,
+                icon: const Icon(Icons.save),
+                label: const Text('Save token'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _githubTesting ? null : _testGithubConnection,
+                icon: _githubTesting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.wifi_tethering),
+                label: const Text('Test connection'),
+              ),
+            ],
+          ),
+        ),
+        if (_githubTestResult != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              _githubTestResult!,
+              style: TextStyle(
+                color: _githubTestSucceeded
+                    ? Colors.green
+                    : Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Future<void> _setAutoUpdateCheckEnabled(bool value) async {
     setState(() => _autoUpdateCheckEnabled = value);
     Config.autoUpdateCheckEnabled = value;
@@ -2437,6 +2580,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _smsTemplateController.dispose();
     _searchController.dispose();
     _todoistTokenController.dispose();
+    _githubTokenController.dispose();
     _googleCalendarUrlController.dispose();
     for (final controller in _filterTagControllers.values) {
       controller.dispose();
@@ -2916,6 +3060,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         _buildBackupSection(),
                         if (_isSectionVisible(13))
                           _buildWeeklyHoursPlannerSection(),
+                        _buildWishlistBuildSection(),
                       ],
               ),
             ),

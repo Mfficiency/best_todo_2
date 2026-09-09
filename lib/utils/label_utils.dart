@@ -123,6 +123,14 @@ const List<String> releaseGroupTokens = <String>[
   releaseSoonToken,
 ];
 
+/// Marks a wishlist item as dispatched to the build automation — the "Send
+/// to build" swipe action opens a `wishlist-build`-labeled GitHub issue and
+/// stamps this token so the item won't be sent twice. Deliberately separate
+/// from [releaseGroupTokens]: those name a human's release-planning intent,
+/// this one names an already-taken automation action. See
+/// `.claude/notes/automation.md`.
+const String nextBuildToken = 'next-build';
+
 /// Splits a task's label string into its distinct tokens, order-preserving.
 List<String> splitLabelTokens(String label) {
   final seen = <String>{};

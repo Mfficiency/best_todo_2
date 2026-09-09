@@ -2342,6 +2342,38 @@ anything first. The user pastes the prompt into a Claude session with Todoist ac
 BestToDo picks up the resulting tag changes on its next Todoist sync. Confirms with a
 snackbar reminding the user to sync after pasting.
 
+**Send to build (0.2.35):** the options-swipe row's "Build" button
+(`Icons.rocket_launch`) dispatches one item to the build automation:
+`GithubWishlistService.createWishlistIssue` (`lib/services/
+github_wishlist_service.dart`, a thin `http`-based wrapper matching
+`TodoistApiClient`'s shape) opens a `wishlist-build`-labeled GitHub issue on
+`Mfficiency/best_todo_2`, titled from the item and bodied with
+`wishlistIssueBody(item)` — `buildSelectedWishesPrompt([item])`'s text (the
+same "Copy selected as prompt" already produces) plus a `Wishlist item uid:
+<uid>` trailer (`wishlistIssueUidPrefix`) the build routine parses back out,
+since the issue's title/description alone carry no client-side id for it to
+match a `ShippedWish` entry against. Only once that call succeeds does
+`_WishlistPageState._sendToBuild` stamp the item with the `next-build` label
+token (`nextBuildToken` in `label_utils.dart`) — deliberately a separate
+token from `release-next`/`release-soon`, since those name a human's release
+plan and this one names an already-taken automation action. An item already
+carrying the token shows "Queued" (icon `Icons.check_circle`) instead of
+"Build" and the button is disabled — no duplicate issue. Untagging (e.g.
+editing the label by hand) is local only: it does not close or touch the
+GitHub issue. With no token configured, or on any API failure, a snackbar
+explains why and the item is left untagged so it can be retried
+(`isQueuedForBuild(task)` is the query helper). The token itself is a
+GitHub fine-grained PAT scoped to Issues-only on this one repo, entered in
+Settings → Wishlist build (`_SettingsPageState._buildWishlistBuildSection`,
+section index 14) and stored in plain text like `Config.todoistApiToken` —
+save/test-connection mirror the Todoist sync section's fields. A Claude Code
+Remote routine (daily 17:00, plus on demand) watches for open
+`wishlist-build` issues, implements each and pushes straight to `dev` — no
+PR/approval step by design, matching the "bump, sync and build" workflow's
+own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
+itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
+does for any other `dev` push — no separate delivery mechanism was needed.
+
 **Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
 numbers in descriptions are auto-linkified by `LinkifiedText`
 (`lib/utils/linkified_text.dart`): a StatefulWidget that renders `Text.rich` with
@@ -2363,8 +2395,9 @@ AnimatedSlide, 100 px/500 velocity thresholds, directions honor
 `Config.swipeLeftDelete`, GestureDetector on Android/web), but the two
 swipe directions no longer prioritize/delete:
 
-- **Options swipe** (right by default) opens a Share/Copy/Export/Delete shortcut
-  row — each button is a `TextButton.icon` (icon beside its label) — with a
+- **Options swipe** (right by default) opens a Build/Share/Copy/Export/Delete
+  shortcut row (a `Wrap`, so a narrow phone wraps to a second line instead of
+  overflowing) — each button is a `TextButton.icon` (icon beside its label) — with a
   `wishlistSweepDelay` (8s; deliberately longer than the app-wide
   `Config.delayDuration` 5s undo delay used elsewhere, since misreading one of
   four buttons costs more) countdown bar. "Share" calls `SharePlus.instance.share`
