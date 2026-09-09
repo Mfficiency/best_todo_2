@@ -2,6 +2,9 @@
 
 ## [0.2.37] - 2026-09-09
 - Worklist: hid the streak flame and dice-timer icons (and the double-tap "Start timer" menu) — it now shows only the tabs, add-task row and search, and tints its accent color orange so it's visually distinct from the real home screen
+- Local build: 2026-09-09 17:48
+- Build duration (apk): 2m 14s
+- Build duration (windows): 1m 13s
 
 ## [0.2.36] - 2026-09-09
 - New tool: Worklist — the home screen (tabs, add-task row, search, everything) narrowed to only tasks tagged "mlr"
