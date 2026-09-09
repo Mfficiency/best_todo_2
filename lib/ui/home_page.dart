@@ -1084,6 +1084,7 @@ class _HomePageState extends State<HomePage>
       if (firstOfDay &&
           Config.showStreak &&
           Config.streakCompletionAnimation &&
+          widget.tagFilter == null &&
           mounted) {
         showStreakCelebration(
             context, StreakService.instance.currentStreak(now: _currentDate));
@@ -3053,7 +3054,8 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
-      onStartTimer: () => _startTaskTimer(task),
+      onStartTimer:
+          widget.tagFilter == null ? () => _startTaskTimer(task) : null,
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
@@ -3473,16 +3475,18 @@ class _HomePageState extends State<HomePage>
               );
             },
           ),
-          StreakFlameButton(
-            now: _currentDate,
-            onSettingsChanged: () {
-              if (mounted) setState(() {});
-            },
-          ),
+          if (widget.tagFilter == null)
+            StreakFlameButton(
+              now: _currentDate,
+              onSettingsChanged: () {
+                if (mounted) setState(() {});
+              },
+            ),
           ListenableBuilder(
             listenable: DiceTimerController.instance,
             builder: (context, _) {
-              if (!Config.isFeatureEnabled('dice_timer')) {
+              if (!Config.isFeatureEnabled('dice_timer') ||
+                  widget.tagFilter != null) {
                 return const SizedBox.shrink();
               }
               final active = DiceTimerController.instance.isActive;
@@ -3625,11 +3629,24 @@ class _HomePageState extends State<HomePage>
         ],
       ),
     );
-    return Focus(
+    final content = Focus(
       focusNode: _homeKeyboardFocusNode,
       autofocus: true,
       onKeyEvent: _handleHomeKeyEvent,
       child: scaffold,
+    );
+    if (widget.tagFilter == null) return content;
+    // Worklist (and any other tag-filtered instance): an orange accent so the
+    // filtered view is visually distinct from the real home screen at a
+    // glance, even though it's otherwise the exact same UI.
+    final baseTheme = Theme.of(context);
+    final orangeScheme = ColorScheme.fromSeed(
+      seedColor: Colors.orange,
+      brightness: baseTheme.brightness,
+    ).copyWith(primary: Colors.orange);
+    return Theme(
+      data: baseTheme.copyWith(colorScheme: orangeScheme),
+      child: content,
     );
   }
 }
