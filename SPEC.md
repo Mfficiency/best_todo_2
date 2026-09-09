@@ -2704,6 +2704,52 @@ Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (inde
 "Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
 at the end of `_sectionTitles` to avoid renumbering the other twelve.
 
+### 10.6c Worklist (0.2.36)
+Tools ▸ Worklist: the home screen itself — same tabs, add-task row, search,
+drag-reorder, swipe, undo/redo, schedule view, streak flame, dice timer button —
+narrowed to tasks whose label carries the `mlr` tag. Unlike every other tool
+(a dedicated page), Worklist is a *second `HomePage` instance*: `_buildToolPage`'s
+`'worklist'` case returns `const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
+`HomePage` gained two optional constructor fields, `tagFilter`/`toolTitle` (both
+null for the regular home page):
+- `_tasksForTab` folds `tagFilter` into its `where` predicate alongside search
+  (`labelHasToken(task.label, tagFilter)`), but — like search — only when
+  `applySearch` is true; the `applySearch: false` callers (`_saveTasks`'s
+  `listRanking` renumbering loop above all) still see the *whole* tab, so a
+  filtered instance renumbering only its visible subset can never scramble the
+  ranking of the tasks it isn't showing.
+- Drag-reorder (`_reorderTask`/`_reorderTaskInSection`) already refused to run
+  while a search query or a Home filter rule narrowed the tab (renumbering a
+  subset would scramble the rest); the same guard, factored into a
+  `_tabNarrowed` getter, now also covers `tagFilter != null` — reordering is
+  simply off inside Worklist.
+- `_addTask` stamps `tagFilter` onto a task typed directly into a filtered
+  instance's add row (`addLabelToken`), so it shows up immediately.
+- Two pieces of state are process-wide singletons the real home page owns —
+  the share-sheet quick-add consumer (`ShareIntentService.registerConsumer`)
+  and the `openRunningDiceTimer` callback used to reopen a live dice timer
+  after its full-screen alarm — so `initState` only claims them when
+  `tagFilter == null`; a second instance would otherwise steal them from the
+  primary home page for as long as it stays open.
+- `_maybeOpenStartTool` no-ops when `tagFilter != null` (a filtered instance
+  must not also open the configured default start tool on top of itself), and
+  the drawer's Tools list hides the `worklist` entry from within a filtered
+  instance (it doesn't list itself).
+- `_openTool`'s post-pop refresh treats `'worklist'` like Wishlist/Food
+  Diary/Research: reloads `_tasks` from storage on return, since the pushed
+  instance kept its own in-memory copy over the same on-disk file.
+- `_updateHomeWidget` (the Android home-screen widget) and `_addSharedTask`
+  read `_tasks` directly rather than through `_tasksForTab`, so calling them
+  from a filtered instance still syncs/creates against the *full* list, never
+  the mlr-only subset.
+
+Registered like every other tool: `worklist` key in
+`Config.startToolOptions`/`featureKeys` (and their label/description arrays,
+appended after `weekly_hours_planner`), a `_ToolEntry` in home_page's drawer
+list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
+`ViewFilterRules` view id — a filtered `HomePage` still applies
+`ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line

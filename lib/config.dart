@@ -105,6 +105,7 @@ class Config {
     'productivity_stats',
     'test_results',
     'weekly_hours_planner',
+    'worklist',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -122,6 +123,7 @@ class Config {
     'Productivity Stats',
     'Test Results',
     'Weekly Hours Planner',
+    'Worklist',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -159,6 +161,7 @@ class Config {
     'productivity_stats',
     'test_results',
     'weekly_hours_planner',
+    'worklist',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -184,6 +187,7 @@ class Config {
     'Productivity Stats',
     'Test Results',
     'Weekly Hours Planner',
+    'Worklist',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -209,6 +213,7 @@ class Config {
     'Completion stats and trends',
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
+    'The home screen, narrowed to tasks tagged "mlr"',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
