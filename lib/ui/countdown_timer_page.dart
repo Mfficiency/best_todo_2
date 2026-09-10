@@ -657,6 +657,29 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     final from = isPast ? target : now;
     final to = isPast ? now : target;
     final d = _Decimals(to.difference(from));
+    // Counting down toward the target: each unit's decimal value shrinks
+    // toward its next-lower whole number. Counting up since a past target: it
+    // grows toward its next-higher one.
+    final countingDown = !isPast;
+
+    const rows = [
+      (label: 'Years', decimals: 3, unitUs: _usPerYear),
+      (label: 'Months', decimals: 3, unitUs: _usPerMonth),
+      (label: 'Weeks', decimals: 1, unitUs: _usPerWeek),
+      (label: 'Days', decimals: 1, unitUs: _usPerDay),
+      (label: 'Hours', decimals: 3, unitUs: _usPerHour),
+      (label: 'Minutes', decimals: 4, unitUs: _usPerMinute),
+      (label: 'Seconds', decimals: 6, unitUs: _usPerSecond),
+    ];
+    final values = [
+      d.years,
+      d.months,
+      d.weeks,
+      d.days,
+      d.hours,
+      d.minutes,
+      d.seconds,
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -667,31 +690,111 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
           style: Theme.of(context).textTheme.titleSmall,
         ),
         const SizedBox(height: 8),
-        _detailRow('Years', d.years.toStringAsFixed(3)),
-        _detailRow('Months', d.months.toStringAsFixed(3)),
-        _detailRow('Weeks', d.weeks.toStringAsFixed(3)),
-        _detailRow('Days', d.days.toStringAsFixed(3)),
-        _detailRow('Hours', d.hours.toStringAsFixed(3)),
-        _detailRow('Minutes', d.minutes.toStringAsFixed(3)),
-        _detailRow('Seconds', '${d.seconds}'),
+        Table(
+          columnWidths: const {
+            0: IntrinsicColumnWidth(),
+            1: FlexColumnWidth(),
+            2: IntrinsicColumnWidth(),
+            3: IntrinsicColumnWidth(),
+          },
+          children: [
+            _detailHeaderRow(context),
+            for (var i = 0; i < rows.length; i++)
+              _detailDataRow(
+                rows[i].label,
+                values[i],
+                rows[i].decimals,
+                rows[i].unitUs,
+                countingDown,
+              ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+  TableRow _detailHeaderRow(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        );
+    Widget cell(String text, {TextAlign align = TextAlign.end}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+          child: Text(text, style: style, textAlign: align),
+        );
+    return TableRow(children: [
+      cell('', align: TextAlign.start),
+      cell('Value'),
+      cell('Until next'),
+      cell('Next'),
+    ]);
+  }
+
+  TableRow _detailDataRow(
+    String label,
+    double value,
+    int decimals,
+    double unitMicroseconds,
+    bool countingDown,
+  ) {
+    final next = _nextRound(value, unitMicroseconds, countingDown);
+    Widget cell(String text, {TextAlign align = TextAlign.end, bool bold = true}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+          child: Text(
+            text,
+            textAlign: align,
+            style: bold ? const TextStyle(fontWeight: FontWeight.bold) : null,
           ),
-        ],
-      ),
-    );
+        );
+    return TableRow(children: [
+      cell(label, align: TextAlign.start, bold: false),
+      cell(value.toStringAsFixed(decimals)),
+      cell(_formatDdHhMm(next.until)),
+      cell('${next.round}'),
+    ]);
+  }
+
+  /// The next whole number [value] is heading toward — its floor while
+  /// [countingDown] (the remaining time is shrinking), otherwise its ceiling
+  /// — and how much longer until it gets there, as a [Duration].
+  static ({int round, Duration until}) _nextRound(
+    double value,
+    double unitMicroseconds,
+    bool countingDown,
+  ) {
+    final int round;
+    final double fractionUs;
+    if (countingDown) {
+      final floor = value.floorToDouble();
+      final frac = value - floor;
+      if (frac == 0) {
+        round = floor.toInt() - 1;
+        fractionUs = unitMicroseconds;
+      } else {
+        round = floor.toInt();
+        fractionUs = frac * unitMicroseconds;
+      }
+    } else {
+      final ceil = value.ceilToDouble();
+      final frac = ceil - value;
+      if (frac == 0) {
+        round = ceil.toInt() + 1;
+        fractionUs = unitMicroseconds;
+      } else {
+        round = ceil.toInt();
+        fractionUs = frac * unitMicroseconds;
+      }
+    }
+    return (round: round, until: Duration(microseconds: fractionUs.round()));
+  }
+
+  /// Formats [d] as "D:HH:mm" — days unpadded, hours and minutes always two
+  /// digits.
+  static String _formatDdHhMm(Duration d) {
+    final days = d.inDays;
+    final hours = (d.inHours % 24).toString().padLeft(2, '0');
+    final minutes = (d.inMinutes % 60).toString().padLeft(2, '0');
+    return '$days:$hours:$minutes';
   }
 
   /// Compact whole-unit breakdown shown on the collapsed card, with a
@@ -761,8 +864,18 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   String _formatTarget(DateTime d) => formatTimerDateTime(d);
 }
 
-/// The same duration expressed in several units, all as decimals except
-/// seconds. e.g. 1.1 years == 13.2 months == ~57 weeks.
+/// Microseconds per unit, for converting a fractional part of one of
+/// [_Decimals]'s values back into a [Duration] (see `_nextRound`).
+const double _usPerSecond = 1000000.0;
+const double _usPerMinute = _usPerSecond * 60;
+const double _usPerHour = _usPerMinute * 60;
+const double _usPerDay = _usPerHour * 24;
+const double _usPerWeek = _usPerDay * 7;
+const double _usPerMonth = _usPerDay * 30.4375;
+const double _usPerYear = _usPerDay * 365.25;
+
+/// The same duration expressed in several units, all as decimals — e.g. 1.1
+/// years == 13.2 months == ~57 weeks.
 class _Decimals {
   final double years;
   final double months;
@@ -770,22 +883,22 @@ class _Decimals {
   final double days;
   final double hours;
   final double minutes;
-  final int seconds;
+  final double seconds;
 
   factory _Decimals(Duration duration) {
     final us = duration.inMicroseconds.abs().toDouble();
-    final totalSeconds = us / 1000000.0;
-    final totalMinutes = totalSeconds / 60.0;
-    final totalHours = totalMinutes / 60.0;
-    final totalDays = totalHours / 24.0;
+    final totalSeconds = us / _usPerSecond;
+    final totalMinutes = us / _usPerMinute;
+    final totalHours = us / _usPerHour;
+    final totalDays = us / _usPerDay;
     return _Decimals._(
-      years: totalDays / 365.25,
-      months: totalDays / 30.4375,
-      weeks: totalDays / 7.0,
+      years: us / _usPerYear,
+      months: us / _usPerMonth,
+      weeks: us / _usPerWeek,
       days: totalDays,
       hours: totalHours,
       minutes: totalMinutes,
-      seconds: totalSeconds.floor(),
+      seconds: totalSeconds,
     );
   }
 
