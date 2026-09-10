@@ -366,8 +366,9 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   }
 
   /// One row in the reorderable list: the inline editor when this timer is
-  /// being edited, otherwise a swipe-to-delete card. Keyed by uid so the
-  /// reorderable list can track it.
+  /// being edited, otherwise the timer card. Keyed by uid so the reorderable
+  /// list can track it. Swipe-to-delete is intentionally not used here — it
+  /// conflicts with the long-press-to-reorder gesture the list relies on.
   Widget _buildTimerRow(
     BuildContext context,
     CountdownTimerItem timer,
@@ -387,20 +388,8 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       );
     }
 
-    return Dismissible(
+    return KeyedSubtree(
       key: ValueKey(timer.uid),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      onDismissed: (_) => _deleteTimer(timer),
       child: _buildTimerCard(context, timer),
     );
   }
@@ -601,42 +590,49 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                 ],
               ],
             ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  tooltip: 'Edit',
-                  onPressed: () => _editTimer(timer),
-                ),
-                IconButton(
-                  icon: Icon(
-                    timer.notifyOnZero
-                        ? Icons.notifications_active
-                        : Icons.notifications_none,
-                    color: timer.notifyOnZero
-                        ? Theme.of(context).colorScheme.primary
-                        : null,
-                  ),
-                  tooltip: timer.notifyOnZero
-                      ? 'Notify at zero: on'
-                      : 'Notify at zero: off',
-                  onPressed: () => _toggleNotify(timer),
-                ),
-                IconButton(
-                  icon: Icon(
-                    Icons.tag,
-                    color: timer.notifyRoundNumbers
-                        ? Theme.of(context).colorScheme.primary
-                        : null,
-                  ),
-                  tooltip: timer.notifyRoundNumbers
-                      ? 'Milestone notifications: ${timer.milestones.length} on'
-                      : 'Milestone notifications: off',
-                  onPressed: () => _openMilestones(timer),
-                ),
-              ],
-            ),
+            trailing: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        tooltip: 'Edit',
+                        onPressed: () => _editTimer(timer),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          timer.notifyOnZero
+                              ? Icons.notifications_active
+                              : Icons.notifications_none,
+                          color: timer.notifyOnZero
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                        ),
+                        tooltip: timer.notifyOnZero
+                            ? 'Notify at zero: on'
+                            : 'Notify at zero: off',
+                        onPressed: () => _toggleNotify(timer),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.tag,
+                          color: timer.notifyRoundNumbers
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                        ),
+                        tooltip: timer.notifyRoundNumbers
+                            ? 'Milestone notifications: ${timer.milestones.length} on'
+                            : 'Milestone notifications: off',
+                        onPressed: () => _openMilestones(timer),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        tooltip: 'Delete',
+                        onPressed: () => _deleteTimer(timer),
+                      ),
+                    ],
+                  )
+                : null,
           ),
           if (isExpanded)
             Padding(

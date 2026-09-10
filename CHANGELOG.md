@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.41] - 2026-09-10
+- Countdown view: removed swipe-to-delete (it fought with the long-press-to-reorder drag gesture) and now hide each row's edit/notify/milestone/delete buttons until the row is tapped open; delete moved into that revealed button row, still with an undo snackbar
+
 ## [0.2.40] - 2026-09-09
 - Fixed countdown timers disappearing and new ones failing to show: unlike alarms, timers never carried the reserved "countdown" tag their own Settings → Filtering rules default (`includeTags: [Countdown]`) requires, so that seeded rule hid every timer, old and new — every timer now always carries the tag, same as alarms already do
 - Local build: 2026-09-09 23:05

@@ -2123,9 +2123,12 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 ### 10.2 Countdown timers (Tools → Countdown)
 `CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags,itemUid}`
 in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
-target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
-name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
-show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows the same duration as
+target now+7d, minimizes on scroll), in-place edit, long-press drag reorder (manual mode) or
+sort by name/added/edited/deadline asc/desc, 1 s tick. Swiping is not used for delete — it
+conflicted with the long-press-drag gesture — so the row's edit/notify/milestone/delete
+buttons (delete has an undo snackbar) stay hidden until the row is tapped open; tapping again
+collapses it. Collapsed rows show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows
+the same duration as
 decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
 (orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
