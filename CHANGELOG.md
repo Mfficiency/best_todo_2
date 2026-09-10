@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.42] - 2026-09-10
+- Productivity Stats: the "Completed items over the last 52 weeks" heatmap now counts completed items instead of deleted ones — it was reading deletion dates, which left the graph almost empty and out of sync with its own title and the Item Activity Heatmap below it
+- Local build: 2026-09-10 19:06
+- Build duration (apk): 5m 47s
+- Build duration (windows): 1m 16s
+
 ## [0.2.41] - 2026-09-10
 - Countdown view: removed swipe-to-delete (it fought with the long-press-to-reorder drag gesture) and now hide each row's edit/notify/milestone/delete buttons until the row is tapped open; delete moved into that revealed button row, still with an undo snackbar
 - Countdown timer detail view (tap a timer to expand it): each unit row now shows four columns — the unit, its value, a "DD:HH:mm" countdown to the next whole number in that unit, and that next whole number itself. Decimal precision now varies per unit (weeks/days: 1 place, hours: 3, minutes: 4, seconds: 6) instead of a flat 3 places (seconds used to be a rounded-down integer)
