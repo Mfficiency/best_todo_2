@@ -95,12 +95,12 @@ class _YourStatsPageState extends State<YourStatsPage>
     return DateTime(local.year, local.month, local.day);
   }
 
-  Map<DateTime, int> _deletedCountByDay() {
+  Map<DateTime, int> _completedCountByDay() {
     final counts = <DateTime, int>{};
-    for (final task in widget.deletedItems) {
-      final deletedAt = task.deletedAt;
-      if (deletedAt == null) continue;
-      final day = _dateOnly(deletedAt);
+    for (final task in _allTasksForActivity()) {
+      final completedAt = task.completedAt;
+      if (completedAt == null) continue;
+      final day = _dateOnly(completedAt);
       counts[day] = (counts[day] ?? 0) + 1;
     }
     return counts;
@@ -172,7 +172,7 @@ class _YourStatsPageState extends State<YourStatsPage>
     final startDate = currentWeekStart.subtract(
       const Duration(days: (_weeks - 1) * _daysPerWeek),
     );
-    final countsByDay = _deletedCountByDay();
+    final countsByDay = _completedCountByDay();
     final weeksStart = List<DateTime>.generate(
       _weeks,
       (index) => startDate.add(Duration(days: index * _daysPerWeek)),
@@ -267,7 +267,7 @@ class _YourStatsPageState extends State<YourStatsPage>
                                   padding: const EdgeInsets.only(bottom: _cellGap),
                                   child: Tooltip(
                                     message:
-                                        '${date.toIso8601String().split('T').first}: $count deleted',
+                                        '${date.toIso8601String().split('T').first}: $count completed',
                                     child: GestureDetector(
                                       onTap: () => _showHeatmapDayDetails(date, count),
                                       child: Container(
