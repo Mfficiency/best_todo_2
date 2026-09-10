@@ -95,13 +95,46 @@ class _YourStatsPageState extends State<YourStatsPage>
     return DateTime(local.year, local.month, local.day);
   }
 
+  /// Per-day breakdown shared by the heatmap and the daily-composition bars,
+  /// so both read the exact same numbers off `dailyStatsByDay` — the record
+  /// that actually carries the full history (task-level `completedAt` only
+  /// remembers a task's *latest* completion, losing everything earlier for
+  /// recurring or reopened tasks).
+  _DayCompositionCounts _dayComposition(DailyTaskStats stats) {
+    final openingCount = stats.openingTaskIds.length;
+    final movedCount =
+        _intersectionCount(stats.movedFromOpeningTaskIds, stats.openingTaskIds);
+    final completedFromOpeningCount = stats.completedFromOpeningTaskIds
+        .where((id) =>
+            stats.openingTaskIds.contains(id) &&
+            !stats.movedFromOpeningTaskIds.contains(id))
+        .length;
+    final openingNotCompletedCount =
+        (openingCount - movedCount - completedFromOpeningCount)
+            .clamp(0, 1 << 31)
+            .toInt();
+    final createdCount = stats.createdDuringDayTaskIds.length;
+    final completedFromCreatedCount = _intersectionCount(
+        stats.completedFromCreatedTaskIds, stats.createdDuringDayTaskIds);
+    final createdNotCompletedCount =
+        (createdCount - completedFromCreatedCount).clamp(0, 1 << 31).toInt();
+    return _DayCompositionCounts(
+      movedCount: movedCount,
+      completedFromOpeningCount: completedFromOpeningCount,
+      openingNotCompletedCount: openingNotCompletedCount,
+      completedFromCreatedCount: completedFromCreatedCount,
+      createdNotCompletedCount: createdNotCompletedCount,
+    );
+  }
+
   Map<DateTime, int> _completedCountByDay() {
     final counts = <DateTime, int>{};
-    for (final task in _allTasksForActivity()) {
-      final completedAt = task.completedAt;
-      if (completedAt == null) continue;
-      final day = _dateOnly(completedAt);
-      counts[day] = (counts[day] ?? 0) + 1;
+    for (final entry in widget.dailyStatsByDay.entries) {
+      final day = DateTime.tryParse(entry.key);
+      if (day == null) continue;
+      final total = _dayComposition(entry.value).completedTotal;
+      if (total <= 0) continue;
+      counts[_dateOnly(day)] = total;
     }
     return counts;
   }
@@ -385,31 +418,15 @@ class _YourStatsPageState extends State<YourStatsPage>
       final stats = widget.dailyStatsByDay[_dayKeyFromDate(date)] ??
           DailyTaskStats(dayKey: _dayKeyFromDate(date));
       final openingCount = stats.openingTaskIds.length;
-      final movedCount =
-          _intersectionCount(stats.movedFromOpeningTaskIds, stats.openingTaskIds);
-      final completedFromOpeningCount = stats.completedFromOpeningTaskIds
-          .where((id) =>
-              stats.openingTaskIds.contains(id) &&
-              !stats.movedFromOpeningTaskIds.contains(id))
-          .length;
-      final openingNotCompletedCount = (openingCount -
-              movedCount -
-              completedFromOpeningCount)
-          .clamp(0, 1 << 31)
-          .toInt();
       final createdCount = stats.createdDuringDayTaskIds.length;
-      final completedFromCreatedCount = _intersectionCount(
-        stats.completedFromCreatedTaskIds,
-        stats.createdDuringDayTaskIds,
-      );
-      final createdNotCompletedCount =
-          (createdCount - completedFromCreatedCount).clamp(0, 1 << 31).toInt();
+      final c = _dayComposition(stats);
+      final movedCount = c.movedCount;
+      final completedFromOpeningCount = c.completedFromOpeningCount;
+      final openingNotCompletedCount = c.openingNotCompletedCount;
+      final completedFromCreatedCount = c.completedFromCreatedCount;
+      final createdNotCompletedCount = c.createdNotCompletedCount;
 
-      final total = movedCount +
-          completedFromOpeningCount +
-          openingNotCompletedCount +
-          completedFromCreatedCount +
-          createdNotCompletedCount;
+      final total = c.total;
       final unitHeight = total <= 0 ? 10.0 : (_barMaxHeight / total).clamp(3.0, 16.0);
       final monthChanged = previousDate == null ||
           previousDate.month != date.month ||
@@ -1364,4 +1381,32 @@ class _StatDetailEntry {
   final String detail;
 
   const _StatDetailEntry(this.label, this.detail);
+}
+
+/// A single day's task mix, split the same way the daily-composition bars
+/// draw it: what was already open (moved / done / still open) plus what was
+/// created that day (done / still open).
+class _DayCompositionCounts {
+  final int movedCount;
+  final int completedFromOpeningCount;
+  final int openingNotCompletedCount;
+  final int completedFromCreatedCount;
+  final int createdNotCompletedCount;
+
+  const _DayCompositionCounts({
+    required this.movedCount,
+    required this.completedFromOpeningCount,
+    required this.openingNotCompletedCount,
+    required this.completedFromCreatedCount,
+    required this.createdNotCompletedCount,
+  });
+
+  int get completedTotal => completedFromOpeningCount + completedFromCreatedCount;
+
+  int get total =>
+      movedCount +
+      completedFromOpeningCount +
+      openingNotCompletedCount +
+      completedFromCreatedCount +
+      createdNotCompletedCount;
 }
