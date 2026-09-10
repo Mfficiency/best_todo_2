@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.43] - 2026-09-10
+- Productivity Stats: the "Completed items" heatmap now derives its counts from the same per-day history the "Daily task composition" chart uses, instead of each task's `completedAt` field — that field only remembers a task's latest completion, so recurring or reopened tasks were losing their earlier completion days and the heatmap still looked mostly empty even after the previous fix
+
 ## [0.2.42] - 2026-09-10
 - Productivity Stats: the "Completed items over the last 52 weeks" heatmap now counts completed items instead of deleted ones — it was reading deletion dates, which left the graph almost empty and out of sync with its own title and the Item Activity Heatmap below it
 - Local build: 2026-09-10 19:06
