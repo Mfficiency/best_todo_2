@@ -3,6 +3,9 @@
 ## [0.2.41] - 2026-09-10
 - Countdown view: removed swipe-to-delete (it fought with the long-press-to-reorder drag gesture) and now hide each row's edit/notify/milestone/delete buttons until the row is tapped open; delete moved into that revealed button row, still with an undo snackbar
 - Countdown timer detail view (tap a timer to expand it): each unit row now shows four columns — the unit, its value, a "DD:HH:mm" countdown to the next whole number in that unit, and that next whole number itself. Decimal precision now varies per unit (weeks/days: 1 place, hours: 3, minutes: 4, seconds: 6) instead of a flat 3 places (seconds used to be a rounded-down integer)
+- Local build: 2026-09-10 07:49
+- Build duration (apk): 10m 15s
+- Build duration (windows): 3m 05s
 
 ## [0.2.40] - 2026-09-09
 - Fixed countdown timers disappearing and new ones failing to show: unlike alarms, timers never carried the reserved "countdown" tag their own Settings → Filtering rules default (`includeTags: [Countdown]`) requires, so that seeded rule hid every timer, old and new — every timer now always carries the tag, same as alarms already do
