@@ -30,6 +30,32 @@ String _foodDiaryDayTitle(DateTime? day, DateTime today) {
   return '$weekday, ${formatTimerDate(day)}';
 }
 
+/// Display label for a stomach-issue entry's symptom type, defaulting to
+/// "Gas" for an unset/unrecognized value.
+String _stomachSymptomLabel(String? type) {
+  switch (type) {
+    case 'liquid':
+      return 'Liquid';
+    case 'discomfort':
+      return 'Discomfort';
+    default:
+      return 'Gas';
+  }
+}
+
+/// Display label for a stomach-issue entry's start/stop toggle, defaulting
+/// to "Start" for an unset value.
+String _stomachEventLabel(String? type) => type == 'stop' ? 'Stop' : 'Start';
+
+/// The headline shown for [entry] everywhere it's displayed (the diary
+/// tile, the nutritionist view, both exports) — a food entry's own title, or
+/// a stomach entry's symptom + start/stop, since a stomach entry carries no
+/// free-form title of its own.
+String foodDiaryEntryTitle(Task entry) => entry.isStomachIssue
+    ? '${_stomachSymptomLabel(entry.stomachSymptomType)} · '
+        '${_stomachEventLabel(entry.stomachEventType)}'
+    : entry.title;
+
 /// Tag -> occurrence count across [entries], most frequent first and
 /// alphabetical among ties, using the same splitting rule [_FoodDiaryTile]
 /// uses for its chips. Shared by the export summary and the nutritionist
@@ -117,7 +143,10 @@ String foodDiaryExportText(List<Task> entries) {
       currentDay = day;
     }
     final timeLabel = time == null ? 'Time not recorded' : formatTimerTime(time);
-    lines.add('- **$timeLabel — ${entry.title}**');
+    lines.add('- **$timeLabel — ${foodDiaryEntryTitle(entry)}**');
+    if (entry.isStomachIssue && entry.stomachIntensity != null) {
+      lines.add('  - Intensity: ${entry.stomachIntensity}/10');
+    }
     if (entry.label.trim().isNotEmpty) {
       lines.add('  - Tags: ${entry.label.trim()}');
     }
@@ -147,7 +176,10 @@ String foodDiaryPlainText(List<Task> entries) {
       currentDay = day;
     }
     final timeLabel = time == null ? 'Time not recorded' : formatTimerTime(time);
-    lines.add('- $timeLabel — ${entry.title}');
+    lines.add('- $timeLabel — ${foodDiaryEntryTitle(entry)}');
+    if (entry.isStomachIssue && entry.stomachIntensity != null) {
+      lines.add('  Intensity: ${entry.stomachIntensity}/10');
+    }
     if (entry.label.trim().isNotEmpty) lines.add('  ${entry.label.trim()}');
     if (entry.description.trim().isNotEmpty) {
       lines.add('  ${entry.description.trim().replaceAll('\n', '\n  ')}');
@@ -365,6 +397,31 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     ];
   }
 
+  /// The default start/stop selection for a fresh stomach-issue entry:
+  /// 'stop' when today's most recent stomach entry is an unmatched 'start',
+  /// 'start' otherwise (including when nothing has been logged today yet).
+  String _defaultStomachEventType() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todaysStomachEntries = _tasks.where((t) {
+      final due = t.dueDate;
+      return t.isEatingHabit &&
+          t.isStomachIssue &&
+          due != null &&
+          DateTime(due.year, due.month, due.day) == today;
+    }).toList()
+      ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+    var open = false;
+    for (final entry in todaysStomachEntries) {
+      if (entry.stomachEventType == 'start') {
+        open = true;
+      } else if (entry.stomachEventType == 'stop') {
+        open = false;
+      }
+    }
+    return open ? 'stop' : 'start';
+  }
+
   Future<void> _editEntry([Task? entry]) async {
     // Only a fresh "add" needs yesterday's meals to copy from — editing an
     // existing entry keeps the dialog focused on that entry.
@@ -374,8 +431,11 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
         : const <Task?>[null, null, null, null];
     final result = await showDialog<_FoodDiaryEditResult>(
       context: context,
-      builder: (context) =>
-          _FoodDiaryEditDialog(entry: entry, yesterdayMeals: yesterdayMeals),
+      builder: (context) => _FoodDiaryEditDialog(
+        entry: entry,
+        yesterdayMeals: yesterdayMeals,
+        defaultStomachEventType: _defaultStomachEventType(),
+      ),
     );
     if (result == null) return;
     setState(() {
@@ -390,6 +450,10 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
             dueDate: result.time,
             hasExplicitTime: true,
             isEatingHabit: true,
+            isStomachIssue: result.isStomachIssue,
+            stomachEventType: result.stomachEventType,
+            stomachSymptomType: result.stomachSymptomType,
+            stomachIntensity: result.stomachIntensity,
           ),
         );
       } else {
@@ -398,7 +462,11 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
           ..description = result.description
           ..label = result.label
           ..dueDate = result.time
-          ..hasExplicitTime = true;
+          ..hasExplicitTime = true
+          ..isStomachIssue = result.isStomachIssue
+          ..stomachEventType = result.stomachEventType
+          ..stomachSymptomType = result.stomachSymptomType
+          ..stomachIntensity = result.stomachIntensity;
       }
     });
     await _save();
@@ -417,6 +485,10 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       dueDate: now,
       hasExplicitTime: true,
       isEatingHabit: true,
+      isStomachIssue: entry.isStomachIssue,
+      stomachEventType: entry.stomachEventType,
+      stomachSymptomType: entry.stomachSymptomType,
+      stomachIntensity: entry.stomachIntensity,
     );
     setState(() => _tasks.insert(0, copy));
     await _save();
@@ -777,10 +849,16 @@ class _NutritionistEntryRow extends StatelessWidget {
         children: [
           Text(
             time == null
-                ? entry.title
-                : '${formatTimerTime(time)} — ${entry.title}',
+                ? foodDiaryEntryTitle(entry)
+                : '${formatTimerTime(time)} — ${foodDiaryEntryTitle(entry)}',
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
+          if (entry.isStomachIssue && entry.stomachIntensity != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('Intensity ${entry.stomachIntensity}/10',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ),
           if (labels.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2),
@@ -803,9 +881,21 @@ class _FoodDiaryEditResult {
   final String description;
   final String label;
   final DateTime time;
+  final bool isStomachIssue;
+  final String? stomachEventType;
+  final String? stomachSymptomType;
+  final int? stomachIntensity;
 
   const _FoodDiaryEditResult(
-      this.title, this.description, this.label, this.time);
+    this.title,
+    this.description,
+    this.label,
+    this.time, {
+    this.isStomachIssue = false,
+    this.stomachEventType,
+    this.stomachSymptomType,
+    this.stomachIntensity,
+  });
 }
 
 /// Add/edit dialog owning its text controllers, so the dialog's exit
@@ -819,9 +909,14 @@ class _FoodDiaryEditDialog extends StatefulWidget {
   /// shown — when adding a new entry.
   final List<Task?> yesterdayMeals;
 
+  /// The start/stop toggle's initial value for a fresh stomach-issue entry
+  /// — see [_FoodDiaryPageState._defaultStomachEventType].
+  final String defaultStomachEventType;
+
   const _FoodDiaryEditDialog({
     required this.entry,
     this.yesterdayMeals = const <Task?>[null, null, null, null],
+    this.defaultStomachEventType = 'start',
   });
 
   @override
@@ -833,6 +928,10 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
   late final TextEditingController _descriptionController;
   late String _label;
   late DateTime _time;
+  late bool _isStomach;
+  late String _stomachEventType;
+  late String _stomachSymptomType;
+  late int _stomachIntensity;
 
   @override
   void initState() {
@@ -842,6 +941,11 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
         TextEditingController(text: widget.entry?.description ?? '');
     _label = widget.entry?.label ?? '';
     _time = widget.entry?.dueDate ?? DateTime.now();
+    _isStomach = widget.entry?.isStomachIssue ?? false;
+    _stomachEventType =
+        widget.entry?.stomachEventType ?? widget.defaultStomachEventType;
+    _stomachSymptomType = widget.entry?.stomachSymptomType ?? 'gas';
+    _stomachIntensity = widget.entry?.stomachIntensity ?? 5;
   }
 
   @override
@@ -882,73 +986,172 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
     });
   }
 
+  Widget _timeRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Time', style: Theme.of(context).textTheme.labelLarge),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text(formatTimerDate(_time)),
+            ),
+            OutlinedButton.icon(
+              onPressed: _pickTime,
+              icon: const Icon(Icons.access_time, size: 16),
+              label: Text(formatTimerTime(_time)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _foodFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _titleController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Title'),
+                textInputAction: TextInputAction.next,
+              ),
+            ),
+            SpeechInputButton(controller: _titleController),
+          ],
+        ),
+        if (widget.entry == null) ...[
+          const SizedBox(height: 4),
+          _CopyYesterdayRow(
+            meals: widget.yesterdayMeals,
+            onCopy: _copyYesterdayMeal,
+          ),
+        ],
+        const SizedBox(height: 12),
+        _timeRow(),
+        const SizedBox(height: 12),
+        // Tags sit under the time, same row order as a plain task's detail
+        // page — the description is the exception and lives at the bottom.
+        LabelPickerField(
+          value: _label,
+          fieldLabel: 'Tags (e.g. sugar, lactose)',
+          onChanged: (v) => setState(() => _label = v),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _descriptionController,
+          decoration: const InputDecoration(labelText: 'Description'),
+          maxLines: 3,
+        ),
+      ],
+    );
+  }
+
+  Widget _stomachFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _timeRow(),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child:
+              Text('Start or stop', style: Theme.of(context).textTheme.labelLarge),
+        ),
+        const SizedBox(height: 4),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+                value: 'start',
+                label: Text('Start'),
+                icon: Icon(Icons.play_circle_outlined)),
+            ButtonSegment(
+                value: 'stop',
+                label: Text('Stop'),
+                icon: Icon(Icons.stop_circle_outlined)),
+          ],
+          selected: {_stomachEventType},
+          onSelectionChanged: (selection) =>
+              setState(() => _stomachEventType = selection.first),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Type', style: Theme.of(context).textTheme.labelLarge),
+        ),
+        const SizedBox(height: 4),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'gas', label: Text('Gas')),
+            ButtonSegment(value: 'liquid', label: Text('Liquid')),
+            ButtonSegment(value: 'discomfort', label: Text('Discomfort')),
+          ],
+          selected: {_stomachSymptomType},
+          onSelectionChanged: (selection) =>
+              setState(() => _stomachSymptomType = selection.first),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Intensity: $_stomachIntensity/10',
+              style: Theme.of(context).textTheme.labelLarge),
+        ),
+        Slider(
+          value: _stomachIntensity.toDouble(),
+          min: 1,
+          max: 10,
+          divisions: 9,
+          label: '$_stomachIntensity',
+          onChanged: (value) =>
+              setState(() => _stomachIntensity = value.round()),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title:
           Text(widget.entry == null ? 'Add food diary entry' : 'Edit entry'),
       content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _titleController,
-                    autofocus: true,
-                    decoration: const InputDecoration(labelText: 'Title'),
-                    textInputAction: TextInputAction.next,
-                  ),
-                ),
-                SpeechInputButton(controller: _titleController),
-              ],
-            ),
-            if (widget.entry == null) ...[
-              const SizedBox(height: 4),
-              _CopyYesterdayRow(
-                meals: widget.yesterdayMeals,
-                onCopy: _copyYesterdayMeal,
+        child: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                      value: false,
+                      label: Text('Food'),
+                      icon: Icon(Icons.restaurant)),
+                  ButtonSegment(
+                      value: true,
+                      label: Text('Stomach'),
+                      icon: Icon(Icons.medical_services_outlined)),
+                ],
+                selected: {_isStomach},
+                onSelectionChanged: (selection) =>
+                    setState(() => _isStomach = selection.first),
               ),
+              const SizedBox(height: 12),
+              _isStomach ? _stomachFields() : _foodFields(),
             ],
-            // Tags sit right under the title, same as the wishlist dialog —
-            // they're what a diary entry is glanced at for; the description
-            // is the exception and lives at the bottom.
-            LabelPickerField(
-              value: _label,
-              fieldLabel: 'Tags (e.g. sugar, lactose)',
-              onChanged: (v) => setState(() => _label = v),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Time', style: Theme.of(context).textTheme.labelLarge),
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.calendar_today, size: 16),
-                  label: Text(formatTimerDate(_time)),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _pickTime,
-                  icon: const Icon(Icons.access_time, size: 16),
-                  label: Text(formatTimerTime(_time)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: 3,
-            ),
-          ],
+          ),
         ),
       ),
       actions: [
@@ -958,6 +1161,20 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
         ),
         ElevatedButton(
           onPressed: () {
+            if (_isStomach) {
+              Navigator.of(context).pop(_FoodDiaryEditResult(
+                '${_stomachSymptomLabel(_stomachSymptomType)} · '
+                    '${_stomachEventLabel(_stomachEventType)}',
+                '',
+                '',
+                _time,
+                isStomachIssue: true,
+                stomachEventType: _stomachEventType,
+                stomachSymptomType: _stomachSymptomType,
+                stomachIntensity: _stomachIntensity,
+              ));
+              return;
+            }
             final title = _titleController.text.trim();
             if (title.isEmpty) return;
             Navigator.of(context).pop(_FoodDiaryEditResult(
@@ -1072,7 +1289,7 @@ class _FoodDiaryTile extends StatelessWidget {
       child: Card(
         color: _cardColor(context, time),
         child: ListTile(
-          title: Text(entry.title),
+          title: Text(foodDiaryEntryTitle(entry)),
           trailing: IconButton(
             tooltip: 'Copy entry to now',
             onPressed: onCopyToNow,
@@ -1084,6 +1301,34 @@ class _FoodDiaryTile extends StatelessWidget {
               if (time != null) ...[
                 const SizedBox(height: 4),
                 Text(formatTimerDateTime(time)),
+              ],
+              if (entry.isStomachIssue) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    Chip(
+                      avatar: Icon(
+                        entry.stomachEventType == 'stop'
+                            ? Icons.stop_circle_outlined
+                            : Icons.play_circle_outlined,
+                        size: 16,
+                      ),
+                      label: Text(_stomachEventLabel(entry.stomachEventType)),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize:
+                          MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    if (entry.stomachIntensity != null)
+                      Chip(
+                        label: Text('Intensity ${entry.stomachIntensity}/10'),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                      ),
+                  ],
+                ),
               ],
               if (labels.isNotEmpty) ...[
                 const SizedBox(height: 8),

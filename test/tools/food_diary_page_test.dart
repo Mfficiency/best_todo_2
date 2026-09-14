@@ -556,4 +556,78 @@ void main() {
         find.ancestor(of: breakfastButton, matching: find.byType(IconButton)));
     expect(button.onPressed, isNull);
   });
+
+  testWidgets(
+      'add dialog can log a stomach issue entry with type, event and '
+      'intensity', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [Task(title: 'Greek yogurt', isEatingHabit: true)],
+      marker: 'Greek yogurt',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    // Nothing logged today yet, so the toggle defaults to Start.
+    expect(find.text('Intensity: 5/10'), findsOneWidget);
+
+    await tester.tap(find.text('Liquid'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Liquid · Start'), findsOneWidget);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final added = saved
+        .cast<Map<String, dynamic>>()
+        .firstWhere((t) => t['isStomachIssue'] == true);
+    expect(added['stomachEventType'], 'start');
+    expect(added['stomachSymptomType'], 'liquid');
+    expect(added['stomachIntensity'], 5);
+    expect(added['isEatingHabit'], isTrue);
+  });
+
+  testWidgets(
+      'stomach start/stop toggle prefills to stop when an earlier start is '
+      'still open today', (tester) async {
+    final now = DateTime.now();
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Gas · Start',
+          dueDate: DateTime(now.year, now.month, now.day, 9),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+          isStomachIssue: true,
+          stomachEventType: 'start',
+          stomachSymptomType: 'gas',
+          stomachIntensity: 4,
+        ),
+      ],
+      marker: 'Gas · Start',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final stopped = saved
+        .cast<Map<String, dynamic>>()
+        .where((t) => t['stomachEventType'] == 'stop')
+        .toList();
+    expect(stopped, hasLength(1));
+  });
 }
