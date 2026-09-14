@@ -123,6 +123,25 @@ class Task {
   /// [ItemViews.foodDiary] for the gate every other view honors.
   bool isEatingHabit;
 
+  /// When true this [isEatingHabit] entry logs a stomach issue (gas, loose
+  /// stool, discomfort) rather than a meal — the Food Diary page's other
+  /// entry type, chosen via the toggle at the top of its add/edit dialog.
+  /// [stomachEventType]/[stomachSymptomType]/[stomachIntensity] are only
+  /// meaningful when this is true.
+  bool isStomachIssue;
+
+  /// 'start' or 'stop' — whether this stomach-issue entry marks the
+  /// beginning or the end of an episode. The add dialog prefills this by
+  /// scanning today's other stomach entries: 'stop' if the latest one so far
+  /// today is an unmatched 'start', 'start' otherwise.
+  String? stomachEventType;
+
+  /// 'gas', 'liquid' or 'discomfort' — the kind of stomach issue.
+  String? stomachSymptomType;
+
+  /// 1-10 self-reported intensity.
+  int? stomachIntensity;
+
   /// When true this task is a Research item: it shows up only in the
   /// Research tool (a pre-filtered view over the one task list, like the
   /// wishlist/Food Diary) — never the home tabs, schedule view, projects or
@@ -196,6 +215,10 @@ class Task {
     this.recurrenceInstanceKey,
     this.isWish = false,
     this.isEatingHabit = false,
+    this.isStomachIssue = false,
+    this.stomachEventType,
+    this.stomachSymptomType,
+    this.stomachIntensity,
     this.isResearch = false,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
@@ -285,6 +308,10 @@ class Task {
       recurrenceInstanceKey: json['recurrenceInstanceKey'] as String?,
       isWish: json['isWish'] as bool? ?? false,
       isEatingHabit: json['isEatingHabit'] as bool? ?? false,
+      isStomachIssue: json['isStomachIssue'] as bool? ?? false,
+      stomachEventType: json['stomachEventType'] as String?,
+      stomachSymptomType: json['stomachSymptomType'] as String?,
+      stomachIntensity: json['stomachIntensity'] as int?,
       isResearch: json['isResearch'] as bool? ?? false,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
@@ -336,6 +363,11 @@ class Task {
           'recurrenceInstanceKey': recurrenceInstanceKey,
         'isWish': isWish,
         'isEatingHabit': isEatingHabit,
+        if (isStomachIssue) 'isStomachIssue': isStomachIssue,
+        if (stomachEventType != null) 'stomachEventType': stomachEventType,
+        if (stomachSymptomType != null)
+          'stomachSymptomType': stomachSymptomType,
+        if (stomachIntensity != null) 'stomachIntensity': stomachIntensity,
         'isResearch': isResearch,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,

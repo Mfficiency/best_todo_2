@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.44] - 2026-09-14
+- Food Diary: entries can now log a stomach issue instead of a meal — a Food/Stomach toggle at the top of the add/edit dialog switches the form to a start/stop toggle (prefilled to Stop when today's latest entry is still an open Start), a gas/liquid/discomfort type, and a 1-10 intensity slider. The food form itself is unchanged except its tags now sit under the time picker instead of above it, and the dialog is a bit wider
+
 ## [0.2.43] - 2026-09-10
 - Productivity Stats: the "Completed items" heatmap now derives its counts from the same per-day history the "Daily task composition" chart uses, instead of each task's `completedAt` field — that field only remembers a task's latest completion, so recurring or reopened tasks were losing their earlier completion days and the heatmap still looked mostly empty even after the previous fix
 - Local build: 2026-09-10 20:31

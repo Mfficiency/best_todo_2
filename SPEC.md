@@ -159,7 +159,10 @@ Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist it
 (see §10.6); wish tasks are undated and undated tasks bucket into the Future tab.
 Food Diary (0.1.266): `isEatingHabit` (bool, default false) marks a task as a food
 diary entry (see §10.6a); gated out of every other view by
-`ItemViews.isVisibleInMainViews`.
+`ItemViews.isVisibleInMainViews`. Stomach issue entries (0.2.44): `isStomachIssue`
+(bool, default false) + `stomachEventType`/`stomachSymptomType`/`stomachIntensity`
+(all nullable) mark an `isEatingHabit` entry as a logged stomach issue rather than a
+meal — see §10.6a.
 Attachments (0.1.277): `attachments` (`List<Attachment>`, default `[]`, omitted from JSON
 when empty) — see §4.1a.
 `fromJson` is tolerant: missing keys get defaults.
@@ -2593,6 +2596,32 @@ lunch/snack/dinner windows the widget's checkpoints carve the day into — the l
 wins when a window has more than one) without touching the time field, so logging a
 repeat meal is a tap plus Save; a button is disabled (with a tooltip explaining why) when
 yesterday has nothing logged for that meal.
+
+**Stomach issue entries (0.2.44).** A `SegmentedButton<bool>` at the top of the add/edit
+dialog (`Food`/`Stomach`, backed by `_isStomach`) switches the whole dialog between the
+food fields described above and a second, unrelated form for logging a stomach issue
+instead of a meal — both entry types share the one `isEatingHabit` gate and the one
+diary list, sorted together by time. A stomach entry adds four `Task` fields:
+`isStomachIssue` (bool), `stomachEventType` (`'start'`/`'stop'`), `stomachSymptomType`
+(`'gas'`/`'liquid'`/`'discomfort'`) and `stomachIntensity` (int, 1-10); a food entry
+leaves all four unset/false. The stomach form is: the same time row as the food form
+(reused via `_timeRow()`), a Start/Stop `SegmentedButton` (`_stomachEventType`), a
+Gas/Liquid/Discomfort `SegmentedButton` (`_stomachSymptomType`), and a 1-10 `Slider`
+labeled "Intensity: N/10" (`_stomachIntensity`, default 5) — no title, tags or
+description field; the entry's headline (`foodDiaryEntryTitle`, used by the tile, the
+nutritionist view and both exports in place of `entry.title`) is derived instead as
+"$Symptom · $Event" (e.g. "Gas · Start"). The Start/Stop toggle defaults per fresh add
+to whichever keeps today's log consistent (`_FoodDiaryPageState._defaultStomachEventType`):
+'stop' when today's chronologically-latest stomach entry is an unmatched 'start', 'start'
+otherwise (including when nothing has been logged today). Editing an existing stomach
+entry always opens on its own stored event/symptom/intensity, ignoring the default.
+`FoodDiaryWidgetService.computeEntryCount`/`latestEntryPerMealWindow` (the meal-count
+checkpoint schedule and the "copy yesterday's meal" shortcuts) both skip
+`isStomachIssue` entries, since neither concept applies to a stomach log. The dialog's
+content is wrapped in a `SizedBox(width: 400)` (a bit wider than the food-only dialog
+used to size itself) to fit the extra controls; the food form's own field order changed
+only in that its tags field now sits under the time row instead of directly under the
+title.
 
 Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 `featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
