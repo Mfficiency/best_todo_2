@@ -66,6 +66,31 @@ void main() {
     }
   }
 
+  /// [settleIo], but it first waits for [done] instead of trusting a fixed
+  /// round count to be long enough: a Todoist sync is a long chain of real-IO
+  /// hops (load, HTTP, save, log write) whose length depends on the machine,
+  /// and a flat 60 rounds runs out on a loaded CI runner. Walks until the
+  /// sync reports itself finished, then still does a full [settleIo] so the
+  /// writes that trail it (the sync log) and the rebuilds that watch it get
+  /// the same slack they always had.
+  Future<void> settleIoUntil(
+    WidgetTester tester,
+    bool Function() done, {
+    int maxRounds = 600,
+    int trailingRounds = 60,
+  }) async {
+    var rounds = 0;
+    while (rounds < maxRounds && !done()) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+      rounds++;
+    }
+    expect(done(), isTrue,
+        reason: 'the awaited work never finished within $maxRounds rounds');
+    await settleIo(tester, rounds: trailingRounds);
+  }
+
   testWidgets(
       'the Sync tab lists every sync with duration and item count, and '
       'opening the page clears the unseen-error flag', (tester) async {
@@ -290,7 +315,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Sync now'));
-    await settleIo(tester);
+    await settleIoUntil(
+        tester, () => TodoistSyncService.instance.entries.value.isNotEmpty);
 
     expect(find.textContaining('Never synced yet'), findsNothing);
     // "0 change(s)" appears both in the status line and in the result
@@ -353,7 +379,10 @@ void main() {
         tester.state<RefreshIndicatorState>(find.byType(RefreshIndicator)).show());
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    await settleIo(tester);
+    // The refresh indicator keeps spinning until the sync resolves, so
+    // pumpAndSettle can only run once the sync has actually landed.
+    await settleIoUntil(
+        tester, () => TodoistSyncService.instance.entries.value.isNotEmpty);
     await tester.pumpAndSettle();
 
     expect(TodoistSyncService.instance.entries.value, isNotEmpty);

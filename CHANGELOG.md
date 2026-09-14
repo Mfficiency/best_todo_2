@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.45] - 2026-09-14
+- Fixed two Todoist sync tests that were failing on CI but not locally: they waited a fixed number of I/O rounds for a sync to finish, which ran out on the slower CI machine, so they now wait for the sync itself to report done. No change to the app's behaviour
+
 ## [0.2.44] - 2026-09-14
 - Food Diary: entries can now log a stomach issue instead of a meal — a Food/Stomach toggle at the top of the add/edit dialog switches the form to a start/stop toggle (prefilled to Stop when today's latest entry is still an open Start), a gas/liquid/discomfort type, and a 1-10 intensity slider. The food form itself is unchanged except its tags now sit under the time picker instead of above it, and the dialog is a bit wider
 - Local build: 2026-09-14 20:03
