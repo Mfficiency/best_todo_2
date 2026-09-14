@@ -81,7 +81,8 @@ class ItemViews {
   /// label tokens (see [passesFilterRules]) so a Filtering Rules exclude/
   /// include tag can reference a task's state even though that state isn't a
   /// literal token in [Task.label] (e.g. "Wish" for [Task.isWish], "Project"
-  /// for an assigned [Task.projectId]). [archived] and [binned] are supplied
+  /// for an assigned [Task.projectId], [demoToken] for a legacy dev seed
+  /// recognized by its description marker). [archived] and [binned] are supplied
   /// by the two pages that read one specific list directly (Archived Items,
   /// the Deleted bin) rather than the shared task pool, since neither state
   /// is a field on [Task] itself — it's purely which list currently holds it.
@@ -89,6 +90,11 @@ class ItemViews {
       {bool archived = false, bool binned = false}) {
     final tags = <String>{};
     if (task.isWish) tags.add(wishToken);
+    // A dev seed written to disk before 0.2.31 carries no `demo` label of
+    // its own; its description marker stands in for one, so both the
+    // production demo gate and a hand-written `demo` Hide rule still catch
+    // it (see [demoSeedDescriptionPrefixes]).
+    if (isDemoSeedDescription(task.description)) tags.add(demoToken);
     if (task.isEatingHabit) tags.add(fooddiaryToken);
     if (task.isResearch) tags.add(researchToken);
     if (task.projectId != null) tags.add(projectToken);
@@ -186,6 +192,40 @@ class ItemViews {
         .toList();
   }
 
+  /// Whether [task] belongs on the home screen at all, before any bucketing:
+  /// the structural main-view gate plus the configured Home view filter
+  /// ([rules], see [passesFilterRules]) and the caller's own [where]
+  /// predicate (search / the Worklist tag). Both home bodies go through this
+  /// one gate — the tabs via [homeBucket], the schedule view via
+  /// [homeVisible] — so a filter rule can never apply to one and not the
+  /// other (0.2.46: the schedule view used to skip [rules] entirely, which
+  /// leaked demo/wish/project items onto a phone that starts in that view).
+  static bool isOnHomeScreen(
+    Task task, {
+    bool Function(Task task)? where,
+    ViewFilterRules? rules,
+    bool includeWorklistItems = false,
+  }) =>
+      isVisibleInMainViews(task, includeWorklistItems: includeWorklistItems) &&
+      (where == null || where(task)) &&
+      passesFilterRules(task, rules);
+
+  /// Every task the home screen may show, unbucketed and in list order —
+  /// what the schedule view renders as one long day-grouped list. Same gate
+  /// as the tabs (see [isOnHomeScreen]).
+  static List<Task> homeVisible(
+    List<Task> tasks, {
+    bool Function(Task task)? where,
+    ViewFilterRules? rules,
+    bool includeWorklistItems = false,
+  }) =>
+      tasks
+          .where((t) => isOnHomeScreen(t,
+              where: where,
+              rules: rules,
+              includeWorklistItems: includeWorklistItems))
+          .toList();
+
   /// The tasks of home tab [tabIndex], sorted like the home list (open
   /// first, then by ranking). [where] adds an extra predicate (search).
   /// [rules] is the configured Home view filter, see [passesFilterRules].
@@ -202,11 +242,11 @@ class ItemViews {
   }) {
     final list = tasks
         .where((t) =>
-            isVisibleInMainViews(t,
+            isOnHomeScreen(t,
+                where: where,
+                rules: rules,
                 includeWorklistItems: includeWorklistItems) &&
-            (where == null || where(t)) &&
-            inHomeBucket(t, tabIndex, today) &&
-            passesFilterRules(t, rules))
+            inHomeBucket(t, tabIndex, today))
         .toList();
     sortTasks(list);
     return list;

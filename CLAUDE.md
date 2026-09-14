@@ -127,3 +127,7 @@ file is the short operational guide.
   When touching task-visibility filtering (home tabs, schedule view,
   wishlist, projects, the home-screen widget), preserve this gate rather
   than reintroducing a path that reads `_tasks`/the task list unfiltered.
+  Both home bodies must go through `ItemViews.isOnHomeScreen` — the tabs via
+  `homeBucket`, the schedule view via `homeVisible` — so the Home filter
+  rules and the demo gate can never apply to one and not the other (that
+  leak was 0.2.46's bug).

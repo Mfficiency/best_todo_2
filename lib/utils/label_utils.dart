@@ -27,6 +27,29 @@ const String autoCompletedToken = 'autocompleted';
 /// hide it everywhere.
 const String demoToken = 'demo';
 
+/// Description prefixes every dev-mode filler seed writes into the item it
+/// creates ("Seeded dev future task", "Dev seed: a wishlist item", ...).
+/// Machine-written strings no human types, so they identify a seeded demo
+/// item even when it carries no [demoToken] at all — which is the case for
+/// everything seeded to disk before 0.2.31 stamped that token (a debug build
+/// run once on a real phone leaves 20+ such tasks behind, and they outlive
+/// every later release install). `ItemViews.stateTags` turns a match into a
+/// synthetic [demoToken] tag, so the production demo gate
+/// (`Config.hideDemoItems`) and a hand-written `demo` Hide rule both catch
+/// those legacy items too.
+const List<String> demoSeedDescriptionPrefixes = <String>[
+  'Seeded dev',
+  'Dev seed:',
+];
+
+/// Whether [description] is one of the dev-seed markers above.
+bool isDemoSeedDescription(String description) {
+  final text = description.trimLeft().toLowerCase();
+  if (text.isEmpty) return false;
+  return demoSeedDescriptionPrefixes
+      .any((p) => text.startsWith(p.toLowerCase()));
+}
+
 /// Label token stamped on every task newly pulled in from Todoist (see
 /// `TodoistSyncService._taskFromRemote`). Keeps it out of every list —
 /// home tabs, wishlist, project boards — until a human approves or denies

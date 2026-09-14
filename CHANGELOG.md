@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.46] - 2026-09-14
+- Home view filtering: the schedule view (the day-grouped list you get with "start in schedule view" on) ignored the Home filter rules completely — it showed every task the Today/Tomorrow/... tabs correctly hide, including the demo/sample items, and adding a "demo" tag to Settings → Filtering rules → Home by hand changed nothing there. Both home layouts now filter through exactly the same rules
+- The demo filter is now visible and switchable: Settings → Filtering rules opens with a "Hide demo and sample items" switch, on by default, that hides everything the app seeded for itself (starter tasks, sample alarms and timers, leftover dev data) from every view at once. It used to be an invisible built-in rule, which is why it looked like nothing was filtering
+- Demo/sample items left behind by an older version (they were saved without the "demo" tag, so no filter could match them) are now recognised by the marker the seeder wrote into their description, so they are hidden by the switch above and by a hand-made "demo" rule like any other sample item
+- The Android home-screen widget now honours the Home view's filter rules too, so a task hidden from the home screen no longer shows up on the launcher
+- Settings: tapping a section chip could expand the right section and then scroll past it to the end of the list, leaving the section you asked for off screen
+
 ## [0.2.45] - 2026-09-14
 - Fixed two Todoist sync tests that were failing on CI but not locally: they waited a fixed number of I/O rounds for a sync to finish, which ran out on the slower CI machine, so they now wait for the sync itself to report done. No change to the app's behaviour
 - Local build: 2026-09-14 20:11

@@ -2880,10 +2880,16 @@ class _HomePageState extends State<HomePage>
             has(ProjectService.instance.nameOf(task.projectId)));
   }
 
-  /// Whether the Home view's configured filter rules (Settings → Filtering
-  /// rules) currently hide anything.
-  bool get _homeFilterRulesActive =>
-      !(Config.viewFilterRules[ViewFilterRules.home]?.isEmpty ?? true);
+  /// The Home view's configured filter rules (Settings → Filtering rules),
+  /// read fresh on every build so editing them in Settings takes effect on
+  /// the next frame — both home bodies (tabs and schedule view) filter
+  /// through this one getter.
+  ViewFilterRules? get _homeFilterRules =>
+      Config.viewFilterRules[ViewFilterRules.home];
+
+  /// Whether the Home view's configured filter rules currently hide
+  /// anything.
+  bool get _homeFilterRulesActive => !(_homeFilterRules?.isEmpty ?? true);
 
   /// Whether any tab is currently showing a narrowed subset — a search
   /// query, configured Home filter rules, or [widget.tagFilter] (Worklist).
@@ -2918,7 +2924,7 @@ class _HomePageState extends State<HomePage>
       pageIndex,
       _currentDate,
       where: where,
-      rules: applySearch ? Config.viewFilterRules[ViewFilterRules.home] : null,
+      rules: applySearch ? _homeFilterRules : null,
       includeWorklistItems: widget.tagFilter != null,
     );
   }
@@ -3124,13 +3130,17 @@ class _HomePageState extends State<HomePage>
   Widget _buildScheduleBody() {
     final query = _searchQuery.trim().toLowerCase();
     final tagFilter = widget.tagFilter;
-    final visibleTasks = _tasks
-        .where((t) =>
-            ItemViews.isVisibleInMainViews(t,
-                includeWorklistItems: tagFilter != null) &&
-            (query.isEmpty || _matchesSearch(t, query)) &&
-            (tagFilter == null || labelHasToken(t.label, tagFilter)))
-        .toList();
+    // Same gate as the tabs (ItemViews.homeVisible), the configured Home
+    // filter rules included — the schedule view is the home screen in
+    // another shape, not a second, laxer view.
+    final visibleTasks = ItemViews.homeVisible(
+      _tasks,
+      where: (t) =>
+          (query.isEmpty || _matchesSearch(t, query)) &&
+          (tagFilter == null || labelHasToken(t.label, tagFilter)),
+      rules: _homeFilterRules,
+      includeWorklistItems: tagFilter != null,
+    );
     return ScheduleView(
       key: _scheduleViewKey,
       tasks: visibleTasks,

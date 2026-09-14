@@ -381,7 +381,11 @@ Every selector above, including `waitingApproval` (0.1.272), also takes an optio
 an extra, user-configured tag layer on top of the view's own structural query. `applyFilterRules`
 filters a plain list the same way (used for the Archived Items and Deleted bin pages, neither
 of which is itself a selector — see §4.2g). A null or empty `rules` is a no-op, so every existing
-call site that does not pass one is unaffected.
+call site that does not pass one is unaffected. The home screen's two bodies share one
+entry point into all of this (0.2.46): `isOnHomeScreen` (structural gate + the caller's own
+predicate + `passesFilterRules`), which `homeBucket` applies per tab and `homeVisible`
+applies to the whole unbucketed list the schedule view renders — see §4.4's "The three ways
+the demo gate was still leaking".
 
 ### 4.2e Waiting for Approval gate (0.1.256, token respelled 0.1.259)
 
@@ -1201,8 +1205,9 @@ cases its "no real label yet" check (`hasOnlyDemoLabel`) since its target tasks 
 carry `demo` from `_buildDevFutureTasksSeed`.
 
 *Demo items hidden by default outside dev builds.* `Config.hideDemoItems` (defaults to
-`!Config.isDev`, but a plain mutable flag rather than deriving straight from the compile-time
-`isDev` so tests can flip it) makes the `demo` tag self-enforcing rather than opt-in: once true,
+`!Config.isDev`, but a settable property rather than deriving straight from the compile-time
+`isDev` so tests can flip it — and, since 0.2.46, a user-facing switch, see below) makes
+the `demo` tag self-enforcing rather than opt-in: once true,
 `ItemViews.passesTagRules` hides a `demo`-carrying item ahead of and independent from whatever
 `ViewFilterRules` says, so no Settings → Filtering rules configuration is required — production
 never shows seeded sample data, from the very first release build. `applyTagRules`/
@@ -1210,11 +1215,54 @@ never shows seeded sample data, from the very first release build. `applyTagRule
 "rules empty → return the same list instance" shortcut for exactly this reason: demo hiding can
 still apply when there are no rules configured at all. Three home-screen widgets that build
 their payload straight from the task/alarm list rather than going through a `ViewFilterRules`
-lookup — `TaskWidgetService.todayTasks` (adds an explicit `ItemViews.passesFilterRules(t, null)`
-check), `FoodDiaryWidgetService.sync` (already routed through `ItemViews.foodDiary`, so it
+lookup — `TaskWidgetService.todayTasks` (0.2.46: filters through the *Home* view's rules, not just
+the demo gate — the widget is the Today tab on the launcher, so a task Home hides must not
+reappear there; an optional `rules` parameter overrides them for tests),
+`FoodDiaryWidgetService.sync` (already routed through `ItemViews.foodDiary`, so it
 inherited the behavior for free) and `AlarmService`'s two `AlarmWidgetService.sync` call sites
 (wrapped in a `_widgetVisible` helper) — are covered the same way, so a demo alarm or task never
 reaches the home screen in production even though scheduling/notifications for it are untouched.
+
+*The three ways the demo gate was still leaking (0.2.46).* Reported as "the filtering of the
+home view does not work and by default there should be a demo filter — I tried to add it
+manually and it did nothing, even after restarting the app". Three independent causes, all
+fixed:
+
+1. **The schedule view ignored the Home rules entirely.** `_buildScheduleBody` filtered
+   `_tasks` on `ItemViews.isVisibleInMainViews` + search + `tagFilter` only, never
+   `passesFilterRules` — so on a phone with Settings → Tasks → "start in schedule view" on,
+   the home screen showed everything every Home rule (and the demo gate, which lives inside
+   the same check) was supposed to hide, and adding a `demo` Hide chip by hand changed
+   nothing. Both home bodies now go through one gate: `ItemViews.isOnHomeScreen` (structural
+   gate + caller predicate + `passesFilterRules`), used by `homeBucket` for the tabs and by
+   the new `ItemViews.homeVisible` for the schedule view, which is the whole unbucketed home
+   list. `HomePage._homeFilterRules` is the single getter both read, so a rule can no longer
+   apply to one body and not the other.
+2. **Seeds written to disk before 0.2.31 carry no `demo` token at all**, so nothing — not the
+   built-in gate, not a hand-typed `demo` rule — could match them; a debug build run once on
+   a real phone leaves 20+ such tasks behind and they survive every later release install.
+   Every dev seeder stamps its own description marker ("Seeded dev future task", "Dev seed: a
+   wishlist item", …), which no human types, so `isDemoSeedDescription`
+   (`demoSeedDescriptionPrefixes`: `Seeded dev`, `Dev seed:`) recognizes them and
+   `ItemViews.stateTags` adds a synthetic `demo` tag for a match — making those legacy items
+   behave exactly like a stamped one for both the built-in gate and any `demo` rule, without
+   touching stored data. Title-only matches (the `Config.initialTasks` starter tasks: "Get
+   milk", …) are deliberately *not* recognized: a user may well have typed one of those.
+3. **The gate was invisible**, which is why it read as broken. `Config.hideDemoItems` is now
+   a real setting with its own switch, "Hide demo and sample items", at the top of Settings →
+   Filtering rules (above the per-view chip editors, since it is the one rule that applies to
+   all views at once). Only an explicit flip is persisted, never the default
+   (`Config._hideDemoItemsSet`, written to `settings.json` only when non-null): a debug build
+   sharing the phone's settings file would otherwise store `false` and a later release install
+   would read it back and show the leftover seeds again — the exact failure the gate exists to
+   prevent.
+
+A fourth, adjacent bug surfaced while testing this: `SettingsPage._jumpToSection` chose its
+scroll-walk direction from `_activeSectionIndex`, which lags whenever something scrolls the
+list without the scroll listener settling, so a chip tap could expand a section and then walk
+away from it to the end of the list. It now reads the direction off the sections that actually
+have a `RenderObject` (`_sectionIsAboveViewport`) — this is why the three "Settings →
+Filtering rules" widget tests had been failing on CI.
 
 *Food Diary, Alarms and Countdown as filterable views.* Food Diary
 (`ItemViews.foodDiary(tasks, {rules})`) works exactly like Wishlist: an extra rules layer on

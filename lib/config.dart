@@ -19,14 +19,31 @@ class Config {
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
   /// Whether every demo/dev-seed item (see `demoToken` in `label_utils.dart`)
-  /// is hidden from every view, regardless of any Settings → Filtering rules
-  /// configuration. Defaults to hidden outside dev builds — from the moment
-  /// a build stops being a dev build, seeded sample data (which can persist
-  /// to disk and outlive [isDev] going back to false on a later release) is
-  /// gone from the app's own views without the user having to configure
-  /// anything. A plain mutable flag rather than deriving straight from the
-  /// compile-time [isDev] so tests can exercise the production behavior.
-  static bool hideDemoItems = !isDev;
+  /// is hidden from every view, ahead of and independent from any Settings →
+  /// Filtering rules configuration. Defaults to hidden outside dev builds —
+  /// from the moment a build stops being a dev build, seeded sample data
+  /// (which can persist to disk and outlive [isDev] going back to false on a
+  /// later release) is gone from the app's own views without the user having
+  /// to configure anything. A settable property rather than deriving
+  /// straight from the compile-time [isDev] so tests can exercise the
+  /// production behavior — and, since 0.2.46, a real setting with its own
+  /// switch at the top of Settings → Filtering rules, so the filter that is
+  /// on by default on a phone is visible and verifiable there instead of
+  /// being an invisible compile-time rule.
+  ///
+  /// Only an explicit flip of that switch is persisted ([_hideDemoItemsSet]),
+  /// never the default: a debug build run once on a real phone would
+  /// otherwise write `false` into the shared settings file and a later
+  /// release install would read it back and show the leftover dev seeds
+  /// again — the exact failure this gate exists to prevent.
+  static bool? _hideDemoItemsSet;
+
+  static bool get hideDemoItems => _hideDemoItemsSet ?? !isDev;
+
+  static set hideDemoItems(bool value) => _hideDemoItemsSet = value;
+
+  /// Drops an explicit [hideDemoItems] choice, restoring the build's default.
+  static void resetHideDemoItemsForTest() => _hideDemoItemsSet = null;
 
   static String _appVersion = 'unknown';
   static String _buildNumber = '';
@@ -663,6 +680,7 @@ class Config {
           entry.key: entry.value.toJson(),
       },
       'viewFilterRulesSeedVersion': viewFilterRulesSeedVersion,
+      if (_hideDemoItemsSet != null) 'hideDemoItems': _hideDemoItemsSet,
     };
   }
 
@@ -803,6 +821,8 @@ class Config {
         if (value is bool) featureEnabled[key] = value;
       }
     }
+    final savedHideDemoItems = data['hideDemoItems'];
+    if (savedHideDemoItems is bool) _hideDemoItemsSet = savedHideDemoItems;
     final savedViewFilterRules = data['viewFilterRules'];
     if (savedViewFilterRules is Map) {
       viewFilterRules = {

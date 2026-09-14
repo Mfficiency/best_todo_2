@@ -670,8 +670,24 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  /// Whether section [index] sits above everything currently laid out, so
+  /// [_jumpToSection]'s walk has to go up rather than down. Read off the
+  /// sections that actually have a RenderObject right now — the sliver keeps
+  /// only those around — instead of trusting [_activeSectionIndex], which
+  /// lags behind whenever something scrolled the list without the scroll
+  /// listener settling on the new position (it left a chip tap walking down
+  /// from a viewport that was already past the target, so the jump ran to
+  /// the bottom of the list and the section it had just expanded was never
+  /// shown — the three Filtering-rules tests that failed on CI).
+  bool _sectionIsAboveViewport(int index) {
+    for (var i = 0; i < _sectionKeys.length; i++) {
+      if (_sectionKeys[i].currentContext != null) return i > index;
+    }
+    return index < _activeSectionIndex;
+  }
+
   Future<void> _jumpToSection(int index) async {
-    final from = _activeSectionIndex;
+    final goingUp = _sectionIsAboveViewport(index);
     // Jumping to a collapsed section would land on a title with nothing under
     // it, so open it on the way.
     setState(() {
@@ -690,13 +706,13 @@ class _SettingsPageState extends State<SettingsPage> {
     // Two things the walk has to respect:
     //  • it must follow the direction of the target — walking only downwards
     //    left "Appearance" (and every earlier section) unreachable whenever
-    //    the list already sat further down;
+    //    the list already sat further down (which way that is comes from
+    //    what is laid out, see [_sectionIsAboveViewport]);
     //  • `maxScrollExtent` is an estimate that grows as each hop lays out more
     //    children, so stopping at "we reached the bottom" strands the jump
     //    halfway. Only a hop that moves neither the offset nor the estimate
     //    means there is really nothing left.
     if (_scrollController.hasClients) {
-      final goingUp = index < from;
       var attempts = 0;
       var lastOffset = -1.0;
       var lastMaxExtent = -1.0;
@@ -2338,6 +2354,16 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// The always-on demo filter ([Config.hideDemoItems]) — the one rule that
+  /// is not per-view: it hides every sample/demo item the app seeded for
+  /// itself from all of them at once, and is on by default on a normal
+  /// (release) install.
+  Future<void> _setHideDemoItems(bool value) async {
+    setState(() => Config.hideDemoItems = value);
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
   /// Per-view tag filters: hide tasks carrying a tag, or restrict a view to
   /// only tasks carrying one. Layers on top of each view's own structural
   /// rule (e.g. the wishlist still only ever shows [Task.isWish] items) —
@@ -2349,6 +2375,17 @@ class _SettingsPageState extends State<SettingsPage> {
       index: 2,
       title: 'Filtering rules',
       children: [
+        SwitchListTile(
+          title: const Text('Hide demo and sample items'),
+          subtitle: const Text(
+              'Hides every item the app seeded for itself — the starter '
+              'tasks, the sample alarms and timers, and any leftover demo '
+              'data from a development build — from every view at once, '
+              'whatever the per-view rules below say. On by default.'),
+          value: Config.hideDemoItems,
+          onChanged: _setHideDemoItems,
+        ),
+        const Divider(height: 24),
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(

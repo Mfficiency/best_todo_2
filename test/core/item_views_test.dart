@@ -258,7 +258,7 @@ void main() {
 
   group('demo items hidden outside dev builds', () {
     setUp(() => Config.hideDemoItems = true);
-    tearDown(() => Config.hideDemoItems = false);
+    tearDown(Config.resetHideDemoItemsForTest);
 
     test('a demo-tagged task is hidden from home even with no rules '
         'configured', () {
@@ -297,6 +297,86 @@ void main() {
       final real = Task(title: 'real');
       expect(ItemViews.applyFilterRules([demo, real], null).map((t) => t.title),
           ['real']);
+    });
+
+    test('a dev seed that predates the demo label is recognized by its '
+        'description marker', () {
+      // What a debug build left on a real phone before 0.2.31 started
+      // stamping `demo`: no label at all, only the seeder's own marker.
+      final legacy = Task(
+        title: 'Review PR for auth refactor',
+        dueDate: today,
+        description: 'Seeded dev future task',
+      );
+      final other = Task(
+        title: 'Deep work block',
+        dueDate: today,
+        description: 'Dev seed: a task with a real time range',
+      );
+      final real = Task(
+        title: 'real',
+        dueDate: today,
+        description: 'Seeded by me, a human',
+      );
+      expect(
+          ItemViews.homeBucket([legacy, other, real], 0, today)
+              .map((t) => t.title),
+          ['real']);
+      expect(ItemViews.stateTags(legacy), contains(demoToken));
+    });
+
+    test('a hand-written demo Hide rule also catches a marker-only legacy '
+        'seed, even with the built-in gate off', () {
+      Config.hideDemoItems = false;
+      final legacy = Task(
+        title: 'seed',
+        dueDate: today,
+        description: 'Seeded dev future task',
+      );
+      final real = Task(title: 'real', dueDate: today);
+      final rules = ViewFilterRules(excludeTags: [demoToken]);
+      expect(
+          ItemViews.homeBucket([legacy, real], 0, today, rules: rules)
+              .map((t) => t.title),
+          ['real']);
+    });
+  });
+
+  group("homeVisible (the schedule view's gate)", () {
+    tearDown(Config.resetHideDemoItemsForTest);
+
+    test('applies the same rules and gates as homeBucket, unbucketed', () {
+      Config.hideDemoItems = true;
+      final near = dated('near', DateTime(2026, 7, 18));
+      final far = dated('far', DateTime(2026, 9, 1));
+      final excluded = dated('excluded', DateTime(2026, 7, 18))
+        ..label = 'later';
+      final demo = dated('demo', DateTime(2026, 7, 19))..label = demoToken;
+      final worklist = dated('worklist', DateTime(2026, 7, 18))
+        ..label = worklistToken;
+      final rules = ViewFilterRules(excludeTags: ['later']);
+
+      expect(
+          ItemViews.homeVisible([near, far, excluded, demo, worklist],
+                  rules: rules)
+              .map((t) => t.title),
+          ['near', 'far']);
+      // The Worklist tool's own instance of the home page still sees its
+      // items, exactly as in homeBucket.
+      expect(
+          ItemViews.homeVisible([near, worklist],
+                  rules: rules, includeWorklistItems: true)
+              .map((t) => t.title),
+          ['near', 'worklist']);
+    });
+
+    test("honors the caller's own where predicate (search)", () {
+      final match = dated('groceries', DateTime(2026, 7, 18));
+      final other = dated('taxes', DateTime(2026, 7, 18));
+      expect(
+          ItemViews.homeVisible([match, other],
+              where: (t) => t.title.contains('groc')).map((t) => t.title),
+          ['groceries']);
     });
   });
 }
