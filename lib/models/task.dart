@@ -126,7 +126,7 @@ class Task {
   /// When true this [isEatingHabit] entry logs a stomach issue (gas, loose
   /// stool, discomfort) rather than a meal — the Food Diary page's other
   /// entry type, chosen via the toggle at the top of its add/edit dialog.
-  /// [stomachEventType]/[stomachSymptomType]/[stomachIntensity] are only
+  /// [stomachEventType]/[stomachSymptomTypes]/[stomachIntensity] are only
   /// meaningful when this is true.
   bool isStomachIssue;
 
@@ -136,8 +136,10 @@ class Task {
   /// today is an unmatched 'start', 'start' otherwise.
   String? stomachEventType;
 
-  /// 'gas', 'liquid' or 'discomfort' — the kind of stomach issue.
-  String? stomachSymptomType;
+  /// Any combination of 'gas', 'liquid' and 'discomfort' — the kind(s) of
+  /// stomach issue; the add/edit dialog's multi-select segmented button
+  /// requires at least one.
+  List<String> stomachSymptomTypes;
 
   /// 1-10 self-reported intensity.
   int? stomachIntensity;
@@ -217,7 +219,7 @@ class Task {
     this.isEatingHabit = false,
     this.isStomachIssue = false,
     this.stomachEventType,
-    this.stomachSymptomType,
+    List<String>? stomachSymptomTypes,
     this.stomachIntensity,
     this.isResearch = false,
     this.projectId,
@@ -226,6 +228,7 @@ class Task {
   })  : uid = uid ?? Task.newUid(),
         recurrenceWeekdays = recurrenceWeekdays ?? [],
         recurrenceExceptionDates = recurrenceExceptionDates ?? [],
+        stomachSymptomTypes = stomachSymptomTypes ?? [],
         attachments = attachments ?? <Attachment>[],
         // An explicit interval wins; a plain dueDate is a deadline
         // (start == end), matching what every existing caller means.
@@ -310,7 +313,14 @@ class Task {
       isEatingHabit: json['isEatingHabit'] as bool? ?? false,
       isStomachIssue: json['isStomachIssue'] as bool? ?? false,
       stomachEventType: json['stomachEventType'] as String?,
-      stomachSymptomType: json['stomachSymptomType'] as String?,
+      // 0.2.44 wrote a single 'stomachSymptomType' string; a record from
+      // that window still has to load with its one symptom intact.
+      stomachSymptomTypes: (json['stomachSymptomTypes'] as List?)
+              ?.map((e) => e as String)
+              .toList() ??
+          (json['stomachSymptomType'] != null
+              ? [json['stomachSymptomType'] as String]
+              : null),
       stomachIntensity: json['stomachIntensity'] as int?,
       isResearch: json['isResearch'] as bool? ?? false,
       projectId: json['projectId'] as String?,
@@ -365,8 +375,8 @@ class Task {
         'isEatingHabit': isEatingHabit,
         if (isStomachIssue) 'isStomachIssue': isStomachIssue,
         if (stomachEventType != null) 'stomachEventType': stomachEventType,
-        if (stomachSymptomType != null)
-          'stomachSymptomType': stomachSymptomType,
+        if (stomachSymptomTypes.isNotEmpty)
+          'stomachSymptomTypes': stomachSymptomTypes,
         if (stomachIntensity != null) 'stomachIntensity': stomachIntensity,
         'isResearch': isResearch,
         if (projectId != null) 'projectId': projectId,

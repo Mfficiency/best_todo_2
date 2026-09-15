@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.45] - 2026-09-15
+- Food Diary: the stomach-entry type toggle (Gas/Liquid/Discomfort) is now multi-select — any combination can be chosen at once, e.g. gas and discomfort together, instead of only one at a time
+
 ## [0.2.44] - 2026-09-14
 - Food Diary: entries can now log a stomach issue instead of a meal — a Food/Stomach toggle at the top of the add/edit dialog switches the form to a start/stop toggle (prefilled to Stop when today's latest entry is still an open Start), a gas/liquid/discomfort type, and a 1-10 intensity slider. The food form itself is unchanged except its tags now sit under the time picker instead of above it, and the dialog is a bit wider
 
