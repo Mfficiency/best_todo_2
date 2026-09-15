@@ -58,6 +58,7 @@ import 'dice_timer_page.dart';
 import 'food_diary_page.dart';
 import 'fitness_activity_page.dart';
 import 'home_scaffold_key.dart';
+import 'mp3_downloader_page.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
 import 'research_page.dart';
@@ -1268,6 +1269,8 @@ class _HomePageState extends State<HomePage>
         // search and interactions, just a second HomePage instance with its
         // own in-memory copy of the (shared, on-disk) task list.
         return const HomePage(tagFilter: worklistToken, toolTitle: 'Worklist');
+      case 'mp3_downloader':
+        return const Mp3DownloaderPage();
     }
     return null;
   }
@@ -3183,6 +3186,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('fitness_activity', 'Fitness Activity', Icons.directions_run),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
     _ToolEntry('worklist', 'Worklist', Icons.checklist),
+    _ToolEntry('mp3_downloader', 'MP3 Downloader', Icons.music_note),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —

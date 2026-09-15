@@ -123,6 +123,7 @@ class Config {
     'test_results',
     'weekly_hours_planner',
     'worklist',
+    'mp3_downloader',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -141,6 +142,7 @@ class Config {
     'Test Results',
     'Weekly Hours Planner',
     'Worklist',
+    'MP3 Downloader',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -179,6 +181,7 @@ class Config {
     'test_results',
     'weekly_hours_planner',
     'worklist',
+    'mp3_downloader',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -205,6 +208,7 @@ class Config {
     'Test Results',
     'Weekly Hours Planner',
     'Worklist',
+    'MP3 Downloader',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -231,6 +235,7 @@ class Config {
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
     'The home screen, showing only tasks tagged "mlr" (hidden everywhere else)',
+    'Search a YouTube video by title or URL and save its audio as an .mp3',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',

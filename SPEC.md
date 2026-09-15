@@ -95,6 +95,8 @@ Dependencies and why they exist:
 | `flutter_markdown` | renders CHANGELOG.md in-app |
 | `url_launcher` | About page links |
 | `cupertino_icons` | iOS-style glyphs |
+| `youtube_explode_dart` | MP3 Downloader: YouTube search/metadata/audio-stream resolution (pure Dart, no API key) |
+| `ffmpeg_kit_flutter_new_full` | MP3 Downloader: transcodes the downloaded audio stream to `.mp3` (`libmp3lame`); Android + Windows only, no web build |
 
 ## 3. App startup sequence (order matters)
 
@@ -863,8 +865,8 @@ spanning the top is always attached.
 
 **Drawer (reordered 0.2.33):** Home, Settings, Waiting for Approval, Food Diary, Tools ▸
 (Alarms, Weekly Hours Planner, Projects, Wishlist, Research, Chronize, Countdown,
-Productivity Stats, Usage Data, Fitness Activity, Test Results — most-used first, Test
-Results pinned last), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
+Productivity Stats, Usage Data, Fitness Activity, Test Results, Worklist, MP3
+Downloader — most-used first), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
 Startup Times, Widget Previews (dev build only). Food Diary is a standalone entry (own
 `ListTile`, gated on `Config.isFeatureEnabled('food_diary')`) rather than a `_toolEntries`
 member, so it always sits above Tools instead of inside it.
@@ -2898,6 +2900,32 @@ appended after `weekly_hours_planner`), a `_ToolEntry` in home_page's drawer
 list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
+
+### 10.6d MP3 Downloader (0.2.48)
+Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
+`lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
+title to search, and save the video's audio as an `.mp3` file. A pasted URL
+(`looksLikeYoutubeUrl`/`extractYoutubeVideoId` match `youtube.com/watch`,
+`youtu.be/`, `/shorts/`) resolves and downloads directly; a text query calls
+`Mp3DownloaderService.search` and shows up to 5 candidates (title, channel,
+formatted duration) so the ambiguous case is a tap, not a guess.
+
+Built on `youtube_explode_dart` (a pure-Dart YouTube client — metadata search,
+video lookup, and the audio-only stream manifest, no server or API key) and
+`ffmpeg_kit_flutter_new_full` (transcodes the downloaded AAC/Opus stream into
+a real `.mp3` via `libmp3lame`, since YouTube never serves MP3 directly). The
+save location is picked with `file_selector`'s `getDirectoryPath`
+(defaulting to `getDownloadsDirectory()`), the same pattern the
+export/backup flows in Wishlist/Food Diary/Usage Data use. Both plugins lack
+a web build, so `Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page
+to a "not supported on this platform" message there; Android and Windows are
+the supported targets. `Mp3DownloaderService` exposes `searchOverride`/
+`resolveOverride`/`downloadOverride` (`@visibleForTesting`) so widget tests
+substitute fakes instead of hitting the network or native ffmpeg plugin — the
+same seam `TodoistSyncService.apiClientFactory` uses. Registered like every
+other tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and
+in `Config.featureKeys`/`Config.startToolOptions` (feature switch + default
+start page).
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
