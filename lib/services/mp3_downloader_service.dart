@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
 import 'log_service.dart';
@@ -134,6 +135,72 @@ final List<yt_explode.YoutubeApiClient> _streamClients = [
 /// single open response to ~31 KiB/s but serves ~1 MiB range requests at
 /// full speed, so the download is issued as a series of these.
 const int kAudioChunkBytes = 1 << 20;
+
+/// How long one chunk may take before the download is declared stalled.
+/// Generous enough for a slow mobile connection (a 1 MiB chunk at 20 KiB/s
+/// takes ~50 s) but bounded, so a wedged socket surfaces as an error the
+/// user can read instead of a progress bar that never moves — which is
+/// exactly how the original `streamsClient.get()` failure presented.
+const Duration kChunkTimeout = Duration(seconds: 90);
+
+/// Ceiling on working out which client can serve a video. Resolving walks
+/// several clients, each a network round trip, so this bounds the whole walk
+/// rather than any one request.
+const Duration kResolveTimeout = Duration(seconds: 90);
+
+/// Turns a filesystem failure on [dir] into something a user can act on.
+///
+/// The case worth spelling out is Android scoped storage: from Android 10 an
+/// app can't write to a shared folder like `/storage/emulated/0/Music` by
+/// path, and this app declares no storage permission — but
+/// `file_selector`'s directory picker happily hands back exactly such a path
+/// (`FileUtils.getPathFromUri` maps the tree URI onto the raw path). Left
+/// alone that surfaces as a bare `OS Error: Permission denied, errno = 13`.
+String describeFolderProblem(String dir, Object error) {
+  final permissionDenied = error is FileSystemException &&
+      (error.osError?.errorCode == 13 || error.osError?.errorCode == 1);
+  if (permissionDenied && Platform.isAndroid) {
+    return "Android won't let the app write to $dir. Pick a folder inside "
+        "the app's own storage in Settings → MP3 Downloader, or choose "
+        'another location.';
+  }
+  return "Can't save to $dir: $error";
+}
+
+/// True when [dir] can actually be written to, checked by creating and
+/// deleting a probe file. Cheap, and the only reliable answer on Android —
+/// a path existing there says nothing about being writable.
+Future<bool> canWriteToFolder(String dir) async {
+  try {
+    final directory = Directory(dir);
+    await directory.create(recursive: true);
+    final probe = File(
+        '${dir}${dir.endsWith(Platform.pathSeparator) ? '' : Platform.pathSeparator}'
+        '.besttodo_write_test');
+    await probe.writeAsString('ok', flush: true);
+    await probe.delete();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// A folder the app can always write to without any storage permission:
+/// the app-specific external directory on Android
+/// (`Android/data/<pkg>/files`), the OS downloads folder elsewhere.
+Future<String?> defaultDownloadFolder() async {
+  try {
+    if (Platform.isAndroid) {
+      final dir = await getExternalStorageDirectory();
+      if (dir != null) return dir.path;
+    }
+    final downloads = await getDownloadsDirectory();
+    if (downloads != null) return downloads.path;
+    return (await getApplicationDocumentsDirectory()).path;
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Tools → MP3 Downloader: looks up a YouTube video — by pasted URL or by a
 /// title search — and saves its audio track to a file.
@@ -303,6 +370,38 @@ class Mp3DownloaderService {
     );
   }
 
+  /// Fetches `bytes=[start]-[end]` into [sink] and returns the new byte
+  /// offset. Pulled out of the download loop so the whole request/read pair
+  /// can carry one [kChunkTimeout] — a timeout around only `close()` would
+  /// still let a half-open response hang forever mid-body.
+  Future<int> _fetchChunk({
+    required HttpClient http,
+    required Uri url,
+    required int start,
+    required int end,
+    required int total,
+    required IOSink sink,
+    required _Flag abandoned,
+  }) async {
+    final request = await http.getUrl(url);
+    request.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-$end');
+    final response = await request.close();
+    if (response.statusCode != 206 && response.statusCode != 200) {
+      await response.drain<void>();
+      throw Mp3DownloadException(
+        'YouTube refused the rest of this track '
+        '(HTTP ${response.statusCode} at ${_mb(start)} of ${_mb(total)}).',
+      );
+    }
+    var received = start;
+    await for (final chunk in response) {
+      if (abandoned.value) return received;
+      sink.add(chunk);
+      received += chunk.length;
+    }
+    return received;
+  }
+
   /// True when a `Range` request for [start]-[end] is actually served.
   Future<bool> _probeRange(
       HttpClient http, Uri url, int start, int end) async {
@@ -336,7 +435,13 @@ class Mp3DownloaderService {
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 20);
     try {
       _log('Download starting: "${result.title}" (${result.videoId})');
-      final resolved = await _resolveStream(result.videoId, http);
+      final resolved = await _resolveStream(result.videoId, http)
+          .timeout(kResolveTimeout, onTimeout: () {
+        throw Mp3DownloadException(
+          'Timed out working out how to download this track. Check your '
+          'connection and try again.',
+        );
+      });
       final info = resolved.info;
       final total = resolved.totalBytes;
 
@@ -346,7 +451,11 @@ class Mp3DownloaderService {
       final destination = destinationDir.endsWith(separator)
           ? destinationDir
           : '$destinationDir$separator';
-      await Directory(destinationDir).create(recursive: true);
+      try {
+        await Directory(destinationDir).create(recursive: true);
+      } on FileSystemException catch (e) {
+        throw Mp3DownloadException(describeFolderProblem(destinationDir, e));
+      }
       final outputFile = File('$destination$fileName');
       // Write to `<name>.part` and rename on success, so an interrupted
       // download never leaves a half file that looks playable.
@@ -356,6 +465,9 @@ class Mp3DownloaderService {
       final sink = partFile.openWrite();
       var received = 0;
       final stopwatch = Stopwatch()..start();
+      // Set when a chunk times out: the abandoned fetch may still be mid-flight
+      // and must not write into a sink the `finally` below is about to close.
+      final abandoned = _Flag();
       try {
         while (received < total) {
           if (cancelled?.call() ?? false) {
@@ -365,21 +477,22 @@ class Mp3DownloaderService {
           final lastByte = received + kAudioChunkBytes - 1;
           final end = lastByte > total - 1 ? total - 1 : lastByte;
           final before = received;
-          final request = await http.getUrl(info.url);
-          request.headers.set(HttpHeaders.rangeHeader, 'bytes=$received-$end');
-          final response = await request.close();
-          if (response.statusCode != 206 && response.statusCode != 200) {
-            await response.drain<void>();
+          received = await _fetchChunk(
+            http: http,
+            url: info.url,
+            start: received,
+            end: end,
+            total: total,
+            sink: sink,
+            abandoned: abandoned,
+          ).timeout(kChunkTimeout, onTimeout: () {
+            abandoned.value = true;
             throw Mp3DownloadException(
-              'YouTube refused the rest of this track '
-              '(HTTP ${response.statusCode} at ${_mb(received)} of '
-              '${_mb(total)}).',
+              'Download stalled at ${_mb(before)} of ${_mb(total)} — no data '
+              'from YouTube for ${kChunkTimeout.inSeconds}s. Check your '
+              'connection and try again.',
             );
-          }
-          await for (final chunk in response) {
-            sink.add(chunk);
-            received += chunk.length;
-          }
+          });
           if (received == before) {
             throw Mp3DownloadException(
               'YouTube stopped sending data at ${_mb(received)} of '
@@ -389,8 +502,18 @@ class Mp3DownloaderService {
           onProgress?.call(received, total);
         }
         await sink.flush();
+      } catch (_) {
+        // Never leave a half-written file behind that looks like a playable
+        // track — the next attempt starts clean.
+        try {
+          await sink.close();
+          if (await partFile.exists()) await partFile.delete();
+        } catch (_) {}
+        rethrow;
       } finally {
-        await sink.close();
+        try {
+          await sink.close();
+        } catch (_) {}
       }
 
       if (await outputFile.exists()) await outputFile.delete();
@@ -418,4 +541,10 @@ class _ResolvedStream {
   _ResolvedStream(this.info, this.totalBytes);
   final yt_explode.AudioStreamInfo info;
   final int totalBytes;
+}
+
+/// A mutable boolean shared with an in-flight chunk fetch, so a timeout can
+/// tell it to stop writing without waiting for it to notice on its own.
+class _Flag {
+  bool value = false;
 }

@@ -1,6 +1,5 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../services/log_service.dart';
@@ -80,21 +79,63 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   /// The folder downloads go to. Asks once, remembers the answer in
   /// [Config.mp3DownloadFolder], and never prompts again — it can be changed
   /// in Settings → MP3 Downloader.
+  ///
+  /// The picked folder is write-tested before it is stored. On Android the
+  /// picker will happily return a shared path like
+  /// `/storage/emulated/0/Music` that scoped storage forbids this app from
+  /// writing to; catching that here turns a per-download "permission denied"
+  /// into one explanation and an offer to use a folder that works.
   Future<String?> _ensureDownloadFolder() async {
     final saved = Config.mp3DownloadFolder.trim();
     if (saved.isNotEmpty) return saved;
-    String? initial;
-    try {
-      initial = (await getDownloadsDirectory())?.path;
-    } catch (_) {
-      initial = null;
+
+    final fallback = await defaultDownloadFolder();
+    final picked = await getDirectoryPath(initialDirectory: fallback);
+    if (picked == null || !mounted) return null;
+
+    if (!await canWriteToFolder(picked)) {
+      LogService.add('MP3', 'Folder $picked is not writable');
+      if (!mounted) return null;
+      final useFallback = await _confirmFallbackFolder(picked, fallback);
+      if (useFallback != true || fallback == null) return null;
+      Config.mp3DownloadFolder = fallback;
+      await Config.save();
+      LogService.add('MP3', 'Download folder set to $fallback (fallback)');
+      return fallback;
     }
-    final picked = await getDirectoryPath(initialDirectory: initial);
-    if (picked == null) return null;
+
     Config.mp3DownloadFolder = picked;
     await Config.save();
     LogService.add('MP3', 'Download folder set to $picked');
     return picked;
+  }
+
+  Future<bool?> _confirmFallbackFolder(String picked, String? fallback) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Can't save there"),
+        content: Text(
+          fallback == null
+              ? "Android won't let the app write to $picked. Pick a "
+                  'different folder.'
+              : "Android won't let the app write to $picked — apps can only "
+                  'write to their own storage unless you grant a permission '
+                  'this app does not ask for.\n\nSave to $fallback instead?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          if (fallback != null)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Use that folder'),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _submit() async {
@@ -215,11 +256,143 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
               onPressed: _stage == _Stage.searching ? null : _submit,
               child: const Text('Find & download'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            _buildQueueStatus(context),
             Expanded(child: _buildBody(context)),
           ],
         ),
       ),
+    );
+  }
+
+  /// Live status for the queue, right under the search box.
+  ///
+  /// A failure has to be visible *here* — the page you are looking at —
+  /// rather than only in the downloads list: the bug this replaces left a
+  /// spinner at 0% with no way to find out what went wrong. A failed job
+  /// shows its reason in full, in the error colour, with a retry.
+  Widget _buildQueueStatus(BuildContext context) {
+    return ValueListenableBuilder<List<Mp3DownloadJob>>(
+      valueListenable: _manager.jobs,
+      builder: (context, jobs, _) {
+        final theme = Theme.of(context);
+        final failed = jobs
+            .where((j) => j.status == Mp3DownloadStatus.failed)
+            .toList();
+        final running = jobs
+            .where((j) => j.status == Mp3DownloadStatus.running)
+            .toList();
+        final queued =
+            jobs.where((j) => j.status == Mp3DownloadStatus.queued).length;
+
+        final cards = <Widget>[];
+
+        if (failed.isNotEmpty) {
+          final job = failed.first;
+          cards.add(Card(
+            color: theme.colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.error_outline,
+                          color: theme.colorScheme.onErrorContainer),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Couldn't download \"${job.title}\"",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    job.error ?? 'Unknown error',
+                    style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => _manager.remove(job.id),
+                        child: const Text('Dismiss'),
+                      ),
+                      TextButton(
+                        onPressed: () => _retry(job),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ));
+        }
+
+        if (running.isNotEmpty) {
+          final job = running.first;
+          cards.add(Card(
+            child: ListTile(
+              leading: const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              title: Text(job.title,
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(value: job.progress),
+                  const SizedBox(height: 4),
+                  Text(
+                    job.totalBytes > 0
+                        ? '${((job.progress ?? 0) * 100).round()}%'
+                            '${queued > 0 ? ' · $queued waiting' : ''}'
+                        : 'Contacting YouTube…',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              trailing: IconButton(
+                tooltip: 'Cancel download',
+                icon: const Icon(Icons.close),
+                onPressed: () => _manager.cancel(job.id),
+              ),
+              onTap: _openDownloads,
+            ),
+          ));
+        }
+
+        if (cards.isEmpty) return const SizedBox(height: 4);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(mainAxisSize: MainAxisSize.min, children: cards),
+        );
+      },
+    );
+  }
+
+  Future<void> _retry(Mp3DownloadJob job) async {
+    await _manager.remove(job.id);
+    if (!mounted) return;
+    _manager.enqueue(
+      Mp3SearchResult(
+        videoId: job.videoId,
+        title: job.title,
+        channel: job.channel,
+        duration: null,
+      ),
+      job.destinationDir,
     );
   }
 

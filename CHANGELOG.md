@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.51] - 2026-09-15
+- MP3 Downloader: fixed downloads that sat at 0% forever and never finished. YouTube only serves the first megabyte of a track to the clients the app was using and blocks every byte after it, so anything label-protected (the reported case was ABBA - Mamma Mia) could never complete. The app now resolves streams through YouTube's visionOS client and fetches them in 1 MB chunks — the same tracks now download in about a second instead of never
+- MP3 Downloader: downloads now keep running when you leave the page or put the app in the background, instead of being tied to the screen you started them from. A download button at the top of the tool shows how many are in flight and opens a Downloads list with what's running, what's queued, and everything downloaded before — each with the file it saved to, or why it failed
+- MP3 Downloader: search results now show each video's play count (e.g. "376M plays") next to the channel and duration, which is usually the quickest way to spot the real upload among reuploads
+- MP3 Downloader: when a download fails you now get the reason, in red, on the downloader page itself with a Retry button — no more guessing at a spinner stuck on 0%. Stalled transfers give up after 90 seconds with a readable message rather than hanging indefinitely
+- MP3 Downloader: the save folder is asked for once and then remembered, so every later download starts immediately. Change or forget it under Settings → MP3 Downloader
+- MP3 Downloader: the tool now writes to the App logs (source "MP3") — the search, which YouTube client served the stream, sizes, speed and any failure
+
 ## [0.2.50] - 2026-09-15
 - Food Diary: stomach-issue entries are no longer tinted by time of day like meals are — the card stays the plain default color, so a stomach log reads as a different kind of entry rather than another meal slot
 - Food Diary: the stomach-entry Start/Stop toggle can now be tapped back to no selection — tapping the segment that's already selected clears it, for a log entry that isn't marking either edge of an episode

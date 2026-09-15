@@ -2920,14 +2920,16 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49)
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51)
 Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
 (`looksLikeYoutubeUrl`/`extractYoutubeVideoId` match `youtube.com/watch`,
 `youtu.be/`, `/shorts/`) resolves and downloads directly; a text query calls
 `Mp3DownloaderService.search` and shows up to 5 candidates (title, channel,
-formatted duration) so the ambiguous case is a tap, not a guess.
+formatted duration, and play count via `formatViewCount` — `376M plays`,
+usually the fastest way to tell the real upload from a reupload) so the
+ambiguous case is a tap, not a guess.
 
 Built on `youtube_explode_dart` (a pure-Dart YouTube client — metadata
 search, video lookup, and the audio-only stream manifest, no server or API
@@ -2946,16 +2948,86 @@ pure Dart again, so the tool adds negligible APK size. Getting a literal
 `MediaCodec`/equivalent) + a small LAME encoder (e.g. `flutter_lame`) —
 genuine new native-code work, not a dependency swap, and not done here.
 
-The save location is picked with `file_selector`'s `getDirectoryPath`
-(defaulting to `getDownloadsDirectory()`), the same pattern the
-export/backup flows in Wishlist/Food Diary/Usage Data use.
+#### How the bytes are actually fetched (0.2.51)
+
+0.2.48-0.2.50 called `streamsClient.get(streamInfo)` and **hung at 0% forever
+on real music** — the reported symptom was "mamma mia … keeps turning on 0
+percent". Measuring the alternatives against `ABBA - Mamma Mia` (3.4 MB AAC)
+found a server-side gate, not a client bug:
+
+| approach | result |
+|---|---|
+| `streamsClient.get()` | 0 bytes in 300 s |
+| plain GET, no `Range` (what `DownloadManager` sends) | `200`, but **31 KiB/s** |
+| 1 MiB `Range` requests, stock `youtube_explode` clients | `403` past the first MiB |
+| 1 MiB `Range` requests, **visionOS** client | ~4 MiB/s, complete |
+
+Every InnerTube client shipped in `youtube_explode_dart` 3.1.0
+(`androidSdkless`, `android`, `ios`, `androidVr`, `tv`, `mweb`, `safari`, …)
+returns a stream URL that serves the first 1 MiB and then `403`s every
+subsequent byte — YouTube's PoToken gate. Matching User-Agents doesn't help,
+and 3.1.0 is the newest release. `yt-dlp` downloads the same video fine, and
+its log shows why: it uses a **visionOS** client that 3.1.0 has no constant
+for. `_visionOsClient` in `mp3_downloader_service.dart` transcribes that
+client's InnerTube payload from `yt_dlp/extractor/youtube/_base.py`, and it
+is the only one that serves a whole stream ungated.
+
+So the download is: resolve with `_streamClients` (visionOS first, the stock
+clients as fallbacks for videos it refuses — "made for kids" videos aren't
+available to it), **probe a range near the end of the file before committing**
+so a gated client is rejected up front rather than stalling mid-download, then
+pull the stream as a series of `kAudioChunkBytes` (1 MiB) `Range` requests
+into `<name>.part`, renamed on success. That is ~125x faster than the single
+throttled response and is also why the transfer **cannot** be handed to
+Android's `DownloadManager` the way an APK download is (§5 of the update
+flow): `DownloadManager` only knows how to fetch one URL straight through,
+which is exactly the 31 KiB/s path.
+
+Every request is bounded — `kResolveTimeout`/`kChunkTimeout` (90 s each) —
+so a wedged socket surfaces as a readable error instead of a progress bar
+that never moves, which was the whole failure mode being fixed.
+
+#### Background queue and history (0.2.51)
+
+`Mp3DownloadManager` (`lib/services/mp3_download_manager.dart`) owns the
+transfers, not the page: an app-level singleton with a `ValueNotifier<List<
+Mp3DownloadJob>>`, running one job at a time so several tracks can't starve
+each other of bandwidth. Leaving the page or backgrounding the app therefore
+doesn't interrupt a download, and the app-bar download button (badged with
+the in-flight count) opens `Mp3DownloadsPage` showing what's running, what's
+queued, and the history — each finished job with the path it landed at or the
+reason it failed. History persists to `mp3_downloads.json` in the app
+documents dir, capped at 100 entries.
+
+It is *not* an OS-level download: a job still `running` when the app is
+force-stopped is reloaded as `failed` / "Interrupted when the app closed"
+(`Mp3DownloadJob.fromJson`) rather than showing a bar that can never move.
+
+Failures are surfaced on the downloader page itself, not just in the list —
+a failed job renders an `errorContainer` card with the full message plus
+Dismiss/Retry, because the bug being fixed was precisely a user left guessing
+at a stuck 0%. Everything also goes to `LogService` under the `MP3` source
+(App logs page): the search, the client chosen, byte counts, throughput, and
+every failure.
+
+The save location is asked for **once** — `Config.mp3DownloadFolder`, set on
+the first download via `file_selector`'s `getDirectoryPath` (defaulting to
+`getDownloadsDirectory()`) and reused silently afterwards. It is editable at
+Settings ▸ MP3 Downloader (section index 15, gated on the `mp3_downloader`
+feature switch), which can also forget it so the next download asks again.
 `youtube_explode_dart`'s scraping doesn't work from a browser sandbox, so
 `Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page to a "not
 supported on this platform" message there; every other platform
 (Android/Windows/iOS/macOS/Linux) works. `Mp3DownloaderService` exposes
 `searchOverride`/`resolveOverride`/`downloadOverride` (`@visibleForTesting`)
 so widget tests substitute fakes instead of hitting the network — the same
-seam `TodoistSyncService.apiClientFactory` uses. Registered like every other
+seam `TodoistSyncService.apiClientFactory` uses. Because those fakes can't
+catch a YouTube-side change like the PoToken gate, the real thing is checked
+by `tool/check_mp3_download.dart`: a live search + download that asserts the
+saved file is a valid container and is *not* truncated at 1 MiB. It lives in
+`tool/` so `flutter test` (which only walks `test/`) can never go red from a
+flaky network; run it by hand with
+`flutter test tool/check_mp3_download.dart`. Registered like every other
 tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and in
 `Config.featureKeys`/`Config.startToolOptions` (feature switch + default
 start page).
