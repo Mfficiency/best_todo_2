@@ -62,23 +62,33 @@ void main() {
     expect(restored.milestones[1].direction, MilestoneDirection.after);
   });
 
-  test('tags default to empty and round-trip through JSON', () {
+  test('every timer carries the required "countdown" tag by default', () {
     final plain = _timerWith([]);
-    expect(plain.tags, '');
+    expect(plain.tags, 'countdown');
     final tagged = CountdownTimerItem(
       label: 'Launch',
       target: DateTime(2026, 6, 1),
       tags: 'work, deadline',
     );
+    expect(tagged.tags, 'work, deadline, countdown');
     final restored = CountdownTimerItem.fromJson(tagged.toJson());
-    expect(restored.tags, 'work, deadline');
+    expect(restored.tags, 'work, deadline, countdown');
   });
 
-  test('an empty tags string is omitted from JSON, matching a legacy '
-      'record saved before the field existed', () {
-    final plain = _timerWith([]);
-    expect(plain.toJson().containsKey('tags'), isFalse);
-    expect(CountdownTimerItem.fromJson(plain.toJson()).tags, '');
+  test('legacy records without a tags field are backfilled with countdown',
+      () {
+    final plain = _timerWith([]).toJson()..remove('tags');
+    expect(CountdownTimerItem.fromJson(plain).tags, 'countdown');
+  });
+
+  test('explicitly empty tags are normalized back to countdown', () {
+    final item = CountdownTimerItem(
+      label: 'Launch',
+      target: DateTime(2026, 6, 1),
+      tags: '',
+    );
+    expect(item.tags, 'countdown');
+    expect(item.toJson()['tags'], 'countdown');
   });
 
   test('standalone timers omit the item-link key', () {

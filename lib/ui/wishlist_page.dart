@@ -13,6 +13,7 @@ import '../config.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../services/auto_tag_service.dart';
+import '../services/github_wishlist_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/wishlist_shipped.dart';
@@ -154,6 +155,11 @@ String wishReleaseGroupTitle(WishReleaseGroup group) {
   }
 }
 
+/// Whether [task] has already been dispatched to the build automation (the
+/// "Send to build" swipe action), so the button can show "Queued" instead of
+/// sending a duplicate GitHub issue.
+bool isQueuedForBuild(Task task) => labelHasToken(task.label, nextBuildToken);
+
 /// The plain-text prompt "Propose for next" puts on the clipboard: an
 /// instruction for Claude to tag the user's Todoist backlog with
 /// `release-next`/`release-soon` (aiming for ~3 items in the next release),
@@ -202,6 +208,21 @@ String buildSelectedWishesPrompt(List<Task> items) {
   return lines.join('\n');
 }
 
+/// The prefix on a `wishlist-build` GitHub issue body's trailer line naming
+/// the wishlist item's own [Task.uid] — the build routine parses this back
+/// out so it can add the matching `ShippedWish` entry (`wishlist_shipped.
+/// dart`) once the item ships, letting the item self-tick like every other
+/// shipped wish. The issue's title/description text alone can't carry this:
+/// it's a client-side id, not something a human would type.
+const String wishlistIssueUidPrefix = 'Wishlist item uid: ';
+
+/// The GitHub issue body "Send to build" opens for [item]: the same
+/// build-prompt text [buildSelectedWishesPrompt] already produces, plus the
+/// uid trailer above.
+String wishlistIssueBody(Task item) =>
+    '${buildSelectedWishesPrompt(<Task>[item])}\n\n'
+    '$wishlistIssueUidPrefix${item.uid}';
+
 /// Tools → Wishlist: a pre-filtered view over the one task list — like
 /// opening a project — showing only tasks flagged [Task.isWish]. The full
 /// item overview (the home page) shows the same tasks with all their
@@ -220,6 +241,7 @@ class WishlistPage extends StatefulWidget {
 
 class _WishlistPageState extends State<WishlistPage> {
   final ItemRepository _repository = ItemRepository.instance;
+  final GithubWishlistService _githubService = GithubWishlistService.instance;
 
   /// The full task list; the page shows and mutates only the isWish subset
   /// but always persists the whole list.
@@ -251,7 +273,7 @@ class _WishlistPageState extends State<WishlistPage> {
       tasks.add(Task(
         title: 'Learn to sail',
         description: 'Dev seed: a wishlist item',
-        label: 'priority-medium',
+        label: addLabelToken('priority-medium', demoToken),
         createdAt: DateTime.now(),
         isWish: true,
       ));
@@ -490,6 +512,54 @@ class _WishlistPageState extends State<WishlistPage> {
   void _setReleaseGroup(Task item, WishReleaseGroup group) {
     setState(() => setWishReleaseGroup(item, group));
     _save();
+  }
+
+  /// Dispatches [item] to the build automation: opens a `wishlist-build`
+  /// GitHub issue ([wishlistIssueBody] — the same text "Copy selected as
+  /// prompt" already puts on the clipboard, plus a uid trailer the build
+  /// routine needs) and, only once that succeeds, stamps [nextBuildToken] so
+  /// the item isn't sent twice. No-ops with a snackbar if the item is
+  /// already queued or no token is configured (Settings → Wishlist build).
+  Future<void> _sendToBuild(Task item) async {
+    if (isQueuedForBuild(item)) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text('"${item.title}" is already queued for build')));
+      return;
+    }
+    final token = Config.githubWishlistToken.trim();
+    if (token.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content:
+              Text('Set a GitHub token in Settings → Wishlist build first'),
+        ));
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    messenger.showSnackBar(
+        SnackBar(content: Text('Sending "${item.title}" to build…')));
+    try {
+      await _githubService.createWishlistIssue(
+        token: token,
+        title: item.title,
+        body: wishlistIssueBody(item),
+      );
+      if (!mounted) return;
+      setState(() => item.label = addLabelToken(item.label, nextBuildToken));
+      await _save();
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Queued "${item.title}" for build')));
+    } catch (e) {
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Failed to send "${item.title}": $e')));
+    }
   }
 
   /// Copies the "Propose for next" prompt for every open backlog/soon item
@@ -731,6 +801,7 @@ class _WishlistPageState extends State<WishlistPage> {
                             onShare: () => _shareItem(item),
                             onExport: () => _exportItem(item),
                             onDelete: () => _deleteItems([item]),
+                            onSendToBuild: () => _sendToBuild(item),
                             onRegressRelease: () => _regressRelease(item),
                             onSetReleaseGroup: (newGroup) =>
                                 _setReleaseGroup(item, newGroup),
@@ -828,6 +899,23 @@ class _WishEditDialogState extends State<_WishEditDialog> {
     super.dispose();
   }
 
+  /// Pastes clipboard text into the description field at the current
+  /// selection (or appended, if the field has no active selection).
+  Future<void> _pasteDescription() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty) return;
+    final controller = _descriptionController;
+    final selection = controller.selection;
+    final insertAt = selection.isValid ? selection.start : controller.text.length;
+    final removeTo = selection.isValid ? selection.end : controller.text.length;
+    final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
+    controller.text = newText;
+    controller.selection = TextSelection.collapsed(
+      offset: (insertAt + pasted.length).clamp(0, newText.length),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -875,7 +963,14 @@ class _WishEditDialogState extends State<_WishEditDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: InputDecoration(
+                labelText: 'Description',
+                suffixIcon: IconButton(
+                  tooltip: 'Paste from clipboard',
+                  icon: const Icon(Icons.content_paste),
+                  onPressed: _pasteDescription,
+                ),
+              ),
               maxLines: 3,
             ),
           ],
@@ -905,8 +1000,8 @@ class _WishEditDialogState extends State<_WishEditDialog> {
 
 /// A wishlist item rendered like a home-page task tile (checkbox, title,
 /// labels — never a due date) with the wishlist swipe actions: swiping
-/// toward the options side opens Share/Copy/Export/Delete shortcuts and moves
-/// the item back one release step ([WishlistPage]'s [regressWishReleaseGroup])
+/// toward the options side opens Share/Copy/Export/Build/Delete shortcuts and
+/// moves the item back one release step ([WishlistPage]'s [regressWishReleaseGroup])
 /// when the countdown runs out; swiping toward the other side starts
 /// multi-select ([onStartSelection])/toggles it ([onToggleSelected]) instead
 /// of deleting — deleting a single item now lives in the options panel
@@ -925,6 +1020,7 @@ class _WishTile extends StatefulWidget {
   final VoidCallback onShare;
   final VoidCallback onExport;
   final VoidCallback onDelete;
+  final VoidCallback onSendToBuild;
   final VoidCallback onRegressRelease;
   final void Function(WishReleaseGroup group) onSetReleaseGroup;
 
@@ -942,6 +1038,7 @@ class _WishTile extends StatefulWidget {
     required this.onShare,
     required this.onExport,
     required this.onDelete,
+    required this.onSendToBuild,
     required this.onRegressRelease,
     required this.onSetReleaseGroup,
   }) : super(key: key);
@@ -1011,6 +1108,11 @@ class _WishTileState extends State<_WishTile>
   void _delete() {
     _closeOptions();
     widget.onDelete();
+  }
+
+  void _sendToBuild() {
+    _closeOptions();
+    widget.onSendToBuild();
   }
 
   List<String> _labels() => widget.item.label
@@ -1119,9 +1221,21 @@ class _WishTileState extends State<_WishTile>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  Wrap(
+                    alignment: WrapAlignment.end,
                     children: [
+                      TextButton.icon(
+                        onPressed:
+                            isQueuedForBuild(widget.item) ? null : _sendToBuild,
+                        icon: Icon(
+                          isQueuedForBuild(widget.item)
+                              ? Icons.check_circle
+                              : Icons.rocket_launch,
+                          size: 18,
+                        ),
+                        label: Text(
+                            isQueuedForBuild(widget.item) ? 'Queued' : 'Build'),
+                      ),
                       TextButton.icon(
                         onPressed: _share,
                         icon: const Icon(Icons.share, size: 18),

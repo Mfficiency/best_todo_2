@@ -364,8 +364,8 @@ void main() {
   });
 
   testWidgets(
-      'the grouping toggle switches between one list and grouped by '
-      'conversation', (tester) async {
+      'the grouping toggle switches between grouped by conversation (the '
+      'default) and one list', (tester) async {
     await pumpPending(
       tester,
       tasks: [
@@ -379,11 +379,6 @@ void main() {
       marker: 'Book flights',
     );
 
-    expect(find.text('Trip planning (1)'), findsNothing);
-
-    await tester.tap(find.byTooltip('Group by conversation'));
-    await tester.pump();
-
     expect(find.text('Trip planning (1)'), findsOneWidget);
     expect(find.text('Unspecified (1)'), findsOneWidget);
     expect(find.text('Book flights'), findsOneWidget);
@@ -394,6 +389,13 @@ void main() {
 
     expect(find.text('Trip planning (1)'), findsNothing);
     expect(find.text('Book flights'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Group by conversation'));
+    await tester.pump();
+
+    expect(find.text('Trip planning (1)'), findsOneWidget);
+    expect(find.text('Book flights'), findsOneWidget);
+    expect(find.text('Buy groceries'), findsOneWidget);
   });
 
   testWidgets(
@@ -421,9 +423,6 @@ void main() {
       ],
       marker: 'Old item A',
     );
-
-    await tester.tap(find.byTooltip('Group by conversation'));
-    await tester.pump();
 
     // A and B share an hour bucket; C, created five hours later, gets its
     // own group. None of them fall into "Unspecified" — they all have a
@@ -556,9 +555,6 @@ void main() {
       marker: 'Book flights',
     );
 
-    await tester.tap(find.byTooltip('Group by conversation'));
-    await tester.pump();
-
     await tester.longPress(find.text('Trip planning (2)'));
     await tester.pump();
 
@@ -571,5 +567,76 @@ void main() {
     expect(find.text('Book flights'), findsNothing);
     expect(find.text('Book hotel'), findsNothing);
     expect(find.text('Buy groceries'), findsOneWidget);
+  });
+
+  testWidgets(
+      'defaults to newest first, and the sort menu switches to oldest first '
+      'or alphabetical', (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Banana',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 3, 10),
+        ),
+        Task(
+          title: 'Apple',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 2, 10),
+        ),
+        Task(
+          title: 'Cherry',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 10),
+        ),
+      ],
+      marker: 'Banana',
+    );
+
+    // One flat list makes vertical order easy to compare.
+    await tester.tap(find.byTooltip('Show as one list'));
+    await tester.pump();
+
+    double topOf(String text) => tester.getTopLeft(find.text(text)).dy;
+
+    // Default: newest created at the top.
+    expect(topOf('Banana'), lessThan(topOf('Apple')));
+    expect(topOf('Apple'), lessThan(topOf('Cherry')));
+
+    await tester.tap(find.byTooltip('Sort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Oldest first'));
+    await tester.pumpAndSettle();
+
+    expect(topOf('Cherry'), lessThan(topOf('Apple')));
+    expect(topOf('Apple'), lessThan(topOf('Banana')));
+
+    await tester.tap(find.byTooltip('Sort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alphabetical'));
+    await tester.pumpAndSettle();
+
+    expect(topOf('Apple'), lessThan(topOf('Banana')));
+    expect(topOf('Banana'), lessThan(topOf('Cherry')));
+  });
+
+  testWidgets(
+      'a title group with a creation time shows its date before the title',
+      (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Book flights',
+          label: waitingApprovalToken,
+          createdAt: DateTime(2026, 1, 15, 9, 30),
+          pendingSourceTitle: 'Trip planning',
+        ),
+      ],
+      marker: 'Book flights',
+    );
+
+    expect(find.text('2026-01-15  Trip planning (1)'), findsOneWidget);
   });
 }

@@ -1,6 +1,8 @@
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/item_views.dart';
+import 'package:besttodo/utils/label_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -138,6 +140,61 @@ void main() {
     });
   });
 
+  group('worklist (mlr tag)', () {
+    test('a task tagged mlr is hidden from every other view, even with a '
+        'due date and project assignment', () {
+      final worklistTask = Task(
+        title: 'mlr item',
+        dueDate: today,
+        label: 'mlr',
+        projectId: 'p1',
+      );
+      final ok = Task(title: 'normal', dueDate: today);
+      final boardTask = Task(title: 'board', projectId: 'p1');
+
+      expect(
+          ItemViews.homeBucket([worklistTask, ok], 0, today)
+              .map((t) => t.title),
+          ['normal']);
+      expect(ItemViews.active([worklistTask, ok]).map((t) => t.title),
+          ['normal']);
+      expect(
+          ItemViews.projectTasks([worklistTask, boardTask], 'p1')
+              .map((t) => t.title),
+          ['board']);
+      expect(
+          ItemViews.boardColumn(
+                  [worklistTask, boardTask], 'p1', Task.kanbanTodo)
+              .map((t) => t.title),
+          ['board']);
+      final wishAndMlr =
+          Task(title: 'wish and mlr', isWish: true, label: 'mlr');
+      final wish = Task(title: 'wish', isWish: true);
+      expect(ItemViews.wishlist([wish, wishAndMlr]).map((t) => t.title),
+          ['wish']);
+    });
+
+    test('homeBucket shows mlr tasks again when includeWorklistItems is set '
+        '(the Worklist tool itself)', () {
+      final worklistTask =
+          Task(title: 'mlr item', dueDate: today, label: 'mlr');
+      final ok = Task(title: 'normal', dueDate: today);
+      expect(
+          ItemViews.homeBucket([worklistTask, ok], 0, today,
+                  includeWorklistItems: true)
+              .map((t) => t.title)
+              .toSet(),
+          {'mlr item', 'normal'});
+    });
+
+    test('mlr tag matching is case-insensitive', () {
+      final worklistTask = Task(title: 'MLR item', dueDate: today, label: 'MLR');
+      expect(
+          ItemViews.homeBucket([worklistTask], 0, today).map((t) => t.title),
+          isEmpty);
+    });
+  });
+
   group('waiting for approval', () {
     Task pending(String title) =>
         Task(title: title, label: 'Waiting_for_approval');
@@ -196,6 +253,130 @@ void main() {
         rules: ViewFilterRules(includeTags: ['urgent']),
       );
       expect(result.map((t) => t.title), ['keep']);
+    });
+  });
+
+  group('demo items hidden outside dev builds', () {
+    setUp(() => Config.hideDemoItems = true);
+    tearDown(Config.resetHideDemoItemsForTest);
+
+    test('a demo-tagged task is hidden from home even with no rules '
+        'configured', () {
+      final demo = Task(title: 'seed', dueDate: today, label: demoToken);
+      final real = Task(title: 'real', dueDate: today);
+      expect(ItemViews.homeBucket([demo, real], 0, today).map((t) => t.title),
+          ['real']);
+      expect(ItemViews.active([demo, real]).map((t) => t.title), ['real']);
+    });
+
+    test('a demo-tagged task stays hidden even when Filtering rules would '
+        'otherwise show everything', () {
+      final demo = Task(title: 'seed', dueDate: today, label: demoToken);
+      final real = Task(title: 'real', dueDate: today);
+      final rules = ViewFilterRules(); // empty: no exclude/include configured
+      expect(
+          ItemViews.homeBucket([demo, real], 0, today, rules: rules)
+              .map((t) => t.title),
+          ['real']);
+    });
+
+    test('demo items are visible again once hideDemoItems is off (dev '
+        'builds)', () {
+      Config.hideDemoItems = false;
+      final demo = Task(title: 'seed', dueDate: today, label: demoToken);
+      expect(ItemViews.homeBucket([demo], 0, today).map((t) => t.title),
+          ['seed']);
+    });
+
+    test('applyTagRules and applyFilterRules also drop demo items with no '
+        'rules configured', () {
+      expect(ItemViews.applyTagRules(['real', demoToken], null, (t) => t),
+          ['real']);
+
+      final demo = Task(title: 'seed', label: demoToken);
+      final real = Task(title: 'real');
+      expect(ItemViews.applyFilterRules([demo, real], null).map((t) => t.title),
+          ['real']);
+    });
+
+    test('a dev seed that predates the demo label is recognized by its '
+        'description marker', () {
+      // What a debug build left on a real phone before 0.2.31 started
+      // stamping `demo`: no label at all, only the seeder's own marker.
+      final legacy = Task(
+        title: 'Review PR for auth refactor',
+        dueDate: today,
+        description: 'Seeded dev future task',
+      );
+      final other = Task(
+        title: 'Deep work block',
+        dueDate: today,
+        description: 'Dev seed: a task with a real time range',
+      );
+      final real = Task(
+        title: 'real',
+        dueDate: today,
+        description: 'Seeded by me, a human',
+      );
+      expect(
+          ItemViews.homeBucket([legacy, other, real], 0, today)
+              .map((t) => t.title),
+          ['real']);
+      expect(ItemViews.stateTags(legacy), contains(demoToken));
+    });
+
+    test('a hand-written demo Hide rule also catches a marker-only legacy '
+        'seed, even with the built-in gate off', () {
+      Config.hideDemoItems = false;
+      final legacy = Task(
+        title: 'seed',
+        dueDate: today,
+        description: 'Seeded dev future task',
+      );
+      final real = Task(title: 'real', dueDate: today);
+      final rules = ViewFilterRules(excludeTags: [demoToken]);
+      expect(
+          ItemViews.homeBucket([legacy, real], 0, today, rules: rules)
+              .map((t) => t.title),
+          ['real']);
+    });
+  });
+
+  group("homeVisible (the schedule view's gate)", () {
+    tearDown(Config.resetHideDemoItemsForTest);
+
+    test('applies the same rules and gates as homeBucket, unbucketed', () {
+      Config.hideDemoItems = true;
+      final near = dated('near', DateTime(2026, 7, 18));
+      final far = dated('far', DateTime(2026, 9, 1));
+      final excluded = dated('excluded', DateTime(2026, 7, 18))
+        ..label = 'later';
+      final demo = dated('demo', DateTime(2026, 7, 19))..label = demoToken;
+      final worklist = dated('worklist', DateTime(2026, 7, 18))
+        ..label = worklistToken;
+      final rules = ViewFilterRules(excludeTags: ['later']);
+
+      expect(
+          ItemViews.homeVisible([near, far, excluded, demo, worklist],
+                  rules: rules)
+              .map((t) => t.title),
+          ['near', 'far']);
+      // The Worklist tool's own instance of the home page still sees its
+      // items, exactly as in homeBucket.
+      expect(
+          ItemViews.homeVisible([near, worklist],
+                  rules: rules, includeWorklistItems: true)
+              .map((t) => t.title),
+          ['near', 'worklist']);
+    });
+
+    test("honors the caller's own where predicate (search)", () {
+      final match = dated('groceries', DateTime(2026, 7, 18));
+      final other = dated('taxes', DateTime(2026, 7, 18));
+      expect(
+          ItemViews.homeVisible([match, other],
+              where: (t) => t.title.contains('groc')).map((t) => t.title),
+          ['groceries']);
     });
   });
 }
