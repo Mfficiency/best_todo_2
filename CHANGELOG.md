@@ -2,6 +2,9 @@
 
 ## [0.2.52] - 2026-09-15
 - MP3 Downloader: picking a shared folder (like Music) that scoped storage blocks now offers to grant "All files access" so that folder actually works, instead of only offering to redirect the download into the app's private storage
+- Local build: 2026-09-15 21:10
+- Build duration (apk): 3m 55s
+- Build duration (windows): 1m 48s
 
 ## [0.2.51] - 2026-09-15
 - MP3 Downloader: fixed downloads that sat at 0% forever and never finished. YouTube only serves the first megabyte of a track to the clients the app was using and blocks every byte after it, so anything label-protected (the reported case was ABBA - Mamma Mia) could never complete. The app now resolves streams through YouTube's visionOS client and fetches them in 1 MB chunks — the same tracks now download in about a second instead of never
