@@ -2,6 +2,9 @@
 
 ## [0.2.48] - 2026-09-15
 - New tool: MP3 Downloader (Tools drawer) — paste a YouTube URL, or type a title to search, and save the video's audio as an .mp3 file. A search shows up to 5 candidates (title, channel, duration) to pick from when the query is ambiguous. Android and Windows only (not available on web)
+- Local build: 2026-09-15 17:01
+- Build duration (apk): 6m 34s
+- Build duration (windows): 3m 03s
 
 ## [0.2.47] - 2026-09-15
 - Food Diary: the stomach-entry type toggle (Gas/Liquid/Discomfort) is now multi-select — any combination can be chosen at once, e.g. gas and discomfort together, instead of only one at a time
