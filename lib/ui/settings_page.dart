@@ -55,7 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    15,
+    16,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -74,6 +74,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Backup',
     'Weekly Hours Planner',
     'Wishlist build',
+    'MP3 Downloader',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -94,6 +95,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return Config.isFeatureEnabled('sms_report');
       case 13:
         return Config.isFeatureEnabled('weekly_hours_planner');
+      case 15:
+        return Config.isFeatureEnabled('mp3_downloader');
       default:
         return true;
     }
@@ -232,6 +235,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'grid hour range day end flexitime'),
     _SettingsSearchEntry('GitHub token', 14,
         'wishlist build automation issue pat personal access token next build'),
+    _SettingsSearchEntry('MP3 download folder', 15,
+        'mp3 downloader youtube audio music save folder directory location m4a'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -2164,6 +2169,68 @@ class _SettingsPageState extends State<SettingsPage> {
   /// A daily Claude Code Remote routine (5pm, plus on demand) picks those up,
   /// implements the item and pushes straight to `dev` — see
   /// `.claude/notes/automation.md`.
+  /// Settings → MP3 Downloader: where Tools → MP3 Downloader saves audio.
+  /// The tool asks for this folder the first time it downloads something and
+  /// then never prompts again, so this is the only place to change it.
+  Future<void> _pickMp3DownloadFolder() async {
+    String? initial;
+    try {
+      initial = (await getDownloadsDirectory())?.path;
+    } catch (_) {
+      initial = null;
+    }
+    final directory = await getDirectoryPath(
+      initialDirectory: Config.mp3DownloadFolder.isNotEmpty
+          ? Config.mp3DownloadFolder
+          : initial,
+    );
+    if (directory == null) return;
+    setState(() => Config.mp3DownloadFolder = directory);
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _clearMp3DownloadFolder() async {
+    setState(() => Config.mp3DownloadFolder = '');
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildMp3DownloaderSection() {
+    final chosen = Config.mp3DownloadFolder.isNotEmpty;
+    return _buildSection(
+      index: 15,
+      title: 'MP3 Downloader',
+      children: [
+        ListTile(
+          title: const Text('Download folder'),
+          subtitle: Text(
+            chosen
+                ? Config.mp3DownloadFolder
+                : 'Not set — the downloader asks the first time you use it',
+          ),
+          trailing: const Icon(Icons.folder_open),
+          onTap: _pickMp3DownloadFolder,
+        ),
+        if (chosen)
+          ListTile(
+            leading: const Icon(Icons.clear),
+            title: const Text('Forget this folder'),
+            subtitle: const Text('The downloader will ask again next time'),
+            onTap: _clearMp3DownloadFolder,
+          ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text(
+            'Audio is saved in the format YouTube serves it in — .m4a (AAC) '
+            'or .webm (Opus) — without re-encoding.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildWishlistBuildSection() {
     return _buildSection(
       index: 14,
@@ -3098,6 +3165,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         if (_isSectionVisible(13))
                           _buildWeeklyHoursPlannerSection(),
                         _buildWishlistBuildSection(),
+                        if (_isSectionVisible(15)) _buildMp3DownloaderSection(),
                       ],
               ),
             ),

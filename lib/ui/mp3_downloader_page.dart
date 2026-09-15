@@ -2,42 +2,62 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../config.dart';
+import '../services/log_service.dart';
+import '../services/mp3_download_manager.dart';
 import '../services/mp3_downloader_service.dart';
+import 'mp3_downloads_page.dart';
 import 'subpage_app_bar.dart';
 
 /// Tools → MP3 Downloader: paste a YouTube URL, or type a title to search,
 /// and save the video's audio. A pasted URL downloads straight away; a text
-/// query shows up to 5 candidates (title, channel, duration) so the
-/// ambiguous case — "which video did they mean?" — is the user's call, not
-/// a guess.
+/// query shows up to 5 candidates (title, channel, duration, play count) so
+/// the ambiguous case — "which video did they mean?" — is the user's call,
+/// not a guess. Play count is usually the quickest way to tell the real
+/// upload from a reupload.
+///
+/// The page only *queues* work: [Mp3DownloadManager] owns the transfer, so
+/// leaving this page or backgrounding the app doesn't interrupt it, and the
+/// download button in the app bar shows what is still running.
 ///
 /// Saves the audio-only stream as delivered (`.m4a`/AAC or `.webm`/Opus)
 /// rather than transcoding to a literal `.mp3` — see
 /// [Mp3DownloaderService]'s doc comment for why (a real MP3 encoder would
 /// have added 100+ MB to the app).
 class Mp3DownloaderPage extends StatefulWidget {
-  const Mp3DownloaderPage({Key? key, Mp3DownloaderService? service})
-      : _service = service,
+  const Mp3DownloaderPage({
+    Key? key,
+    Mp3DownloaderService? service,
+    Mp3DownloadManager? manager,
+  })  : _service = service,
+        _manager = manager,
         super(key: key);
 
   final Mp3DownloaderService? _service;
+  final Mp3DownloadManager? _manager;
 
   @override
   State<Mp3DownloaderPage> createState() => _Mp3DownloaderPageState();
 }
 
-enum _Stage { idle, searching, picking, downloading, done, error }
+enum _Stage { idle, searching, picking, error }
 
 class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   late final Mp3DownloaderService _service =
       widget._service ?? Mp3DownloaderService.instance;
+  late final Mp3DownloadManager _manager =
+      widget._manager ?? Mp3DownloadManager.instance;
   final TextEditingController _controller = TextEditingController();
 
   _Stage _stage = _Stage.idle;
   List<Mp3SearchResult> _results = <Mp3SearchResult>[];
   String? _errorMessage;
-  String? _savedPath;
-  double _progress = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _manager.load();
+  }
 
   @override
   void dispose() {
@@ -57,6 +77,26 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     return '$minutes:$mm';
   }
 
+  /// The folder downloads go to. Asks once, remembers the answer in
+  /// [Config.mp3DownloadFolder], and never prompts again — it can be changed
+  /// in Settings → MP3 Downloader.
+  Future<String?> _ensureDownloadFolder() async {
+    final saved = Config.mp3DownloadFolder.trim();
+    if (saved.isNotEmpty) return saved;
+    String? initial;
+    try {
+      initial = (await getDownloadsDirectory())?.path;
+    } catch (_) {
+      initial = null;
+    }
+    final picked = await getDirectoryPath(initialDirectory: initial);
+    if (picked == null) return null;
+    Config.mp3DownloadFolder = picked;
+    await Config.save();
+    LogService.add('MP3', 'Download folder set to $picked');
+    return picked;
+  }
+
   Future<void> _submit() async {
     final input = _controller.text.trim();
     if (input.isEmpty) return;
@@ -64,13 +104,14 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     setState(() {
       _stage = _Stage.searching;
       _errorMessage = null;
-      _savedPath = null;
       _results = <Mp3SearchResult>[];
     });
     try {
       if (looksLikeYoutubeUrl(input)) {
         final result = await _service.resolve(input);
-        await _startDownload(result);
+        if (!mounted) return;
+        setState(() => _stage = _Stage.idle);
+        await _queueDownload(result);
         return;
       }
       final results = await _service.search(input, limit: 5);
@@ -96,40 +137,27 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     }
   }
 
-  Future<void> _startDownload(Mp3SearchResult result) async {
-    setState(() {
-      _stage = _Stage.downloading;
-      _progress = 0;
-      _errorMessage = null;
-    });
-    try {
-      final downloads = await getDownloadsDirectory();
-      final directory =
-          await getDirectoryPath(initialDirectory: downloads?.path);
-      if (!mounted) return;
-      if (directory == null) {
-        setState(() => _stage = _Stage.idle);
-        return;
-      }
-      final path = await _service.downloadMp3(
-        result,
-        directory,
-        onProgress: (value) {
-          if (mounted) setState(() => _progress = value);
-        },
-      );
-      if (!mounted) return;
-      setState(() {
-        _stage = _Stage.done;
-        _savedPath = path;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _stage = _Stage.error;
-        _errorMessage = 'Download failed: $e';
-      });
-    }
+  Future<void> _queueDownload(Mp3SearchResult result) async {
+    final folder = await _ensureDownloadFolder();
+    if (!mounted || folder == null) return;
+    _manager.enqueue(result, folder);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Downloading "${result.title}"'),
+        action: SnackBarAction(
+          label: 'Show',
+          onPressed: _openDownloads,
+        ),
+      ),
+    );
+  }
+
+  void _openDownloads() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Mp3DownloadsPage(manager: _manager),
+      ),
+    );
   }
 
   void _reset() {
@@ -137,8 +165,6 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       _stage = _Stage.idle;
       _results = <Mp3SearchResult>[];
       _errorMessage = null;
-      _savedPath = null;
-      _progress = 0;
     });
   }
 
@@ -159,7 +185,11 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       );
     }
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'MP3 Downloader'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'MP3 Downloader',
+        actions: [_buildDownloadsButton()],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -167,8 +197,7 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
           children: [
             TextField(
               controller: _controller,
-              enabled: _stage != _Stage.searching &&
-                  _stage != _Stage.downloading,
+              enabled: _stage != _Stage.searching,
               decoration: const InputDecoration(
                 labelText: 'YouTube URL or video title',
                 border: OutlineInputBorder(),
@@ -183,10 +212,7 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
             ),
             const SizedBox(height: 12),
             FilledButton(
-              onPressed: (_stage == _Stage.searching ||
-                      _stage == _Stage.downloading)
-                  ? null
-                  : _submit,
+              onPressed: _stage == _Stage.searching ? null : _submit,
               child: const Text('Find & download'),
             ),
             const SizedBox(height: 16),
@@ -194,6 +220,24 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Download button with a badge counting whatever is still in flight, so
+  /// the queue is visible from here without opening it.
+  Widget _buildDownloadsButton() {
+    return ValueListenableBuilder<List<Mp3DownloadJob>>(
+      valueListenable: _manager.jobs,
+      builder: (context, jobs, _) {
+        final active = jobs.where((j) => j.isActive).length;
+        final button = IconButton(
+          tooltip: 'Downloads',
+          icon: const Icon(Icons.download),
+          onPressed: _openDownloads,
+        );
+        if (active == 0) return button;
+        return Badge.count(count: active, child: button);
+      },
     );
   }
 
@@ -209,44 +253,18 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final result = _results[index];
+            final plays = formatViewCount(result.viewCount);
             return ListTile(
-              title: Text(result.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              title: Text(result.title,
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
               subtitle: Text(
-                '${result.channel} · ${_formatDuration(result.duration)}',
+                '${result.channel} · ${_formatDuration(result.duration)}'
+                '${plays.isEmpty ? '' : ' · $plays plays'}',
               ),
               trailing: const Icon(Icons.download),
-              onTap: () => _startDownload(result),
+              onTap: () => _queueDownload(result),
             );
           },
-        );
-      case _Stage.downloading:
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(
-                value: _progress > 0 ? _progress : null,
-              ),
-              const SizedBox(height: 12),
-              Text('Downloading… ${(_progress * 100).round()}%'),
-            ],
-          ),
-        );
-      case _Stage.done:
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.check_circle, color: Colors.green, size: 48),
-              const SizedBox(height: 12),
-              Text('Saved to $_savedPath', textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _reset,
-                child: const Text('Download another'),
-              ),
-            ],
-          ),
         );
       case _Stage.error:
         return Center(

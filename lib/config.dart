@@ -588,6 +588,11 @@ class Config {
   /// caveat applies.
   static String githubWishlistToken = '';
 
+  /// Folder the MP3 Downloader saves audio into. Empty means "not chosen
+  /// yet" — the tool asks once, stores the answer here, and never prompts
+  /// again unless the user changes it in Settings → MP3 Downloader.
+  static String mp3DownloadFolder = '';
+
   /// If true, the app polls GitHub for a newer build every minute while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
   /// appears, asks whether to download and install it — see Settings →
@@ -677,6 +682,7 @@ class Config {
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
       'githubWishlistToken': githubWishlistToken,
+      'mp3DownloadFolder': mp3DownloadFolder,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
@@ -812,6 +818,8 @@ class Config {
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
     githubWishlistToken =
         data['githubWishlistToken'] as String? ?? githubWishlistToken;
+    mp3DownloadFolder =
+        data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
     // Settings files from before automatic checks existed have no key. Use
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.
