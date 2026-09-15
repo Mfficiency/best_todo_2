@@ -3,6 +3,8 @@
 ## [0.2.50] - 2026-09-15
 - Food Diary: stomach-issue entries are no longer tinted by time of day like meals are — the card stays the plain default color, so a stomach log reads as a different kind of entry rather than another meal slot
 - Food Diary: the stomach-entry Start/Stop toggle can now be tapped back to no selection — tapping the segment that's already selected clears it, for a log entry that isn't marking either edge of an episode
+- Local build: 2026-09-15 18:40
+- Build duration (apk): 5m 27s
 
 ## [0.2.49] - 2026-09-15
 - MP3 Downloader: removed the ffmpeg-based MP3 conversion — every ffmpeg variant capable of it, even the audio-only one, bundles the whole ffmpeg native library per Android ABI and had tripled the APK's size. The tool now saves the audio-only stream YouTube already serves (.m4a/AAC, or .webm/Opus when that's all that's offered) instead of transcoding it, which needs no native code at all
