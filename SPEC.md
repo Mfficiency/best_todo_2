@@ -2920,7 +2920,7 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51)
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54)
 Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
@@ -3021,6 +3021,84 @@ Dismiss/Retry, because the bug being fixed was precisely a user left guessing
 at a stuck 0%. Everything also goes to `LogService` under the `MP3` source
 (App logs page): the search, the client chosen, byte counts, throughput, and
 every failure.
+
+#### Filename formatting and metadata tagging (0.2.54)
+
+`downloadMp3` no longer saves the raw YouTube title verbatim.
+`parseTrackTitle`/`formatTrackFileBaseName` (`lib/services/track_title.dart`)
+split the title on the first `Artist - Title` separator (en/em dash also
+match), falling back to the channel name (stripping a trailing `- Topic`,
+the suffix YouTube Music's auto-generated artist channels carry) as the
+artist when the title has none. Promotional annotations in `(...)`/`[...]`
+are stripped from both — but only when *every* word inside reduces to one
+from a curated filler list (`official`, `video`, `lyrics`, `hd`, `original`,
+`mix`, `remaster`, …), so "(Official Video)"/"(Lyrics)"/"(HD)" go while
+"(Live at Wembley)" or "(feat. Other Artist)" are left alone. The result is
+saved as `Artist - Title.<ext>`.
+
+An `.m4a` result (not `.webm` — Matroska/Opus tagging is a different format,
+not attempted) is then tagged in place by `Mp4MetadataWriter`
+(`lib/services/mp4_metadata_writer.dart`) with title, artist (also written
+as album artist), the source URL as a comment, the upload year
+(`Mp3SearchResult.uploadDate`, from `youtube_explode_dart`'s `Video.
+uploadDate`), and the video's thumbnail (`ThumbnailSet.highResUrl`, fetched
+best-effort) as cover art. This is real MP4 box surgery, not a transcode:
+it locates (or builds) `moov/udta/meta/ilst`, splices in the new atom, and —
+only if that changes `moov`'s size *and* `moov` sits before `mdat` in the
+file — patches every `stco`/`co64` chunk-offset table found inside `moov`
+by the size delta, since those offsets point at absolute byte positions in
+`mdat` that just moved. Getting this wrong would corrupt playable audio, so
+it is deliberately conservative: a fragmented file (`moof`/`sidx` present),
+more than one `mdat`, or an offset table that fails an internal consistency
+check aborts tagging entirely, and even a successful rewrite is written to a
+sibling `.tag.tmp` file and structurally re-validated before it replaces the
+original — a track missing metadata is fine, a corrupted one never ships.
+This is the pure-Dart alternative flagged as future work when ffmpeg was
+dropped in 0.2.49 (see above): no native encoder, no APK size cost.
+
+#### Downloads-list actions (0.2.54)
+
+Every row in `Mp3DownloadsPage` (queued, running, or finished) now also has
+an "Open original video" icon (`launchUrl` on
+`https://www.youtube.com/watch?v=<videoId>`, `LaunchMode.externalApplication`)
+and a "Share YouTube link" icon (`SharePlus.instance.share`, same pattern as
+Wishlist's share action), alongside the existing cancel/remove icon —
+`Mp3DownloadJob.videoId` was already stored, so no new persisted state was
+needed.
+
+#### Playlist import (0.2.54)
+
+Pasting (or sharing) a playlist link — `youtube.com/playlist?list=...`, or a
+video URL that also carries `&list=...` — instead of a single video or a
+search query is detected by `looksLikeYoutubePlaylistUrl`
+(`mp3_downloader_service.dart`), checked *before* `looksLikeYoutubeUrl` so a
+video-within-a-playlist link is treated as the playlist. It's a
+domain-anchored regex (`(youtube.com|youtu.be)/…[?&]list=…`) rather than
+`youtube_explode_dart`'s own `PlaylistId.parsePlaylistId`, which treats any
+short alphanumeric string as a "valid" bare playlist id and would misfire on
+an ordinary one-word search query.
+
+`Mp3DownloaderService.resolvePlaylist` fetches the playlist's title
+(`client.playlists.get`) and every video in it (`client.playlists.
+getVideos`, a `Stream<Video>` drained to a list, in playlist order), mapped
+to the same `Mp3SearchResult` shape search/resolve produce
+(`Mp3PlaylistInfo(title, tracks)`) so the rest of the pipeline doesn't need
+to know a track came from a playlist.
+
+`Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
+`picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"
+bulk-select row, and a "Download N" button that enqueues whatever is
+checked, one `Mp3DownloadManager.enqueue` call per track, then resets to
+idle. Before showing the list, it asks for (or reuses) the download folder
+and calls `existingTrackBaseNames(folder)` — a recursive, case-insensitive
+scan of every `.m4a`/`.webm`/`.mp3` file already under that folder or any
+subfolder, matched by filename (without extension) rather than video id,
+since a pre-tagging download carries no reliable back-reference to its
+source video. Any playlist track whose would-be filename
+(`parseTrackTitle(...).fileBaseName`) is already in that set starts
+**unchecked** (shown as "Already downloaded", not hidden) so re-pasting a
+partially-downloaded list only offers to fetch what's missing, while still
+leaving a re-download one tap away.
 
 The save location is asked for **once** — `Config.mp3DownloadFolder`, set on
 the first download via `file_selector`'s `getDirectoryPath` (defaulting to

@@ -8,15 +8,22 @@ import '../config.dart';
 import '../services/log_service.dart';
 import '../services/mp3_download_manager.dart';
 import '../services/mp3_downloader_service.dart';
+import '../services/track_title.dart';
 import 'mp3_downloads_page.dart';
 import 'subpage_app_bar.dart';
 
-/// Tools → MP3 Downloader: paste a YouTube URL, or type a title to search,
-/// and save the video's audio. A pasted URL downloads straight away; a text
-/// query shows up to 5 candidates (title, channel, duration, play count) so
-/// the ambiguous case — "which video did they mean?" — is the user's call,
-/// not a guess. Play count is usually the quickest way to tell the real
-/// upload from a reupload.
+/// Tools → MP3 Downloader: paste a YouTube URL, a playlist link, or type a
+/// title to search, and save audio. A pasted video URL downloads straight
+/// away; a text query shows up to 5 candidates (title, channel, duration,
+/// play count) so the ambiguous case — "which video did they mean?" — is
+/// the user's call, not a guess. Play count is usually the quickest way to
+/// tell the real upload from a reupload.
+///
+/// A pasted playlist link instead shows every track with a checkbox, all
+/// pre-selected except ones already sitting in the download folder (or any
+/// of its subfolders) under the same "Artist - Title" name a fresh download
+/// would use — so re-pasting a list you've partly downloaded before only
+/// offers to fetch what's missing.
 ///
 /// The page only *queues* work: [Mp3DownloadManager] owns the transfer, so
 /// leaving this page or backgrounding the app doesn't interrupt it, and the
@@ -42,7 +49,7 @@ class Mp3DownloaderPage extends StatefulWidget {
   State<Mp3DownloaderPage> createState() => _Mp3DownloaderPageState();
 }
 
-enum _Stage { idle, searching, picking, error }
+enum _Stage { idle, searching, picking, playlist, error }
 
 enum _UnwritableFolderChoice { grantPermission, useFallback }
 
@@ -56,6 +63,11 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   _Stage _stage = _Stage.idle;
   List<Mp3SearchResult> _results = <Mp3SearchResult>[];
   String? _errorMessage;
+
+  Mp3PlaylistInfo? _playlistInfo;
+  String? _playlistFolder;
+  Set<String> _selectedVideoIds = <String>{};
+  Set<String> _alreadyDownloadedVideoIds = <String>{};
 
   @override
   void initState() {
@@ -218,6 +230,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       _results = <Mp3SearchResult>[];
     });
     try {
+      if (looksLikeYoutubePlaylistUrl(input)) {
+        await _resolvePlaylistInput(input);
+        return;
+      }
       if (looksLikeYoutubeUrl(input)) {
         final result = await _service.resolve(input);
         if (!mounted) return;
@@ -240,12 +256,73 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      final verb = looksLikeYoutubeUrl(input) ? 'Lookup' : 'Search';
+      final verb = looksLikeYoutubePlaylistUrl(input)
+          ? 'Playlist lookup'
+          : looksLikeYoutubeUrl(input)
+              ? 'Lookup'
+              : 'Search';
       setState(() {
         _stage = _Stage.error;
         _errorMessage = '$verb failed: $e';
       });
     }
+  }
+
+  /// Resolves a playlist link into its track list, then asks for (or
+  /// reuses) the download folder to work out which tracks are already
+  /// saved there — those start out unchecked rather than being hidden, so
+  /// picking one back up is still one tap away.
+  Future<void> _resolvePlaylistInput(String input) async {
+    final info = await _service.resolvePlaylist(input);
+    if (!mounted) return;
+    final folder = await _ensureDownloadFolder();
+    if (!mounted) return;
+    if (folder == null) {
+      setState(() => _stage = _Stage.idle);
+      return;
+    }
+    final existing = await existingTrackBaseNames(folder);
+    if (!mounted) return;
+    final alreadyDownloaded = <String>{};
+    final toSelect = <String>{};
+    for (final track in info.tracks) {
+      final baseName =
+          parseTrackTitle(track.title, track.channel).fileBaseName.toLowerCase();
+      if (existing.contains(baseName)) {
+        alreadyDownloaded.add(track.videoId);
+      } else {
+        toSelect.add(track.videoId);
+      }
+    }
+    setState(() {
+      _stage = _Stage.playlist;
+      _playlistInfo = info;
+      _playlistFolder = folder;
+      _alreadyDownloadedVideoIds = alreadyDownloaded;
+      _selectedVideoIds = toSelect;
+    });
+  }
+
+  Future<void> _queueSelectedPlaylistTracks() async {
+    final info = _playlistInfo;
+    final folder = _playlistFolder;
+    if (info == null || folder == null) return;
+    final selected =
+        info.tracks.where((t) => _selectedVideoIds.contains(t.videoId)).toList();
+    for (final track in selected) {
+      _manager.enqueue(track, folder);
+    }
+    if (!mounted) return;
+    _reset();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Downloading ${selected.length} '
+          '${selected.length == 1 ? 'track' : 'tracks'}',
+        ),
+        action: SnackBarAction(label: 'Show', onPressed: _openDownloads),
+      ),
+    );
   }
 
   Future<void> _queueDownload(Mp3SearchResult result) async {
@@ -276,6 +353,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       _stage = _Stage.idle;
       _results = <Mp3SearchResult>[];
       _errorMessage = null;
+      _playlistInfo = null;
+      _playlistFolder = null;
+      _selectedVideoIds = <String>{};
+      _alreadyDownloadedVideoIds = <String>{};
     });
   }
 
@@ -310,7 +391,7 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
               controller: _controller,
               enabled: _stage != _Stage.searching,
               decoration: const InputDecoration(
-                labelText: 'YouTube URL or video title',
+                labelText: 'YouTube URL, playlist link, or video title',
                 border: OutlineInputBorder(),
               ),
               onSubmitted: (_) => _submit(),
@@ -461,8 +542,103 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
         title: job.title,
         channel: job.channel,
         duration: null,
+        uploadDate: job.uploadDate,
       ),
       job.destinationDir,
+    );
+  }
+
+  /// The playlist stage: every track with a checkbox, "All"/"None" to bulk
+  /// (re)select, and a "Download N" button that queues whatever's checked.
+  Widget _buildPlaylistPicker(BuildContext context) {
+    final info = _playlistInfo!;
+    final tracks = info.tracks;
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${info.title} · ${_selectedVideoIds.length} of '
+                '${tracks.length} selected',
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(
+                () => _selectedVideoIds =
+                    tracks.map((t) => t.videoId).toSet(),
+              ),
+              child: const Text('All'),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _selectedVideoIds = <String>{}),
+              child: const Text('None'),
+            ),
+          ],
+        ),
+        Expanded(
+          child: ListView.separated(
+            itemCount: tracks.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final track = tracks[index];
+              final alreadyDownloaded =
+                  _alreadyDownloadedVideoIds.contains(track.videoId);
+              final plays = formatViewCount(track.viewCount);
+              return CheckboxListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _selectedVideoIds.contains(track.videoId),
+                onChanged: (checked) => setState(() {
+                  if (checked ?? false) {
+                    _selectedVideoIds.add(track.videoId);
+                  } else {
+                    _selectedVideoIds.remove(track.videoId);
+                  }
+                }),
+                title: Text(track.title,
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  alreadyDownloaded
+                      ? 'Already downloaded'
+                      : '${track.channel} · ${_formatDuration(track.duration)}'
+                          '${plays.isEmpty ? '' : ' · $plays plays'}',
+                  style: alreadyDownloaded
+                      ? theme.textTheme.bodySmall
+                          ?.copyWith(fontStyle: FontStyle.italic)
+                      : null,
+                ),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _reset,
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _selectedVideoIds.isEmpty
+                      ? null
+                      : _queueSelectedPlaylistTracks,
+                  child: Text('Download ${_selectedVideoIds.length}'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -509,6 +685,8 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
             );
           },
         );
+      case _Stage.playlist:
+        return _buildPlaylistPicker(context);
       case _Stage.error:
         return Center(
           child: Column(

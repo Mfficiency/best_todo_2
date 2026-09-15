@@ -28,6 +28,7 @@ class Mp3DownloadJob {
     this.totalBytes = 0,
     this.filePath,
     this.error,
+    this.uploadDate,
     DateTime? queuedAt,
     this.finishedAt,
   }) : queuedAt = queuedAt ?? DateTime.now();
@@ -37,6 +38,10 @@ class Mp3DownloadJob {
   final String title;
   final String channel;
   final String destinationDir;
+
+  /// When the source video was uploaded, if known — carried through so a
+  /// resumed/re-run job can still tag the file with the right year.
+  final DateTime? uploadDate;
 
   Mp3DownloadStatus status;
   int receivedBytes;
@@ -65,6 +70,7 @@ class Mp3DownloadJob {
         'totalBytes': totalBytes,
         'filePath': filePath,
         'error': error,
+        'uploadDate': uploadDate?.toIso8601String(),
         'queuedAt': queuedAt.toIso8601String(),
         'finishedAt': finishedAt?.toIso8601String(),
       };
@@ -95,6 +101,7 @@ class Mp3DownloadJob {
       totalBytes: (json['totalBytes'] as num?)?.toInt() ?? 0,
       filePath: json['filePath'] as String?,
       error: error,
+      uploadDate: DateTime.tryParse(json['uploadDate'] as String? ?? ''),
       queuedAt:
           DateTime.tryParse(json['queuedAt'] as String? ?? '') ?? DateTime.now(),
       finishedAt: DateTime.tryParse(json['finishedAt'] as String? ?? ''),
@@ -197,6 +204,7 @@ class Mp3DownloadManager {
       title: result.title,
       channel: result.channel,
       destinationDir: destinationDir,
+      uploadDate: result.uploadDate,
     );
     jobs.value = [job, ...jobs.value];
     _log('Queued "${job.title}" -> $destinationDir');
@@ -261,6 +269,7 @@ class Mp3DownloadManager {
       title: job.title,
       channel: job.channel,
       duration: null,
+      uploadDate: job.uploadDate,
     );
     try {
       final path = await _service.downloadMp3(

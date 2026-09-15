@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
 import 'log_service.dart';
+import 'mp4_metadata_writer.dart';
+import 'track_title.dart';
 
 /// One candidate track shown to the user when a search query is ambiguous —
 /// title, channel, duration and play count are enough to tell tracks apart
@@ -17,6 +20,7 @@ class Mp3SearchResult {
     required this.channel,
     required this.duration,
     this.viewCount,
+    this.uploadDate,
   });
 
   final String videoId;
@@ -27,6 +31,21 @@ class Mp3SearchResult {
   /// Lifetime play count, or null when YouTube didn't report one (live
   /// streams and some age-restricted videos omit it).
   final int? viewCount;
+
+  /// When the video was uploaded, if YouTube reported one — used to tag a
+  /// downloaded track's year.
+  final DateTime? uploadDate;
+}
+
+/// A resolved YouTube playlist: its title and every video in it, mapped to
+/// the same [Mp3SearchResult] shape a search/direct-URL lookup produces so
+/// the rest of the pipeline (queueing, filename formatting, tagging)
+/// doesn't need to know a track came from a playlist.
+class Mp3PlaylistInfo {
+  const Mp3PlaylistInfo({required this.title, required this.tracks});
+
+  final String title;
+  final List<Mp3SearchResult> tracks;
 }
 
 /// Formats a play count the way YouTube does — `1.2M`, `376M`, `12K` — so a
@@ -70,6 +89,24 @@ bool looksLikeYoutubeUrl(String input) =>
 /// doesn't contain one.
 String? extractYoutubeVideoId(String input) =>
     _youtubeUrlPattern.firstMatch(input.trim())?.group(1);
+
+/// Matches a YouTube playlist URL — `youtube.com/playlist?list=...` or a
+/// video's own URL carrying `&list=...` (what sharing "the playlist" from a
+/// video that's part of one actually sends) — and captures the playlist id.
+///
+/// Deliberately anchored to an actual YouTube URL rather than accepting a
+/// bare id: `youtube_explode_dart`'s own [yt_explode.PlaylistId] parser
+/// treats *any* short alphanumeric string as a "valid" raw playlist id,
+/// which would misfire on an ordinary one-word search query.
+final RegExp _youtubePlaylistUrlPattern = RegExp(
+  r'(?:youtube\.[a-z.]+|youtu\.be)/\S*[?&]list=([A-Za-z0-9_-]+)',
+);
+
+/// True when [input] is a link to a YouTube playlist (checked before
+/// [looksLikeYoutubeUrl] so a video-within-a-playlist link is treated as the
+/// playlist, since that's what "share the list" actually sends).
+bool looksLikeYoutubePlaylistUrl(String input) =>
+    _youtubePlaylistUrlPattern.hasMatch(input.trim());
 
 /// Turns a video title into a filesystem-safe filename (without extension):
 /// strips characters illegal on Windows/Android, collapses whitespace, and
@@ -185,6 +222,33 @@ Future<bool> canWriteToFolder(String dir) async {
   }
 }
 
+/// Recursively collects the filename (without extension, lowercased) of
+/// every audio file already saved under [folder] and its subfolders — used
+/// to skip playlist tracks that are already downloaded. Matches on name
+/// rather than video id: a `.webm`/`.mp3` file predating this app's own
+/// metadata tagging carries no reliable back-reference to its source video,
+/// but the "Artist - Title" it's saved under is exactly what a duplicate
+/// download would be named too.
+Future<Set<String>> existingTrackBaseNames(String folder) async {
+  final names = <String>{};
+  try {
+    final dir = Directory(folder);
+    if (!await dir.exists()) return names;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final name = entity.path.split(Platform.pathSeparator).last;
+      final dot = name.lastIndexOf('.');
+      if (dot <= 0) continue;
+      final ext = name.substring(dot + 1).toLowerCase();
+      if (ext != 'm4a' && ext != 'webm' && ext != 'mp3') continue;
+      names.add(name.substring(0, dot).toLowerCase());
+    }
+  } catch (_) {
+    // Best-effort: if the folder can't be scanned, nothing gets skipped.
+  }
+  return names;
+}
+
 /// A folder the app can always write to without any storage permission:
 /// the app-specific external directory on Android
 /// (`Android/data/<pkg>/files`), the OS downloads folder elsewhere.
@@ -210,6 +274,16 @@ Future<String?> defaultDownloadFolder() async {
 /// audio-only stream, and saves it as delivered — YouTube's audio-only
 /// streams are AAC (in an mp4 container, saved as `.m4a`) or Opus (in webm,
 /// saved as `.webm`), not literal MP3.
+///
+/// The saved file is named `Artist - Title.<ext>` (see [parseTrackTitle]):
+/// the title/channel are split on an `Artist - Title` separator when
+/// present, falling back to the channel name as the artist, and
+/// promotional clutter like "(Official Video)" or "(Lyrics)" is stripped
+/// from both. An `.m4a` file is then tagged in place with that title,
+/// artist, the source URL as a comment, the upload year, and the video
+/// thumbnail as cover art — see [Mp4MetadataWriter] for how that's done
+/// without a native encoder. `.webm` files aren't tagged; embedding
+/// metadata in Matroska/Opus is a different format this doesn't cover.
 ///
 /// ## Why the download is chunked by hand
 ///
@@ -257,6 +331,8 @@ class Mp3DownloaderService {
   @visibleForTesting
   Future<Mp3SearchResult> Function(String videoId)? resolveOverride;
   @visibleForTesting
+  Future<Mp3PlaylistInfo> Function(String input)? playlistOverride;
+  @visibleForTesting
   Future<String> Function(
     Mp3SearchResult result,
     String destinationDir,
@@ -279,6 +355,7 @@ class Mp3DownloaderService {
                 channel: v.author,
                 duration: v.duration,
                 viewCount: v.engagement.viewCount,
+                uploadDate: v.uploadDate,
               ))
           .toList();
       _log('Search returned ${mapped.length} result(s) for "$query"');
@@ -307,9 +384,39 @@ class Mp3DownloaderService {
         channel: video.author,
         duration: video.duration,
         viewCount: video.engagement.viewCount,
+        uploadDate: video.uploadDate,
       );
     } catch (e) {
       _log('Resolving $id failed: $e');
+      rethrow;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Resolves a playlist URL (or bare id) to its title and every video in
+  /// it, in playlist order.
+  Future<Mp3PlaylistInfo> resolvePlaylist(String input) async {
+    if (playlistOverride != null) return playlistOverride!(input);
+    _log('Resolving playlist from "$input"');
+    final client = yt_explode.YoutubeExplode();
+    try {
+      final playlist = await client.playlists.get(input);
+      final videos = await client.playlists.getVideos(input).toList();
+      final tracks = videos
+          .map((v) => Mp3SearchResult(
+                videoId: v.id.value,
+                title: v.title,
+                channel: v.author,
+                duration: v.duration,
+                viewCount: v.engagement.viewCount,
+                uploadDate: v.uploadDate,
+              ))
+          .toList();
+      _log('Playlist "${playlist.title}" has ${tracks.length} video(s)');
+      return Mp3PlaylistInfo(title: playlist.title, tracks: tracks);
+    } catch (e) {
+      _log('Resolving playlist "$input" failed: $e');
       rethrow;
     } finally {
       client.close();
@@ -446,7 +553,8 @@ class Mp3DownloaderService {
       final total = resolved.totalBytes;
 
       final extension = _extensionFor(info.container);
-      final fileName = sanitizeAudioFileName(result.title, extension);
+      final trackTitle = parseTrackTitle(result.title, result.channel);
+      final fileName = sanitizeAudioFileName(trackTitle.fileBaseName, extension);
       final separator = Platform.pathSeparator;
       final destination = destinationDir.endsWith(separator)
           ? destinationDir
@@ -524,10 +632,68 @@ class Mp3DownloaderService {
           '${seconds.toStringAsFixed(1)}s (${rate.round()} KiB/s) '
           '-> ${outputFile.path}');
       onProgress?.call(total, total);
+      if (extension == 'm4a') {
+        // Best-effort: an untagged file is fine, a corrupted one isn't —
+        // see [Mp4MetadataWriter] for why this never touches the file
+        // unless it's confident the result is still valid.
+        await _tagDownloadedFile(outputFile.path, result, trackTitle);
+      }
       return outputFile.path;
     } catch (e) {
       _log('Download failed for "${result.title}": $e');
       rethrow;
+    } finally {
+      http.close(force: true);
+    }
+  }
+
+  /// Embeds title/artist/comment/year/cover-art metadata into an already
+  /// saved `.m4a` file. Never lets a tagging problem fail the download —
+  /// the file at [path] is already a complete, valid track by the time
+  /// this runs.
+  Future<void> _tagDownloadedFile(
+    String path,
+    Mp3SearchResult result,
+    TrackTitleParts trackTitle,
+  ) async {
+    try {
+      final coverArt = await _fetchThumbnail(result.videoId);
+      final tagged = await Mp4MetadataWriter.tag(
+        path,
+        title: trackTitle.title,
+        artist: trackTitle.artist,
+        comment: 'https://www.youtube.com/watch?v=${result.videoId}',
+        year: result.uploadDate?.year,
+        coverArtJpeg: coverArt,
+      );
+      _log(tagged
+          ? 'Tagged metadata for "${result.title}"'
+          : 'Skipped tagging "${result.title}" (unrecognised file layout)');
+    } catch (e) {
+      _log('Tagging failed for "${result.title}": $e');
+    }
+  }
+
+  /// Fetches the video's thumbnail for embedding as cover art. Best-effort:
+  /// any failure (offline, 404, timeout) just means no cover art.
+  Future<Uint8List?> _fetchThumbnail(String videoId) async {
+    final url = yt_explode.ThumbnailSet(videoId).highResUrl;
+    final http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final request = await http.getUrl(Uri.parse(url));
+      final response =
+          await request.close().timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        await response.drain<void>();
+        return null;
+      }
+      final bytes = await response.fold<BytesBuilder>(
+        BytesBuilder(),
+        (builder, chunk) => builder..add(chunk),
+      ).timeout(const Duration(seconds: 15));
+      return bytes.toBytes();
+    } catch (_) {
+      return null;
     } finally {
       http.close(force: true);
     }
