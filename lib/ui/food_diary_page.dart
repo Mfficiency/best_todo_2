@@ -30,9 +30,14 @@ String _foodDiaryDayTitle(DateTime? day, DateTime today) {
   return '$weekday, ${formatTimerDate(day)}';
 }
 
-/// Display label for a stomach-issue entry's symptom type, defaulting to
-/// "Gas" for an unset/unrecognized value.
-String _stomachSymptomLabel(String? type) {
+/// Fixed display order for stomach-issue symptom tokens, independent of the
+/// order they were selected in — [_stomachSymptomsLabel] always reads them
+/// off in this order.
+const List<String> _stomachSymptomOrder = ['gas', 'liquid', 'discomfort'];
+
+/// Display label for one stomach-issue symptom token, defaulting to "Gas"
+/// for an unrecognized value.
+String _stomachSymptomLabel(String type) {
   switch (type) {
     case 'liquid':
       return 'Liquid';
@@ -43,16 +48,29 @@ String _stomachSymptomLabel(String? type) {
   }
 }
 
+/// Joins every symptom in [types] (any combination of gas/liquid/discomfort)
+/// into one display label in the fixed Gas/Liquid/Discomfort order — "Gas"
+/// for a single symptom, "Gas, Liquid" for more than one. Falls back to
+/// "Gas" for an empty list, which shouldn't normally happen since the
+/// dialog's multi-select segmented button requires at least one symptom.
+String _stomachSymptomsLabel(List<String> types) {
+  final present = types.toSet();
+  final ordered = _stomachSymptomOrder.where(present.contains).toList();
+  return ordered.isEmpty
+      ? _stomachSymptomLabel('gas')
+      : ordered.map(_stomachSymptomLabel).join(', ');
+}
+
 /// Display label for a stomach-issue entry's start/stop toggle, defaulting
 /// to "Start" for an unset value.
 String _stomachEventLabel(String? type) => type == 'stop' ? 'Stop' : 'Start';
 
 /// The headline shown for [entry] everywhere it's displayed (the diary
 /// tile, the nutritionist view, both exports) — a food entry's own title, or
-/// a stomach entry's symptom + start/stop, since a stomach entry carries no
-/// free-form title of its own.
+/// a stomach entry's symptom(s) + start/stop, since a stomach entry carries
+/// no free-form title of its own.
 String foodDiaryEntryTitle(Task entry) => entry.isStomachIssue
-    ? '${_stomachSymptomLabel(entry.stomachSymptomType)} · '
+    ? '${_stomachSymptomsLabel(entry.stomachSymptomTypes)} · '
         '${_stomachEventLabel(entry.stomachEventType)}'
     : entry.title;
 
@@ -452,7 +470,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
             isEatingHabit: true,
             isStomachIssue: result.isStomachIssue,
             stomachEventType: result.stomachEventType,
-            stomachSymptomType: result.stomachSymptomType,
+            stomachSymptomTypes: result.stomachSymptomTypes,
             stomachIntensity: result.stomachIntensity,
           ),
         );
@@ -465,7 +483,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
           ..hasExplicitTime = true
           ..isStomachIssue = result.isStomachIssue
           ..stomachEventType = result.stomachEventType
-          ..stomachSymptomType = result.stomachSymptomType
+          ..stomachSymptomTypes = result.stomachSymptomTypes
           ..stomachIntensity = result.stomachIntensity;
       }
     });
@@ -487,7 +505,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
       isEatingHabit: true,
       isStomachIssue: entry.isStomachIssue,
       stomachEventType: entry.stomachEventType,
-      stomachSymptomType: entry.stomachSymptomType,
+      stomachSymptomTypes: entry.stomachSymptomTypes,
       stomachIntensity: entry.stomachIntensity,
     );
     setState(() => _tasks.insert(0, copy));
@@ -883,7 +901,7 @@ class _FoodDiaryEditResult {
   final DateTime time;
   final bool isStomachIssue;
   final String? stomachEventType;
-  final String? stomachSymptomType;
+  final List<String> stomachSymptomTypes;
   final int? stomachIntensity;
 
   const _FoodDiaryEditResult(
@@ -893,7 +911,7 @@ class _FoodDiaryEditResult {
     this.time, {
     this.isStomachIssue = false,
     this.stomachEventType,
-    this.stomachSymptomType,
+    this.stomachSymptomTypes = const [],
     this.stomachIntensity,
   });
 }
@@ -930,7 +948,7 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
   late DateTime _time;
   late bool _isStomach;
   late String _stomachEventType;
-  late String _stomachSymptomType;
+  late Set<String> _stomachSymptomTypes;
   late int _stomachIntensity;
 
   @override
@@ -944,7 +962,9 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
     _isStomach = widget.entry?.isStomachIssue ?? false;
     _stomachEventType =
         widget.entry?.stomachEventType ?? widget.defaultStomachEventType;
-    _stomachSymptomType = widget.entry?.stomachSymptomType ?? 'gas';
+    _stomachSymptomTypes = (widget.entry?.stomachSymptomTypes.isNotEmpty ?? false)
+        ? Set<String>.from(widget.entry!.stomachSymptomTypes)
+        : {'gas'};
     _stomachIntensity = widget.entry?.stomachIntensity ?? 5;
   }
 
@@ -1092,15 +1112,19 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
           child: Text('Type', style: Theme.of(context).textTheme.labelLarge),
         ),
         const SizedBox(height: 4),
+        // Multi-select: any combination of the three is valid (e.g. gas and
+        // discomfort together), and emptySelectionAllowed defaults to false
+        // so the last remaining type can't be tapped off.
         SegmentedButton<String>(
+          multiSelectionEnabled: true,
           segments: const [
             ButtonSegment(value: 'gas', label: Text('Gas')),
             ButtonSegment(value: 'liquid', label: Text('Liquid')),
             ButtonSegment(value: 'discomfort', label: Text('Discomfort')),
           ],
-          selected: {_stomachSymptomType},
+          selected: _stomachSymptomTypes,
           onSelectionChanged: (selection) =>
-              setState(() => _stomachSymptomType = selection.first),
+              setState(() => _stomachSymptomTypes = selection),
         ),
         const SizedBox(height: 12),
         Align(
@@ -1163,14 +1187,14 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
           onPressed: () {
             if (_isStomach) {
               Navigator.of(context).pop(_FoodDiaryEditResult(
-                '${_stomachSymptomLabel(_stomachSymptomType)} · '
+                '${_stomachSymptomsLabel(_stomachSymptomTypes.toList())} · '
                     '${_stomachEventLabel(_stomachEventType)}',
                 '',
                 '',
                 _time,
                 isStomachIssue: true,
                 stomachEventType: _stomachEventType,
-                stomachSymptomType: _stomachSymptomType,
+                stomachSymptomTypes: _stomachSymptomTypes.toList(),
                 stomachIntensity: _stomachIntensity,
               ));
               return;

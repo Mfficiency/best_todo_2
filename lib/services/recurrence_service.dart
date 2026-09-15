@@ -159,7 +159,7 @@ class RecurrenceService {
       isEatingHabit: master.isEatingHabit,
       isStomachIssue: master.isStomachIssue,
       stomachEventType: master.stomachEventType,
-      stomachSymptomType: master.stomachSymptomType,
+      stomachSymptomTypes: master.stomachSymptomTypes,
       stomachIntensity: master.stomachIntensity,
       projectId: master.projectId,
       kanbanStatus: master.kanbanStatus,

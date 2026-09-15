@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.47] - 2026-09-15
+- Food Diary: the stomach-entry type toggle (Gas/Liquid/Discomfort) is now multi-select — any combination can be chosen at once, e.g. gas and discomfort together, instead of only one at a time
+
 ## [0.2.46] - 2026-09-14
 - Home view filtering: the schedule view (the day-grouped list you get with "start in schedule view" on) ignored the Home filter rules completely — it showed every task the Today/Tomorrow/... tabs correctly hide, including the demo/sample items, and adding a "demo" tag to Settings → Filtering rules → Home by hand changed nothing there. Both home layouts now filter through exactly the same rules
 - The demo filter is now visible and switchable: Settings → Filtering rules opens with a "Hide demo and sample items" switch, on by default, that hides everything the app seeded for itself (starter tasks, sample alarms and timers, leftover dev data) from every view at once. It used to be an invisible built-in rule, which is why it looked like nothing was filtering

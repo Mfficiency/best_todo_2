@@ -575,7 +575,12 @@ void main() {
     // Nothing logged today yet, so the toggle defaults to Start.
     expect(find.text('Intensity: 5/10'), findsOneWidget);
 
+    // Gas is preselected by default; swap it for Liquid. Add Liquid before
+    // removing Gas — the segmented button never allows the selection to go
+    // empty, so removing the sole selected type first would be a no-op.
     await tester.tap(find.text('Liquid'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gas'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
@@ -588,9 +593,42 @@ void main() {
         .cast<Map<String, dynamic>>()
         .firstWhere((t) => t['isStomachIssue'] == true);
     expect(added['stomachEventType'], 'start');
-    expect(added['stomachSymptomType'], 'liquid');
+    expect(added['stomachSymptomTypes'], ['liquid']);
     expect(added['stomachIntensity'], 5);
     expect(added['isEatingHabit'], isTrue);
+  });
+
+  testWidgets(
+      'the type toggle is multi-select: gas, liquid and discomfort can all '
+      'be chosen at once', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [Task(title: 'Greek yogurt', isEatingHabit: true)],
+      marker: 'Greek yogurt',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    // Gas is preselected by default; add the other two on top of it.
+    await tester.tap(find.text('Liquid'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discomfort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Gas, Liquid, Discomfort · Start'), findsOneWidget);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final added = saved
+        .cast<Map<String, dynamic>>()
+        .firstWhere((t) => t['isStomachIssue'] == true);
+    expect((added['stomachSymptomTypes'] as List).toSet(),
+        {'gas', 'liquid', 'discomfort'});
   });
 
   testWidgets(
@@ -607,7 +645,7 @@ void main() {
           isEatingHabit: true,
           isStomachIssue: true,
           stomachEventType: 'start',
-          stomachSymptomType: 'gas',
+          stomachSymptomTypes: const ['gas'],
           stomachIntensity: 4,
         ),
       ],
