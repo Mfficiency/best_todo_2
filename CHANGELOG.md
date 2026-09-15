@@ -7,6 +7,8 @@
 - MP3 Downloader: when a download fails you now get the reason, in red, on the downloader page itself with a Retry button — no more guessing at a spinner stuck on 0%. Stalled transfers give up after 90 seconds with a readable message rather than hanging indefinitely
 - MP3 Downloader: the save folder is asked for once and then remembered, so every later download starts immediately. Change or forget it under Settings → MP3 Downloader
 - MP3 Downloader: the tool now writes to the App logs (source "MP3") — the search, which YouTube client served the stream, sizes, speed and any failure
+- Local build: 2026-09-15 20:07
+- Build duration (apk): 4m 55s
 
 ## [0.2.50] - 2026-09-15
 - Food Diary: stomach-issue entries are no longer tinted by time of day like meals are — the card stays the plain default color, so a stomach log reads as a different kind of entry rather than another meal slot
