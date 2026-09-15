@@ -3003,6 +3003,18 @@ It is *not* an OS-level download: a job still `running` when the app is
 force-stopped is reloaded as `failed` / "Interrupted when the app closed"
 (`Mp3DownloadJob.fromJson`) rather than showing a bar that can never move.
 
+A completed job also calls `MediaScannerService.scanFile` (0.2.53,
+`lib/services/media_scanner_service.dart`) with the saved path. The file was
+written with plain `dart:io` `File` calls, which never goes through
+`MediaStore`, so without this OEM media apps (Samsung's Music/My
+Files/Gallery included) don't see the new track until the next full device
+scan — on some OEMs that's not until a reboot. The Dart side is a thin,
+Android-only (`Platform.isAndroid`) wrapper around the
+`besttodo/media_scanner` platform channel; `MainActivity.kt`'s handler calls
+`MediaScannerConnection.scanFile` on the given path. Best-effort: any
+failure is swallowed since the download itself already succeeded by this
+point.
+
 Failures are surfaced on the downloader page itself, not just in the list —
 a failed job renders an `errorContainer` card with the full message plus
 Dismiss/Retry, because the bug being fixed was precisely a user left guessing

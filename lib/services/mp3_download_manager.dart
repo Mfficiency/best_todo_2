@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'log_service.dart';
+import 'media_scanner_service.dart';
 import 'mp3_downloader_service.dart';
 
 /// Where a job is in its life. [queued] jobs are waiting for the one running
@@ -274,6 +275,10 @@ class Mp3DownloadManager {
       );
       job.status = Mp3DownloadStatus.completed;
       job.filePath = path;
+      // Written with plain File I/O, so the OS media database doesn't know
+      // it exists yet — nudge it so the track shows up in Music/My Files
+      // apps right away instead of after the next full device scan.
+      await MediaScannerService.scanFile(path);
     } catch (e) {
       if (_cancelRequests.contains(job.id)) {
         job.status = Mp3DownloadStatus.cancelled;
