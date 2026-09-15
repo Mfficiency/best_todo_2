@@ -256,6 +256,42 @@ void main() {
     expect(cardFor('Evening meal').color, const Color(0xFFF3E1E6));
   });
 
+  testWidgets(
+      'stomach-issue entries are never tinted by time of day, unlike meals',
+      (tester) async {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Morning meal',
+          dueDate: day.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Gas · Start',
+          dueDate: day.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+          isStomachIssue: true,
+          stomachEventType: 'start',
+          stomachSymptomTypes: const ['gas'],
+        ),
+      ],
+      marker: 'Morning meal',
+    );
+
+    final morningCard = tester.widget<Card>(
+        find.ancestor(of: find.text('Morning meal'), matching: find.byType(Card)));
+    final stomachCard = tester.widget<Card>(find.ancestor(
+        of: find.text('Gas · Start'), matching: find.byType(Card)));
+
+    expect(morningCard.color, const Color(0xFFE3F2FD));
+    expect(stomachCard.color, isNull);
+  });
+
   testWidgets('add dialog creates a tagged entry with a title and time',
       (tester) async {
     await pumpFoodDiary(
@@ -667,5 +703,36 @@ void main() {
         .where((t) => t['stomachEventType'] == 'stop')
         .toList();
     expect(stopped, hasLength(1));
+  });
+
+  testWidgets(
+      'tapping the already-selected Start/Stop segment clears it to no '
+      'selection', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [Task(title: 'Greek yogurt', isEatingHabit: true)],
+      marker: 'Greek yogurt',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    // Nothing logged today yet, so the toggle defaults to Start selected.
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    // With neither Start nor Stop set, the headline drops the suffix.
+    expect(find.text('Gas'), findsOneWidget);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final added = saved
+        .cast<Map<String, dynamic>>()
+        .firstWhere((t) => t['isStomachIssue'] == true);
+    expect(added['stomachEventType'], isNull);
   });
 }

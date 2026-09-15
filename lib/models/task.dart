@@ -130,10 +130,11 @@ class Task {
   /// meaningful when this is true.
   bool isStomachIssue;
 
-  /// 'start' or 'stop' — whether this stomach-issue entry marks the
-  /// beginning or the end of an episode. The add dialog prefills this by
-  /// scanning today's other stomach entries: 'stop' if the latest one so far
-  /// today is an unmatched 'start', 'start' otherwise.
+  /// 'start', 'stop', or null when the entry deliberately marks neither
+  /// edge of an episode. The add dialog prefills a fresh entry by scanning
+  /// today's other stomach entries ('stop' if the latest one so far today
+  /// is an unmatched 'start', 'start' otherwise), but its Start/Stop toggle
+  /// can be tapped back to no selection.
   String? stomachEventType;
 
   /// Any combination of 'gas', 'liquid' and 'discomfort' — the kind(s) of

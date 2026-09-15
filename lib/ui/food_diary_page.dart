@@ -61,18 +61,25 @@ String _stomachSymptomsLabel(List<String> types) {
       : ordered.map(_stomachSymptomLabel).join(', ');
 }
 
-/// Display label for a stomach-issue entry's start/stop toggle, defaulting
-/// to "Start" for an unset value.
-String _stomachEventLabel(String? type) => type == 'stop' ? 'Stop' : 'Start';
+/// Display label for a stomach-issue entry's start/stop toggle: "Start" or
+/// "Stop" for a set value, `null` when the entry deliberately carries
+/// neither (the toggle allows clearing to no selection).
+String? _stomachEventLabel(String? type) {
+  if (type == 'start') return 'Start';
+  if (type == 'stop') return 'Stop';
+  return null;
+}
 
 /// The headline shown for [entry] everywhere it's displayed (the diary
 /// tile, the nutritionist view, both exports) — a food entry's own title, or
-/// a stomach entry's symptom(s) + start/stop, since a stomach entry carries
-/// no free-form title of its own.
-String foodDiaryEntryTitle(Task entry) => entry.isStomachIssue
-    ? '${_stomachSymptomsLabel(entry.stomachSymptomTypes)} · '
-        '${_stomachEventLabel(entry.stomachEventType)}'
-    : entry.title;
+/// a stomach entry's symptom(s), plus " · Start"/" · Stop" when that's set,
+/// since a stomach entry carries no free-form title of its own.
+String foodDiaryEntryTitle(Task entry) {
+  if (!entry.isStomachIssue) return entry.title;
+  final symptoms = _stomachSymptomsLabel(entry.stomachSymptomTypes);
+  final event = _stomachEventLabel(entry.stomachEventType);
+  return event == null ? symptoms : '$symptoms · $event';
+}
 
 /// Tag -> occurrence count across [entries], most frequent first and
 /// alphabetical among ties, using the same splitting rule [_FoodDiaryTile]
@@ -947,7 +954,7 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
   late String _label;
   late DateTime _time;
   late bool _isStomach;
-  late String _stomachEventType;
+  late String? _stomachEventType;
   late Set<String> _stomachSymptomTypes;
   late int _stomachIntensity;
 
@@ -960,8 +967,12 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
     _label = widget.entry?.label ?? '';
     _time = widget.entry?.dueDate ?? DateTime.now();
     _isStomach = widget.entry?.isStomachIssue ?? false;
-    _stomachEventType =
-        widget.entry?.stomachEventType ?? widget.defaultStomachEventType;
+    // A fresh add starts from the computed default; editing an existing
+    // entry always opens on its own stored value, even null (the user
+    // deliberately left neither Start nor Stop selected).
+    _stomachEventType = widget.entry == null
+        ? widget.defaultStomachEventType
+        : widget.entry!.stomachEventType;
     _stomachSymptomTypes = (widget.entry?.stomachSymptomTypes.isNotEmpty ?? false)
         ? Set<String>.from(widget.entry!.stomachSymptomTypes)
         : {'gas'};
@@ -1091,7 +1102,14 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
               Text('Start or stop', style: Theme.of(context).textTheme.labelLarge),
         ),
         const SizedBox(height: 4),
+        // multiSelectionEnabled + emptySelectionAllowed purely so tapping
+        // the already-selected segment clears it — Start and Stop otherwise
+        // stay mutually exclusive, resolved by hand below, since the
+        // multi-select widget itself would let both end up selected at
+        // once (tapping the other one just adds it rather than switching).
         SegmentedButton<String>(
+          multiSelectionEnabled: true,
+          emptySelectionAllowed: true,
           segments: const [
             ButtonSegment(
                 value: 'start',
@@ -1102,9 +1120,16 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
                 label: Text('Stop'),
                 icon: Icon(Icons.stop_circle_outlined)),
           ],
-          selected: {_stomachEventType},
-          onSelectionChanged: (selection) =>
-              setState(() => _stomachEventType = selection.first),
+          selected: _stomachEventType == null ? const {} : {_stomachEventType!},
+          onSelectionChanged: (newSelection) => setState(() {
+            // A second item appearing means the tap added the *other*
+            // segment on top of the one already selected; keep only that
+            // newly-tapped one instead of leaving both lit up.
+            final resolved = newSelection.length > 1
+                ? newSelection.where((value) => value != _stomachEventType)
+                : newSelection;
+            _stomachEventType = resolved.isEmpty ? null : resolved.first;
+          }),
         ),
         const SizedBox(height: 12),
         Align(
@@ -1186,9 +1211,10 @@ class _FoodDiaryEditDialogState extends State<_FoodDiaryEditDialog> {
         ElevatedButton(
           onPressed: () {
             if (_isStomach) {
+              final symptoms = _stomachSymptomsLabel(_stomachSymptomTypes.toList());
+              final eventLabel = _stomachEventLabel(_stomachEventType);
               Navigator.of(context).pop(_FoodDiaryEditResult(
-                '${_stomachSymptomsLabel(_stomachSymptomTypes.toList())} · '
-                    '${_stomachEventLabel(_stomachEventType)}',
+                eventLabel == null ? symptoms : '$symptoms · $eventLabel',
                 '',
                 '',
                 _time,
@@ -1278,8 +1304,12 @@ class _FoodDiaryTile extends StatelessWidget {
 
   /// Gives the diary a quick visual rhythm without making the card content
   /// harder to read. Morning runs until noon, the daytime/noon tint continues
-  /// until 18:00, and the Bordeaux tint marks the evening.
-  Color _cardColor(BuildContext context, DateTime? time) {
+  /// until 18:00, and the Bordeaux tint marks the evening. Stomach-issue
+  /// entries are deliberately left out of this — `null` falls back to the
+  /// theme's plain card color — so they read as a different kind of entry
+  /// rather than another meal time slot.
+  Color? _cardColor(BuildContext context, DateTime? time) {
+    if (entry.isStomachIssue) return null;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hour = time?.hour ?? 12;
     if (hour < 12) {
@@ -1332,18 +1362,19 @@ class _FoodDiaryTile extends StatelessWidget {
                   spacing: 6,
                   runSpacing: 4,
                   children: [
-                    Chip(
-                      avatar: Icon(
-                        entry.stomachEventType == 'stop'
-                            ? Icons.stop_circle_outlined
-                            : Icons.play_circle_outlined,
-                        size: 16,
+                    if (_stomachEventLabel(entry.stomachEventType) != null)
+                      Chip(
+                        avatar: Icon(
+                          entry.stomachEventType == 'stop'
+                              ? Icons.stop_circle_outlined
+                              : Icons.play_circle_outlined,
+                          size: 16,
+                        ),
+                        label: Text(_stomachEventLabel(entry.stomachEventType)!),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
                       ),
-                      label: Text(_stomachEventLabel(entry.stomachEventType)),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
-                    ),
                     if (entry.stomachIntensity != null)
                       Chip(
                         label: Text('Intensity ${entry.stomachIntensity}/10'),
