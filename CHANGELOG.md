@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.52] - 2026-09-15
+- MP3 Downloader: picking a shared folder (like Music) that scoped storage blocks now offers to grant "All files access" so that folder actually works, instead of only offering to redirect the download into the app's private storage
+
 ## [0.2.51] - 2026-09-15
 - MP3 Downloader: fixed downloads that sat at 0% forever and never finished. YouTube only serves the first megabyte of a track to the clients the app was using and blocks every byte after it, so anything label-protected (the reported case was ABBA - Mamma Mia) could never complete. The app now resolves streams through YouTube's visionOS client and fetches them in 1 MB chunks — the same tracks now download in about a second instead of never
 - MP3 Downloader: downloads now keep running when you leave the page or put the app in the background, instead of being tied to the screen you started them from. A download button at the top of the tool shows how many are in flight and opens a Downloads list with what's running, what's queued, and everything downloaded before — each with the file it saved to, or why it failed

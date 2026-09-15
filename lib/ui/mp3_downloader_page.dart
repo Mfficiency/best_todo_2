@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../config.dart';
 import '../services/log_service.dart';
@@ -40,6 +43,8 @@ class Mp3DownloaderPage extends StatefulWidget {
 }
 
 enum _Stage { idle, searching, picking, error }
+
+enum _UnwritableFolderChoice { grantPermission, useFallback }
 
 class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   late final Mp3DownloaderService _service =
@@ -83,8 +88,9 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   /// The picked folder is write-tested before it is stored. On Android the
   /// picker will happily return a shared path like
   /// `/storage/emulated/0/Music` that scoped storage forbids this app from
-  /// writing to; catching that here turns a per-download "permission denied"
-  /// into one explanation and an offer to use a folder that works.
+  /// writing to without "All files access" — catching that here offers to
+  /// request the permission (so the folder the user actually picked works)
+  /// before falling back to the app's own storage.
   Future<String?> _ensureDownloadFolder() async {
     final saved = Config.mp3DownloadFolder.trim();
     if (saved.isNotEmpty) return saved;
@@ -93,46 +99,110 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     final picked = await getDirectoryPath(initialDirectory: fallback);
     if (picked == null || !mounted) return null;
 
-    if (!await canWriteToFolder(picked)) {
-      LogService.add('MP3', 'Folder $picked is not writable');
+    var target = picked;
+    if (!await canWriteToFolder(target)) {
+      LogService.add('MP3', 'Folder $target is not writable');
       if (!mounted) return null;
-      final useFallback = await _confirmFallbackFolder(picked, fallback);
-      if (useFallback != true || fallback == null) return null;
-      Config.mp3DownloadFolder = fallback;
-      await Config.save();
-      LogService.add('MP3', 'Download folder set to $fallback (fallback)');
-      return fallback;
+      target = await _resolveUnwritableFolder(target, fallback) ?? '';
+      if (target.isEmpty) return null;
     }
 
-    Config.mp3DownloadFolder = picked;
+    Config.mp3DownloadFolder = target;
     await Config.save();
-    LogService.add('MP3', 'Download folder set to $picked');
-    return picked;
+    LogService.add('MP3', 'Download folder set to $target');
+    return target;
   }
 
-  Future<bool?> _confirmFallbackFolder(String picked, String? fallback) {
-    return showDialog<bool>(
+  /// [picked] failed the write test. Offers to request Android's "All files
+  /// access" permission so [picked] itself becomes writable; only if that's
+  /// unavailable or still doesn't work does it fall back to [fallback].
+  /// Returns the folder to use, or null if the user cancelled.
+  Future<String?> _resolveUnwritableFolder(
+      String picked, String? fallback) async {
+    final canRequestPermission = Platform.isAndroid &&
+        !await Permission.manageExternalStorage.isGranted;
+    final choice = await _confirmUnwritableFolder(picked, fallback,
+        canRequestPermission: canRequestPermission);
+    if (choice == null) return null;
+    if (choice == _UnwritableFolderChoice.useFallback) return fallback;
+
+    await Permission.manageExternalStorage.request();
+    if (!mounted) return null;
+    if (await canWriteToFolder(picked)) {
+      LogService.add('MP3', 'Permission granted; using $picked');
+      return picked;
+    }
+    LogService.add('MP3', 'Permission not granted; $picked still not writable');
+    if (!mounted) return null;
+    final useFallback = fallback == null
+        ? false
+        : await _confirmFallbackFolder(picked, fallback);
+    return useFallback == true ? fallback : null;
+  }
+
+  Future<_UnwritableFolderChoice?> _confirmUnwritableFolder(
+    String picked,
+    String? fallback, {
+    required bool canRequestPermission,
+  }) {
+    return showDialog<_UnwritableFolderChoice>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Can't save there"),
         content: Text(
-          fallback == null
-              ? "Android won't let the app write to $picked. Pick a "
-                  'different folder.'
-              : "Android won't let the app write to $picked — apps can only "
-                  'write to their own storage unless you grant a permission '
-                  'this app does not ask for.\n\nSave to $fallback instead?',
+          canRequestPermission
+              ? "Android won't let the app write to $picked — apps can only "
+                  'write to shared folders once you grant "All files '
+                  'access". Grant it to save there, or save to the app\'s '
+                  'own folder instead.'
+              : fallback == null
+                  ? "Android won't let the app write to $picked. Pick a "
+                      'different folder.'
+                  : "Android won't let the app write to $picked — apps can "
+                      'only write to their own storage unless you grant a '
+                      'permission this app does not ask for.\n\nSave to '
+                      '$fallback instead?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          if (fallback != null)
+            TextButton(
+              onPressed: () => Navigator.of(context)
+                  .pop(_UnwritableFolderChoice.useFallback),
+              child: const Text('Use that folder'),
+            ),
+          if (canRequestPermission)
+            FilledButton(
+              onPressed: () => Navigator.of(context)
+                  .pop(_UnwritableFolderChoice.grantPermission),
+              child: const Text('Grant permission'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _confirmFallbackFolder(String picked, String fallback) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Still can't save there"),
+        content: Text(
+          "Permission wasn't granted, so Android still won't let the app "
+          'write to $picked.\n\nSave to $fallback instead?',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Cancel'),
           ),
-          if (fallback != null)
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Use that folder'),
-            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Use that folder'),
+          ),
         ],
       ),
     );
