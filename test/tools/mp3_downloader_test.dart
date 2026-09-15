@@ -35,23 +35,23 @@ void main() {
     });
   });
 
-  group('sanitizeMp3FileName', () {
+  group('sanitizeAudioFileName', () {
     test('strips characters illegal on Windows/Android filesystems', () {
       expect(
-        sanitizeMp3FileName('AC/DC: Thunderstruck?'),
-        'AC_DC_ Thunderstruck_.mp3',
+        sanitizeAudioFileName('AC/DC: Thunderstruck?', 'm4a'),
+        'AC_DC_ Thunderstruck_.m4a',
       );
     });
 
     test('collapses whitespace and falls back for an empty title', () {
-      expect(sanitizeMp3FileName('  a   b  '), 'a b.mp3');
-      expect(sanitizeMp3FileName('   '), 'audio.mp3');
+      expect(sanitizeAudioFileName('  a   b  ', 'm4a'), 'a b.m4a');
+      expect(sanitizeAudioFileName('   ', 'webm'), 'audio.webm');
     });
 
     test('caps very long titles so the save always succeeds', () {
-      final name = sanitizeMp3FileName('x' * 200);
+      final name = sanitizeAudioFileName('x' * 200, 'm4a');
       expect(name.length, lessThanOrEqualTo(124));
-      expect(name.endsWith('.mp3'), true);
+      expect(name.endsWith('.m4a'), true);
     });
   });
 
