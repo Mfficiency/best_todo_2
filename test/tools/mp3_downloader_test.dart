@@ -1,3 +1,4 @@
+import 'package:besttodo/services/media_scanner_service.dart';
 import 'package:besttodo/services/mp3_download_manager.dart';
 import 'package:besttodo/services/mp3_downloader_service.dart';
 import 'package:besttodo/ui/mp3_downloader_page.dart';
@@ -132,7 +133,55 @@ void main() {
   group('Mp3DownloadManager', () {
     tearDown(() {
       Mp3DownloaderService.instance.downloadOverride = null;
+      MediaScannerService.scanOverride = null;
       Mp3DownloadManager.instance.resetForTest();
+    });
+
+    test('a completed download notifies the media database of the new file',
+        () async {
+      Mp3DownloaderService.instance.downloadOverride =
+          (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+      final scanned = <String>[];
+      MediaScannerService.scanOverride = (path) async => scanned.add(path);
+
+      final manager = Mp3DownloadManager.instance;
+      final job = manager.enqueue(
+        const Mp3SearchResult(
+          videoId: 'v1',
+          title: 'Track',
+          channel: 'Chan',
+          duration: null,
+        ),
+        '/music',
+      );
+      while (job.isActive) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(scanned, ['/music/Track.m4a']);
+    });
+
+    test('a failed download never touches the media database', () async {
+      Mp3DownloaderService.instance.downloadOverride =
+          (result, dir, onProgress) async {
+        throw Mp3DownloadException('boom');
+      };
+      final scanned = <String>[];
+      MediaScannerService.scanOverride = (path) async => scanned.add(path);
+
+      final manager = Mp3DownloadManager.instance;
+      final job = manager.enqueue(
+        const Mp3SearchResult(
+          videoId: 'v2',
+          title: 'Track',
+          channel: 'Chan',
+          duration: null,
+        ),
+        '/music',
+      );
+      while (job.isActive) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(scanned, isEmpty);
     });
 
     test('runs a queued job and records where it landed', () async {
