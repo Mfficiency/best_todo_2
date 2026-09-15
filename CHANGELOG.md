@@ -2,6 +2,8 @@
 
 ## [0.2.53] - 2026-09-15
 - MP3 Downloader: a finished download now notifies the OS media database (MediaStore) right away, so the saved track shows up immediately in Music/My Files/Gallery-style apps — previously, since the file is written directly with plain file I/O, those apps wouldn't see it until the next full device media scan, which on some phones (Samsung included) only happens on reboot
+- Local build: 2026-09-15 21:58
+- Build duration (apk): 7m 08s
 
 ## [0.2.52] - 2026-09-15
 - MP3 Downloader: picking a shared folder (like Music) that scoped storage blocks now offers to grant "All files access" so that folder actually works, instead of only offering to redirect the download into the app's private storage
