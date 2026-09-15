@@ -160,11 +160,13 @@ Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist it
 Food Diary (0.1.266): `isEatingHabit` (bool, default false) marks a task as a food
 diary entry (see §10.6a); gated out of every other view by
 `ItemViews.isVisibleInMainViews`. Stomach issue entries (0.2.44, multi-select symptom
-type 0.2.45): `isStomachIssue` (bool, default false) + `stomachEventType` (nullable
-String) + `stomachSymptomTypes` (`List<String>`, default `[]`, omitted from JSON when
-empty; `fromJson` also accepts the 0.2.44-only singular `stomachSymptomType` string and
-wraps it in a one-item list) + `stomachIntensity` (nullable int) mark an `isEatingHabit`
-entry as a logged stomach issue rather than a meal — see §10.6a.
+type 0.2.45, Start/Stop clearable to neither 0.2.46): `isStomachIssue` (bool, default
+false) + `stomachEventType` (nullable String, `'start'`/`'stop'`/null — null both before
+any dialog interaction and when the user deliberately clears the toggle) +
+`stomachSymptomTypes` (`List<String>`, default `[]`, omitted from JSON when empty;
+`fromJson` also accepts the 0.2.44-only singular `stomachSymptomType` string and wraps
+it in a one-item list) + `stomachIntensity` (nullable int) mark an `isEatingHabit` entry
+as a logged stomach issue rather than a meal — see §10.6a.
 Attachments (0.1.277): `attachments` (`List<Attachment>`, default `[]`, omitted from JSON
 when empty) — see §4.1a.
 `fromJson` is tolerant: missing keys get defaults.
@@ -2599,34 +2601,52 @@ wins when a window has more than one) without touching the time field, so loggin
 repeat meal is a tap plus Save; a button is disabled (with a tooltip explaining why) when
 yesterday has nothing logged for that meal.
 
-**Stomach issue entries (0.2.44, multi-select symptom type 0.2.45).** A
-`SegmentedButton<bool>` at the top of the add/edit dialog (`Food`/`Stomach`, backed by
-`_isStomach`) switches the whole dialog between the food fields described above and a
-second, unrelated form for logging a stomach issue instead of a meal — both entry types
-share the one `isEatingHabit` gate and the one diary list, sorted together by time. A
-stomach entry adds four `Task` fields: `isStomachIssue` (bool), `stomachEventType`
-(`'start'`/`'stop'`), `stomachSymptomTypes` (`List<String>`, any combination of
-`'gas'`/`'liquid'`/`'discomfort'`) and `stomachIntensity` (int, 1-10); a food entry
-leaves all four unset/false/empty. The stomach form is: the same time row as the food
-form (reused via `_timeRow()`), a Start/Stop `SegmentedButton` (`_stomachEventType`), a
-Gas/Liquid/Discomfort `SegmentedButton<String>` with `multiSelectionEnabled: true`
-(`_stomachSymptomTypes`, a `Set<String>` defaulting to `{'gas'}` for a fresh add) — any
-combination is selectable at once (e.g. gas *and* discomfort together), and the widget's
-own `emptySelectionAllowed: false` default blocks tapping off the last remaining type —
-and a 1-10 `Slider` labeled "Intensity: N/10" (`_stomachIntensity`, default 5) — no
-title, tags or description field. The entry's headline (`foodDiaryEntryTitle`, used by
-the tile, the nutritionist view and both exports in place of `entry.title`) is derived
-instead as "$Symptoms · $Event" (`_stomachSymptomsLabel` joins every selected symptom
-with ", " in a fixed Gas/Liquid/Discomfort order regardless of tap order, e.g. "Gas,
-Liquid · Start" — "Gas · Start" for just the one). The Start/Stop toggle defaults per
-fresh add to whichever keeps today's log consistent
-(`_FoodDiaryPageState._defaultStomachEventType`): 'stop' when today's
-chronologically-latest stomach entry is an unmatched 'start', 'start' otherwise
-(including when nothing has been logged today). Editing an existing stomach entry always
-opens on its own stored event/symptoms/intensity, ignoring the default.
-`Task.fromJson` still accepts a 0.2.44-only record's singular `stomachSymptomType`
-string and wraps it in a one-item list, so an entry saved before the multi-select change
-still loads with its one symptom intact.
+**Stomach issue entries (0.2.44, multi-select symptom type 0.2.45, optional Start/Stop +
+no color-tinting 0.2.46).** A `SegmentedButton<bool>` at the top of the add/edit dialog
+(`Food`/`Stomach`, backed by `_isStomach`) switches the whole dialog between the food
+fields described above and a second, unrelated form for logging a stomach issue instead
+of a meal — both entry types share the one `isEatingHabit` gate and the one diary list,
+sorted together by time. A stomach entry adds four `Task` fields: `isStomachIssue`
+(bool), `stomachEventType` (`'start'`/`'stop'`/null), `stomachSymptomTypes`
+(`List<String>`, any combination of `'gas'`/`'liquid'`/`'discomfort'`) and
+`stomachIntensity` (int, 1-10); a food entry leaves all four unset/false/empty. The
+stomach form is: the same time row as the food form (reused via `_timeRow()`), a
+Start/Stop `SegmentedButton` (`_stomachEventType`), a Gas/Liquid/Discomfort
+`SegmentedButton<String>` with `multiSelectionEnabled: true` (`_stomachSymptomTypes`, a
+`Set<String>` defaulting to `{'gas'}` for a fresh add) — any combination is selectable at
+once (e.g. gas *and* discomfort together), and the widget's own
+`emptySelectionAllowed: false` default blocks tapping off the last remaining type — and a
+1-10 `Slider` labeled "Intensity: N/10" (`_stomachIntensity`, default 5) — no title, tags
+or description field.
+
+The Start/Stop `SegmentedButton` is deliberately built with `multiSelectionEnabled: true`
++ `emptySelectionAllowed: true` even though only one of the two is ever meant to be
+selected at once — that combination is the only way to make tapping the *already*-selected
+segment clear it back to no selection (a plain single-select `SegmentedButton` always
+forces exactly one segment selected and can't be tapped off). Since multi-select just
+toggles membership, tapping the other segment while one is already selected would
+otherwise leave both lit up; `onSelectionChanged` resolves that itself — when the new
+selection has two members, it keeps only the one that isn't `_stomachEventType` (the one
+just tapped) — so Start and Stop stay mutually exclusive from the user's perspective,
+with "select neither" as a third reachable state. The entry's headline
+(`foodDiaryEntryTitle`, used by the tile, the nutritionist view and both exports in place
+of `entry.title`) is derived as "$Symptoms · $Event" (`_stomachSymptomsLabel` joins every
+selected symptom with ", " in a fixed Gas/Liquid/Discomfort order regardless of tap
+order, e.g. "Gas, Liquid · Start" — "Gas · Start" for just the one) — just "$Symptoms",
+no suffix, once `stomachEventType` is null. The Start/Stop toggle defaults per fresh add
+to whichever keeps today's log consistent (`_FoodDiaryPageState._defaultStomachEventType`,
+still returning a plain `String`, never null): 'stop' when today's chronologically-latest
+stomach entry is an unmatched 'start', 'start' otherwise (including when nothing has been
+logged today) — the user can still tap that default off afterward. Editing an existing
+stomach entry always opens on its own stored event/symptoms/intensity (including a stored
+null event), ignoring the default. `Task.fromJson` still accepts a 0.2.44-only record's
+singular `stomachSymptomType` string and wraps it in a one-item list, so an entry saved
+before the multi-select change still loads with its one symptom intact.
+
+Unlike a food entry, a stomach entry's `_FoodDiaryTile` card is never tinted by time of
+day: `_cardColor` returns `null` (the theme's plain card color) whenever
+`entry.isStomachIssue`, so a stomach log visually reads as its own kind of entry rather
+than another meal time slot.
 `FoodDiaryWidgetService.computeEntryCount`/`latestEntryPerMealWindow` (the meal-count
 checkpoint schedule and the "copy yesterday's meal" shortcuts) both skip
 `isStomachIssue` entries, since neither concept applies to a stomach log. The dialog's

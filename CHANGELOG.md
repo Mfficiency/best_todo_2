@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.46] - 2026-09-15
+- Food Diary: stomach-issue entries are no longer tinted by time of day like meals are — the card stays the plain default color, so a stomach log reads as a different kind of entry rather than another meal slot
+- Food Diary: the stomach-entry Start/Stop toggle can now be tapped back to no selection — tapping the segment that's already selected clears it, for a log entry that isn't marking either edge of an episode
+
 ## [0.2.45] - 2026-09-15
 - Food Diary: the stomach-entry type toggle (Gas/Liquid/Discomfort) is now multi-select — any combination can be chosen at once, e.g. gas and discomfort together, instead of only one at a time
 
