@@ -119,8 +119,8 @@ class _SettingsPageState extends State<SettingsPage> {
   /// section starts collapsed so the page opens as a short list of headings
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
-  final Set<int> _collapsedSections = {
-    for (var i = 0; i < 15; i++) i,
+  late final Set<int> _collapsedSections = {
+    for (var i = 0; i < _sectionTitles.length; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
