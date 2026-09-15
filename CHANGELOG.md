@@ -5,6 +5,9 @@
 - MP3 Downloader: an .m4a download is now tagged with as much metadata as YouTube provides — title, artist, the source video's upload year, its thumbnail as cover art, and the original YouTube link as a comment — without adding a native encoder to the app
 - MP3 Downloader: each entry in the Downloads list now has an "Open original video" and "Share YouTube link" icon, to jump back to the source or send the link on without leaving the app
 - MP3 Downloader: pasting a YouTube playlist link now shows every track in it with a checkbox — pick one, several, or "All" — instead of only supporting a single video or search query. Tracks already sitting in the download folder (or any of its subfolders) under the name a fresh download would use start out unchecked, so re-pasting a list you've partly downloaded before only offers to fetch what's missing
+- Local build: 2026-09-15 23:33
+- Build duration (apk): 5m 32s
+- Build duration (windows): 2m 17s
 
 ## [0.2.53] - 2026-09-15
 - MP3 Downloader: a finished download now notifies the OS media database (MediaStore) right away, so the saved track shows up immediately in Music/My Files/Gallery-style apps — previously, since the file is written directly with plain file I/O, those apps wouldn't see it until the next full device media scan, which on some phones (Samsung included) only happens on reboot
