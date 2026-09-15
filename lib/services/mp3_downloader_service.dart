@@ -1,9 +1,6 @@
 import 'dart:io';
 
-import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_full/return_code.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
 /// One candidate track shown to the user when a search query is ambiguous —
@@ -24,8 +21,7 @@ class Mp3SearchResult {
 }
 
 /// Thrown by [Mp3DownloaderService.downloadMp3] for a failure the caller
-/// should show verbatim (no audio stream available, ffmpeg conversion
-/// failed) rather than a generic error.
+/// should show verbatim (e.g. no audio stream available for this video).
 class Mp3DownloadException implements Exception {
   Mp3DownloadException(this.message);
   final String message;
@@ -49,38 +45,50 @@ bool looksLikeYoutubeUrl(String input) =>
 String? extractYoutubeVideoId(String input) =>
     _youtubeUrlPattern.firstMatch(input.trim())?.group(1);
 
-/// Turns a video title into a filesystem-safe .mp3 filename: strips
-/// characters illegal on Windows/Android, collapses whitespace, and caps
-/// the length so the save always succeeds.
-String sanitizeMp3FileName(String title) {
+/// Turns a video title into a filesystem-safe filename (without extension):
+/// strips characters illegal on Windows/Android, collapses whitespace, and
+/// caps the length so the save always succeeds.
+String sanitizeAudioFileName(String title, String extension) {
   var name = title.trim();
   if (name.isEmpty) name = 'audio';
   name = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
   name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
   if (name.length > 120) name = name.substring(0, 120).trim();
-  return '$name.mp3';
+  return '$name.$extension';
 }
 
+/// The saved file's container/extension: `m4a` for an AAC-in-MP4 stream
+/// (the most widely compatible option), `webm` otherwise.
+String _extensionFor(yt_explode.StreamContainer container) =>
+    container == yt_explode.StreamContainer.mp4 ? 'm4a' : container.name;
+
 /// Tools → MP3 Downloader: looks up a YouTube video — by pasted URL or by a
-/// title search — and saves its audio track as an .mp3 file.
+/// title search — and saves its audio track to a file.
 ///
 /// Uses `youtube_explode_dart` (a pure-Dart YouTube client; no server
-/// component or API key) to resolve metadata and the audio-only stream, then
-/// `ffmpeg_kit_flutter_new_full` to transcode it into a real .mp3 — the raw
-/// stream YouTube serves is AAC/Opus in an mp4/webm container, not MP3.
-/// Both plugins run on Android, Windows, iOS, macOS and Linux but not web,
-/// so callers should gate the tool on [isSupported].
+/// component, API key, or native code) to resolve metadata and the
+/// audio-only stream, and saves it as delivered — YouTube's audio-only
+/// streams are AAC (in an mp4 container, saved as `.m4a`) or Opus (in webm,
+/// saved as `.webm`), not literal MP3.
+///
+/// An earlier version transcoded to a real `.mp3` with
+/// `ffmpeg_kit_flutter_new_full`, but every ffmpeg-kit variant — even the
+/// audio-only one — bundles the whole ffmpeg native library per Android ABI
+/// and added 100+ MB to the APK (tripling it), so it was dropped. Getting an
+/// actual `.mp3` file back without that cost needs a from-scratch decode
+/// (platform `MediaCodec`/similar) + a small LAME encoder, which is real new
+/// native-code work, not a dependency swap — flag it separately if still
+/// wanted.
 class Mp3DownloaderService {
   Mp3DownloaderService._();
 
   static final Mp3DownloaderService instance = Mp3DownloaderService._();
 
-  /// Neither `youtube_explode_dart`'s scraping nor the ffmpeg plugin has a
-  /// web build, so the tool hides itself there instead of failing at runtime.
+  /// `youtube_explode_dart`'s scraping doesn't work from a browser sandbox,
+  /// so the tool hides itself on web instead of failing at runtime.
   bool get isSupported => !kIsWeb;
 
-  /// Lets tests substitute fakes instead of hitting the network / native
-  /// ffmpeg plugin.
+  /// Lets tests substitute fakes instead of hitting the network.
   @visibleForTesting
   Future<List<Mp3SearchResult>> Function(String query, int limit)?
       searchOverride;
@@ -131,10 +139,10 @@ class Mp3DownloaderService {
     }
   }
 
-  /// Downloads [result]'s audio and converts it to `<title>.mp3` inside
-  /// [destinationDir], returning the final file path. [onProgress] is called
-  /// with values in [0, 1] — the download makes up the first 90%, the ffmpeg
-  /// conversion pass the last 10%.
+  /// Downloads [result]'s audio-only stream straight into [destinationDir]
+  /// (as `<title>.m4a` or `<title>.webm`, whichever YouTube served),
+  /// returning the final file path. [onProgress] is called with values in
+  /// `[0, 1]` as bytes arrive.
   Future<String> downloadMp3(
     Mp3SearchResult result,
     String destinationDir, {
@@ -144,60 +152,49 @@ class Mp3DownloaderService {
       return downloadOverride!(result, destinationDir, onProgress);
     }
     final client = yt_explode.YoutubeExplode();
-    File? tempFile;
     try {
       final manifest =
           await client.videos.streamsClient.getManifest(result.videoId);
       if (manifest.audioOnly.isEmpty) {
         throw Mp3DownloadException('No audio stream found for this video');
       }
-      final audioStreamInfo = manifest.audioOnly.withHighestBitrate();
+      // Prefer an AAC/mp4 stream (saved as .m4a) over Opus/webm — much more
+      // widely playable — falling back to whatever has the highest bitrate.
+      final mp4Streams = manifest.audioOnly
+          .where((s) => s.container == yt_explode.StreamContainer.mp4)
+          .toList();
+      final audioStreamInfo = (mp4Streams.isNotEmpty
+              ? mp4Streams
+              : manifest.audioOnly)
+          .withHighestBitrate();
       final stream = client.videos.streamsClient.get(audioStreamInfo);
 
-      final tempDir = await getTemporaryDirectory();
-      final ext = audioStreamInfo.container.name;
-      tempFile = File('${tempDir.path}${Platform.pathSeparator}'
-          'yt_${result.videoId}_${DateTime.now().millisecondsSinceEpoch}.$ext');
-      final sink = tempFile.openWrite();
-      var received = 0;
-      final total = audioStreamInfo.size.totalBytes;
-      await for (final chunk in stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        if (onProgress != null && total > 0) {
-          onProgress((received / total) * 0.9);
-        }
-      }
-      await sink.flush();
-      await sink.close();
-
-      final fileName = sanitizeMp3FileName(result.title);
+      final extension = _extensionFor(audioStreamInfo.container);
+      final fileName = sanitizeAudioFileName(result.title, extension);
       final separator = Platform.pathSeparator;
       final destination = destinationDir.endsWith(separator)
           ? destinationDir
           : '$destinationDir$separator';
-      final outputPath = '$destination$fileName';
-      final session = await FFmpegKit.execute(
-        '-y -i "${tempFile.path}" -vn -ar 44100 -ac 2 -b:a 192k "$outputPath"',
-      );
-      final returnCode = await session.getReturnCode();
-      if (!ReturnCode.isSuccess(returnCode)) {
-        final logs = await session.getAllLogsAsString();
-        throw Mp3DownloadException(
-          'Audio conversion failed: ${logs ?? 'unknown ffmpeg error'}',
-        );
+      final outputFile = File('$destination$fileName');
+      final sink = outputFile.openWrite();
+      try {
+        var received = 0;
+        final total = audioStreamInfo.size.totalBytes;
+        await for (final chunk in stream) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (onProgress != null && total > 0) {
+            onProgress(received / total);
+          }
+        }
+        await sink.flush();
+      } finally {
+        await sink.close();
       }
       onProgress?.call(1.0);
-      return outputPath;
+      return outputFile.path;
     } finally {
       client.close();
-      // Best-effort cleanup: a failure here must never mask whatever
-      // exception (if any) is already propagating out of the try block.
-      try {
-        if (tempFile != null && await tempFile.exists()) {
-          await tempFile.delete();
-        }
-      } catch (_) {}
     }
   }
 }

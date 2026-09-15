@@ -95,8 +95,7 @@ Dependencies and why they exist:
 | `flutter_markdown` | renders CHANGELOG.md in-app |
 | `url_launcher` | About page links |
 | `cupertino_icons` | iOS-style glyphs |
-| `youtube_explode_dart` | MP3 Downloader: YouTube search/metadata/audio-stream resolution (pure Dart, no API key) |
-| `ffmpeg_kit_flutter_new_full` | MP3 Downloader: transcodes the downloaded audio stream to `.mp3` (`libmp3lame`); Android + Windows only, no web build |
+| `youtube_explode_dart` | MP3 Downloader: YouTube search/metadata/audio-stream resolution and download (pure Dart, no API key, no native code — see §10.6d for why it deliberately doesn't also depend on an ffmpeg-kit variant) |
 
 ## 3. App startup sequence (order matters)
 
@@ -2901,30 +2900,44 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48)
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49)
 Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
-title to search, and save the video's audio as an `.mp3` file. A pasted URL
+title to search, and save the video's audio. A pasted URL
 (`looksLikeYoutubeUrl`/`extractYoutubeVideoId` match `youtube.com/watch`,
 `youtu.be/`, `/shorts/`) resolves and downloads directly; a text query calls
 `Mp3DownloaderService.search` and shows up to 5 candidates (title, channel,
 formatted duration) so the ambiguous case is a tap, not a guess.
 
-Built on `youtube_explode_dart` (a pure-Dart YouTube client — metadata search,
-video lookup, and the audio-only stream manifest, no server or API key) and
-`ffmpeg_kit_flutter_new_full` (transcodes the downloaded AAC/Opus stream into
-a real `.mp3` via `libmp3lame`, since YouTube never serves MP3 directly). The
-save location is picked with `file_selector`'s `getDirectoryPath`
+Built on `youtube_explode_dart` (a pure-Dart YouTube client — metadata
+search, video lookup, and the audio-only stream manifest, no server or API
+key, no native code). The audio-only stream is saved exactly as YouTube
+serves it — an mp4/AAC stream saved as `.m4a` (preferred: plays almost
+everywhere), or `.webm`/Opus when that's the only option — rather than
+transcoded to a literal `.mp3`.
+
+**0.2.48 shipped a real-MP3 version using `ffmpeg_kit_flutter_new_full`
+(`libmp3lame`) and tripled the APK's size**: every ffmpeg-kit variant bundles
+the whole ffmpeg native library per Android ABI, and even the audio-only
+variant adds tens of MB — nowhere close to the ≤6%-over-0.2.46 budget this
+tool was given. 0.2.49 drops the ffmpeg dependency entirely; the download is
+pure Dart again, so the tool adds negligible APK size. Getting a literal
+`.mp3` back without that cost would need a from-scratch decode (platform
+`MediaCodec`/equivalent) + a small LAME encoder (e.g. `flutter_lame`) —
+genuine new native-code work, not a dependency swap, and not done here.
+
+The save location is picked with `file_selector`'s `getDirectoryPath`
 (defaulting to `getDownloadsDirectory()`), the same pattern the
-export/backup flows in Wishlist/Food Diary/Usage Data use. Both plugins lack
-a web build, so `Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page
-to a "not supported on this platform" message there; Android and Windows are
-the supported targets. `Mp3DownloaderService` exposes `searchOverride`/
-`resolveOverride`/`downloadOverride` (`@visibleForTesting`) so widget tests
-substitute fakes instead of hitting the network or native ffmpeg plugin — the
-same seam `TodoistSyncService.apiClientFactory` uses. Registered like every
-other tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and
-in `Config.featureKeys`/`Config.startToolOptions` (feature switch + default
+export/backup flows in Wishlist/Food Diary/Usage Data use.
+`youtube_explode_dart`'s scraping doesn't work from a browser sandbox, so
+`Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page to a "not
+supported on this platform" message there; every other platform
+(Android/Windows/iOS/macOS/Linux) works. `Mp3DownloaderService` exposes
+`searchOverride`/`resolveOverride`/`downloadOverride` (`@visibleForTesting`)
+so widget tests substitute fakes instead of hitting the network — the same
+seam `TodoistSyncService.apiClientFactory` uses. Registered like every other
+tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and in
+`Config.featureKeys`/`Config.startToolOptions` (feature switch + default
 start page).
 
 ### 10.7 The rest

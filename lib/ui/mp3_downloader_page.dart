@@ -6,10 +6,15 @@ import '../services/mp3_downloader_service.dart';
 import 'subpage_app_bar.dart';
 
 /// Tools → MP3 Downloader: paste a YouTube URL, or type a title to search,
-/// and save the video's audio as an .mp3 file. A pasted URL downloads
-/// straight away; a text query shows up to 5 candidates (title, channel,
-/// duration) so the ambiguous case — "which video did they mean?" — is the
-/// user's call, not a guess.
+/// and save the video's audio. A pasted URL downloads straight away; a text
+/// query shows up to 5 candidates (title, channel, duration) so the
+/// ambiguous case — "which video did they mean?" — is the user's call, not
+/// a guess.
+///
+/// Saves the audio-only stream as delivered (`.m4a`/AAC or `.webm`/Opus)
+/// rather than transcoding to a literal `.mp3` — see
+/// [Mp3DownloaderService]'s doc comment for why (a real MP3 encoder would
+/// have added 100+ MB to the app).
 class Mp3DownloaderPage extends StatefulWidget {
   const Mp3DownloaderPage({Key? key, Mp3DownloaderService? service})
       : _service = service,
@@ -170,6 +175,11 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
               ),
               onSubmitted: (_) => _submit(),
               textInputAction: TextInputAction.search,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Saves as M4A or WebM (the original audio, not re-encoded)',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
             FilledButton(
