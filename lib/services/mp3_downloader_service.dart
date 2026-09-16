@@ -8,6 +8,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
 import 'log_service.dart';
 import 'mp4_metadata_writer.dart';
+import 'playlist_video_ids.dart';
 import 'track_title.dart';
 
 /// One candidate track shown to the user when a search query is ambiguous —
@@ -396,13 +397,28 @@ class Mp3DownloaderService {
 
   /// Resolves a playlist URL (or bare id) to its title and every video in
   /// it, in playlist order.
+  ///
+  /// `youtube_explode_dart`'s own `PlaylistClient.getVideos` silently
+  /// *skips* an entry whose uploader channel id it can't parse off the page
+  /// (it tries three known JSON paths; a newer @handle-style byline layout
+  /// misses all three), so a real, fully public playlist can come back with
+  /// a title and zero tracks — reported against a 3-track playlist that
+  /// otherwise resolved fine. When that happens, [fetchPlaylistVideoIdsFromPage]
+  /// walks the same page structure for just the video ids (which don't need
+  /// a byline to parse) and each is resolved individually — slower, but
+  /// immune to that specific gap.
   Future<Mp3PlaylistInfo> resolvePlaylist(String input) async {
     if (playlistOverride != null) return playlistOverride!(input);
     _log('Resolving playlist from "$input"');
     final client = yt_explode.YoutubeExplode();
     try {
       final playlist = await client.playlists.get(input);
-      final videos = await client.playlists.getVideos(input).toList();
+      var videos = await client.playlists.getVideos(input).toList();
+      if (videos.isEmpty) {
+        _log('getVideos() found no tracks for "${playlist.title}" — '
+            'falling back to raw page parsing');
+        videos = await _resolvePlaylistVideosFallback(input, client);
+      }
       final tracks = videos
           .map((v) => Mp3SearchResult(
                 videoId: v.id.value,
@@ -421,6 +437,25 @@ class Mp3DownloaderService {
     } finally {
       client.close();
     }
+  }
+
+  /// Resolves each video id found by directly parsing the playlist page,
+  /// skipping (and logging) any single video that fails to resolve rather
+  /// than failing the whole playlist over one bad entry.
+  Future<List<yt_explode.Video>> _resolvePlaylistVideosFallback(
+    String input,
+    yt_explode.YoutubeExplode client,
+  ) async {
+    final ids = await fetchPlaylistVideoIdsFromPage(input);
+    final videos = <yt_explode.Video>[];
+    for (final id in ids) {
+      try {
+        videos.add(await client.videos.get(id));
+      } catch (e) {
+        _log('Skipping unresolved playlist video $id: $e');
+      }
+    }
+    return videos;
   }
 
   /// Picks the best audio stream for [videoId], trying each client in

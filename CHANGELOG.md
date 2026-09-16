@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.55] - 2026-09-16
+- MP3 Downloader: fixed a real public playlist resolving to its title but zero tracks ("0 of 0 selected"). `youtube_explode_dart` silently skips a playlist entry when it can't work out the uploader's channel id from the page, which some playlists' byline layout trips on every single track; playlist import now falls back to parsing the page's own video list directly (which doesn't need that) whenever the normal path comes back empty
+
 ## [0.2.54] - 2026-09-15
 - MP3 Downloader: downloaded tracks are now saved as "Artist - Title.m4a" — the title/channel are split on an "Artist - Title" separator (or fall back to the channel name), and promotional clutter like "(Official Video)", "(Lyrics)" or "(HD)" is stripped from both, instead of saving the raw, often messy YouTube title verbatim
 - MP3 Downloader: an .m4a download is now tagged with as much metadata as YouTube provides — title, artist, the source video's upload year, its thumbnail as cover art, and the original YouTube link as a comment — without adding a native encoder to the app
