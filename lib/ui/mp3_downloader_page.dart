@@ -407,6 +407,7 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     final folder = await _ensureDownloadFolder();
     if (!mounted || folder == null) return;
     _manager.enqueue(result, folder);
+    _controller.clear();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Downloading "${result.title}"'),
