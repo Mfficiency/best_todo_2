@@ -9,7 +9,7 @@ import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
 
 /**
- * Home-screen widget with play/pause and skip-previous. Like
+ * Home-screen widget with play/pause, skip-previous and skip-next. Like
  * [MusicMiniWidgetProvider], the buttons send real Android media-button
  * broadcasts to `audio_service`'s MediaButtonReceiver rather than going
  * through the app's Dart code directly, so they work without opening it.
@@ -48,6 +48,10 @@ class MusicControlsWidgetProvider : HomeWidgetProvider() {
             views.setOnClickPendingIntent(
                 R.id.music_controls_widget_previous,
                 MusicWidgetIntents.previous(context)
+            )
+            views.setOnClickPendingIntent(
+                R.id.music_controls_widget_next,
+                MusicWidgetIntents.next(context)
             )
 
             val openIntent = HomeWidgetLaunchIntent.getActivity(

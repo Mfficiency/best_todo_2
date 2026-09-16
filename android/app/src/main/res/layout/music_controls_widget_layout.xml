@@ -44,6 +44,15 @@
             android:contentDescription="Play/Pause"
             android:src="@drawable/ic_play_arrow" />
 
+        <ImageButton
+            android:id="@+id/music_controls_widget_next"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            android:scaleType="fitCenter"
+            android:contentDescription="Next"
+            android:src="@drawable/ic_skip_next" />
+
     </LinearLayout>
 
 </LinearLayout>

@@ -2005,17 +2005,18 @@ Six widgets via `home_widget` (app group `group.homeScreenApp`):
   shortcut to the add-entry dialog.
 - **Music mini widget** (`MusicMiniWidgetProvider.kt`, 0.2.61): a single play/pause button plus
   a one-line title, nothing else. **Music controls widget** (`MusicControlsWidgetProvider.kt`,
-  0.2.61): the same, plus a skip-previous button. Both differ from every other widget here:
-  their buttons don't call into Dart at all (there is no in-memory `MusicAudioHandler` a
-  separate background isolate could reach — unlike the on-disk task/alarm lists, playback state
-  lives in the running foreground service). Instead `MusicWidgetIntents.kt` builds an explicit
-  `ACTION_MEDIA_BUTTON` broadcast (`KEYCODE_MEDIA_PLAY_PAUSE`/`KEYCODE_MEDIA_PREVIOUS`) targeted
-  straight at `audio_service`'s own `MediaButtonReceiver` — the same path a Bluetooth headset or
-  wired remote uses — so the buttons work whenever the Music Player's playback service is alive,
-  in the foreground or not. `MusicWidgetService` (`lib/services/music_widget_service.dart`)
-  only pushes the display data (title/artist/playing) by subscribing to the audio handler's
-  `mediaItem`/`playbackState` streams; tapping the title opens the app to the Music Player tool
-  (`besttodomusic://open`). See §10.6e.
+  0.2.61): the same, plus skip-previous and (0.2.63) skip-next buttons. Both differ from every
+  other widget here: their buttons don't call into Dart at all (there is no in-memory
+  `MusicAudioHandler` a separate background isolate could reach — unlike the on-disk task/alarm
+  lists, playback state lives in the running foreground service). Instead `MusicWidgetIntents.kt`
+  builds an explicit `ACTION_MEDIA_BUTTON` broadcast (`KEYCODE_MEDIA_PLAY_PAUSE`/
+  `KEYCODE_MEDIA_PREVIOUS`/`KEYCODE_MEDIA_NEXT`) targeted straight at `audio_service`'s own
+  `MediaButtonReceiver` — the same path a Bluetooth headset or wired remote uses — so the buttons
+  work whenever the Music Player's playback service is alive, in the foreground or not.
+  `MusicWidgetService` (`lib/services/music_widget_service.dart`) only pushes the display data
+  (title/artist/playing) by subscribing to the audio handler's `mediaItem`/`playbackState`
+  streams; tapping the title opens the app to the Music Player tool (`besttodomusic://open`).
+  See §10.6e.
 
 *Pulsing red, not flat red (0.2.32).* `FoodDiaryAlert.kt` (shared by both providers) alternates
 the background between a bright and a dim red every 900ms (`pulseColor`, `pulseIntervalMs`) so a
@@ -3341,6 +3342,14 @@ integration on Android/iOS/macOS; on a platform `audio_service` doesn't cover fo
 `MusicAudioHandler()` — playback still works through `just_audio` directly, just without the
 system media surfaces. `favoriteCurrent()`/`dislikeCurrentAndSkip()` on the handler are what
 Now Playing's swipe gestures and the notification/widget controls ultimately call.
+`just_audio`'s `playbackEventStream` only fires on discrete state changes (buffering, track
+load, pause/play), not once a second, so `MusicAudioHandler` also runs a one-second
+`Timer.periodic` (started/stopped off `playingStream`) that re-broadcasts `playbackState` while
+playing — otherwise Now Playing's progress bar/position text sits frozen between events instead
+of ticking (0.2.63). It also listens to `durationStream` and patches the current `MediaItem`'s
+`duration` once the player itself reports it, since a track's tag-derived `durationMs` (from
+library scanning) isn't reliably populated and was leaving the progress bar's total time at
+0:00.
 
 **Favorites, "Don't really like" and the weighted shuffle**
 (`lib/services/music_playlist_service.dart`, singleton `MusicPlaylistService.instance`,

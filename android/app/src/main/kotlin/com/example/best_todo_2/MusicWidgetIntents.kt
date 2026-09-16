@@ -38,4 +38,7 @@ object MusicWidgetIntents {
 
     fun previous(context: Context): PendingIntent =
         mediaButtonPendingIntent(context, KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+
+    fun next(context: Context): PendingIntent =
+        mediaButtonPendingIntent(context, KeyEvent.KEYCODE_MEDIA_NEXT)
 }

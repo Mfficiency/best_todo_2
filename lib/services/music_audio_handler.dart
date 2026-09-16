@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 
@@ -19,6 +21,12 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   List<Track> _queue = [];
   int _queueIndex = -1;
 
+  // just_audio's playbackEventStream only fires on discrete state changes
+  // (buffering, track load, pause/play), not once a second — without this,
+  // the Now Playing progress line/position text never advances while a
+  // track is actually playing.
+  Timer? _positionTicker;
+
   MusicAudioHandler() {
     _player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {
       _broadcastState(_player.playbackEvent);
@@ -26,6 +34,23 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     _player.processingStateStream.listen((state) {
       if (state == ja.ProcessingState.completed) {
         _advance(1, wrapWithReshuffle: true);
+      }
+    });
+    _player.playingStream.listen((playing) {
+      _positionTicker?.cancel();
+      _positionTicker = playing
+          ? Timer.periodic(const Duration(seconds: 1),
+              (_) => _broadcastState(_player.playbackEvent))
+          : null;
+    });
+    // Track duration isn't reliably known from file tags at scan time; take
+    // it from the player once the audio source actually reports it, so the
+    // progress bar's total time (and seek range) are correct for every
+    // format, not just tagged mp3s.
+    _player.durationStream.listen((duration) {
+      final current = mediaItem.valueOrNull;
+      if (current != null && duration != null && current.duration != duration) {
+        mediaItem.add(current.copyWith(duration: duration));
       }
     });
   }
@@ -162,6 +187,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> dispose() async {
+    _positionTicker?.cancel();
     await _player.dispose();
   }
 }
