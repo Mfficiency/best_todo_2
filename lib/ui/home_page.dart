@@ -59,6 +59,7 @@ import 'food_diary_page.dart';
 import 'fitness_activity_page.dart';
 import 'home_scaffold_key.dart';
 import 'mp3_downloader_page.dart';
+import 'music_player_page.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
 import 'research_page.dart';
@@ -1271,6 +1272,8 @@ class _HomePageState extends State<HomePage>
         return const HomePage(tagFilter: worklistToken, toolTitle: 'Worklist');
       case 'mp3_downloader':
         return const Mp3DownloaderPage();
+      case 'music_player':
+        return const MusicPlayerPage();
     }
     return null;
   }
@@ -3187,6 +3190,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
     _ToolEntry('worklist', 'Worklist', Icons.checklist),
     _ToolEntry('mp3_downloader', 'MP3 Downloader', Icons.music_note),
+    _ToolEntry('music_player', 'Music Player', Icons.library_music),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —

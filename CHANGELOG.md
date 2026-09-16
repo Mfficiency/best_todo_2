@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.61] - 2026-09-16
+- Added a full local Music Player: background playback (notification + lock-screen controls), two home-screen widgets (play/pause, and play/pause + previous), Settings folder scan with subfolder exclusions, M3U/M3U8 playlist import (Samsung Music export), swipe-up-to-favorite/swipe-down-to-dislike-and-skip on Now Playing with a weighted shuffle that favors favorites and buries disliked tracks, and prep for connecting a self-hosted Subsonic/OpenSubsonic server
+
 ## [0.2.60] - 2026-09-16
 - Sharing a song link from Spotify, YouTube or Shazam into BestToDo now opens straight into the MP3 Downloader instead of the task editor: a YouTube link downloads immediately, a Spotify/Shazam link is looked up (via Spotify's oEmbed title / the Shazam page title, or the caption text the share already carries) and shows the usual candidate picker
 - Local build: 2026-09-16 17:17

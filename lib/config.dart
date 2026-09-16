@@ -124,6 +124,7 @@ class Config {
     'weekly_hours_planner',
     'worklist',
     'mp3_downloader',
+    'music_player',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -143,6 +144,7 @@ class Config {
     'Weekly Hours Planner',
     'Worklist',
     'MP3 Downloader',
+    'Music Player',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -182,6 +184,7 @@ class Config {
     'weekly_hours_planner',
     'worklist',
     'mp3_downloader',
+    'music_player',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -209,6 +212,7 @@ class Config {
     'Weekly Hours Planner',
     'Worklist',
     'MP3 Downloader',
+    'Music Player',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -236,6 +240,7 @@ class Config {
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
     'The home screen, showing only tasks tagged "mlr" (hidden everywhere else)',
     'Search a YouTube video by title or URL and save its audio as an .mp3',
+    'Play music from your device folder or a self-hosted server, with swipe-to-favorite/dislike',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
@@ -602,6 +607,32 @@ class Config {
   /// (e.g. music actually lives somewhere the OS doesn't advertise).
   static String mp3CompareFolder = '';
 
+  /// Root folder the Music Player scans for playable tracks (mp3/m4a/flac/
+  /// wav/ogg), including every subfolder recursively. Empty means "not
+  /// chosen yet". Defaults to [mp3DownloadFolder] on first use if that is
+  /// already set, since downloaded tracks are the common case, but is a
+  /// fully independent setting once picked.
+  static String musicFolder = '';
+
+  /// Subfolder paths (relative to [musicFolder], forward-slash separated)
+  /// excluded from the Music Player's scan — e.g. a ringtones or podcast
+  /// subfolder the user doesn't want mixed into shuffle. Set from Settings
+  /// → Music Player, where each subfolder found under [musicFolder] gets a
+  /// checkbox.
+  static List<String> musicExcludedSubfolders = [];
+
+  /// Base URL of a self-hosted Subsonic/OpenSubsonic-compatible server
+  /// (Navidrome, Airsonic, Gonic, …), e.g. `https://music.example.com`.
+  /// Empty means the Music Player only plays from [musicFolder].
+  static String subsonicServerUrl = '';
+
+  /// Subsonic server username.
+  static String subsonicUsername = '';
+
+  /// Subsonic server password, stored in plain text like [todoistApiToken] —
+  /// same no-secret-storage caveat applies (local device storage only).
+  static String subsonicPassword = '';
+
   /// If true, the app polls GitHub for a newer build every minute while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
   /// appears, asks whether to download and install it — see Settings →
@@ -693,6 +724,11 @@ class Config {
       'githubWishlistToken': githubWishlistToken,
       'mp3DownloadFolder': mp3DownloadFolder,
       'mp3CompareFolder': mp3CompareFolder,
+      'musicFolder': musicFolder,
+      'musicExcludedSubfolders': musicExcludedSubfolders,
+      'subsonicServerUrl': subsonicServerUrl,
+      'subsonicUsername': subsonicUsername,
+      'subsonicPassword': subsonicPassword,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
@@ -832,6 +868,16 @@ class Config {
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
     mp3CompareFolder =
         data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
+    musicFolder = data['musicFolder'] as String? ?? musicFolder;
+    final savedExcludedSubfolders = data['musicExcludedSubfolders'];
+    if (savedExcludedSubfolders is List) {
+      musicExcludedSubfolders =
+          savedExcludedSubfolders.whereType<String>().toList();
+    }
+    subsonicServerUrl =
+        data['subsonicServerUrl'] as String? ?? subsonicServerUrl;
+    subsonicUsername = data['subsonicUsername'] as String? ?? subsonicUsername;
+    subsonicPassword = data['subsonicPassword'] as String? ?? subsonicPassword;
     // Settings files from before automatic checks existed have no key. Use
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.

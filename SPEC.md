@@ -1942,7 +1942,7 @@ clue for the missing-receiver bug.
 
 ## 8. Home-screen widgets (Android)
 
-Four widgets via `home_widget` (app group `group.homeScreenApp`):
+Six widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
@@ -2003,6 +2003,19 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   target. Since 0.2.12 it redraws every 30 minutes and pulses red on the same running-count
   schedule as the full widget (0.2.25, pulsing since 0.2.32); tapping it remains an immediate
   shortcut to the add-entry dialog.
+- **Music mini widget** (`MusicMiniWidgetProvider.kt`, 0.2.61): a single play/pause button plus
+  a one-line title, nothing else. **Music controls widget** (`MusicControlsWidgetProvider.kt`,
+  0.2.61): the same, plus a skip-previous button. Both differ from every other widget here:
+  their buttons don't call into Dart at all (there is no in-memory `MusicAudioHandler` a
+  separate background isolate could reach — unlike the on-disk task/alarm lists, playback state
+  lives in the running foreground service). Instead `MusicWidgetIntents.kt` builds an explicit
+  `ACTION_MEDIA_BUTTON` broadcast (`KEYCODE_MEDIA_PLAY_PAUSE`/`KEYCODE_MEDIA_PREVIOUS`) targeted
+  straight at `audio_service`'s own `MediaButtonReceiver` — the same path a Bluetooth headset or
+  wired remote uses — so the buttons work whenever the Music Player's playback service is alive,
+  in the foreground or not. `MusicWidgetService` (`lib/services/music_widget_service.dart`)
+  only pushes the display data (title/artist/playing) by subscribing to the audio handler's
+  `mediaItem`/`playbackState` streams; tapping the title opens the app to the Music Player tool
+  (`besttodomusic://open`). See §10.6e.
 
 *Pulsing red, not flat red (0.2.32).* `FoodDiaryAlert.kt` (shared by both providers) alternates
 the background between a bright and a dim red every 900ms (`pulseColor`, `pulseIntervalMs`) so a
@@ -2026,7 +2039,7 @@ mock exists to keep the *data* in sync with the Kotlin providers, not to fully r
 `RemoteViews` animation loop outside the Flutter tree.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
-`Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
+`Config.isDev`, next to App Logs/Startup Times): the widgets above are drawn by
 `RemoteViews` on the Android home screen, entirely outside the Flutter tree, so they cannot
 be captured by the desktop screenshot integration test (`integration_test/
 home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
@@ -2045,10 +2058,14 @@ without any status text, matching what the Kotlin provider actually draws.
 `SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
 `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
-`FOREGROUND_SERVICE`, `VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (0.2.61 — the Music Player's
+background playback service, required alongside `FOREGROUND_SERVICE` when targeting SDK 34),
+`VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
 About page; the user still confirms every install) and `INTERNET` (0.1.139 — debug builds
 get it implicitly, so "Check for updates" worked in development and failed on every release
-APK until it was declared in the main manifest). An `androidx.core.content.FileProvider`
+APK until it was declared in the main manifest). Music folder access reuses the existing
+`MANAGE_EXTERNAL_STORAGE` grant (§10.6d) rather than adding `READ_MEDIA_AUDIO`. An
+`androidx.core.content.FileProvider`
 (authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
 + external-files dirs) shares the downloaded update APK with the system installer as a
 `content://` URI.
@@ -2059,7 +2076,10 @@ the plugin ships an empty manifest and its PendingIntent targets this class) +
 `RebootBroadcastReceiver`; flutter_local_notifications `ScheduledNotificationReceiver` +
 `ScheduledNotificationBootReceiver` (BOOT/PACKAGE_REPLACED/quickboot) +
 `ActionBroadcastReceiver` (snooze/dismiss); home_widget background receiver/service; the
-four widget providers.
+six widget providers; `audio_service`'s own `AudioService` foreground service
+(`foregroundServiceType="mediaPlayback"`) and `MediaButtonReceiver` (0.2.61 — the Music
+Player's background playback, notification and lock-screen controls, and the target the two
+music widgets' buttons send real media-button broadcasts to — see §8).
 
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(26, flutter.minSdkVersion)` (androidx.work via home_widget needs 23; the
@@ -2083,7 +2103,11 @@ releases could not hand a single alarm to the OS (only the watchdog backup rang,
 late). Do not remove.
 
 **MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
-`FlutterActivity`: it sets show-when-locked/turn-screen-on when launched by an alarm's
+`FlutterActivity` — since 0.2.61 it extends `AudioServiceFragmentActivity` (not plain
+`FlutterFragmentActivity`) so the Music Player's background playback service can hand it
+the `FlutterEngine` it manages; the health plugin's Health Connect flow (which needs a
+`FragmentActivity`) is unaffected, since `AudioServiceFragmentActivity` is itself one. It
+sets show-when-locked/turn-screen-on when launched by an alarm's
 full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
 (`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
 the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
@@ -3269,6 +3293,121 @@ flaky network; run it by hand with
 tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and in
 `Config.featureKeys`/`Config.startToolOptions` (feature switch + default
 start page).
+
+### 10.6e Music Player (0.2.61)
+
+Tools ▸ Music Player (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`):
+a full local MP3/audio player with background playback, home-screen widgets, notification
+and lock-screen controls, an M3U/M3U8 playlist import (Samsung Music's share-out format),
+and a "Tinder for songs" swipe gesture on Now Playing — swipe up favorites the current
+track, swipe down marks it disliked and skips it, so disliked tracks come up far less (not
+never) in future shuffles. Separate from and does not replace §10.6d's MP3 Downloader, which
+only fetches audio; the two default to sharing a folder — opening Music Player with
+`Config.musicFolder` unset auto-adopts `Config.mp3DownloadFolder` when that is already set
+(and persists the choice), since downloaded tracks are the common case, but the two settings
+are fully independent once either is picked explicitly.
+
+**Library scanning** (`lib/services/music_library_service.dart`, singleton
+`MusicLibraryService.instance`, `ValueNotifier<List<Track>> tracks`): recursively scans
+`Config.musicFolder` for `mp3`/`m4a`/`flac`/`wav`/`ogg`/`aac`/`wma` files via `dart:io`
+`Directory.list(recursive: true)` — not `on_audio_query`/`MediaStore`, so it works on any
+folder the user picks, not just the device's indexed media. `Config.musicExcludedSubfolders`
+(relative, forward-slash paths) excludes a subfolder and everything nested under it
+(`isExcludedRelativeDir`); Settings → Music Player lists every subfolder found so far as a
+checkbox (`MusicLibraryService.listSubfolders`). Each mp3's ID3 tags are read best-effort via
+the pure-Dart `id3_codec` package — only the file's first 1 MiB is read (`_id3ReadCap`, covers
+the common ID3v2-at-the-front case without reading every file whole for a folder that could
+hold thousands of tracks); a file with no/unreadable tag, or any non-mp3 format, falls back to
+its filename as the title. Results cache to `music_library.json` (same
+singleton/`ValueNotifier`/`flush: true`/swallowed-errors pattern as `ProjectService`, §4.2) so
+the library shows up instantly on the next launch; a failed or partial rescan (folder deleted,
+permission revoked) leaves the previous cache in place rather than clearing it. Rescans are
+manual (Music Player's refresh button, or automatically once on first open when the folder is
+set but the cache is empty) — there is no filesystem watcher.
+
+**Playback engine** (`lib/services/music_audio_handler.dart`'s `MusicAudioHandler`, a
+`BaseAudioHandler` from `audio_service` wrapping a single `just_audio` `AudioPlayer`):
+one track is loaded at a time via `setAudioSource` rather than a gapless
+`ConcatenatingAudioSource` — simpler to keep in sync with a queue that swipe actions mutate
+mid-playback, at the cost of a small gap between tracks. The queue
+(`List<Track> _queue`/`_queueIndex`) advances on `ProcessingState.completed` or a manual
+skip; running off the end reshuffles the whole scanned library fresh
+(`MusicPlaylistService.weightedShuffle`) rather than stopping, so playback continues
+indefinitely, radio-style. `MusicPlayerService` (`lib/services/music_player_service.dart`) is
+the facade the UI actually calls (`playLibraryShuffled`, `playQueue(tracks, startIndex:)`) and
+owns startup: `AudioService.init` registers the handler with the OS notification/lock-screen
+integration on Android/iOS/macOS; on a platform `audio_service` doesn't cover for this app
+(Windows, used for tests/screenshots per the top of this doc) it falls back to a bare
+`MusicAudioHandler()` — playback still works through `just_audio` directly, just without the
+system media surfaces. `favoriteCurrent()`/`dislikeCurrentAndSkip()` on the handler are what
+Now Playing's swipe gestures and the notification/widget controls ultimately call.
+
+**Favorites, "Don't really like" and the weighted shuffle**
+(`lib/services/music_playlist_service.dart`, singleton `MusicPlaylistService.instance`,
+persisted to `music_playlists.json`): two fixed system playlists
+(`MusicPlaylist.favoritesId`/`dislikedId`) plus any number of user/imported ones
+(`MusicPlaylist` model: id/name/`trackIds`/`isSystem`). `weightedShuffle` builds a shuffled
+play order using Efraimidis–Spirakis weighted random sampling without replacement: each track
+gets a key of `random()^(1/weight)` and the result sorts descending by key — favorited tracks
+(weight 3.0) tend to land earlier, disliked tracks (weight 0.05, a 60x ratio) tend to land much
+later, ordinary tracks (weight 1.0) fall in between, and every track can still appear (nothing
+is ever hard-excluded, since a mood can change). `toggleFavorite`/`markDisliked` are mutually
+exclusive on a track (favoriting clears a dislike and vice versa).
+
+**Now Playing swipe gesture** (`lib/ui/now_playing_page.dart`): a `GestureDetector` on the
+artwork/title column tracks vertical drag distance and velocity; crossing a distance or
+velocity threshold upward calls `favoriteCurrent()`, downward calls
+`dislikeCurrentAndSkip()` (marks disliked, then immediately skips) — both also available as
+plain buttons in the transport row for a non-swipe fallback. A brief toast-style label flashes
+to confirm which action fired.
+
+**M3U/M3U8 import** (`lib/services/m3u_playlist_service.dart`): Samsung Music has no public
+API or an easily-parsed database without root, but it (like most music apps) can export/share
+a playlist as `.m3u`/`.m3u8`. `M3uPlaylistService.parseEntries` strips `#EXT...`
+directives/comments/blank lines and decodes `file://` URIs; `importFile` matches each
+remaining entry against the scanned library first by exact normalized path, then by file
+basename (case/extension-insensitive — the common case, since a playlist made on another
+device/app rarely carries this app's exact folder path), and reports what didn't match rather
+than silently dropping it. A match creates an ordinary (non-system) `MusicPlaylist`.
+
+**Self-hosted server prep** (`lib/services/subsonic_client.dart`'s `SubsonicClient`,
+`lib/models/track.dart`'s `TrackSource.subsonic`): a small Subsonic/OpenSubsonic API client
+(Navidrome, Airsonic, Gonic, … — the most widely supported self-hosted music protocol) for
+when a server is configured in Settings → Music Player (`Config.subsonicServerUrl/Username/
+Password`). Auth follows the Subsonic token scheme — `token = md5(password + fresh salt)` sent
+with every request, so the plaintext password never goes on the wire (it is still stored in
+plaintext on-device, same caveat as `Config.todoistApiToken`). Implemented so far: `ping()`
+(Settings' "Test connection"), `search()` (`search3`, full-text), and `streamUri(songId)` (the
+URL `MusicAudioHandler._resolveUri` streams a `TrackSource.subsonic` track from). A remote
+track is just another `Track` in the same queue/favorites/shuffle machinery as a local one —
+there is no separate "remote mode". Not yet wired into a server-browsing UI (artists/albums);
+that is the natural next step once a server is actually connected.
+
+**Home-screen widgets and notification/lock screen:** see §8 for the two widgets
+(`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`) and §9 for the `audio_service`
+manifest wiring. The system media notification and lock-screen controls (play/pause/stop/
+skip) come from `audio_service` itself once `AudioService.init` registers the handler — no
+custom notification code needed, unlike the alarm subsystem's hand-built full-screen
+notification (§5, §6).
+
+**Settings → Music Player** (`lib/ui/settings_page.dart`, section 16): folder picker (shares
+the `file_selector` `getDirectoryPath` pattern §4.4/§10.6d use), an "Excluded subfolders"
+dialog populated from `MusicLibraryService.listSubfolders`, and the Subsonic server
+URL/username/password fields with Save/Test connection. `Config.featureKeys`/
+`startToolOptions` gained a `music_player` entry (`_ToolEntry` in `home_page.dart`, case in
+`_buildToolPage`), same wiring pattern as every other tool.
+
+**Known gaps, honestly stated:** this shipped from a single development session without
+access to a physical Android device, an emulator, a real Subsonic server, or Samsung Music
+itself — `flutter analyze`/`flutter test` are clean and the pure-Dart logic (library scan,
+exclusions, weighted shuffle, M3U parsing/matching, Subsonic URL/auth shape) is unit-tested
+(`test/music/`), but the native Android side (the two widgets' `RemoteViews`, the
+`MediaButtonReceiver` broadcast wiring, the actual system notification/lock-screen chrome, and
+playback itself) has not been run on-device and needs manual verification on a real phone
+before relying on it. The M3U importer is built against the general-purpose M3U/M3U8 spec,
+not a Samsung Music export sample, on the assumption documented in this section (a plain path
+list, possibly `file://`, matched by basename when the exact path doesn't line up) — worth
+confirming against a real Samsung Music export.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
