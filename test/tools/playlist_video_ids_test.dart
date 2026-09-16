@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:besttodo/services/log_service.dart';
 import 'package:besttodo/services/playlist_video_ids.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -159,6 +160,62 @@ void main() {
 
     test('a blob with no matching structure returns no ids', () {
       expect(extractPlaylistVideoIdsFromData({'unrelated': 'stuff'}), isEmpty);
+    });
+
+    test(
+        'finds renderers under a completely different/unexpected nesting — '
+        'the exact class of bug reported in production: youtube_explode_dart\'s '
+        'own hardcoded path found nothing even though the playlist genuinely '
+        'had tracks, because the surrounding container structure had drifted',
+        () {
+      final data = {
+        'contents': {
+          // Not twoColumnBrowseResultsRenderer at all, and no tabs/
+          // sectionListRenderer/playlistVideoListRenderer chain — a
+          // hardcoded-path walker would find nothing here.
+          'somethingElseEntirely': {
+            'nested': [
+              {
+                'anotherWrapper': {
+                  'playlistVideoRenderer': {'videoId': 'zzzzzzzzzzz'},
+                },
+              },
+              {
+                'deeper': {
+                  'evenDeeper': {
+                    'richItemRenderer': {
+                      'content': {
+                        'playlistVideoRenderer': {'videoId': 'yyyyyyyyyyy'},
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      };
+      expect(extractPlaylistVideoIdsFromData(data), ['zzzzzzzzzzz', 'yyyyyyyyyyy']);
+    });
+
+    test(
+        'when nothing is found, logs a census of the actual renderer/'
+        'view-model keys present — actionable if the type name has moved on '
+        'from playlistVideoRenderer entirely', () {
+      LogService.clear();
+      final ids = extractPlaylistVideoIdsFromData({
+        'contents': {
+          'someNewShapeRenderer': {'ok': true},
+          'nested': [
+            {'anotherNewViewModel': {}},
+          ],
+        },
+      });
+      expect(ids, isEmpty);
+      final logs = LogService.logs.value.join('\n');
+      expect(logs, contains('no playlistVideoRenderer found'));
+      expect(logs, contains('someNewShapeRenderer'));
+      expect(logs, contains('anotherNewViewModel'));
     });
   });
 }

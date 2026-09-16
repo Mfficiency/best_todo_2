@@ -2920,7 +2920,7 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56)
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56, schema-agnostic playlist-item search 0.2.57)
 Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
@@ -3123,20 +3123,50 @@ parse alone finds nothing: `YoutubeHttpClient.sendPost('browse', {
 'browseId': 'VL<playlistId>'})` (`VL`-prefixing a playlist id is the
 standard way to address its video list as a "browse id" on YouTube's
 internal API — the same convention yt-dlp and other scrapers use), then
-runs the *exact same* `extractPlaylistVideoIdsFromData` JSON walk against
-that response, since an initial (non-continuation) `browse` response for a
-playlist uses the identical `contents.twoColumnBrowseResultsRenderer…`
-shape as the HTML-embedded one.
+runs the same `extractPlaylistVideoIdsFromData` walk against that response
+too (an initial, non-continuation `browse` response for a playlist has the
+same overall shape as the HTML-embedded data).
 
 Every step of resolving a playlist — `playlists.get()`'s metadata,
 `getVideos()`'s track count, entering the fallback, the page fetch and its
-byte count, ytInitialData found/not-found, items walked, ids found, the
+byte count, ytInitialData found/not-found, items found, ids found, the
 browse-API attempt and its id count, and each individual video resolved or
 skipped — is now written to `LogService` under the `MP3` source (App Logs
 page, reachable from the drawer). Both gaps are easy to reproduce from a
 bug report but were hard to diagnose blind with no live YouTube access to
-test against; this makes the next report actionable instead of another
-guess.
+test against.
+
+**The actual root cause, found from those logs (0.2.57).** The 0.2.56
+build still came back with zero tracks on the reported playlist — and the
+new logs showed exactly why: `playlists.get()` confirmed the playlist
+genuinely has videos (`videoCount=3`, a real title), the page fetch
+succeeded (840 KB), but both the page-parse *and* the browse-API attempt
+hit "tabs found but no playlistVideoListRenderer inside". That path —
+`contents.twoColumnBrowseResultsRenderer.tabs[].tabRenderer.content.
+sectionListRenderer.contents[].itemSectionRenderer.contents[].
+playlistVideoListRenderer.contents` — is the *exact same hardcoded path*
+`youtube_explode_dart`'s own `PlaylistPage._videoItems` getter uses, which
+is exactly why `getVideos()` returned nothing in the first place: YouTube's
+current response no longer nests the video list where that path (0.2.55's
+fallback included, since it copied the same path for maximum fidelity)
+expects it. Not a filter, not a missing byline — the container structure
+itself had moved.
+
+`extractPlaylistVideoIdsFromData` (now in `_findPlaylistVideoRenderers`)
+no longer walks any hardcoded path at all: it recursively searches the
+*entire* decoded response for a `playlistVideoRenderer` (direct, or
+wrapped in `richItemRenderer.content`) wherever it lives, in document
+order (a `jsonDecode`d object preserves source key/array order, so a
+depth-first walk visits entries in playlist order without needing to know
+the surrounding containers). `playlistVideoRenderer` is otherwise a
+stable, specific type name — it only ever represents a video in a
+playlist's own listing — so this is robust to exactly the kind of path
+drift that broke both the library and the exact-path fallback, without
+needing to know or guess the current container structure. If even this
+finds nothing, it logs a census of every key anywhere in the response
+ending in `Renderer` or `ViewModel` — e.g. if YouTube has since moved
+playlist items to some other type name entirely, this names it directly
+instead of costing another guess-and-report round trip.
 
 `Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
 `picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"

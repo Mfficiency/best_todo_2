@@ -90,15 +90,15 @@ List<String> extractPlaylistVideoIdsFromHtml(String html) {
 
 /// The pure parsing half of [fetchPlaylistVideoIdsFromPage] for an already
 /// -decoded JSON blob — shared by the HTML-embedded `ytInitialData` path
-/// and the raw `browse` API response, since both use the same underlying
-/// `contents.twoColumnBrowseResultsRenderer…` shape.
+/// and the raw `browse` API response.
 List<String> extractPlaylistVideoIdsFromData(Map<String, dynamic> data) {
-  final items = _playlistItems(data);
-  LogService.add('MP3', 'Playlist fallback: walked ${items.length} playlist item(s)');
+  final renderers = _findPlaylistVideoRenderers(data);
+  LogService.add(
+      'MP3', 'Playlist fallback: found ${renderers.length} playlistVideoRenderer(s)');
   final ids = <String>[];
   final seen = <String>{};
-  for (final item in items) {
-    final videoId = _rendererOf(item)?['videoId'];
+  for (final renderer in renderers) {
+    final videoId = renderer['videoId'];
     if (videoId is String && seen.add(videoId)) ids.add(videoId);
   }
   return ids;
@@ -147,65 +147,88 @@ Map<String, dynamic>? _decodeJsonObject(String text, int from) {
   return null;
 }
 
-Map<String, dynamic>? _rendererOf(Map<String, dynamic> item) {
-  final direct = item['playlistVideoRenderer'];
-  if (direct is Map<String, dynamic>) return direct;
-  final nested =
-      _asMap(_asMap(item['richItemRenderer'])?['content'])?['playlistVideoRenderer'];
-  return nested is Map<String, dynamic> ? nested : null;
-}
-
 Map<String, dynamic>? _asMap(Object? value) =>
     value is Map<String, dynamic> ? value : null;
 
-/// Walks `contents.twoColumnBrowseResultsRenderer.tabs[].tabRenderer.
-/// content.sectionListRenderer.contents[].itemSectionRenderer.contents[].
+/// Finds every `playlistVideoRenderer` anywhere in [data], in document
+/// order (a `jsonDecode`d object preserves source key/array order, so a
+/// depth-first walk visits them in playlist order).
+///
+/// Deliberately schema-agnostic rather than a hardcoded path: an earlier
+/// version walked `contents.twoColumnBrowseResultsRenderer.tabs[]…
 /// playlistVideoListRenderer.contents` — the exact path
-/// `youtube_explode_dart`'s `PlaylistPage._videoItems` getter uses for an
-/// initial (non-continuation) page load, and also the shape of an initial
-/// (non-continuation) `browse` API JSON response for a playlist.
-List<Map<String, dynamic>> _playlistItems(Map<String, dynamic> data) {
-  final tabs =
-      _listAt(data, const ['contents', 'twoColumnBrowseResultsRenderer', 'tabs']);
-  if (tabs == null) {
-    LogService.add('MP3', 'Playlist fallback: no tabs found at the expected path');
-    return const [];
-  }
-  for (final tab in tabs) {
-    final tabMap = _asMap(tab);
-    if (tabMap == null) continue;
-    final sections = _listAt(
-      tabMap,
-      const ['tabRenderer', 'content', 'sectionListRenderer', 'contents'],
-    );
-    if (sections == null) continue;
-    for (final section in sections) {
-      final sectionMap = _asMap(section);
-      if (sectionMap == null) continue;
-      final itemContents =
-          _listAt(sectionMap, const ['itemSectionRenderer', 'contents']);
-      if (itemContents == null) continue;
-      for (final item in itemContents) {
-        final itemMap = _asMap(item);
-        if (itemMap == null) continue;
-        final contents =
-            _listAt(itemMap, const ['playlistVideoListRenderer', 'contents']);
-        if (contents != null) {
-          return contents.whereType<Map<String, dynamic>>().toList();
-        }
+/// `youtube_explode_dart`'s own `PlaylistPage._videoItems` getter uses —
+/// and it found *nothing* even though `playlists.get()` confirmed the
+/// playlist genuinely has videos (`videoCount=3`) and the page fetched
+/// fine. Since the official library's own hardcoded path failed
+/// identically (that's exactly why `getVideos()` came back empty in the
+/// first place), the real cause isn't a filter or a missing byline — it's
+/// that YouTube's current response nests the video list somewhere this
+/// hardcoded path no longer matches. `playlistVideoRenderer` (direct, or
+/// wrapped in `richItemRenderer.content`) is otherwise a stable, specific
+/// type name — it only ever represents a video in a playlist's own
+/// listing — so searching the whole tree for it is robust to exactly the
+/// kind of path drift that broke both other approaches, and doesn't need
+/// to know or guess the surrounding container structure at all.
+List<Map<String, dynamic>> _findPlaylistVideoRenderers(Map<String, dynamic> data) {
+  final found = <Map<String, dynamic>>[];
+
+  void visit(Object? node) {
+    if (node is Map<String, dynamic>) {
+      final direct = node['playlistVideoRenderer'];
+      if (direct is Map<String, dynamic>) {
+        found.add(direct);
+        return;
+      }
+      final wrapped =
+          _asMap(_asMap(node['richItemRenderer'])?['content'])?['playlistVideoRenderer'];
+      if (wrapped is Map<String, dynamic>) {
+        found.add(wrapped);
+        return;
+      }
+      for (final value in node.values) {
+        visit(value);
+      }
+    } else if (node is List) {
+      for (final value in node) {
+        visit(value);
       }
     }
   }
-  LogService.add(
-      'MP3', 'Playlist fallback: tabs found but no playlistVideoListRenderer inside');
-  return const [];
+
+  visit(data);
+  if (found.isEmpty) {
+    // If this is empty too, the next fix needs to target a different
+    // renderer/view-model type name rather than guess again — this census
+    // says exactly which ones are actually present in this response.
+    final typeNames = _collectRendererTypeNames(data).toList()..sort();
+    LogService.add(
+      'MP3',
+      'Playlist fallback: no playlistVideoRenderer found; '
+      'renderer/view-model keys present: $typeNames',
+    );
+  }
+  return found;
 }
 
-List<dynamic>? _listAt(Map<String, dynamic> data, List<String> path) {
-  dynamic current = data;
-  for (final key in path) {
-    if (current is! Map) return null;
-    current = current[key];
+/// Every distinct key ending in `Renderer` or `ViewModel` found anywhere in
+/// [node] — a census of the response's actual content types, used only for
+/// the diagnostic above.
+Set<String> _collectRendererTypeNames(Object? node, [Set<String>? into]) {
+  final result = into ?? <String>{};
+  if (node is Map<String, dynamic>) {
+    for (final key in node.keys) {
+      if (key.endsWith('Renderer') || key.endsWith('ViewModel')) {
+        result.add(key);
+      }
+    }
+    for (final value in node.values) {
+      _collectRendererTypeNames(value, result);
+    }
+  } else if (node is List) {
+    for (final value in node) {
+      _collectRendererTypeNames(value, result);
+    }
   }
-  return current is List ? current : null;
+  return result;
 }
