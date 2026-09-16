@@ -2920,7 +2920,7 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54)
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55)
 Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
@@ -3084,6 +3084,30 @@ getVideos`, a `Stream<Video>` drained to a list, in playlist order), mapped
 to the same `Mp3SearchResult` shape search/resolve produce
 (`Mp3PlaylistInfo(title, tracks)`) so the rest of the pipeline doesn't need
 to know a track came from a playlist.
+
+**Fallback for `getVideos()` coming back empty (0.2.55).** Reported against
+a real, fully public 3-track playlist: it resolved a title ("MUZ_03") but
+zero tracks. `PlaylistClient.getVideos` (`youtube_explode_dart` 3.1.0)
+silently *skips* a playlist entry whose uploader channel id it can't parse
+off the page — it tries three JSON paths (`ownerText`/`shortBylineText` →
+`browseId`, two variants), and a playlist whose byline layout misses all
+three loses every single track this way, not just the odd one. When
+`getVideos()` returns empty, `resolvePlaylist` falls back to
+`fetchPlaylistVideoIdsFromPage` (`lib/services/playlist_video_ids.dart`):
+fetches the same playlist page HTML via a plain `yt_explode.
+YoutubeHttpClient`, extracts `ytInitialData` from its `<script>` tags the
+same way the library's own `YoutubePage` does (`var ytInitialData = ` /
+`window["ytInitialData"] =`, JSON-decoded), and walks the identical
+`contents.twoColumnBrowseResultsRenderer.tabs[]…playlistVideoListRenderer.
+contents` path `PlaylistPage._videoItems` uses — but only ever pulls
+`videoId` out of each `playlistVideoRenderer` (direct or
+`richItemRenderer`-wrapped), so it isn't tripped by an unparseable byline.
+Each id found is then resolved individually via the already-proven
+`client.videos.get`, skipping (and logging) any single video that fails
+rather than failing the whole playlist. Single page only — no
+`continuation` follow-up — so a playlist beyond YouTube's first batch (a
+few hundred entries) is only partially covered by the fallback; the normal
+`getVideos()` path already paginates and is tried first regardless.
 
 `Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
 `picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"
