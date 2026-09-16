@@ -2,6 +2,9 @@
 
 ## [0.2.59] - 2026-09-16
 - MP3 Downloader: the playlist duplicate check now also looks in the phone's Music folder (not just the download folder), so tracks already in your library are skipped even if this app never downloaded them there. Settings → MP3 Downloader gets a new 'Check for existing tracks in' folder picker for when auto-detection guesses wrong
+- Local build: 2026-09-16 13:31
+- Build duration (apk): 23m 00s
+- Build duration (windows): 2m 53s
 
 ## [0.2.58] - 2026-09-16
 - MP3 Downloader: the actual fix, found from the 0.2.57 diagnostic census — this playlist's page has migrated entirely to YouTube's newer "lockup" component system, with no trace of the older renderer type at all. Playlist import now recognises both shapes, so the reported 3-track playlist (and any other playlist YouTube has migrated the same way) resolves correctly
