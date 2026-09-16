@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -8,6 +9,8 @@ import '../config.dart';
 import '../services/log_service.dart';
 import '../services/mp3_download_manager.dart';
 import '../services/mp3_downloader_service.dart';
+import '../services/music_share_link.dart';
+import '../services/share_intent_service.dart';
 import '../services/track_title.dart';
 import 'mp3_downloads_page.dart';
 import 'subpage_app_bar.dart';
@@ -31,6 +34,12 @@ import 'subpage_app_bar.dart';
 /// leaving this page or backgrounding the app doesn't interrupt it, and the
 /// download button in the app bar shows what is still running.
 ///
+/// Also the destination for a Spotify, YouTube or Shazam link shared into
+/// BestToDo (see [MusicShareLink]/`main.dart`): [sharedLink] feeds this same
+/// search box automatically, so a shared YouTube link downloads immediately
+/// and a Spotify/Shazam link (resolved to a search query via
+/// [MusicLinkResolverService]) lands straight on the candidate picker below.
+///
 /// Saves the audio-only stream as delivered (`.m4a`/AAC or `.webm`/Opus)
 /// rather than transcoding to a literal `.mp3` — see
 /// [Mp3DownloaderService]'s doc comment for why (a real MP3 encoder would
@@ -40,12 +49,23 @@ class Mp3DownloaderPage extends StatefulWidget {
     Key? key,
     Mp3DownloaderService? service,
     Mp3DownloadManager? manager,
+    MusicLinkResolverService? resolver,
+    this.sharedLink,
   })  : _service = service,
         _manager = manager,
+        _resolver = resolver,
         super(key: key);
 
   final Mp3DownloaderService? _service;
   final Mp3DownloadManager? _manager;
+  final MusicLinkResolverService? _resolver;
+
+  /// Set when this page was opened from the Android share sheet (a Spotify,
+  /// YouTube or Shazam link shared into BestToDo — see `main.dart`) rather
+  /// than from Tools. Drives the search box straight from the link instead
+  /// of waiting for the user to type, and swaps the app bar for one that can
+  /// hand control back to the sharing app.
+  final MusicShareLink? sharedLink;
 
   @override
   State<Mp3DownloaderPage> createState() => _Mp3DownloaderPageState();
@@ -60,6 +80,8 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       widget._service ?? Mp3DownloaderService.instance;
   late final Mp3DownloadManager _manager =
       widget._manager ?? Mp3DownloadManager.instance;
+  late final MusicLinkResolverService _resolver =
+      widget._resolver ?? MusicLinkResolverService.instance;
   final TextEditingController _controller = TextEditingController();
 
   _Stage _stage = _Stage.idle;
@@ -71,16 +93,59 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   Set<String> _selectedVideoIds = <String>{};
   Set<String> _alreadyDownloadedVideoIds = <String>{};
 
+  // Whether _finishShare() already ran — dispose() uses this to also return
+  // to the sharing app on a bare back-gesture dismissal, without
+  // double-firing the platform call. Mirrors QuickAddSharePage.
+  bool _shareFinished = false;
+
   @override
   void initState() {
     super.initState();
     _manager.load();
+    final sharedLink = widget.sharedLink;
+    if (sharedLink != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _handleSharedLink(sharedLink));
+    }
   }
 
   @override
   void dispose() {
+    if (widget.sharedLink != null && !_shareFinished) {
+      unawaited(ShareIntentService.instance.returnToPreviousApp());
+    }
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Resolves the shared link into a search query (straight through for a
+  /// YouTube link, a page-title lookup for Spotify/Shazam — see
+  /// [MusicLinkResolverService]) and feeds it into the same [_submit] path a
+  /// typed query uses, so a YouTube link downloads immediately and a
+  /// Spotify/Shazam link lands on the usual candidate picker.
+  Future<void> _handleSharedLink(MusicShareLink link) async {
+    setState(() {
+      _stage = _Stage.searching;
+      _errorMessage = null;
+    });
+    try {
+      final query = await _resolver.resolveSearchQuery(link);
+      if (!mounted) return;
+      _controller.text = query;
+      await _submit();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stage = _Stage.error;
+        _errorMessage = "Couldn't use the shared link: $e";
+      });
+    }
+  }
+
+  void _finishShare() {
+    _shareFinished = true;
+    unawaited(ShareIntentService.instance.returnToPreviousApp());
+    if (mounted) Navigator.of(context).maybePop();
   }
 
   String _formatDuration(Duration? duration) {
@@ -389,12 +454,26 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
         ),
       );
     }
+    final fromShare = widget.sharedLink != null;
     return Scaffold(
-      appBar: buildSubpageAppBar(
-        context,
-        title: 'MP3 Downloader',
-        actions: [_buildDownloadsButton()],
-      ),
+      appBar: fromShare
+          ? AppBar(
+              automaticallyImplyLeading: false,
+              title: const Text('Find & Download Song'),
+              actions: [
+                _buildDownloadsButton(),
+                IconButton(
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close),
+                  onPressed: _finishShare,
+                ),
+              ],
+            )
+          : buildSubpageAppBar(
+              context,
+              title: 'MP3 Downloader',
+              actions: [_buildDownloadsButton()],
+            ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

@@ -2153,6 +2153,30 @@ whatever app the share came from — the standard "quick capture" pattern, since
 activity was launched fresh by that app's share sheet; a bare back-gesture dismissal
 (no button tapped) does the same from `dispose()`. Tests: `test/share/`.
 
+**Song-link share routing** (0.2.60): before presenting `QuickAddSharePage`, `main.dart`
+runs the share's text (or subject) through `detectMusicShareLink`
+(`lib/services/music_share_link.dart`) looking for a Spotify track link
+(`open.spotify.com/track/...`), a Shazam track link (`shazam.com/track|song/...`), or a
+YouTube video/playlist link (the same patterns `Mp3DownloaderService` already
+recognizes). A match routes straight into `Mp3DownloaderPage(sharedLink: ...)` instead of
+the task editor, skipping the quick-add flow entirely — the share's caption text (with
+the link itself removed, and boilerplate like "I used Shazam to discover" stripped) is
+kept as a `textHint`. On open, the page resolves the link into a search query via
+`MusicLinkResolverService.resolveSearchQuery`: a YouTube link passes through unchanged
+(the downloader's existing direct-URL path resolves and downloads it immediately, no
+picker); a Spotify/Shazam link uses the caption `textHint` when there is one, otherwise
+fetches Spotify's public `open.spotify.com/oembed` endpoint (`title` + `author_name`, no
+API key) or parses the Shazam page's `og:title`/`<title>` (via the `html` package,
+stripping the trailing " | Shazam") — either way the resolved text feeds the same
+`_submit()` a typed query uses, landing on the usual up-to-5-candidate picker. A failed
+lookup with no caption to fall back on shows an error (`MusicLinkResolveException`)
+rather than hanging. `Mp3DownloaderPage` swaps its normal Tools app bar for one with a
+"Find & Download Song" title and a Close button (`_finishShare`) that calls
+`ShareIntentService.returnToPreviousApp` and pops, same as `QuickAddSharePage`'s
+Save/Discard; a bare back-gesture dismissal does the same from `dispose()`. Tests:
+`test/tools/music_share_link_test.dart`,
+`test/tools/mp3_downloader_test.dart` ("opened from a share (sharedLink)").
+
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
 here have broken builds before.

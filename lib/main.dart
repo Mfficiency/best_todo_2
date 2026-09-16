@@ -16,6 +16,7 @@ import 'ui/settings_page.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
+import 'ui/mp3_downloader_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
 import 'ui/auto_update_dialog.dart';
@@ -27,6 +28,7 @@ import 'services/alarm_widget_service.dart';
 import 'services/food_diary_widget_service.dart';
 import 'services/auto_update_checker.dart';
 import 'services/item_history_seeder.dart';
+import 'services/music_share_link.dart';
 import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
@@ -411,6 +413,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void _presentNextSharedPayload() {
     if (_pendingShares.isEmpty) return;
     final payload = _pendingShares.removeAt(0);
+    // A Spotify/YouTube/Shazam link (in the text or subject) skips the task
+    // editor and opens straight into the MP3 Downloader instead, prefilled
+    // and auto-searching — see MusicShareLink/Mp3DownloaderPage.
+    final musicLink = detectMusicShareLink(
+      payload.text.isNotEmpty ? payload.text : payload.subject,
+    );
     // Wait for the first frame so the navigator exists on a cold start, same
     // as the alarm-ring screen below.
     WidgetsBinding.instance.scheduleFrame();
@@ -421,7 +429,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       navigator
           .push(MaterialPageRoute(
             fullscreenDialog: true,
-            builder: (_) => QuickAddSharePage(payload: payload),
+            builder: (_) => musicLink != null
+                ? Mp3DownloaderPage(sharedLink: musicLink)
+                : QuickAddSharePage(payload: payload),
           ))
           .whenComplete(() {
         _shareScreenOpen = false;

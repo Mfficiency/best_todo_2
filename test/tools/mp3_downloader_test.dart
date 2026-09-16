@@ -1,13 +1,19 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
 import 'package:besttodo/services/media_scanner_service.dart';
 import 'package:besttodo/services/mp3_download_manager.dart';
 import 'package:besttodo/services/mp3_downloader_service.dart';
+import 'package:besttodo/services/music_share_link.dart';
+import 'package:besttodo/services/share_intent_service.dart';
 import 'package:besttodo/ui/mp3_downloader_page.dart';
 import 'package:besttodo/ui/mp3_downloads_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 /// The real end-to-end download (live YouTube, real bytes on disk) is
 /// `tool/check_mp3_download.dart`, run by hand — see its header. These tests
@@ -726,6 +732,138 @@ void main() {
       ];
       await tester.pump();
       expect(find.text('1'), findsOneWidget);
+    });
+
+    group('opened from a share (sharedLink)', () {
+      const shareChannel = MethodChannel('besttodo/share');
+
+      tearDown(() {
+        ShareIntentService.instance.resetForTest();
+      });
+
+      testWidgets(
+          'a shared YouTube link resolves and downloads immediately, no '
+          'picker', (tester) async {
+        Config.mp3DownloadFolder = '/tmp/music';
+        var resolved = false;
+        Mp3DownloaderService.instance.resolveOverride = (id) async {
+          resolved = true;
+          return Mp3SearchResult(
+            videoId: id,
+            title: 'Shared video',
+            channel: 'Some channel',
+            duration: const Duration(minutes: 3),
+          );
+        };
+        Mp3DownloaderService.instance.downloadOverride =
+            (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+        await tester.pumpWidget(const MaterialApp(
+          home: Mp3DownloaderPage(
+            sharedLink: MusicShareLink(
+              url: 'https://youtu.be/dQw4w9WgXcQ',
+              source: MusicLinkSource.youtube,
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(resolved, true);
+        expect(find.text('Find & Download Song'), findsOneWidget);
+        expect(find.byTooltip('Close'), findsOneWidget);
+        expect(Mp3DownloadManager.instance.jobs.value, isNotEmpty);
+        expect(
+            Mp3DownloadManager.instance.jobs.value.first.title, 'Shared video');
+      });
+
+      testWidgets(
+          'a shared Spotify link is resolved to a search query, then shows '
+          'the candidate picker', (tester) async {
+        Mp3DownloaderService.instance.searchOverride = (query, limit) async {
+          expect(query, 'Yellow Coldplay');
+          return const [
+            Mp3SearchResult(
+              videoId: 'yid',
+              title: 'Coldplay - Yellow',
+              channel: 'Coldplay',
+              duration: Duration(minutes: 4),
+            ),
+          ];
+        };
+        final resolver = MusicLinkResolverService(
+          client: MockClient((request) async => http.Response(
+                jsonEncode({'title': 'Yellow', 'author_name': 'Coldplay'}),
+                200,
+              )),
+        );
+
+        await tester.pumpWidget(MaterialApp(
+          home: Mp3DownloaderPage(
+            resolver: resolver,
+            sharedLink: const MusicShareLink(
+              url: 'https://open.spotify.com/track/abc123',
+              source: MusicLinkSource.spotify,
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Coldplay - Yellow'), findsOneWidget);
+      });
+
+      testWidgets('the Close button returns to the previous sharing app',
+          (tester) async {
+        final channelCalls = <String>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(shareChannel, (call) async {
+          channelCalls.add(call.method);
+          return null;
+        });
+        addTearDown(() => TestDefaultBinaryMessengerBinding
+            .instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(shareChannel, null));
+
+        Mp3DownloaderService.instance.searchOverride =
+            (query, limit) async => <Mp3SearchResult>[];
+
+        await tester.pumpWidget(const MaterialApp(
+          home: Mp3DownloaderPage(
+            sharedLink: MusicShareLink(
+              url: 'https://open.spotify.com/track/abc123',
+              source: MusicLinkSource.spotify,
+              textHint: 'Some Song',
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+
+        expect(channelCalls, contains('returnToPreviousApp'));
+      });
+
+      testWidgets(
+          'a resolver failure surfaces as an error instead of hanging',
+          (tester) async {
+        final resolver = MusicLinkResolverService(
+          client: MockClient((request) async => http.Response('', 500)),
+        );
+
+        await tester.pumpWidget(MaterialApp(
+          home: Mp3DownloaderPage(
+            resolver: resolver,
+            sharedLink: const MusicShareLink(
+              url: 'https://open.spotify.com/track/abc123',
+              source: MusicLinkSource.spotify,
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining("Couldn't use the shared link"),
+            findsOneWidget);
+      });
     });
   });
 
