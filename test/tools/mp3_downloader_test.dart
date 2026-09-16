@@ -484,6 +484,32 @@ void main() {
       expect(find.text('Track 5'), findsNothing);
     });
 
+    testWidgets('tapping a candidate to download it clears the search bar',
+        (tester) async {
+      Config.mp3DownloadFolder = '/tmp/music';
+      Mp3DownloaderService.instance.searchOverride = (query, limit) async => [
+            const Mp3SearchResult(
+              videoId: 'id0',
+              title: 'Track 0',
+              channel: 'Channel 0',
+              duration: Duration(minutes: 1),
+            ),
+          ];
+      Mp3DownloaderService.instance.downloadOverride =
+          (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+      await tester.pumpWidget(const MaterialApp(home: Mp3DownloaderPage()));
+      await tester.enterText(find.byType(TextField), 'lofi beats');
+      await tester.tap(find.text('Find & download'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Track 0'));
+      await tester.pump();
+
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty);
+    });
+
     testWidgets('a result without a play count just omits it', (tester) async {
       Mp3DownloaderService.instance.searchOverride = (query, limit) async => [
             const Mp3SearchResult(

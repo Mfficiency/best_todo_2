@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.62] - 2026-09-16
+- MP3 Downloader: tapping a search result to download it now clears the search bar instead of leaving the previous query sitting there
+
 ## [0.2.61] - 2026-09-16
 - Added a full local Music Player: background playback (notification + lock-screen controls), two home-screen widgets (play/pause, and play/pause + previous), Settings folder scan with subfolder exclusions, M3U/M3U8 playlist import (Samsung Music export), swipe-up-to-favorite/swipe-down-to-dislike-and-skip on Now Playing with a weighted shuffle that favors favorites and buries disliked tracks, and prep for connecting a self-hosted Subsonic/OpenSubsonic server
 
