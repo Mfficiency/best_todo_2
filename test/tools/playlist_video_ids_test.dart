@@ -199,6 +199,71 @@ void main() {
     });
 
     test(
+        'finds video ids from lockupViewModel — the real production case: '
+        'this playlist had migrated to YouTube\'s newer "lockup" component '
+        'system entirely, with no playlistVideoRenderer anywhere on the page',
+        () {
+      final data = {
+        'contents': {
+          'twoColumnBrowseResultsRenderer': {
+            'tabs': [
+              {
+                'tabRenderer': {
+                  'content': {
+                    'sectionListRenderer': {
+                      'contents': [
+                        {
+                          'itemSectionRenderer': {
+                            'contents': [
+                              {
+                                'listViewModel': {
+                                  'listItems': [
+                                    {
+                                      'listItemViewModel': {
+                                        'lockupViewModel': {
+                                          'contentId': 'lockup000001',
+                                          'contentType': 'LOCKUP_CONTENT_TYPE_VIDEO',
+                                        },
+                                      },
+                                    },
+                                    // Not a video — a related-playlist lockup
+                                    // sharing the same component; must not be
+                                    // picked up as a track.
+                                    {
+                                      'listItemViewModel': {
+                                        'lockupViewModel': {
+                                          'contentId': 'PLnotAVideo',
+                                          'contentType': 'LOCKUP_CONTENT_TYPE_PLAYLIST',
+                                        },
+                                      },
+                                    },
+                                    {
+                                      'listItemViewModel': {
+                                        'lockupViewModel': {
+                                          'contentId': 'lockup000002',
+                                          'contentType': 'LOCKUP_CONTENT_TYPE_VIDEO',
+                                        },
+                                      },
+                                    },
+                                  ],
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      };
+      expect(extractPlaylistVideoIdsFromData(data), ['lockup000001', 'lockup000002']);
+    });
+
+    test(
         'when nothing is found, logs a census of the actual renderer/'
         'view-model keys present — actionable if the type name has moved on '
         'from playlistVideoRenderer entirely', () {
@@ -213,7 +278,7 @@ void main() {
       });
       expect(ids, isEmpty);
       final logs = LogService.logs.value.join('\n');
-      expect(logs, contains('no playlistVideoRenderer found'));
+      expect(logs, contains('no playlistVideoRenderer or video lockupViewModel found'));
       expect(logs, contains('someNewShapeRenderer'));
       expect(logs, contains('anotherNewViewModel'));
     });

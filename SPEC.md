@@ -2920,7 +2920,7 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56, schema-agnostic playlist-item search 0.2.57)
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56, schema-agnostic playlist-item search 0.2.57, lockupViewModel support 0.2.58)
 Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
@@ -3152,7 +3152,7 @@ fallback included, since it copied the same path for maximum fidelity)
 expects it. Not a filter, not a missing byline — the container structure
 itself had moved.
 
-`extractPlaylistVideoIdsFromData` (now in `_findPlaylistVideoRenderers`)
+`extractPlaylistVideoIdsFromData` (now in `_findPlaylistVideoIds`)
 no longer walks any hardcoded path at all: it recursively searches the
 *entire* decoded response for a `playlistVideoRenderer` (direct, or
 wrapped in `richItemRenderer.content`) wherever it lives, in document
@@ -3167,6 +3167,25 @@ finds nothing, it logs a census of every key anywhere in the response
 ending in `Renderer` or `ViewModel` — e.g. if YouTube has since moved
 playlist items to some other type name entirely, this names it directly
 instead of costing another guess-and-report round trip.
+
+**And that census immediately paid off (0.2.58).** The 0.2.57 build still
+found nothing on the reported playlist — but this time the census named
+the answer directly: `playlistVideoRenderer`/`playlistVideoListRenderer`
+were entirely absent from the response, while `lockupViewModel`,
+`lockupMetadataViewModel` and `contentMetadataViewModel` were all present.
+This playlist's page has migrated to YouTube's newer unified "lockup"
+component system (the same one search results and related videos have
+been moving to), which represents a playlist entry as a `lockupViewModel`
+with `contentId` (the video id) and a `contentType` field — a `lockupViewModel`
+also represents playlists, channels and podcast episodes elsewhere on
+YouTube, so `_findPlaylistVideoIds` only trusts `contentId` as a video id
+when `contentType` names a video (a substring check for `VIDEO`, since the
+exact enum string isn't confirmed and a substring match is robust to any
+suffix variant). It now recognises both the older `playlistVideoRenderer`
+shape and this one, in the same single recursive pass. No guessing was
+needed for this one specifically *because* the 0.2.57 census logged every
+candidate type name up front — validating that adding it was worth doing
+even though it added no fix of its own that round.
 
 `Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
 `picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"

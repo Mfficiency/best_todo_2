@@ -92,15 +92,8 @@ List<String> extractPlaylistVideoIdsFromHtml(String html) {
 /// -decoded JSON blob — shared by the HTML-embedded `ytInitialData` path
 /// and the raw `browse` API response.
 List<String> extractPlaylistVideoIdsFromData(Map<String, dynamic> data) {
-  final renderers = _findPlaylistVideoRenderers(data);
-  LogService.add(
-      'MP3', 'Playlist fallback: found ${renderers.length} playlistVideoRenderer(s)');
-  final ids = <String>[];
-  final seen = <String>{};
-  for (final renderer in renderers) {
-    final videoId = renderer['videoId'];
-    if (videoId is String && seen.add(videoId)) ids.add(videoId);
-  }
+  final ids = _findPlaylistVideoIds(data);
+  LogService.add('MP3', 'Playlist fallback: found ${ids.length} video id(s)');
   return ids;
 }
 
@@ -150,9 +143,9 @@ Map<String, dynamic>? _decodeJsonObject(String text, int from) {
 Map<String, dynamic>? _asMap(Object? value) =>
     value is Map<String, dynamic> ? value : null;
 
-/// Finds every `playlistVideoRenderer` anywhere in [data], in document
-/// order (a `jsonDecode`d object preserves source key/array order, so a
-/// depth-first walk visits them in playlist order).
+/// Finds every playlist video's id anywhere in [data], in document order (a
+/// `jsonDecode`d object preserves source key/array order, so a depth-first
+/// walk visits them in playlist order).
 ///
 /// Deliberately schema-agnostic rather than a hardcoded path: an earlier
 /// version walked `contents.twoColumnBrowseResultsRenderer.tabs[]…
@@ -160,30 +153,48 @@ Map<String, dynamic>? _asMap(Object? value) =>
 /// `youtube_explode_dart`'s own `PlaylistPage._videoItems` getter uses —
 /// and it found *nothing* even though `playlists.get()` confirmed the
 /// playlist genuinely has videos (`videoCount=3`) and the page fetched
-/// fine. Since the official library's own hardcoded path failed
-/// identically (that's exactly why `getVideos()` came back empty in the
-/// first place), the real cause isn't a filter or a missing byline — it's
-/// that YouTube's current response nests the video list somewhere this
-/// hardcoded path no longer matches. `playlistVideoRenderer` (direct, or
-/// wrapped in `richItemRenderer.content`) is otherwise a stable, specific
-/// type name — it only ever represents a video in a playlist's own
-/// listing — so searching the whole tree for it is robust to exactly the
-/// kind of path drift that broke both other approaches, and doesn't need
-/// to know or guess the surrounding container structure at all.
-List<Map<String, dynamic>> _findPlaylistVideoRenderers(Map<String, dynamic> data) {
-  final found = <Map<String, dynamic>>[];
+/// fine. The official library's own hardcoded path failed identically
+/// (that's exactly why `getVideos()` came back empty in the first place),
+/// and a follow-up census of every `…Renderer`/`…ViewModel` key actually
+/// present confirmed why: `playlistVideoRenderer`/`playlistVideoListRenderer`
+/// were entirely absent — this playlist's page has been migrated to
+/// YouTube's newer unified "lockup" component system instead
+/// (`lockupViewModel`, `lockupMetadataViewModel`, `contentMetadataViewModel`
+/// were all present). So this recognises *both* shapes:
+///
+/// - `playlistVideoRenderer` (direct, or wrapped in `richItemRenderer.
+///   content`) — the older, `youtube_explode_dart`-recognised shape.
+/// - `lockupViewModel` whose `contentType` names a video (it also
+///   represents playlists/channels/podcast episodes elsewhere on YouTube,
+///   so this checks the type before trusting `contentId` as a video id).
+///
+/// Either way this doesn't need to know or guess the surrounding container
+/// structure — only the specific renderer/view-model type name, which is
+/// far more stable than the path it happens to sit under this month.
+List<String> _findPlaylistVideoIds(Map<String, dynamic> data) {
+  final ids = <String>[];
+  final seen = <String>{};
+  void add(Object? id) {
+    if (id is String && seen.add(id)) ids.add(id);
+  }
 
   void visit(Object? node) {
     if (node is Map<String, dynamic>) {
       final direct = node['playlistVideoRenderer'];
       if (direct is Map<String, dynamic>) {
-        found.add(direct);
+        add(direct['videoId']);
         return;
       }
       final wrapped =
           _asMap(_asMap(node['richItemRenderer'])?['content'])?['playlistVideoRenderer'];
       if (wrapped is Map<String, dynamic>) {
-        found.add(wrapped);
+        add(wrapped['videoId']);
+        return;
+      }
+      final lockup = node['lockupViewModel'];
+      if (lockup is Map<String, dynamic> &&
+          (lockup['contentType']?.toString().contains('VIDEO') ?? false)) {
+        add(lockup['contentId']);
         return;
       }
       for (final value in node.values) {
@@ -197,18 +208,18 @@ List<Map<String, dynamic>> _findPlaylistVideoRenderers(Map<String, dynamic> data
   }
 
   visit(data);
-  if (found.isEmpty) {
-    // If this is empty too, the next fix needs to target a different
-    // renderer/view-model type name rather than guess again — this census
-    // says exactly which ones are actually present in this response.
+  if (ids.isEmpty) {
+    // Neither known shape matched — the next fix needs to target a
+    // different renderer/view-model type name rather than guess again, and
+    // this census says exactly which ones are actually present.
     final typeNames = _collectRendererTypeNames(data).toList()..sort();
     LogService.add(
       'MP3',
-      'Playlist fallback: no playlistVideoRenderer found; '
-      'renderer/view-model keys present: $typeNames',
+      'Playlist fallback: no playlistVideoRenderer or video lockupViewModel '
+      'found; renderer/view-model keys present: $typeNames',
     );
   }
-  return found;
+  return ids;
 }
 
 /// Every distinct key ending in `Renderer` or `ViewModel` found anywhere in
