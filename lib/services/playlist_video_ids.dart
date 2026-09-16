@@ -3,47 +3,105 @@ import 'dart:convert';
 import 'package:html/parser.dart' as html_parser;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
-/// Pulls every video id out of a YouTube playlist page directly, walking
-/// the same `ytInitialData` JSON `youtube_explode_dart`'s own
-/// `PlaylistClient.getVideos` parses — used as a fallback when that comes
-/// back empty.
+import 'log_service.dart';
+
+/// Pulls every video id out of a YouTube playlist directly, bypassing
+/// `youtube_explode_dart`'s own `PlaylistClient.getVideos` — used as a
+/// fallback when that comes back empty for a playlist that otherwise
+/// resolves fine (a title, non-error), reported against a real 3-track
+/// public playlist. Two independent gaps in that method can each produce
+/// exactly that symptom, so this works around both:
 ///
-/// `PlaylistClient.getVideos` silently *skips* a playlist entry whose
-/// uploader channel id it can't parse off the page (it tries three JSON
-/// paths; none hit when the byline is a newer @handle-style layout none of
-/// them cover), so a real, non-empty, fully public playlist can come back
-/// with a title and zero tracks — reported against a 3-track playlist that
-/// otherwise resolved fine. This walks the identical structural path but
-/// only ever needs a video id, so it isn't tripped by that gap.
+/// 1. `PlaylistClient.getVideos` silently *skips* a playlist entry whose
+///    uploader channel id it can't parse off the page (three JSON paths
+///    tried; a newer @handle-style byline layout can miss all three).
+/// 2. Some playlists don't embed their video list in the initial page's
+///    `ytInitialData` at all — `youtube_explode_dart`'s own doc comment
+///    notes this for "Mixes and YT Music playlists" specifically, though
+///    it isn't necessarily limited to those — and need a separate `browse`
+///    API call instead. `PlaylistClient.get`/`getVideos` already attempt
+///    this internally, but the outcome isn't observable from outside, so
+///    it's repeated here.
+///
+/// Every step is logged (source `MP3`, see [LogService]) since both gaps
+/// are easy to reproduce from a bug report but hard to diagnose blind —
+/// this is exactly what's expected to be checked after a report that the
+/// first fallback (page parsing alone) still didn't find any tracks.
 ///
 /// Single page only (no `continuation` follow-up), so a playlist beyond
 /// YouTube's first-page batch (a few hundred entries) is only partially
-/// covered — acceptable for the personal-sized playlists this tool targets,
-/// and still strictly better than the zero tracks this replaces.
+/// covered — acceptable for the personal-sized playlists this tool targets.
 Future<List<String>> fetchPlaylistVideoIdsFromPage(
   String playlistIdOrUrl,
 ) async {
   final id =
       yt_explode.PlaylistId.parsePlaylistId(playlistIdOrUrl) ?? playlistIdOrUrl;
+  LogService.add('MP3', 'Playlist fallback: parsed id "$id" from "$playlistIdOrUrl"');
   final http = yt_explode.YoutubeHttpClient();
   try {
-    final html = await http.getString(
-      'https://www.youtube.com/playlist?list=$id&hl=en&persist_hl=1',
-    );
-    return extractPlaylistVideoIdsFromHtml(html);
-  } catch (_) {
-    return const [];
+    List<String> ids;
+    try {
+      final html = await http.getString(
+        'https://www.youtube.com/playlist?list=$id&hl=en&persist_hl=1',
+      );
+      LogService.add('MP3', 'Playlist fallback: fetched page, ${html.length} bytes');
+      ids = extractPlaylistVideoIdsFromHtml(html);
+      LogService.add(
+          'MP3', 'Playlist fallback: found ${ids.length} id(s) in the initial page');
+    } catch (e) {
+      LogService.add('MP3', 'Playlist fallback: fetching the page failed: $e');
+      ids = const [];
+    }
+    if (ids.isNotEmpty) return ids;
+
+    // Some playlists (YouTube Music imports, "Mixes", and apparently at
+    // least some plain user playlists) don't embed their video list in the
+    // initial page at all — the same gap youtube_explode_dart's own
+    // PlaylistPage.get() already works around internally for its title
+    // fetch, just not in a way this can reuse. Repeat it: `VL<playlistId>`
+    // is the standard "browse id" for a playlist's video list on YouTube's
+    // internal API (the same convention yt-dlp and other scrapers use).
+    LogService.add('MP3', 'Playlist fallback: trying the browse API (browseId VL$id)');
+    try {
+      final data = await http.sendPost('browse', {'browseId': 'VL$id'});
+      ids = extractPlaylistVideoIdsFromData(data);
+      LogService.add('MP3', 'Playlist fallback: browse API found ${ids.length} id(s)');
+    } catch (e) {
+      LogService.add('MP3', 'Playlist fallback: browse API failed: $e');
+      ids = const [];
+    }
+    return ids;
   } finally {
     http.close();
   }
 }
 
-/// The pure parsing half of [fetchPlaylistVideoIdsFromPage], split out so it
-/// can be tested against a fixed HTML string instead of a live page.
+/// The pure parsing half of [fetchPlaylistVideoIdsFromPage] for an HTML
+/// page, split out so it can be tested against a fixed HTML string instead
+/// of a live page.
 List<String> extractPlaylistVideoIdsFromHtml(String html) {
   final data = _extractInitialData(html);
-  if (data == null) return const [];
-  return _videoIdsFrom(data);
+  if (data == null) {
+    LogService.add('MP3', 'Playlist fallback: no ytInitialData found in the page');
+    return const [];
+  }
+  return extractPlaylistVideoIdsFromData(data);
+}
+
+/// The pure parsing half of [fetchPlaylistVideoIdsFromPage] for an already
+/// -decoded JSON blob — shared by the HTML-embedded `ytInitialData` path
+/// and the raw `browse` API response, since both use the same underlying
+/// `contents.twoColumnBrowseResultsRenderer…` shape.
+List<String> extractPlaylistVideoIdsFromData(Map<String, dynamic> data) {
+  final items = _playlistItems(data);
+  LogService.add('MP3', 'Playlist fallback: walked ${items.length} playlist item(s)');
+  final ids = <String>[];
+  final seen = <String>{};
+  for (final item in items) {
+    final videoId = _rendererOf(item)?['videoId'];
+    if (videoId is String && seen.add(videoId)) ids.add(videoId);
+  }
+  return ids;
 }
 
 const List<String> _initialDataMarkers = [
@@ -89,16 +147,6 @@ Map<String, dynamic>? _decodeJsonObject(String text, int from) {
   return null;
 }
 
-List<String> _videoIdsFrom(Map<String, dynamic> data) {
-  final ids = <String>[];
-  final seen = <String>{};
-  for (final item in _playlistItems(data)) {
-    final videoId = _rendererOf(item)?['videoId'];
-    if (videoId is String && seen.add(videoId)) ids.add(videoId);
-  }
-  return ids;
-}
-
 Map<String, dynamic>? _rendererOf(Map<String, dynamic> item) {
   final direct = item['playlistVideoRenderer'];
   if (direct is Map<String, dynamic>) return direct;
@@ -114,11 +162,15 @@ Map<String, dynamic>? _asMap(Object? value) =>
 /// content.sectionListRenderer.contents[].itemSectionRenderer.contents[].
 /// playlistVideoListRenderer.contents` — the exact path
 /// `youtube_explode_dart`'s `PlaylistPage._videoItems` getter uses for an
-/// initial (non-continuation) page load.
+/// initial (non-continuation) page load, and also the shape of an initial
+/// (non-continuation) `browse` API JSON response for a playlist.
 List<Map<String, dynamic>> _playlistItems(Map<String, dynamic> data) {
   final tabs =
       _listAt(data, const ['contents', 'twoColumnBrowseResultsRenderer', 'tabs']);
-  if (tabs == null) return const [];
+  if (tabs == null) {
+    LogService.add('MP3', 'Playlist fallback: no tabs found at the expected path');
+    return const [];
+  }
   for (final tab in tabs) {
     final tabMap = _asMap(tab);
     if (tabMap == null) continue;
@@ -144,6 +196,8 @@ List<Map<String, dynamic>> _playlistItems(Map<String, dynamic> data) {
       }
     }
   }
+  LogService.add(
+      'MP3', 'Playlist fallback: tabs found but no playlistVideoListRenderer inside');
   return const [];
 }
 

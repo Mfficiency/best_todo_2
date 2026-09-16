@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.56] - 2026-09-16
+- MP3 Downloader: the 0.2.55 playlist fix didn't cover every case — some playlists don't embed their video list in the page at all (needing a separate internal API call `youtube_explode_dart` already does for "Mixes" but doesn't expose the result of). Playlist import now also tries that path when page-parsing alone still finds nothing, and every step of resolving a playlist is now written to the App Logs (drawer → App Logs, source "MP3") to make the next report actionable if a playlist still comes up empty
+
 ## [0.2.55] - 2026-09-16
 - MP3 Downloader: fixed a real public playlist resolving to its title but zero tracks ("0 of 0 selected"). `youtube_explode_dart` silently skips a playlist entry when it can't work out the uploader's channel id from the page, which some playlists' byline layout trips on every single track; playlist import now falls back to parsing the page's own video list directly (which doesn't need that) whenever the normal path comes back empty
 - Local build: 2026-09-16 07:41

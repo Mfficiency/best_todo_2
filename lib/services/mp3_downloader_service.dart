@@ -413,11 +413,15 @@ class Mp3DownloaderService {
     final client = yt_explode.YoutubeExplode();
     try {
       final playlist = await client.playlists.get(input);
+      _log('Playlist metadata: title="${playlist.title}" author="${playlist.author}" '
+          'videoCount=${playlist.videoCount}');
       var videos = await client.playlists.getVideos(input).toList();
+      _log('getVideos() returned ${videos.length} track(s)');
       if (videos.isEmpty) {
         _log('getVideos() found no tracks for "${playlist.title}" — '
             'falling back to raw page parsing');
         videos = await _resolvePlaylistVideosFallback(input, client);
+        _log('Fallback resolved ${videos.length} track(s)');
       }
       final tracks = videos
           .map((v) => Mp3SearchResult(
@@ -447,10 +451,13 @@ class Mp3DownloaderService {
     yt_explode.YoutubeExplode client,
   ) async {
     final ids = await fetchPlaylistVideoIdsFromPage(input);
+    _log('Fallback page parsing found ${ids.length} video id(s): $ids');
     final videos = <yt_explode.Video>[];
     for (final id in ids) {
       try {
-        videos.add(await client.videos.get(id));
+        final video = await client.videos.get(id);
+        _log('Fallback resolved $id -> "${video.title}"');
+        videos.add(video);
       } catch (e) {
         _log('Skipping unresolved playlist video $id: $e');
       }

@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// real 3-track public playlist that otherwise resolved fine (title came
 /// back, tracks didn't). `extractPlaylistVideoIdsFromHtml` only ever needs
 /// a video id, so it must find every entry regardless of that.
-String _buildSyntheticPlaylistHtml({String marker = 'var ytInitialData = '}) {
+Map<String, dynamic> _buildSyntheticPlaylistData() {
   Map<String, dynamic> videoRenderer(String id, {bool withByline = true}) => {
         'videoId': id,
         'title': {
@@ -32,7 +32,7 @@ String _buildSyntheticPlaylistHtml({String marker = 'var ytInitialData = '}) {
           },
       };
 
-  final data = {
+  return {
     'contents': {
       'twoColumnBrowseResultsRenderer': {
         'tabs': [
@@ -98,8 +98,10 @@ String _buildSyntheticPlaylistHtml({String marker = 'var ytInitialData = '}) {
       },
     },
   };
+}
 
-  final json = jsonEncode(data);
+String _buildSyntheticPlaylistHtml({String marker = 'var ytInitialData = '}) {
+  final json = jsonEncode(_buildSyntheticPlaylistData());
   return '<html><head></head><body>'
       '<script>var unrelated = {"foo": "bar"};</script>'
       '<script>$marker $json;</script>'
@@ -144,6 +146,19 @@ void main() {
       const html = '<html><body><script>var ytInitialData = '
           '{"contents": {not valid json here</script></body></html>';
       expect(extractPlaylistVideoIdsFromHtml(html), isEmpty);
+    });
+  });
+
+  group('extractPlaylistVideoIdsFromData', () {
+    test(
+        'walks a raw JSON blob the same way — the shape a browse API '
+        'response for a playlist uses, no HTML wrapper involved', () {
+      final ids = extractPlaylistVideoIdsFromData(_buildSyntheticPlaylistData());
+      expect(ids, ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']);
+    });
+
+    test('a blob with no matching structure returns no ids', () {
+      expect(extractPlaylistVideoIdsFromData({'unrelated': 'stuff'}), isEmpty);
     });
   });
 }

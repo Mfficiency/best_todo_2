@@ -2920,7 +2920,7 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55)
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56)
 Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
@@ -3108,6 +3108,35 @@ rather than failing the whole playlist. Single page only — no
 `continuation` follow-up — so a playlist beyond YouTube's first batch (a
 few hundred entries) is only partially covered by the fallback; the normal
 `getVideos()` path already paginates and is tried first regardless.
+
+**A second, independent gap — and full logging (0.2.56).** The 0.2.55
+fallback alone still didn't fix the reported playlist. A separate reason
+`getVideos()` can come back empty: some playlists don't embed their video
+list in the initial HTML page's `ytInitialData` at all —
+`youtube_explode_dart`'s own `PlaylistPage.get()` already anticipates this
+("Needed for Mixes and YT Music playlists whose initial HTML page doesn't
+embed the video list") and internally retries via an innertube `browse`
+POST call, but that call's *outcome* isn't exposed through
+`PlaylistClient.get`/`getVideos`'s public API, so this can't just reuse it.
+`fetchPlaylistVideoIdsFromPage` now repeats that retry itself when the page
+parse alone finds nothing: `YoutubeHttpClient.sendPost('browse', {
+'browseId': 'VL<playlistId>'})` (`VL`-prefixing a playlist id is the
+standard way to address its video list as a "browse id" on YouTube's
+internal API — the same convention yt-dlp and other scrapers use), then
+runs the *exact same* `extractPlaylistVideoIdsFromData` JSON walk against
+that response, since an initial (non-continuation) `browse` response for a
+playlist uses the identical `contents.twoColumnBrowseResultsRenderer…`
+shape as the HTML-embedded one.
+
+Every step of resolving a playlist — `playlists.get()`'s metadata,
+`getVideos()`'s track count, entering the fallback, the page fetch and its
+byte count, ytInitialData found/not-found, items walked, ids found, the
+browse-API attempt and its id count, and each individual video resolved or
+skipped — is now written to `LogService` under the `MP3` source (App Logs
+page, reachable from the drawer). Both gaps are easy to reproduce from a
+bug report but were hard to diagnose blind with no live YouTube access to
+test against; this makes the next report actionable instead of another
+guess.
 
 `Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
 `picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"
