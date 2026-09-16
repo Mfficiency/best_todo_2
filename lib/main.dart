@@ -17,6 +17,7 @@ import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'ui/mp3_downloader_page.dart';
+import 'ui/music_player_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
 import 'ui/auto_update_dialog.dart';
@@ -28,7 +29,11 @@ import 'services/alarm_widget_service.dart';
 import 'services/food_diary_widget_service.dart';
 import 'services/auto_update_checker.dart';
 import 'services/item_history_seeder.dart';
+import 'services/music_library_service.dart';
+import 'services/music_player_service.dart';
+import 'services/music_playlist_service.dart';
 import 'services/music_share_link.dart';
+import 'services/music_widget_service.dart';
 import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
@@ -157,6 +162,9 @@ Future<void> main() async {
     await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
   }
   await _initStep('alarms', AlarmService.instance.load);
+  await _initStep('music library', MusicLibraryService.instance.load);
+  await _initStep('music playlists', MusicPlaylistService.instance.load);
+  await _initStep('music player', MusicPlayerService.init);
   // Snapshot the device/permission state into the alarm log on every launch,
   // so a missed alarm can be diagnosed from the file after the fact. Fire and
   // forget: must not delay first frame.
@@ -483,6 +491,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
       return;
     }
+    if (uri.scheme == MusicWidgetService.scheme) {
+      if (uri.host == MusicWidgetService.hostOpen) _openMusicPlayer();
+      return;
+    }
     final id = uri.queryParameters['id'];
     switch (uri.host) {
       case AlarmWidgetService.hostToggle:
@@ -506,6 +518,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     navigator.push(
       MaterialPageRoute(builder: (_) => AlarmsPage(editUid: editUid)),
     );
+  }
+
+  void _openMusicPlayer() {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator == null) return;
+    navigator.push(MaterialPageRoute(builder: (_) => const MusicPlayerPage()));
   }
 
   void _openFoodDiary({bool autoAdd = false}) {

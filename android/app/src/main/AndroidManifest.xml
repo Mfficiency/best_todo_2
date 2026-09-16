@@ -29,6 +29,9 @@
     <!-- "run foreground service" / "control vibration" — capabilities the
          background alarm delivery path uses when it wakes the app. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Music Player: background playback foreground service + its media
+         notification/lock-screen controls (audio_service). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- In-app updates (About page): lets the app hand a downloaded APK to
          the system package installer. The user still confirms the install
@@ -196,6 +199,26 @@
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/food_diary_button_widget_info" />
         </receiver>
+        <receiver
+            android:name=".MusicMiniWidgetProvider"
+            android:exported="true"
+            android:label="@string/music_mini_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/music_mini_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".MusicControlsWidgetProvider"
+            android:exported="true"
+            android:label="@string/music_controls_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/music_controls_widget_info" />
+        </receiver>
         <!-- Receives background taps (alarm toggles) from the home-screen widget -->
         <receiver
             android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
@@ -227,6 +250,26 @@
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
             android:exported="false" />
+
+        <!-- Music Player background playback: notification + lock-screen
+             media controls, headset buttons (audio_service). -->
+        <service
+            android:name="com.ryanheise.audioservice.AudioService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+            android:exported="true"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <!-- Shares the downloaded update APK (in the cache dir) with the
              system package installer via a content:// URI — file:// URIs are
