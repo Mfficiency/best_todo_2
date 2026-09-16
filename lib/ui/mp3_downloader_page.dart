@@ -20,9 +20,11 @@ import 'subpage_app_bar.dart';
 /// tell the real upload from a reupload.
 ///
 /// A pasted playlist link instead shows every track with a checkbox, all
-/// pre-selected except ones already sitting in the download folder (or any
-/// of its subfolders) under the same "Artist - Title" name a fresh download
-/// would use — so re-pasting a list you've partly downloaded before only
+/// pre-selected except ones already sitting — under the same
+/// "Artist - Title" name a fresh download would use — in the download
+/// folder, the phone's standard Music folder (or, if Settings → MP3
+/// Downloader has one configured instead, that folder), or any of their
+/// subfolders — so re-pasting a list you've partly downloaded before only
 /// offers to fetch what's missing.
 ///
 /// The page only *queues* work: [Mp3DownloadManager] owns the transfer, so
@@ -272,6 +274,12 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   /// reuses) the download folder to work out which tracks are already
   /// saved there — those start out unchecked rather than being hidden, so
   /// picking one back up is still one tap away.
+  ///
+  /// "Already saved" is checked against the download folder itself plus the
+  /// phone's actual Music folder (or whatever folder Settings → MP3
+  /// Downloader has been told to compare against instead) — see
+  /// [compareFoldersFor] — since tracks this app downloaded may not be the
+  /// only place a title already exists on the phone.
   Future<void> _resolvePlaylistInput(String input) async {
     final info = await _service.resolvePlaylist(input);
     if (!mounted) return;
@@ -281,7 +289,12 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       setState(() => _stage = _Stage.idle);
       return;
     }
-    final existing = await existingTrackBaseNames(folder);
+    final compareFolders = await compareFoldersFor(
+      folder,
+      configuredCompareFolder: Config.mp3CompareFolder,
+    );
+    if (!mounted) return;
+    final existing = await existingTrackBaseNamesAcross(compareFolders);
     if (!mounted) return;
     final alreadyDownloaded = <String>{};
     final toSelect = <String>{};

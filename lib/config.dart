@@ -593,6 +593,15 @@ class Config {
   /// again unless the user changes it in Settings → MP3 Downloader.
   static String mp3DownloadFolder = '';
 
+  /// Folder the MP3 Downloader checks for tracks already downloaded (in
+  /// addition to [mp3DownloadFolder] itself), searched recursively through
+  /// every subfolder. Empty means "figure it out automatically" — the
+  /// downloader falls back to the phone's standard Music folder when one
+  /// exists, then to [mp3DownloadFolder] alone. Set explicitly in
+  /// Settings → MP3 Downloader when auto-detection picks the wrong place
+  /// (e.g. music actually lives somewhere the OS doesn't advertise).
+  static String mp3CompareFolder = '';
+
   /// If true, the app polls GitHub for a newer build every minute while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
   /// appears, asks whether to download and install it — see Settings →
@@ -683,6 +692,7 @@ class Config {
       'todoistApiToken': todoistApiToken,
       'githubWishlistToken': githubWishlistToken,
       'mp3DownloadFolder': mp3DownloadFolder,
+      'mp3CompareFolder': mp3CompareFolder,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
@@ -820,6 +830,8 @@ class Config {
         data['githubWishlistToken'] as String? ?? githubWishlistToken;
     mp3DownloadFolder =
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
+    mp3CompareFolder =
+        data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
     // Settings files from before automatic checks existed have no key. Use
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.

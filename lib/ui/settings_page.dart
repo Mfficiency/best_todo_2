@@ -237,6 +237,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'wishlist build automation issue pat personal access token next build'),
     _SettingsSearchEntry('MP3 download folder', 15,
         'mp3 downloader youtube audio music save folder directory location m4a'),
+    _SettingsSearchEntry('MP3 downloader compare folder', 15,
+        'mp3 downloader already downloaded duplicate check music folder subfolders'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -2196,8 +2198,35 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  /// Settings → MP3 Downloader: where the "already downloaded" check for a
+  /// pasted playlist looks for existing tracks, when the automatic guess
+  /// (the download folder itself, plus the phone's standard Music folder if
+  /// one exists) picks the wrong place — e.g. the real library lives
+  /// somewhere non-standard, or scoped storage hides the standard Music
+  /// folder from a plain path check.
+  Future<void> _pickMp3CompareFolder() async {
+    final directory = await getDirectoryPath(
+      initialDirectory: Config.mp3CompareFolder.isNotEmpty
+          ? Config.mp3CompareFolder
+          : Config.mp3DownloadFolder.isNotEmpty
+              ? Config.mp3DownloadFolder
+              : null,
+    );
+    if (directory == null) return;
+    setState(() => Config.mp3CompareFolder = directory);
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _clearMp3CompareFolder() async {
+    setState(() => Config.mp3CompareFolder = '');
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
   Widget _buildMp3DownloaderSection() {
     final chosen = Config.mp3DownloadFolder.isNotEmpty;
+    final compareChosen = Config.mp3CompareFolder.isNotEmpty;
     return _buildSection(
       index: 15,
       title: 'MP3 Downloader',
@@ -2219,11 +2248,34 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('The downloader will ask again next time'),
             onTap: _clearMp3DownloadFolder,
           ),
+        ListTile(
+          title: const Text('Check for existing tracks in'),
+          subtitle: Text(
+            compareChosen
+                ? Config.mp3CompareFolder
+                : "Not set — automatically checks the download folder and "
+                    "the phone's Music folder",
+          ),
+          trailing: const Icon(Icons.folder_open),
+          onTap: _pickMp3CompareFolder,
+        ),
+        if (compareChosen)
+          ListTile(
+            leading: const Icon(Icons.clear),
+            title: const Text('Use automatic detection'),
+            subtitle: const Text(
+              "Back to checking the download folder and the phone's Music "
+              'folder',
+            ),
+            onTap: _clearMp3CompareFolder,
+          ),
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: Text(
             'Audio is saved in the format YouTube serves it in — .m4a (AAC) '
-            'or .webm (Opus) — without re-encoding.',
+            'or .webm (Opus) — without re-encoding. A pasted playlist checks '
+            'both folders above (and all their subfolders) by title to skip '
+            'tracks already saved.',
             style: TextStyle(fontSize: 12),
           ),
         ),

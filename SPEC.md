@@ -3191,22 +3191,44 @@ even though it added no fix of its own that round.
 `picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"
 bulk-select row, and a "Download N" button that enqueues whatever is
 checked, one `Mp3DownloadManager.enqueue` call per track, then resets to
-idle. Before showing the list, it asks for (or reuses) the download folder
-and calls `existingTrackBaseNames(folder)` — a recursive, case-insensitive
-scan of every `.m4a`/`.webm`/`.mp3` file already under that folder or any
-subfolder, matched by filename (without extension) rather than video id,
-since a pre-tagging download carries no reliable back-reference to its
-source video. Any playlist track whose would-be filename
-(`parseTrackTitle(...).fileBaseName`) is already in that set starts
-**unchecked** (shown as "Already downloaded", not hidden) so re-pasting a
-partially-downloaded list only offers to fetch what's missing, while still
-leaving a re-download one tap away.
+idle. Before showing the list, it asks for (or reuses) the download folder,
+works out which folder(s) to check for tracks already downloaded via
+`compareFoldersFor(folder, configuredCompareFolder: Config.mp3CompareFolder)`,
+and calls `existingTrackBaseNamesAcross(folders)` — a recursive,
+case-insensitive scan of every `.m4a`/`.webm`/`.mp3` file already under any
+of those folders or their subfolders, matched by filename (without
+extension) rather than video id, since a pre-tagging download carries no
+reliable back-reference to its source video. Any playlist track whose
+would-be filename (`parseTrackTitle(...).fileBaseName`) is already in that
+set starts **unchecked** (shown as "Already downloaded", not hidden) so
+re-pasting a partially-downloaded list only offers to fetch what's missing,
+while still leaving a re-download one tap away.
+
+`compareFoldersFor` always includes the download folder itself, plus
+either `Config.mp3CompareFolder` (an explicit override) when set, or —
+auto-detected, no permission prompt needed since it's just an `exists()`
+check — Android's standard shared Music folder
+(`defaultPhoneMusicFolder`, `/storage/emulated/0/Music`) when that folder
+is actually there. This matters because `Config.mp3DownloadFolder` is
+picked for *writability* (often the app's own sandboxed folder when the
+user hasn't granted "All files access" — see below), which is rarely where
+a phone's real music library lives; without also checking the phone's
+Music folder, a track already sitting there (synced from a PC, or
+downloaded before scoped storage pushed the save location into the
+sandbox) would be re-offered as new. When auto-detection guesses wrong —
+the library lives somewhere non-standard, or scoped storage hides the
+standard folder from a plain path check — Settings ▸ MP3 Downloader's
+"Check for existing tracks in" tile lets the user point it at the right
+folder directly.
 
 The save location is asked for **once** — `Config.mp3DownloadFolder`, set on
 the first download via `file_selector`'s `getDirectoryPath` (defaulting to
 `getDownloadsDirectory()`) and reused silently afterwards. It is editable at
 Settings ▸ MP3 Downloader (section index 15, gated on the `mp3_downloader`
 feature switch), which can also forget it so the next download asks again.
+The same section's "Check for existing tracks in" tile sets
+`Config.mp3CompareFolder` (empty = automatic, as above) and can be cleared
+back to automatic detection.
 `youtube_explode_dart`'s scraping doesn't work from a browser sandbox, so
 `Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page to a "not
 supported on this platform" message there; every other platform
