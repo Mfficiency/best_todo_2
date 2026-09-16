@@ -2,6 +2,9 @@
 
 ## [0.2.58] - 2026-09-16
 - MP3 Downloader: the actual fix, found from the 0.2.57 diagnostic census — this playlist's page has migrated entirely to YouTube's newer "lockup" component system, with no trace of the older renderer type at all. Playlist import now recognises both shapes, so the reported 3-track playlist (and any other playlist YouTube has migrated the same way) resolves correctly
+- Local build: 2026-09-16 11:12
+- Build duration (apk): 14m 27s
+- Build duration (windows): 2m 35s
 
 ## [0.2.57] - 2026-09-16
 - MP3 Downloader: found the actual cause of the playlist import bug from the logs added in 0.2.56 — `youtube_explode_dart`'s hardcoded path to a playlist's video list no longer matches YouTube's current page structure at all (confirmed: the playlist genuinely had its reported track count, the page fetched fine, but neither the library's own lookup nor the exact-path fallback found anything). Playlist import no longer guesses an exact nested path; it searches the whole response for the video-listing type directly, which is immune to this kind of structural drift
