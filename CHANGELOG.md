@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.57] - 2026-09-16
+- MP3 Downloader: found the actual cause of the playlist import bug from the logs added in 0.2.56 — `youtube_explode_dart`'s hardcoded path to a playlist's video list no longer matches YouTube's current page structure at all (confirmed: the playlist genuinely had its reported track count, the page fetched fine, but neither the library's own lookup nor the exact-path fallback found anything). Playlist import no longer guesses an exact nested path; it searches the whole response for the video-listing type directly, which is immune to this kind of structural drift
+
 ## [0.2.56] - 2026-09-16
 - MP3 Downloader: the 0.2.55 playlist fix didn't cover every case — some playlists don't embed their video list in the page at all (needing a separate internal API call `youtube_explode_dart` already does for "Mixes" but doesn't expose the result of). Playlist import now also tries that path when page-parsing alone still finds nothing, and every step of resolving a playlist is now written to the App Logs (drawer → App Logs, source "MP3") to make the next report actionable if a playlist still comes up empty
 - Local build: 2026-09-16 08:50
