@@ -143,6 +143,59 @@ void main() {
     });
   });
 
+  group('existingTrackBaseNamesAcross', () {
+    test('unions base names from every folder, skipping duplicate paths',
+        () async {
+      final a = await Directory.systemTemp.createTemp('mp3_across_a');
+      final b = await Directory.systemTemp.createTemp('mp3_across_b');
+      addTearDown(() async {
+        await a.delete(recursive: true);
+        await b.delete(recursive: true);
+      });
+      await File('${a.path}/Artist - One.m4a').writeAsBytes([0]);
+      await File('${b.path}/Artist - Two.m4a').writeAsBytes([0]);
+
+      final names =
+          await existingTrackBaseNamesAcross([a.path, b.path, a.path]);
+      expect(names, {'artist - one', 'artist - two'});
+    });
+
+    test('a missing folder in the list just contributes nothing', () async {
+      final a = await Directory.systemTemp.createTemp('mp3_across_missing');
+      addTearDown(() => a.delete(recursive: true));
+      await File('${a.path}/Artist - One.m4a').writeAsBytes([0]);
+
+      final names =
+          await existingTrackBaseNamesAcross([a.path, '${a.path}/missing']);
+      expect(names, {'artist - one'});
+    });
+  });
+
+  group('defaultPhoneMusicFolder / compareFoldersFor', () {
+    test('defaultPhoneMusicFolder is null off Android', () async {
+      // These tests run on the host platform, never Android.
+      expect(await defaultPhoneMusicFolder(), isNull);
+    });
+
+    test(
+        'compareFoldersFor scans just the download folder with no override '
+        'and no phone Music folder', () async {
+      final folders = await compareFoldersFor(
+        '/downloads',
+        configuredCompareFolder: '',
+      );
+      expect(folders, ['/downloads']);
+    });
+
+    test('compareFoldersFor adds an explicit Settings override', () async {
+      final folders = await compareFoldersFor(
+        '/downloads',
+        configuredCompareFolder: '  /music-library  ',
+      );
+      expect(folders, ['/downloads', '/music-library']);
+    });
+  });
+
   group('Mp3DownloaderService.resolvePlaylist', () {
     tearDown(() => Mp3DownloaderService.instance.playlistOverride = null);
 
@@ -395,6 +448,7 @@ void main() {
         ..downloadOverride = null;
       Mp3DownloadManager.instance.resetForTest();
       Config.mp3DownloadFolder = '';
+      Config.mp3CompareFolder = '';
     });
 
     testWidgets('a text query shows up to 5 candidates with plays',
@@ -524,6 +578,60 @@ void main() {
       // Real folder-scanning I/O (existingTrackBaseNames) runs off the tap,
       // outside the fake-async zone — poll until the resolved stage renders.
       final marker = find.text('My Mix · 1 of 2 selected');
+      for (var i = 0; i < 60 && marker.evaluate().isEmpty; i++) {
+        await tester
+            .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      expect(marker, findsOneWidget);
+      expect(find.text('Already downloaded'), findsOneWidget);
+      expect(find.text('Download 1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'a track already sitting in the configured compare folder (not the '
+        'download folder) is also pre-unselected', (tester) async {
+      late Directory downloadDir;
+      late Directory compareDir;
+      await tester.runAsync(() async {
+        downloadDir = await Directory.systemTemp.createTemp('mp3_dl_c');
+        compareDir = await Directory.systemTemp.createTemp('mp3_cmp_c');
+        Config.mp3DownloadFolder = downloadDir.path;
+        Config.mp3CompareFolder = compareDir.path;
+        // Sitting only in the library folder, e.g. synced from a PC — never
+        // downloaded by this app, so it's not in the download folder at all.
+        final sub = Directory('${compareDir.path}/Album')..createSync();
+        await File('${sub.path}/Artist - Library Track.m4a')
+            .writeAsBytes([0]);
+      });
+      addTearDown(() async {
+        await downloadDir.delete(recursive: true);
+        await compareDir.delete(recursive: true);
+      });
+
+      Mp3DownloaderService.instance.playlistOverride = (input) async =>
+          const Mp3PlaylistInfo(title: 'Lib Mix', tracks: [
+            Mp3SearchResult(
+              videoId: 'a',
+              title: 'Artist - Library Track',
+              channel: 'Artist',
+              duration: Duration(minutes: 3),
+            ),
+            Mp3SearchResult(
+              videoId: 'b',
+              title: 'Artist - New Track',
+              channel: 'Artist',
+              duration: Duration(minutes: 4),
+            ),
+          ]);
+
+      await tester.pumpWidget(const MaterialApp(home: Mp3DownloaderPage()));
+      await tester.enterText(
+        find.byType(TextField),
+        'https://www.youtube.com/playlist?list=PLlib',
+      );
+      await tester.tap(find.text('Find & download'));
+      final marker = find.text('Lib Mix · 1 of 2 selected');
       for (var i = 0; i < 60 && marker.evaluate().isEmpty; i++) {
         await tester
             .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));

@@ -250,6 +250,61 @@ Future<Set<String>> existingTrackBaseNames(String folder) async {
   return names;
 }
 
+/// Recursively collects base names (as [existingTrackBaseNames] does) from
+/// every folder in [folders], skipping duplicates and any folder that fails
+/// to scan (missing, unreadable) rather than letting one bad path blank out
+/// the rest.
+Future<Set<String>> existingTrackBaseNamesAcross(
+  Iterable<String> folders,
+) async {
+  final names = <String>{};
+  final seen = <String>{};
+  for (final folder in folders) {
+    if (folder.isEmpty || !seen.add(folder)) continue;
+    names.addAll(await existingTrackBaseNames(folder));
+  }
+  return names;
+}
+
+/// Well-known shared "Music" folder Android exposes on every device
+/// (`Environment.DIRECTORY_MUSIC`) — where the phone's own music app, and
+/// anything synced or copied over from a PC, actually keeps audio files.
+/// This is deliberately independent of [defaultDownloadFolder]/
+/// `Config.mp3DownloadFolder`: those exist so the app has *somewhere* it can
+/// always write without extra permissions (often its own sandboxed folder),
+/// which is rarely where a phone's real music library lives. Returns null
+/// off Android, or when the folder doesn't exist (nothing has ever been
+/// synced there, or scoped storage hides it from a plain path check).
+Future<String?> defaultPhoneMusicFolder() async {
+  if (!Platform.isAndroid) return null;
+  const candidate = '/storage/emulated/0/Music';
+  try {
+    if (await Directory(candidate).exists()) return candidate;
+  } catch (_) {}
+  return null;
+}
+
+/// Works out which folder(s) to scan for tracks already downloaded, beyond
+/// [downloadFolder] itself (which is always scanned regardless): the
+/// explicit `Config.mp3CompareFolder` override when the user has set one in
+/// Settings → MP3 Downloader (for when auto-detection picks the wrong
+/// place, or the library lives somewhere non-standard), otherwise the
+/// phone's standard Music folder if it exists, otherwise nothing extra.
+Future<List<String>> compareFoldersFor(
+  String downloadFolder, {
+  required String configuredCompareFolder,
+}) async {
+  final folders = <String>[downloadFolder];
+  final configured = configuredCompareFolder.trim();
+  if (configured.isNotEmpty) {
+    folders.add(configured);
+  } else {
+    final phoneMusic = await defaultPhoneMusicFolder();
+    if (phoneMusic != null) folders.add(phoneMusic);
+  }
+  return folders;
+}
+
 /// A folder the app can always write to without any storage permission:
 /// the app-specific external directory on Android
 /// (`Android/data/<pkg>/files`), the OS downloads folder elsewhere.
