@@ -2,6 +2,9 @@
 
 ## [0.2.60] - 2026-09-16
 - Sharing a song link from Spotify, YouTube or Shazam into BestToDo now opens straight into the MP3 Downloader instead of the task editor: a YouTube link downloads immediately, a Spotify/Shazam link is looked up (via Spotify's oEmbed title / the Shazam page title, or the caption text the share already carries) and shows the usual candidate picker
+- Local build: 2026-09-16 17:17
+- Build duration (apk): 17m 56s
+- Build duration (windows): 3m 37s
 
 ## [0.2.59] - 2026-09-16
 - MP3 Downloader: the playlist duplicate check now also looks in the phone's Music folder (not just the download folder), so tracks already in your library are skipped even if this app never downloaded them there. Settings → MP3 Downloader gets a new 'Check for existing tracks in' folder picker for when auto-detection guesses wrong
