@@ -2,6 +2,9 @@
 
 ## [0.2.63] - 2026-09-16
 - Music Player: fixed the Now Playing progress bar getting stuck at 0:00 during playback (position now ticks every second and picks up the real track duration from the player instead of relying on missing tags), and added a Next button to the play/pause + previous home-screen widget
+- Local build: 2026-09-16 21:48
+- Build duration (apk): 2m 28s
+- Build duration (windows): 1m 05s
 
 ## [0.2.62] - 2026-09-16
 - MP3 Downloader: tapping a search result to download it now clears the search bar instead of leaving the previous query sitting there
