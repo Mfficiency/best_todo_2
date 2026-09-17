@@ -593,6 +593,15 @@ class Config {
   /// caveat applies.
   static String githubWishlistToken = '';
 
+  /// Fire URL for a Claude Code Routine's API trigger
+  /// (`https://api.anthropic.com/v1/claude_code/routines/<id>/fire`), and its
+  /// bearer token. Used by `ClaudeRoutineService` for "Send to Claude" on a
+  /// task, which POSTs the task as the routine's `text` payload and returns a
+  /// claude.ai/code session URL. Stored in plain text like [todoistApiToken]
+  /// — same no-secret-storage caveat applies.
+  static String claudeRoutineUrl = '';
+  static String claudeRoutineToken = '';
+
   /// Folder the MP3 Downloader saves audio into. Empty means "not chosen
   /// yet" — the tool asks once, stores the answer here, and never prompts
   /// again unless the user changes it in Settings → MP3 Downloader.
@@ -722,6 +731,8 @@ class Config {
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
       'githubWishlistToken': githubWishlistToken,
+      'claudeRoutineUrl': claudeRoutineUrl,
+      'claudeRoutineToken': claudeRoutineToken,
       'mp3DownloadFolder': mp3DownloadFolder,
       'mp3CompareFolder': mp3CompareFolder,
       'musicFolder': musicFolder,
@@ -864,6 +875,9 @@ class Config {
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
     githubWishlistToken =
         data['githubWishlistToken'] as String? ?? githubWishlistToken;
+    claudeRoutineUrl = data['claudeRoutineUrl'] as String? ?? claudeRoutineUrl;
+    claudeRoutineToken =
+        data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
     mp3DownloadFolder =
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
     mp3CompareFolder =

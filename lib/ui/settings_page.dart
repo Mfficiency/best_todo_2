@@ -57,7 +57,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    17,
+    18,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -78,6 +78,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Wishlist build',
     'MP3 Downloader',
     'Music Player',
+    'Claude Routine',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -251,6 +252,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Subsonic server', 16,
         'music player self hosted navidrome airsonic gonic opensubsonic server '
         'username password'),
+    _SettingsSearchEntry('Routine fire URL', 17,
+        'claude code routine send to claude session cloud trigger api'),
+    _SettingsSearchEntry('Routine token', 17,
+        'claude code routine send to claude session cloud trigger api key'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -312,6 +317,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _githubTesting = false;
   String? _githubTestResult;
   bool _githubTestSucceeded = false;
+  final TextEditingController _claudeRoutineUrlController =
+      TextEditingController(text: Config.claudeRoutineUrl);
+  final TextEditingController _claudeRoutineTokenController =
+      TextEditingController(text: Config.claudeRoutineToken);
+  bool _claudeRoutineTokenObscured = true;
   int _weeklyHoursStartHour = Config.weeklyHoursStartHour;
   int _weeklyHoursEndHour = Config.weeklyHoursEndHour;
   final TextEditingController _googleCalendarUrlController =
@@ -375,6 +385,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _todoistSyncEnabled = Config.todoistSyncEnabled;
     _todoistTokenController.text = Config.todoistApiToken;
     _githubTokenController.text = Config.githubWishlistToken;
+    _claudeRoutineUrlController.text = Config.claudeRoutineUrl;
+    _claudeRoutineTokenController.text = Config.claudeRoutineToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
     _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
     _weeklyHoursStartHour = Config.weeklyHoursStartHour;
@@ -2192,6 +2204,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _saveClaudeRoutine() async {
+    Config.claudeRoutineUrl = _claudeRoutineUrlController.text.trim();
+    Config.claudeRoutineToken = _claudeRoutineTokenController.text.trim();
+    await Config.save();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Claude Routine settings saved')),
+    );
+  }
+
   /// Settings → Wishlist build: the GitHub token used by Tools → Wishlist's
   /// "Send to build" swipe action to open a `wishlist-build`-labeled issue.
   /// A daily Claude Code Remote routine (5pm, plus on demand) picks those up,
@@ -2618,6 +2640,72 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// Settings → Claude Routine: the fire URL + bearer token for a Claude Code
+  /// Routine's API trigger, used by a task's "Send to Claude" action to start
+  /// a cloud coding session from that task. See
+  /// https://code.claude.com/docs/en/routines#add-an-api-trigger — create the
+  /// routine at claude.ai/code/routines, add an API trigger, and paste the
+  /// generated URL and token here.
+  Widget _buildClaudeRoutineSection() {
+    return _buildSection(
+      index: 17,
+      title: 'Claude Routine',
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Text(
+            'Lets a task\'s "Send to Claude" action start a Claude Code cloud '
+            'session from that task. Create a routine at '
+            'claude.ai/code/routines, add an API trigger, and paste the '
+            'generated fire URL and token here. There\'s no side-effect-free '
+            'way to test these — an invalid URL or token only shows up when '
+            'you actually send a task.',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _claudeRoutineUrlController,
+            decoration: const InputDecoration(
+              labelText: 'Routine fire URL',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _claudeRoutineTokenController,
+            obscureText: _claudeRoutineTokenObscured,
+            decoration: InputDecoration(
+              labelText: 'Routine token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip:
+                    _claudeRoutineTokenObscured ? 'Show token' : 'Hide token',
+                icon: Icon(_claudeRoutineTokenObscured
+                    ? Icons.visibility
+                    : Icons.visibility_off),
+                onPressed: () => setState(() =>
+                    _claudeRoutineTokenObscured = !_claudeRoutineTokenObscured),
+              ),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: FilledButton.icon(
+            onPressed: _saveClaudeRoutine,
+            icon: const Icon(Icons.save),
+            label: const Text('Save'),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _setAutoUpdateCheckEnabled(bool value) async {
     setState(() => _autoUpdateCheckEnabled = value);
     Config.autoUpdateCheckEnabled = value;
@@ -2995,6 +3083,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _searchController.dispose();
     _todoistTokenController.dispose();
     _githubTokenController.dispose();
+    _claudeRoutineUrlController.dispose();
+    _claudeRoutineTokenController.dispose();
     _googleCalendarUrlController.dispose();
     _subsonicServerUrlController.dispose();
     _subsonicUsernameController.dispose();
@@ -3480,6 +3570,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         _buildWishlistBuildSection(),
                         if (_isSectionVisible(15)) _buildMp3DownloaderSection(),
                         if (_isSectionVisible(16)) _buildMusicPlayerSection(),
+                        _buildClaudeRoutineSection(),
                       ],
               ),
             ),

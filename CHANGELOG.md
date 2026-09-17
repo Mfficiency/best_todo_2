@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.64] - 2026-09-17
+- Added "Send to Claude" on a task (expand it, tap the robot icon) to fire a Claude Code Routine's API trigger and start a real cloud coding session with that task as context, configured in Settings → Claude Routine
+
 ## [0.2.63] - 2026-09-16
 - Music Player: fixed the Now Playing progress bar getting stuck at 0:00 during playback (position now ticks every second and picks up the real track duration from the player instead of relying on missing tags), and added a Next button to the play/pause + previous home-screen widget
 - Local build: 2026-09-16 21:48
