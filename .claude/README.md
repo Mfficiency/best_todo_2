@@ -21,6 +21,12 @@ When you change something, update its canonical doc — never fork a second copy
 | `docs/architecture/` | Architecture Decision Records (e.g. `storage-decision.md`: why JSON files, what would trigger SQLite). |
 | `.claude/notes/` (this folder) | The operational deep dives listed below. |
 
+## Agents in this folder
+
+| Agent | Use it when |
+|---|---|
+| [`agents/ui-ux-comparison.md`](agents/ui-ux-comparison.md) | You want the app's UI/UX benchmarked against other to-do/productivity apps (Todoist, TickTick, Things 3, Google Tasks, Apple Reminders, ...) with prioritized, implementable advice. Reads `docs/screenshots/home/` for the current design; read-only, does not edit code. |
+
 ## Notes in this folder
 
 | File | Read it when |
