@@ -126,6 +126,29 @@ void main() {
       expect(tracks, hasLength(1));
     });
 
+    test('a newly found track gets a dateAdded and starts at playCount 0',
+        () async {
+      await writeFile('new.mp3');
+
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      expect(tracks.single.dateAdded, isNotNull);
+      expect(tracks.single.playCount, 0);
+    });
+
+    test('a rescan preserves dateAdded/playCount for a track still there',
+        () async {
+      await writeFile('keep.mp3');
+      final first = await MusicLibraryService.instance.rescan();
+      final dateAdded = first.single.dateAdded;
+      await MusicLibraryService.instance.incrementPlayCount(first.single.id);
+
+      final second = await MusicLibraryService.instance.rescan();
+
+      expect(second.single.dateAdded, dateAdded);
+      expect(second.single.playCount, 1);
+    });
+
     test('results persist across a resetForTest + load()', () async {
       await writeFile('persisted.mp3');
       await MusicLibraryService.instance.rescan();
@@ -169,5 +192,32 @@ void main() {
     expect(found, isNotNull);
     expect(found!.fileBaseName, 'findme');
     expect(MusicLibraryService.instance.byId('local:/nope.mp3'), isNull);
+  });
+
+  group('incrementPlayCount', () {
+    test('bumps the matching track and persists it', () async {
+      await writeFile('played.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.incrementPlayCount(id);
+      await MusicLibraryService.instance.incrementPlayCount(id);
+
+      expect(MusicLibraryService.instance.byId(id)!.playCount, 2);
+
+      MusicLibraryService.instance.resetForTest();
+      await MusicLibraryService.instance.load();
+      expect(MusicLibraryService.instance.byId(id)!.playCount, 2);
+    });
+
+    test('is a no-op for an id not in the library', () async {
+      await writeFile('a.mp3');
+      await MusicLibraryService.instance.rescan();
+
+      await MusicLibraryService.instance.incrementPlayCount('local:/nope.mp3');
+
+      expect(MusicLibraryService.instance.tracks.value.every((t) => t.playCount == 0),
+          isTrue);
+    });
   });
 }

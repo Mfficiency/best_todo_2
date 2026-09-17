@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.70] - 2026-09-17
+- Music Player/Best Music: added smart playlists ("Last Added" and "Most Played", including one per genre, computed automatically) and rule-based playlists you build yourself from AND/OR/NOT conditions over title/artist/album/genre/year (e.g. "genre Rock and year 2025, excluding Artist C") from the Playlists tab's "New rule playlist". Track scanning now also reads genre and release year (mp3 ID3 tags) to power these. A standalone `dart run tool/scan_music_metadata.dart <folder>` script reports every scanned file's metadata for checking your collection's coverage outside the app. Best Music now also checks for its own updates in the background, like BestToDo already does
+
 ## [0.2.69] - 2026-09-17
 - Music Player/Best Music now proactively ask for the permissions they need instead of waiting for a scan to quietly fail: Best Music requests "All files access" on first launch (like other music apps), BestToDo asks once a music folder is already configured, and both ask for notification access for the playback controls. If the permission was the reason an already-configured folder scanned empty, granting it now re-scans right away
 - Local build: 2026-09-17 17:55

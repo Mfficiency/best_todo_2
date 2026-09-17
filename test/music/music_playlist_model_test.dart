@@ -1,4 +1,5 @@
 import 'package:besttodo/models/music_playlist.dart';
+import 'package:besttodo/models/playlist_rule.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -10,6 +11,7 @@ void main() {
       expect(favorites.id, MusicPlaylist.favoritesId);
       expect(favorites.isSystem, isTrue);
       expect(favorites.trackIds, isEmpty);
+      expect(favorites.kind, PlaylistKind.list);
 
       expect(disliked.id, MusicPlaylist.dislikedId);
       expect(disliked.isSystem, isTrue);
@@ -28,11 +30,54 @@ void main() {
       expect(restored.name, 'Road trip');
       expect(restored.trackIds, ['local:/a.mp3', 'local:/b.mp3']);
       expect(restored.isSystem, isFalse);
+      expect(restored.kind, PlaylistKind.list);
     });
 
     test('fromJson tolerates a missing/non-list trackIds', () {
       final restored = MusicPlaylist.fromJson({'id': 'p2', 'name': 'Empty'});
       expect(restored.trackIds, isEmpty);
+    });
+
+    test('a mostPlayed playlist round-trips its genreFilter', () {
+      final playlist = MusicPlaylist(
+        id: 'smart_most_played_Rock',
+        name: 'Most Played: Rock',
+        isSystem: true,
+        kind: PlaylistKind.mostPlayed,
+        genreFilter: 'Rock',
+      );
+
+      final restored = MusicPlaylist.fromJson(playlist.toJson());
+
+      expect(restored.kind, PlaylistKind.mostPlayed);
+      expect(restored.genreFilter, 'Rock');
+    });
+
+    test('a rule playlist round-trips its ruleSet', () {
+      final playlist = MusicPlaylist(
+        id: 'rule1',
+        name: 'Last year, no Artist C',
+        kind: PlaylistKind.rule,
+        ruleSet: const PlaylistRuleSet(
+          combinator: RuleCombinator.all,
+          conditions: [
+            RuleCondition(field: RuleField.year, operator: RuleOperator.equals, values: ['2025']),
+            RuleCondition(
+                field: RuleField.artist,
+                operator: RuleOperator.notInList,
+                values: ['Artist C']),
+          ],
+        ),
+      );
+
+      final restored = MusicPlaylist.fromJson(playlist.toJson());
+
+      expect(restored.kind, PlaylistKind.rule);
+      expect(restored.ruleSet, isNotNull);
+      expect(restored.ruleSet!.combinator, RuleCombinator.all);
+      expect(restored.ruleSet!.conditions, hasLength(2));
+      expect(restored.ruleSet!.conditions.first.field, RuleField.year);
+      expect(restored.ruleSet!.conditions.last.values, ['Artist C']);
     });
   });
 }

@@ -3,13 +3,13 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:id3_codec/id3_codec.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../config.dart';
 import '../models/track.dart';
 import 'log_service.dart';
+import 'music_metadata_extractor.dart';
 
 /// Scans [Config.musicFolder] and every subfolder for playable audio files,
 /// skipping anything under [Config.musicExcludedSubfolders]. Reads ID3 tags
@@ -35,12 +35,6 @@ class MusicLibraryService {
     'aac',
     'wma',
   };
-
-  /// How many bytes of an mp3 file's head to read when looking for an ID3v2
-  /// tag. Large enough for typical tags (including small embedded art);
-  /// files whose tag runs past this are simply scanned without tags rather
-  /// than reading the whole file for every track.
-  static const int _id3ReadCap = 1024 * 1024;
 
   final ValueNotifier<List<Track>> tracks = ValueNotifier<List<Track>>([]);
   bool _loaded = false;
@@ -213,6 +207,18 @@ class MusicLibraryService {
         }
         found.add(await _buildTrack(entity.path, ext));
       }
+      // Preserve dateAdded/playCount for tracks that were already known —
+      // a rescan refreshes tags/paths, it shouldn't reset "when was this
+      // added" or "how many times has this been played".
+      final previousById = {for (final t in tracks.value) t.id: t};
+      final now = DateTime.now();
+      for (var i = 0; i < found.length; i++) {
+        final previous = previousById[found[i].id];
+        found[i] = found[i].copyWith(
+          dateAdded: previous?.dateAdded ?? now,
+          playCount: previous?.playCount ?? 0,
+        );
+      }
       found.sort((a, b) =>
           a.title.toLowerCase().compareTo(b.title.toLowerCase()));
       tracks.value = found;
@@ -241,35 +247,35 @@ class MusicLibraryService {
     try {
       final raf = await File(filePath).open();
       final length = await raf.length();
-      final headBytes = await raf.read(min(length, _id3ReadCap));
+      final headBytes = await raf.read(min(length, id3ReadCap));
       await raf.close();
-      final tagMap = <String, dynamic>{};
-      for (final info in ID3Decoder(headBytes).decodeSync()) {
-        tagMap.addAll(info.toTagMap());
-      }
-      final title = _frameInfo(tagMap, 'TIT2') ?? tagMap['Title'] as String?;
-      final artist = _frameInfo(tagMap, 'TPE1') ?? tagMap['Artist'] as String?;
-      final album = _frameInfo(tagMap, 'TALB') ?? tagMap['Album'] as String?;
+      final tags = decodeMp3Tags(headBytes);
       return Track.local(
         filePath: filePath,
-        title: (title != null && title.trim().isNotEmpty)
-            ? title.trim()
+        title: (tags.title != null && tags.title!.trim().isNotEmpty)
+            ? tags.title!.trim()
             : fallbackTitle,
-        artist: (artist ?? '').trim(),
-        album: (album ?? '').trim(),
+        artist: (tags.artist ?? '').trim(),
+        album: (tags.album ?? '').trim(),
+        genre: (tags.genre ?? '').trim(),
+        year: tags.year,
       );
     } catch (_) {
       return Track.local(filePath: filePath, title: fallbackTitle);
     }
   }
 
-  static String? _frameInfo(Map<String, dynamic> tagMap, String frameId) {
-    final frame = tagMap['Frame[$frameId]'];
-    if (frame is Map) {
-      final info = frame['Information'];
-      if (info is String) return info;
-    }
-    return null;
+  /// Bumps [trackId]'s play count and persists it. No-op if the track isn't
+  /// currently in the library (e.g. it was removed since the queue was
+  /// built).
+  Future<void> incrementPlayCount(String trackId) async {
+    final index = tracks.value.indexWhere((t) => t.id == trackId);
+    if (index < 0) return;
+    final updated = List<Track>.of(tracks.value);
+    updated[index] =
+        updated[index].copyWith(playCount: updated[index].playCount + 1);
+    tracks.value = updated;
+    await _save();
   }
 
   Track? byId(String id) {
