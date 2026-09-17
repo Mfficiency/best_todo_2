@@ -259,6 +259,7 @@ class _RulePlaylistEditorPageState extends State<RulePlaylistEditorPage> {
             flex: 3,
             child: DropdownButtonFormField<RuleOperator>(
               value: row.operator,
+              isExpanded: true,
               items: [
                 for (final operator in _operatorsFor(row.field))
                   DropdownMenuItem(

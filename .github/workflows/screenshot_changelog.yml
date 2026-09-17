@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'SCREENSHOT_CHANGELOG.md'
       - 'docs/screenshots/home/**'
+      - 'docs/screenshots/music/**'
       - 'docs/ci/**'
   workflow_dispatch:
 
@@ -46,6 +47,16 @@ jobs:
           flutter test integration_test/home_page_screenshot_test.dart -d windows *>&1 | Tee-Object -FilePath capture_output.log
           exit $LASTEXITCODE
 
+      # Best Music (lib/main_music.dart) is a separate app entry point built
+      # from this same codebase — its own integration test, own failure log,
+      # own screenshot folder — but runs in the same job so it shares the
+      # Windows runner/Flutter setup rather than doubling CI minutes.
+      - name: Capture Best Music screenshots
+        shell: pwsh
+        run: |
+          flutter test integration_test/music_home_page_screenshot_test.dart -d windows *>&1 | Tee-Object -FilePath capture_output_music.log
+          exit $LASTEXITCODE
+
       # The capture broke silently for weeks because job logs need auth to
       # read. On failure, commit the test output into the repo so it can be
       # inspected (and fixed) without GitHub credentials.
@@ -58,8 +69,14 @@ jobs:
           New-Item -ItemType Directory -Force docs/ci | Out-Null
           # .txt, not .log — the repo gitignores *.log, which made git add a
           # silent no-op the first time around. -f as belt and braces.
-          Copy-Item capture_output.log docs/ci/screenshot_capture_failure.txt -Force
-          git add -f docs/ci/screenshot_capture_failure.txt
+          if (Test-Path capture_output.log) {
+            Copy-Item capture_output.log docs/ci/screenshot_capture_failure.txt -Force
+            git add -f docs/ci/screenshot_capture_failure.txt
+          }
+          if (Test-Path capture_output_music.log) {
+            Copy-Item capture_output_music.log docs/ci/screenshot_capture_failure_music.txt -Force
+            git add -f docs/ci/screenshot_capture_failure_music.txt
+          }
           git commit -m "ci: record screenshot capture failure log [skip-screenshot-changelog]"
           foreach ($attempt in 1..3) {
             git pull --rebase origin ${{ github.ref_name }}
@@ -75,25 +92,35 @@ jobs:
         id: screenshot_meta
         shell: pwsh
         run: |
-          $targetDir = "docs/screenshots/home"
-          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-
           $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
           $shortSha = "${{ github.sha }}".Substring(0, 7)
           $folderName = "$timestamp-$shortSha"
+
+          $targetDir = "docs/screenshots/home"
           $targetFolderPath = Join-Path $targetDir $folderName
           New-Item -ItemType Directory -Path $targetFolderPath -Force | Out-Null
-
           # Copy every captured page so newly added screenshots are archived
           # without editing this workflow.
           Copy-Item "build/e2e_screenshots/*.png" $targetFolderPath -Force
-
           "screenshot_folder=$targetDir/$folderName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $musicTargetDir = "docs/screenshots/music"
+          $musicTargetFolderPath = Join-Path $musicTargetDir $folderName
+          New-Item -ItemType Directory -Path $musicTargetFolderPath -Force | Out-Null
+          Copy-Item "build/e2e_screenshots_music/*.png" $musicTargetFolderPath -Force
+          "screenshot_folder_music=$musicTargetDir/$folderName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Update screenshot changelog
         run: >
           dart run tool/update_screenshot_changelog.dart
           --screenshot-folder "${{ steps.screenshot_meta.outputs.screenshot_folder }}"
+          --branch "${{ github.ref_name }}"
+          --source-sha "${{ github.sha }}"
+
+      - name: Update Best Music screenshot changelog
+        run: >
+          dart run tool/update_screenshot_changelog.dart
+          --screenshot-folder "${{ steps.screenshot_meta.outputs.screenshot_folder_music }}"
           --branch "${{ github.ref_name }}"
           --source-sha "${{ github.sha }}"
 
@@ -107,7 +134,10 @@ jobs:
           if (Test-Path docs/ci/screenshot_capture_failure.txt) {
             git rm -f docs/ci/screenshot_capture_failure.txt
           }
-          git add SCREENSHOT_CHANGELOG.md docs/screenshots/home
+          if (Test-Path docs/ci/screenshot_capture_failure_music.txt) {
+            git rm -f docs/ci/screenshot_capture_failure_music.txt
+          }
+          git add SCREENSHOT_CHANGELOG.md docs/screenshots/home docs/screenshots/music
 
           if (git diff --cached --quiet) {
             Write-Output "No screenshot changelog changes to commit."

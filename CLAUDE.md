@@ -24,7 +24,9 @@ file is the short operational guide.
   `.smart_test_state.json`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
-  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
+  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main). Best Music has its own
+  suite: `flutter test integration_test/music_home_page_screenshot_test.dart -d windows`
+  → `build/e2e_screenshots_music/`, archived to `docs/screenshots/music/` the same way.
 - Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
   keystore). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
   (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
