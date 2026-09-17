@@ -1,8 +1,10 @@
 import 'dart:io' show Platform;
 
 import 'package:audio_service/audio_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:permission_handler/permission_handler.dart';
 
+import '../config.dart';
 import '../models/track.dart';
 import 'music_audio_handler.dart';
 import 'music_library_service.dart';
@@ -73,5 +75,37 @@ class MusicPlayerService {
   static Future<void> playQueue(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     await handler.setQueueAndPlay(tracks, startIndex: startIndex);
+  }
+
+  /// Requests the runtime permissions the Music Player needs, Android only
+  /// (nothing here applies on iOS/desktop/web). Call once per app start —
+  /// there's no "already asked" flag, so a still-missing permission gets
+  /// asked again on the next launch instead of staying silently broken.
+  ///
+  /// [eager]: request storage access ("All files access") even before any
+  /// music folder is chosen — Best Music, where local playback is the whole
+  /// app, so it's worth asking upfront like other music apps do. Off
+  /// (BestToDo's default): only once a folder is already configured, so the
+  /// far larger group of BestToDo users who never open Music Player aren't
+  /// interrupted at launch for a permission a tool they don't use needs.
+  static Future<void> ensurePermissions({bool eager = false}) async {
+    if (!Platform.isAndroid) return;
+    try {
+      if (eager || Config.musicFolder.trim().isNotEmpty) {
+        final wasGranted = await Permission.manageExternalStorage.isGranted;
+        final granted = await MusicLibraryService.instance.ensureFolderPermission();
+        // Granted just now on a folder that was already configured but
+        // scanned empty (the whole point of asking here) — pick that scan
+        // back up immediately instead of waiting for the user to notice.
+        if (!wasGranted && granted && Config.musicFolder.trim().isNotEmpty) {
+          await MusicLibraryService.instance.rescan();
+        }
+      }
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
+    } catch (e) {
+      debugPrint('MusicPlayerService.ensurePermissions failed: $e');
+    }
   }
 }

@@ -60,7 +60,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     }
     if (Config.musicFolder.isNotEmpty &&
         MusicLibraryService.instance.tracks.value.isEmpty) {
-      MusicLibraryService.instance.rescan();
+      unawaited(MusicLibraryService.instance
+          .ensureFolderPermission()
+          .then((_) => MusicLibraryService.instance.rescan()));
     }
   }
 
