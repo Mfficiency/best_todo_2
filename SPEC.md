@@ -3297,7 +3297,8 @@ start page).
 
 ### 10.6e Music Player (0.2.61)
 
-Tools ▸ Music Player (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`):
+Tools ▸ Music Player (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`,
+`lib/ui/queue_page.dart`):
 a full local MP3/audio player with background playback, home-screen widgets, notification
 and lock-screen controls, an M3U/M3U8 playlist import (Samsung Music's share-out format),
 and a "Tinder for songs" swipe gesture on Now Playing — swipe up favorites the current
@@ -3362,6 +3363,21 @@ gets a key of `random()^(1/weight)` and the result sorts descending by key — f
 later, ordinary tracks (weight 1.0) fall in between, and every track can still appear (nothing
 is ever hard-excluded, since a mood can change). `toggleFavorite`/`markDisliked` are mutually
 exclusive on a track (favoriting clears a dislike and vice versa).
+
+**Shuffle toggle and queue reordering** (0.2.65 — `MusicAudioHandler.toggleShuffle`/
+`reorderQueue`, `lib/ui/queue_page.dart`'s `QueuePage`): a shuffle icon button in Now
+Playing's app bar (`ValueNotifier<bool> shuffleEnabled`) shuffles only the not-yet-played
+tail of `_queue`, leaving playback history and the current track's position untouched;
+toggling it back off restores the tail's pre-shuffle order (captured in `_preShuffleOrder`
+when shuffle turns on). A "Queue" icon button next to it opens `QueuePage`, a
+`ReorderableListView.builder` (same drag-handle pattern as the task list, `home_page.dart`'s
+`_reorderTask`) over `MusicAudioHandler.currentQueueTracks`; dragging calls `reorderQueue`,
+which moves the track and keeps `_queueIndex` pointing at whichever track is actually
+playing even if its position shifted, then clears `_preShuffleOrder` (a manual drag is a
+new baseline order, not something a later shuffle-off should undo). This is separate from
+the existing `weightedShuffle`-driven "radio" reshuffle that happens when the queue runs
+off the end (**Playback engine**, above) — that automatic reshuffle from the full library is
+unaffected by the shuffle toggle.
 
 **Now Playing swipe gesture** (`lib/ui/now_playing_page.dart`): a `GestureDetector` on the
 artwork/title column tracks vertical drag distance and velocity; crossing a distance or
