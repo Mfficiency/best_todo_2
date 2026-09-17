@@ -3475,9 +3475,14 @@ updates" actions, the latter driving the same `showUpdateAvailableDialog`/
 `downloadUpdateInBackground` flow as BestToDo's auto-update poll, parameterized with its own
 `UpdateService` instance.
 
-**Known gap**: no CI publishes Best Music APKs to a GitHub release (`tool/publish_apk.dart`
-stays BestToDo-only) — only the local `tool/build.sh music-apk` → `github_releases/` → commit +
-push path makes a build installable/updatable, same as how BestToDo shipped before CI existed.
+**CI**: `.github/workflows/build-apk.yml`'s `build_music_apk` job builds the `music` flavor on
+every push to main/staging/dev, uploads it as a workflow artifact, and — mirroring what a local
+`sh tool/build.sh music-apk --release` does — stages it into `github_releases/` (`--prefix
+best_music`) and commits+pushes (rebase-and-retry against the `build` job's own same-branch
+push, same pattern `screenshot_changelog.yml` uses). Deliberately does *not* also publish to a
+GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateService.checkReleases`'s
+doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
+this repo — the folder stays each app's only update-check source.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
