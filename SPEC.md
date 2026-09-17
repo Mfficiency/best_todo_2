@@ -3434,6 +3434,51 @@ not a Samsung Music export sample, on the assumption documented in this section 
 list, possibly `file://`, matched by basename when the exact path doesn't line up) — worth
 confirming against a real Samsung Music export.
 
+### 10.6f Best Music — a second app from the same codebase (0.2.66)
+`lib/main_music.dart` is a second entry point, built as its own Android app rather than a
+BestToDo tool: no task list, alarms, sync, or any other to-do feature — just §10.6e's Music
+Player as the home page and §10.6d's MP3 Downloader one tap away. Installs side by side with
+BestToDo on the same device (separate `applicationId`, so Android sandboxes its storage
+independently — no data collision with BestToDo's own `Config`/library files).
+
+**Build**: `android/app/build.gradle.kts` defines two product flavors under a single `app`
+flavor dimension — `todo` (BestToDo, `applicationId` unchanged, still the default: `flutter
+build apk` now requires an explicit `--flavor`, so `tool/build.sh` injects `--flavor todo`
+when a caller doesn't pass one) and `music` (`applicationId com.mfficiency.best_music`).
+`sh tool/build.sh music-apk --release` is shorthand for `flutter build apk --release --flavor
+music -t lib/main_music.dart`; the Gradle `createVersionedReleaseApk` task (shared by both
+flavors) reads which flavor's output exists and renames it `best_todo_<version>.apk` or
+`best_music_<version>.apk` accordingly, matching what `tool/stage_local_release.dart --prefix
+best_music` stages into `github_releases/` alongside BestToDo's own APKs — both apps' last two
+builds live in that one folder, pruned independently by prefix (`namesToPrune` is prefix-blind;
+`main()` filters `present` to the caller's own prefix before pruning, since the two apps share
+one pubspec version and a prefix-blind prune could otherwise delete the wrong app's build).
+
+**Branding, not a fork**: app label (`res/values/strings.xml` `app_name`, overridden per flavor
+in `src/music/res/values/strings.xml`) and launcher icon (`src/music/res/mipmap-*/ic_launcher.png`
+— a flat black eighth note on white, generated at each mipmap density) are the only
+flavor-specific Android resources; everything else (permissions, receivers/services, signing)
+stays the single shared manifest, unused permissions in the Best Music APK included — a
+deliberate simplification since it is sideloaded, not Play-Store-distributed.
+
+**In-app updates**: `UpdateService` gained per-app instance config (`appDisplayName`,
+`apkPrefix`, via `UpdateService.forApp(...)`; `UpdateService.instance` stays BestToDo's own
+`best_todo`/`BestToDo` default) so each app's folder/release lookup only ever considers its own
+prefix — a bare version-number regex over the whole `github_releases/` listing would otherwise
+happily match the other app's file name too. A non-default app's `checkReleases` skips the
+repo-wide "latest release" fallback entirely (GitHub's `releases/latest` endpoint isn't
+per-app), reporting no update rather than risking BestToDo's release. `MusicPlayerPage` gained
+a `standalone` flag (true only from `main_music.dart`): swaps `buildSubpageAppBar`'s
+BestToDo-drawer-coupled "Menu"/"Back to Home" leading buttons (meaningless with no drawer to
+open) for a plain root app bar with "Download MP3" (pushes `Mp3DownloaderPage`) and "Check for
+updates" actions, the latter driving the same `showUpdateAvailableDialog`/
+`downloadUpdateInBackground` flow as BestToDo's auto-update poll, parameterized with its own
+`UpdateService` instance.
+
+**Known gap**: no CI publishes Best Music APKs to a GitHub release (`tool/publish_apk.dart`
+stays BestToDo-only) — only the local `tool/build.sh music-apk` → `github_releases/` → commit +
+push path makes a build installable/updatable, same as how BestToDo shipped before CI existed.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line

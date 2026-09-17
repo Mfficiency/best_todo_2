@@ -8,7 +8,12 @@
 // Usage:
 //   flutter build apk --release            (or: sh tool/build.sh apk --release)
 //   dart run tool/stage_local_release.dart [--apk <path>] [--dir <dir>]
-//                                          [--keep <n>] [--dry-run]
+//                                          [--prefix <name>] [--keep <n>] [--dry-run]
+//
+// `--prefix` (default `best_todo`) is BestToDo's own APKs; the Best Music
+// flavor (see lib/main_music.dart) stages under `best_music` instead, so the
+// two apps' builds are pruned independently and UpdateService can tell whose
+// APK is whose in the shared folder.
 //
 // Commit the folder afterwards — the app downloads the APKs over HTTPS from
 // the branch (`UpdateService.releasesRef`), so a build only becomes installable
@@ -21,6 +26,8 @@ const int defaultKeep = 2;
 
 const String defaultDir = 'github_releases';
 
+const String defaultPrefix = 'best_todo';
+
 /// `version: x.y.z+build` from a pubspec.yaml body, or null.
 String? readPubspecVersion(String pubspec) {
   final m = RegExp(r'^version:\s*(\S+)', multiLine: true).firstMatch(pubspec);
@@ -29,14 +36,15 @@ String? readPubspecVersion(String pubspec) {
 
 /// Where a freshly built release APK may sit, most specific first
 /// (`tool/build.sh` renames it, a plain `flutter build apk` does not).
-List<String> apkCandidatePaths(String version) => [
-      'build/app/outputs/flutter-apk/best_todo_$version.apk',
+List<String> apkCandidatePaths(String version, {String prefix = defaultPrefix}) => [
+      'build/app/outputs/flutter-apk/${prefix}_$version.apk',
       'build/app/outputs/flutter-apk/besttodo-$version.apk',
       'build/app/outputs/flutter-apk/app-release.apk',
     ];
 
 /// Name the APK gets in the folder, matching what is already committed there.
-String stagedNameFor(String version) => 'best_todo_$version.apk';
+String stagedNameFor(String version, {String prefix = defaultPrefix}) =>
+    '${prefix}_$version.apk';
 
 /// Numeric components of a version-carrying file name, in order:
 /// `best_todo_0.1.143+115.apk` → [0, 1, 143, 115]. Names without digits sort
@@ -77,6 +85,7 @@ List<String> namesToPrune(Iterable<String> names, {int keep = defaultKeep}) {
 Future<void> main(List<String> args) async {
   String? apkArg;
   var dir = defaultDir;
+  var prefix = defaultPrefix;
   var keep = defaultKeep;
   var dryRun = false;
   for (var i = 0; i < args.length; i++) {
@@ -87,6 +96,9 @@ Future<void> main(List<String> args) async {
       case '--dir':
         if (i + 1 >= args.length) return _usage('--dir needs a path');
         dir = args[++i];
+      case '--prefix':
+        if (i + 1 >= args.length) return _usage('--prefix needs a name');
+        prefix = args[++i];
       case '--keep':
         if (i + 1 >= args.length) return _usage('--keep needs a number');
         final parsed = int.tryParse(args[++i]);
@@ -113,11 +125,11 @@ Future<void> main(List<String> args) async {
   }
 
   final apkPath = apkArg ??
-      apkCandidatePaths(version)
+      apkCandidatePaths(version, prefix: prefix)
           .firstWhere((p) => File(p).existsSync(), orElse: () => '');
   if (apkPath.isEmpty || !File(apkPath).existsSync()) {
     stderr.writeln('No release APK found. Looked for:');
-    for (final p in apkCandidatePaths(version)) {
+    for (final p in apkCandidatePaths(version, prefix: prefix)) {
       stderr.writeln('  $p');
     }
     stderr.writeln('Build one first: flutter build apk --release');
@@ -126,20 +138,24 @@ Future<void> main(List<String> args) async {
   }
 
   final target = Directory(dir);
-  final staged = '$dir/${stagedNameFor(version)}';
+  final staged = '$dir/${stagedNameFor(version, prefix: prefix)}';
   stdout.writeln('Staging $apkPath -> $staged');
   if (!dryRun) {
     target.createSync(recursive: true);
     File(apkPath).copySync(staged);
   }
 
+  // Pruning only ever looks at this app's own prefix: the folder holds both
+  // BestToDo's and Best Music's APKs, sharing one pubspec version, so a
+  // prefix-blind prune could delete the other app's build (or keep it
+  // instead of this one) purely by version-number coincidence.
   final present = <String>{
     if (target.existsSync())
       for (final entry in target.listSync())
         if (entry is File) entry.uri.pathSegments.last,
     // In a dry run the copy did not happen; prune as if it had.
-    stagedNameFor(version),
-  };
+    stagedNameFor(version, prefix: prefix),
+  }..retainWhere((name) => name.startsWith('${prefix}_'));
   for (final name in namesToPrune(present, keep: keep)) {
     stdout.writeln('Pruning older build $dir/$name');
     if (!dryRun) File('$dir/$name').deleteSync();

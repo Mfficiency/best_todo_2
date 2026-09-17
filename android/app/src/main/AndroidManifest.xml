@@ -54,7 +54,7 @@
     <!-- Lets the user explicitly allow browsing records older than 30 days. -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
     <application
-        android:label="BestToDo"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

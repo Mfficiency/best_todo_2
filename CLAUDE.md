@@ -25,7 +25,12 @@ file is the short operational guide.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
-- Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+- Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
+  keystore). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
+  (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
+  separate standalone app from this same codebase (Music Player + MP3 Downloader only, no
+  to-do features — `lib/main_music.dart`, SPEC.md §10.6f). Build it with
+  `sh tool/build.sh music-apk --release`.
 - Build everything + ship: `sh tool/build.sh all --release` (alias for
   `sh tool/build_all.sh --release`), or on Windows without Git Bash/WSL:
   `powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release`.

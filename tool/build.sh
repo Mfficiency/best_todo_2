@@ -11,6 +11,15 @@ if [ "$1" = "all" ]; then
   exec sh tool/build_all.sh "$@"
 fi
 
+# `music-apk` is a shorthand for building the Best Music flavor (Music
+# Player + MP3 Downloader, no to-do features — see lib/main_music.dart):
+#   sh tool/build.sh music-apk --release
+# is exactly sh tool/build.sh apk --release --flavor music -t lib/main_music.dart.
+if [ "$1" = "music-apk" ]; then
+  shift
+  exec sh tool/build.sh apk --flavor music -t lib/main_music.dart "$@"
+fi
+
 # No version bump here: tool/bump_version.dart requires an explicit
 # `<version> [changelog entry]` (see the "bump, sync and build" workflow), so
 # calling it argument-less only printed its usage line on every build. Bump
@@ -20,13 +29,42 @@ fi
 # are the cache key for deciding whether this build already exists.
 VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
 
+# Which app is being built. android/app/build.gradle.kts defines the `todo`
+# (BestToDo, unchanged) and `music` (Best Music) product flavors; `apk` builds
+# now require an explicit --flavor, so default to `todo` here rather than
+# making every existing `sh tool/build.sh apk --release` caller pass one.
+# Renamed/staged artifact names key off FLAVOR too (best_<flavor>_<version>.apk
+# — see the Gradle createVersionedReleaseApk task), which is what
+# UpdateService's per-app folder filtering relies on.
+FLAVOR=""
+if [ "$1" = "apk" ]; then
+  prev=""
+  for arg in "$@"; do
+    [ "$prev" = "--flavor" ] && FLAVOR="$arg"
+    prev="$arg"
+  done
+  if [ -z "$FLAVOR" ]; then
+    FLAVOR="todo"
+    set -- "$@" --flavor todo
+  fi
+fi
+PREFIX="best_${FLAVOR:-todo}"
+
 is_cacheable_release_build() {
   [ "$#" -gt 0 ] || return 1
   shift
 
+  skip_next=0
   for arg in "$@"; do
+    if [ "$skip_next" = 1 ]; then
+      skip_next=0
+      continue
+    fi
     case "$arg" in
       --release)
+        ;;
+      --flavor|-t)
+        skip_next=1
         ;;
       *)
         return 1
@@ -47,8 +85,8 @@ existing_build_artifact() {
   case "$target" in
     apk)
       for path in \
-        "github_releases/best_todo_${version}.apk" \
-        "build/app/outputs/flutter-apk/best_todo_${version}.apk"
+        "github_releases/${PREFIX}_${version}.apk" \
+        "build/app/outputs/flutter-apk/${PREFIX}_${version}.apk"
       do
         [ -e "$path" ] && printf '%s\n' "$path" && return 0
       done
@@ -85,7 +123,7 @@ if [ -n "$EXISTING_ARTIFACT" ]; then
 
   case "$1:$EXISTING_ARTIFACT" in
     apk:build/app/outputs/flutter-apk/*)
-      dart run tool/stage_local_release.dart --apk "$EXISTING_ARTIFACT"
+      dart run tool/stage_local_release.dart --apk "$EXISTING_ARTIFACT" --prefix "$PREFIX"
       ;;
   esac
 
@@ -146,16 +184,20 @@ rename_if_exists() {
   fi
 }
 
-# Android APK -> best_todo_<version>.apk
-rename_if_exists "build/app/outputs/flutter-apk/app-release.apk" \
-  "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk"
+# Android APK -> best_<flavor>_<version>.apk (Gradle's createVersionedReleaseApk
+# task already writes this file directly; this is a fallback for whichever of
+# the two names the Flutter/Gradle tooling actually produced).
+rename_if_exists "build/app/outputs/flutter-apk/app-${FLAVOR:-todo}-release.apk" \
+  "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk"
 
-# Keep the last two APKs in github_releases/ (newest + one version back): the
-# app's About page reads that folder for both its "Download & install" and its
-# "Go back to …" button. Commit the folder for the build to reach the app.
-if [ -e "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk" ]; then
+# Keep the last two APKs of each app in github_releases/ (newest + one version
+# back): the app's About/update-check reads that folder, filtered to its own
+# best_<flavor>_ prefix (see UpdateService.apkPrefix). Commit the folder for
+# the build to reach the app.
+if [ -e "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk" ]; then
   dart run tool/stage_local_release.dart \
-    --apk "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk"
+    --apk "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk" \
+    --prefix "$PREFIX"
 fi
 
 # Web build directory
