@@ -9,6 +9,9 @@
 promptlinks.md
 .idea/
 
+# Per-machine state for tool/smart_test.dart (mods since last full run, etc.)
+/.smart_test_state.json
+
 
 # Flutter repo-specific
 /bin/cache/

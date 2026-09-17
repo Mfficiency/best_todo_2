@@ -5,6 +5,12 @@ can affect. **`test/core/` must always pass** — run it for every change. The
 other suites are per-feature silos: run the ones whose area you touched.
 `flutter test` (no path) still runs everything and is what CI uses.
 
+Don't want to work out "which suites to run" by hand? `dart run
+tool/smart_test.dart` applies this file's mapping for you against whatever's
+changed, and falls back to a full `flutter test` for anything it can't
+confidently map, every 10th targeted run, and once a week regardless — see
+`CLAUDE.md`'s Commands section for the flags.
+
 ## Suites
 
 | Suite | Command | Covers |
