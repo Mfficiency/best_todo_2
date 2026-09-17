@@ -358,18 +358,30 @@ class _PlaylistsTab extends StatelessWidget {
               ...userPlaylists,
             ];
             return ListView.builder(
-              itemCount: playlists.length + 1,
+              itemCount: playlists.length + 2,
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return ListTile(
                     leading: const Icon(Icons.add_circle_outline),
+                    title: const Text('New playlist'),
+                    onTap: () async {
+                      final name = await promptPlaylistName(context);
+                      if (name == null || name.trim().isEmpty) return;
+                      await MusicPlaylistService.instance
+                          .createPlaylist(name.trim(), []);
+                    },
+                  );
+                }
+                if (index == 1) {
+                  return ListTile(
+                    leading: const Icon(Icons.rule),
                     title: const Text('New rule playlist'),
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const RulePlaylistEditorPage(),
                     )),
                   );
                 }
-                final playlist = playlists[index - 1];
+                final playlist = playlists[index - 2];
                 final trackCount =
                     MusicPlaylistService.instance.resolvedTracks(playlist).length;
                 return ListTile(
@@ -412,6 +424,11 @@ class MusicPlaylistDetailPage extends StatelessWidget {
             valueListenable: MusicLibraryService.instance.tracks,
             builder: (context, _, __) {
               final tracks = MusicPlaylistService.instance.resolvedTracks(current);
+              // Only a hand-built, non-system playlist has a fixed track
+              // list a song can actually be removed from — a smart/rule
+              // playlist is recomputed, and Favorites/"Don't really like"
+              // are toggled via the heart/dislike gesture instead.
+              final removable = current.kind == PlaylistKind.list && !current.isSystem;
               if (tracks.isEmpty) {
                 return Center(
                   child: Text(current.kind == PlaylistKind.rule
@@ -419,7 +436,13 @@ class MusicPlaylistDetailPage extends StatelessWidget {
                       : 'No tracks in this playlist yet.'),
                 );
               }
-              return TrackListView(tracks: tracks);
+              return TrackListView(
+                tracks: tracks,
+                onRemove: removable
+                    ? (track) =>
+                        MusicPlaylistService.instance.removeFrom(current.id, track.id)
+                    : null,
+              );
             },
           );
         },
@@ -431,9 +454,14 @@ class MusicPlaylistDetailPage extends StatelessWidget {
 /// Shared track list used by the Library tab and playlist detail pages.
 /// Tapping a row plays the whole list starting from that track.
 class TrackListView extends StatelessWidget {
-  const TrackListView({super.key, required this.tracks});
+  const TrackListView({super.key, required this.tracks, this.onRemove});
 
   final List<Track> tracks;
+
+  /// When set, each row gets a "Remove from playlist" button — only passed
+  /// by [MusicPlaylistDetailPage] for a hand-built playlist the track list
+  /// can actually be edited on.
+  final void Function(Track track)? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -449,11 +477,27 @@ class TrackListView extends StatelessWidget {
               leading: const Icon(Icons.music_note),
               title: Text(track.title.isNotEmpty ? track.title : track.fileBaseName),
               subtitle: track.artist.isNotEmpty ? Text(track.artist) : null,
-              trailing: IconButton(
-                icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                color: isFavorite ? Colors.pink : null,
-                tooltip: 'Favorite',
-                onPressed: () => MusicPlaylistService.instance.toggleFavorite(track.id),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                    color: isFavorite ? Colors.pink : null,
+                    tooltip: 'Favorite',
+                    onPressed: () => MusicPlaylistService.instance.toggleFavorite(track.id),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.playlist_add),
+                    tooltip: 'Add to playlist',
+                    onPressed: () => showAddToPlaylistSheet(context, track),
+                  ),
+                  if (onRemove != null)
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline),
+                      tooltip: 'Remove from playlist',
+                      onPressed: () => onRemove!(track),
+                    ),
+                ],
               ),
               onTap: () async {
                 await MusicPlayerService.playQueue(tracks, startIndex: index);
@@ -468,6 +512,110 @@ class TrackListView extends StatelessWidget {
       },
     );
   }
+}
+
+/// Prompts for a playlist name (Cancel/Create). The dialog owns its own
+/// [TextEditingController] in a dedicated [StatefulWidget] rather than one
+/// disposed right after `showDialog` returns — the exit animation still
+/// builds the field after the pop.
+Future<String?> promptPlaylistName(BuildContext context) {
+  return showDialog<String>(
+    context: context,
+    builder: (_) => const _PlaylistNameDialog(),
+  );
+}
+
+class _PlaylistNameDialog extends StatefulWidget {
+  const _PlaylistNameDialog();
+
+  @override
+  State<_PlaylistNameDialog> createState() => _PlaylistNameDialogState();
+}
+
+class _PlaylistNameDialogState extends State<_PlaylistNameDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.of(context).pop(_controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New playlist'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Playlist name'),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Create')),
+      ],
+    );
+  }
+}
+
+/// Bottom sheet listing every hand-built, non-system playlist with a
+/// checkbox for whether [track] is already in it — tapping a row adds or
+/// removes it immediately, Samsung Music's "Add to playlist" style. "New
+/// playlist" at the top creates one (pre-filled with [track]) without
+/// leaving the sheet flow.
+Future<void> showAddToPlaylistSheet(BuildContext context, Track track) {
+  return showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: ValueListenableBuilder<List<MusicPlaylist>>(
+        valueListenable: MusicPlaylistService.instance.playlists,
+        builder: (_, playlists, __) {
+          final regular =
+              playlists.where((p) => p.kind == PlaylistKind.list && !p.isSystem).toList();
+          return ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: const Text('New playlist'),
+                onTap: () async {
+                  // Pop the sheet with its own context, then prompt on the
+                  // caller's context (the track row's page) — that context
+                  // stays mounted after the sheet closes; the sheet's own
+                  // builder contexts do not.
+                  Navigator.of(sheetContext).pop();
+                  if (!context.mounted) return;
+                  final name = await promptPlaylistName(context);
+                  if (name == null || name.trim().isEmpty) return;
+                  await MusicPlaylistService.instance
+                      .createPlaylist(name.trim(), [track.id]);
+                },
+              ),
+              if (regular.isNotEmpty) const Divider(height: 1),
+              for (final playlist in regular)
+                CheckboxListTile(
+                  value: playlist.trackIds.contains(track.id),
+                  title: Text(playlist.name),
+                  onChanged: (checked) {
+                    if (checked == true) {
+                      MusicPlaylistService.instance.addTo(playlist.id, track.id);
+                    } else {
+                      MusicPlaylistService.instance.removeFrom(playlist.id, track.id);
+                    }
+                  },
+                ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
 }
 
 /// Small persistent bar showing what's currently playing, with play/pause

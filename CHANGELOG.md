@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.71] - 2026-09-17
+- Music Player/Best Music: you can now build normal playlists by hand, Samsung Music style. "New playlist" on the Playlists tab creates an empty one; every song row (Library tab or any playlist) gets an "Add to playlist" button showing which playlists it's already in, with a "New playlist" shortcut right there too. Hand-built playlists also get a "Remove from playlist" button on each song
+
 ## [0.2.70] - 2026-09-17
 - Music Player/Best Music: added smart playlists ("Last Added" and "Most Played", including one per genre, computed automatically) and rule-based playlists you build yourself from AND/OR/NOT conditions over title/artist/album/genre/year (e.g. "genre Rock and year 2025, excluding Artist C") from the Playlists tab's "New rule playlist". Track scanning now also reads genre and release year (mp3 ID3 tags) to power these. A standalone `dart run tool/scan_music_metadata.dart <folder>` script reports every scanned file's metadata for checking your collection's coverage outside the app. Best Music now also checks for its own updates in the background, like BestToDo already does
 
