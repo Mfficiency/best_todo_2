@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.67] - 2026-09-17
+- Best Music now has a proper menu (drawer), matching BestToDo's own home page: MP3 Downloader, Settings, Changelog, Startup Times, App Logs and About. Settings lets you choose the music folder and exclude specific subfolders. "Check for updates" moved from the app bar into the About page (same flow as BestToDo's own About page)
+
 ## [0.2.66] - 2026-09-17
 - Added Best Music, a separate app built from this same codebase (Android build flavor, applicationId `com.mfficiency.best_music`, black-music-note-on-white launcher icon): opens straight into the Music Player, with the MP3 Downloader one tap away and its own "Check for updates" — no to-do features. Build it with `sh tool/build.sh music-apk --release`; installs side by side with BestToDo. BestToDo itself is unchanged (now built as the `todo` flavor)
 - Local build: 2026-09-17 12:55

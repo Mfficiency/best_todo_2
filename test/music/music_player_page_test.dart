@@ -70,25 +70,24 @@ void main() {
   });
 
   // `standalone: true` is what lib/main_music.dart's Best Music app passes —
-  // no BestToDo drawer to reach, so its "Menu"/"Back to Home" leading
-  // buttons (buildSubpageAppBar) shouldn't appear, and the Best Music-only
-  // actions should.
+  // it is the app's root/home page, so it gets a real Drawer (like
+  // BestToDo's own home page) instead of buildSubpageAppBar's
+  // "Menu"/"Back to Home" leading buttons, which have no drawer to open here.
   group('standalone (Best Music app home page)', () {
-    testWidgets('shows Best Music actions instead of the drawer buttons '
-        'when no folder is set yet', (tester) async {
+    testWidgets('has a drawer button instead of Menu/Back to Home, '
+        'even before a folder is set', (tester) async {
       await tester.pumpWidget(
           const MaterialApp(home: MusicPlayerPage(standalone: true)));
       await tester.pumpAndSettle();
 
       expect(find.text('Best Music'), findsOneWidget);
-      expect(find.byTooltip('Download MP3'), findsOneWidget);
-      expect(find.byTooltip('Check for updates'), findsOneWidget);
+      expect(find.byTooltip('Open navigation menu'), findsOneWidget);
       expect(find.byTooltip('Menu'), findsNothing);
       expect(find.byTooltip('Back to Home'), findsNothing);
     });
 
-    testWidgets('shows Best Music actions once the library is showing',
-        (tester) async {
+    testWidgets('drawer lists Downloader, Settings, Changelog, Startup '
+        'Times, App Logs and About', (tester) async {
       Config.musicFolder = '/does/not/matter/for/this/test';
       MusicLibraryService.instance.tracks.value = [
         Track.local(filePath: '/does/not/matter/song.mp3', title: 'Song'),
@@ -97,24 +96,40 @@ void main() {
       await tester.pumpWidget(
           const MaterialApp(home: MusicPlayerPage(standalone: true)));
       await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
 
-      expect(find.text('Best Music'), findsOneWidget);
-      expect(find.byTooltip('Download MP3'), findsOneWidget);
-      expect(find.byTooltip('Check for updates'), findsOneWidget);
-      expect(find.byTooltip('Menu'), findsNothing);
-      expect(find.byTooltip('Back to Home'), findsNothing);
+      expect(find.textContaining('Best Music v'), findsOneWidget);
+      expect(find.text('MP3 Downloader'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('Changelog'), findsOneWidget);
+      expect(find.text('Startup Times'), findsOneWidget);
+      expect(find.text('App Logs'), findsOneWidget);
+      expect(find.text('About'), findsOneWidget);
     });
 
-    testWidgets('non-standalone (BestToDo Tools) keeps the drawer buttons '
-        'and the "Music Player" title', (tester) async {
+    testWidgets('tapping Settings in the drawer opens MusicSettingsPage',
+        (tester) async {
+      await tester.pumpWidget(
+          const MaterialApp(home: MusicPlayerPage(standalone: true)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Music folder'), findsOneWidget);
+    });
+
+    testWidgets('non-standalone (BestToDo Tools) keeps the Menu/Back to '
+        'Home buttons and the "Music Player" title', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
       await tester.pumpAndSettle();
 
       expect(find.text('Music Player'), findsOneWidget);
       expect(find.byTooltip('Menu'), findsOneWidget);
       expect(find.byTooltip('Back to Home'), findsOneWidget);
-      expect(find.byTooltip('Download MP3'), findsNothing);
-      expect(find.byTooltip('Check for updates'), findsNothing);
+      expect(find.byTooltip('Open navigation menu'), findsNothing);
     });
   });
 }

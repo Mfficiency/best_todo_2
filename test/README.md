@@ -64,9 +64,10 @@ Pick suites by what you touched, always including core:
   `lib/services/subsonic_client.dart`, `lib/ui/music_player_page.dart`,
   `lib/ui/now_playing_page.dart`, `lib/ui/queue_page.dart` → core + **music** (+ **home**, whose
   `home_page.dart`/`settings_page.dart` wire the tool into the drawer and Settings)
-- `lib/main_music.dart` (the Best Music app's entry point — see `CLAUDE.md` and SPEC.md
-  §10.6f) → core + **music** + **update** (`MusicPlayerPage`'s `standalone` app bar wires into
-  `UpdateService.forApp`)
+- `lib/main_music.dart`, `lib/ui/music_settings_page.dart`, `lib/ui/music_about_page.dart` (the
+  Best Music app's entry point + standalone Settings/About pages — see `CLAUDE.md` and SPEC.md
+  §10.6f) → core + **music** + **update** (`MusicPlayerPage`'s `standalone` drawer, `About`'s
+  shared `UpdateSection` widget wired into `UpdateService.forApp`)
 - `lib/services/task_mutation_service.dart`, `lib/models/task_change_source.dart` → core +
   **history** (+ **home**, whose `_saveTasks`/`_saveDeletedTasks` are what feed it)
 - `lib/services/streak_service.dart`, `lib/models/streak_kind.dart`,
@@ -108,7 +109,9 @@ Pick suites by what you touched, always including core:
 - `lib/services/update_service.dart`, `lib/services/auto_update_checker.dart`,
   `lib/ui/about_page.dart`, `lib/ui/auto_update_dialog.dart`,
   `tool/publish_apk.dart`, `tool/stage_local_release.dart`,
-  `tool/append_build_time.dart` → core + **update**
+  `tool/append_build_time.dart` → core + **update** (+ **music**, since
+  `about_page.dart`'s `UpdateSection` and `auto_update_dialog.dart`'s
+  `downloadUpdateInBackground` are shared with `music_about_page.dart`)
 - `lib/utils/linkified_text.dart`, `lib/ui/task_detail_page.dart` → core +
   **home** + **tools** (the wishlist page renders the same links)
 - `lib/ui/widget_previews_page.dart` → core + **home** (+ **alarms**, whose
