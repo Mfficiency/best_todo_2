@@ -3434,10 +3434,11 @@ not a Samsung Music export sample, on the assumption documented in this section 
 list, possibly `file://`, matched by basename when the exact path doesn't line up) — worth
 confirming against a real Samsung Music export.
 
-### 10.6f Best Music — a second app from the same codebase (0.2.66)
+### 10.6f Best Music — a second app from the same codebase (0.2.66, drawer + Settings + About 0.2.67)
 `lib/main_music.dart` is a second entry point, built as its own Android app rather than a
 BestToDo tool: no task list, alarms, sync, or any other to-do feature — just §10.6e's Music
-Player as the home page and §10.6d's MP3 Downloader one tap away. Installs side by side with
+Player as the home page, with a proper drawer menu (MP3 Downloader, Settings, Changelog,
+Startup Times, App Logs, About) mirroring BestToDo's own home page. Installs side by side with
 BestToDo on the same device (separate `applicationId`, so Android sandboxes its storage
 independently — no data collision with BestToDo's own `Config`/library files).
 
@@ -3467,13 +3468,28 @@ deliberate simplification since it is sideloaded, not Play-Store-distributed.
 prefix — a bare version-number regex over the whole `github_releases/` listing would otherwise
 happily match the other app's file name too. A non-default app's `checkReleases` skips the
 repo-wide "latest release" fallback entirely (GitHub's `releases/latest` endpoint isn't
-per-app), reporting no update rather than risking BestToDo's release. `MusicPlayerPage` gained
-a `standalone` flag (true only from `main_music.dart`): swaps `buildSubpageAppBar`'s
-BestToDo-drawer-coupled "Menu"/"Back to Home" leading buttons (meaningless with no drawer to
-open) for a plain root app bar with "Download MP3" (pushes `Mp3DownloaderPage`) and "Check for
-updates" actions, the latter driving the same `showUpdateAvailableDialog`/
-`downloadUpdateInBackground` flow as BestToDo's auto-update poll, parameterized with its own
-`UpdateService` instance.
+per-app), reporting no update rather than risking BestToDo's release.
+
+**The drawer/menu (0.2.67)**: `MusicPlayerPage` gained a `standalone` flag (true only from
+`main_music.dart`). Standalone, its `Scaffold` carries `key: homeScaffoldKey` and a real
+`Drawer` — the same key `home_page.dart` uses for its own — so it is the Best Music app's home
+page in the same sense BestToDo's home page is: `buildSubpageAppBar`'s "Menu" button (used by
+every page the drawer pushes: MP3 Downloader, Settings, Changelog, Startup Times, App Logs,
+About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
+root route it has no "Back to Home" to offer) gets Flutter's automatic drawer-hamburger button
+for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a small
+standalone settings page — just the music folder picker and excluded-subfolders dialog,
+reimplemented from BestToDo's Settings → Music Player section (`settings_page.dart`) since that
+page is one monolithic widget tightly coupled to BestToDo's full settings list.
+`lib/ui/music_about_page.dart` mirrors `AboutPage` (Best Music branding + an
+`UpdateService.forApp` instance, exposed as `MusicAboutPage.updateService` for tests) — the
+`UpdateSection` widget (`about_page.dart`, made public and given optional `service`/`appName`
+params for this) is shared between the two About pages rather than duplicated. Reusable as-is,
+unmodified: `ChangelogPage` (pure CHANGELOG.md rendering, no BestToDo-coupled service),
+`StartupTimesPage` (`StartupTimeService.start()`/`.record()` added to `main_music.dart`,
+mirroring `main.dart`, so it has real data) and `AppLogsPage` (its Sync/Todoist tabs just stay
+empty for Best Music, which never touches those services — a known, harmless simplification
+rather than forking the page to hide them).
 
 **CI**: `.github/workflows/build-apk.yml`'s `build_music_apk` job builds the `music` flavor on
 every push to main/staging/dev, uploads it as a workflow artifact, and — mirroring what a local

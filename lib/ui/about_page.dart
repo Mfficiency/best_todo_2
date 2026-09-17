@@ -57,7 +57,7 @@ class AboutPage extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              const _UpdateSection(),
+              const UpdateSection(),
             ],
           ),
         ),
@@ -81,14 +81,24 @@ enum _UpdatePhase {
 /// installer. The main button takes the newest build; a second button reinstalls
 /// the one kept for a rollback. On web/desktop (or a release without an APK
 /// asset) the buttons open the download page in the browser instead.
-class _UpdateSection extends StatefulWidget {
-  const _UpdateSection();
+///
+/// [service] defaults to [UpdateService.instance] (BestToDo's own updates);
+/// Best Music's [MusicAboutPage] passes its own [UpdateService.forApp]
+/// instance instead, with [appName] to match — see
+/// [UpdateService.checkReleases]'s doc comment for why the two apps need
+/// separate instances rather than sharing the default one.
+class UpdateSection extends StatefulWidget {
+  const UpdateSection({super.key, this.service, this.appName = 'BestToDo'});
+
+  final UpdateService? service;
+  final String appName;
 
   @override
-  State<_UpdateSection> createState() => _UpdateSectionState();
+  State<UpdateSection> createState() => _UpdateSectionState();
 }
 
-class _UpdateSectionState extends State<_UpdateSection> {
+class _UpdateSectionState extends State<UpdateSection> {
+  UpdateService get _service => widget.service ?? UpdateService.instance;
   _UpdatePhase _phase = _UpdatePhase.idle;
   UpdateCheck? _result;
 
@@ -111,7 +121,7 @@ class _UpdateSectionState extends State<_UpdateSection> {
       _note = '';
     });
     try {
-      final result = await UpdateService.instance.checkReleases();
+      final result = await _service.checkReleases();
       if (!mounted) return;
       setState(() {
         _result = result;
@@ -154,7 +164,7 @@ class _UpdateSectionState extends State<_UpdateSection> {
       // transfer keeps going even if this page — or the app — is backgrounded,
       // and rides out a Wi-Fi/mobile handover mid-download.
       await for (final progress
-          in UpdateService.instance.downloadInBackground(info)) {
+          in _service.downloadInBackground(info)) {
         if (!mounted) return;
         if (progress.status == DownloadStatus.failed) {
           setState(() {
@@ -186,12 +196,12 @@ class _UpdateSectionState extends State<_UpdateSection> {
     final path = _apkPath;
     if (path == null) return;
     try {
-      final result = await UpdateService.instance.installApk(path);
+      final result = await _service.installApk(path);
       if (!mounted) return;
       if (result == 'needs-permission') {
         setState(() {
-          _note = 'Allow installs from BestToDo in the settings screen that '
-              'just opened, then tap Install again.';
+          _note = 'Allow installs from ${widget.appName} in the settings '
+              'screen that just opened, then tap Install again.';
         });
       }
     } catch (e) {

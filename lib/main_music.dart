@@ -9,6 +9,7 @@ import 'config.dart';
 import 'services/music_library_service.dart';
 import 'services/music_player_service.dart';
 import 'services/music_playlist_service.dart';
+import 'services/startup_time_service.dart';
 import 'ui/music_player_page.dart';
 
 Future<void> _initStep(String label, Future<void> Function() step) async {
@@ -20,12 +21,16 @@ Future<void> _initStep(String label, Future<void> Function() step) async {
 }
 
 Future<void> main() async {
+  StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
   await _initStep('config', Config.load);
   await _initStep('music library', MusicLibraryService.instance.load);
   await _initStep('music playlists', MusicPlaylistService.instance.load);
   await _initStep('music player', MusicPlayerService.init);
   runApp(const BestMusicApp());
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    StartupTimeService.record();
+  });
 }
 
 class BestMusicApp extends StatelessWidget {

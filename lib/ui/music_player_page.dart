@@ -13,10 +13,14 @@ import '../services/music_audio_handler.dart';
 import '../services/music_library_service.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
-import '../services/update_service.dart';
-import 'auto_update_dialog.dart';
+import 'app_logs_page.dart';
+import 'changelog_page.dart';
+import 'home_scaffold_key.dart';
 import 'mp3_downloader_page.dart';
+import 'music_about_page.dart';
+import 'music_settings_page.dart';
 import 'now_playing_page.dart';
+import 'startup_times_page.dart';
 import 'subpage_app_bar.dart';
 
 /// Tools → Music Player: browse/play tracks scanned from
@@ -25,9 +29,10 @@ import 'subpage_app_bar.dart';
 /// M3U/M3U8 playlist (e.g. shared out of Samsung Music).
 ///
 /// Also the Best Music app's home page ([standalone]: true), where it is the
-/// root route rather than a BestToDo Tools subpage — no drawer to reach for
-/// "Menu"/"Back to Home", and its own MP3 Downloader + update-check actions
-/// stand in for BestToDo's drawer entry and About page.
+/// root route rather than a BestToDo Tools subpage: [homeScaffoldKey] +
+/// [_buildDrawer] give it the same drawer-based menu as BestToDo's own home
+/// page (Settings, MP3 Downloader, Changelog, Startup Times, App Logs,
+/// About), in place of BestToDo's task-list-specific entries.
 class MusicPlayerPage extends StatefulWidget {
   const MusicPlayerPage({super.key, this.standalone = false});
 
@@ -41,12 +46,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   bool _pickingFolder = false;
-  bool _checkingForUpdates = false;
-
-  static final UpdateService _musicUpdateService = UpdateService.forApp(
-    appDisplayName: 'Best Music',
-    apkPrefix: 'best_music',
-  );
 
   @override
   void initState() {
@@ -109,41 +108,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     ));
   }
 
-  void _openDownloader() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const Mp3DownloaderPage()));
-  }
-
-  Future<void> _checkForUpdates() async {
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _checkingForUpdates = true);
-    try {
-      final info = await _musicUpdateService.checkForUpdate();
-      if (!mounted) return;
-      if (info == null) {
-        messenger.showSnackBar(
-            const SnackBar(content: Text('Best Music is up to date.')));
-        return;
-      }
-      final accepted = await showUpdateAvailableDialog(context, info);
-      if (accepted == true && mounted) {
-        await downloadUpdateInBackground(context, info,
-            service: _musicUpdateService);
-      }
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-            SnackBar(content: Text('Could not check for updates: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _checkingForUpdates = false);
-    }
-  }
-
-  /// [standalone] mode is the Best Music app's root page, so there is no
-  /// drawer for [buildSubpageAppBar]'s "Menu" button to open — a plain app
-  /// bar with the Best Music-specific actions ([_openDownloader],
-  /// [_checkForUpdates]) tacked on in front of [actions] instead.
+  /// [standalone] mode is the Best Music app's root page: a real [Drawer]
+  /// (matching BestToDo's own home page — see [homeScaffoldKey]) stands in
+  /// for the Tools menu + About page, so [buildSubpageAppBar]'s "Menu"
+  /// button (used by every page this drawer pushes) has something to open.
   PreferredSizeWidget _appBar(
     BuildContext context, {
     required String title,
@@ -154,28 +122,69 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
       return buildSubpageAppBar(context,
           title: title, bottom: bottom, actions: actions);
     }
-    return AppBar(
-      title: Text(title),
-      bottom: bottom,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.download_outlined),
-          tooltip: 'Download MP3',
-          onPressed: _openDownloader,
-        ),
-        IconButton(
-          icon: _checkingForUpdates
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.system_update_outlined),
-          tooltip: 'Check for updates',
-          onPressed: _checkingForUpdates ? null : _checkForUpdates,
-        ),
-        ...actions,
-      ],
+    return AppBar(title: Text(title), bottom: bottom, actions: actions);
+  }
+
+  void _pushStandalonePage(Widget Function() builder) {
+    Navigator.of(context).pop(); // close the drawer
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => builder()));
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        children: [
+          FutureBuilder<void>(
+            future: Config.ensureVersionLoaded(),
+            builder: (context, snapshot) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                color: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  'Best Music v${Config.version}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontSize: 18,
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('MP3 Downloader'),
+            onTap: () =>
+                _pushStandalonePage(() => const Mp3DownloaderPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Settings'),
+            onTap: () =>
+                _pushStandalonePage(() => const MusicSettingsPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('Changelog'),
+            onTap: () => _pushStandalonePage(() => const ChangelogPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.show_chart),
+            title: const Text('Startup Times'),
+            onTap: () =>
+                _pushStandalonePage(() => const StartupTimesPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.list_alt),
+            title: const Text('App Logs'),
+            onTap: () => _pushStandalonePage(() => const AppLogsPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.info),
+            title: const Text('About'),
+            onTap: () => _pushStandalonePage(() => const MusicAboutPage()),
+          ),
+        ],
+      ),
     );
   }
 
@@ -183,6 +192,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   Widget build(BuildContext context) {
     if (Config.musicFolder.isEmpty) {
       return Scaffold(
+        key: widget.standalone ? homeScaffoldKey : null,
+        drawer: widget.standalone ? _buildDrawer(context) : null,
         appBar: _appBar(context,
             title: widget.standalone ? 'Best Music' : 'Music Player'),
         body: Center(
@@ -213,6 +224,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     }
 
     return Scaffold(
+      key: widget.standalone ? homeScaffoldKey : null,
+      drawer: widget.standalone ? _buildDrawer(context) : null,
       appBar: _appBar(
         context,
         title: widget.standalone ? 'Best Music' : 'Music Player',
