@@ -3521,7 +3521,7 @@ GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateSer
 doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
 this repo — the folder stays each app's only update-check source.
 
-### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70)
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71)
 **Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
 (`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
 of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
@@ -3595,6 +3595,23 @@ available" dialog (`showUpdateAvailableDialog`) and background download
 Best Music has no Settings toggle for this yet (unlike BestToDo's "Automatically check for
 updates" switch) — it simply always polls; the manual "Check for updates" button on
 `MusicAboutPage` (§10.6f) is unaffected either way.
+
+**Hand-built playlists (0.2.71)** — the plain, add-songs-yourself kind Samsung Music and every
+other player offer, previously only reachable via M3U import: the Playlists tab's "New playlist"
+row prompts for a name (`promptPlaylistName`/`_PlaylistNameDialog` in `music_player_page.dart` —
+its own `StatefulWidget` owning the `TextEditingController`, per the "never dispose right after
+`showDialog` returns" convention) and creates an empty `PlaylistKind.list` playlist via the
+existing `MusicPlaylistService.createPlaylist`. Every song row (`TrackListView`, shared by the
+Library tab and every playlist detail page) gained an "Add to playlist" button
+(`showAddToPlaylistSheet`) opening a bottom sheet: a `CheckboxListTile` per hand-built,
+non-system playlist (`kind == list && !isSystem` — this excludes Favorites/"Don't really like"
+and every smart/rule playlist, which aren't a plain track list to add to) checked when the track
+is already in it, toggling `addTo`/`removeFrom` immediately on tap, plus a "New playlist" row at
+the top that creates one pre-filled with the current track without leaving the sheet. Removing a
+song again happens on the playlist itself: `MusicPlaylistDetailPage` now passes `TrackListView`
+an `onRemove` callback (a "Remove from playlist" icon per row) only when the playlist being
+viewed is itself a hand-built, non-system one — Favorites/disliked stay swipe-gesture-only, and a
+smart/rule playlist's tracks aren't stored to remove from in the first place.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
