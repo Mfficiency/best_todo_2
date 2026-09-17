@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:just_audio/just_audio.dart' as ja;
 
 import '../models/track.dart';
@@ -20,6 +21,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   List<Track> _queue = [];
   int _queueIndex = -1;
+
+  /// Whether the upcoming queue is in shuffled order. Toggled by
+  /// [toggleShuffle]; the Now Playing shuffle button listens to this.
+  final ValueNotifier<bool> shuffleEnabled = ValueNotifier(false);
+
+  /// Queue order captured just before [toggleShuffle] shuffled it, so
+  /// turning shuffle back off can restore it. Cleared by a manual
+  /// [reorderQueue] so a drag edit isn't silently discarded later.
+  List<Track>? _preShuffleOrder;
 
   // just_audio's playbackEventStream only fires on discrete state changes
   // (buffering, track load, pause/play), not once a second — without this,
@@ -109,6 +119,8 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     if (tracks.isEmpty) return;
     _queue = tracks;
     _queueIndex = startIndex.clamp(0, tracks.length - 1);
+    _preShuffleOrder = null;
+    shuffleEnabled.value = false;
     queue.add(_queue.map(_toMediaItem).toList());
     await _playCurrent();
   }
@@ -159,6 +171,53 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     await _playCurrent();
   }
 
+  /// Toggles shuffle. Turning it on shuffles the not-yet-played tail of the
+  /// queue (leaving playback history and the current track in place);
+  /// turning it off restores the order the tail had before shuffling.
+  Future<void> toggleShuffle() async {
+    if (shuffleEnabled.value) {
+      shuffleEnabled.value = false;
+      final original = _preShuffleOrder;
+      _preShuffleOrder = null;
+      if (original == null) return;
+      final current = currentTrack;
+      _queue = original;
+      _queueIndex =
+          current == null ? 0 : _queue.indexWhere((t) => t.id == current.id);
+      if (_queueIndex < 0) _queueIndex = 0;
+      queue.add(_queue.map(_toMediaItem).toList());
+      return;
+    }
+    shuffleEnabled.value = true;
+    if (_queueIndex < 0 || _queueIndex >= _queue.length - 1) return;
+    _preShuffleOrder = List.of(_queue);
+    final upcoming = _queue.sublist(_queueIndex + 1)..shuffle();
+    _queue = [..._queue.sublist(0, _queueIndex + 1), ...upcoming];
+    queue.add(_queue.map(_toMediaItem).toList());
+  }
+
+  /// Moves the track at [oldIndex] to [newIndex] (Flutter
+  /// `ReorderableListView` index convention), keeping the currently playing
+  /// track's identity intact even if its position shifts.
+  void reorderQueue(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _queue.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < 0 || newIndex >= _queue.length) return;
+    if (oldIndex == newIndex) return;
+    _queue = List.of(_queue);
+    final track = _queue.removeAt(oldIndex);
+    _queue.insert(newIndex, track);
+    if (oldIndex == _queueIndex) {
+      _queueIndex = newIndex;
+    } else if (oldIndex < _queueIndex && newIndex >= _queueIndex) {
+      _queueIndex -= 1;
+    } else if (oldIndex > _queueIndex && newIndex <= _queueIndex) {
+      _queueIndex += 1;
+    }
+    _preShuffleOrder = null;
+    queue.add(_queue.map(_toMediaItem).toList());
+  }
+
   /// Swipe-up on Now Playing: favorites the current track without
   /// interrupting playback.
   Future<void> favoriteCurrent() async {
@@ -188,6 +247,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> dispose() async {
     _positionTicker?.cancel();
+    shuffleEnabled.dispose();
     await _player.dispose();
   }
 }

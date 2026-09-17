@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.65] - 2026-09-17
+- Music Player: Now Playing has a shuffle toggle (shuffles the upcoming queue, keeping the current track and playback history in place) and a Queue page reachable from the app bar to view and drag-reorder the play queue into a custom order
+
 ## [0.2.64] - 2026-09-17
 - Added "Send to Claude" on a task (expand it, tap the robot icon) to fire a Claude Code Routine's API trigger and start a real cloud coding session with that task as context, configured in Settings → Claude Routine
 - Added a smart test runner (`dart run tool/smart_test.dart`): looks at what changed and runs only the matching `test/<area>` suite(s) instead of the full suite, falling back to a full `flutter test` for anything it can't confidently map, every 10th targeted run, and once a week regardless — see `CLAUDE.md`

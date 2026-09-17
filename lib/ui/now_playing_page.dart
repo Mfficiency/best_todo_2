@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../services/music_audio_handler.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
+import 'queue_page.dart';
 import 'subpage_app_bar.dart';
 
 /// Full-screen "now playing" view. Swipe up on the artwork/title area to
@@ -55,7 +56,28 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
   Widget build(BuildContext context) {
     final handler = MusicPlayerService.handler;
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Now Playing'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Now Playing',
+        actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: handler.shuffleEnabled,
+            builder: (context, shuffleOn, _) => IconButton(
+              icon: const Icon(Icons.shuffle),
+              tooltip: shuffleOn ? 'Shuffle on' : 'Shuffle off',
+              color: shuffleOn ? Theme.of(context).colorScheme.primary : null,
+              onPressed: () => handler.toggleShuffle(),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.queue_music),
+            tooltip: 'Queue',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const QueuePage()),
+            ),
+          ),
+        ],
+      ),
       body: StreamBuilder<MediaItem?>(
         stream: handler.mediaItem,
         builder: (context, itemSnapshot) {
