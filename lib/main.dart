@@ -211,6 +211,11 @@ Future<void> main() async {
     // migrations can take version-specific precautions. Same deferral.
     unawaited(Future<void>.delayed(const Duration(seconds: 3))
         .then((_) => PreUpdateBackup.recordCurrentVersion()));
+    // Deferred so it never competes with startup; only relevant to the
+    // (smaller) group of users who have already configured a music folder —
+    // see MusicPlayerService.ensurePermissions.
+    unawaited(Future<void>.delayed(const Duration(seconds: 2))
+        .then((_) => MusicPlayerService.ensurePermissions()));
   });
 }
 

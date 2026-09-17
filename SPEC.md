@@ -3336,6 +3336,18 @@ access" grant §10.6d's MP3 Downloader already prompts for — the music folder 
 one place in the app that scanned an arbitrary folder without ever asking for it, so a folder
 picked before granting it anywhere else scanned as empty with no error shown.
 
+`MusicPlayerService.ensurePermissions` (0.2.69, called from both `main.dart` and
+`main_music.dart` shortly after first frame) covers the case where the folder was configured
+before the permission existed (e.g. restored from a backup) rather than through the picker:
+Best Music requests `MANAGE_EXTERNAL_STORAGE` unconditionally (`eager: true` — local playback is
+its whole purpose, so it asks up front like other music apps); BestToDo only asks once
+`Config.musicFolder` is already set, so the far larger group of BestToDo users who never open
+Music Player aren't interrupted at launch for a permission a tool they don't use needs. Either
+way it also requests notification access (for the playback controls notification) and, if
+`MANAGE_EXTERNAL_STORAGE` had just been denied and is now granted, immediately re-runs `rescan`
+rather than leaving the already-configured folder empty until the user notices and retriggers
+one themselves.
+
 **Playback engine** (`lib/services/music_audio_handler.dart`'s `MusicAudioHandler`, a
 `BaseAudioHandler` from `audio_service` wrapping a single `just_audio` `AudioPlayer`):
 one track is loaded at a time via `setAudioSource` rather than a gapless

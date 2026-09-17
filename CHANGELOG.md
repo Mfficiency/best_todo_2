@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.69] - 2026-09-17
+- Music Player/Best Music now proactively ask for the permissions they need instead of waiting for a scan to quietly fail: Best Music requests "All files access" on first launch (like other music apps), BestToDo asks once a music folder is already configured, and both ask for notification access for the playback controls. If the permission was the reason an already-configured folder scanned empty, granting it now re-scans right away
+
 ## [0.2.68] - 2026-09-17
 - Fixed Music Player/Best Music finding no songs in any chosen folder: the folder scan needs Android's "All files access" permission, but nothing in the music folder picker ever asked for it, so a freshly picked folder silently scanned as empty. Picking a music folder now requests that permission first, and every scan step (folder existence, permission status, files seen/skipped/kept, any error) is now written to App Logs so a bad scan is diagnosable in-app instead of silent
 

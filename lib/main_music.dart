@@ -3,6 +3,8 @@
 // lib/main_music.dart`, or `sh tool/build.sh music-apk --release`). Unlike
 // `main.dart` it boots none of BestToDo's task/alarm/sync machinery — only
 // what the Music Player and MP3 Downloader tools need.
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import 'config.dart';
@@ -30,6 +32,11 @@ Future<void> main() async {
   runApp(const BestMusicApp());
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
+    // Local playback is this app's whole purpose, so ask for "All files
+    // access" up front like other music apps do, rather than waiting for
+    // the user to pick a folder and discover it silently finds nothing —
+    // see MusicPlayerService.ensurePermissions.
+    unawaited(MusicPlayerService.ensurePermissions(eager: true));
   });
 }
 
