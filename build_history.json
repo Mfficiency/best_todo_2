@@ -782,5 +782,12 @@
     "durationSeconds": 53,
     "finishedAt": "2026-09-17T18:45:21.773988",
     "os": "windows"
+  },
+  {
+    "version": "0.2.71+362",
+    "target": "windows",
+    "durationSeconds": 52,
+    "finishedAt": "2026-09-17T19:55:20.226814",
+    "os": "windows"
   }
 ]
