@@ -12,6 +12,16 @@ file is the short operational guide.
   `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
   `home`, `share`, `sync`, `update`, `tools`, `recurrence` or `music`. See `test/README.md` for the file→suite map. Cross-cutting
   changes (theme, navigation, pubspec) → full `flutter test`.
+- Smart test runner: `dart run tool/smart_test.dart` figures the above out for
+  you — it looks at what's changed (working tree, or the last commit if
+  nothing's pending) and runs only the matching `test/<area>` suite(s), per
+  the same map as `test/README.md`. A change it can't confidently map (a new
+  file, `pubspec.yaml`, ...) falls back to a full `flutter test`; so does
+  every 10th targeted run and anything past 7 days since the last full run,
+  so the shortcut can't silently drift out of sync with the real suite.
+  `--dry-run` prints the decision without running anything; `--full` forces a
+  full run now. State (mods since the last full run) lives in the gitignored
+  `.smart_test_state.json`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)

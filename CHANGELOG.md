@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.64] - 2026-09-17
+- Added a smart test runner (`dart run tool/smart_test.dart`): looks at what changed and runs only the matching `test/<area>` suite(s) instead of the full suite, falling back to a full `flutter test` for anything it can't confidently map, every 10th targeted run, and once a week regardless — see `CLAUDE.md`
+
 ## [0.2.63] - 2026-09-16
 - Music Player: fixed the Now Playing progress bar getting stuck at 0:00 during playback (position now ticks every second and picks up the real track duration from the player instead of relying on missing tags), and added a Next button to the play/pause + previous home-screen widget
 - Local build: 2026-09-16 21:48
