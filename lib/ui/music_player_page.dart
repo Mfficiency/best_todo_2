@@ -20,6 +20,7 @@ import 'mp3_downloader_page.dart';
 import 'music_about_page.dart';
 import 'music_settings_page.dart';
 import 'now_playing_page.dart';
+import 'rule_playlist_editor_page.dart';
 import 'startup_times_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -301,34 +302,86 @@ class _LibraryTab extends StatelessWidget {
 class _PlaylistsTab extends StatelessWidget {
   const _PlaylistsTab();
 
+  IconData _iconFor(MusicPlaylist playlist) {
+    if (playlist.id == MusicPlaylist.favoritesId) return Icons.favorite;
+    if (playlist.id == MusicPlaylist.dislikedId) return Icons.thumb_down_alt;
+    switch (playlist.kind) {
+      case PlaylistKind.lastAdded:
+        return Icons.new_releases_outlined;
+      case PlaylistKind.mostPlayed:
+        return Icons.trending_up;
+      case PlaylistKind.rule:
+        return Icons.rule;
+      case PlaylistKind.list:
+        return Icons.playlist_play;
+    }
+  }
+
+  Widget? _trailingFor(BuildContext context, MusicPlaylist playlist) {
+    // System entries (Favorites/"Don't really like" plus every computed
+    // smart playlist) can't be renamed or deleted.
+    if (playlist.isSystem) return null;
+    if (playlist.kind == PlaylistKind.rule) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit rules',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => RulePlaylistEditorPage(existing: playlist),
+            )),
+          ),
+          _deleteButton(playlist),
+        ],
+      );
+    }
+    return _deleteButton(playlist);
+  }
+
+  Widget _deleteButton(MusicPlaylist playlist) => IconButton(
+        icon: const Icon(Icons.delete_outline),
+        tooltip: 'Delete playlist',
+        onPressed: () => MusicPlaylistService.instance.deletePlaylist(playlist.id),
+      );
+
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<MusicPlaylist>>(
-      valueListenable: MusicPlaylistService.instance.playlists,
-      builder: (context, playlists, _) {
-        return ListView.builder(
-          itemCount: playlists.length,
-          itemBuilder: (context, index) {
-            final playlist = playlists[index];
-            return ListTile(
-              leading: Icon(playlist.id == MusicPlaylist.favoritesId
-                  ? Icons.favorite
-                  : playlist.id == MusicPlaylist.dislikedId
-                      ? Icons.thumb_down_alt
-                      : Icons.playlist_play),
-              title: Text(playlist.name),
-              subtitle: Text('${playlist.trackIds.length} tracks'),
-              trailing: playlist.isSystem
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: 'Delete playlist',
-                      onPressed: () =>
-                          MusicPlaylistService.instance.deletePlaylist(playlist.id),
-                    ),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => MusicPlaylistDetailPage(playlist: playlist),
-              )),
+    return ValueListenableBuilder<List<Track>>(
+      valueListenable: MusicLibraryService.instance.tracks,
+      builder: (context, _, __) {
+        return ValueListenableBuilder<List<MusicPlaylist>>(
+          valueListenable: MusicPlaylistService.instance.playlists,
+          builder: (context, userPlaylists, __) {
+            final playlists = [
+              ...MusicPlaylistService.instance.smartPlaylists,
+              ...userPlaylists,
+            ];
+            return ListView.builder(
+              itemCount: playlists.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return ListTile(
+                    leading: const Icon(Icons.add_circle_outline),
+                    title: const Text('New rule playlist'),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const RulePlaylistEditorPage(),
+                    )),
+                  );
+                }
+                final playlist = playlists[index - 1];
+                final trackCount =
+                    MusicPlaylistService.instance.resolvedTracks(playlist).length;
+                return ListTile(
+                  leading: Icon(_iconFor(playlist)),
+                  title: Text(playlist.name),
+                  subtitle: Text('$trackCount tracks'),
+                  trailing: _trailingFor(context, playlist),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => MusicPlaylistDetailPage(playlist: playlist),
+                  )),
+                );
+              },
             );
           },
         );
@@ -346,17 +399,29 @@ class MusicPlaylistDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: playlist.name),
-      body: ValueListenableBuilder<List<Track>>(
-        valueListenable: MusicLibraryService.instance.tracks,
-        builder: (context, _, __) {
-          final tracks = playlist.trackIds
-              .map((id) => MusicLibraryService.instance.byId(id))
-              .whereType<Track>()
-              .toList();
-          if (tracks.isEmpty) {
-            return const Center(child: Text('No tracks in this playlist yet.'));
-          }
-          return TrackListView(tracks: tracks);
+      body: ValueListenableBuilder<List<MusicPlaylist>>(
+        valueListenable: MusicPlaylistService.instance.playlists,
+        builder: (context, __, _) {
+          // A persisted playlist (list/rule) may have changed since
+          // [playlist] was captured (a rule edit, a favorite toggle); a
+          // computed smart playlist isn't in this list at all, so falls
+          // back to the one passed in — its kind/genreFilter never change.
+          final current =
+              MusicPlaylistService.instance.byId(playlist.id) ?? playlist;
+          return ValueListenableBuilder<List<Track>>(
+            valueListenable: MusicLibraryService.instance.tracks,
+            builder: (context, _, __) {
+              final tracks = MusicPlaylistService.instance.resolvedTracks(current);
+              if (tracks.isEmpty) {
+                return Center(
+                  child: Text(current.kind == PlaylistKind.rule
+                      ? 'No tracks match these rules yet.'
+                      : 'No tracks in this playlist yet.'),
+                );
+              }
+              return TrackListView(tracks: tracks);
+            },
+          );
         },
       ),
     );

@@ -43,6 +43,14 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     });
     _player.processingStateStream.listen((state) {
       if (state == ja.ProcessingState.completed) {
+        // Only a track that actually played to the end counts as "played"
+        // for the Most Played smart playlists — a manual skip goes through
+        // skipToNext/skipToPrevious instead, which never reach this stream
+        // state.
+        final finished = currentTrack;
+        if (finished != null) {
+          unawaited(MusicLibraryService.instance.incrementPlayCount(finished.id));
+        }
         _advance(1, wrapWithReshuffle: true);
       }
     });

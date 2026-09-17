@@ -3521,6 +3521,81 @@ GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateSer
 doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
 this repo — the folder stays each app's only update-check source.
 
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70)
+**Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
+(`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
+of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
+minimal-JSON convention as the rest of the model). `Track` stays immutable (`final` fields); a
+new `copyWith` is how the library scan/audio handler update just the fields that changed.
+`dateAdded`/`playCount` are scan-preserved, not scan-derived: `MusicLibraryService.rescan()`
+merges each freshly-scanned `Track` with the previous library entry of the same `id` (falling
+back to `DateTime.now()`/`0` for a track seen for the first time) — a rescan refreshes tags, it
+must never reset "when was this added" or "how many times has this been played".
+
+**Metadata extraction moved to `lib/services/music_metadata_extractor.dart`** — pure Dart (only
+`dart:typed_data` + `package:id3_codec`, no Flutter import), decoding `TIT2`/`TPE1`/`TALB` (as
+before) plus `TCON` (genre, stripping an old ID3v1 `"(17)Rock"`-style numeric-code wrapper down
+to the trailing name) and `TDRC`/`TYER`/`TDOR` (year, first 4-digit run). `MusicLibraryService`
+calls this from `_buildTrack` instead of decoding tags itself; still mp3-only, still capped to
+the first `id3ReadCap` (1 MiB) bytes — m4a/flac/etc. still fall back to filename-as-title with
+no metadata, unchanged from §10.6e. Never throws — an unreadable/absent tag yields an
+all-null `ExtractedTags`, same fallback-to-filename behavior as before.
+
+**`tool/scan_music_metadata.dart`** — a standalone `dart run` script (no Flutter engine, no
+`flutter test` harness) sharing that same extractor module, so it reports exactly what the app
+itself would see. Walks a folder recursively and prints (or `--out file.json` writes) a JSON
+array of `{path, title, artist?, album?, genre?, year?}` per supported audio file, plus a
+scanned/tagged-count summary on stderr. For sanity-checking a whole collection's metadata
+coverage (which files actually have a readable genre/year) before relying on it for rule
+playlists — independent of the app, the music folder setting, or a device.
+
+**Play count**: `MusicLibraryService.incrementPlayCount(trackId)` bumps and persists one
+track's count. Called from `MusicAudioHandler`'s `processingStateStream` listener only on
+`ja.ProcessingState.completed` (a track that played to the end) — a manual `skipToNext`/
+`skipToPrevious` never reaches that stream state, so skipping doesn't count as a play.
+
+**Smart (computed) playlists** — `MusicPlaylist` gained a `kind` (`PlaylistKind`: `list` — the
+existing stored-`trackIds` behavior, now the explicit default; `lastAdded`; `mostPlayed`; `rule`)
+plus `genreFilter` (scopes `mostPlayed`) and `ruleSet` (drives `rule`), all JSON round-tripped.
+`MusicPlaylistService.smartPlaylists` computes "Last Added" and "Most Played" (overall, plus one
+per distinct `Track.genre` present in the library) fresh from `MusicLibraryService.instance.tracks`
+on every read — never persisted, never deletable, empty entirely when the library itself is
+empty. Both cap at `smartPlaylistLimit` (50) tracks. `MusicPlaylistService.resolvedTracks(playlist)`
+is the one place that turns any `MusicPlaylist` (whatever its `kind`) into an actual `List<Track>`
+— `MusicPlaylistDetailPage`/the Playlists tab's track-count subtitle both go through it instead of
+reading `trackIds` directly, so they work uniformly across stored and computed playlists.
+
+**Rule-based ("smart" in the iTunes/Plex sense) playlists** — `lib/models/playlist_rule.dart`:
+`RuleCondition` (a `RuleField` — title/artist/album/genre/year — a `RuleOperator`, and a
+`values` list) plus `PlaylistRuleSet` (a `RuleCombinator.all`/`any` over a list of conditions).
+Deliberately a **flat** model, not a nested AND/OR/NOT expression tree: NOT lives per-condition
+(`notEquals`/`notContains`/`notInList`), OR lives inside one `inList` condition's value list
+("Artist A or Artist B"), and AND is `RuleCombinator.all` across conditions ("genre X and
+released last year, excluding Artist C" is three conditions ANDed together). This covers every
+case actually asked for with a UI and evaluator an order of magnitude simpler than a real
+boolean-tree editor, at the cost of not supporting an arbitrary nested expression (e.g. "(A or B)
+and not (C and D)") — acceptable for a personal playlist-building tool. `year` is the only
+numeric field (`greaterOrEqual`/`lessOrEqual` besides the text operators); an empty rule set
+matches nothing (not "everything") so a freshly created empty rule playlist reads as empty
+rather than the whole library. `lib/ui/rule_playlist_editor_page.dart` is the builder: a name
+field, an all/any selector, and a dynamic list of field/operator/value rows (comma-separated
+values for `inList`/`notInList`) — reachable from the Playlists tab's "New rule playlist" row,
+or an existing rule playlist's edit icon (`MusicPlaylistService.createRulePlaylist`/
+`updateRulePlaylist`). Rule playlists are ordinary (non-system) playlists — deletable like any
+hand-built one.
+
+**Best Music's own background update poll**: `AutoUpdateChecker.start`/`checkOnce` gained an
+optional `service` parameter (defaults to `UpdateService.instance`, so BestToDo's own wiring in
+`main.dart` is unchanged) so the same checker class can drive a second app's update instance.
+`main_music.dart`'s `BestMusicApp` became a `StatefulWidget` that starts it (Android only,
+pointed at `MusicAboutPage.updateService`) in `initState`, showing the same "New version
+available" dialog (`showUpdateAvailableDialog`) and background download
+(`downloadUpdateInBackground`) BestToDo's own poll uses, via a dedicated `musicNavigatorKey`
+(mirrors `appNavigatorKey`) since there is no `BuildContext` on hand outside the widget tree.
+Best Music has no Settings toggle for this yet (unlike BestToDo's "Automatically check for
+updates" switch) — it simply always polls; the manual "Check for updates" button on
+`MusicAboutPage` (§10.6f) is unaffected either way.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
