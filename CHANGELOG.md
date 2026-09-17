@@ -2,6 +2,8 @@
 
 ## [0.2.73] - 2026-09-17
 - CI: the BestToDo release publish step (uploading the APK asset to its GitHub release, which is what the About page's "Check for updates" reads) now retries up to 3 times on a dropped connection instead of failing the whole build outright. This was silently leaving the published release behind the app's actual code for several releases in a row — the CI job built the Todo APK fine each time, but a large-upload network blip (`SocketException: Broken pipe`) kept killing the publish step, so `v0.2.71-362` stayed the newest release while several versions' worth of changes (this swipe fix included) piled up unpublished behind it. Best Music's own release path (staged into `github_releases/` instead of a GitHub release) was unaffected
+- Local build: 2026-09-17 22:55
+- Build duration (windows): 57s
 
 ## [0.2.72] - 2026-09-17
 - Fixed swipe-to-move defaulting to the wrong tab on every page except Today: swiping a task always auto-committed to whichever tab happened to sort first (usually Today), so a task swiped from Tomorrow snapped back to Today instead of moving forward to Day after tomorrow. The default now always follows the intended "move forward one tab" order (Today→Tomorrow→Day after→Next week→Next month→Future→back to Today), matching the move-options row and the spec
