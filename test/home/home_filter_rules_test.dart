@@ -76,6 +76,94 @@ void main() {
     expect(find.text('Blocked task'), findsNothing);
   });
 
+  Future<void> dragFirstItemDown(WidgetTester tester, String title) async {
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text(title)));
+    await tester.pump(const Duration(milliseconds: 600));
+    for (var i = 0; i < 8; i++) {
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    // The reorder's save is real file I/O kicked off from inside the
+    // fake-async pump zone (see test/README.md): give it real event-loop
+    // turns so it actually flushes before reading it back.
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+  }
+
+  testWidgets(
+      'Home ships with non-empty default filter rules, but they must not '
+      'block drag-reorder on a tab they do not actually narrow',
+      (tester) async {
+    final today = DateTime.now();
+    // Same defaults Config.load() seeds on every real app start.
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules.defaultsFor(ViewFilterRules.home)!;
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Alpha task', dueDate: today, listRanking: 1),
+        Task(title: 'Beta task', dueDate: today, listRanking: 2),
+        Task(title: 'Gamma task', dueDate: today, listRanking: 3),
+      ],
+      marker: 'Alpha task',
+    );
+    // Nothing in this tab carries a reserved tag, so the default rule isn't
+    // hiding anything here.
+    expect(find.text('Beta task'), findsOneWidget);
+    expect(find.text('Gamma task'), findsOneWidget);
+
+    await dragFirstItemDown(tester, 'Alpha task');
+
+    final saved = await tester.runAsync(() => StorageService().loadTaskList());
+    const titles = {'Alpha task', 'Beta task', 'Gamma task'};
+    final order = saved!.where((t) => titles.contains(t.title)).toList()
+      ..sort((a, b) => (a.listRanking ?? 0).compareTo(b.listRanking ?? 0));
+    expect(order.first.title, isNot('Alpha task'),
+        reason: 'dragging the top task down should have moved it, not '
+            'sprung back to its original position');
+  });
+
+  testWidgets(
+      'a Home filter rule that actually hides a task in this tab still '
+      'disables drag-reorder', (tester) async {
+    final today = DateTime.now();
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules(excludeTags: ['workstuff']);
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Visible task', dueDate: today, listRanking: 1),
+        Task(title: 'Also visible', dueDate: today, listRanking: 2),
+        Task(
+          title: 'Blocked task',
+          dueDate: today,
+          listRanking: 3,
+          label: 'workstuff',
+        ),
+      ],
+      marker: 'Visible task',
+    );
+
+    await dragFirstItemDown(tester, 'Visible task');
+
+    final saved = await tester.runAsync(() => StorageService().loadTaskList());
+    const titles = {'Visible task', 'Also visible', 'Blocked task'};
+    final order = saved!.where((t) => titles.contains(t.title)).toList()
+      ..sort((a, b) => (a.listRanking ?? 0).compareTo(b.listRanking ?? 0));
+    expect(order.first.title, 'Visible task',
+        reason: 'reordering a tab a rule is actually narrowing would '
+            'renumber only the visible subset and scramble the hidden '
+            'task, so it must stay disabled');
+  });
+
   testWidgets('clearing the rule brings the task back', (tester) async {
     final today = DateTime.now();
     await pumpHome(
@@ -115,9 +203,8 @@ void main() {
 
     final homeExcludeField = find.descendant(
       of: find.byType(SettingsPage),
-      matching: find.byWidgetPredicate((w) =>
-          w is TextField &&
-          w.decoration?.hintText == 'Tag name'),
+      matching: find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Tag name'),
     );
     expect(homeExcludeField, findsWidgets);
 

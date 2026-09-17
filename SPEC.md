@@ -1136,12 +1136,17 @@ by is visible even though (being unconditional, not itself one of the `excludeTa
 rules" section (index 2, right after Mode & features) lists all nine views with the built-in
 line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
 ×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
-Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever one is
-active (`_homeFilterRulesActive`), exactly like it already is while a search query is active —
-reordering a narrowed list would renumber only the visible subset and scramble the hidden
-tasks' rank order; renumbering on save (`_saveTasks`, `applySearch: false`) always sees the
-true unfiltered tab so ranks never drift. Countdown applies the same disable-reorder-while-
-filtered rule to its own manual drag order (`_CountdownTimerPageState._onReorder`).
+Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever search or
+the Home rule is actually hiding a task on that specific tab (`_tabNarrowedByFilters`, comparing
+the tab's filtered vs. unfiltered task count) — reordering a narrowed list would renumber only
+the visible subset and scramble the hidden tasks' rank order; renumbering on save (`_saveTasks`,
+`applySearch: false`) always sees the true unfiltered tab so ranks never drift. This is a
+per-tab, actually-hiding-something check rather than "is any rule configured": Home ships with a
+non-empty default rule (it excludes every other view's reserved tag), so merely checking
+`Config.viewFilterRules[home]` for emptiness would leave reordering permanently disabled for
+every install even when nothing in the current tab carries an excluded tag. Countdown applies
+the same disable-reorder-while-filtered rule to its own manual drag order
+(`_CountdownTimerPageState._onReorder`).
 
 *Matching, including a task's synthetic state.* Matching (`ItemViews.passesTagRules`) is
 case-insensitive against a *combined* token set: a task's real `Task.label` tokens

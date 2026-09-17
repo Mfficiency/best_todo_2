@@ -1370,10 +1370,10 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
-    // See _reorderTask: reordering is disabled while searching or while a
-    // Home filter rule is hiding tasks.
-    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
+    // See _reorderTask: reordering is disabled while searching or a Home
+    // filter rule is actually hiding a task in this tab.
+    if (_tabNarrowedByFilters(pageIndex)) return;
     final fullList = _tasksForTab(pageIndex);
 
     final sectionSet = Set<Task>.identity()..addAll(sectionTasks);
@@ -2111,8 +2111,8 @@ class _HomePageState extends State<HomePage>
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
     // Reordering a search- or filter-rule-narrowed list would renumber only
     // the visible subset and scramble the hidden tasks' order, so it is
-    // disabled while either is active.
-    if (_searchQuery.trim().isNotEmpty || _homeFilterRulesActive) return;
+    // disabled whenever either is actually hiding a task in this tab.
+    if (_tabNarrowedByFilters(pageIndex)) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -2817,10 +2817,18 @@ class _HomePageState extends State<HomePage>
             has(ProjectService.instance.nameOf(task.projectId)));
   }
 
-  /// Whether the Home view's configured filter rules (Settings → Filtering
-  /// rules) currently hide anything.
-  bool get _homeFilterRulesActive =>
-      !(Config.viewFilterRules[ViewFilterRules.home]?.isEmpty ?? true);
+  /// Whether an active search or the configured Home filter rules (Settings
+  /// → Filtering rules) are currently hiding at least one task that
+  /// otherwise belongs on tab [pageIndex]. Home ships with a non-empty
+  /// default rule (it excludes every other view's reserved tag — Wish,
+  /// Project, ...), so merely having rules *configured* is true for nearly
+  /// every install; that alone must not block reordering a tab those rules
+  /// don't actually narrow, which is why this compares the tab's filtered
+  /// and unfiltered task counts instead of checking
+  /// `Config.viewFilterRules[home]` directly.
+  bool _tabNarrowedByFilters(int pageIndex) =>
+      _tasksForTab(pageIndex).length !=
+      _tasksForTab(pageIndex, applySearch: false).length;
 
   /// Tasks shown on [pageIndex]. While a search query is active the list is
   /// narrowed to matching tasks, and the configured Home filter rules (if
