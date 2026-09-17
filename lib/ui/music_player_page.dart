@@ -13,6 +13,9 @@ import '../services/music_audio_handler.dart';
 import '../services/music_library_service.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
+import '../services/update_service.dart';
+import 'auto_update_dialog.dart';
+import 'mp3_downloader_page.dart';
 import 'now_playing_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -20,8 +23,15 @@ import 'subpage_app_bar.dart';
 /// [Config.musicFolder] (and, once configured, a Subsonic server), manage
 /// Favorites/"Don't really like" and imported playlists, and import an
 /// M3U/M3U8 playlist (e.g. shared out of Samsung Music).
+///
+/// Also the Best Music app's home page ([standalone]: true), where it is the
+/// root route rather than a BestToDo Tools subpage — no drawer to reach for
+/// "Menu"/"Back to Home", and its own MP3 Downloader + update-check actions
+/// stand in for BestToDo's drawer entry and About page.
 class MusicPlayerPage extends StatefulWidget {
-  const MusicPlayerPage({super.key});
+  const MusicPlayerPage({super.key, this.standalone = false});
+
+  final bool standalone;
 
   @override
   State<MusicPlayerPage> createState() => _MusicPlayerPageState();
@@ -31,6 +41,12 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   bool _pickingFolder = false;
+  bool _checkingForUpdates = false;
+
+  static final UpdateService _musicUpdateService = UpdateService.forApp(
+    appDisplayName: 'Best Music',
+    apkPrefix: 'best_music',
+  );
 
   @override
   void initState() {
@@ -93,11 +109,82 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     ));
   }
 
+  void _openDownloader() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const Mp3DownloaderPage()));
+  }
+
+  Future<void> _checkForUpdates() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _checkingForUpdates = true);
+    try {
+      final info = await _musicUpdateService.checkForUpdate();
+      if (!mounted) return;
+      if (info == null) {
+        messenger.showSnackBar(
+            const SnackBar(content: Text('Best Music is up to date.')));
+        return;
+      }
+      final accepted = await showUpdateAvailableDialog(context, info);
+      if (accepted == true && mounted) {
+        await downloadUpdateInBackground(context, info,
+            service: _musicUpdateService);
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+            SnackBar(content: Text('Could not check for updates: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _checkingForUpdates = false);
+    }
+  }
+
+  /// [standalone] mode is the Best Music app's root page, so there is no
+  /// drawer for [buildSubpageAppBar]'s "Menu" button to open — a plain app
+  /// bar with the Best Music-specific actions ([_openDownloader],
+  /// [_checkForUpdates]) tacked on in front of [actions] instead.
+  PreferredSizeWidget _appBar(
+    BuildContext context, {
+    required String title,
+    PreferredSizeWidget? bottom,
+    List<Widget> actions = const [],
+  }) {
+    if (!widget.standalone) {
+      return buildSubpageAppBar(context,
+          title: title, bottom: bottom, actions: actions);
+    }
+    return AppBar(
+      title: Text(title),
+      bottom: bottom,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.download_outlined),
+          tooltip: 'Download MP3',
+          onPressed: _openDownloader,
+        ),
+        IconButton(
+          icon: _checkingForUpdates
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.system_update_outlined),
+          tooltip: 'Check for updates',
+          onPressed: _checkingForUpdates ? null : _checkForUpdates,
+        ),
+        ...actions,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (Config.musicFolder.isEmpty) {
       return Scaffold(
-        appBar: buildSubpageAppBar(context, title: 'Music Player'),
+        appBar: _appBar(context,
+            title: widget.standalone ? 'Best Music' : 'Music Player'),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -126,9 +213,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     }
 
     return Scaffold(
-      appBar: buildSubpageAppBar(
+      appBar: _appBar(
         context,
-        title: 'Music Player',
+        title: widget.standalone ? 'Best Music' : 'Music Player',
         actions: [
           IconButton(
             icon: const Icon(Icons.shuffle),

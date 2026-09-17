@@ -64,6 +64,9 @@ Pick suites by what you touched, always including core:
   `lib/services/subsonic_client.dart`, `lib/ui/music_player_page.dart`,
   `lib/ui/now_playing_page.dart`, `lib/ui/queue_page.dart` → core + **music** (+ **home**, whose
   `home_page.dart`/`settings_page.dart` wire the tool into the drawer and Settings)
+- `lib/main_music.dart` (the Best Music app's entry point — see `CLAUDE.md` and SPEC.md
+  §10.6f) → core + **music** + **update** (`MusicPlayerPage`'s `standalone` app bar wires into
+  `UpdateService.forApp`)
 - `lib/services/task_mutation_service.dart`, `lib/models/task_change_source.dart` → core +
   **history** (+ **home**, whose `_saveTasks`/`_saveDeletedTasks` are what feed it)
 - `lib/services/streak_service.dart`, `lib/models/streak_kind.dart`,

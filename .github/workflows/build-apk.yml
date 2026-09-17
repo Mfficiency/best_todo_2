@@ -87,15 +87,19 @@ jobs:
       run: |
         bash tool/ci/publish_test_report.sh build/ci/test_report.json "${GITHUB_REF_NAME}"
 
+    # `--flavor todo` builds BestToDo itself (android/app/build.gradle.kts
+    # also defines a `music` flavor for the separate Best Music app —
+    # lib/main_music.dart — built locally via `sh tool/build.sh music-apk`,
+    # not by this workflow).
     - name: Build APK
-      run: flutter build apk --release
+      run: flutter build apk --release --flavor todo
 
     - name: Stage APK with version in filename
       id: stage_apk
       shell: bash
       run: |
         ver="${{ steps.appver.outputs.version }}"
-        src="build/app/outputs/flutter-apk/app-release.apk"
+        src="build/app/outputs/flutter-apk/app-todo-release.apk"
         out="build/app/outputs/flutter-apk/besttodo-${ver}.apk"
         cp "$src" "$out"
         echo "apk=$out" >> "$GITHUB_OUTPUT"

@@ -166,5 +166,32 @@ void main() {
       exitCode = 0;
       expect(Directory('${temp.path}/github_releases').existsSync(), isFalse);
     });
+
+    // Best Music (SPEC.md §10.6f) stages into the same github_releases/
+    // folder as BestToDo, under a best_music_ prefix instead — pruning must
+    // never cross prefixes, since the two apps share one pubspec version and
+    // a prefix-blind prune could otherwise delete the wrong app's build.
+    test('staging a Best Music build never prunes BestToDo builds, or vice '
+        'versa', () async {
+      apk('build/app/outputs/flutter-apk/best_music_0.1.145+117.apk');
+      final dir = Directory('${temp.path}/github_releases')
+        ..createSync(recursive: true);
+      File('${dir.path}/best_todo_0.1.143+115.apk').writeAsStringSync('old');
+      File('${dir.path}/best_todo_0.1.145+117.apk')
+          .writeAsStringSync('current');
+
+      await tool.main(['--prefix', 'best_music']);
+
+      final names = dir
+          .listSync()
+          .map((e) => e.uri.pathSegments.last)
+          .toList()
+        ..sort();
+      expect(names, [
+        'best_music_0.1.145+117.apk',
+        'best_todo_0.1.143+115.apk',
+        'best_todo_0.1.145+117.apk',
+      ]);
+    });
   });
 }

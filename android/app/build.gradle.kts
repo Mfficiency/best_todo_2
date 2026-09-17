@@ -51,6 +51,27 @@ android {
         versionName = flutter.versionName
     }
 
+    // Two apps from one codebase, picked with `flutter build apk --flavor
+    // <name>` (default `todo` if a build script doesn't say — see
+    // tool/build.sh): `todo` is BestToDo itself (unchanged applicationId,
+    // same as before flavors existed), `music` is Best Music — the
+    // standalone music player + MP3 downloader app entered via
+    // lib/main_music.dart, installable side by side with BestToDo since it
+    // has its own applicationId. Both share every other Gradle setting
+    // (signing, minSdk, permissions, ...); only the app label
+    // (res/values/strings.xml `app_name`) and launcher icon
+    // (src/music/res/mipmap-*/ic_launcher.png) are overridden per flavor.
+    flavorDimensions += listOf("app")
+    productFlavors {
+        create("todo") {
+            dimension = "app"
+        }
+        create("music") {
+            dimension = "app"
+            applicationId = "com.mfficiency.best_music"
+        }
+    }
+
     if (hasReleaseKeystore) {
         signingConfigs {
             create("release") {
@@ -116,27 +137,51 @@ afterEvaluate {
                 )
             }
 
-            val apkCandidates = listOf(
-                rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
-                rootProject.layout.buildDirectory.file("app/outputs/apk/release/app-release.apk").get().asFile,
-                layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile,
-            )
+            // Flutter names a flavored release APK app-<flavor>-release.apk;
+            // the renamed file's prefix is what both tool/build.sh and
+            // UpdateService key their per-app filtering on
+            // (best_todo_/best_music_), so it must track the flavor that was
+            // actually built, not just always assume BestToDo.
+            val flavorPrefixes = mapOf("todo" to "best_todo", "music" to "best_music")
 
-            val sourceApk = apkCandidates.firstOrNull { it.exists() }
-            logger.lifecycle("[apk-rename] Looking for release APK. Checked: ${apkCandidates.joinToString { it.path }}")
+            var sourceApk: File? = null
+            var prefix = "best_todo"
+            for ((flavor, apkPrefix) in flavorPrefixes) {
+                val candidate = rootProject.layout.buildDirectory
+                    .file("app/outputs/flutter-apk/app-$flavor-release.apk").get().asFile
+                if (candidate.exists()) {
+                    sourceApk = candidate
+                    prefix = apkPrefix
+                    break
+                }
+            }
+
+            // Unflavored fallback — shouldn't occur once flavorDimensions is
+            // set above, but costs nothing to keep as a safety net.
+            if (sourceApk == null) {
+                val legacyCandidates = listOf(
+                    rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
+                    rootProject.layout.buildDirectory.file("app/outputs/apk/release/app-release.apk").get().asFile,
+                    layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile,
+                )
+                sourceApk = legacyCandidates.firstOrNull { it.exists() }
+            }
 
             if (sourceApk == null) {
                 logger.lifecycle("[apk-rename] No release APK found, skipping rename.")
                 return@doLast
             }
 
-            val renamedApk = File(sourceApk.parentFile, "best_todo_${fullVersion}.apk")
+            val renamedApk = File(sourceApk.parentFile, "${prefix}_${fullVersion}.apk")
             sourceApk.copyTo(renamedApk, overwrite = true)
             logger.lifecycle("[apk-rename] Created ${renamedApk.path}")
         }
     }
 
-    tasks.matching { it.name in setOf("assembleRelease", "copyReleaseApk", "packageRelease") }.configureEach {
+    tasks.matching {
+        it.name in setOf("assembleRelease", "copyReleaseApk", "packageRelease") ||
+            it.name in setOf("assembleTodoRelease", "assembleMusicRelease")
+    }.configureEach {
         finalizedBy(createVersionedReleaseApk)
     }
 }
