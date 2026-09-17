@@ -10,8 +10,18 @@ file is the short operational guide.
 - Tests: `flutter test` runs everything (CI does this). Locally, run only the
   suites your change touches — `test/core/` always, plus the matching silo:
   `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
-  `home`, `share`, `sync`, `update`, `tools` or `recurrence`. See `test/README.md` for the file→suite map. Cross-cutting
+  `home`, `share`, `sync`, `update`, `tools`, `recurrence` or `music`. See `test/README.md` for the file→suite map. Cross-cutting
   changes (theme, navigation, pubspec) → full `flutter test`.
+- Smart test runner: `dart run tool/smart_test.dart` figures the above out for
+  you — it looks at what's changed (working tree, or the last commit if
+  nothing's pending) and runs only the matching `test/<area>` suite(s), per
+  the same map as `test/README.md`. A change it can't confidently map (a new
+  file, `pubspec.yaml`, ...) falls back to a full `flutter test`; so does
+  every 10th targeted run and anything past 7 days since the last full run,
+  so the shortcut can't silently drift out of sync with the real suite.
+  `--dry-run` prints the decision without running anything; `--full` forces a
+  full run now. State (mods since the last full run) lives in the gitignored
+  `.smart_test_state.json`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
@@ -117,3 +127,17 @@ file is the short operational guide.
 - Don't introduce new deprecation warnings; existing `withOpacity`/
   `onWillAccept` infos are legacy and get cleaned opportunistically.
 - Changelog entries are user-facing bullet points under `## [x.y.z] - date`.
+- **Standing rule — MLR tag is Worklist-exclusive**: any task tagged/labeled
+  `mlr` shows *only* inside the Worklist tool, never in the regular home
+  tabs, schedule view, Wishlist, Projects/board, or the Markdown export —
+  the user has asked for this once and it does not need to be requested
+  again. Enforced structurally in `ItemViews.isVisibleInMainViews`
+  (`lib/services/item_views.dart`), the same gate Food Diary/Research use,
+  via `worklistToken`/`hasWorklistToken` in `lib/utils/label_utils.dart`.
+  When touching task-visibility filtering (home tabs, schedule view,
+  wishlist, projects, the home-screen widget), preserve this gate rather
+  than reintroducing a path that reads `_tasks`/the task list unfiltered.
+  Both home bodies must go through `ItemViews.isOnHomeScreen` — the tabs via
+  `homeBucket`, the schedule view via `homeVisible` — so the Home filter
+  rules and the demo gate can never apply to one and not the other (that
+  leak was 0.2.46's bug).

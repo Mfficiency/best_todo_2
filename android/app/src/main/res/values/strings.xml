@@ -5,4 +5,6 @@
     <string name="alarms_widget_name">Alarms</string>
     <string name="food_diary_widget_name">Food Diary</string>
     <string name="food_diary_button_widget_name">Log Food (button)</string>
+    <string name="music_mini_widget_name">Music (play/pause)</string>
+    <string name="music_controls_widget_name">Music (controls)</string>
 </resources>

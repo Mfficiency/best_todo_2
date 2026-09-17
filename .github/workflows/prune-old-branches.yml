@@ -1,0 +1,58 @@
+name: Prune old branches
+
+# Caps how many branches the repo keeps on GitHub. `delete-merged-branch.yml`
+# already removes a feature branch when its PR lands on dev, but plenty of
+# branches never get there — abandoned experiments, branches merged by a
+# direct push, agent branches. This is the backstop: once the repo is over the
+# cap, the branches nobody has touched in the longest time go.
+#
+# Runs on every push to dev (which is where merges land — see CLAUDE.md's
+# feature -> dev -> staging -> main flow) rather than only on PR merges,
+# because `tool/build.sh` pushes dev directly and those merges would otherwise
+# never trigger a cleanup.
+#
+# dev/staging/main/master and ci-reports are never deleted, nor is anything
+# with an open PR — see tool/ci/prune_old_branches.mjs.
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List what would be deleted without deleting it'
+        type: boolean
+        default: true
+      limit:
+        description: 'How many branches to keep in total'
+        type: string
+        default: '8'
+
+permissions:
+  contents: write
+  pull-requests: read
+
+# A burst of pushes to dev shouldn't race several pruners against each other.
+concurrency:
+  group: prune-old-branches
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prune branches over the cap
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # On a push these inputs are empty, which is what makes the
+          # scheduled-by-merge run a real (non-dry) prune with the default cap.
+          LIMIT: ${{ inputs.limit || '8' }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--limit "$LIMIT")
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          node tool/ci/prune_old_branches.mjs "${args[@]}"

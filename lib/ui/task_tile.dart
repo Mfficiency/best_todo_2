@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 
 import '../models/project.dart';
@@ -9,6 +10,7 @@ import '../models/recurrence_config.dart';
 import '../models/task.dart';
 import '../models/todoist_sync_map_entry.dart';
 import '../config.dart';
+import '../services/claude_routine_service.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
 import '../services/todoist_sync_service.dart';
@@ -162,6 +164,7 @@ class _TaskTileState extends State<TaskTile>
   bool _dragging = false;
   int _optionSelectionIndex = 0;
   bool _optionStartedFromKeyboard = false;
+  bool _sendingToClaude = false;
 
   /// A generated occurrence that's been hand-edited stops being an
   /// interchangeable copy of the master: flagging it as an override keeps
@@ -539,6 +542,61 @@ class _TaskTileState extends State<TaskTile>
     }
   }
 
+  /// Fires the routine configured in Settings → Claude Routine with this
+  /// task as context, starting a real Claude Code cloud session. On success,
+  /// offers to open the session (browser on desktop/web, or the claude.ai app
+  /// via its universal link on Android).
+  Future<void> _sendToClaude() async {
+    final url = Config.claudeRoutineUrl.trim();
+    final token = Config.claudeRoutineToken.trim();
+    if (url.isEmpty || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set up Claude Routine in Settings first'),
+        ),
+      );
+      return;
+    }
+    setState(() => _sendingToClaude = true);
+    try {
+      final result = await ClaudeRoutineService.instance.fire(
+        fireUrl: url,
+        token: token,
+        text: ClaudeRoutineService.instance.buildPayload(widget.task),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Claude session started'),
+          duration: const Duration(seconds: 8),
+          action: result.sessionUrl.isEmpty
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => launchUrl(
+                    Uri.parse(result.sessionUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is ClaudeRoutineException
+              ? (e.statusCode == 401
+                  ? 'Invalid Claude Routine token'
+                  : 'Failed to start session: ${e.message}')
+              : 'Failed to start session: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingToClaude = false);
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -641,6 +699,17 @@ class _TaskTileState extends State<TaskTile>
             icon: const Icon(Icons.notifications_none),
             tooltip: 'Notify',
             onPressed: _sendTaskNotification,
+          ),
+        if (_expanded)
+          IconButton(
+            icon: _sendingToClaude
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.smart_toy_outlined),
+            tooltip: 'Send to Claude',
+            onPressed: _sendingToClaude ? null : _sendToClaude,
           ),
         if (_expanded)
           IconButton(

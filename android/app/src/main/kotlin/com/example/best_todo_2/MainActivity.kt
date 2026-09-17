@@ -8,6 +8,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -17,16 +18,19 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterFragmentActivity
+import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import android.content.pm.ApplicationInfo
 
-// FlutterFragmentActivity (not the plain FlutterActivity) because the
-// health plugin's Health Connect permission flow needs a FragmentActivity
-// to launch its Activity Result contract on Android 14+.
-class MainActivity : FlutterFragmentActivity() {
+// AudioServiceFragmentActivity (not the plain FlutterFragmentActivity)
+// because the Music Player's background playback service (audio_service)
+// needs the activity to hand it the shared FlutterEngine it manages; it is
+// itself a FlutterFragmentActivity, so the health plugin's Health Connect
+// permission flow (which needs a FragmentActivity for its Activity Result
+// contract on Android 14+) keeps working unchanged.
+class MainActivity : AudioServiceFragmentActivity() {
 
     // Content shared into the app (see ShareActivity), waiting for the Dart
     // side to collect it. On a cold start the queue fills before the Flutter
@@ -233,6 +237,32 @@ class MainActivity : FlutterFragmentActivity() {
                 "vibrate" -> result.success(startVibration())
                 "stopVibrate" -> {
                     stopVibration()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/media_scanner",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                // Files this app writes with plain File I/O (the MP3
+                // downloader saving straight into a user-picked folder)
+                // never pass through MediaStore, so OEM media apps —
+                // Samsung's Music/My Files/Gallery included — don't know
+                // they exist until the next full device media scan, which
+                // on some OEMs only happens on reboot. Scanning the file
+                // right after it's written gets it indexed immediately.
+                "scanFile" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.error("bad-args", "path missing", null)
+                        return@setMethodCallHandler
+                    }
+                    MediaScannerConnection.scanFile(
+                        applicationContext, arrayOf(path), null, null
+                    )
                     result.success(null)
                 }
                 else -> result.notImplemented()

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stops R8 from stripping the Music Player's notification action icons
+     (and audio_service's own default icons) since they're only ever
+     referenced from native notification code, not from Dart/XML layouts
+     that the build's resource-usage analysis can see. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/*" />

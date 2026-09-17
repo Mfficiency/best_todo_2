@@ -41,6 +41,7 @@ import '../services/test_report_service.dart';
 import '../services/wishlist_migration.dart';
 import '../services/wishlist_shipped.dart';
 import '../utils/date_utils.dart';
+import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
 import 'about_page.dart';
 import 'alarms_page.dart';
@@ -57,6 +58,8 @@ import 'dice_timer_page.dart';
 import 'food_diary_page.dart';
 import 'fitness_activity_page.dart';
 import 'home_scaffold_key.dart';
+import 'mp3_downloader_page.dart';
+import 'music_player_page.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
 import 'research_page.dart';
@@ -114,7 +117,27 @@ class _RecurrenceRuleSnapshot {
 class HomePage extends StatefulWidget {
   final int initialTabIndex;
 
-  const HomePage({Key? key, this.initialTabIndex = 0}) : super(key: key);
+  /// When set, this instance shows only tasks whose label carries this tag
+  /// (see [ItemViews.homeBucket]/`_tasksForTab`) — the same tab layout, add
+  /// row and interactions as the regular home screen, narrowed to one tag.
+  /// Used by the Worklist tool (`tagFilter: worklistToken`). A task created
+  /// from this instance's add-task row is stamped with the tag
+  /// automatically. Null (the default) is the regular, unfiltered home page
+  /// — which, when [tagFilter] names [worklistToken], is also where those
+  /// tasks are hidden from (see [ItemViews.isVisibleInMainViews]): a task
+  /// tagged `mlr` shows only inside this Worklist instance, nowhere else.
+  final String? tagFilter;
+
+  /// App-bar/drawer-header title used in place of "BestToDo" while
+  /// [tagFilter] is set.
+  final String? toolTitle;
+
+  const HomePage({
+    Key? key,
+    this.initialTabIndex = 0,
+    this.tagFilter,
+    this.toolTitle,
+  }) : super(key: key);
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -261,6 +284,7 @@ class _HomePageState extends State<HomePage>
             description: isAuto
                 ? 'Seeded dev auto-deleted task'
                 : 'Seeded dev manually-deleted task',
+            label: demoToken,
             createdAt: deletedAt.subtract(const Duration(days: 3)),
             completedAt:
                 isAuto ? deletedAt.subtract(const Duration(hours: 1)) : null,
@@ -306,6 +330,7 @@ class _HomePageState extends State<HomePage>
         Task(
           title: titles[i],
           description: 'Seeded dev auto-deleted backfill',
+          label: demoToken,
           createdAt: deletedAt.subtract(const Duration(days: 3)),
           completedAt: deletedAt.subtract(const Duration(hours: 1)),
           movedAt: deletedAt.subtract(const Duration(days: 2)),
@@ -365,6 +390,7 @@ class _HomePageState extends State<HomePage>
         Task(
           title: title,
           description: _devFutureTaskMarker,
+          label: demoToken,
           createdAt: now,
           dueDate: base.add(Duration(days: offset)),
           listRanking: i + 1,
@@ -388,7 +414,7 @@ class _HomePageState extends State<HomePage>
           uid: legacy.uid,
           title: legacy.title,
           description: legacy.description,
-          label: legacyTodoImportLabel,
+          label: addLabelToken(legacyTodoImportLabel, demoToken),
           createdAt: now,
           isWish: true,
         ),
@@ -408,6 +434,7 @@ class _HomePageState extends State<HomePage>
     _tasks.add(Task(
       title: 'Deep work block',
       description: 'Dev seed: a task with a real time range',
+      label: demoToken,
       createdAt: DateTime.now(),
       startAt: DateTime(day.year, day.month, day.day, 9),
       endAt: DateTime(day.year, day.month, day.day, 10, 30),
@@ -425,7 +452,7 @@ class _HomePageState extends State<HomePage>
     _tasks.add(Task(
       title: 'Learn to sail',
       description: 'Dev seed: a wishlist item',
-      label: 'priority-medium',
+      label: addLabelToken('priority-medium', demoToken),
       createdAt: DateTime.now(),
       isWish: true,
     ));
@@ -451,6 +478,7 @@ class _HomePageState extends State<HomePage>
     if (service.list.any((a) => a.itemUid == target.uid)) return;
     final reminder = ReminderSyncService.buildReminder(target);
     if (reminder == null) return;
+    reminder.tags = addLabelToken(reminder.tags, demoToken);
     service.alarms.value = [...service.list, reminder];
   }
 
@@ -475,8 +503,17 @@ class _HomePageState extends State<HomePage>
     // Give the sample board tasks one label of every kind, so the structured
     // label registry fills itself on the first save and the kinds are
     // inspectable on the task-detail page (and as tags on the home tiles).
-    if (sample.label.isEmpty) sample.label = 'urgent, priority-high';
-    if (second != null && second.label.isEmpty) second.label = 'gift, old';
+    // Both already carry the dev-seed `demo` token from
+    // `_buildDevFutureTasksSeed`, so "no real label yet" means no token
+    // besides that one rather than a literally empty string.
+    bool hasOnlyDemoLabel(Task task) => splitLabelTokens(task.label)
+        .every((t) => t.toLowerCase() == demoToken);
+    if (hasOnlyDemoLabel(sample)) {
+      sample.label = addLabelToken('urgent, priority-high', demoToken);
+    }
+    if (second != null && hasOnlyDemoLabel(second)) {
+      second.label = addLabelToken('gift, old', demoToken);
+    }
     final now = DateTime.now();
     // The second board task gets pre-journal, seeded events so the
     // "(reconstructed)" rendering of the history backfill is visible in dev
@@ -665,6 +702,7 @@ class _HomePageState extends State<HomePage>
               title: t,
               dueDate: _currentDate,
               createdAt: DateTime.now(),
+              label: demoToken,
             )),
       );
       _tasks.addAll(
@@ -673,6 +711,7 @@ class _HomePageState extends State<HomePage>
             title: t,
             createdAt: DateTime.now(),
             dueDate: _futureDueDate,
+            label: demoToken,
           ),
         ),
       );
@@ -1050,6 +1089,7 @@ class _HomePageState extends State<HomePage>
       if (firstOfDay &&
           Config.showStreak &&
           Config.streakCompletionAnimation &&
+          widget.tagFilter == null &&
           mounted) {
         showStreakCelebration(
             context, StreakService.instance.currentStreak(now: _currentDate));
@@ -1144,11 +1184,16 @@ class _HomePageState extends State<HomePage>
     // A task built by the share-sheet quick-add screen (see main.dart) is
     // claimed here while this page is alive. Registering before _loadTasks
     // means every share from here on goes through this page's in-memory
-    // list — never a second tasks.json writer.
-    ShareIntentService.instance.registerConsumer(_addSharedTask);
-    // Lets the app shell reopen a live dice timer after its full-screen alarm
-    // is stopped (see main.dart), with the task's actions ready.
-    openRunningDiceTimer = _reopenRunningDiceTimer;
+    // list — never a second tasks.json writer. These are process-wide
+    // singleton slots, so only the primary (unfiltered) home instance claims
+    // them — a tag-filtered instance like Worklist would otherwise steal them
+    // away from the real home page while it's open.
+    if (widget.tagFilter == null) {
+      ShareIntentService.instance.registerConsumer(_addSharedTask);
+      // Lets the app shell reopen a live dice timer after its full-screen
+      // alarm is stopped (see main.dart), with the task's actions ready.
+      openRunningDiceTimer = _reopenRunningDiceTimer;
+    }
     // CI embeds its test results as a bundled asset; builds whose test run
     // had unacknowledged failures get a red dot on the Test Results drawer
     // entry — and on the hamburger icon itself when the "Red dot on menu"
@@ -1220,6 +1265,15 @@ class _HomePageState extends State<HomePage>
           deletedItems: _deletedTasks,
           dailyStatsByDay: _dailyStatsByDay,
         );
+      case 'worklist':
+        // The home screen itself, narrowed to one tag: same tabs, add row,
+        // search and interactions, just a second HomePage instance with its
+        // own in-memory copy of the (shared, on-disk) task list.
+        return const HomePage(tagFilter: worklistToken, toolTitle: 'Worklist');
+      case 'mp3_downloader':
+        return const Mp3DownloaderPage();
+      case 'music_player':
+        return const MusicPlayerPage();
     }
     return null;
   }
@@ -1237,8 +1291,13 @@ class _HomePageState extends State<HomePage>
       if (mounted) setState(() {});
       // The Wishlist/Food Diary/Research tools load and save the task list
       // on their own, so this page's in-memory copy is refreshed from disk
-      // when coming back.
-      if (tool == 'wishlist' || tool == 'food_diary' || tool == 'research') {
+      // when coming back. Worklist is a second full HomePage instance with
+      // its own in-memory list backed by the same storage, so it needs the
+      // same refresh.
+      if (tool == 'wishlist' ||
+          tool == 'food_diary' ||
+          tool == 'research' ||
+          tool == 'worklist') {
         _reloadTasksFromStorage();
       }
     });
@@ -1284,6 +1343,10 @@ class _HomePageState extends State<HomePage>
   /// Opens the tool configured as the default start page (if any) on top of
   /// the task list, so backing out of it lands on the tasks as usual.
   void _maybeOpenStartTool() {
+    // A tag-filtered instance (Worklist) is itself already a tool opened on
+    // top of the real home page — it must not also open the configured
+    // default start tool on top of itself.
+    if (widget.tagFilter != null) return;
     if (Config.startTool == 'tasks') return;
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1371,8 +1434,8 @@ class _HomePageState extends State<HomePage>
   ) {
     if (sectionTasks.isEmpty) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
-    // See _reorderTask: reordering is disabled while searching or a Home
-    // filter rule is actually hiding a task in this tab.
+    // See _reorderTask: reordering is disabled whenever this tab is
+    // actually narrowed.
     if (_tabNarrowedByFilters(pageIndex)) return;
     final fullList = _tasksForTab(pageIndex);
 
@@ -1440,9 +1503,16 @@ class _HomePageState extends State<HomePage>
         : _dueDateForTab(_addTargetTabIndex());
     final rankingTabIndex = _tabIndexForDueDate(dueDate);
     final recurrence = _pendingRecurrence;
+    var label = AutoTagService.instance.withAutoTags(title, '');
+    // A task typed directly into a tag-filtered instance (Worklist) is
+    // stamped with that tag so it immediately shows up in the filtered view
+    // it was just added from.
+    if (widget.tagFilter != null) {
+      label = addLabelToken(label, widget.tagFilter!);
+    }
     final task = Task(
       title: title,
-      label: AutoTagService.instance.withAutoTags(title, ''),
+      label: label,
       createdAt: DateTime.now(),
       dueDate: dueDate,
       isRecurring: recurrence != null,
@@ -2109,9 +2179,9 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
-    // Reordering a search- or filter-rule-narrowed list would renumber only
-    // the visible subset and scramble the hidden tasks' order, so it is
-    // disabled whenever either is actually hiding a task in this tab.
+    // Reordering a narrowed list would renumber only the visible subset and
+    // scramble the hidden tasks' order, so it is disabled whenever this tab
+    // is actually narrowed — see _tabNarrowedByFilters.
     if (_tabNarrowedByFilters(pageIndex)) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
@@ -2817,34 +2887,55 @@ class _HomePageState extends State<HomePage>
             has(ProjectService.instance.nameOf(task.projectId)));
   }
 
-  /// Whether an active search or the configured Home filter rules (Settings
-  /// → Filtering rules) are currently hiding at least one task that
-  /// otherwise belongs on tab [pageIndex]. Home ships with a non-empty
-  /// default rule (it excludes every other view's reserved tag — Wish,
-  /// Project, ...), so merely having rules *configured* is true for nearly
-  /// every install; that alone must not block reordering a tab those rules
-  /// don't actually narrow, which is why this compares the tab's filtered
-  /// and unfiltered task counts instead of checking
-  /// `Config.viewFilterRules[home]` directly.
+  /// The Home view's configured filter rules (Settings → Filtering rules),
+  /// read fresh on every build so editing them in Settings takes effect on
+  /// the next frame — both home bodies (tabs and schedule view) filter
+  /// through this one getter.
+  ViewFilterRules? get _homeFilterRules =>
+      Config.viewFilterRules[ViewFilterRules.home];
+
+  /// Whether an active search, [widget.tagFilter] (Worklist), or the
+  /// configured Home filter rules (Settings → Filtering rules) are
+  /// currently hiding at least one task that otherwise belongs on tab
+  /// [pageIndex]. Home ships with a non-empty default rule (it excludes
+  /// every other view's reserved tag — Wish, Project, ...), so merely
+  /// checking whether a rule is *configured* is true for nearly every
+  /// install; that alone must not block reordering a tab none of these are
+  /// actually narrowing, which is why this compares the tab's filtered and
+  /// unfiltered task counts (`_tasksForTab`'s `applySearch` toggle turns off
+  /// search, tagFilter and rules together) instead of checking each
+  /// condition directly. Reordering is disabled whenever this is true:
+  /// renumbering only the visible subset would scramble the hidden tasks'
+  /// [Task.listRanking] — see [_reorderTask].
   bool _tabNarrowedByFilters(int pageIndex) =>
       _tasksForTab(pageIndex).length !=
       _tasksForTab(pageIndex, applySearch: false).length;
 
   /// Tasks shown on [pageIndex]. While a search query is active the list is
-  /// narrowed to matching tasks, and the configured Home filter rules (if
-  /// any) are always applied on top; pass [applySearch] false for logic that
-  /// must see the full tab regardless of either (e.g. renumbering
-  /// [Task.listRanking] on save).
+  /// narrowed to matching tasks, [widget.tagFilter] (Worklist) narrows it to
+  /// one tag, and the configured Home filter rules (if any) are always
+  /// applied on top; pass [applySearch] false for logic that must see the
+  /// full tab regardless of any of these (e.g. renumbering [Task.listRanking]
+  /// on save — see [_reorderTask]'s doc on why a narrowed list must never
+  /// drive that renumbering).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
     // Tab membership is a query over the one list (ItemViews); only the
-    // search predicate is home-page state.
+    // search predicate and the tag filter are home-page state.
     final query = applySearch ? _searchQuery.trim().toLowerCase() : '';
+    final tagFilter = applySearch ? widget.tagFilter : null;
+    bool Function(Task task)? where;
+    if (query.isNotEmpty || tagFilter != null) {
+      where = (task) =>
+          (query.isEmpty || _matchesSearch(task, query)) &&
+          (tagFilter == null || labelHasToken(task.label, tagFilter));
+    }
     return ItemViews.homeBucket(
       _tasks,
       pageIndex,
       _currentDate,
-      where: query.isEmpty ? null : (task) => _matchesSearch(task, query),
-      rules: applySearch ? Config.viewFilterRules[ViewFilterRules.home] : null,
+      where: where,
+      rules: applySearch ? _homeFilterRules : null,
+      includeWorklistItems: widget.tagFilter != null,
     );
   }
 
@@ -2983,7 +3074,8 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
-      onStartTimer: () => _startTaskTimer(task),
+      onStartTimer:
+          widget.tagFilter == null ? () => _startTaskTimer(task) : null,
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
@@ -3047,11 +3139,18 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildScheduleBody() {
     final query = _searchQuery.trim().toLowerCase();
-    final visibleTasks = _tasks
-        .where((t) =>
-            ItemViews.isVisibleInMainViews(t) &&
-            (query.isEmpty || _matchesSearch(t, query)))
-        .toList();
+    final tagFilter = widget.tagFilter;
+    // Same gate as the tabs (ItemViews.homeVisible), the configured Home
+    // filter rules included — the schedule view is the home screen in
+    // another shape, not a second, laxer view.
+    final visibleTasks = ItemViews.homeVisible(
+      _tasks,
+      where: (t) =>
+          (query.isEmpty || _matchesSearch(t, query)) &&
+          (tagFilter == null || labelHasToken(t.label, tagFilter)),
+      rules: _homeFilterRules,
+      includeWorklistItems: tagFilter != null,
+    );
     return ScheduleView(
       key: _scheduleViewKey,
       tasks: visibleTasks,
@@ -3081,7 +3180,6 @@ class _HomePageState extends State<HomePage>
   /// key, so a tool switched off in Settings disappears here and can no
   /// longer be the start page.
   static const List<_ToolEntry> _toolEntries = [
-    _ToolEntry('food_diary', 'Food Diary', Icons.restaurant),
     _ToolEntry('alarms', 'Alarms', Icons.alarm),
     _ToolEntry('weekly_hours_planner', 'Weekly Hours Planner',
         Icons.calendar_view_week),
@@ -3094,6 +3192,9 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('usage_data', 'Usage Data', Icons.query_stats),
     _ToolEntry('fitness_activity', 'Fitness Activity', Icons.directions_run),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
+    _ToolEntry('worklist', 'Worklist', Icons.checklist),
+    _ToolEntry('mp3_downloader', 'MP3 Downloader', Icons.music_note),
+    _ToolEntry('music_player', 'Music Player', Icons.library_music),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —
@@ -3129,8 +3230,13 @@ class _HomePageState extends State<HomePage>
     // Keeps configured flame goals (see StreakGoal) able to tell a deleted
     // target task apart from one that just has not fired yet today.
     StreakService.instance.syncKnownTasks(_tasks);
-    final enabledTools =
-        _toolEntries.where((t) => Config.isFeatureEnabled(t.key)).toList();
+    final enabledTools = _toolEntries
+        // A tag-filtered instance (Worklist) is itself the Worklist tool, so
+        // it never lists itself among the tools it can open.
+        .where((t) =>
+            Config.isFeatureEnabled(t.key) &&
+            !(widget.tagFilter != null && t.key == 'worklist'))
+        .toList();
     final pendingApprovalCount = ItemViews.waitingApproval(_tasks).length;
     final scaffold = Scaffold(
       key: homeScaffoldKey,
@@ -3141,7 +3247,7 @@ class _HomePageState extends State<HomePage>
               padding: const EdgeInsets.all(16), // adjust as you like
               color: Theme.of(context).colorScheme.primary,
               child: Text(
-                'BestToDo v${Config.version}',
+                '${widget.toolTitle ?? 'BestToDo'} v${Config.version}',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onPrimary,
                   fontSize: 18,
@@ -3162,6 +3268,82 @@ class _HomePageState extends State<HomePage>
               onTap: () {
                 Navigator.pop(context);
                 _openSettingsPage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.pending_actions),
+              title: const Text('Waiting for Approval'),
+              trailing: pendingApprovalCount > 0
+                  ? CircleAvatar(
+                      radius: 10,
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      child: Text(
+                        '$pendingApprovalCount',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onError,
+                        ),
+                      ),
+                    )
+                  : null,
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                          builder: (_) => const WaitingApprovalPage()),
+                    )
+                    .then((_) => _reloadTasksFromStorage());
+              },
+            ),
+            if (Config.isFeatureEnabled('food_diary'))
+              ListTile(
+                leading: const Icon(Icons.restaurant),
+                title: const Text('Food Diary'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openTool('food_diary');
+                },
+              ),
+            if (enabledTools.isNotEmpty)
+              ExpansionTile(
+                leading: const Icon(Icons.build),
+                title: const Text('Tools'),
+                childrenPadding: const EdgeInsets.only(left: 16),
+                children: [
+                  for (final tool in enabledTools)
+                    ListTile(
+                      leading: tool.key == 'test_results' &&
+                              TestReportService.instance.hasUnseenFailures
+                          ? _iconWithFailureDot(tool.icon)
+                          : Icon(tool.icon),
+                      title: Text(tool.label),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openTool(tool.key);
+                      },
+                    ),
+                ],
+              ),
+            if (Config.isFeatureEnabled('changelog'))
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Changelog'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ChangelogPage()),
+                  );
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AboutPage()),
+                );
               },
             ),
             if (Config.isFeatureEnabled('deleted_items'))
@@ -3197,53 +3379,6 @@ class _HomePageState extends State<HomePage>
                         },
                       ),
                     ),
-                  );
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.info),
-              title: const Text('About'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AboutPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.pending_actions),
-              title: const Text('Waiting for Approval'),
-              trailing: pendingApprovalCount > 0
-                  ? CircleAvatar(
-                      radius: 10,
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                      child: Text(
-                        '$pendingApprovalCount',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.onError,
-                        ),
-                      ),
-                    )
-                  : null,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context)
-                    .push(
-                      MaterialPageRoute(
-                          builder: (_) => const WaitingApprovalPage()),
-                    )
-                    .then((_) => _reloadTasksFromStorage());
-              },
-            ),
-            if (Config.isFeatureEnabled('changelog'))
-              ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('Changelog'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ChangelogPage()),
                   );
                 },
               ),
@@ -3295,26 +3430,6 @@ class _HomePageState extends State<HomePage>
                   );
                 },
               ),
-            if (enabledTools.isNotEmpty)
-              ExpansionTile(
-                leading: const Icon(Icons.build),
-                title: const Text('Tools'),
-                childrenPadding: const EdgeInsets.only(left: 16),
-                children: [
-                  for (final tool in enabledTools)
-                    ListTile(
-                      leading: tool.key == 'test_results' &&
-                              TestReportService.instance.hasUnseenFailures
-                          ? _iconWithFailureDot(tool.icon)
-                          : Icon(tool.icon),
-                      title: Text(tool.label),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openTool(tool.key);
-                      },
-                    ),
-                ],
-              ),
           ],
         ),
       ),
@@ -3349,7 +3464,7 @@ class _HomePageState extends State<HomePage>
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
-            : const Text('BestToDo'),
+            : Text(widget.toolTitle ?? 'BestToDo'),
         actions: [
           ValueListenableBuilder<int>(
             valueListenable: TaskMutationService.instance.revision,
@@ -3389,16 +3504,18 @@ class _HomePageState extends State<HomePage>
               );
             },
           ),
-          StreakFlameButton(
-            now: _currentDate,
-            onSettingsChanged: () {
-              if (mounted) setState(() {});
-            },
-          ),
+          if (widget.tagFilter == null)
+            StreakFlameButton(
+              now: _currentDate,
+              onSettingsChanged: () {
+                if (mounted) setState(() {});
+              },
+            ),
           ListenableBuilder(
             listenable: DiceTimerController.instance,
             builder: (context, _) {
-              if (!Config.isFeatureEnabled('dice_timer')) {
+              if (!Config.isFeatureEnabled('dice_timer') ||
+                  widget.tagFilter != null) {
                 return const SizedBox.shrink();
               }
               final active = DiceTimerController.instance.isActive;
@@ -3541,11 +3658,24 @@ class _HomePageState extends State<HomePage>
         ],
       ),
     );
-    return Focus(
+    final content = Focus(
       focusNode: _homeKeyboardFocusNode,
       autofocus: true,
       onKeyEvent: _handleHomeKeyEvent,
       child: scaffold,
+    );
+    if (widget.tagFilter == null) return content;
+    // Worklist (and any other tag-filtered instance): an orange accent so the
+    // filtered view is visually distinct from the real home screen at a
+    // glance, even though it's otherwise the exact same UI.
+    final baseTheme = Theme.of(context);
+    final orangeScheme = ColorScheme.fromSeed(
+      seedColor: Colors.orange,
+      brightness: baseTheme.brightness,
+    ).copyWith(primary: Colors.orange);
+    return Theme(
+      data: baseTheme.copyWith(colorScheme: orangeScheme),
+      child: content,
     );
   }
 }

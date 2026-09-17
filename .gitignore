@@ -9,6 +9,9 @@
 promptlinks.md
 .idea/
 
+# Per-machine state for tool/smart_test.dart (mods since last full run, etc.)
+/.smart_test_state.json
+
 
 # Flutter repo-specific
 /bin/cache/
@@ -128,3 +131,6 @@ docs/exports/*
 # Black-screen bisect scratch builds (fix/black-screen-restore only; not part
 # of dev's own history, see testbuilds/README.md on that branch).
 testbuilds/
+
+# Kotlin incremental-compile session files (build artifacts)
+android/.kotlin/

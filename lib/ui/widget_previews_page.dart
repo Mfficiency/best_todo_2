@@ -7,6 +7,7 @@ import '../services/alarm_service.dart';
 import '../services/alarm_widget_service.dart';
 import '../services/food_diary_widget_service.dart';
 import '../services/item_repository.dart';
+import '../services/music_player_service.dart';
 import '../services/task_widget_service.dart';
 import 'subpage_app_bar.dart';
 
@@ -377,6 +378,70 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
     );
   }
 
+  /// Mirrors `MusicMiniWidgetProvider.kt` / `music_mini_widget_layout.xml`.
+  Widget _buildMusicMiniWidget() {
+    final item =
+        MusicPlayerService.isReady ? MusicPlayerService.handler.mediaItem.valueOrNull : null;
+    final playing = MusicPlayerService.isReady
+        ? (MusicPlayerService.handler.playbackState.valueOrNull?.playing ?? false)
+        : false;
+    return _widgetFrame(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            item?.title ?? 'Nothing playing',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+          const SizedBox(height: 4),
+          Icon(playing ? Icons.pause : Icons.play_arrow,
+              color: Colors.white, size: 32),
+        ],
+      ),
+    );
+  }
+
+  /// Mirrors `MusicControlsWidgetProvider.kt` /
+  /// `music_controls_widget_layout.xml`.
+  Widget _buildMusicControlsWidget() {
+    final item =
+        MusicPlayerService.isReady ? MusicPlayerService.handler.mediaItem.valueOrNull : null;
+    final playing = MusicPlayerService.isReady
+        ? (MusicPlayerService.handler.playbackState.valueOrNull?.playing ?? false)
+        : false;
+    final artist = item?.artist ?? '';
+    final label = item == null
+        ? 'Nothing playing'
+        : (artist.isNotEmpty ? '${item.title} – $artist' : item.title);
+    return _widgetFrame(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.skip_previous, color: Colors.white, size: 32),
+              const SizedBox(width: 16),
+              Icon(playing ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white, size: 32),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -387,7 +452,7 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 const Text(
-                  'Mocks of the four Android home-screen widgets, drawn from '
+                  'Mocks of the Android home-screen widgets, drawn from '
                   'the same data the real widgets show. Dev/debug only — not '
                   'part of the release build\'s navigation.',
                 ),
@@ -399,6 +464,10 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
                 _buildFoodDiaryWidget(),
                 _sectionLabel('Food Diary button widget'),
                 _buildFoodDiaryButtonWidget(),
+                _sectionLabel('Music widget (play/pause)'),
+                _buildMusicMiniWidget(),
+                _sectionLabel('Music widget (controls)'),
+                _buildMusicControlsWidget(),
               ],
             ),
     );

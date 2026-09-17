@@ -95,6 +95,7 @@ Dependencies and why they exist:
 | `flutter_markdown` | renders CHANGELOG.md in-app |
 | `url_launcher` | About page links |
 | `cupertino_icons` | iOS-style glyphs |
+| `youtube_explode_dart` | MP3 Downloader: YouTube search/metadata/audio-stream resolution and download (pure Dart, no API key, no native code — see §10.6d for why it deliberately doesn't also depend on an ffmpeg-kit variant) |
 
 ## 3. App startup sequence (order matters)
 
@@ -159,7 +160,14 @@ Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist it
 (see §10.6); wish tasks are undated and undated tasks bucket into the Future tab.
 Food Diary (0.1.266): `isEatingHabit` (bool, default false) marks a task as a food
 diary entry (see §10.6a); gated out of every other view by
-`ItemViews.isVisibleInMainViews`.
+`ItemViews.isVisibleInMainViews`. Stomach issue entries (0.2.44, multi-select symptom
+type 0.2.45, Start/Stop clearable to neither 0.2.46): `isStomachIssue` (bool, default
+false) + `stomachEventType` (nullable String, `'start'`/`'stop'`/null — null both before
+any dialog interaction and when the user deliberately clears the toggle) +
+`stomachSymptomTypes` (`List<String>`, default `[]`, omitted from JSON when empty;
+`fromJson` also accepts the 0.2.44-only singular `stomachSymptomType` string and wraps
+it in a one-item list) + `stomachIntensity` (nullable int) mark an `isEatingHabit` entry
+as a logged stomach issue rather than a meal — see §10.6a.
 Attachments (0.1.277): `attachments` (`List<Attachment>`, default `[]`, omitted from JSON
 when empty) — see §4.1a.
 `fromJson` is tolerant: missing keys get defaults.
@@ -378,7 +386,11 @@ Every selector above, including `waitingApproval` (0.1.272), also takes an optio
 an extra, user-configured tag layer on top of the view's own structural query. `applyFilterRules`
 filters a plain list the same way (used for the Archived Items and Deleted bin pages, neither
 of which is itself a selector — see §4.2g). A null or empty `rules` is a no-op, so every existing
-call site that does not pass one is unaffected.
+call site that does not pass one is unaffected. The home screen's two bodies share one
+entry point into all of this (0.2.46): `isOnHomeScreen` (structural gate + the caller's own
+predicate + `passesFilterRules`), which `homeBucket` applies per tab and `homeVisible`
+applies to the whole unbucketed list the schedule view renders — see §4.4's "The three ways
+the demo gate was still leaking".
 
 ### 4.2e Waiting for Approval gate (0.1.256, token respelled 0.1.259)
 
@@ -467,11 +479,13 @@ doesn't fit inline: the attachments viewer, the reminder toggle and the task's f
 journal history.
 
 An app-bar icon button (`Icons.view_agenda_outlined` / `Icons.view_list`, tooltip
-"Group by conversation" / "Show as one list") toggles `_groupByConversation` between the
-original flat `ListView.builder` and a grouped `ListView` built the same way as
-`WishlistPage`'s release sections: `_groupedPending` buckets the pending list by
+"Group by conversation" / "Show as one list") toggles `_groupByConversation` between a
+grouped `ListView` built the same way as `WishlistPage`'s release sections and the
+original flat `ListView.builder`: `_groupedPending` buckets the pending list by
 `_groupKeyFor(task)` (first-seen order), and each `_ApprovalGroupHeader` shows
-`<title> (<count>)`. Not persisted — every visit starts on the flat list.
+`<title> (<count>)`. Not persisted — every visit starts grouped (default flipped 0.2.28;
+was flat by default before), the more useful default once a conversation has more than a
+couple of pending items.
 
 **Retroactive grouping fallback (0.2.20):** `_groupKeyFor` (top-level function in
 `waiting_approval_page.dart`) picks the group key in three tiers, so items created before
@@ -850,9 +864,13 @@ offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback
 build; sections scrolled out of view are unmounted, which is fine because the section
 spanning the top is always attached.
 
-**Drawer:** Home, Settings, Archived Items (→ Deleted bin, §4.2g), About, Changelog, App Logs, Startup Times,
-Tools ▸ (Food Diary, Alarms, Weekly Hours Planner, Projects, Wishlist, Chronize, Countdown,
-Productivity Stats, Usage Data, Test Results — most-used first, Test Results pinned last).
+**Drawer (reordered 0.2.33):** Home, Settings, Waiting for Approval, Food Diary, Tools ▸
+(Alarms, Weekly Hours Planner, Projects, Wishlist, Research, Chronize, Countdown,
+Productivity Stats, Usage Data, Fitness Activity, Test Results, Worklist, MP3
+Downloader — most-used first), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
+Startup Times, Widget Previews (dev build only). Food Diary is a standalone entry (own
+`ListTile`, gated on `Config.isFeatureEnabled('food_diary')`) rather than a `_toolEntries`
+member, so it always sits above Tools instead of inside it.
 **Home** (0.1.233) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
@@ -1049,7 +1067,10 @@ desktop/web where storage may not persist; skipped as soon as any seeded task ca
 task exists* (0.1.138): `loadItems()` merges the one-time Todo.md import into the task
 list as wishes, so a plain `isEmpty` check saw a fresh install as an existing one and
 skipped the starter tasks (and the dev range/history/reminder seeds) entirely. The starter
-tasks are inserted ahead of the imported wishes.
+tasks are inserted ahead of the imported wishes. Every seed described above (and every other
+dev/demo filler item — alarms, countdown timers, Food Diary entries) carries the `demo` label
+token (0.2.31) so it stays filterable via Settings → Filtering rules; see §4.4's "The `demo`
+tag" note.
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
 
@@ -1174,6 +1195,85 @@ underlying flag (e.g. typing "Wish" onto a task does not set `isWish`) except
 `Waiting_for_approval`, which — unchanged from before — is the one token that *is* the literal
 mechanism (§4.2e).
 
+*The `demo` tag (0.2.31).* Separately from the eight `protectedStateTokens`, `demoToken`
+(`'demo'`, classified `Label.kindSystem` alongside `old`/`autocompleted` rather than added to
+`protectedStateTokens`, so it renders as a plain chip, not the deep-orange protected one) is
+stamped onto every task/alarm/timer the app ever generates for itself instead of the user: the
+first-run starter tasks (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
+seed — `home_page.dart`'s `_buildDevDeletedSeed`/`_buildDevAutoDeletedBackfill`/
+`_buildDevFutureTasksSeed`/`_buildDevWishlistSeed`/`_seedDevRangeTask`/`_seedDevWishItem`/
+`_seedDevLinkedReminder`'s reminder alarm, `AlarmService._buildDevSeed`,
+`CountdownTimerPage._devSeedTimers`, `FoodDiaryPage._buildDevSeed` and `WishlistPage._load`'s
+dev fallback. Existing tokens on those items (`old`, `priority-medium`, …) are kept —
+`addLabelToken` appends `demo` alongside them rather than replacing the label. The point: once
+one of these seeded items is saved to disk it is a normal record indistinguishable from
+anything the user typed, and outlives whatever produced it — including `Config.isDev` going
+back to `false` on a later release build (the reported case: rich dev-only seed data
+reappearing on a production phone) — so `demo` is what lets a Settings → Filtering rules
+exclude rule (any view) hide it regardless of how it got there. `_seedDevItemHistory` special-
+cases its "no real label yet" check (`hasOnlyDemoLabel`) since its target tasks now always
+carry `demo` from `_buildDevFutureTasksSeed`.
+
+*Demo items hidden by default outside dev builds.* `Config.hideDemoItems` (defaults to
+`!Config.isDev`, but a settable property rather than deriving straight from the compile-time
+`isDev` so tests can flip it — and, since 0.2.46, a user-facing switch, see below) makes
+the `demo` tag self-enforcing rather than opt-in: once true,
+`ItemViews.passesTagRules` hides a `demo`-carrying item ahead of and independent from whatever
+`ViewFilterRules` says, so no Settings → Filtering rules configuration is required — production
+never shows seeded sample data, from the very first release build. `applyTagRules`/
+`applyFilterRules` (used by the Alarms/Countdown pages and the Archived/Bin views) lost their
+"rules empty → return the same list instance" shortcut for exactly this reason: demo hiding can
+still apply when there are no rules configured at all. Three home-screen widgets that build
+their payload straight from the task/alarm list rather than going through a `ViewFilterRules`
+lookup — `TaskWidgetService.todayTasks` (0.2.46: filters through the *Home* view's rules, not just
+the demo gate — the widget is the Today tab on the launcher, so a task Home hides must not
+reappear there; an optional `rules` parameter overrides them for tests),
+`FoodDiaryWidgetService.sync` (already routed through `ItemViews.foodDiary`, so it
+inherited the behavior for free) and `AlarmService`'s two `AlarmWidgetService.sync` call sites
+(wrapped in a `_widgetVisible` helper) — are covered the same way, so a demo alarm or task never
+reaches the home screen in production even though scheduling/notifications for it are untouched.
+
+*The three ways the demo gate was still leaking (0.2.46).* Reported as "the filtering of the
+home view does not work and by default there should be a demo filter — I tried to add it
+manually and it did nothing, even after restarting the app". Three independent causes, all
+fixed:
+
+1. **The schedule view ignored the Home rules entirely.** `_buildScheduleBody` filtered
+   `_tasks` on `ItemViews.isVisibleInMainViews` + search + `tagFilter` only, never
+   `passesFilterRules` — so on a phone with Settings → Tasks → "start in schedule view" on,
+   the home screen showed everything every Home rule (and the demo gate, which lives inside
+   the same check) was supposed to hide, and adding a `demo` Hide chip by hand changed
+   nothing. Both home bodies now go through one gate: `ItemViews.isOnHomeScreen` (structural
+   gate + caller predicate + `passesFilterRules`), used by `homeBucket` for the tabs and by
+   the new `ItemViews.homeVisible` for the schedule view, which is the whole unbucketed home
+   list. `HomePage._homeFilterRules` is the single getter both read, so a rule can no longer
+   apply to one body and not the other.
+2. **Seeds written to disk before 0.2.31 carry no `demo` token at all**, so nothing — not the
+   built-in gate, not a hand-typed `demo` rule — could match them; a debug build run once on
+   a real phone leaves 20+ such tasks behind and they survive every later release install.
+   Every dev seeder stamps its own description marker ("Seeded dev future task", "Dev seed: a
+   wishlist item", …), which no human types, so `isDemoSeedDescription`
+   (`demoSeedDescriptionPrefixes`: `Seeded dev`, `Dev seed:`) recognizes them and
+   `ItemViews.stateTags` adds a synthetic `demo` tag for a match — making those legacy items
+   behave exactly like a stamped one for both the built-in gate and any `demo` rule, without
+   touching stored data. Title-only matches (the `Config.initialTasks` starter tasks: "Get
+   milk", …) are deliberately *not* recognized: a user may well have typed one of those.
+3. **The gate was invisible**, which is why it read as broken. `Config.hideDemoItems` is now
+   a real setting with its own switch, "Hide demo and sample items", at the top of Settings →
+   Filtering rules (above the per-view chip editors, since it is the one rule that applies to
+   all views at once). Only an explicit flip is persisted, never the default
+   (`Config._hideDemoItemsSet`, written to `settings.json` only when non-null): a debug build
+   sharing the phone's settings file would otherwise store `false` and a later release install
+   would read it back and show the leftover seeds again — the exact failure the gate exists to
+   prevent.
+
+A fourth, adjacent bug surfaced while testing this: `SettingsPage._jumpToSection` chose its
+scroll-walk direction from `_activeSectionIndex`, which lags whenever something scrolls the
+list without the scroll listener settling, so a chip tap could expand a section and then walk
+away from it to the end of the list. It now reads the direction off the sections that actually
+have a `RenderObject` (`_sectionIsAboveViewport`) — this is why the three "Settings →
+Filtering rules" widget tests had been failing on CI.
+
 *Food Diary, Alarms and Countdown as filterable views.* Food Diary
 (`ItemViews.foodDiary(tasks, {rules})`) works exactly like Wishlist: an extra rules layer on
 top of its `isEatingHabit` gate. Alarms and Countdown aren't task lists, so each gained its
@@ -1181,7 +1281,18 @@ own `tags` field (`Alarm.tags`, `CountdownTimerItem.tags` — free-form, same co
 convention as `Task.label`, editable via a `LabelPickerField` in `AlarmEditPage` and the
 `_DraftTimerComposer` used for both adding and inline-editing a timer) and each page filters
 its own list with `ItemViews.applyTagRules(items, rules, (item) => item.tags)` before display,
-rendering any tags as small pills under each row.
+rendering any tags as small pills under each row. Since the default seeded rule for each view
+is `includeTags: [ownReservedToken]` (below), and `applyTagRules` matches only against the
+item's own `tags` string (unlike `Task`'s `passesFilterRules`, it has no synthetic `stateTags`
+to fall back on), every alarm/timer must carry its view's reserved token literally in `tags` or
+that default rule would hide it outright. Both models enforce this the same way: a required
+tag (`Alarm.kAlarmRequiredTag`/`CountdownTimerItem.kCountdownRequiredTag`, `'alarm'`/
+`'countdown'`) is folded into `tags` by the constructor and again by `toJson()`
+(`ensureAlarmTag`/`ensureCountdownTag`), so it round-trips even through a legacy record saved
+without it and survives a `LabelPickerField` edit that clears the field. (0.2.40 fix: the
+countdown side of this was missing until then — every `CountdownTimerItem` skipped the
+required-tag step Alarm already had, so the seeded `includeTags: [Countdown]` rule hid every
+timer, old and new alike, the moment `viewFilterRulesSeedVersion` re-synced it.)
 
 *Seeded defaults (`Config.viewFilterRulesSeedVersion`, `ViewFilterRules.defaultsFor`).* A
 fresh install's Settings → Filtering rules starts pre-populated rather than empty, with the
@@ -1836,7 +1947,7 @@ clue for the missing-receiver bug.
 
 ## 8. Home-screen widgets (Android)
 
-Four widgets via `home_widget` (app group `group.homeScreenApp`):
+Six widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
@@ -1874,10 +1985,11 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   `edit?id=`); tapping anywhere else opens the Food Diary list (`besttodofood://open`). Both
   are foreground `HomeWidgetLaunchIntent`s, unlike the other two widgets' background
   toggles — logging food always needs the UI, so there is no background isolate path here.
-  Turns the whole background red once today's running entry count falls behind a checkpoint
-  schedule (0.2.25): at least 1 entry logged by 8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00
-  (`checkpointMinutes`/`requiredCounts`) — a plain "log something roughly every few hours"
-  cadence, not tied to any particular meal. `FoodDiaryWidgetService`
+  Pulses red (alternating a bright and a dim red, see below) once today's running entry count
+  falls behind a checkpoint schedule (0.2.25; pulsing since 0.2.32): at least 1 entry logged by
+  8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00 (`checkpointMinutes`/`requiredCounts`) — a plain
+  "log something roughly every few hours" cadence, not tied to any particular meal.
+  `FoodDiaryWidgetService`
   (`lib/services/food_diary_widget_service.dart`) pushes only the raw "how many entries
   today" count plus the date it describes, synced from `FoodDiaryPage._save`,
   `home_page._updateHomeWidget` and `WaitingApprovalPage._save`; whether a checkpoint has
@@ -1893,12 +2005,47 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   `targetCellHeight` = 1, `resizeMode="none"`) and drawing nothing but a "+" that fills the
   cell. Tapping it is the same foreground `besttodofood://add` launch intent as the full
   widget's "+" — there is no room for status text at this size, so it carries no other tap
-  target. Since 0.2.12 it redraws every 30 minutes and turns red on the same running-count
-  schedule as the full widget (0.2.25); tapping it remains an immediate shortcut to the
-  add-entry dialog.
+  target. Since 0.2.12 it redraws every 30 minutes and pulses red on the same running-count
+  schedule as the full widget (0.2.25, pulsing since 0.2.32); tapping it remains an immediate
+  shortcut to the add-entry dialog.
+- **Music mini widget** (`MusicMiniWidgetProvider.kt`, 0.2.61): a single play/pause button plus
+  a one-line title, nothing else. **Music controls widget** (`MusicControlsWidgetProvider.kt`,
+  0.2.61): the same, plus skip-previous and (0.2.63) skip-next buttons. Both differ from every
+  other widget here: their buttons don't call into Dart at all (there is no in-memory
+  `MusicAudioHandler` a separate background isolate could reach — unlike the on-disk task/alarm
+  lists, playback state lives in the running foreground service). Instead `MusicWidgetIntents.kt`
+  builds an explicit `ACTION_MEDIA_BUTTON` broadcast (`KEYCODE_MEDIA_PLAY_PAUSE`/
+  `KEYCODE_MEDIA_PREVIOUS`/`KEYCODE_MEDIA_NEXT`) targeted straight at `audio_service`'s own
+  `MediaButtonReceiver` — the same path a Bluetooth headset or wired remote uses — so the buttons
+  work whenever the Music Player's playback service is alive, in the foreground or not.
+  `MusicWidgetService` (`lib/services/music_widget_service.dart`) only pushes the display data
+  (title/artist/playing) by subscribing to the audio handler's `mediaItem`/`playbackState`
+  streams; tapping the title opens the app to the Music Player tool (`besttodomusic://open`).
+  See §10.6e.
+
+*Pulsing red, not flat red (0.2.32).* `FoodDiaryAlert.kt` (shared by both providers) alternates
+the background between a bright and a dim red every 900ms (`pulseColor`, `pulseIntervalMs`) so a
+missed checkpoint actually catches the eye instead of sitting there as a flat color that blends
+into the background after the first glance. AppWidgets have no real animation API — no
+`Animatable.start()` reaches a `RemoteViews`-hosted `View` from outside its own process — so the
+pulse is faked: each `onUpdate` that finds the alert active schedules a *non-wakeup* elapsed-
+realtime alarm (`AlarmManager.setExact(ELAPSED_REALTIME, …)`) that re-broadcasts
+`ACTION_APPWIDGET_UPDATE` at its own provider (an explicit-`Intent` self-target, so it lands
+regardless of Android 8+'s implicit-broadcast restrictions and needs no extra manifest
+receiver). Non-wakeup on purpose: the loop only actually ticks while the device is already
+awake — i.e. while someone could plausibly be looking at the home screen — so it costs nothing
+while the phone sleeps, and the two providers already hold `SCHEDULE_EXACT_ALARM`/
+`USE_EXACT_ALARM` for the alarm feature. Each tick recomputes `FoodDiaryAlert.status` fresh
+(never assumes the previous tick's alert still holds) and reschedules only while still behind;
+the moment it isn't, or the last widget instance of that kind is removed (an empty
+`appWidgetIds` breaks the reschedule chain), the loop stops itself. `widget_previews_page.dart`'s
+in-app mock does not reproduce the pulse (`FoodDiaryWidgetService.isBehindSchedule` only ever
+returns the static behind/not-behind boolean) — it still shows flat red for "behind", since the
+mock exists to keep the *data* in sync with the Kotlin providers, not to fully replicate a
+`RemoteViews` animation loop outside the Flutter tree.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
-`Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
+`Config.isDev`, next to App Logs/Startup Times): the widgets above are drawn by
 `RemoteViews` on the Android home screen, entirely outside the Flutter tree, so they cannot
 be captured by the desktop screenshot integration test (`integration_test/
 home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
@@ -1917,10 +2064,14 @@ without any status text, matching what the Kotlin provider actually draws.
 `SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
 `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
-`FOREGROUND_SERVICE`, `VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (0.2.61 — the Music Player's
+background playback service, required alongside `FOREGROUND_SERVICE` when targeting SDK 34),
+`VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
 About page; the user still confirms every install) and `INTERNET` (0.1.139 — debug builds
 get it implicitly, so "Check for updates" worked in development and failed on every release
-APK until it was declared in the main manifest). An `androidx.core.content.FileProvider`
+APK until it was declared in the main manifest). Music folder access reuses the existing
+`MANAGE_EXTERNAL_STORAGE` grant (§10.6d) rather than adding `READ_MEDIA_AUDIO`. An
+`androidx.core.content.FileProvider`
 (authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
 + external-files dirs) shares the downloaded update APK with the system installer as a
 `content://` URI.
@@ -1931,7 +2082,10 @@ the plugin ships an empty manifest and its PendingIntent targets this class) +
 `RebootBroadcastReceiver`; flutter_local_notifications `ScheduledNotificationReceiver` +
 `ScheduledNotificationBootReceiver` (BOOT/PACKAGE_REPLACED/quickboot) +
 `ActionBroadcastReceiver` (snooze/dismiss); home_widget background receiver/service; the
-four widget providers.
+six widget providers; `audio_service`'s own `AudioService` foreground service
+(`foregroundServiceType="mediaPlayback"`) and `MediaButtonReceiver` (0.2.61 — the Music
+Player's background playback, notification and lock-screen controls, and the target the two
+music widgets' buttons send real media-button broadcasts to — see §8).
 
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(26, flutter.minSdkVersion)` (androidx.work via home_widget needs 23; the
@@ -1955,7 +2109,11 @@ releases could not hand a single alarm to the OS (only the watchdog backup rang,
 late). Do not remove.
 
 **MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
-`FlutterActivity`: it sets show-when-locked/turn-screen-on when launched by an alarm's
+`FlutterActivity` — since 0.2.61 it extends `AudioServiceFragmentActivity` (not plain
+`FlutterFragmentActivity`) so the Music Player's background playback service can hand it
+the `FlutterEngine` it manages; the health plugin's Health Connect flow (which needs a
+`FragmentActivity`) is unaffected, since `AudioServiceFragmentActivity` is itself one. It
+sets show-when-locked/turn-screen-on when launched by an alarm's
 full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
 (`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
 the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
@@ -2025,6 +2183,30 @@ whatever app the share came from — the standard "quick capture" pattern, since
 activity was launched fresh by that app's share sheet; a bare back-gesture dismissal
 (no button tapped) does the same from `dispose()`. Tests: `test/share/`.
 
+**Song-link share routing** (0.2.60): before presenting `QuickAddSharePage`, `main.dart`
+runs the share's text (or subject) through `detectMusicShareLink`
+(`lib/services/music_share_link.dart`) looking for a Spotify track link
+(`open.spotify.com/track/...`), a Shazam track link (`shazam.com/track|song/...`), or a
+YouTube video/playlist link (the same patterns `Mp3DownloaderService` already
+recognizes). A match routes straight into `Mp3DownloaderPage(sharedLink: ...)` instead of
+the task editor, skipping the quick-add flow entirely — the share's caption text (with
+the link itself removed, and boilerplate like "I used Shazam to discover" stripped) is
+kept as a `textHint`. On open, the page resolves the link into a search query via
+`MusicLinkResolverService.resolveSearchQuery`: a YouTube link passes through unchanged
+(the downloader's existing direct-URL path resolves and downloads it immediately, no
+picker); a Spotify/Shazam link uses the caption `textHint` when there is one, otherwise
+fetches Spotify's public `open.spotify.com/oembed` endpoint (`title` + `author_name`, no
+API key) or parses the Shazam page's `og:title`/`<title>` (via the `html` package,
+stripping the trailing " | Shazam") — either way the resolved text feeds the same
+`_submit()` a typed query uses, landing on the usual up-to-5-candidate picker. A failed
+lookup with no caption to fall back on shows an error (`MusicLinkResolveException`)
+rather than hanging. `Mp3DownloaderPage` swaps its normal Tools app bar for one with a
+"Find & Download Song" title and a Close button (`_finishShare`) that calls
+`ShareIntentService.returnToPreviousApp` and pops, same as `QuickAddSharePage`'s
+Save/Discard; a bare back-gesture dismissal does the same from `dispose()`. Tests:
+`test/tools/music_share_link_test.dart`,
+`test/tools/mp3_downloader_test.dart` ("opened from a share (sharedLink)").
+
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
 here have broken builds before.
@@ -2051,9 +2233,12 @@ with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → cr
 ### 10.2 Countdown timers (Tools → Countdown)
 `CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags,itemUid}`
 in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
-target now+7d, minimizes on scroll), in-place edit, drag reorder (manual mode) or sort by
-name/added/edited/deadline asc/desc, swipe-to-delete with undo, 1 s tick. Collapsed rows
-show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows the same duration as
+target now+7d, minimizes on scroll), in-place edit, long-press drag reorder (manual mode) or
+sort by name/added/edited/deadline asc/desc, 1 s tick. Swiping is not used for delete — it
+conflicted with the long-press-drag gesture — so the row's edit/notify/milestone/delete
+buttons (delete has an undo snackbar) stay hidden until the row is tapped open; tapping again
+collapses it. Collapsed rows show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows
+the same duration as
 decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
 (orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
 (birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
@@ -2070,11 +2255,14 @@ target kept correct between app opens. A linked timer's `target` follows the tas
 a timer whose task disappears is **unlinked**, not deleted — a countdown still means
 something on its own once detached. See `docs/architecture/presentation-layer-decision.md`.
 
-`tags` (free-form, `Task.label`'s comma/whitespace convention, empty string omitted from
-JSON) is editable via a `LabelPickerField` in the composer, and filterable in Settings →
-Filtering rules → Countdown (`ItemViews.applyTagRules`, see §4.4). Filtering narrows the
-displayed list only — reorder is disabled while a Countdown filter rule is active, same
-reasoning as Home (§4.4).
+`tags` (free-form, `Task.label`'s comma/whitespace convention) is editable via a
+`LabelPickerField` in the composer, and filterable in Settings → Filtering rules → Countdown
+(`ItemViews.applyTagRules`, see §4.4). Every timer also always carries the required
+`'countdown'` token (`CountdownTimerItem.kCountdownRequiredTag`/`ensureCountdownTag`, folded in
+by the constructor and `toJson()`, mirroring `Alarm.kAlarmRequiredTag`) so the seeded
+`includeTags: [Countdown]` default rule matches it — see §4.4. Filtering narrows the displayed
+list only — reorder is disabled while a Countdown filter rule is active, same reasoning as Home
+(§4.4).
 
 **Milestone notifications** (# icon → `showCountdownMilestonesDialog`, per-timer, 0.1.105;
 replaced the fixed power-of-ten-seconds ladder of 0.1.103). `notifyRoundNumbers` is now the
@@ -2281,6 +2469,38 @@ anything first. The user pastes the prompt into a Claude session with Todoist ac
 BestToDo picks up the resulting tag changes on its next Todoist sync. Confirms with a
 snackbar reminding the user to sync after pasting.
 
+**Send to build (0.2.35):** the options-swipe row's "Build" button
+(`Icons.rocket_launch`) dispatches one item to the build automation:
+`GithubWishlistService.createWishlistIssue` (`lib/services/
+github_wishlist_service.dart`, a thin `http`-based wrapper matching
+`TodoistApiClient`'s shape) opens a `wishlist-build`-labeled GitHub issue on
+`Mfficiency/best_todo_2`, titled from the item and bodied with
+`wishlistIssueBody(item)` — `buildSelectedWishesPrompt([item])`'s text (the
+same "Copy selected as prompt" already produces) plus a `Wishlist item uid:
+<uid>` trailer (`wishlistIssueUidPrefix`) the build routine parses back out,
+since the issue's title/description alone carry no client-side id for it to
+match a `ShippedWish` entry against. Only once that call succeeds does
+`_WishlistPageState._sendToBuild` stamp the item with the `next-build` label
+token (`nextBuildToken` in `label_utils.dart`) — deliberately a separate
+token from `release-next`/`release-soon`, since those name a human's release
+plan and this one names an already-taken automation action. An item already
+carrying the token shows "Queued" (icon `Icons.check_circle`) instead of
+"Build" and the button is disabled — no duplicate issue. Untagging (e.g.
+editing the label by hand) is local only: it does not close or touch the
+GitHub issue. With no token configured, or on any API failure, a snackbar
+explains why and the item is left untagged so it can be retried
+(`isQueuedForBuild(task)` is the query helper). The token itself is a
+GitHub fine-grained PAT scoped to Issues-only on this one repo, entered in
+Settings → Wishlist build (`_SettingsPageState._buildWishlistBuildSection`,
+section index 14) and stored in plain text like `Config.todoistApiToken` —
+save/test-connection mirror the Todoist sync section's fields. A Claude Code
+Remote routine (daily 17:00, plus on demand) watches for open
+`wishlist-build` issues, implements each and pushes straight to `dev` — no
+PR/approval step by design, matching the "bump, sync and build" workflow's
+own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
+itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
+does for any other `dev` push — no separate delivery mechanism was needed.
+
 **Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
 numbers in descriptions are auto-linkified by `LinkifiedText`
 (`lib/utils/linkified_text.dart`): a StatefulWidget that renders `Text.rich` with
@@ -2302,8 +2522,9 @@ AnimatedSlide, 100 px/500 velocity thresholds, directions honor
 `Config.swipeLeftDelete`, GestureDetector on Android/web), but the two
 swipe directions no longer prioritize/delete:
 
-- **Options swipe** (right by default) opens a Share/Copy/Export/Delete shortcut
-  row — each button is a `TextButton.icon` (icon beside its label) — with a
+- **Options swipe** (right by default) opens a Build/Share/Copy/Export/Delete
+  shortcut row (a `Wrap`, so a narrow phone wraps to a second line instead of
+  overflowing) — each button is a `TextButton.icon` (icon beside its label) — with a
   `wishlistSweepDelay` (8s; deliberately longer than the app-wide
   `Config.delayDuration` 5s undo delay used elsewhere, since misreading one of
   four buttons costs more) countdown bar. "Share" calls `SharePlus.instance.share`
@@ -2483,6 +2704,60 @@ wins when a window has more than one) without touching the time field, so loggin
 repeat meal is a tap plus Save; a button is disabled (with a tooltip explaining why) when
 yesterday has nothing logged for that meal.
 
+**Stomach issue entries (0.2.44, multi-select symptom type 0.2.45, optional Start/Stop +
+no color-tinting 0.2.46).** A `SegmentedButton<bool>` at the top of the add/edit dialog
+(`Food`/`Stomach`, backed by `_isStomach`) switches the whole dialog between the food
+fields described above and a second, unrelated form for logging a stomach issue instead
+of a meal — both entry types share the one `isEatingHabit` gate and the one diary list,
+sorted together by time. A stomach entry adds four `Task` fields: `isStomachIssue`
+(bool), `stomachEventType` (`'start'`/`'stop'`/null), `stomachSymptomTypes`
+(`List<String>`, any combination of `'gas'`/`'liquid'`/`'discomfort'`) and
+`stomachIntensity` (int, 1-10); a food entry leaves all four unset/false/empty. The
+stomach form is: the same time row as the food form (reused via `_timeRow()`), a
+Start/Stop `SegmentedButton` (`_stomachEventType`), a Gas/Liquid/Discomfort
+`SegmentedButton<String>` with `multiSelectionEnabled: true` (`_stomachSymptomTypes`, a
+`Set<String>` defaulting to `{'gas'}` for a fresh add) — any combination is selectable at
+once (e.g. gas *and* discomfort together), and the widget's own
+`emptySelectionAllowed: false` default blocks tapping off the last remaining type — and a
+1-10 `Slider` labeled "Intensity: N/10" (`_stomachIntensity`, default 5) — no title, tags
+or description field.
+
+The Start/Stop `SegmentedButton` is deliberately built with `multiSelectionEnabled: true`
++ `emptySelectionAllowed: true` even though only one of the two is ever meant to be
+selected at once — that combination is the only way to make tapping the *already*-selected
+segment clear it back to no selection (a plain single-select `SegmentedButton` always
+forces exactly one segment selected and can't be tapped off). Since multi-select just
+toggles membership, tapping the other segment while one is already selected would
+otherwise leave both lit up; `onSelectionChanged` resolves that itself — when the new
+selection has two members, it keeps only the one that isn't `_stomachEventType` (the one
+just tapped) — so Start and Stop stay mutually exclusive from the user's perspective,
+with "select neither" as a third reachable state. The entry's headline
+(`foodDiaryEntryTitle`, used by the tile, the nutritionist view and both exports in place
+of `entry.title`) is derived as "$Symptoms · $Event" (`_stomachSymptomsLabel` joins every
+selected symptom with ", " in a fixed Gas/Liquid/Discomfort order regardless of tap
+order, e.g. "Gas, Liquid · Start" — "Gas · Start" for just the one) — just "$Symptoms",
+no suffix, once `stomachEventType` is null. The Start/Stop toggle defaults per fresh add
+to whichever keeps today's log consistent (`_FoodDiaryPageState._defaultStomachEventType`,
+still returning a plain `String`, never null): 'stop' when today's chronologically-latest
+stomach entry is an unmatched 'start', 'start' otherwise (including when nothing has been
+logged today) — the user can still tap that default off afterward. Editing an existing
+stomach entry always opens on its own stored event/symptoms/intensity (including a stored
+null event), ignoring the default. `Task.fromJson` still accepts a 0.2.44-only record's
+singular `stomachSymptomType` string and wraps it in a one-item list, so an entry saved
+before the multi-select change still loads with its one symptom intact.
+
+Unlike a food entry, a stomach entry's `_FoodDiaryTile` card is never tinted by time of
+day: `_cardColor` returns `null` (the theme's plain card color) whenever
+`entry.isStomachIssue`, so a stomach log visually reads as its own kind of entry rather
+than another meal time slot.
+`FoodDiaryWidgetService.computeEntryCount`/`latestEntryPerMealWindow` (the meal-count
+checkpoint schedule and the "copy yesterday's meal" shortcuts) both skip
+`isStomachIssue` entries, since neither concept applies to a stomach log. The dialog's
+content is wrapped in a `SizedBox(width: 400)` (a bit wider than the food-only dialog
+used to size itself) to fit the extra controls; the food form's own field order changed
+only in that its tags field now sits under the time row instead of directly under the
+title.
+
 Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
 `featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
 drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
@@ -2609,6 +2884,544 @@ Registered like every other tool: `weekly_hours_planner` key in
 Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (index 13,
 "Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
 at the end of `_sectionTitles` to avoid renumbering the other twelve.
+
+### 10.6c Worklist (0.2.36, streak/dice hidden + orange accent 0.2.37, schedule-view filter leak fixed 0.2.38)
+Tools ▸ Worklist: the home screen itself — same tabs, add-task row, search,
+drag-reorder, swipe, undo/redo, schedule view — narrowed to tasks whose label
+carries the `mlr` tag, minus the streak flame and dice timer, and tinted
+orange so it's visually distinct from the real home screen at a glance.
+Unlike every other tool (a dedicated page), Worklist is a *second `HomePage`
+instance*: `_buildToolPage`'s `'worklist'` case returns
+`const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
+`HomePage` gained two optional constructor fields, `tagFilter`/`toolTitle` (both
+null for the regular home page):
+- `_tasksForTab` folds `tagFilter` into its `where` predicate alongside search
+  (`labelHasToken(task.label, tagFilter)`), but — like search — only when
+  `applySearch` is true; the `applySearch: false` callers (`_saveTasks`'s
+  `listRanking` renumbering loop above all) still see the *whole* tab, so a
+  filtered instance renumbering only its visible subset can never scramble the
+  ranking of the tasks it isn't showing.
+- `_buildScheduleBody` (the schedule-view body, an alternative to the
+  tab-per-bucket layout, toggled by the calendar icon or auto-selected when
+  `Config.startInScheduleView` is on) built its own `visibleTasks` straight
+  off `_tasks`, filtered only by `isVisibleInMainViews`/search — it never
+  applied `tagFilter`. That leaked every task into Worklist whenever schedule
+  view was active (immediately, for anyone with `startInScheduleView` on),
+  even though the tab-per-bucket layout was correctly filtered. Fixed by
+  folding the same `tagFilter == null || labelHasToken(t.label, tagFilter)`
+  check into its `visibleTasks` predicate.
+- Drag-reorder (`_reorderTask`/`_reorderTaskInSection`) already refused to run
+  while a search query or a Home filter rule narrowed the tab (renumbering a
+  subset would scramble the rest); the same guard, factored into a
+  `_tabNarrowed` getter, now also covers `tagFilter != null` — reordering is
+  simply off inside Worklist.
+- `_addTask` stamps `tagFilter` onto a task typed directly into a filtered
+  instance's add row (`addLabelToken`), so it shows up immediately.
+- Two pieces of state are process-wide singletons the real home page owns —
+  the share-sheet quick-add consumer (`ShareIntentService.registerConsumer`)
+  and the `openRunningDiceTimer` callback used to reopen a live dice timer
+  after its full-screen alarm — so `initState` only claims them when
+  `tagFilter == null`; a second instance would otherwise steal them from the
+  primary home page for as long as it stays open.
+- The app-bar `StreakFlameButton` and dice-roll `IconButton` are both wrapped
+  in `widget.tagFilter == null` guards (rather than a `Config` feature flag,
+  which is app-wide) so a filtered instance simply never renders them; the
+  streak-completion celebration overlay (`_recordStreakToggle`) and the
+  task tile's double-tap "Start timer" menu (`onStartTimer`) get the same
+  guard, so no dice/streak UI is reachable from within Worklist even though
+  the underlying `StreakService` singleton still records completions made
+  there (it's the same tasks, same day — the primary home page's flame
+  should still reflect them).
+- `build()`'s final return wraps the page in a `Theme` that swaps in
+  `ColorScheme.fromSeed(seedColor: Colors.orange)` (keeping the ambient
+  theme's brightness/other settings via `copyWith`) whenever
+  `tagFilter != null`, tinting buttons, the selected-tab indicator, etc.
+  orange — the same per-page accent-override mechanism `alarm_ring_page.dart`
+  uses for its per-alarm colour.
+- `_maybeOpenStartTool` no-ops when `tagFilter != null` (a filtered instance
+  must not also open the configured default start tool on top of itself), and
+  the drawer's Tools list hides the `worklist` entry from within a filtered
+  instance (it doesn't list itself).
+- `_openTool`'s post-pop refresh treats `'worklist'` like Wishlist/Food
+  Diary/Research: reloads `_tasks` from storage on return, since the pushed
+  instance kept its own in-memory copy over the same on-disk file.
+- `_updateHomeWidget` (the Android home-screen widget) and `_addSharedTask`
+  read `_tasks` directly rather than through `_tasksForTab`, so calling them
+  from a filtered instance still syncs/creates against the *full* list, never
+  the mlr-only subset.
+
+**mlr tasks are exclusive to Worklist (0.2.39)**: an `mlr`-tagged task shows
+*only* inside Worklist now — everywhere else treats it like a Food Diary
+entry or Research item (10.6a/10.6b): hidden from the regular home tabs,
+schedule view, Wishlist, Projects/board and the Todoist Markdown export, even
+if it also carries a due date, `isWish`, or a `projectId`. Same mechanism as
+those two gates: `label_utils.dart`'s `worklistToken` (`'mlr'`) and
+`hasWorklistToken`, folded into `ItemViews.isVisibleInMainViews` as a fourth
+condition (`includeWorklistItems || !hasWorklistToken(task.label)`).
+`ItemViews.homeBucket` gained the `includeWorklistItems` parameter so the one
+caller that *is* the dedicated tool can still see them: `_tasksForTab` passes
+`includeWorklistItems: widget.tagFilter != null`, and `_buildScheduleBody`'s
+own direct `isVisibleInMainViews` call does the same off its local
+`tagFilter`. Every other `ItemViews` query (`wishlist`, `active`,
+`projectTasks`, `boardColumn`) and `TaskWidgetService.todayTasks` call
+`isVisibleInMainViews` with the gate left on, so they need no changes to
+pick up the exclusion.
+
+Registered like every other tool: `worklist` key in
+`Config.startToolOptions`/`featureKeys` (and their label/description arrays,
+appended after `weekly_hours_planner`), a `_ToolEntry` in home_page's drawer
+list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
+`ViewFilterRules` view id — a filtered `HomePage` still applies
+`ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
+
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56, schema-agnostic playlist-item search 0.2.57, lockupViewModel support 0.2.58)
+Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
+`lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
+title to search, and save the video's audio. A pasted URL
+(`looksLikeYoutubeUrl`/`extractYoutubeVideoId` match `youtube.com/watch`,
+`youtu.be/`, `/shorts/`) resolves and downloads directly; a text query calls
+`Mp3DownloaderService.search` and shows up to 5 candidates (title, channel,
+formatted duration, and play count via `formatViewCount` — `376M plays`,
+usually the fastest way to tell the real upload from a reupload) so the
+ambiguous case is a tap, not a guess.
+
+Built on `youtube_explode_dart` (a pure-Dart YouTube client — metadata
+search, video lookup, and the audio-only stream manifest, no server or API
+key, no native code). The audio-only stream is saved exactly as YouTube
+serves it — an mp4/AAC stream saved as `.m4a` (preferred: plays almost
+everywhere), or `.webm`/Opus when that's the only option — rather than
+transcoded to a literal `.mp3`.
+
+**0.2.48 shipped a real-MP3 version using `ffmpeg_kit_flutter_new_full`
+(`libmp3lame`) and tripled the APK's size**: every ffmpeg-kit variant bundles
+the whole ffmpeg native library per Android ABI, and even the audio-only
+variant adds tens of MB — nowhere close to the ≤6%-over-0.2.46 budget this
+tool was given. 0.2.49 drops the ffmpeg dependency entirely; the download is
+pure Dart again, so the tool adds negligible APK size. Getting a literal
+`.mp3` back without that cost would need a from-scratch decode (platform
+`MediaCodec`/equivalent) + a small LAME encoder (e.g. `flutter_lame`) —
+genuine new native-code work, not a dependency swap, and not done here.
+
+#### How the bytes are actually fetched (0.2.51)
+
+0.2.48-0.2.50 called `streamsClient.get(streamInfo)` and **hung at 0% forever
+on real music** — the reported symptom was "mamma mia … keeps turning on 0
+percent". Measuring the alternatives against `ABBA - Mamma Mia` (3.4 MB AAC)
+found a server-side gate, not a client bug:
+
+| approach | result |
+|---|---|
+| `streamsClient.get()` | 0 bytes in 300 s |
+| plain GET, no `Range` (what `DownloadManager` sends) | `200`, but **31 KiB/s** |
+| 1 MiB `Range` requests, stock `youtube_explode` clients | `403` past the first MiB |
+| 1 MiB `Range` requests, **visionOS** client | ~4 MiB/s, complete |
+
+Every InnerTube client shipped in `youtube_explode_dart` 3.1.0
+(`androidSdkless`, `android`, `ios`, `androidVr`, `tv`, `mweb`, `safari`, …)
+returns a stream URL that serves the first 1 MiB and then `403`s every
+subsequent byte — YouTube's PoToken gate. Matching User-Agents doesn't help,
+and 3.1.0 is the newest release. `yt-dlp` downloads the same video fine, and
+its log shows why: it uses a **visionOS** client that 3.1.0 has no constant
+for. `_visionOsClient` in `mp3_downloader_service.dart` transcribes that
+client's InnerTube payload from `yt_dlp/extractor/youtube/_base.py`, and it
+is the only one that serves a whole stream ungated.
+
+So the download is: resolve with `_streamClients` (visionOS first, the stock
+clients as fallbacks for videos it refuses — "made for kids" videos aren't
+available to it), **probe a range near the end of the file before committing**
+so a gated client is rejected up front rather than stalling mid-download, then
+pull the stream as a series of `kAudioChunkBytes` (1 MiB) `Range` requests
+into `<name>.part`, renamed on success. That is ~125x faster than the single
+throttled response and is also why the transfer **cannot** be handed to
+Android's `DownloadManager` the way an APK download is (§5 of the update
+flow): `DownloadManager` only knows how to fetch one URL straight through,
+which is exactly the 31 KiB/s path.
+
+Every request is bounded — `kResolveTimeout`/`kChunkTimeout` (90 s each) —
+so a wedged socket surfaces as a readable error instead of a progress bar
+that never moves, which was the whole failure mode being fixed.
+
+#### Background queue and history (0.2.51)
+
+`Mp3DownloadManager` (`lib/services/mp3_download_manager.dart`) owns the
+transfers, not the page: an app-level singleton with a `ValueNotifier<List<
+Mp3DownloadJob>>`, running one job at a time so several tracks can't starve
+each other of bandwidth. Leaving the page or backgrounding the app therefore
+doesn't interrupt a download, and the app-bar download button (badged with
+the in-flight count) opens `Mp3DownloadsPage` showing what's running, what's
+queued, and the history — each finished job with the path it landed at or the
+reason it failed. History persists to `mp3_downloads.json` in the app
+documents dir, capped at 100 entries.
+
+It is *not* an OS-level download: a job still `running` when the app is
+force-stopped is reloaded as `failed` / "Interrupted when the app closed"
+(`Mp3DownloadJob.fromJson`) rather than showing a bar that can never move.
+
+A completed job also calls `MediaScannerService.scanFile` (0.2.53,
+`lib/services/media_scanner_service.dart`) with the saved path. The file was
+written with plain `dart:io` `File` calls, which never goes through
+`MediaStore`, so without this OEM media apps (Samsung's Music/My
+Files/Gallery included) don't see the new track until the next full device
+scan — on some OEMs that's not until a reboot. The Dart side is a thin,
+Android-only (`Platform.isAndroid`) wrapper around the
+`besttodo/media_scanner` platform channel; `MainActivity.kt`'s handler calls
+`MediaScannerConnection.scanFile` on the given path. Best-effort: any
+failure is swallowed since the download itself already succeeded by this
+point.
+
+Failures are surfaced on the downloader page itself, not just in the list —
+a failed job renders an `errorContainer` card with the full message plus
+Dismiss/Retry, because the bug being fixed was precisely a user left guessing
+at a stuck 0%. Everything also goes to `LogService` under the `MP3` source
+(App logs page): the search, the client chosen, byte counts, throughput, and
+every failure.
+
+#### Filename formatting and metadata tagging (0.2.54)
+
+`downloadMp3` no longer saves the raw YouTube title verbatim.
+`parseTrackTitle`/`formatTrackFileBaseName` (`lib/services/track_title.dart`)
+split the title on the first `Artist - Title` separator (en/em dash also
+match), falling back to the channel name (stripping a trailing `- Topic`,
+the suffix YouTube Music's auto-generated artist channels carry) as the
+artist when the title has none. Promotional annotations in `(...)`/`[...]`
+are stripped from both — but only when *every* word inside reduces to one
+from a curated filler list (`official`, `video`, `lyrics`, `hd`, `original`,
+`mix`, `remaster`, …), so "(Official Video)"/"(Lyrics)"/"(HD)" go while
+"(Live at Wembley)" or "(feat. Other Artist)" are left alone. The result is
+saved as `Artist - Title.<ext>`.
+
+An `.m4a` result (not `.webm` — Matroska/Opus tagging is a different format,
+not attempted) is then tagged in place by `Mp4MetadataWriter`
+(`lib/services/mp4_metadata_writer.dart`) with title, artist (also written
+as album artist), the source URL as a comment, the upload year
+(`Mp3SearchResult.uploadDate`, from `youtube_explode_dart`'s `Video.
+uploadDate`), and the video's thumbnail (`ThumbnailSet.highResUrl`, fetched
+best-effort) as cover art. This is real MP4 box surgery, not a transcode:
+it locates (or builds) `moov/udta/meta/ilst`, splices in the new atom, and —
+only if that changes `moov`'s size *and* `moov` sits before `mdat` in the
+file — patches every `stco`/`co64` chunk-offset table found inside `moov`
+by the size delta, since those offsets point at absolute byte positions in
+`mdat` that just moved. Getting this wrong would corrupt playable audio, so
+it is deliberately conservative: a fragmented file (`moof`/`sidx` present),
+more than one `mdat`, or an offset table that fails an internal consistency
+check aborts tagging entirely, and even a successful rewrite is written to a
+sibling `.tag.tmp` file and structurally re-validated before it replaces the
+original — a track missing metadata is fine, a corrupted one never ships.
+This is the pure-Dart alternative flagged as future work when ffmpeg was
+dropped in 0.2.49 (see above): no native encoder, no APK size cost.
+
+#### Downloads-list actions (0.2.54)
+
+Every row in `Mp3DownloadsPage` (queued, running, or finished) now also has
+an "Open original video" icon (`launchUrl` on
+`https://www.youtube.com/watch?v=<videoId>`, `LaunchMode.externalApplication`)
+and a "Share YouTube link" icon (`SharePlus.instance.share`, same pattern as
+Wishlist's share action), alongside the existing cancel/remove icon —
+`Mp3DownloadJob.videoId` was already stored, so no new persisted state was
+needed.
+
+#### Playlist import (0.2.54)
+
+Pasting (or sharing) a playlist link — `youtube.com/playlist?list=...`, or a
+video URL that also carries `&list=...` — instead of a single video or a
+search query is detected by `looksLikeYoutubePlaylistUrl`
+(`mp3_downloader_service.dart`), checked *before* `looksLikeYoutubeUrl` so a
+video-within-a-playlist link is treated as the playlist. It's a
+domain-anchored regex (`(youtube.com|youtu.be)/…[?&]list=…`) rather than
+`youtube_explode_dart`'s own `PlaylistId.parsePlaylistId`, which treats any
+short alphanumeric string as a "valid" bare playlist id and would misfire on
+an ordinary one-word search query.
+
+`Mp3DownloaderService.resolvePlaylist` fetches the playlist's title
+(`client.playlists.get`) and every video in it (`client.playlists.
+getVideos`, a `Stream<Video>` drained to a list, in playlist order), mapped
+to the same `Mp3SearchResult` shape search/resolve produce
+(`Mp3PlaylistInfo(title, tracks)`) so the rest of the pipeline doesn't need
+to know a track came from a playlist.
+
+**Fallback for `getVideos()` coming back empty (0.2.55).** Reported against
+a real, fully public 3-track playlist: it resolved a title ("MUZ_03") but
+zero tracks. `PlaylistClient.getVideos` (`youtube_explode_dart` 3.1.0)
+silently *skips* a playlist entry whose uploader channel id it can't parse
+off the page — it tries three JSON paths (`ownerText`/`shortBylineText` →
+`browseId`, two variants), and a playlist whose byline layout misses all
+three loses every single track this way, not just the odd one. When
+`getVideos()` returns empty, `resolvePlaylist` falls back to
+`fetchPlaylistVideoIdsFromPage` (`lib/services/playlist_video_ids.dart`):
+fetches the same playlist page HTML via a plain `yt_explode.
+YoutubeHttpClient`, extracts `ytInitialData` from its `<script>` tags the
+same way the library's own `YoutubePage` does (`var ytInitialData = ` /
+`window["ytInitialData"] =`, JSON-decoded), and walks the identical
+`contents.twoColumnBrowseResultsRenderer.tabs[]…playlistVideoListRenderer.
+contents` path `PlaylistPage._videoItems` uses — but only ever pulls
+`videoId` out of each `playlistVideoRenderer` (direct or
+`richItemRenderer`-wrapped), so it isn't tripped by an unparseable byline.
+Each id found is then resolved individually via the already-proven
+`client.videos.get`, skipping (and logging) any single video that fails
+rather than failing the whole playlist. Single page only — no
+`continuation` follow-up — so a playlist beyond YouTube's first batch (a
+few hundred entries) is only partially covered by the fallback; the normal
+`getVideos()` path already paginates and is tried first regardless.
+
+**A second, independent gap — and full logging (0.2.56).** The 0.2.55
+fallback alone still didn't fix the reported playlist. A separate reason
+`getVideos()` can come back empty: some playlists don't embed their video
+list in the initial HTML page's `ytInitialData` at all —
+`youtube_explode_dart`'s own `PlaylistPage.get()` already anticipates this
+("Needed for Mixes and YT Music playlists whose initial HTML page doesn't
+embed the video list") and internally retries via an innertube `browse`
+POST call, but that call's *outcome* isn't exposed through
+`PlaylistClient.get`/`getVideos`'s public API, so this can't just reuse it.
+`fetchPlaylistVideoIdsFromPage` now repeats that retry itself when the page
+parse alone finds nothing: `YoutubeHttpClient.sendPost('browse', {
+'browseId': 'VL<playlistId>'})` (`VL`-prefixing a playlist id is the
+standard way to address its video list as a "browse id" on YouTube's
+internal API — the same convention yt-dlp and other scrapers use), then
+runs the same `extractPlaylistVideoIdsFromData` walk against that response
+too (an initial, non-continuation `browse` response for a playlist has the
+same overall shape as the HTML-embedded data).
+
+Every step of resolving a playlist — `playlists.get()`'s metadata,
+`getVideos()`'s track count, entering the fallback, the page fetch and its
+byte count, ytInitialData found/not-found, items found, ids found, the
+browse-API attempt and its id count, and each individual video resolved or
+skipped — is now written to `LogService` under the `MP3` source (App Logs
+page, reachable from the drawer). Both gaps are easy to reproduce from a
+bug report but were hard to diagnose blind with no live YouTube access to
+test against.
+
+**The actual root cause, found from those logs (0.2.57).** The 0.2.56
+build still came back with zero tracks on the reported playlist — and the
+new logs showed exactly why: `playlists.get()` confirmed the playlist
+genuinely has videos (`videoCount=3`, a real title), the page fetch
+succeeded (840 KB), but both the page-parse *and* the browse-API attempt
+hit "tabs found but no playlistVideoListRenderer inside". That path —
+`contents.twoColumnBrowseResultsRenderer.tabs[].tabRenderer.content.
+sectionListRenderer.contents[].itemSectionRenderer.contents[].
+playlistVideoListRenderer.contents` — is the *exact same hardcoded path*
+`youtube_explode_dart`'s own `PlaylistPage._videoItems` getter uses, which
+is exactly why `getVideos()` returned nothing in the first place: YouTube's
+current response no longer nests the video list where that path (0.2.55's
+fallback included, since it copied the same path for maximum fidelity)
+expects it. Not a filter, not a missing byline — the container structure
+itself had moved.
+
+`extractPlaylistVideoIdsFromData` (now in `_findPlaylistVideoIds`)
+no longer walks any hardcoded path at all: it recursively searches the
+*entire* decoded response for a `playlistVideoRenderer` (direct, or
+wrapped in `richItemRenderer.content`) wherever it lives, in document
+order (a `jsonDecode`d object preserves source key/array order, so a
+depth-first walk visits entries in playlist order without needing to know
+the surrounding containers). `playlistVideoRenderer` is otherwise a
+stable, specific type name — it only ever represents a video in a
+playlist's own listing — so this is robust to exactly the kind of path
+drift that broke both the library and the exact-path fallback, without
+needing to know or guess the current container structure. If even this
+finds nothing, it logs a census of every key anywhere in the response
+ending in `Renderer` or `ViewModel` — e.g. if YouTube has since moved
+playlist items to some other type name entirely, this names it directly
+instead of costing another guess-and-report round trip.
+
+**And that census immediately paid off (0.2.58).** The 0.2.57 build still
+found nothing on the reported playlist — but this time the census named
+the answer directly: `playlistVideoRenderer`/`playlistVideoListRenderer`
+were entirely absent from the response, while `lockupViewModel`,
+`lockupMetadataViewModel` and `contentMetadataViewModel` were all present.
+This playlist's page has migrated to YouTube's newer unified "lockup"
+component system (the same one search results and related videos have
+been moving to), which represents a playlist entry as a `lockupViewModel`
+with `contentId` (the video id) and a `contentType` field — a `lockupViewModel`
+also represents playlists, channels and podcast episodes elsewhere on
+YouTube, so `_findPlaylistVideoIds` only trusts `contentId` as a video id
+when `contentType` names a video (a substring check for `VIDEO`, since the
+exact enum string isn't confirmed and a substring match is robust to any
+suffix variant). It now recognises both the older `playlistVideoRenderer`
+shape and this one, in the same single recursive pass. No guessing was
+needed for this one specifically *because* the 0.2.57 census logged every
+candidate type name up front — validating that adding it was worth doing
+even though it added no fix of its own that round.
+
+`Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
+`picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"
+bulk-select row, and a "Download N" button that enqueues whatever is
+checked, one `Mp3DownloadManager.enqueue` call per track, then resets to
+idle. Before showing the list, it asks for (or reuses) the download folder,
+works out which folder(s) to check for tracks already downloaded via
+`compareFoldersFor(folder, configuredCompareFolder: Config.mp3CompareFolder)`,
+and calls `existingTrackBaseNamesAcross(folders)` — a recursive,
+case-insensitive scan of every `.m4a`/`.webm`/`.mp3` file already under any
+of those folders or their subfolders, matched by filename (without
+extension) rather than video id, since a pre-tagging download carries no
+reliable back-reference to its source video. Any playlist track whose
+would-be filename (`parseTrackTitle(...).fileBaseName`) is already in that
+set starts **unchecked** (shown as "Already downloaded", not hidden) so
+re-pasting a partially-downloaded list only offers to fetch what's missing,
+while still leaving a re-download one tap away.
+
+`compareFoldersFor` always includes the download folder itself, plus
+either `Config.mp3CompareFolder` (an explicit override) when set, or —
+auto-detected, no permission prompt needed since it's just an `exists()`
+check — Android's standard shared Music folder
+(`defaultPhoneMusicFolder`, `/storage/emulated/0/Music`) when that folder
+is actually there. This matters because `Config.mp3DownloadFolder` is
+picked for *writability* (often the app's own sandboxed folder when the
+user hasn't granted "All files access" — see below), which is rarely where
+a phone's real music library lives; without also checking the phone's
+Music folder, a track already sitting there (synced from a PC, or
+downloaded before scoped storage pushed the save location into the
+sandbox) would be re-offered as new. When auto-detection guesses wrong —
+the library lives somewhere non-standard, or scoped storage hides the
+standard folder from a plain path check — Settings ▸ MP3 Downloader's
+"Check for existing tracks in" tile lets the user point it at the right
+folder directly.
+
+The save location is asked for **once** — `Config.mp3DownloadFolder`, set on
+the first download via `file_selector`'s `getDirectoryPath` (defaulting to
+`getDownloadsDirectory()`) and reused silently afterwards. It is editable at
+Settings ▸ MP3 Downloader (section index 15, gated on the `mp3_downloader`
+feature switch), which can also forget it so the next download asks again.
+The same section's "Check for existing tracks in" tile sets
+`Config.mp3CompareFolder` (empty = automatic, as above) and can be cleared
+back to automatic detection.
+`youtube_explode_dart`'s scraping doesn't work from a browser sandbox, so
+`Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page to a "not
+supported on this platform" message there; every other platform
+(Android/Windows/iOS/macOS/Linux) works. `Mp3DownloaderService` exposes
+`searchOverride`/`resolveOverride`/`downloadOverride` (`@visibleForTesting`)
+so widget tests substitute fakes instead of hitting the network — the same
+seam `TodoistSyncService.apiClientFactory` uses. Because those fakes can't
+catch a YouTube-side change like the PoToken gate, the real thing is checked
+by `tool/check_mp3_download.dart`: a live search + download that asserts the
+saved file is a valid container and is *not* truncated at 1 MiB. It lives in
+`tool/` so `flutter test` (which only walks `test/`) can never go red from a
+flaky network; run it by hand with
+`flutter test tool/check_mp3_download.dart`. Registered like every other
+tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and in
+`Config.featureKeys`/`Config.startToolOptions` (feature switch + default
+start page).
+
+### 10.6e Music Player (0.2.61)
+
+Tools ▸ Music Player (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`):
+a full local MP3/audio player with background playback, home-screen widgets, notification
+and lock-screen controls, an M3U/M3U8 playlist import (Samsung Music's share-out format),
+and a "Tinder for songs" swipe gesture on Now Playing — swipe up favorites the current
+track, swipe down marks it disliked and skips it, so disliked tracks come up far less (not
+never) in future shuffles. Separate from and does not replace §10.6d's MP3 Downloader, which
+only fetches audio; the two default to sharing a folder — opening Music Player with
+`Config.musicFolder` unset auto-adopts `Config.mp3DownloadFolder` when that is already set
+(and persists the choice), since downloaded tracks are the common case, but the two settings
+are fully independent once either is picked explicitly.
+
+**Library scanning** (`lib/services/music_library_service.dart`, singleton
+`MusicLibraryService.instance`, `ValueNotifier<List<Track>> tracks`): recursively scans
+`Config.musicFolder` for `mp3`/`m4a`/`flac`/`wav`/`ogg`/`aac`/`wma` files via `dart:io`
+`Directory.list(recursive: true)` — not `on_audio_query`/`MediaStore`, so it works on any
+folder the user picks, not just the device's indexed media. `Config.musicExcludedSubfolders`
+(relative, forward-slash paths) excludes a subfolder and everything nested under it
+(`isExcludedRelativeDir`); Settings → Music Player lists every subfolder found so far as a
+checkbox (`MusicLibraryService.listSubfolders`). Each mp3's ID3 tags are read best-effort via
+the pure-Dart `id3_codec` package — only the file's first 1 MiB is read (`_id3ReadCap`, covers
+the common ID3v2-at-the-front case without reading every file whole for a folder that could
+hold thousands of tracks); a file with no/unreadable tag, or any non-mp3 format, falls back to
+its filename as the title. Results cache to `music_library.json` (same
+singleton/`ValueNotifier`/`flush: true`/swallowed-errors pattern as `ProjectService`, §4.2) so
+the library shows up instantly on the next launch; a failed or partial rescan (folder deleted,
+permission revoked) leaves the previous cache in place rather than clearing it. Rescans are
+manual (Music Player's refresh button, or automatically once on first open when the folder is
+set but the cache is empty) — there is no filesystem watcher.
+
+**Playback engine** (`lib/services/music_audio_handler.dart`'s `MusicAudioHandler`, a
+`BaseAudioHandler` from `audio_service` wrapping a single `just_audio` `AudioPlayer`):
+one track is loaded at a time via `setAudioSource` rather than a gapless
+`ConcatenatingAudioSource` — simpler to keep in sync with a queue that swipe actions mutate
+mid-playback, at the cost of a small gap between tracks. The queue
+(`List<Track> _queue`/`_queueIndex`) advances on `ProcessingState.completed` or a manual
+skip; running off the end reshuffles the whole scanned library fresh
+(`MusicPlaylistService.weightedShuffle`) rather than stopping, so playback continues
+indefinitely, radio-style. `MusicPlayerService` (`lib/services/music_player_service.dart`) is
+the facade the UI actually calls (`playLibraryShuffled`, `playQueue(tracks, startIndex:)`) and
+owns startup: `AudioService.init` registers the handler with the OS notification/lock-screen
+integration on Android/iOS/macOS; on a platform `audio_service` doesn't cover for this app
+(Windows, used for tests/screenshots per the top of this doc) it falls back to a bare
+`MusicAudioHandler()` — playback still works through `just_audio` directly, just without the
+system media surfaces. `favoriteCurrent()`/`dislikeCurrentAndSkip()` on the handler are what
+Now Playing's swipe gestures and the notification/widget controls ultimately call.
+`just_audio`'s `playbackEventStream` only fires on discrete state changes (buffering, track
+load, pause/play), not once a second, so `MusicAudioHandler` also runs a one-second
+`Timer.periodic` (started/stopped off `playingStream`) that re-broadcasts `playbackState` while
+playing — otherwise Now Playing's progress bar/position text sits frozen between events instead
+of ticking (0.2.63). It also listens to `durationStream` and patches the current `MediaItem`'s
+`duration` once the player itself reports it, since a track's tag-derived `durationMs` (from
+library scanning) isn't reliably populated and was leaving the progress bar's total time at
+0:00.
+
+**Favorites, "Don't really like" and the weighted shuffle**
+(`lib/services/music_playlist_service.dart`, singleton `MusicPlaylistService.instance`,
+persisted to `music_playlists.json`): two fixed system playlists
+(`MusicPlaylist.favoritesId`/`dislikedId`) plus any number of user/imported ones
+(`MusicPlaylist` model: id/name/`trackIds`/`isSystem`). `weightedShuffle` builds a shuffled
+play order using Efraimidis–Spirakis weighted random sampling without replacement: each track
+gets a key of `random()^(1/weight)` and the result sorts descending by key — favorited tracks
+(weight 3.0) tend to land earlier, disliked tracks (weight 0.05, a 60x ratio) tend to land much
+later, ordinary tracks (weight 1.0) fall in between, and every track can still appear (nothing
+is ever hard-excluded, since a mood can change). `toggleFavorite`/`markDisliked` are mutually
+exclusive on a track (favoriting clears a dislike and vice versa).
+
+**Now Playing swipe gesture** (`lib/ui/now_playing_page.dart`): a `GestureDetector` on the
+artwork/title column tracks vertical drag distance and velocity; crossing a distance or
+velocity threshold upward calls `favoriteCurrent()`, downward calls
+`dislikeCurrentAndSkip()` (marks disliked, then immediately skips) — both also available as
+plain buttons in the transport row for a non-swipe fallback. A brief toast-style label flashes
+to confirm which action fired.
+
+**M3U/M3U8 import** (`lib/services/m3u_playlist_service.dart`): Samsung Music has no public
+API or an easily-parsed database without root, but it (like most music apps) can export/share
+a playlist as `.m3u`/`.m3u8`. `M3uPlaylistService.parseEntries` strips `#EXT...`
+directives/comments/blank lines and decodes `file://` URIs; `importFile` matches each
+remaining entry against the scanned library first by exact normalized path, then by file
+basename (case/extension-insensitive — the common case, since a playlist made on another
+device/app rarely carries this app's exact folder path), and reports what didn't match rather
+than silently dropping it. A match creates an ordinary (non-system) `MusicPlaylist`.
+
+**Self-hosted server prep** (`lib/services/subsonic_client.dart`'s `SubsonicClient`,
+`lib/models/track.dart`'s `TrackSource.subsonic`): a small Subsonic/OpenSubsonic API client
+(Navidrome, Airsonic, Gonic, … — the most widely supported self-hosted music protocol) for
+when a server is configured in Settings → Music Player (`Config.subsonicServerUrl/Username/
+Password`). Auth follows the Subsonic token scheme — `token = md5(password + fresh salt)` sent
+with every request, so the plaintext password never goes on the wire (it is still stored in
+plaintext on-device, same caveat as `Config.todoistApiToken`). Implemented so far: `ping()`
+(Settings' "Test connection"), `search()` (`search3`, full-text), and `streamUri(songId)` (the
+URL `MusicAudioHandler._resolveUri` streams a `TrackSource.subsonic` track from). A remote
+track is just another `Track` in the same queue/favorites/shuffle machinery as a local one —
+there is no separate "remote mode". Not yet wired into a server-browsing UI (artists/albums);
+that is the natural next step once a server is actually connected.
+
+**Home-screen widgets and notification/lock screen:** see §8 for the two widgets
+(`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`) and §9 for the `audio_service`
+manifest wiring. The system media notification and lock-screen controls (play/pause/stop/
+skip) come from `audio_service` itself once `AudioService.init` registers the handler — no
+custom notification code needed, unlike the alarm subsystem's hand-built full-screen
+notification (§5, §6).
+
+**Settings → Music Player** (`lib/ui/settings_page.dart`, section 16): folder picker (shares
+the `file_selector` `getDirectoryPath` pattern §4.4/§10.6d use), an "Excluded subfolders"
+dialog populated from `MusicLibraryService.listSubfolders`, and the Subsonic server
+URL/username/password fields with Save/Test connection. `Config.featureKeys`/
+`startToolOptions` gained a `music_player` entry (`_ToolEntry` in `home_page.dart`, case in
+`_buildToolPage`), same wiring pattern as every other tool.
+
+**Known gaps, honestly stated:** this shipped from a single development session without
+access to a physical Android device, an emulator, a real Subsonic server, or Samsung Music
+itself — `flutter analyze`/`flutter test` are clean and the pure-Dart logic (library scan,
+exclusions, weighted shuffle, M3U parsing/matching, Subsonic URL/auth shape) is unit-tested
+(`test/music/`), but the native Android side (the two widgets' `RemoteViews`, the
+`MediaButtonReceiver` broadcast wiring, the actual system notification/lock-screen chrome, and
+playback itself) has not been run on-device and needs manual verification on a real phone
+before relying on it. The M3U importer is built against the general-purpose M3U/M3U8 spec,
+not a Samsung Music export sample, on the assumption documented in this section (a plain path
+list, possibly `file://`, matched by basename when the exact path doesn't line up) — worth
+confirming against a real Samsung Music export.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

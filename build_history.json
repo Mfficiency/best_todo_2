@@ -285,5 +285,453 @@
     "durationSeconds": 89,
     "finishedAt": "2026-09-03T05:29:50.483535",
     "os": "windows"
+  },
+  {
+    "version": "0.2.29+320",
+    "target": "apk",
+    "durationSeconds": 332,
+    "finishedAt": "2026-09-04T11:31:38.455043",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.29+320",
+    "target": "windows",
+    "durationSeconds": 140,
+    "finishedAt": "2026-09-04T11:34:04.480343",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.30+321",
+    "target": "apk",
+    "durationSeconds": 359,
+    "finishedAt": "2026-09-04T14:11:28.976655",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.30+321",
+    "target": "windows",
+    "durationSeconds": 177,
+    "finishedAt": "2026-09-04T14:14:33.980965",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.31+322",
+    "target": "apk",
+    "durationSeconds": 200,
+    "finishedAt": "2026-09-06T09:28:14.389126",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.31+322",
+    "target": "windows",
+    "durationSeconds": 84,
+    "finishedAt": "2026-09-06T09:29:41.952364",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.32+323",
+    "target": "apk",
+    "durationSeconds": 423,
+    "finishedAt": "2026-09-07T12:41:22.725253",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.32+323",
+    "target": "windows",
+    "durationSeconds": 169,
+    "finishedAt": "2026-09-07T12:44:19.761440",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.33+324",
+    "target": "apk",
+    "durationSeconds": 208,
+    "finishedAt": "2026-09-08T20:18:09.439958",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.33+324",
+    "target": "windows",
+    "durationSeconds": 100,
+    "finishedAt": "2026-09-08T20:19:54.002971",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.36+327",
+    "target": "apk",
+    "durationSeconds": 183,
+    "finishedAt": "2026-09-09T15:57:36.105002",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.36+327",
+    "target": "windows",
+    "durationSeconds": 87,
+    "finishedAt": "2026-09-09T15:59:08.051363",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.37+328",
+    "target": "apk",
+    "durationSeconds": 134,
+    "finishedAt": "2026-09-09T17:46:54.662812",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.37+328",
+    "target": "windows",
+    "durationSeconds": 73,
+    "finishedAt": "2026-09-09T17:48:14.329722",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.38+329",
+    "target": "apk",
+    "durationSeconds": 118,
+    "finishedAt": "2026-09-09T18:26:35.419930",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.38+329",
+    "target": "windows",
+    "durationSeconds": 66,
+    "finishedAt": "2026-09-09T18:27:44.295748",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.39+330",
+    "target": "apk",
+    "durationSeconds": 527,
+    "finishedAt": "2026-09-09T19:33:43.309966",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.39+330",
+    "target": "windows",
+    "durationSeconds": 75,
+    "finishedAt": "2026-09-09T19:35:02.856717",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.40+331",
+    "target": "apk",
+    "durationSeconds": 524,
+    "finishedAt": "2026-09-09T23:03:43.898221",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.40+331",
+    "target": "windows",
+    "durationSeconds": 91,
+    "finishedAt": "2026-09-09T23:05:20.252640",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.41+332",
+    "target": "apk",
+    "durationSeconds": 615,
+    "finishedAt": "2026-09-10T07:45:55.672717",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.41+332",
+    "target": "windows",
+    "durationSeconds": 185,
+    "finishedAt": "2026-09-10T07:49:09.570805",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.42+333",
+    "target": "apk",
+    "durationSeconds": 347,
+    "finishedAt": "2026-09-10T19:05:09.445886",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.42+333",
+    "target": "windows",
+    "durationSeconds": 76,
+    "finishedAt": "2026-09-10T19:06:29.548413",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.43+334",
+    "target": "apk",
+    "durationSeconds": 294,
+    "finishedAt": "2026-09-10T20:29:38.045397",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.43+334",
+    "target": "windows",
+    "durationSeconds": 98,
+    "finishedAt": "2026-09-10T20:31:22.477086",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.44+335",
+    "target": "apk",
+    "durationSeconds": 310,
+    "finishedAt": "2026-09-14T20:00:55.517519",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.44+335",
+    "target": "windows",
+    "durationSeconds": 155,
+    "finishedAt": "2026-09-14T20:03:33.607811",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.45+336",
+    "target": "apk",
+    "durationSeconds": 121,
+    "finishedAt": "2026-09-14T20:10:44.484558",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.45+336",
+    "target": "windows",
+    "durationSeconds": 24,
+    "finishedAt": "2026-09-14T20:11:13.236826",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.46+337",
+    "target": "apk",
+    "durationSeconds": 165,
+    "finishedAt": "2026-09-14T21:02:21.719256",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.46+337",
+    "target": "windows",
+    "durationSeconds": 52,
+    "finishedAt": "2026-09-14T21:03:18.368337",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.48+339",
+    "target": "apk",
+    "durationSeconds": 394,
+    "finishedAt": "2026-09-15T16:58:42.451676",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.48+339",
+    "target": "windows",
+    "durationSeconds": 183,
+    "finishedAt": "2026-09-15T17:01:52.416385",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.49+340",
+    "target": "apk",
+    "durationSeconds": 308,
+    "finishedAt": "2026-09-15T18:11:32.085424",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.49+340",
+    "target": "windows",
+    "durationSeconds": 111,
+    "finishedAt": "2026-09-15T18:13:29.033921",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.50+341",
+    "target": "apk",
+    "durationSeconds": 327,
+    "finishedAt": "2026-09-15T18:40:11.555796",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.50+341",
+    "target": "windows",
+    "durationSeconds": 145,
+    "finishedAt": "2026-09-15T18:42:40.978175",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.51+342",
+    "target": "apk",
+    "durationSeconds": 295,
+    "finishedAt": "2026-09-15T20:07:03.121629",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.51+342",
+    "target": "windows",
+    "durationSeconds": 140,
+    "finishedAt": "2026-09-15T20:09:30.318447",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.52+343",
+    "target": "apk",
+    "durationSeconds": 235,
+    "finishedAt": "2026-09-15T21:08:58.509452",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.52+343",
+    "target": "windows",
+    "durationSeconds": 108,
+    "finishedAt": "2026-09-15T21:10:53.280421",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.53+344",
+    "target": "apk",
+    "durationSeconds": 428,
+    "finishedAt": "2026-09-15T21:58:43.001579",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.53+344",
+    "target": "windows",
+    "durationSeconds": 173,
+    "finishedAt": "2026-09-15T22:01:42.073557",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.54+345",
+    "target": "apk",
+    "durationSeconds": 332,
+    "finishedAt": "2026-09-15T23:30:42.141174",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.54+345",
+    "target": "windows",
+    "durationSeconds": 137,
+    "finishedAt": "2026-09-15T23:33:10.511687",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.55+346",
+    "target": "apk",
+    "durationSeconds": 848,
+    "finishedAt": "2026-09-16T07:39:14.720099",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.55+346",
+    "target": "windows",
+    "durationSeconds": 144,
+    "finishedAt": "2026-09-16T07:41:46.952851",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.56+347",
+    "target": "apk",
+    "durationSeconds": 1342,
+    "finishedAt": "2026-09-16T08:47:50.320357",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.56+347",
+    "target": "windows",
+    "durationSeconds": 158,
+    "finishedAt": "2026-09-16T08:50:39.805359",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.57+348",
+    "target": "apk",
+    "durationSeconds": 947,
+    "finishedAt": "2026-09-16T09:41:09.260605",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.57+348",
+    "target": "windows",
+    "durationSeconds": 156,
+    "finishedAt": "2026-09-16T09:43:52.445904",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.58+349",
+    "target": "apk",
+    "durationSeconds": 867,
+    "finishedAt": "2026-09-16T11:09:46.356733",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.58+349",
+    "target": "windows",
+    "durationSeconds": 155,
+    "finishedAt": "2026-09-16T11:12:31.938159",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.59+350",
+    "target": "apk",
+    "durationSeconds": 1380,
+    "finishedAt": "2026-09-16T13:28:52.232810",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.59+350",
+    "target": "windows",
+    "durationSeconds": 173,
+    "finishedAt": "2026-09-16T13:31:54.141602",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.60+351",
+    "target": "apk",
+    "durationSeconds": 1076,
+    "finishedAt": "2026-09-16T17:13:13.406190",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.60+351",
+    "target": "windows",
+    "durationSeconds": 217,
+    "finishedAt": "2026-09-16T17:17:03.262063",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.62+353",
+    "target": "apk",
+    "durationSeconds": 162,
+    "finishedAt": "2026-09-16T21:18:25.574441",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.62+353",
+    "target": "windows",
+    "durationSeconds": 70,
+    "finishedAt": "2026-09-16T21:19:39.725510",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.63+354",
+    "target": "apk",
+    "durationSeconds": 148,
+    "finishedAt": "2026-09-16T21:47:12.539898",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.63+354",
+    "target": "windows",
+    "durationSeconds": 65,
+    "finishedAt": "2026-09-16T21:48:20.085020",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.64+355",
+    "target": "apk",
+    "durationSeconds": 165,
+    "finishedAt": "2026-09-17T07:17:16.981809",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.64+355",
+    "target": "windows",
+    "durationSeconds": 59,
+    "finishedAt": "2026-09-17T07:18:19.053852",
+    "os": "windows"
   }
 ]

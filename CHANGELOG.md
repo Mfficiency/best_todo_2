@@ -1,7 +1,231 @@
 # Changelog
 
-## [0.2.28] - 2026-09-17
+## [0.2.65] - 2026-09-17
 - Fixed press-and-hold drag-reorder on the home tabs always springing back to its original position: Home's default Filtering rule (it excludes every other view's reserved tag out of the box) was disabling reorder for everyone, even when nothing in the current tab was actually hidden by it
+
+## [0.2.64] - 2026-09-17
+- Added "Send to Claude" on a task (expand it, tap the robot icon) to fire a Claude Code Routine's API trigger and start a real cloud coding session with that task as context, configured in Settings → Claude Routine
+- Added a smart test runner (`dart run tool/smart_test.dart`): looks at what changed and runs only the matching `test/<area>` suite(s) instead of the full suite, falling back to a full `flutter test` for anything it can't confidently map, every 10th targeted run, and once a week regardless — see `CLAUDE.md`
+- Local build: 2026-09-17 07:18
+- Build duration (apk): 2m 45s
+- Build duration (windows): 59s
+
+## [0.2.63] - 2026-09-16
+- Music Player: fixed the Now Playing progress bar getting stuck at 0:00 during playback (position now ticks every second and picks up the real track duration from the player instead of relying on missing tags), and added a Next button to the play/pause + previous home-screen widget
+- Local build: 2026-09-16 21:48
+- Build duration (apk): 2m 28s
+- Build duration (windows): 1m 05s
+
+## [0.2.62] - 2026-09-16
+- MP3 Downloader: tapping a search result to download it now clears the search bar instead of leaving the previous query sitting there
+- Local build: 2026-09-16 21:19
+- Build duration (apk): 2m 42s
+- Build duration (windows): 1m 10s
+
+## [0.2.61] - 2026-09-16
+- Added a full local Music Player: background playback (notification + lock-screen controls), two home-screen widgets (play/pause, and play/pause + previous), Settings folder scan with subfolder exclusions, M3U/M3U8 playlist import (Samsung Music export), swipe-up-to-favorite/swipe-down-to-dislike-and-skip on Now Playing with a weighted shuffle that favors favorites and buries disliked tracks, and prep for connecting a self-hosted Subsonic/OpenSubsonic server
+
+## [0.2.60] - 2026-09-16
+- Sharing a song link from Spotify, YouTube or Shazam into BestToDo now opens straight into the MP3 Downloader instead of the task editor: a YouTube link downloads immediately, a Spotify/Shazam link is looked up (via Spotify's oEmbed title / the Shazam page title, or the caption text the share already carries) and shows the usual candidate picker
+- Local build: 2026-09-16 17:17
+- Build duration (apk): 17m 56s
+- Build duration (windows): 3m 37s
+
+## [0.2.59] - 2026-09-16
+- MP3 Downloader: the playlist duplicate check now also looks in the phone's Music folder (not just the download folder), so tracks already in your library are skipped even if this app never downloaded them there. Settings → MP3 Downloader gets a new 'Check for existing tracks in' folder picker for when auto-detection guesses wrong
+- Local build: 2026-09-16 13:31
+- Build duration (apk): 23m 00s
+- Build duration (windows): 2m 53s
+
+## [0.2.58] - 2026-09-16
+- MP3 Downloader: the actual fix, found from the 0.2.57 diagnostic census — this playlist's page has migrated entirely to YouTube's newer "lockup" component system, with no trace of the older renderer type at all. Playlist import now recognises both shapes, so the reported 3-track playlist (and any other playlist YouTube has migrated the same way) resolves correctly
+- Local build: 2026-09-16 11:12
+- Build duration (apk): 14m 27s
+- Build duration (windows): 2m 35s
+
+## [0.2.57] - 2026-09-16
+- MP3 Downloader: found the actual cause of the playlist import bug from the logs added in 0.2.56 — `youtube_explode_dart`'s hardcoded path to a playlist's video list no longer matches YouTube's current page structure at all (confirmed: the playlist genuinely had its reported track count, the page fetched fine, but neither the library's own lookup nor the exact-path fallback found anything). Playlist import no longer guesses an exact nested path; it searches the whole response for the video-listing type directly, which is immune to this kind of structural drift
+- Local build: 2026-09-16 09:43
+- Build duration (apk): 15m 47s
+- Build duration (windows): 2m 36s
+
+## [0.2.56] - 2026-09-16
+- MP3 Downloader: the 0.2.55 playlist fix didn't cover every case — some playlists don't embed their video list in the page at all (needing a separate internal API call `youtube_explode_dart` already does for "Mixes" but doesn't expose the result of). Playlist import now also tries that path when page-parsing alone still finds nothing, and every step of resolving a playlist is now written to the App Logs (drawer → App Logs, source "MP3") to make the next report actionable if a playlist still comes up empty
+- Local build: 2026-09-16 08:50
+- Build duration (apk): 22m 22s
+- Build duration (windows): 2m 38s
+
+## [0.2.55] - 2026-09-16
+- MP3 Downloader: fixed a real public playlist resolving to its title but zero tracks ("0 of 0 selected"). `youtube_explode_dart` silently skips a playlist entry when it can't work out the uploader's channel id from the page, which some playlists' byline layout trips on every single track; playlist import now falls back to parsing the page's own video list directly (which doesn't need that) whenever the normal path comes back empty
+- Local build: 2026-09-16 07:41
+- Build duration (apk): 14m 08s
+- Build duration (windows): 2m 24s
+
+## [0.2.54] - 2026-09-15
+- MP3 Downloader: downloaded tracks are now saved as "Artist - Title.m4a" — the title/channel are split on an "Artist - Title" separator (or fall back to the channel name), and promotional clutter like "(Official Video)", "(Lyrics)" or "(HD)" is stripped from both, instead of saving the raw, often messy YouTube title verbatim
+- MP3 Downloader: an .m4a download is now tagged with as much metadata as YouTube provides — title, artist, the source video's upload year, its thumbnail as cover art, and the original YouTube link as a comment — without adding a native encoder to the app
+- MP3 Downloader: each entry in the Downloads list now has an "Open original video" and "Share YouTube link" icon, to jump back to the source or send the link on without leaving the app
+- MP3 Downloader: pasting a YouTube playlist link now shows every track in it with a checkbox — pick one, several, or "All" — instead of only supporting a single video or search query. Tracks already sitting in the download folder (or any of its subfolders) under the name a fresh download would use start out unchecked, so re-pasting a list you've partly downloaded before only offers to fetch what's missing
+- Local build: 2026-09-15 23:33
+- Build duration (apk): 5m 32s
+- Build duration (windows): 2m 17s
+
+## [0.2.53] - 2026-09-15
+- MP3 Downloader: a finished download now notifies the OS media database (MediaStore) right away, so the saved track shows up immediately in Music/My Files/Gallery-style apps — previously, since the file is written directly with plain file I/O, those apps wouldn't see it until the next full device media scan, which on some phones (Samsung included) only happens on reboot
+- Local build: 2026-09-15 22:01
+- Build duration (apk): 7m 08s
+- Build duration (windows): 2m 53s
+
+## [0.2.52] - 2026-09-15
+- MP3 Downloader: picking a shared folder (like Music) that scoped storage blocks now offers to grant "All files access" so that folder actually works, instead of only offering to redirect the download into the app's private storage
+- Local build: 2026-09-15 21:10
+- Build duration (apk): 3m 55s
+- Build duration (windows): 1m 48s
+
+## [0.2.51] - 2026-09-15
+- MP3 Downloader: fixed downloads that sat at 0% forever and never finished. YouTube only serves the first megabyte of a track to the clients the app was using and blocks every byte after it, so anything label-protected (the reported case was ABBA - Mamma Mia) could never complete. The app now resolves streams through YouTube's visionOS client and fetches them in 1 MB chunks — the same tracks now download in about a second instead of never
+- MP3 Downloader: downloads now keep running when you leave the page or put the app in the background, instead of being tied to the screen you started them from. A download button at the top of the tool shows how many are in flight and opens a Downloads list with what's running, what's queued, and everything downloaded before — each with the file it saved to, or why it failed
+- MP3 Downloader: search results now show each video's play count (e.g. "376M plays") next to the channel and duration, which is usually the quickest way to spot the real upload among reuploads
+- MP3 Downloader: when a download fails you now get the reason, in red, on the downloader page itself with a Retry button — no more guessing at a spinner stuck on 0%. Stalled transfers give up after 90 seconds with a readable message rather than hanging indefinitely
+- MP3 Downloader: the save folder is asked for once and then remembered, so every later download starts immediately. Change or forget it under Settings → MP3 Downloader
+- MP3 Downloader: the tool now writes to the App logs (source "MP3") — the search, which YouTube client served the stream, sizes, speed and any failure
+- Local build: 2026-09-15 20:09
+- Build duration (apk): 4m 55s
+- Build duration (windows): 2m 20s
+
+## [0.2.50] - 2026-09-15
+- Food Diary: stomach-issue entries are no longer tinted by time of day like meals are — the card stays the plain default color, so a stomach log reads as a different kind of entry rather than another meal slot
+- Food Diary: the stomach-entry Start/Stop toggle can now be tapped back to no selection — tapping the segment that's already selected clears it, for a log entry that isn't marking either edge of an episode
+- Local build: 2026-09-15 18:42
+- Build duration (apk): 5m 27s
+- Build duration (windows): 2m 25s
+
+## [0.2.49] - 2026-09-15
+- MP3 Downloader: removed the ffmpeg-based MP3 conversion — every ffmpeg variant capable of it, even the audio-only one, bundles the whole ffmpeg native library per Android ABI and had tripled the APK's size. The tool now saves the audio-only stream YouTube already serves (.m4a/AAC, or .webm/Opus when that's all that's offered) instead of transcoding it, which needs no native code at all
+- Local build: 2026-09-15 18:13
+- Build duration (apk): 5m 08s
+- Build duration (windows): 1m 51s
+
+## [0.2.48] - 2026-09-15
+- New tool: MP3 Downloader (Tools drawer) — paste a YouTube URL, or type a title to search, and save the video's audio. A search shows up to 5 candidates (title, channel, duration) to pick from when the query is ambiguous. Android and Windows only (not available on web)
+- Local build: 2026-09-15 17:01
+- Build duration (apk): 6m 34s (this build still had the ffmpeg dependency 0.2.49 removes — see above; the long duration and the APK size regression are both explained by it)
+- Build duration (windows): 3m 03s
+
+## [0.2.47] - 2026-09-15
+- Food Diary: the stomach-entry type toggle (Gas/Liquid/Discomfort) is now multi-select — any combination can be chosen at once, e.g. gas and discomfort together, instead of only one at a time
+
+## [0.2.46] - 2026-09-14
+- Home view filtering: the schedule view (the day-grouped list you get with "start in schedule view" on) ignored the Home filter rules completely — it showed every task the Today/Tomorrow/... tabs correctly hide, including the demo/sample items, and adding a "demo" tag to Settings → Filtering rules → Home by hand changed nothing there. Both home layouts now filter through exactly the same rules
+- The demo filter is now visible and switchable: Settings → Filtering rules opens with a "Hide demo and sample items" switch, on by default, that hides everything the app seeded for itself (starter tasks, sample alarms and timers, leftover dev data) from every view at once. It used to be an invisible built-in rule, which is why it looked like nothing was filtering
+- Demo/sample items left behind by an older version (they were saved without the "demo" tag, so no filter could match them) are now recognised by the marker the seeder wrote into their description, so they are hidden by the switch above and by a hand-made "demo" rule like any other sample item
+- The Android home-screen widget now honours the Home view's filter rules too, so a task hidden from the home screen no longer shows up on the launcher
+- Settings: tapping a section chip could expand the right section and then scroll past it to the end of the list, leaving the section you asked for off screen
+- Local build: 2026-09-14 21:03
+- Build duration (apk): 2m 45s
+- Build duration (windows): 52s
+
+## [0.2.45] - 2026-09-14
+- Fixed two Todoist sync tests that were failing on CI but not locally: they waited a fixed number of I/O rounds for a sync to finish, which ran out on the slower CI machine, so they now wait for the sync itself to report done. No change to the app's behaviour
+- Local build: 2026-09-14 20:11
+- Build duration (apk): 2m 01s
+- Build duration (windows): 24s
+
+## [0.2.44] - 2026-09-14
+- Food Diary: entries can now log a stomach issue instead of a meal — a Food/Stomach toggle at the top of the add/edit dialog switches the form to a start/stop toggle (prefilled to Stop when today's latest entry is still an open Start), a gas/liquid/discomfort type, and a 1-10 intensity slider. The food form itself is unchanged except its tags now sit under the time picker instead of above it, and the dialog is a bit wider
+- Local build: 2026-09-14 20:03
+- Build duration (apk): 5m 10s
+- Build duration (windows): 2m 35s
+
+## [0.2.43] - 2026-09-10
+- Productivity Stats: the "Completed items" heatmap now derives its counts from the same per-day history the "Daily task composition" chart uses, instead of each task's `completedAt` field — that field only remembers a task's latest completion, so recurring or reopened tasks were losing their earlier completion days and the heatmap still looked mostly empty even after the previous fix
+- Local build: 2026-09-10 20:31
+- Build duration (apk): 4m 54s
+- Build duration (windows): 1m 38s
+
+## [0.2.42] - 2026-09-10
+- Productivity Stats: the "Completed items over the last 52 weeks" heatmap now counts completed items instead of deleted ones — it was reading deletion dates, which left the graph almost empty and out of sync with its own title and the Item Activity Heatmap below it
+- Local build: 2026-09-10 19:06
+- Build duration (apk): 5m 47s
+- Build duration (windows): 1m 16s
+
+## [0.2.41] - 2026-09-10
+- Countdown view: removed swipe-to-delete (it fought with the long-press-to-reorder drag gesture) and now hide each row's edit/notify/milestone/delete buttons until the row is tapped open; delete moved into that revealed button row, still with an undo snackbar
+- Countdown timer detail view (tap a timer to expand it): each unit row now shows four columns — the unit, its value, a "DD:HH:mm" countdown to the next whole number in that unit, and that next whole number itself. Decimal precision now varies per unit (weeks/days: 1 place, hours: 3, minutes: 4, seconds: 6) instead of a flat 3 places (seconds used to be a rounded-down integer)
+- Local build: 2026-09-10 07:49
+- Build duration (apk): 10m 15s
+- Build duration (windows): 3m 05s
+
+## [0.2.40] - 2026-09-09
+- Fixed countdown timers disappearing and new ones failing to show: unlike alarms, timers never carried the reserved "countdown" tag their own Settings → Filtering rules default (`includeTags: [Countdown]`) requires, so that seeded rule hid every timer, old and new — every timer now always carries the tag, same as alarms already do
+- Local build: 2026-09-09 23:05
+- Build duration (apk): 8m 44s
+- Build duration (windows): 1m 31s
+
+## [0.2.39] - 2026-09-09
+- "mlr"-tagged tasks now show only in the Worklist tool — they no longer also appear on the regular home tabs, schedule view, Wishlist, Projects or the Markdown export
+- Local build: 2026-09-09 19:35
+- Build duration (apk): 8m 47s
+- Build duration (windows): 1m 15s
+
+## [0.2.38] - 2026-09-09
+- Fixed Worklist showing every task (not just "mlr"-tagged ones) while in schedule view — that layout built its list straight from the full task list instead of going through the same tag filter as the normal tab view
+- Local build: 2026-09-09 18:27
+- Build duration (apk): 1m 58s
+- Build duration (windows): 1m 06s
+
+## [0.2.37] - 2026-09-09
+- Worklist: hid the streak flame and dice-timer icons (and the double-tap "Start timer" menu) — it now shows only the tabs, add-task row and search, and tints its accent color orange so it's visually distinct from the real home screen
+- Local build: 2026-09-09 17:48
+- Build duration (apk): 2m 14s
+- Build duration (windows): 1m 13s
+
+## [0.2.36] - 2026-09-09
+- New tool: Worklist — the home screen (tabs, add-task row, search, everything) narrowed to only tasks tagged "mlr"
+- Local build: 2026-09-09 15:59
+- Build duration (apk): 3m 03s
+- Build duration (windows): 1m 27s
+
+## [0.2.35] - 2026-09-09
+- Wishlist: added a "Build" swipe action that sends an item to the build automation (opens a GitHub issue; a daily routine implements it and pushes to dev)
+- Settings → Wishlist build: new section for the GitHub token the "Build" action uses (save + test connection)
+
+## [0.2.34] - 2026-09-08
+- Wishlist item editor: added a paste-from-clipboard button on the description field
+
+## [0.2.33] - 2026-09-08
+- Reordered the navigation drawer: Home, Settings, Waiting for Approval, Food Diary, Tools, Changelog, About, Archived Items — Food Diary is now its own top-level entry instead of living inside Tools
+- Local build: 2026-09-08 20:19
+- Build duration (apk): 3m 28s
+- Build duration (windows): 1m 40s
+
+## [0.2.32] - 2026-09-07
+- Demo/dev-seed items (the `demo` tag) are now hidden from every view by default the moment a build stops being a dev build — no Settings → Filtering rules configuration needed any more
+- The Food Diary "+" widget and its full status widget now pulse red instead of sitting at a flat red when today's logged entries fall behind schedule
+- Local build: 2026-09-07 12:44
+- Build duration (apk): 7m 03s
+- Build duration (windows): 2m 49s
+
+## [0.2.31] - 2026-09-06
+- Every starter task and dev/demo filler item (first-run starter tasks, and the various dev-only seed tasks, alarms, countdown timers and food diary entries) is now stamped with a `demo` tag, so it can be hidden from any view via Settings → Filtering rules even if it somehow ends up on a production install
+- Local build: 2026-09-06 09:29
+- Build duration (apk): 3m 20s
+- Build duration (windows): 1m 24s
+
+## [0.2.30] - 2026-09-04
+- Waiting for Approval gained a sort menu (newest first, oldest first, alphabetical) — newest first by default — and each conversation group's header now always leads with its date, even when it already has a source title
+- Local build: 2026-09-04 14:14
+- Build duration (apk): 5m 59s
+- Build duration (windows): 2m 57s
+
+## [0.2.29] - 2026-09-04
+- The time picker's 24-hour dial (alarms, tasks, quiet hours, streak reminders, SMS report time, countdown/food diary times) is now a single ring of all 24 hours instead of the old double-ring (inner/outer) layout
+- Local build: 2026-09-04 11:34
+- Build duration (apk): 5m 32s
+- Build duration (windows): 2m 20s
+
+## [0.2.28] - 2026-09-04
+- Waiting for Approval now opens grouped by conversation by default instead of as one flat list
 
 ## [0.2.27] - 2026-09-03
 - Food Diary can now copy a chosen set of days straight to the clipboard as plain text (bullet points and new lines, no Markdown) via a new app-bar action, for pasting a handful of meals into a message instead of sharing the whole export file

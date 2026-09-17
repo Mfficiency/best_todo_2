@@ -11,6 +11,37 @@ Feature branches (`claude/*`, historically `codex/*`) → `dev` → `staging` �
 `main`. Releases are built from dev after a version bump. dev is the working
 branch; staging/main promote by merge.
 
+### Branch hygiene (two workflows, both deleting)
+
+| Workflow | Triggers | Deletes |
+|---|---|---|
+| `delete-merged-branch.yml` | PR closed+merged with base `dev` | That PR's head branch. The precise case: a feature branch whose PR landed. |
+| `prune-old-branches.yml` | push on `dev`, manual | The backstop. Once the repo holds more than **8** branches, deletes the ones whose tip commit is oldest until it's back under the cap (`tool/ci/prune_old_branches.mjs`). |
+
+Why both: the PR workflow only fires on PR merges, and plenty of branches
+never get one - abandoned experiments, and merges that reach dev by direct
+push (`tool/build.sh` pushes dev itself). The cap catches those.
+
+The pruner **never** deletes `dev`, `staging`, `main`, `master`,
+[`ci-reports`](#the-ci-reports-orphan-branch), the repo's default branch,
+anything GitHub marks protected, or anything with an open PR. The cap counts
+*every* branch including those, so 8 with four long-lived branches leaves room
+for four feature branches.
+
+It will delete **unmerged** work once the repo is over the cap - that is what a
+cap means, but it is irreversible in practice. Two ways to check first:
+
+```sh
+# what would go, without touching anything
+GITHUB_TOKEN=$(gh auth token) node tool/ci/prune_old_branches.mjs --dry-run
+# only ever delete branches already fully merged into dev
+GITHUB_TOKEN=$(gh auth token) node tool/ci/prune_old_branches.mjs --merged-only
+```
+
+Add `--merged-only` to the workflow's `run:` step to make that the standing
+behaviour; the cap then simply isn't met while unmerged branches are the
+oldest, which the script says out loud.
+
 ## The three workflows (`.github/workflows/`)
 
 | Workflow | Triggers | Runner | Does |
@@ -81,6 +112,42 @@ online refresh) and by `sync_test_report.dart` (build packaging).
    `PUBLISH_APK=1 sh tool/build.sh apk --release` (or
    `dart run tool/publish_apk.dart` after any release build).
 5. Promote by merging dev → staging → main when asked.
+
+## Wishlist build automation (0.2.35)
+
+Tools → Wishlist's "Build" swipe action (see SPEC §10.6 "Send to build")
+opens a `wishlist-build`-labeled GitHub issue via `GithubWishlistService`.
+A Claude Code Remote Routine, created from a Claude Code Remote session with
+`create_trigger`, watches for those issues:
+
+- **Schedule:** daily at 17:00 (local time the routine was created in —
+  confirm/adjust if the owner's timezone changes), plus fireable on demand
+  via `fire_trigger` from a Claude Code Remote session.
+- **Per firing:** list open issues labeled `wishlist-build` on
+  `Mfficiency/best_todo_2`. For each: read the `Wishlist item uid: <uid>`
+  trailer line the issue body carries (`wishlistIssueUidPrefix` in
+  `wishlist_page.dart`) — that's the item's `Task.uid`, needed below since
+  the issue's title/description alone carry no client-side id. Implement the
+  item per this file's own conventions (bump version + CHANGELOG, add/update
+  the matching test suite, add a `ShippedWish(uid, newVersion, note)` entry
+  in `wishlist_shipped.dart` keyed on that uid so the item self-ticks once
+  the new version lands on the device that created it), commit, and push
+  straight to
+  `dev` — no PR/approval step, matching the "bump, sync and build" workflow's
+  own direct-to-dev habit and the owner's explicit preference (they build/
+  review locally). Close the issue with a comment naming what shipped once
+  pushed.
+- **Delivery:** nothing new — `build-apk.yml` already builds/tests/publishes
+  a GitHub release APK on every `dev` push (see above), and the About page's
+  "Check for updates" already downloads it.
+- **Credential split:** the app's own GitHub token (Settings → Wishlist
+  build, `Config.githubWishlistToken`) is scoped to Issues-only on this repo
+  and is used solely to open the issue from the device. It is unrelated to
+  whatever push access the Claude Code Remote session/routine itself uses to
+  commit to `dev`.
+
+An ambiguous or clearly large wishlist item should get a clarifying comment
+on its issue instead of a blind implementation attempt.
 
 ## In-app automation (runs on the user's device)
 

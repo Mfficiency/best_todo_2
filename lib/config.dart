@@ -18,6 +18,33 @@ class Config {
   /// Uses the `dart.vm.product` flag to detect production builds.
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
+  /// Whether every demo/dev-seed item (see `demoToken` in `label_utils.dart`)
+  /// is hidden from every view, ahead of and independent from any Settings →
+  /// Filtering rules configuration. Defaults to hidden outside dev builds —
+  /// from the moment a build stops being a dev build, seeded sample data
+  /// (which can persist to disk and outlive [isDev] going back to false on a
+  /// later release) is gone from the app's own views without the user having
+  /// to configure anything. A settable property rather than deriving
+  /// straight from the compile-time [isDev] so tests can exercise the
+  /// production behavior — and, since 0.2.46, a real setting with its own
+  /// switch at the top of Settings → Filtering rules, so the filter that is
+  /// on by default on a phone is visible and verifiable there instead of
+  /// being an invisible compile-time rule.
+  ///
+  /// Only an explicit flip of that switch is persisted ([_hideDemoItemsSet]),
+  /// never the default: a debug build run once on a real phone would
+  /// otherwise write `false` into the shared settings file and a later
+  /// release install would read it back and show the leftover dev seeds
+  /// again — the exact failure this gate exists to prevent.
+  static bool? _hideDemoItemsSet;
+
+  static bool get hideDemoItems => _hideDemoItemsSet ?? !isDev;
+
+  static set hideDemoItems(bool value) => _hideDemoItemsSet = value;
+
+  /// Drops an explicit [hideDemoItems] choice, restoring the build's default.
+  static void resetHideDemoItemsForTest() => _hideDemoItemsSet = null;
+
   static String _appVersion = 'unknown';
   static String _buildNumber = '';
   static Future<void>? _versionLoadFuture;
@@ -95,6 +122,9 @@ class Config {
     'productivity_stats',
     'test_results',
     'weekly_hours_planner',
+    'worklist',
+    'mp3_downloader',
+    'music_player',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -112,6 +142,9 @@ class Config {
     'Productivity Stats',
     'Test Results',
     'Weekly Hours Planner',
+    'Worklist',
+    'MP3 Downloader',
+    'Music Player',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -149,6 +182,9 @@ class Config {
     'productivity_stats',
     'test_results',
     'weekly_hours_planner',
+    'worklist',
+    'mp3_downloader',
+    'music_player',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -174,6 +210,9 @@ class Config {
     'Productivity Stats',
     'Test Results',
     'Weekly Hours Planner',
+    'Worklist',
+    'MP3 Downloader',
+    'Music Player',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -199,6 +238,9 @@ class Config {
     'Completion stats and trends',
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
+    'The home screen, showing only tasks tagged "mlr" (hidden everywhere else)',
+    'Search a YouTube video by title or URL and save its audio as an .mp3',
+    'Play music from your device folder or a self-hosted server, with swipe-to-favorite/dislike',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
@@ -542,6 +584,64 @@ class Config {
   /// every other value in this file — the app has no secret-storage layer.
   static String todoistApiToken = '';
 
+  /// GitHub fine-grained personal access token, scoped to Issues on this
+  /// repo only. Used by `GithubWishlistService` for exactly one call: opening
+  /// a `wishlist-build`-labeled issue when a wishlist item is sent to the
+  /// build automation (Tools → Wishlist → swipe → Build). See
+  /// `.claude/notes/automation.md` for the routine that watches those issues.
+  /// Stored in plain text like [todoistApiToken] — same no-secret-storage
+  /// caveat applies.
+  static String githubWishlistToken = '';
+
+  /// Fire URL for a Claude Code Routine's API trigger
+  /// (`https://api.anthropic.com/v1/claude_code/routines/<id>/fire`), and its
+  /// bearer token. Used by `ClaudeRoutineService` for "Send to Claude" on a
+  /// task, which POSTs the task as the routine's `text` payload and returns a
+  /// claude.ai/code session URL. Stored in plain text like [todoistApiToken]
+  /// — same no-secret-storage caveat applies.
+  static String claudeRoutineUrl = '';
+  static String claudeRoutineToken = '';
+
+  /// Folder the MP3 Downloader saves audio into. Empty means "not chosen
+  /// yet" — the tool asks once, stores the answer here, and never prompts
+  /// again unless the user changes it in Settings → MP3 Downloader.
+  static String mp3DownloadFolder = '';
+
+  /// Folder the MP3 Downloader checks for tracks already downloaded (in
+  /// addition to [mp3DownloadFolder] itself), searched recursively through
+  /// every subfolder. Empty means "figure it out automatically" — the
+  /// downloader falls back to the phone's standard Music folder when one
+  /// exists, then to [mp3DownloadFolder] alone. Set explicitly in
+  /// Settings → MP3 Downloader when auto-detection picks the wrong place
+  /// (e.g. music actually lives somewhere the OS doesn't advertise).
+  static String mp3CompareFolder = '';
+
+  /// Root folder the Music Player scans for playable tracks (mp3/m4a/flac/
+  /// wav/ogg), including every subfolder recursively. Empty means "not
+  /// chosen yet". Defaults to [mp3DownloadFolder] on first use if that is
+  /// already set, since downloaded tracks are the common case, but is a
+  /// fully independent setting once picked.
+  static String musicFolder = '';
+
+  /// Subfolder paths (relative to [musicFolder], forward-slash separated)
+  /// excluded from the Music Player's scan — e.g. a ringtones or podcast
+  /// subfolder the user doesn't want mixed into shuffle. Set from Settings
+  /// → Music Player, where each subfolder found under [musicFolder] gets a
+  /// checkbox.
+  static List<String> musicExcludedSubfolders = [];
+
+  /// Base URL of a self-hosted Subsonic/OpenSubsonic-compatible server
+  /// (Navidrome, Airsonic, Gonic, …), e.g. `https://music.example.com`.
+  /// Empty means the Music Player only plays from [musicFolder].
+  static String subsonicServerUrl = '';
+
+  /// Subsonic server username.
+  static String subsonicUsername = '';
+
+  /// Subsonic server password, stored in plain text like [todoistApiToken] —
+  /// same no-secret-storage caveat applies (local device storage only).
+  static String subsonicPassword = '';
+
   /// If true, the app polls GitHub for a newer build every minute while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
   /// appears, asks whether to download and install it — see Settings →
@@ -630,6 +730,16 @@ class Config {
       'syncFolderPath': syncFolderPath,
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
+      'githubWishlistToken': githubWishlistToken,
+      'claudeRoutineUrl': claudeRoutineUrl,
+      'claudeRoutineToken': claudeRoutineToken,
+      'mp3DownloadFolder': mp3DownloadFolder,
+      'mp3CompareFolder': mp3CompareFolder,
+      'musicFolder': musicFolder,
+      'musicExcludedSubfolders': musicExcludedSubfolders,
+      'subsonicServerUrl': subsonicServerUrl,
+      'subsonicUsername': subsonicUsername,
+      'subsonicPassword': subsonicPassword,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
@@ -638,6 +748,7 @@ class Config {
           entry.key: entry.value.toJson(),
       },
       'viewFilterRulesSeedVersion': viewFilterRulesSeedVersion,
+      if (_hideDemoItemsSet != null) 'hideDemoItems': _hideDemoItemsSet,
     };
   }
 
@@ -762,6 +873,25 @@ class Config {
     syncFolderPath = data['syncFolderPath'] as String? ?? syncFolderPath;
     todoistSyncEnabled = data['todoistSyncEnabled'] ?? todoistSyncEnabled;
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
+    githubWishlistToken =
+        data['githubWishlistToken'] as String? ?? githubWishlistToken;
+    claudeRoutineUrl = data['claudeRoutineUrl'] as String? ?? claudeRoutineUrl;
+    claudeRoutineToken =
+        data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
+    mp3DownloadFolder =
+        data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
+    mp3CompareFolder =
+        data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
+    musicFolder = data['musicFolder'] as String? ?? musicFolder;
+    final savedExcludedSubfolders = data['musicExcludedSubfolders'];
+    if (savedExcludedSubfolders is List) {
+      musicExcludedSubfolders =
+          savedExcludedSubfolders.whereType<String>().toList();
+    }
+    subsonicServerUrl =
+        data['subsonicServerUrl'] as String? ?? subsonicServerUrl;
+    subsonicUsername = data['subsonicUsername'] as String? ?? subsonicUsername;
+    subsonicPassword = data['subsonicPassword'] as String? ?? subsonicPassword;
     // Settings files from before automatic checks existed have no key. Use
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.
@@ -776,6 +906,8 @@ class Config {
         if (value is bool) featureEnabled[key] = value;
       }
     }
+    final savedHideDemoItems = data['hideDemoItems'];
+    if (savedHideDemoItems is bool) _hideDemoItemsSet = savedHideDemoItems;
     final savedViewFilterRules = data['viewFilterRules'];
     if (savedViewFilterRules is Map) {
       viewFilterRules = {
