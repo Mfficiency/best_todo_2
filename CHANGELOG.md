@@ -2,6 +2,8 @@
 
 ## [0.2.68] - 2026-09-17
 - Fixed Music Player/Best Music finding no songs in any chosen folder: the folder scan needs Android's "All files access" permission, but nothing in the music folder picker ever asked for it, so a freshly picked folder silently scanned as empty. Picking a music folder now requests that permission first, and every scan step (folder existence, permission status, files seen/skipped/kept, any error) is now written to App Logs so a bad scan is diagnosable in-app instead of silent
+- Local build: 2026-09-17 17:35
+- Build duration (windows): 52s
 
 ## [0.2.67] - 2026-09-17
 - Best Music now has a proper menu (drawer), matching BestToDo's own home page: MP3 Downloader, Settings, Changelog, Startup Times, App Logs and About. Settings lets you choose the music folder and exclude specific subfolders. "Check for updates" moved from the app bar into the About page (same flow as BestToDo's own About page)
