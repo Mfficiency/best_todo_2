@@ -3323,9 +3323,18 @@ hold thousands of tracks); a file with no/unreadable tag, or any non-mp3 format,
 its filename as the title. Results cache to `music_library.json` (same
 singleton/`ValueNotifier`/`flush: true`/swallowed-errors pattern as `ProjectService`, §4.2) so
 the library shows up instantly on the next launch; a failed or partial rescan (folder deleted,
-permission revoked) leaves the previous cache in place rather than clearing it. Rescans are
-manual (Music Player's refresh button, or automatically once on first open when the folder is
-set but the cache is empty) — there is no filesystem watcher.
+permission revoked) leaves the previous cache in place rather than clearing it (0.2.68 —
+`rescan` no longer swallows the failure silently: every step — permission status, folder
+existence, files seen/skipped/kept, any thrown error — is written to `LogService` under source
+`Music`, viewable in App Logs, since a scan that quietly finds nothing was previously
+undiagnosable from the UI). Rescans are manual (Music Player's refresh button, or automatically
+once on first open when the folder is set but the cache is empty) — there is no filesystem
+watcher. All three folder pickers (Music Player's own, and Settings → Music Player in both
+BestToDo and Best Music) call `MusicLibraryService.ensureFolderPermission()` before opening the
+picker (0.2.68): on Android this checks/requests `MANAGE_EXTERNAL_STORAGE`, the same "All files
+access" grant §10.6d's MP3 Downloader already prompts for — the music folder pick flow was the
+one place in the app that scanned an arbitrary folder without ever asking for it, so a folder
+picked before granting it anywhere else scanned as empty with no error shown.
 
 **Playback engine** (`lib/services/music_audio_handler.dart`'s `MusicAudioHandler`, a
 `BaseAudioHandler` from `audio_service` wrapping a single `just_audio` `AudioPlayer`):

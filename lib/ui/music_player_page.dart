@@ -73,6 +73,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   Future<void> _pickFolder() async {
     setState(() => _pickingFolder = true);
     try {
+      await MusicLibraryService.instance.ensureFolderPermission();
       final directory = await getDirectoryPath();
       if (directory != null) {
         Config.musicFolder = directory;

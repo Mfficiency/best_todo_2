@@ -5,9 +5,11 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:id3_codec/id3_codec.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../config.dart';
 import '../models/track.dart';
+import 'log_service.dart';
 
 /// Scans [Config.musicFolder] and every subfolder for playable audio files,
 /// skipping anything under [Config.musicExcludedSubfolders]. Reads ID3 tags
@@ -95,6 +97,24 @@ class MusicLibraryService {
     return false;
   }
 
+  /// On Android, the folder scan needs the "All files access"
+  /// (`MANAGE_EXTERNAL_STORAGE`) permission — nothing else in the music
+  /// folder pick flow asks for it, so without this a freshly chosen folder
+  /// scans as empty with no visible error (`rescan` logs the denial, but by
+  /// then the user has already picked a folder that "has no songs"). Call
+  /// this right after the user picks a folder, before the first scan. No-op
+  /// (always true) off Android.
+  Future<bool> ensureFolderPermission() async {
+    if (!Platform.isAndroid) return true;
+    var status = await Permission.manageExternalStorage.status;
+    LogService.add('Music', 'ensureFolderPermission: status=$status');
+    if (!status.isGranted) {
+      status = await Permission.manageExternalStorage.request();
+      LogService.add('Music', 'ensureFolderPermission: requested -> $status');
+    }
+    return status.isGranted;
+  }
+
   static String extensionOf(String path) {
     final dot = path.lastIndexOf('.');
     if (dot < 0 || dot == path.length - 1) return '';
@@ -126,7 +146,9 @@ class MusicLibraryService {
         final rel = _relativePath(normalizePath(entity.path), normalizedRoot);
         if (rel.isNotEmpty) result.add(rel);
       }
-    } catch (_) {}
+    } catch (e) {
+      LogService.add('Music', 'listSubfolders: "$root" failed: $e');
+    }
     result.sort();
     return result;
   }
@@ -145,35 +167,66 @@ class MusicLibraryService {
   Future<List<Track>> rescan() async {
     final root = Config.musicFolder.trim();
     if (root.isEmpty) {
+      LogService.add('Music', 'rescan: no music folder configured');
       tracks.value = [];
       await _save();
       return tracks.value;
     }
     scanning = true;
     try {
+      if (Platform.isAndroid) {
+        final status = await Permission.manageExternalStorage.status;
+        LogService.add('Music', 'rescan: manageExternalStorage=$status');
+      }
       final rootDir = Directory(root);
-      if (!await rootDir.exists()) return tracks.value;
+      final rootExists = await rootDir.exists();
+      LogService.add('Music', 'rescan: "$root" exists=$rootExists');
+      if (!rootExists) {
+        LogService.add(
+            'Music',
+            'rescan: "$root" not found by Directory.exists() — on Android '
+            'this also happens when "All files access" isn\'t granted, not '
+            'just a missing/moved folder');
+        return tracks.value;
+      }
       final excluded = Config.musicExcludedSubfolders;
       final normalizedRoot = normalizePath(root);
       final found = <Track>[];
+      var filesSeen = 0;
+      var skippedUnsupportedExt = 0;
+      var skippedExcludedDir = 0;
       await for (final entity
           in rootDir.list(recursive: true, followLinks: false)) {
         if (entity is! File) continue;
+        filesSeen++;
         final path = normalizePath(entity.path);
         final ext = extensionOf(path);
-        if (!supportedExtensions.contains(ext)) continue;
+        if (!supportedExtensions.contains(ext)) {
+          skippedUnsupportedExt++;
+          continue;
+        }
         final rel = _relativePath(path, normalizedRoot);
         final relDir = rel.contains('/') ? rel.substring(0, rel.lastIndexOf('/')) : '';
-        if (isExcludedRelativeDir(relDir, excluded)) continue;
+        if (isExcludedRelativeDir(relDir, excluded)) {
+          skippedExcludedDir++;
+          continue;
+        }
         found.add(await _buildTrack(entity.path, ext));
       }
       found.sort((a, b) =>
           a.title.toLowerCase().compareTo(b.title.toLowerCase()));
       tracks.value = found;
       await _save();
-    } catch (_) {
+      LogService.add(
+          'Music',
+          'rescan: "$root" — $filesSeen file(s) seen, ${found.length} '
+          'track(s) kept, $skippedUnsupportedExt unsupported extension, '
+          '$skippedExcludedDir in excluded subfolders');
+    } catch (e, st) {
       // Keep whatever was loaded/cached before; a partial or failed scan
       // shouldn't wipe out a previously known library.
+      debugPrint('MusicLibraryService.rescan: "$root" failed: $e\n$st');
+      LogService.add('Music', 'rescan: "$root" failed: $e');
     } finally {
       scanning = false;
     }

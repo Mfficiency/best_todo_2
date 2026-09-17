@@ -22,6 +22,7 @@ class MusicSettingsPage extends StatefulWidget {
 
 class _MusicSettingsPageState extends State<MusicSettingsPage> {
   Future<void> _pickFolder() async {
+    await MusicLibraryService.instance.ensureFolderPermission();
     final directory = await getDirectoryPath(
       initialDirectory:
           Config.musicFolder.isNotEmpty ? Config.musicFolder : null,

@@ -156,6 +156,11 @@ void main() {
     });
   });
 
+  test('ensureFolderPermission is a no-op off Android (tests run on host)',
+      () async {
+    expect(await MusicLibraryService.instance.ensureFolderPermission(), isTrue);
+  });
+
   test('byId finds a scanned track by its id', () async {
     await writeFile('findme.mp3');
     final tracks = await MusicLibraryService.instance.rescan();
