@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.72] - 2026-09-17
+- Fixed swipe-to-move defaulting to the wrong tab on every page except Today: swiping a task always auto-committed to whichever tab happened to sort first (usually Today), so a task swiped from Tomorrow snapped back to Today instead of moving forward to Day after tomorrow. The default now always follows the intended "move forward one tab" order (Today→Tomorrow→Day after→Next week→Next month→Future→back to Today), matching the move-options row and the spec
+
 ## [0.2.71] - 2026-09-17
 - Music Player/Best Music: you can now build normal playlists by hand, Samsung Music style. "New playlist" on the Playlists tab creates an empty one; every song row (Library tab or any playlist) gets an "Add to playlist" button showing which playlists it's already in, with a "New playlist" shortcut right there too. Hand-built playlists also get a "Remove from playlist" button on each song
 - Local build: 2026-09-17 19:55

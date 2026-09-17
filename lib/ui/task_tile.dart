@@ -186,7 +186,12 @@ class _TaskTileState extends State<TaskTile>
       vsync: this,
       duration: Config.delayDuration,
     );
-    _destinations = List<int>.generate(Config.tabs.length, (i) => i)
+    // Ordered starting from the immediate next tab (wrapping), so the
+    // auto-committed default (index 0) always matches _moveTaskToNextPage's
+    // "move forward one tab" behavior, whatever the current tab is.
+    final tabCount = Config.tabs.length;
+    _destinations = List<int>.generate(
+        tabCount, (i) => (widget.pageIndex + 1 + i) % tabCount)
       ..remove(widget.pageIndex);
     widget.controller?._attach(this);
     _checkEmulator();
