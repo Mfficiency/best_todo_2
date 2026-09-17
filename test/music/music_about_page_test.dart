@@ -34,12 +34,17 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MusicAboutPage()));
     await tester.pump();
     await tester.ensureVisible(find.text('Check for updates'));
+    await tester.pump();
     await tester.tap(find.text('Check for updates'));
     // Awaits PackageInfo (a platform-channel call) before the fetchOverride
-    // result comes back — give the real event loop a few slices, same as
+    // result comes back — a fake-async `pump(duration)` never services that
+    // real await chain (see CLAUDE.md's testWidgets I/O note); give the real
+    // event loop a few slices instead, same as
     // about_page_update_test.dart's tapCheck helper.
     for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
     }
 
     expect(find.textContaining('You are on the latest version'),
