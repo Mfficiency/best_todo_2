@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.65] - 2026-09-17
+- Fixed press-and-hold drag-reorder on the home tabs always springing back to its original position: Home's default Filtering rule (it excludes every other view's reserved tag out of the box) was disabling reorder for everyone, even when nothing in the current tab was actually hidden by it
+
 ## [0.2.64] - 2026-09-17
 - Added "Send to Claude" on a task (expand it, tap the robot icon) to fire a Claude Code Routine's API trigger and start a real cloud coding session with that task as context, configured in Settings → Claude Routine
 - Added a smart test runner (`dart run tool/smart_test.dart`): looks at what changed and runs only the matching `test/<area>` suite(s) instead of the full suite, falling back to a full `flutter test` for anything it can't confidently map, every 10th targeted run, and once a week regardless — see `CLAUDE.md`
