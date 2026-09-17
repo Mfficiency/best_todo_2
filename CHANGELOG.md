@@ -2,6 +2,8 @@
 
 ## [0.2.66] - 2026-09-17
 - Added Best Music, a separate app built from this same codebase (Android build flavor, applicationId `com.mfficiency.best_music`, black-music-note-on-white launcher icon): opens straight into the Music Player, with the MP3 Downloader one tap away and its own "Check for updates" — no to-do features. Build it with `sh tool/build.sh music-apk --release`; installs side by side with BestToDo. BestToDo itself is unchanged (now built as the `todo` flavor)
+- Local build: 2026-09-17 12:55
+- Build duration (windows): 57s
 
 ## [0.2.65] - 2026-09-17
 - Music Player: Now Playing has a shuffle toggle (shuffles the upcoming queue, keeping the current track and playback history in place) and a Queue page reachable from the app bar to view and drag-reorder the play queue into a custom order
