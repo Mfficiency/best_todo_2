@@ -1058,6 +1058,17 @@ class _WishTileState extends State<_WishTile>
   bool _dragging = false;
   bool _sendingToClaude = false;
 
+  /// Compact style for the swipe-options row's buttons: with six of them now
+  /// (Build/Claude/Share/Copy/Export/Delete), the default padding no longer
+  /// fits one line at typical widths, and a second line overflows the
+  /// overlay's height (it's sized to match the tile it sits over).
+  static final ButtonStyle _optionButtonStyle = TextButton.styleFrom(
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    visualDensity: VisualDensity.compact,
+    minimumSize: Size.zero,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -1289,6 +1300,7 @@ class _WishTileState extends State<_WishTile>
                     alignment: WrapAlignment.end,
                     children: [
                       TextButton.icon(
+                        style: _optionButtonStyle,
                         onPressed:
                             isQueuedForBuild(widget.item) ? null : _sendToBuild,
                         icon: Icon(
@@ -1301,27 +1313,32 @@ class _WishTileState extends State<_WishTile>
                             isQueuedForBuild(widget.item) ? 'Queued' : 'Build'),
                       ),
                       TextButton.icon(
+                        style: _optionButtonStyle,
                         onPressed:
                             _sendingToClaude ? null : _sendToClaudeTapped,
                         icon: const Icon(Icons.smart_toy_outlined, size: 18),
                         label: const Text('Claude'),
                       ),
                       TextButton.icon(
+                        style: _optionButtonStyle,
                         onPressed: _share,
                         icon: const Icon(Icons.share, size: 18),
                         label: const Text('Share'),
                       ),
                       TextButton.icon(
+                        style: _optionButtonStyle,
                         onPressed: _copy,
                         icon: const Icon(Icons.content_copy, size: 18),
                         label: const Text('Copy'),
                       ),
                       TextButton.icon(
+                        style: _optionButtonStyle,
                         onPressed: _export,
                         icon: const Icon(Icons.download_outlined, size: 18),
                         label: const Text('Export'),
                       ),
                       TextButton.icon(
+                        style: _optionButtonStyle,
                         onPressed: _delete,
                         icon: const Icon(Icons.delete, size: 18),
                         label: const Text('Delete'),

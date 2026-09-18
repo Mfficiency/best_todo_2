@@ -777,6 +777,8 @@ void main() {
     expect(body['text'], contains('For stargazing weekends'));
     expect(find.text('Claude session started'), findsOneWidget);
 
+    // Let the snackbar finish animating in so the Open action is tappable.
+    await tester.pump(const Duration(milliseconds: 750));
     await tester.tap(find.text('Open'));
     await tester.pump();
     expect(launcher.launched, ['https://claude.ai/code/session_1']);
