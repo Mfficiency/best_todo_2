@@ -22,12 +22,51 @@ function Invoke-Checked {
   }
 }
 
+# Which app a set of `flutter build` arguments builds. android/app/build.gradle.kts
+# defines the `todo` (BestToDo) and `music` (Best Music — lib/main_music.dart,
+# SPEC.md §10.6f) product flavors, and an `apk` build now *requires* an explicit
+# --flavor, so default to `todo` here rather than making every existing
+# `build.ps1 apk --release` caller pass one. The returned flavor also drives the
+# artifact name (best_<flavor>_<version>.apk, the prefix UpdateService filters
+# the per-app update check on) and which version file/changelog is used.
+function Get-FlavorArg {
+  param([string[]]$ArgsForFlutter)
+
+  $prev = ""
+  foreach ($arg in $ArgsForFlutter) {
+    if ($prev -eq "--flavor") {
+      return $arg
+    }
+    $prev = $arg
+  }
+  return ""
+}
+
 function Get-PubspecVersion {
   $versionLine = Select-String -Path "pubspec.yaml" -Pattern "^version:" | Select-Object -First 1
   if ($null -eq $versionLine) {
     throw "Could not find version: in pubspec.yaml"
   }
   return (($versionLine.Line -split "\s+", 2)[1]).Trim()
+}
+
+# Best Music versions independently of BestToDo, out of its own MUSIC_VERSION
+# file rather than pubspec.yaml (CLAUDE.md / SPEC.md §10.6i).
+function Get-MusicVersion {
+  $versionLine = Select-String -Path "MUSIC_VERSION" -Pattern "^version:" | Select-Object -First 1
+  if ($null -eq $versionLine) {
+    throw "Could not find version: in MUSIC_VERSION"
+  }
+  return (($versionLine.Line -split "\s+", 2)[1]).Trim()
+}
+
+function Get-AppVersion {
+  param([string]$Flavor)
+
+  if ($Flavor -eq "music") {
+    return Get-MusicVersion
+  }
+  return Get-PubspecVersion
 }
 
 function Test-IsCacheableReleaseBuild {
@@ -38,9 +77,19 @@ function Test-IsCacheableReleaseBuild {
   }
 
   if ($ArgsForFlutter.Count -gt 1) {
+    $skipNext = $false
     foreach ($arg in $ArgsForFlutter[1..($ArgsForFlutter.Count - 1)]) {
-      if ($arg -ne "--release") {
-        return $false
+      if ($skipNext) {
+        $skipNext = $false
+        continue
+      }
+      switch ($arg) {
+        "--release" { }
+        # Flavor/entrypoint selection picks *which* app is built, not how; both
+        # take a value, which must not be mistaken for an extra build switch.
+        "--flavor" { $skipNext = $true }
+        "-t" { $skipNext = $true }
+        default { return $false }
       }
     }
   }
@@ -51,7 +100,8 @@ function Get-ExistingBuildArtifact {
   param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
-    [string[]]$ArgsForFlutter = @()
+    [string[]]$ArgsForFlutter = @(),
+    [string]$Prefix = "best_todo"
   )
 
   if ($env:FORCE_BUILD -eq "1" -or -not (Test-IsCacheableReleaseBuild $ArgsForFlutter)) {
@@ -62,8 +112,8 @@ function Get-ExistingBuildArtifact {
   $candidates = switch ($target) {
     "apk" {
       @(
-        "github_releases/best_todo_$Version.apk",
-        "build/app/outputs/flutter-apk/best_todo_$Version.apk"
+        "github_releases/${Prefix}_$Version.apk",
+        "build/app/outputs/flutter-apk/${Prefix}_$Version.apk"
       )
     }
     "web" { @("build/web-$Version") }
@@ -99,15 +149,41 @@ function Rename-IfExists {
 function Invoke-SingleBuild {
   param([string[]]$ArgsForFlutter)
 
-  $version = Get-PubspecVersion
-  $existingArtifact = Get-ExistingBuildArtifact -Version $version -ArgsForFlutter $ArgsForFlutter
+  $target = if ($ArgsForFlutter.Count -gt 0) { $ArgsForFlutter[0] } else { "" }
+
+  $flavor = ""
+  if ($target -eq "apk") {
+    $flavor = Get-FlavorArg $ArgsForFlutter
+    if ([string]::IsNullOrWhiteSpace($flavor)) {
+      $flavor = "todo"
+      $ArgsForFlutter = $ArgsForFlutter + @("--flavor", "todo")
+    }
+  }
+  $appFlavor = if ([string]::IsNullOrWhiteSpace($flavor)) { "todo" } else { $flavor }
+  $prefix = "best_$appFlavor"
+
+  $version = Get-AppVersion -Flavor $appFlavor
+  $existingArtifact = Get-ExistingBuildArtifact -Version $version `
+    -ArgsForFlutter $ArgsForFlutter -Prefix $prefix
   if ($null -ne $existingArtifact) {
     Write-Host "==> existing release build found: $existingArtifact"
     Write-Host "    skipping flutter build (set FORCE_BUILD=1 to rebuild)"
 
-    if ($ArgsForFlutter.Count -gt 0 -and $ArgsForFlutter[0] -eq "apk" -and
-        $existingArtifact -like "build/app/outputs/flutter-apk/*") {
-      Invoke-Checked "dart" @("run", "tool/stage_local_release.dart", "--apk", $existingArtifact)
+    if ($target -eq "apk" -and $existingArtifact -like "build/app/outputs/flutter-apk/*") {
+      Invoke-Checked "dart" @("run", "tool/stage_local_release.dart",
+        "--apk", $existingArtifact, "--prefix", $prefix, "--version", $version)
+    }
+
+    # tool/publish_apk.dart only ever publishes a BestToDo GitHub release --
+    # Best Music's update check never looks at GitHub releases, only at
+    # github_releases/ (UpdateService.checkReleases), so publishing there for a
+    # music build would just mislabel this APK as a BestToDo one.
+    if ($env:PUBLISH_APK -eq "1" -and $appFlavor -ne "music") {
+      if ($existingArtifact -like "*.apk") {
+        Invoke-Checked "dart" @("run", "tool/publish_apk.dart", "--apk", $existingArtifact)
+      } else {
+        Invoke-Checked "dart" @("run", "tool/publish_apk.dart")
+      }
     }
     return
   }
@@ -124,21 +200,29 @@ function Invoke-SingleBuild {
   $buildDurationSeconds = [int][Math]::Round($buildStopwatch.Elapsed.TotalSeconds)
 
   if ($buildStatus -eq 0) {
-    $target = if ($ArgsForFlutter.Count -gt 0) { $ArgsForFlutter[0] } else { "" }
-    Invoke-Checked "dart" @("run", "tool/append_build_time.dart",
-      "--duration", "$buildDurationSeconds", "--target", $target)
+    # A music build notes its time in CHANGELOG_MUSIC.md instead of CHANGELOG.md.
+    $appArgs = @()
+    if ($appFlavor -eq "music") {
+      $appArgs = @("--app", "music")
+    }
+    Invoke-Checked "dart" (@("run", "tool/append_build_time.dart",
+      "--duration", "$buildDurationSeconds", "--target", $target) + $appArgs)
   } else {
     Write-Error "flutter build $($ArgsForFlutter -join ' ') failed (status $buildStatus)"
     exit $buildStatus
   }
 
+  # Android APK -> best_<flavor>_<version>.apk (Gradle's createVersionedReleaseApk
+  # task already writes this file directly; this is a fallback for whichever of
+  # the two names the Flutter/Gradle tooling actually produced).
   Rename-IfExists `
-    "build/app/outputs/flutter-apk/app-release.apk" `
-    "build/app/outputs/flutter-apk/best_todo_$version.apk"
+    "build/app/outputs/flutter-apk/app-$appFlavor-release.apk" `
+    "build/app/outputs/flutter-apk/${prefix}_$version.apk"
 
-  $apkPath = "build/app/outputs/flutter-apk/best_todo_$version.apk"
+  $apkPath = "build/app/outputs/flutter-apk/${prefix}_$version.apk"
   if (Test-Path -LiteralPath $apkPath) {
-    Invoke-Checked "dart" @("run", "tool/stage_local_release.dart", "--apk", $apkPath)
+    Invoke-Checked "dart" @("run", "tool/stage_local_release.dart",
+      "--apk", $apkPath, "--prefix", $prefix, "--version", $version)
   }
 
   if (Test-Path -LiteralPath "build/web") {
@@ -153,6 +237,10 @@ function Invoke-SingleBuild {
   Rename-IfExists `
     "build/windows/x64/runner/Release/BestToDo.exe" `
     "build/windows/x64/runner/Release/BestToDo-$version.exe"
+
+  if ($env:PUBLISH_APK -eq "1" -and $appFlavor -ne "music") {
+    Invoke-Checked "dart" @("run", "tool/publish_apk.dart")
+  }
 }
 
 function Invoke-BuildAll {
@@ -164,11 +252,21 @@ function Invoke-BuildAll {
 
   $windowsStatus = "skipped"
   $androidStatus = "skipped"
+  $musicStatus = "skipped"
 
   if ($env:ANDROID -ne "0") {
-    Write-Host "==> flutter build apk $($ArgsForTargets -join ' ')"
-    Invoke-SingleBuild (@("apk") + $ArgsForTargets)
+    Write-Host "==> flutter build apk --flavor todo $($ArgsForTargets -join ' ')"
+    Invoke-SingleBuild (@("apk", "--flavor", "todo") + $ArgsForTargets)
     $androidStatus = "ok"
+    $env:SKIP_PREFLIGHT = "1"
+  }
+
+  # Best Music ships from this same repo as its own APK (SPEC.md §10.6f), so
+  # "everything this project ships" includes it. MUSIC=0 skips it.
+  if ($env:ANDROID -ne "0" -and $env:MUSIC -ne "0") {
+    Write-Host "==> flutter build apk --flavor music $($ArgsForTargets -join ' ')"
+    Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $ArgsForTargets)
+    $musicStatus = "ok"
     $env:SKIP_PREFLIGHT = "1"
   }
 
@@ -198,8 +296,12 @@ function Invoke-BuildAll {
       throw "git rev-parse failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "==> syncing github_releases/ + CHANGELOG.md on $branch"
+    Write-Host "==> syncing github_releases/ + changelogs on $branch"
     Invoke-Checked "git" @("add", "github_releases", "CHANGELOG.md")
+    # Best Music's build time lands in its own changelog, not CHANGELOG.md.
+    if (Test-Path -LiteralPath "CHANGELOG_MUSIC.md") {
+      Invoke-Checked "git" @("add", "CHANGELOG_MUSIC.md")
+    }
     if (Test-Path -LiteralPath "build_history.json") {
       Invoke-Checked "git" @("add", "build_history.json")
     }
@@ -237,6 +339,7 @@ function Invoke-BuildAll {
   Write-Host ""
   Write-Host "=== build all ($version) ==="
   Write-Host "  android : $androidStatus"
+  Write-Host "  music   : $musicStatus"
   Write-Host "  windows : $windowsStatus"
 
   Get-ChildItem -Path "github_releases" -Filter "*.apk" -ErrorAction SilentlyContinue |
@@ -260,6 +363,11 @@ if ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "all") {
   } else {
     Invoke-BuildAll $BuildArgs[1..($BuildArgs.Count - 1)]
   }
+} elseif ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "music-apk") {
+  # Shorthand for the Best Music flavor, matching `sh tool/build.sh music-apk`:
+  #   powershell -File tool\build.ps1 music-apk --release
+  $rest = if ($BuildArgs.Count -gt 1) { $BuildArgs[1..($BuildArgs.Count - 1)] } else { @() }
+  Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $rest)
 } else {
   Invoke-SingleBuild $BuildArgs
 }

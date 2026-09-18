@@ -839,5 +839,13 @@
     "durationSeconds": 59,
     "finishedAt": "2026-09-18T13:55:28.133938",
     "os": "windows"
+  },
+  {
+    "version": "0.2.83+374",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 157,
+    "finishedAt": "2026-09-18T23:11:26.920433",
+    "os": "windows"
   }
 ]

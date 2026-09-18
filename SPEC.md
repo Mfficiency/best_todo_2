@@ -3501,10 +3501,12 @@ independently — no data collision with BestToDo's own `Config`/library files).
 flavor dimension — `todo` (BestToDo, `applicationId` unchanged, still the default: `flutter
 build apk` now requires an explicit `--flavor`, so `tool/build.sh` injects `--flavor todo`
 when a caller doesn't pass one) and `music` (`applicationId com.mfficiency.best_music`).
-`sh tool/build.sh music-apk --release` is shorthand for `flutter build apk --release --flavor
-music -t lib/main_music.dart`; the Gradle `createVersionedReleaseApk` task (shared by both
-flavors) reads which flavor's output exists and renames it `best_todo_<version>.apk` or
-`best_music_<version>.apk` accordingly, matching what `tool/stage_local_release.dart --prefix
+`sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass -File
+tool\build.ps1 music-apk --release`) is shorthand for `flutter build apk --release --flavor
+music -t lib/main_music.dart`; Gradle's `createVersioned<Flavor>ReleaseApk` task — **one task
+per flavor**, each finalizing only its own `assemble<Flavor>Release` — renames that flavor's
+output to `best_todo_<version>.apk` or `best_music_<version>.apk`, matching what
+`tool/stage_local_release.dart --prefix
 best_music` stages into `github_releases/` alongside BestToDo's own APKs — both apps' last two
 builds live in that one folder, pruned independently by prefix (`namesToPrune` is prefix-blind;
 `main()` filters `present` to the caller's own prefix before pruning, since a prefix-blind prune
@@ -3863,9 +3865,27 @@ would be wrong to show under Best Music.
   music build rather than publishing a GitHub release mislabeled "BestToDo" from Music's bytes.
 - `.github/workflows/build-apk.yml`'s `build_music_apk` job reads its "app version" step from
   `MUSIC_VERSION` and passes `--version` to `stage_local_release.dart` the same way.
-- `tool/build_all.sh`/`tool/build.ps1` are untouched: both are BestToDo-only already (`all` never
-  built Best Music; `build.ps1` has no `--flavor`/music support at all, a pre-existing gap this
-  change doesn't address).
+- `tool/build_all.sh`/`tool/build.ps1` (the gap this change originally left open, closed since):
+  `all` now builds the Best Music APK as its own step between the BestToDo APK and the Windows
+  exe — "everything this project ships" includes Best Music — skippable with `MUSIC=0`, and the
+  sync step also stages `CHANGELOG_MUSIC.md`. `tool/build.ps1` has full flavor parity with
+  `tool/build.sh`: a `music-apk` shorthand, `--flavor todo` injected when an `apk` build doesn't
+  name one, `MUSIC_VERSION` as the version source and `best_music_` as the artifact prefix for a
+  music build, `--app music`/`--version`/`--prefix` passed through to
+  `append_build_time.dart`/`stage_local_release.dart`, and the same BestToDo-only `PUBLISH_APK`
+  guard.
+
+**Why the rename task is per-flavor** (regression fixed after the split): a single shared
+`createVersionedReleaseApk` used to decide which app it had just built by scanning
+`build/app/outputs/flutter-apk/` for the first existing `app-<flavor>-release.apk`, `todo`
+first. That directory is never cleaned between builds, so on any machine that had built
+BestToDo at least once, every subsequent `--flavor music` build matched the leftover
+`app-todo-release.apk`, re-copied that stale BestToDo APK as `best_todo_<pubspec version>.apk`
+and produced **no** `best_music_<MUSIC_VERSION>.apk` at all. The music build exited 0, so the
+failure was silent — `stage_local_release.dart` then staged nothing (or the wrong app). CI never
+saw it because each job starts from a clean checkout. Deciding the flavor from the task that
+triggered the rename, rather than from whatever files happen to be on disk, is what makes a
+local music build correct.
 
 Not split by this change: `SCREENSHOT_CHANGELOG.md` (`tool/update_screenshot_changelog.dart`)
 stays one shared file for both apps' screenshot-capture audit trail, and still labels every
@@ -4014,7 +4034,8 @@ in App Logs → Todoist — onboarding has already finished by then.
   --target $1` → rename artifacts with the version (`best_todo_<VERSION>.apk`,
   `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart` for an APK build →
   optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`. `tool/build.ps1` mirrors
-  this with `[System.Diagnostics.Stopwatch]` for the timing.
+  this (including the flavor/`music-apk` handling — §10.6i) with
+  `[System.Diagnostics.Stopwatch]` for the timing.
 - **Local build time & duration (0.1.240; duration + build_history.json added later):**
   `tool/append_build_time.dart` writes/updates a `- Local build: yyyy-mm-dd HH:MM` bullet
   inside the *newest* CHANGELOG.md section (`withBuildTimeNote`: replaces the existing line

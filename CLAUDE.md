@@ -32,16 +32,24 @@ file is the short operational guide.
   (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
   separate standalone app from this same codebase (Music Player + MP3 Downloader only, no
   to-do features — `lib/main_music.dart`, SPEC.md §10.6f). Build it with
-  `sh tool/build.sh music-apk --release`. CI also builds and stages it automatically
-  on every push to main/staging/dev (`build_music_apk` job in `build-apk.yml`).
+  `sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass
+  -File tool\build.ps1 music-apk --release`). CI also builds and stages it
+  automatically on every push to main/staging/dev (`build_music_apk` job in
+  `build-apk.yml`). The per-flavor rename to `best_<flavor>_<version>.apk` is done
+  by Gradle's `createVersioned<Flavor>ReleaseApk` task — one task per flavor, wired
+  to that flavor's own `assemble<Flavor>Release`, because
+  `build/app/outputs/flutter-apk/` is never cleaned between builds and anything
+  that infers the flavor by looking for an existing `app-<flavor>-release.apk`
+  picks up the *previous* app's leftover.
 - Build everything + ship: `sh tool/build.sh all --release` (alias for
   `sh tool/build_all.sh --release`), or on Windows without Git Bash/WSL:
   `powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release`.
-  Builds the APK **and** the Windows exe, stages the APK into `github_releases/`,
-  then commits and pushes the current branch so the app can download it.
+  Builds the BestToDo APK, the Best Music APK **and** the Windows exe, stages both
+  APKs into `github_releases/`, then commits and pushes the current branch so the
+  apps can download them.
   Switches: `SYNC=0` (no git), `PUSH=0` (commit only), `WINDOWS=0`/`ANDROID=0`
-  (one target), `REQUIRE_WINDOWS=1` (a failing Windows build aborts instead of
-  warning).
+  (one target), `MUSIC=0` (skip the Best Music APK), `REQUIRE_WINDOWS=1` (a failing
+  Windows build aborts instead of warning).
 - Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
   `github_releases/` and deletes the older ones; commit the folder — the app's About page

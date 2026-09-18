@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.82] - 2026-09-18
+- Fixed the Best Music release build, which had been silently producing no Best Music APK at all on any machine that had previously built BestToDo: Gradle worked out which app it had just built by scanning the (never-cleaned) build output folder for the first `app-<flavor>-release.apk` it could find, so a music build kept matching the leftover BestToDo one and re-copying that stale APK under BestToDo's name instead. The rename is now done by a separate task per flavor, wired to that flavor's own build, so it can't be confused by leftovers. `tool/build.ps1` also gained full Best Music support (a `music-apk` shorthand, `MUSIC_VERSION`/`CHANGELOG_MUSIC.md` handling and the `best_music_` artifact prefix), and `build.sh all`/`build.ps1 all` now build and stage the Best Music APK alongside BestToDo's and the Windows exe (skip it with `MUSIC=0`)
+
 ## [0.2.81] - 2026-09-18
 - BestToDo and Best Music now version and changelog independently: Best Music gets its own `MUSIC_VERSION` and `CHANGELOG_MUSIC.md` (starting from 0.2.80+371, the last build number the two apps shared) instead of piggybacking on this file/pubspec.yaml, so a Todo-only release no longer bumps Music's version or vice versa. `dart run tool/bump_version.dart <version> "<entry>" --music` bumps Best Music's own files; local `sh tool/build.sh music-apk` builds and CI's `build_music_apk` job now record their own build time/duration in CHANGELOG_MUSIC.md and stage/tag their APK with Music's own version
 - Local build: 2026-09-18 13:55
