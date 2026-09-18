@@ -161,6 +161,20 @@ void main() {
       expect(MusicLibraryService.instance.tracks.value.single.fileBaseName,
           'persisted');
     });
+
+    test('onTrackScanned fires once per track with a running count',
+        () async {
+      await writeFile('a.mp3');
+      await writeFile('b.mp3');
+      final seen = <int, String>{};
+
+      await MusicLibraryService.instance.rescan(
+        onTrackScanned: (scanned, track) => seen[scanned] = track.fileBaseName,
+      );
+
+      expect(seen.keys.toSet(), {1, 2});
+      expect(seen.values.toSet(), {'a', 'b'});
+    });
   });
 
   group('listSubfolders', () {
@@ -217,6 +231,75 @@ void main() {
       await MusicLibraryService.instance.incrementPlayCount('local:/nope.mp3');
 
       expect(MusicLibraryService.instance.tracks.value.every((t) => t.playCount == 0),
+          isTrue);
+    });
+  });
+
+  group('updateTrackMetadata', () {
+    test('sets the given fields, marks metadataEdited, and persists',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Fixed Title',
+        artist: 'Fixed Artist',
+        album: 'Fixed Album',
+        genre: 'Rock',
+        year: 2021,
+      );
+
+      final updated = MusicLibraryService.instance.byId(id)!;
+      expect(updated.title, 'Fixed Title');
+      expect(updated.artist, 'Fixed Artist');
+      expect(updated.album, 'Fixed Album');
+      expect(updated.genre, 'Rock');
+      expect(updated.year, 2021);
+      expect(updated.metadataEdited, isTrue);
+
+      MusicLibraryService.instance.resetForTest();
+      await MusicLibraryService.instance.load();
+      expect(MusicLibraryService.instance.byId(id)!.genre, 'Rock');
+    });
+
+    test('a later rescan keeps manually edited metadata instead of the '
+        "file's own (still empty) tags", () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Fixed Title',
+        artist: 'Fixed Artist',
+        album: 'Fixed Album',
+        genre: 'Rock',
+        year: 2021,
+      );
+
+      final rescanned = await MusicLibraryService.instance.rescan();
+
+      expect(rescanned.single.title, 'Fixed Title');
+      expect(rescanned.single.genre, 'Rock');
+      expect(rescanned.single.year, 2021);
+      expect(rescanned.single.metadataEdited, isTrue);
+    });
+
+    test('is a no-op for an id not in the library', () async {
+      await writeFile('a.mp3');
+      await MusicLibraryService.instance.rescan();
+
+      await MusicLibraryService.instance.updateTrackMetadata(
+        'local:/nope.mp3',
+        title: 'x',
+        artist: '',
+        album: '',
+        genre: '',
+      );
+
+      expect(
+          MusicLibraryService.instance.tracks.value.every((t) => !t.metadataEdited),
           isTrue);
     });
   });

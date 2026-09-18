@@ -84,6 +84,23 @@ void main() {
     expect(find.text('Choose music folder'), findsNothing);
   });
 
+  testWidgets('Metadata scan action opens the scan page', (tester) async {
+    Config.musicFolder = '/does/not/matter/for/this/test';
+    MusicLibraryService.instance.tracks.value = [
+      Track.local(filePath: '/does/not/matter/song.mp3', title: 'Song'),
+    ];
+
+    await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Metadata scan'));
+    // Not pumpAndSettle(): the scan page shows an indeterminate
+    // LinearProgressIndicator while its own (real-I/O) scan runs, which
+    // never settles — just confirm the navigation happened.
+    await tester.pump();
+
+    expect(find.text('Metadata Scan'), findsOneWidget);
+  });
+
   testWidgets('Playlists tab lists the two system playlists', (tester) async {
     Config.musicFolder = '/does/not/matter/for/this/test';
     MusicLibraryService.instance.tracks.value = [

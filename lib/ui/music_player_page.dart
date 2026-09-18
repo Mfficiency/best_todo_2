@@ -18,6 +18,7 @@ import 'changelog_page.dart';
 import 'home_scaffold_key.dart';
 import 'mp3_downloader_page.dart';
 import 'music_about_page.dart';
+import 'music_metadata_scan_page.dart';
 import 'music_settings_page.dart';
 import 'now_playing_page.dart';
 import 'rule_playlist_editor_page.dart';
@@ -254,6 +255,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             icon: const Icon(Icons.refresh),
             tooltip: 'Rescan library',
             onPressed: _rescan,
+          ),
+          IconButton(
+            icon: const Icon(Icons.fact_check_outlined),
+            tooltip: 'Metadata scan',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const MusicMetadataScanPage(),
+            )),
           ),
         ],
         bottom: TabBar(

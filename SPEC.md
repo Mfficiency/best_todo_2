@@ -3521,7 +3521,7 @@ GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateSer
 doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
 this repo — the folder stays each app's only update-check source.
 
-### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71)
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.72)
 **Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
 (`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
 of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
@@ -3612,6 +3612,43 @@ song again happens on the playlist itself: `MusicPlaylistDetailPage` now passes 
 an `onRemove` callback (a "Remove from playlist" icon per row) only when the playlist being
 viewed is itself a hand-built, non-system one — Favorites/disliked stay swipe-gesture-only, and a
 smart/rule playlist's tracks aren't stored to remove from in the first place.
+
+**In-app metadata scan + editor (0.2.72)** — `Track` gained `metadataEdited` (`bool`, default
+false, omitted from JSON when false). `MusicLibraryService.rescan` now takes an optional
+`onTrackScanned(int scanned, Track track)` callback, fired once per supported file found (with
+that file's already-merged final `Track` — dateAdded/playCount preserved as before, and, new
+here, its title/artist/album/genre/year preserved too when the previous entry had
+`metadataEdited: true`, instead of being overwritten by a fresh — possibly still empty — tag
+read); the per-file merge/callback logic that used to run as a separate pass after the whole
+folder was walked was folded into the main scan loop so the callback sees final values without a
+second pass. `MusicLibraryService.updateTrackMetadata(trackId, {title, artist, album, genre,
+year})` sets those fields to exactly the given values (required, not merged via `copyWith`'s
+`?? this.field` pattern — an editor needs to be able to clear a field, which that pattern can't
+express) and sets `metadataEdited: true`.
+
+`lib/ui/music_metadata_scan_page.dart` (`MusicMetadataScanPage`, opened from
+`MusicPlayerPage`'s app bar, "Metadata scan" icon next to "Rescan library") runs `rescan` on
+open (and again on its refresh action) and renders every track live as `onTrackScanned` fires —
+a `LinearProgressIndicator` plus a running count while scanning, then a
+found/with-genre/with-year summary, with each row showing a green check (both genre and year
+known), orange (one of the two) or red (neither) icon. Tapping a row opens
+`lib/ui/track_metadata_page.dart` (`TrackMetadataPage`), also reachable via a new "Track info"
+(ⓘ) button on Now Playing's app bar (disabled — `onPressed: null` — while nothing is playing):
+editable title/artist/album/genre/year fields pre-filled from `MusicLibraryService.byId`, plus
+read-only duration/play count/date added/source/file path, and a note when the track was already
+manually edited. Saving calls `updateTrackMetadata`; an unparsable year shows an inline error
+instead of saving. This only ever changes this app's own cached record (`music_library.json`) —
+it does not write ID3 tags back into the file itself, which stays a possible future addition, not
+something either page does today.
+
+Widget tests that pump a page whose `initState` triggers `rescan` (`MusicMetadataScanPage`) poll
+with real delays (`tester.runAsync(delay) + pump()`, condition-driven on the progress indicator
+disappearing) rather than `pumpAndSettle()`, which both never resolves the real dart:io Future
+inside `testWidgets`' fake-async zone and would hang forever on the indeterminate
+`LinearProgressIndicator` even if it did (see CLAUDE.md's "Real file I/O hangs inside
+testWidgets" note) — and set the page's initial "scanning" field directly in `initState` rather
+than via `setState` (illegal before `initState` returns), letting only the later, async-gap
+`setState` calls do the rebuilding.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

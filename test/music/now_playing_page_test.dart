@@ -32,6 +32,16 @@ void main() {
     expect(find.byTooltip('Queue'), findsOneWidget);
   });
 
+  testWidgets('shows a Track info button, disabled while nothing is playing',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: NowPlayingPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Track info'), findsOneWidget);
+    final button = tester.widget<IconButton>(find.byTooltip('Track info'));
+    expect(button.onPressed, isNull);
+  });
+
   testWidgets('tapping shuffle toggles it on and off', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: NowPlayingPage()));
     await tester.pumpAndSettle();

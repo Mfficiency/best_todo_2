@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.72] - 2026-09-18
+- Music Player/Best Music: added a Metadata Scan tool (app bar icon next to Rescan) that scans your music folder on demand and shows every song live as it's found, with a status icon for whether it has a genre and a year. Now Playing has an info (ⓘ) button showing the current song's full metadata, where you can also fill in whatever's missing (genre, year, title, artist, album) — a manual fix now survives future rescans instead of getting silently overwritten
+
 ## [0.2.71] - 2026-09-17
 - Music Player/Best Music: you can now build normal playlists by hand, Samsung Music style. "New playlist" on the Playlists tab creates an empty one; every song row (Library tab or any playlist) gets an "Add to playlist" button showing which playlists it's already in, with a "New playlist" shortcut right there too. Hand-built playlists also get a "Remove from playlist" button on each song
 
