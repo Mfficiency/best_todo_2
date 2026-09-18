@@ -176,7 +176,22 @@ List<ChangelogRelease> parseChangelogReleases(String markdown) {
 }
 
 class ChangelogPage extends StatefulWidget {
-  const ChangelogPage({Key? key}) : super(key: key);
+  const ChangelogPage({
+    Key? key,
+    this.assetPath = 'CHANGELOG.md',
+    this.showStoryPoster = true,
+  }) : super(key: key);
+
+  /// Bundled asset to render — BestToDo's own `CHANGELOG.md` by default, or
+  /// Best Music's `CHANGELOG_MUSIC.md` from [MusicPlayerPage]'s drawer (the
+  /// two apps changelog independently since the split, CLAUDE.md/SPEC.md
+  /// §10.6i).
+  final String assetPath;
+
+  /// Whether the "development story" poster toggle is offered. Off for Best
+  /// Music: [changelogMilestones] is BestToDo's own curated history and
+  /// would be wrong to show under Best Music's changelog.
+  final bool showStoryPoster;
 
   @override
   State<ChangelogPage> createState() => _ChangelogPageState();
@@ -200,7 +215,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // DefaultAssetBundle falls back to rootBundle in the app; tests can swap it.
-    _changelog ??= DefaultAssetBundle.of(context).loadString('CHANGELOG.md');
+    _changelog ??= DefaultAssetBundle.of(context).loadString(widget.assetPath);
   }
 
   @override
@@ -295,17 +310,18 @@ class _ChangelogPageState extends State<ChangelogPage> {
         context,
         title: 'Changelog',
         actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_awesome_rounded),
-            tooltip: _view == _ChangelogView.poster
-                ? 'Show changelog text'
-                : 'Show development story',
-            onPressed: () {
-              setState(() => _view = _view == _ChangelogView.poster
-                  ? _ChangelogView.text
-                  : _ChangelogView.poster);
-            },
-          ),
+          if (widget.showStoryPoster)
+            IconButton(
+              icon: const Icon(Icons.auto_awesome_rounded),
+              tooltip: _view == _ChangelogView.poster
+                  ? 'Show changelog text'
+                  : 'Show development story',
+              onPressed: () {
+                setState(() => _view = _view == _ChangelogView.poster
+                    ? _ChangelogView.text
+                    : _ChangelogView.poster);
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.calendar_view_month),
             tooltip: _view == _ChangelogView.heatmap

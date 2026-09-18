@@ -8,12 +8,19 @@
 // Usage:
 //   flutter build apk --release            (or: sh tool/build.sh apk --release)
 //   dart run tool/stage_local_release.dart [--apk <path>] [--dir <dir>]
-//                                          [--prefix <name>] [--keep <n>] [--dry-run]
+//                                          [--prefix <name>] [--version <x.y.z+build>]
+//                                          [--keep <n>] [--dry-run]
 //
 // `--prefix` (default `best_todo`) is BestToDo's own APKs; the Best Music
 // flavor (see lib/main_music.dart) stages under `best_music` instead, so the
 // two apps' builds are pruned independently and UpdateService can tell whose
 // APK is whose in the shared folder.
+//
+// `--version` names the staged file explicitly; without it, the version is
+// read from pubspec.yaml, which is only correct for BestToDo — Best Music
+// versions independently in its own MUSIC_VERSION file (CLAUDE.md/SPEC.md
+// §10.6i), so `tool/build.sh`/CI always pass `--version` explicitly for a
+// `--prefix best_music` call rather than relying on this fallback.
 //
 // Commit the folder afterwards — the app downloads the APKs over HTTPS from
 // the branch (`UpdateService.releasesRef`), so a build only becomes installable
@@ -84,6 +91,7 @@ List<String> namesToPrune(Iterable<String> names, {int keep = defaultKeep}) {
 
 Future<void> main(List<String> args) async {
   String? apkArg;
+  String? versionArg;
   var dir = defaultDir;
   var prefix = defaultPrefix;
   var keep = defaultKeep;
@@ -93,6 +101,9 @@ Future<void> main(List<String> args) async {
       case '--apk':
         if (i + 1 >= args.length) return _usage('--apk needs a path');
         apkArg = args[++i];
+      case '--version':
+        if (i + 1 >= args.length) return _usage('--version needs a value');
+        versionArg = args[++i];
       case '--dir':
         if (i + 1 >= args.length) return _usage('--dir needs a path');
         dir = args[++i];
@@ -111,13 +122,16 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  final pubspec = File('pubspec.yaml');
-  if (!pubspec.existsSync()) {
-    stderr.writeln('pubspec.yaml not found — run from the repository root.');
-    exitCode = 1;
-    return;
+  String? version = versionArg;
+  if (version == null) {
+    final pubspec = File('pubspec.yaml');
+    if (!pubspec.existsSync()) {
+      stderr.writeln('pubspec.yaml not found — run from the repository root.');
+      exitCode = 1;
+      return;
+    }
+    version = readPubspecVersion(pubspec.readAsStringSync());
   }
-  final version = readPubspecVersion(pubspec.readAsStringSync());
   if (version == null || version.isEmpty) {
     stderr.writeln('Could not read a version from pubspec.yaml.');
     exitCode = 1;
@@ -146,9 +160,11 @@ Future<void> main(List<String> args) async {
   }
 
   // Pruning only ever looks at this app's own prefix: the folder holds both
-  // BestToDo's and Best Music's APKs, sharing one pubspec version, so a
-  // prefix-blind prune could delete the other app's build (or keep it
-  // instead of this one) purely by version-number coincidence.
+  // BestToDo's and Best Music's APKs, and a prefix-blind prune could delete
+  // the other app's build (or keep it instead of this one) purely by
+  // version-number coincidence — the two apps version independently now
+  // (see the --version note above), but even a shared number wasn't safe to
+  // assume before that.
   final present = <String>{
     if (target.existsSync())
       for (final entry in target.listSync())

@@ -3507,8 +3507,9 @@ flavors) reads which flavor's output exists and renames it `best_todo_<version>.
 `best_music_<version>.apk` accordingly, matching what `tool/stage_local_release.dart --prefix
 best_music` stages into `github_releases/` alongside BestToDo's own APKs — both apps' last two
 builds live in that one folder, pruned independently by prefix (`namesToPrune` is prefix-blind;
-`main()` filters `present` to the caller's own prefix before pruning, since the two apps share
-one pubspec version and a prefix-blind prune could otherwise delete the wrong app's build).
+`main()` filters `present` to the caller's own prefix before pruning, since a prefix-blind prune
+could otherwise delete the wrong app's build purely by version-number coincidence — see §10.6i
+for why that's true even though the two apps no longer share one version).
 
 **Branding, not a fork**: app label (`res/values/strings.xml` `app_name`, overridden per flavor
 in `src/music/res/values/strings.xml`) and launcher icon (`src/music/res/mipmap-*/ic_launcher.png`
@@ -3796,16 +3797,80 @@ require fighting demo data first. The production one-time Todo.md-backlog import
 (`StorageService`/`wishlist_migration.dart`, §10.6, unconditional on `Config.isDev`) is untouched
 — that is a real, flag-guarded, one-time migration for actual installs, not a dev convenience.
 
+### 10.6i Independent versioning and changelogs (0.2.81)
+Through 0.2.80, Best Music's every build shared BestToDo's own `pubspec.yaml` `version:` line
+(via Flutter's `flutter.versionCode`/`flutter.versionName`, injected into both Gradle product
+flavors alike) and its Android APK's release notes came from BestToDo's own CHANGELOG.md — so a
+Todo-only release always bumped Music's version number too, and Music's own Changelog tool
+showed BestToDo's whole history mixed in with the entries actually about Music. The two apps now
+version and changelog fully independently, seeded from 0.2.80+371 (the last build number they
+shared) going forward — nothing before the split was rewritten or copied over; BestToDo's own
+history stays in CHANGELOG.md.
+
+**Best Music's own version file**: `MUSIC_VERSION` at the repo root holds a single `version:
+x.y.z+build` line, the same shape as `pubspec.yaml`'s. `android/app/build.gradle.kts` reads it
+(`rootProject.file("../MUSIC_VERSION")`, mirroring how `key.properties` is already read) and
+overrides `versionCode`/`versionName` on the `music` product flavor only — `todo` keeps coming
+from `flutter.versionCode`/`flutter.versionName` (i.e. `pubspec.yaml`) exactly as before. The
+`createVersionedReleaseApk` task's `fullVersion` (used to name `best_todo_<version>.apk` /
+`best_music_<version>.apk`) now branches on which flavor's APK it actually found rather than
+always reading `flutter.*`. `PackageInfo.fromPlatform()` (what `Config.versionWithBuild` and
+`MusicAboutPage` read) then reports each installed app's own real version for free, since it
+reads the running APK's own `versionCode`/`versionName` — no Dart-side change needed there.
+`versionCode` only ever moves forward from 371 (Android refuses an "update" with a lower
+versionCode than what's installed), so bumping `MUSIC_VERSION` always increments the existing
+build number rather than resetting it, even though its `x.y.z` name can change freely.
+
+**Best Music's own changelog**: `CHANGELOG_MUSIC.md` at the repo root, bundled as an app asset
+alongside `CHANGELOG.md` (`pubspec.yaml`'s `assets:`). `ChangelogPage` (§10.7) gained `assetPath`
+(default `CHANGELOG.md`) and `showStoryPoster` (default `true`) constructor params;
+`MusicPlayerPage`'s drawer entry passes `assetPath: 'CHANGELOG_MUSIC.md', showStoryPoster:
+false` — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
+would be wrong to show under Best Music.
+
+**Tooling, both apps share the same scripts with a flag rather than forking them**:
+- `dart run tool/bump_version.dart <version> "<entry>" --music` bumps `MUSIC_VERSION` +
+  `CHANGELOG_MUSIC.md` instead of `pubspec.yaml` + `CHANGELOG.md`; the changelog-insertion logic
+  now finds the first `## [...]` heading and inserts the new section right above it rather than
+  assuming a single-line header, so `CHANGELOG_MUSIC.md`'s explanatory preamble paragraph (above
+  its first release) survives every bump untouched.
+- `dart run tool/append_build_time.dart --app music` (default: BestToDo) notes a local build in
+  `CHANGELOG_MUSIC.md` and reads `MUSIC_VERSION` for its `build_history.json` record, which now
+  also carries an `app` field (`'todo'`/`'music'`).
+- `dart run tool/stage_local_release.dart --version <x.y.z+build>` names the staged file
+  explicitly instead of the tool re-reading `pubspec.yaml` — without it, staging a
+  `--prefix best_music` build would silently tag it with BestToDo's version once the two
+  diverged. `tool/build.sh`/CI always pass it now.
+- `tool/build.sh`: `VERSION` is read from `MUSIC_VERSION` instead of `pubspec.yaml` whenever
+  `FLAVOR=music` (i.e. every `music-apk` build), and `--app music`/`--version "$VERSION"` are
+  passed through to `append_build_time.dart`/`stage_local_release.dart` accordingly.
+  `tool/publish_apk.dart` stays BestToDo-only (Best Music's update check never looks at GitHub
+  releases — see §10.6f's "In-app updates" paragraph), so `PUBLISH_APK=1` is now a no-op for a
+  music build rather than publishing a GitHub release mislabeled "BestToDo" from Music's bytes.
+- `.github/workflows/build-apk.yml`'s `build_music_apk` job reads its "app version" step from
+  `MUSIC_VERSION` and passes `--version` to `stage_local_release.dart` the same way.
+- `tool/build_all.sh`/`tool/build.ps1` are untouched: both are BestToDo-only already (`all` never
+  built Best Music; `build.ps1` has no `--flavor`/music support at all, a pre-existing gap this
+  change doesn't address).
+
+Not split by this change: `SCREENSHOT_CHANGELOG.md` (`tool/update_screenshot_changelog.dart`)
+stays one shared file for both apps' screenshot-capture audit trail, and still labels every
+entry with BestToDo's `pubspec.yaml` version regardless of which app's screenshots it's
+recording — a known, low-stakes inconsistency (it's an audit log, not a user-facing changelog)
+left for a future pass if it's ever worth the tooling churn.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer
 trend, share of slow starts, outlier callout, first-launch-of-day cold-start comparison;
-uses timestamped history with legacy fallback. **Changelog**: renders CHANGELOG.md
-(markdown, bundled asset); an app-bar button toggles an update heatmap — the file is
-parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd` headings +
-their bullets, wrapped lines joined, undated headings skipped) and drawn as a
+uses timestamped history with legacy fallback. **Changelog**: `ChangelogPage` renders a
+bundled markdown asset — CHANGELOG.md by default, or Best Music's own CHANGELOG_MUSIC.md
+via `assetPath`/`showStoryPoster` (`false` for Music: `changelogMilestones` below is
+BestToDo's own curated history — see §10.6i); an app-bar button toggles an update heatmap
+— the file is parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd`
+headings + their bullets, wrapped lines joined, undated headings skipped) and drawn as a
 GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri labels, month label
 above the week where the month changes — with the year appended on the first column and
 at every year switch, e.g. "Jan 2026", drawn in an `OverflowBox` so it can run past its

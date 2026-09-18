@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.81] - 2026-09-18
+- BestToDo and Best Music now version and changelog independently: Best Music gets its own `MUSIC_VERSION` and `CHANGELOG_MUSIC.md` (starting from 0.2.80+371, the last build number the two apps shared) instead of piggybacking on this file/pubspec.yaml, so a Todo-only release no longer bumps Music's version or vice versa. `dart run tool/bump_version.dart <version> "<entry>" --music` bumps Best Music's own files; local `sh tool/build.sh music-apk` builds and CI's `build_music_apk` job now record their own build time/duration in CHANGELOG_MUSIC.md and stage/tag their APK with Music's own version
+
 ## [0.2.80] - 2026-09-18
 - Wishlist: tapping an item now folds it open in place for editing — title, labels/quick-priority and description become editable right there, exactly like a home-list task tile — instead of popping up an edit dialog. The "Send to Claude" robot button (added a couple releases back, but easy to miss behind a swipe) now shows directly in that folded-open row next to "Move to release group", so it's visible without swiping first
 

@@ -169,8 +169,8 @@ void main() {
 
     // Best Music (SPEC.md §10.6f) stages into the same github_releases/
     // folder as BestToDo, under a best_music_ prefix instead — pruning must
-    // never cross prefixes, since the two apps share one pubspec version and
-    // a prefix-blind prune could otherwise delete the wrong app's build.
+    // never cross prefixes, or a prefix-blind prune could delete the wrong
+    // app's build purely by version-number coincidence.
     test('staging a Best Music build never prunes BestToDo builds, or vice '
         'versa', () async {
       apk('build/app/outputs/flutter-apk/best_music_0.1.145+117.apk');
@@ -192,6 +192,23 @@ void main() {
         'best_todo_0.1.143+115.apk',
         'best_todo_0.1.145+117.apk',
       ]);
+    });
+
+    // Best Music versions independently of BestToDo now (its own
+    // MUSIC_VERSION file, CLAUDE.md/SPEC.md §10.6f) rather than sharing
+    // pubspec.yaml's version — --version lets a caller (tool/build.sh, CI)
+    // name the staged file explicitly instead of this tool re-reading
+    // pubspec.yaml, which would silently mis-tag a Music build whose real
+    // version has diverged from whatever pubspec.yaml currently says.
+    test('--version overrides the pubspec.yaml-derived name', () async {
+      apk('build/app/outputs/flutter-apk/best_music_0.2.80+371.apk');
+
+      await tool.main(['--prefix', 'best_music', '--version', '0.2.80+371']);
+
+      expect(
+          File('${temp.path}/github_releases/best_music_0.2.80+371.apk')
+              .existsSync(),
+          isTrue);
     });
   });
 }

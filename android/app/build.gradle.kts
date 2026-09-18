@@ -17,6 +17,22 @@ if (keystorePropertiesFile.exists()) {
 val hasReleaseKeystore = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
     .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
 
+// Best Music versions independently of BestToDo (CLAUDE.md/SPEC.md §10.6i):
+// its own `version: x.y.z+build` line lives in MUSIC_VERSION at the repo
+// root (edited by `dart run tool/bump_version.dart <version> "<entry>"
+// --music`, mirroring pubspec.yaml's own `version:` line for BestToDo)
+// instead of piggybacking on pubspec.yaml's version like it did before the
+// split. Missing/unparseable file falls back to null, in which case the
+// `music` flavor below just keeps Flutter's own (BestToDo's) version so a
+// checkout without it still builds.
+val musicVersionFile = rootProject.file("../MUSIC_VERSION")
+val musicVersionFull = if (musicVersionFile.exists()) {
+    Regex("""^version:\s*(\S+)""", RegexOption.MULTILINE)
+        .find(musicVersionFile.readText())?.groupValues?.get(1)
+} else null
+val musicVersionName = musicVersionFull?.substringBefore("+")
+val musicVersionCode = musicVersionFull?.substringAfter("+")?.toIntOrNull()
+
 android {
     namespace = "com.mfficiency.best_todo_2"
     compileSdk = flutter.compileSdkVersion
@@ -69,6 +85,12 @@ android {
         create("music") {
             dimension = "app"
             applicationId = "com.mfficiency.best_music"
+            // Own versionCode/versionName, read from MUSIC_VERSION above —
+            // see that val's comment. versionCode in particular must never
+            // regress below whatever the last shipped Best Music build used,
+            // or Android refuses the install as a downgrade.
+            if (musicVersionCode != null) versionCode = musicVersionCode
+            if (musicVersionName != null) versionName = musicVersionName
         }
     }
 
@@ -123,20 +145,6 @@ flutter {
 afterEvaluate {
     val createVersionedReleaseApk = tasks.register("createVersionedReleaseApk") {
         doLast {
-            // Full pubspec version: x.y.z+build (e.g. 0.1.117+87). versionName carries
-            // x.y.z, versionCode the build number, so recombine them.
-            val fullVersion =
-                "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"
-
-            // versionCode 1 means pubspec lost its `+build` suffix: the APK would be
-            // rejected as a downgrade on any device holding an earlier build.
-            if (flutter.versionCode == 1) {
-                logger.warn(
-                    "[apk-rename] WARNING: versionCode is 1 — pubspec.yaml `version:` is " +
-                        "missing its +build suffix. Fix it before shipping this APK."
-                )
-            }
-
             // Flutter names a flavored release APK app-<flavor>-release.apk;
             // the renamed file's prefix is what both tool/build.sh and
             // UpdateService key their per-app filtering on
@@ -146,14 +154,40 @@ afterEvaluate {
 
             var sourceApk: File? = null
             var prefix = "best_todo"
+            var builtFlavor = "todo"
             for ((flavor, apkPrefix) in flavorPrefixes) {
                 val candidate = rootProject.layout.buildDirectory
                     .file("app/outputs/flutter-apk/app-$flavor-release.apk").get().asFile
                 if (candidate.exists()) {
                     sourceApk = candidate
                     prefix = apkPrefix
+                    builtFlavor = flavor
                     break
                 }
+            }
+
+            // Full version: x.y.z+build (e.g. 0.1.117+87). versionName carries
+            // x.y.z, versionCode the build number, so recombine them. Best
+            // Music versions independently (MUSIC_VERSION, see the val above)
+            // — BestToDo still comes from pubspec.yaml via `flutter.*`.
+            val fullVersion = if (builtFlavor == "music" && musicVersionFull != null) {
+                musicVersionFull
+            } else {
+                "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"
+            }
+
+            // versionCode 1 means the relevant version file lost its `+build`
+            // suffix: the APK would be rejected as a downgrade on any device
+            // holding an earlier build.
+            val effectiveVersionCode =
+                if (builtFlavor == "music") musicVersionCode ?: flutter.versionCode
+                else flutter.versionCode
+            if (effectiveVersionCode == 1) {
+                val source = if (builtFlavor == "music") "MUSIC_VERSION" else "pubspec.yaml"
+                logger.warn(
+                    "[apk-rename] WARNING: versionCode is 1 — $source's `version:` is " +
+                        "missing its +build suffix. Fix it before shipping this APK."
+                )
             }
 
             // Unflavored fallback — shouldn't occur once flavorDimensions is
