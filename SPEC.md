@@ -3706,18 +3706,15 @@ mirror are exercised in `testWidgets` — both go through a real OS file picker/
 test seam in this codebase, so only the pure `MusicMetadataCsv`/`applyMetadataRows` logic
 underneath is unit tested.
 
-### 10.6h Best Music Wishlist (0.2.75)
+### 10.6h Best Music Wishlist, cross-app sync (0.2.75, actually shared across both apps 0.2.78)
 Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
 BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
 records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
-Wishlist reads and writes (`tasks.json`, unchanged JSON shape), so an item created in either
-app is byte-for-byte the same record; an export from BestToDo's Wishlist (its "Export" action,
-`{export_version, exported_at, wishlist_items: [...]}` of plain `Task.toJson()` records) can be
-copied in and read back by anything that understands that same `Task` shape. Priority (`0..3`,
-stored as one of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared
-code too: `lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/
-`setWishPriority`/`bumpWishPriority`) is the single source both `wishlist_page.dart` and
-`music_wishlist_page.dart` import, rather than each keeping its own copy.
+Wishlist reads and writes (`tasks.json`, unchanged JSON shape). Priority (`0..3`, stored as one
+of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared code too:
+`lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/`setWishPriority`/
+`bumpWishPriority`) is the single source both `wishlist_page.dart` and `music_wishlist_page.dart`
+import, rather than each keeping its own copy.
 
 Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
 (release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
@@ -3732,6 +3729,43 @@ mirrors BestToDo's default: open items before done ones, then by priority, other
 `ItemViews.wishlist` (the same shared query BestToDo's Wishlist filters through) is the
 visibility gate, so demo-seed hiding and the isWish/isVisibleInMainViews rules apply identically
 in both apps.
+
+**Cross-app sync (0.2.78)**: BestToDo and Best Music are two separately-sandboxed Android apps
+(different `applicationId`, §10.6f) — `getApplicationDocumentsDirectory()` (what
+`StorageService`/`ItemRepository` use for `tasks.json`) is invisible across that sandbox
+boundary, so until this version each app's Wishlist really was its own local database, matching
+on JSON shape alone but never actually shared. `lib/services/shared_wishlist_store.dart`
+(`SharedWishlistStore`) fixes that: it reads/writes one file — a fixed path under public external
+storage (`/storage/emulated/0/BestToDo/wishlist_shared.json`) both apps can reach because both
+already hold `MANAGE_EXTERNAL_STORAGE` (the shared `AndroidManifest.xml`; `MusicLibraryService.
+ensureFolderPermission` already requests the same permission for the music folder, and Best Music
+already asks for it eagerly at startup, §10.6e/f) — via `SafeFile`, the same atomic-write/
+corruption-recovery helper `StorageService` itself uses. Only wish-flagged tasks ever go through
+this store; every other task stays in each app's own private `tasks.json`, untouched.
+
+Both Wishlist pages treat the shared file as authoritative once it exists: on load,
+`reconcileWishlist(local, shared)` replaces the local wish-item subset with the shared file's
+content whenever that file already exists (so a deletion or edit made in the other app takes
+effect here too — the whole set is replaced, not merged item-by-item, since there is no
+per-field "last modified" timestamp on `Task` to arbitrate a real conflict), and only falls back
+to seeding the shared file from local data the first time, before it exists at all. Every save
+(add/edit/delete/toggle) re-pushes the page's current wish-item set out to the shared file, so
+the next time either app's Wishlist tool opens it picks up the change. Sync is opt-in and
+silent-first: `SharedWishlistStore.isConnected()` only checks the permission's current status
+(no prompt) on every load, so an app that has never connected behaves exactly as it did before
+this version — no surprise "All files access" prompt for anyone using just one of the two apps.
+Discoverability is a dismissible `WishlistSyncBanner` (`lib/ui/wishlist_sync_banner.dart`,
+shared by both pages) shown only while not yet connected and not dismissed
+(`Config.wishlistSyncBannerDismissed`, persisted on "Not now"); its "Connect" button calls
+`SharedWishlistStore.requestConnection()`, which shows Android's "All files access" settings
+screen if needed, then immediately reloads so anything already on the shared file shows up right
+away. `SharedWishlistStore.sharedDirectoryOverride`/`connectionOverride` (test-only) redirect
+this to a temp directory and force a connected/not-connected state without the real
+`permission_handler` plugin, which `flutter test`'s host platform can't provide —
+`test/core/shared_wishlist_store_test.dart` covers the store directly (save/load round-trip,
+deletion visibility, `reconcileWishlist`) and `test/tools/wishlist_cross_app_sync_test.dart` pumps
+both `WishlistPage` and `MusicWishlistPage` against separate fake app-private directories but one
+shared override directory, proving an item added (or deleted) in one is visible in the other.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

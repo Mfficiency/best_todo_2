@@ -18,12 +18,14 @@ import '../services/claude_routine_service.dart';
 import '../services/github_wishlist_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
+import '../services/shared_wishlist_store.dart';
 import '../services/wishlist_shipped.dart';
 import '../utils/description_disclosure.dart';
 import '../utils/label_utils.dart';
 import '../utils/wish_priority.dart';
 import 'label_picker.dart';
 import 'subpage_app_bar.dart';
+import 'wishlist_sync_banner.dart';
 
 enum _WishlistSortOrder { priority, newest, oldest, title }
 
@@ -203,12 +205,18 @@ class WishlistPage extends StatefulWidget {
 class _WishlistPageState extends State<WishlistPage> {
   final ItemRepository _repository = ItemRepository.instance;
   final GithubWishlistService _githubService = GithubWishlistService.instance;
+  final SharedWishlistStore _sharedStore = SharedWishlistStore.instance;
 
   /// The full task list; the page shows and mutates only the isWish subset
   /// but always persists the whole list.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
   _WishlistSortOrder _sortOrder = _WishlistSortOrder.priority;
+
+  /// Whether this app currently holds the permission [SharedWishlistStore]
+  /// needs, i.e. whether wishlist items are actually shared with Best
+  /// Music right now — checked on load, never auto-requested.
+  bool _syncConnected = false;
 
   /// The running app's version, for [wishReleaseGroupOf]. Empty until
   /// loaded, which no shipped-wish version ever matches, so every item
@@ -239,14 +247,49 @@ class _WishlistPageState extends State<WishlistPage> {
         isWish: true,
       ));
     }
+    // Only touch the shared store (and re-persist locally) when actually
+    // connected — an app that never connects behaves exactly as before.
+    final connected = await _sharedStore.isConnected();
+    if (connected) {
+      final shared = await _sharedStore.load();
+      final localWishes = tasks.where((t) => t.isWish).toList();
+      final canonicalWishes = reconcileWishlist(localWishes, shared);
+      tasks.removeWhere((t) => t.isWish);
+      tasks.addAll(canonicalWishes);
+      if (shared.fileExisted) {
+        await _repository.saveItems(tasks);
+      } else {
+        unawaited(_sharedStore.save(canonicalWishes));
+      }
+    }
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
       _loading = false;
+      _syncConnected = connected;
     });
   }
 
-  Future<void> _save() => _repository.saveItems(_tasks);
+  Future<void> _save() async {
+    await _repository.saveItems(_tasks);
+    if (_syncConnected) {
+      unawaited(_sharedStore.save(_tasks.where((t) => t.isWish).toList()));
+    }
+  }
+
+  Future<bool> _connectSync() async {
+    final granted = await _sharedStore.requestConnection();
+    if (granted && mounted) {
+      setState(() => _syncConnected = true);
+      await _load();
+    }
+    return granted;
+  }
+
+  void _dismissSyncBanner() {
+    setState(() => Config.wishlistSyncBannerDismissed = true);
+    unawaited(Config.save());
+  }
 
   int _compareCreatedAt(Task a, Task b, {required bool newestFirst}) {
     final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -426,8 +469,8 @@ class _WishlistPageState extends State<WishlistPage> {
           Task(
             title: result.title,
             description: result.description,
-            label: AutoTagService.instance.withAutoTags(
-                result.title, result.label),
+            label: AutoTagService.instance
+                .withAutoTags(result.title, result.label),
             createdAt: DateTime.now(),
             isWish: true,
           ),
@@ -514,12 +557,14 @@ class _WishlistPageState extends State<WishlistPage> {
       if (!mounted) return;
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Queued "${item.title}" for build')));
+        ..showSnackBar(
+            SnackBar(content: Text('Queued "${item.title}" for build')));
     } catch (e) {
       if (!mounted) return;
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Failed to send "${item.title}": $e')));
+        ..showSnackBar(
+            SnackBar(content: Text('Failed to send "${item.title}": $e')));
     }
   }
 
@@ -530,7 +575,8 @@ class _WishlistPageState extends State<WishlistPage> {
     final candidates = _wishes().where((wish) {
       if (wish.isDone) return false;
       final group = wishReleaseGroupOf(wish, _currentVersion);
-      return group == WishReleaseGroup.backlog || group == WishReleaseGroup.soon;
+      return group == WishReleaseGroup.backlog ||
+          group == WishReleaseGroup.soon;
     }).toList();
     await Clipboard.setData(
         ClipboardData(text: proposeForNextPrompt(candidates)));
@@ -538,9 +584,9 @@ class _WishlistPageState extends State<WishlistPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(
-        content: Text(
-            'Prompt copied — paste it to Claude, then sync Todoist to '
-            'update the groups.'),
+        content:
+            Text('Prompt copied — paste it to Claude, then sync Todoist to '
+                'update the groups.'),
       ));
   }
 
@@ -708,6 +754,10 @@ class _WishlistPageState extends State<WishlistPage> {
   Widget build(BuildContext context) {
     final wishes = _wishes();
     final grouped = _groupedWishes(wishes);
+    final showSyncBanner = !_loading &&
+        !_syncConnected &&
+        !Config.wishlistSyncBannerDismissed &&
+        _sharedStore.isSupported;
     return Scaffold(
       appBar: _buildAppBar(context),
       floatingActionButton: _selecting
@@ -717,59 +767,71 @@ class _WishlistPageState extends State<WishlistPage> {
               onPressed: () => _editItem(),
               child: const Icon(Icons.add),
             ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : wishes.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No wishlist items yet. Add ideas here; swipe right to '
-                      'share/copy/export, swipe left to select.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  children: [
-                    for (final group in WishReleaseGroup.values)
-                      // "Next release" always shows — it's where "Propose for
-                      // next" lives, and that button should stay reachable
-                      // even before anything has been tagged into it.
-                      if (grouped[group]!.isNotEmpty ||
-                          group == WishReleaseGroup.nextRelease) ...[
-                        _WishReleaseSectionHeader(
-                          group: group,
-                          count: grouped[group]!.length,
-                          onProposeForNext:
-                              group == WishReleaseGroup.nextRelease
-                                  ? _proposeForNext
-                                  : null,
-                        ),
-                        for (final item in grouped[group]!)
-                          _WishTile(
-                            key: ValueKey(item.uid),
-                            item: item,
-                            releaseGroup: group,
-                            selecting: _selecting,
-                            selected: _selectedUids.contains(item.uid),
-                            onToggle: () => _toggleDone(item),
-                            onToggleSelected: () => _toggleSelected(item),
-                            onStartSelection: () => _startSelection(item),
-                            onEdit: () => _editItem(item),
-                            onCopy: () => _copyItem(item),
-                            onShare: () => _shareItem(item),
-                            onExport: () => _exportItem(item),
-                            onDelete: () => _deleteItems([item]),
-                            onSendToBuild: () => _sendToBuild(item),
-                            onRegressRelease: () => _regressRelease(item),
-                            onSetReleaseGroup: (newGroup) =>
-                                _setReleaseGroup(item, newGroup),
+      body: Column(
+        children: [
+          if (showSyncBanner)
+            WishlistSyncBanner(
+              otherAppName: 'Best Music',
+              onConnect: _connectSync,
+              onDismiss: _dismissSyncBanner,
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : wishes.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No wishlist items yet. Add ideas here; swipe right to '
+                            'share/copy/export, swipe left to select.',
+                            textAlign: TextAlign.center,
                           ),
-                      ],
-                  ],
-                ),
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                        children: [
+                          for (final group in WishReleaseGroup.values)
+                            // "Next release" always shows — it's where "Propose for
+                            // next" lives, and that button should stay reachable
+                            // even before anything has been tagged into it.
+                            if (grouped[group]!.isNotEmpty ||
+                                group == WishReleaseGroup.nextRelease) ...[
+                              _WishReleaseSectionHeader(
+                                group: group,
+                                count: grouped[group]!.length,
+                                onProposeForNext:
+                                    group == WishReleaseGroup.nextRelease
+                                        ? _proposeForNext
+                                        : null,
+                              ),
+                              for (final item in grouped[group]!)
+                                _WishTile(
+                                  key: ValueKey(item.uid),
+                                  item: item,
+                                  releaseGroup: group,
+                                  selecting: _selecting,
+                                  selected: _selectedUids.contains(item.uid),
+                                  onToggle: () => _toggleDone(item),
+                                  onToggleSelected: () => _toggleSelected(item),
+                                  onStartSelection: () => _startSelection(item),
+                                  onEdit: () => _editItem(item),
+                                  onCopy: () => _copyItem(item),
+                                  onShare: () => _shareItem(item),
+                                  onExport: () => _exportItem(item),
+                                  onDelete: () => _deleteItems([item]),
+                                  onSendToBuild: () => _sendToBuild(item),
+                                  onRegressRelease: () => _regressRelease(item),
+                                  onSetReleaseGroup: (newGroup) =>
+                                      _setReleaseGroup(item, newGroup),
+                                ),
+                            ],
+                        ],
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -868,7 +930,8 @@ class _WishEditDialogState extends State<_WishEditDialog> {
     if (pasted == null || pasted.isEmpty) return;
     final controller = _descriptionController;
     final selection = controller.selection;
-    final insertAt = selection.isValid ? selection.start : controller.text.length;
+    final insertAt =
+        selection.isValid ? selection.start : controller.text.length;
     final removeTo = selection.isValid ? selection.end : controller.text.length;
     final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
     controller.text = newText;
@@ -1371,8 +1434,8 @@ class _WishTileState extends State<_WishTile>
           child: Container(
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Icon(Icons.undo,
-                color: Theme.of(context).colorScheme.primary),
+            child:
+                Icon(Icons.undo, color: Theme.of(context).colorScheme.primary),
           ),
         );
       }
