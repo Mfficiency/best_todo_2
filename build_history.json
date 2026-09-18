@@ -847,5 +847,21 @@
     "durationSeconds": 157,
     "finishedAt": "2026-09-18T23:11:26.920433",
     "os": "windows"
+  },
+  {
+    "version": "0.2.82+373",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 383,
+    "finishedAt": "2026-09-18T23:26:17.162322",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.82+373",
+    "app": "todo",
+    "target": "windows",
+    "durationSeconds": 95,
+    "finishedAt": "2026-09-18T23:27:57.058189",
+    "os": "windows"
   }
 ]
