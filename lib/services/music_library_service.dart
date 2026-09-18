@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../config.dart';
 import '../models/track.dart';
 import 'log_service.dart';
+import 'music_metadata_csv.dart';
 import 'music_metadata_extractor.dart';
 
 /// Scans [Config.musicFolder] and every subfolder for playable audio files,
@@ -312,6 +313,45 @@ class MusicLibraryService {
     list[index] = updated;
     tracks.value = list;
     await _save();
+  }
+
+  /// Applies a batch of parsed CSV rows (from [MusicMetadataCsv.decode]) to
+  /// the matching tracks, keyed by [ParsedMetadataRow.id]. A blank field on
+  /// a row leaves that track field untouched — only a non-empty imported
+  /// value overwrites it — so a round-trip through a spreadsheet that
+  /// happens to clear a cell can't silently erase a value the app already
+  /// had. Every matched row is marked [Track.metadataEdited], same as a
+  /// manual edit on the Track info page. Rows whose id isn't in the
+  /// library are silently skipped. Returns how many rows matched a track.
+  Future<int> applyMetadataRows(List<ParsedMetadataRow> rows) async {
+    final list = List<Track>.of(tracks.value);
+    var applied = 0;
+    for (final row in rows) {
+      final index = list.indexWhere((t) => t.id == row.id);
+      if (index < 0) continue;
+      final existing = list[index];
+      list[index] = Track(
+        id: existing.id,
+        source: existing.source,
+        filePath: existing.filePath,
+        remoteId: existing.remoteId,
+        title: row.title.isNotEmpty ? row.title : existing.title,
+        artist: row.artist.isNotEmpty ? row.artist : existing.artist,
+        album: row.album.isNotEmpty ? row.album : existing.album,
+        durationMs: existing.durationMs,
+        genre: row.genre.isNotEmpty ? row.genre : existing.genre,
+        year: row.year ?? existing.year,
+        dateAdded: existing.dateAdded,
+        playCount: existing.playCount,
+        metadataEdited: true,
+      );
+      applied++;
+    }
+    if (applied > 0) {
+      tracks.value = list;
+      await _save();
+    }
+    return applied;
   }
 
   /// Bumps [trackId]'s play count and persists it. No-op if the track isn't

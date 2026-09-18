@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:besttodo/config.dart';
 import 'package:besttodo/services/music_library_service.dart';
+import 'package:besttodo/services/music_metadata_csv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
@@ -301,6 +302,112 @@ void main() {
       expect(
           MusicLibraryService.instance.tracks.value.every((t) => !t.metadataEdited),
           isTrue);
+    });
+  });
+
+  group('applyMetadataRows', () {
+    test('applies non-empty fields to matching tracks and marks them edited',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      final applied = await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+          id: id,
+          title: 'Fixed Title',
+          artist: 'Fixed Artist',
+          album: 'Fixed Album',
+          genre: 'Rock',
+          year: 2021,
+        ),
+      ]);
+
+      expect(applied, 1);
+      final updated = MusicLibraryService.instance.byId(id)!;
+      expect(updated.title, 'Fixed Title');
+      expect(updated.artist, 'Fixed Artist');
+      expect(updated.album, 'Fixed Album');
+      expect(updated.genre, 'Rock');
+      expect(updated.year, 2021);
+      expect(updated.metadataEdited, isTrue);
+    });
+
+    test('a blank field in the row leaves the existing value untouched',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Original Title',
+        artist: 'Original Artist',
+        album: 'Original Album',
+        genre: 'Rock',
+        year: 2019,
+      );
+
+      // Only genre is filled in this row; everything else is blank.
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: 'Jazz', year: null),
+      ]);
+
+      final updated = MusicLibraryService.instance.byId(id)!;
+      expect(updated.title, 'Original Title');
+      expect(updated.artist, 'Original Artist');
+      expect(updated.album, 'Original Album');
+      expect(updated.genre, 'Jazz');
+      expect(updated.year, 2019);
+    });
+
+    test('rows whose id is not in the library are skipped and counted out',
+        () async {
+      await writeFile('a.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      final applied = await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: 'Rock', year: null),
+        const ParsedMetadataRow(
+            id: 'local:/nope.mp3',
+            title: '',
+            artist: '',
+            album: '',
+            genre: 'Pop',
+            year: null),
+      ]);
+
+      expect(applied, 1);
+      expect(MusicLibraryService.instance.byId(id)!.genre, 'Rock');
+    });
+
+    test('an empty row list is a no-op and persists nothing', () async {
+      await writeFile('a.mp3');
+      await MusicLibraryService.instance.rescan();
+
+      final applied = await MusicLibraryService.instance.applyMetadataRows([]);
+
+      expect(applied, 0);
+    });
+
+    test('persists across a resetForTest + load()', () async {
+      await writeFile('a.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: 'Rock', year: 2022),
+      ]);
+
+      MusicLibraryService.instance.resetForTest();
+      await MusicLibraryService.instance.load();
+
+      final reloaded = MusicLibraryService.instance.byId(id)!;
+      expect(reloaded.genre, 'Rock');
+      expect(reloaded.year, 2022);
+      expect(reloaded.metadataEdited, isTrue);
     });
   });
 }

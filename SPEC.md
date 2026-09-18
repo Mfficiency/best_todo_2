@@ -3538,7 +3538,7 @@ GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateSer
 doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
 this repo — the folder stays each app's only update-check source.
 
-### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74)
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74, CSV bulk metadata export/import 0.2.77)
 **Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
 (`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
 of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
@@ -3666,6 +3666,45 @@ inside `testWidgets`' fake-async zone and would hang forever on the indeterminat
 testWidgets" note) — and set the page's initial "scanning" field directly in `initState` rather
 than via `setState` (illegal before `initState` returns), letting only the later, async-gap
 `setState` calls do the rebuilding.
+
+**CSV bulk metadata export/import (0.2.77)** — a way to fill in metadata for a whole collection
+at once outside the app (e.g. hand it to an AI), for when editing one track at a time via
+`TrackMetadataPage` doesn't scale. `lib/services/music_metadata_csv.dart` (`MusicMetadataCsv`):
+`encode(tracks)` writes one CSV row per track — `id, filename, title, artist, album, genre,
+year` — reusing `UsageDataService.csvField`/`toCsv` for RFC-4180-style quoting rather than
+duplicating that escaping logic (`UsageDataService`'s CSV primitives are public statics
+precisely so other export features can share them). `decode(csvText)` is a hand-rolled decoder
+(no `csv` package dependency; none existed in the codebase and none was added) — a small
+state-machine parser handling quoted fields, doubled-quote escaping, CRLF/bare-LF line endings,
+and a missing trailing newline, then looking columns up **by header name** (case-insensitive,
+tolerant of reordering/missing/extra columns) rather than by position, so a spreadsheet round
+-trip that reorders columns still imports correctly. A row's `id` is the match key (the export's
+`filename` column is read-only context for an AI when a file has no tags to go on at all —
+title/artist/album are also empty in that case); a row with a blank `id` is skipped, and a file
+with no `id` column at all decodes to zero rows rather than guessing.
+
+`MusicLibraryService.applyMetadataRows(List<ParsedMetadataRow>)` matches each row's `id` against
+the library and, for every match, sets `title`/`artist`/`album`/`genre`/`year` — but **only the
+non-empty fields**: a blank cell leaves that track's existing value untouched, so a spreadsheet
+edit that accidentally clears a cell (or an AI that only filled in the columns it was asked to)
+can't silently erase data the app already had. Every matched row gets `metadataEdited: true`,
+same as a manual `TrackMetadataPage` edit — so it also survives a later rescan (§ above). Returns
+how many rows matched, for the caller's "Updated N of M" summary.
+
+The UI lives on `MusicMetadataScanPage`, alongside the scan itself: "Export metadata CSV" writes
+the current library (`MusicLibraryService.instance.tracks.value`, not just what's scanned into
+the page's own live list — so it works even without running a fresh scan first) to a file in
+`getTemporaryDirectory()` and hands it straight to the OS share sheet
+(`SharePlus.instance.share(ShareParams(files: [XFile(path)]))` — the same pattern
+`attachments_field.dart` uses to share an attachment) rather than a folder-picker write like
+`UsageDataPage`'s CSV export — simpler for "get this file into another app" than picking a save
+folder first. "Import filled-in CSV" uses `file_selector`'s `openFile` (same pattern as the M3U
+import in `music_player_page.dart`), reads and decodes the file, applies it, and refreshes the
+scan page's already-displayed rows in place (looked back up by id) so their status icons update
+without a full rescan. Neither the export/import buttons themselves nor the M3U import they
+mirror are exercised in `testWidgets` — both go through a real OS file picker/share sheet with no
+test seam in this codebase, so only the pure `MusicMetadataCsv`/`applyMetadataRows` logic
+underneath is unit tested.
 
 ### 10.6h Best Music Wishlist (0.2.75)
 Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
