@@ -5,6 +5,8 @@
 
 ## [0.2.79] - 2026-09-18
 - Wishlist: no more dev-only "Learn to sail" placeholder or backlog backfill — both BestToDo's and Best Music's Wishlist tools now genuinely start empty (in dev builds too), instead of quietly repopulating with demo/backlog items when the list is cleared for testing
+- Local build: 2026-09-18 12:37
+- Build duration (windows): 2m 57s
 
 ## [0.2.78] - 2026-09-18
 - Wishlist: BestToDo and Best Music now actually share wishlist items instead of each keeping its own separate local copy. Since the two apps are sandboxed from each other on Android (separate `applicationId`s), items are synced through one file under shared external storage instead of each app's private storage — a "Connect" banner (only shown once, and only while not yet connected) requests the "All files access" permission both apps already use for their Music folders. Once connected, adding/editing/deleting a wishlist item in either app shows up in the other next time its Wishlist tool is opened
