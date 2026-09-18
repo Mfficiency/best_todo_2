@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.75] - 2026-09-18
+- Best Music: added a Wishlist tool (drawer → Wishlist), reusing the same wishlist items BestToDo's own Wishlist writes — flagged tasks in the identical `tasks.json` record shape, so an item created in either app looks the same in both. Unlike BestToDo's Wishlist, the list itself shows nothing but each item's title (no icons, no checkboxes, no tags/priority chips) — tapping an item opens every field (done, priority, tags, description) in one editor
+
 ## [0.2.74] - 2026-09-18
 - Music Player/Best Music: added a Metadata Scan tool (app bar icon next to Rescan) that scans your music folder on demand and shows every song live as it's found, with a status icon for whether it has a genre and a year. Now Playing has an info (ⓘ) button showing the current song's full metadata, where you can also fill in whatever's missing (genre, year, title, artist, album) — a manual fix now survives future rescans instead of getting silently overwritten
 

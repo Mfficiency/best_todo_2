@@ -3458,8 +3458,9 @@ confirming against a real Samsung Music export.
 ### 10.6f Best Music — a second app from the same codebase (0.2.66, drawer + Settings + About 0.2.67)
 `lib/main_music.dart` is a second entry point, built as its own Android app rather than a
 BestToDo tool: no task list, alarms, sync, or any other to-do feature — just §10.6e's Music
-Player as the home page, with a proper drawer menu (MP3 Downloader, Settings, Changelog,
-Startup Times, App Logs, About) mirroring BestToDo's own home page. Installs side by side with
+Player as the home page, with a proper drawer menu (MP3 Downloader, Wishlist, Settings,
+Changelog, Startup Times, App Logs, About — see §10.6h for Wishlist) mirroring BestToDo's own
+home page. Installs side by side with
 BestToDo on the same device (separate `applicationId`, so Android sandboxes its storage
 independently — no data collision with BestToDo's own `Config`/library files).
 
@@ -3495,8 +3496,8 @@ per-app), reporting no update rather than risking BestToDo's release.
 `main_music.dart`). Standalone, its `Scaffold` carries `key: homeScaffoldKey` and a real
 `Drawer` — the same key `home_page.dart` uses for its own — so it is the Best Music app's home
 page in the same sense BestToDo's home page is: `buildSubpageAppBar`'s "Menu" button (used by
-every page the drawer pushes: MP3 Downloader, Settings, Changelog, Startup Times, App Logs,
-About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
+every page the drawer pushes: MP3 Downloader, Wishlist, Settings, Changelog, Startup Times, App
+Logs, About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
 root route it has no "Back to Home" to offer) gets Flutter's automatic drawer-hamburger button
 for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a small
 standalone settings page — just the music folder picker and excluded-subfolders dialog,
@@ -3649,6 +3650,33 @@ inside `testWidgets`' fake-async zone and would hang forever on the indeterminat
 testWidgets" note) — and set the page's initial "scanning" field directly in `initState` rather
 than via `setState` (illegal before `initState` returns), letting only the later, async-gap
 `setState` calls do the rebuilding.
+
+### 10.6h Best Music Wishlist (0.2.75)
+Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
+BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
+records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
+Wishlist reads and writes (`tasks.json`, unchanged JSON shape), so an item created in either
+app is byte-for-byte the same record; an export from BestToDo's Wishlist (its "Export" action,
+`{export_version, exported_at, wishlist_items: [...]}` of plain `Task.toJson()` records) can be
+copied in and read back by anything that understands that same `Task` shape. Priority (`0..3`,
+stored as one of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared
+code too: `lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/
+`setWishPriority`/`bumpWishPriority`) is the single source both `wishlist_page.dart` and
+`music_wishlist_page.dart` import, rather than each keeping its own copy.
+
+Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
+(release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
+multi-select) — those are specific to BestToDo's own development workflow, not something Best
+Music's users need. The list itself renders nothing but each item's title (struck through once
+done) — no leading checkbox, no priority/tag chips, no trailing icon, literally a plain list of
+items — and tapping one pushes a full-page editor showing every field at once: a "Done" switch,
+priority as three `ChoiceChip`s, tags via the shared `LabelPickerField`, and a multi-line
+description field. The app bar's check icon saves; a delete icon (edit mode only) confirms then
+removes the item. Adding is the same editor with no item, reached via the page's `+` FAB. Sorting
+mirrors BestToDo's default: open items before done ones, then by priority, otherwise list order.
+`ItemViews.wishlist` (the same shared query BestToDo's Wishlist filters through) is the
+visibility gate, so demo-seed hiding and the isWish/isVisibleInMainViews rules apply identically
+in both apps.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
