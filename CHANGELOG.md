@@ -1,6 +1,9 @@
 # Changelog
 
-## [0.2.72] - 2026-09-18
+## [0.2.75] - 2026-09-18
+- Music Player/Best Music: the Metadata Scan page can now export every scanned track's metadata to a CSV (share sheet) to hand to an AI (or edit by hand) for filling in whatever's missing, then import the filled-in file back in — matched to the right songs automatically, blank cells left alone so nothing already known gets erased
+
+## [0.2.74] - 2026-09-18
 - Music Player/Best Music: added a Metadata Scan tool (app bar icon next to Rescan) that scans your music folder on demand and shows every song live as it's found, with a status icon for whether it has a genre and a year. Now Playing has an info (ⓘ) button showing the current song's full metadata, where you can also fill in whatever's missing (genre, year, title, artist, album) — a manual fix now survives future rescans instead of getting silently overwritten
 
 ## [0.2.71] - 2026-09-17

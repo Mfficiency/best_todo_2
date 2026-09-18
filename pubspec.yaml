@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.2.72+363
+version: 0.2.75+366
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
