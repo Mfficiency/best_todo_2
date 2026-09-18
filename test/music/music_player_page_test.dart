@@ -229,6 +229,10 @@ void main() {
 
       await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
       await tester.pumpAndSettle();
+      // Favourites is the default initial tab, and this track isn't
+      // favorited — switch to Tracks to find its row.
+      await tester.tap(find.text('Tracks'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('More options'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add to playlist'));

@@ -866,7 +866,9 @@ class _TrackListViewState extends State<TrackListView> {
                           else
                             const SizedBox(width: 18),
                           const SizedBox(width: 8),
-                          Text(trackSortLabel(order)),
+                          Flexible(
+                              child: Text(trackSortLabel(order),
+                                  overflow: TextOverflow.ellipsis)),
                         ],
                       ),
                     ),
@@ -946,7 +948,12 @@ class _TrackListViewState extends State<TrackListView> {
                                 color: isFavorite ? Colors.pink : null,
                               ),
                               const SizedBox(width: 8),
-                              Text(isFavorite ? 'Remove from Favorites' : 'Add to Favorites'),
+                              Flexible(
+                                child: Text(
+                                  isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -955,7 +962,7 @@ class _TrackListViewState extends State<TrackListView> {
                           child: Row(children: [
                             Icon(Icons.playlist_add, size: 18),
                             SizedBox(width: 8),
-                            Text('Add to playlist'),
+                            Flexible(child: Text('Add to playlist', overflow: TextOverflow.ellipsis)),
                           ]),
                         ),
                         if (widget.onRemove != null)
@@ -964,7 +971,9 @@ class _TrackListViewState extends State<TrackListView> {
                             child: Row(children: [
                               Icon(Icons.remove_circle_outline, size: 18),
                               SizedBox(width: 8),
-                              Text('Remove from playlist'),
+                              Flexible(
+                                  child: Text('Remove from playlist',
+                                      overflow: TextOverflow.ellipsis)),
                             ]),
                           ),
                         const PopupMenuItem(
@@ -972,7 +981,7 @@ class _TrackListViewState extends State<TrackListView> {
                           child: Row(children: [
                             Icon(Icons.info_outline, size: 18),
                             SizedBox(width: 8),
-                            Text('Track info'),
+                            Flexible(child: Text('Track info', overflow: TextOverflow.ellipsis)),
                           ]),
                         ),
                       ],
