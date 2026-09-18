@@ -46,6 +46,13 @@ class Track {
   /// manual skip.
   final int playCount;
 
+  /// True once title/artist/album/genre/year were set by hand (the Track
+  /// info page's "fill in missing metadata"), rather than read from the
+  /// file's tags. A later [MusicLibraryService.rescan] keeps those fields
+  /// as-is instead of overwriting them with a fresh (possibly still empty)
+  /// tag read.
+  final bool metadataEdited;
+
   const Track({
     required this.id,
     required this.source,
@@ -59,6 +66,7 @@ class Track {
     this.year,
     this.dateAdded,
     this.playCount = 0,
+    this.metadataEdited = false,
   });
 
   factory Track.local({
@@ -71,6 +79,7 @@ class Track {
     int? year,
     DateTime? dateAdded,
     int playCount = 0,
+    bool metadataEdited = false,
   }) {
     return Track(
       id: 'local:$filePath',
@@ -84,6 +93,7 @@ class Track {
       year: year,
       dateAdded: dateAdded,
       playCount: playCount,
+      metadataEdited: metadataEdited,
     );
   }
 
@@ -127,6 +137,7 @@ class Track {
     int? year,
     DateTime? dateAdded,
     int? playCount,
+    bool? metadataEdited,
   }) {
     return Track(
       id: id,
@@ -141,6 +152,7 @@ class Track {
       year: year ?? this.year,
       dateAdded: dateAdded ?? this.dateAdded,
       playCount: playCount ?? this.playCount,
+      metadataEdited: metadataEdited ?? this.metadataEdited,
     );
   }
 
@@ -157,6 +169,7 @@ class Track {
         if (year != null) 'year': year,
         if (dateAdded != null) 'dateAdded': dateAdded!.millisecondsSinceEpoch,
         if (playCount != 0) 'playCount': playCount,
+        if (metadataEdited) 'metadataEdited': metadataEdited,
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -181,6 +194,7 @@ class Track {
           ? DateTime.fromMillisecondsSinceEpoch(dateAddedMs.round())
           : null,
       playCount: (json['playCount'] as num?)?.round() ?? 0,
+      metadataEdited: json['metadataEdited'] as bool? ?? false,
     );
   }
 

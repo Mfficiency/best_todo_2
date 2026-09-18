@@ -50,6 +50,7 @@ void main() {
         year: 2021,
         dateAdded: DateTime.utc(2024, 3, 1, 12),
         playCount: 4,
+        metadataEdited: true,
       );
 
       final restored = Track.fromJson(track.toJson());
@@ -65,6 +66,7 @@ void main() {
       expect(restored.year, 2021);
       expect(restored.dateAdded, track.dateAdded);
       expect(restored.playCount, 4);
+      expect(restored.metadataEdited, isTrue);
     });
 
     test('fromJson tolerates missing keys', () {
@@ -80,20 +82,23 @@ void main() {
       expect(restored.year, isNull);
       expect(restored.dateAdded, isNull);
       expect(restored.playCount, 0);
+      expect(restored.metadataEdited, isFalse);
     });
 
     test('copyWith replaces only the given fields', () {
       final track = Track.local(filePath: '/a.mp3', title: 'Original', genre: 'Pop');
 
-      final updated = track.copyWith(playCount: 3, genre: 'Rock');
+      final updated = track.copyWith(playCount: 3, genre: 'Rock', metadataEdited: true);
 
       expect(updated.id, track.id);
       expect(updated.title, 'Original');
       expect(updated.genre, 'Rock');
       expect(updated.playCount, 3);
+      expect(updated.metadataEdited, isTrue);
       // The original is untouched — Track is immutable.
       expect(track.playCount, 0);
       expect(track.genre, 'Pop');
+      expect(track.metadataEdited, isFalse);
     });
 
     test('equality/hashCode is based on id alone', () {

@@ -8,6 +8,7 @@ import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
 import 'queue_page.dart';
 import 'subpage_app_bar.dart';
+import 'track_metadata_page.dart';
 
 /// Full-screen "now playing" view. Swipe up on the artwork/title area to
 /// favorite the current track, swipe down to mark it disliked and skip —
@@ -75,6 +76,21 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const QueuePage()),
             ),
+          ),
+          StreamBuilder<MediaItem?>(
+            stream: handler.mediaItem,
+            builder: (context, _) {
+              final track = handler.currentTrack;
+              return IconButton(
+                icon: const Icon(Icons.info_outline),
+                tooltip: 'Track info',
+                onPressed: track == null
+                    ? null
+                    : () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => TrackMetadataPage(trackId: track.id),
+                        )),
+              );
+            },
           ),
         ],
       ),

@@ -1,7 +1,15 @@
 # Changelog
 
-## [0.2.74] - 2026-09-18
+## [0.2.76] - 2026-09-18
 - Wishlist items now get the "Claude" robot button too, not just the main task list: swipe a wishlist item open (same panel as Build/Share/Copy/Export/Delete) to fire your configured Claude Routine with that item's title/description/labels as context, starting a real Claude Code cloud session, exactly like "Send to Claude" already does for regular tasks
+
+## [0.2.75] - 2026-09-18
+- Best Music: added a Wishlist tool (drawer → Wishlist), reusing the same wishlist items BestToDo's own Wishlist writes — flagged tasks in the identical `tasks.json` record shape, so an item created in either app looks the same in both. Unlike BestToDo's Wishlist, the list itself shows nothing but each item's title (no icons, no checkboxes, no tags/priority chips) — tapping an item opens every field (done, priority, tags, description) in one editor
+- Local build: 2026-09-18 07:55
+- Build duration (windows): 53s
+
+## [0.2.74] - 2026-09-18
+- Music Player/Best Music: added a Metadata Scan tool (app bar icon next to Rescan) that scans your music folder on demand and shows every song live as it's found, with a status icon for whether it has a genre and a year. Now Playing has an info (ⓘ) button showing the current song's full metadata, where you can also fill in whatever's missing (genre, year, title, artist, album) — a manual fix now survives future rescans instead of getting silently overwritten
 
 ## [0.2.73] - 2026-09-17
 - CI: the BestToDo release publish step (uploading the APK asset to its GitHub release, which is what the About page's "Check for updates" reads) now retries up to 3 times on a dropped connection instead of failing the whole build outright. This was silently leaving the published release behind the app's actual code for several releases in a row — the CI job built the Todo APK fine each time, but a large-upload network blip (`SocketException: Broken pipe`) kept killing the publish step, so `v0.2.71-362` stayed the newest release while several versions' worth of changes (this swipe fix included) piled up unpublished behind it. Best Music's own release path (staged into `github_releases/` instead of a GitHub release) was unaffected

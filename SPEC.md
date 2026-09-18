@@ -3474,8 +3474,9 @@ confirming against a real Samsung Music export.
 ### 10.6f Best Music — a second app from the same codebase (0.2.66, drawer + Settings + About 0.2.67)
 `lib/main_music.dart` is a second entry point, built as its own Android app rather than a
 BestToDo tool: no task list, alarms, sync, or any other to-do feature — just §10.6e's Music
-Player as the home page, with a proper drawer menu (MP3 Downloader, Settings, Changelog,
-Startup Times, App Logs, About) mirroring BestToDo's own home page. Installs side by side with
+Player as the home page, with a proper drawer menu (MP3 Downloader, Wishlist, Settings,
+Changelog, Startup Times, App Logs, About — see §10.6h for Wishlist) mirroring BestToDo's own
+home page. Installs side by side with
 BestToDo on the same device (separate `applicationId`, so Android sandboxes its storage
 independently — no data collision with BestToDo's own `Config`/library files).
 
@@ -3511,8 +3512,8 @@ per-app), reporting no update rather than risking BestToDo's release.
 `main_music.dart`). Standalone, its `Scaffold` carries `key: homeScaffoldKey` and a real
 `Drawer` — the same key `home_page.dart` uses for its own — so it is the Best Music app's home
 page in the same sense BestToDo's home page is: `buildSubpageAppBar`'s "Menu" button (used by
-every page the drawer pushes: MP3 Downloader, Settings, Changelog, Startup Times, App Logs,
-About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
+every page the drawer pushes: MP3 Downloader, Wishlist, Settings, Changelog, Startup Times, App
+Logs, About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
 root route it has no "Back to Home" to offer) gets Flutter's automatic drawer-hamburger button
 for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a small
 standalone settings page — just the music folder picker and excluded-subfolders dialog,
@@ -3537,7 +3538,7 @@ GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateSer
 doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
 this repo — the folder stays each app's only update-check source.
 
-### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71)
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74)
 **Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
 (`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
 of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
@@ -3628,6 +3629,70 @@ song again happens on the playlist itself: `MusicPlaylistDetailPage` now passes 
 an `onRemove` callback (a "Remove from playlist" icon per row) only when the playlist being
 viewed is itself a hand-built, non-system one — Favorites/disliked stay swipe-gesture-only, and a
 smart/rule playlist's tracks aren't stored to remove from in the first place.
+
+**In-app metadata scan + editor (0.2.74)** — `Track` gained `metadataEdited` (`bool`, default
+false, omitted from JSON when false). `MusicLibraryService.rescan` now takes an optional
+`onTrackScanned(int scanned, Track track)` callback, fired once per supported file found (with
+that file's already-merged final `Track` — dateAdded/playCount preserved as before, and, new
+here, its title/artist/album/genre/year preserved too when the previous entry had
+`metadataEdited: true`, instead of being overwritten by a fresh — possibly still empty — tag
+read); the per-file merge/callback logic that used to run as a separate pass after the whole
+folder was walked was folded into the main scan loop so the callback sees final values without a
+second pass. `MusicLibraryService.updateTrackMetadata(trackId, {title, artist, album, genre,
+year})` sets those fields to exactly the given values (required, not merged via `copyWith`'s
+`?? this.field` pattern — an editor needs to be able to clear a field, which that pattern can't
+express) and sets `metadataEdited: true`.
+
+`lib/ui/music_metadata_scan_page.dart` (`MusicMetadataScanPage`, opened from
+`MusicPlayerPage`'s app bar, "Metadata scan" icon next to "Rescan library") runs `rescan` on
+open (and again on its refresh action) and renders every track live as `onTrackScanned` fires —
+a `LinearProgressIndicator` plus a running count while scanning, then a
+found/with-genre/with-year summary, with each row showing a green check (both genre and year
+known), orange (one of the two) or red (neither) icon. Tapping a row opens
+`lib/ui/track_metadata_page.dart` (`TrackMetadataPage`), also reachable via a new "Track info"
+(ⓘ) button on Now Playing's app bar (disabled — `onPressed: null` — while nothing is playing):
+editable title/artist/album/genre/year fields pre-filled from `MusicLibraryService.byId`, plus
+read-only duration/play count/date added/source/file path, and a note when the track was already
+manually edited. Saving calls `updateTrackMetadata`; an unparsable year shows an inline error
+instead of saving. This only ever changes this app's own cached record (`music_library.json`) —
+it does not write ID3 tags back into the file itself, which stays a possible future addition, not
+something either page does today.
+
+Widget tests that pump a page whose `initState` triggers `rescan` (`MusicMetadataScanPage`) poll
+with real delays (`tester.runAsync(delay) + pump()`, condition-driven on the progress indicator
+disappearing) rather than `pumpAndSettle()`, which both never resolves the real dart:io Future
+inside `testWidgets`' fake-async zone and would hang forever on the indeterminate
+`LinearProgressIndicator` even if it did (see CLAUDE.md's "Real file I/O hangs inside
+testWidgets" note) — and set the page's initial "scanning" field directly in `initState` rather
+than via `setState` (illegal before `initState` returns), letting only the later, async-gap
+`setState` calls do the rebuilding.
+
+### 10.6h Best Music Wishlist (0.2.75)
+Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
+BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
+records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
+Wishlist reads and writes (`tasks.json`, unchanged JSON shape), so an item created in either
+app is byte-for-byte the same record; an export from BestToDo's Wishlist (its "Export" action,
+`{export_version, exported_at, wishlist_items: [...]}` of plain `Task.toJson()` records) can be
+copied in and read back by anything that understands that same `Task` shape. Priority (`0..3`,
+stored as one of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared
+code too: `lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/
+`setWishPriority`/`bumpWishPriority`) is the single source both `wishlist_page.dart` and
+`music_wishlist_page.dart` import, rather than each keeping its own copy.
+
+Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
+(release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
+multi-select) — those are specific to BestToDo's own development workflow, not something Best
+Music's users need. The list itself renders nothing but each item's title (struck through once
+done) — no leading checkbox, no priority/tag chips, no trailing icon, literally a plain list of
+items — and tapping one pushes a full-page editor showing every field at once: a "Done" switch,
+priority as three `ChoiceChip`s, tags via the shared `LabelPickerField`, and a multi-line
+description field. The app bar's check icon saves; a delete icon (edit mode only) confirms then
+removes the item. Adding is the same editor with no item, reached via the page's `+` FAB. Sorting
+mirrors BestToDo's default: open items before done ones, then by priority, otherwise list order.
+`ItemViews.wishlist` (the same shared query BestToDo's Wishlist filters through) is the
+visibility gate, so demo-seed hiding and the isWish/isVisibleInMainViews rules apply identically
+in both apps.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
