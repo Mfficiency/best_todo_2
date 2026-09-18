@@ -2412,12 +2412,21 @@ items first, then by priority label (`priority-high` > `priority-medium` >
 (checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
 archived by the normal new-day rollover); the subtitle shows label tags first, then a
 `DescriptionDisclosure` chevron for the description — same order and widget as the
-Food Diary tile and `TaskTile`'s own wish subtitle. Tap opens the add/edit dialog — field order
-since 0.1.148: title, labels/tags with the quick-priority buttons right below (most
-wishes are a title plus a priority), description last (a `_WishEditDialog`
-StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
-recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
-exported_at, wishlist_items: [...]}`) remain.
+Food Diary tile and `TaskTile`'s own wish subtitle. The FAB's add dialog keeps its
+0.1.148 field order (title, labels/tags with the quick-priority buttons right below —
+most wishes are a title plus a priority, description last; a `_WishEditDialog`
+StatefulWidget owning its controllers, add-only). **Tapping an existing tile no
+longer opens a dialog (0.2.77):** it folds open in place exactly like a home-list
+`TaskTile` — title/labels-and-quick-priority/description become editable `TextField`s/
+`LabelPickerField` right below the tile (`_WishTileState._buildExpandedFields`,
+toggled by `_expanded`), and the trailing row gains the "Send to Claude" robot button
+(see below) plus a collapse chevron while open. Free-text fields (title/description)
+save on blur (`Focus.onFocusChange`, like `TaskTile`); label/quick-priority taps save
+immediately — both call `widget.onFieldsChanged` (`_WishlistPageState._persistFieldEdit`),
+which also re-sorts/re-groups the page so a priority or release-tag change moves the
+item right away. Edits mutate the task in place so uid/project/recurrence fields
+survive. Per-item and export-all JSON export (`{export_version: 1, exported_at,
+wishlist_items: [...]}`) remain.
 
 **Copy to clipboard (0.1.236, moved behind the swipe panel 0.1.259):** "Copy" puts the
 plain-text item on the clipboard via `_WishlistPageState.clipboardText` — title, then
@@ -2448,8 +2457,10 @@ skipped entirely; "Next release" always renders (even at 0) since it carries the
 Every tile except a "Newly implemented" one carries a "Move to release group" icon
 button (`Icons.drive_file_move_outline`, a `PopupMenuButton`) offering Next release /
 Soon / Backlog with a checkmark on the current group — same shape as the sort menu.
-Since 0.1.259 it is the tile's *only* trailing control (see Swipes below): the swipe
-default only steps an item back one group, so an explicit picker has no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
+Since 0.1.259 it was the tile's only trailing control; since 0.2.77 a folded-open tile
+also shows the "Send to Claude" robot button and a collapse chevron alongside it (see
+above). The swipe default still only steps an item back one group, so the picker has
+no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
 native labels (§ Sync), tagging an item `release-next` in Todoist (by hand, or via
 "Propose for next" below) moves it here on the next sync, with no extra plumbing.
 
@@ -2496,21 +2507,25 @@ own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
 itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
 does for any other `dev` push — no separate delivery mechanism was needed.
 
-**Send to Claude (0.2.74):** the options-swipe row also gets a "Claude"
-button (`Icons.smart_toy_outlined`), right next to "Build" — the same
+**Send to Claude (0.2.74, moved to the tile's trailing row 0.2.77):** a robot
+icon button (`Icons.smart_toy_outlined`, tooltip "Send to Claude") in the
+tile's trailing row, shown only while the tile is folded open — the same
 "Send to Claude" action the main task list's expanded tile already offers
-(`_TaskTileState._sendToClaude` in `lib/ui/task_tile.dart`), now reachable
-from wishlist items too so an idea can be built with AI directly, without
-first routing it through the GitHub build queue above. Fires the routine
+(`_TaskTileState._sendToClaude` in `lib/ui/task_tile.dart`), so an idea can
+be built with AI directly without first routing it through the GitHub build
+queue above. It briefly lived in the options-swipe panel instead (0.2.74);
+that made it too easy to miss, so it moved next to "Move to release group"
+where expanding the tile already puts it in view. Fires the routine
 configured in Settings → Claude Routine (`Config.claudeRoutineUrl`/
 `claudeRoutineToken`) via `ClaudeRoutineService.fire` with
 `ClaudeRoutineService.buildPayload(item)` (title/description/note/label) as
-the `text` context, starting a real Claude Code cloud session; a snackbar
-confirms with an "Open" action (`url_launcher`, external application) once
-the fire call returns a session URL. Unlike "Build", this action carries no
-tagging/dedup state of its own — it's a one-shot fire-and-forget, so it can
-be pressed again freely. With no routine configured, or on any API failure
-(bad/expired token, network error), a snackbar explains why.
+the `text` context, starting a real Claude Code cloud session; the icon
+swaps for a small spinner while in flight, and a snackbar confirms with an
+"Open" action (`url_launcher`, external application) once the fire call
+returns a session URL. Unlike "Build", this action carries no tagging/dedup
+state of its own — it's a one-shot fire-and-forget, so it can be pressed
+again freely. With no routine configured, or on any API failure (bad/expired
+token, network error), a snackbar explains why.
 
 **Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
 numbers in descriptions are auto-linkified by `LinkifiedText`

@@ -143,6 +143,53 @@ void main() {
     expect(find.textContaining('Due'), findsNothing);
   });
 
+  testWidgets(
+      'tapping a wishlist item folds it open for inline editing, like the '
+      'home list', (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'For stargazing weekends',
+          label: 'gift',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    // Collapsed: no inline fields, no robot button — just like a home-list
+    // task tile before it's tapped.
+    expect(find.widgetWithText(TextField, 'Title'), findsNothing);
+    expect(find.byTooltip('Send to Claude'), findsNothing);
+
+    await tester.tap(find.text('Buy a telescope'));
+    await tester.pump();
+
+    // Folded open in place: editable fields and the robot button appear —
+    // no dialog, no swipe needed.
+    expect(find.widgetWithText(TextField, 'Title'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Description'), findsOneWidget);
+    expect(find.byTooltip('Send to Claude'), findsOneWidget);
+    expect(find.byTooltip('Collapse'), findsOneWidget);
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Title'), 'Buy a better telescope');
+    // Losing focus (not collapsing yet) is what triggers the save — mirrors
+    // the home list's own tiles.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await settleWrites(tester);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['title'], 'Buy a better telescope');
+
+    await tester.tap(find.byTooltip('Collapse'));
+    await tester.pump();
+    expect(find.widgetWithText(TextField, 'Title'), findsNothing);
+  });
+
   testWidgets('the swipe Copy shortcut puts the item on the clipboard',
       (tester) async {
     final copied = <String>[];
@@ -388,7 +435,8 @@ void main() {
     expect(quickY, lessThan(descriptionY));
   });
 
-  testWidgets('a URL in the description opens externally, not the edit dialog',
+  testWidgets(
+      'a URL in the description opens externally, not the fold-open toggle',
       (tester) async {
     final launcher = _FakeUrlLauncher();
     UrlLauncherPlatform.instance = launcher;
@@ -415,12 +463,12 @@ void main() {
 
     // The link's recognizer wins the gesture arena over the tile's onTap.
     expect(launcher.launched, ['https://example.com/scopes']);
-    expect(find.text('Edit wishlist item'), findsNothing);
+    expect(find.widgetWithText(TextField, 'Title'), findsNothing);
 
-    // A tap elsewhere on the tile still opens the edit dialog.
+    // A tap elsewhere on the tile still folds it open for inline editing.
     await tester.tap(find.text('Buy a telescope'));
-    await tester.pumpAndSettle();
-    expect(find.text('Edit wishlist item'), findsOneWidget);
+    await tester.pump();
+    expect(find.widgetWithText(TextField, 'Title'), findsOneWidget);
   });
 
   testWidgets('wishes are ordered by priority', (tester) async {
@@ -721,9 +769,11 @@ void main() {
       marker: 'Buy a telescope',
     );
 
-    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    // Tapping the tile folds it open, revealing the robot button — no swipe
+    // needed.
+    await tester.tap(find.text('Buy a telescope'));
     await tester.pump();
-    await tester.tap(find.text('Claude'));
+    await tester.tap(find.byTooltip('Send to Claude'));
     await tester.pump();
 
     expect(
@@ -765,9 +815,11 @@ void main() {
       marker: 'Buy a telescope',
     );
 
-    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    // Tapping the tile folds it open, revealing the robot button — no swipe
+    // needed.
+    await tester.tap(find.text('Buy a telescope'));
     await tester.pump();
-    await tester.tap(find.text('Claude'));
+    await tester.tap(find.byTooltip('Send to Claude'));
     await settleWrites(tester);
 
     expect(captured, isNotNull);

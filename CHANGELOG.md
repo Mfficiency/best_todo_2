@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.77] - 2026-09-18
+- Wishlist: tapping an item now folds it open in place for editing — title, labels/quick-priority and description become editable right there, exactly like a home-list task tile — instead of popping up an edit dialog. The "Send to Claude" robot button (added last release, but easy to miss behind a swipe) now shows directly in that folded-open row next to "Move to release group", so it's visible without swiping first
+
 ## [0.2.76] - 2026-09-18
 - Wishlist items now get the "Claude" robot button too, not just the main task list: swipe a wishlist item open (same panel as Build/Share/Copy/Export/Delete) to fire your configured Claude Routine with that item's title/description/labels as context, starting a real Claude Code cloud session, exactly like "Send to Claude" already does for regular tasks
 

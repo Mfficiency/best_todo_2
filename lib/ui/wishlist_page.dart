@@ -409,37 +409,40 @@ class _WishlistPageState extends State<WishlistPage> {
     return labels.join(', ');
   }
 
-  Future<void> _editItem([Task? item]) async {
+  /// The "Add wishlist item" FAB flow. Editing an existing item happens
+  /// inline (tapping a tile folds it open, like the home list's tiles) —
+  /// this dialog is only ever used to create a new one.
+  Future<void> _addItem() async {
     final result = await showDialog<_WishEditResult>(
       context: context,
       builder: (context) => _WishEditDialog(
-        item: item,
         labelTextWithPriority: _labelTextWithPriority,
       ),
     );
 
     if (result == null) return;
     setState(() {
-      if (item == null) {
-        _tasks.insert(
-          0,
-          Task(
-            title: result.title,
-            description: result.description,
-            label: AutoTagService.instance.withAutoTags(
-                result.title, result.label),
-            createdAt: DateTime.now(),
-            isWish: true,
-          ),
-        );
-      } else {
-        item
-          ..title = result.title
-          ..description = result.description
-          ..label = result.label;
-      }
+      _tasks.insert(
+        0,
+        Task(
+          title: result.title,
+          description: result.description,
+          label: AutoTagService.instance.withAutoTags(
+              result.title, result.label),
+          createdAt: DateTime.now(),
+          isWish: true,
+        ),
+      );
     });
     await _save();
+  }
+
+  /// Persists a field an expanded tile just edited inline, and refreshes
+  /// this page's own sort/grouping (a priority or release-tag change moves
+  /// the item to a different section/position).
+  void _persistFieldEdit() {
+    setState(() {});
+    _save();
   }
 
   void _toggleDone(Task item) {
@@ -714,7 +717,7 @@ class _WishlistPageState extends State<WishlistPage> {
           ? null
           : FloatingActionButton(
               tooltip: 'Add wishlist item',
-              onPressed: () => _editItem(),
+              onPressed: _addItem,
               child: const Icon(Icons.add),
             ),
       body: _loading
@@ -757,7 +760,7 @@ class _WishlistPageState extends State<WishlistPage> {
                             onToggle: () => _toggleDone(item),
                             onToggleSelected: () => _toggleSelected(item),
                             onStartSelection: () => _startSelection(item),
-                            onEdit: () => _editItem(item),
+                            onFieldsChanged: _persistFieldEdit,
                             onCopy: () => _copyItem(item),
                             onShare: () => _shareItem(item),
                             onExport: () => _exportItem(item),
@@ -823,15 +826,13 @@ class _WishEditResult {
   const _WishEditResult(this.title, this.description, this.label);
 }
 
-/// Add/edit dialog owning its text controllers, so the dialog's exit
-/// animation never builds fields with disposed controllers.
+/// The "Add wishlist item" dialog, owning its own text controllers so its
+/// exit animation never builds fields with disposed controllers.
 class _WishEditDialog extends StatefulWidget {
-  final Task? item;
   final String Function(String text, String priorityLabel)
       labelTextWithPriority;
 
   const _WishEditDialog({
-    required this.item,
     required this.labelTextWithPriority,
   });
 
@@ -842,15 +843,13 @@ class _WishEditDialog extends StatefulWidget {
 class _WishEditDialogState extends State<_WishEditDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
-  late String _label;
+  String _label = '';
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.item?.title ?? '');
-    _descriptionController =
-        TextEditingController(text: widget.item?.description ?? '');
-    _label = widget.item?.label ?? '';
+    _titleController = TextEditingController();
+    _descriptionController = TextEditingController();
   }
 
   @override
@@ -880,8 +879,7 @@ class _WishEditDialogState extends State<_WishEditDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(
-          widget.item == null ? 'Add wishlist item' : 'Edit wishlist item'),
+      title: const Text('Add wishlist item'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -960,14 +958,17 @@ class _WishEditDialogState extends State<_WishEditDialog> {
 }
 
 /// A wishlist item rendered like a home-page task tile (checkbox, title,
-/// labels — never a due date) with the wishlist swipe actions: swiping
-/// toward the options side opens Share/Copy/Export/Build/Delete shortcuts and
-/// moves the item back one release step ([WishlistPage]'s [regressWishReleaseGroup])
-/// when the countdown runs out; swiping toward the other side starts
-/// multi-select ([onStartSelection])/toggles it ([onToggleSelected]) instead
-/// of deleting — deleting a single item now lives in the options panel
-/// above, and the selection app bar still deletes several at once. Directions
-/// follow [Config.swipeLeftDelete] like the home list.
+/// labels — never a due date). Tapping it folds it open in place, exactly
+/// like a home-list task tile: title/labels/description become editable
+/// fields, and a "Send to Claude" robot button appears right there — no
+/// popover needed. Swiping toward the options side still opens
+/// Share/Copy/Export/Build/Delete shortcuts and moves the item back one
+/// release step ([WishlistPage]'s [regressWishReleaseGroup]) when the
+/// countdown runs out; swiping toward the other side starts multi-select
+/// ([onStartSelection])/toggles it ([onToggleSelected]) instead of deleting —
+/// deleting a single item now lives in the options panel above, and the
+/// selection app bar still deletes several at once. Directions follow
+/// [Config.swipeLeftDelete] like the home list.
 class _WishTile extends StatefulWidget {
   final Task item;
   final WishReleaseGroup releaseGroup;
@@ -976,7 +977,7 @@ class _WishTile extends StatefulWidget {
   final VoidCallback onToggle;
   final VoidCallback onToggleSelected;
   final VoidCallback onStartSelection;
-  final VoidCallback onEdit;
+  final VoidCallback onFieldsChanged;
   final VoidCallback onCopy;
   final VoidCallback onShare;
   final VoidCallback onExport;
@@ -994,7 +995,7 @@ class _WishTile extends StatefulWidget {
     required this.onToggle,
     required this.onToggleSelected,
     required this.onStartSelection,
-    required this.onEdit,
+    required this.onFieldsChanged,
     required this.onCopy,
     required this.onShare,
     required this.onExport,
@@ -1017,20 +1018,19 @@ class _WishTileState extends State<_WishTile>
   bool _dragging = false;
   bool _sendingToClaude = false;
 
-  /// Compact style for the swipe-options row's buttons: with six of them now
-  /// (Build/Claude/Share/Copy/Export/Delete), the default padding no longer
-  /// fits one line at typical widths, and a second line overflows the
-  /// overlay's height (it's sized to match the tile it sits over).
-  static final ButtonStyle _optionButtonStyle = TextButton.styleFrom(
-    padding: const EdgeInsets.symmetric(horizontal: 6),
-    visualDensity: VisualDensity.compact,
-    minimumSize: Size.zero,
-    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-  );
+  /// Whether the tile is folded open for inline editing — like tapping a
+  /// task tile on the home list. Title/labels/description become editable
+  /// fields and the "Send to Claude" robot button appears in the trailing
+  /// row.
+  bool _expanded = false;
+  late final TextEditingController _titleController;
+  late final TextEditingController _descController;
 
   @override
   void initState() {
     super.initState();
+    _titleController = TextEditingController(text: widget.item.title);
+    _descController = TextEditingController(text: widget.item.description);
     _progressController = AnimationController(
       vsync: this,
       duration: wishlistSweepDelay,
@@ -1041,8 +1041,12 @@ class _WishTileState extends State<_WishTile>
   void dispose() {
     _timer?.cancel();
     _progressController.dispose();
+    _titleController.dispose();
+    _descController.dispose();
     super.dispose();
   }
+
+  void _toggleExpanded() => setState(() => _expanded = !_expanded);
 
   void _startSwipeOptions() {
     setState(() => _optionsOpen = true);
@@ -1092,7 +1096,9 @@ class _WishTileState extends State<_WishTile>
   /// wishlist item as context, starting a real Claude Code cloud session —
   /// the same "Send to Claude" action the main task list offers, so wishlist
   /// items can be built with AI without first having to send them to the
-  /// GitHub build queue.
+  /// GitHub build queue. Only reachable once the tile is folded open (like
+  /// the home list's own robot button, which only shows on an expanded
+  /// tile).
   Future<void> _sendToClaude() async {
     final url = Config.claudeRoutineUrl.trim();
     final token = Config.claudeRoutineToken.trim();
@@ -1144,9 +1150,24 @@ class _WishTileState extends State<_WishTile>
     }
   }
 
-  void _sendToClaudeTapped() {
-    _closeOptions();
-    _sendToClaude();
+  /// Pastes clipboard text into the inline description field at the current
+  /// selection (or appended, if the field has no active selection) — the
+  /// same behavior the "Add wishlist item" dialog's paste button offers.
+  Future<void> _pasteDescription() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty) return;
+    final controller = _descController;
+    final selection = controller.selection;
+    final insertAt = selection.isValid ? selection.start : controller.text.length;
+    final removeTo = selection.isValid ? selection.end : controller.text.length;
+    final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
+    controller.text = newText;
+    controller.selection = TextSelection.collapsed(
+      offset: (insertAt + pasted.length).clamp(0, newText.length),
+    );
+    setState(() => widget.item.description = newText);
+    widget.onFieldsChanged();
   }
 
   List<String> _labels() => widget.item.label
@@ -1154,6 +1175,80 @@ class _WishTileState extends State<_WishTile>
       .map((label) => label.trim())
       .where((label) => label.isNotEmpty)
       .toList();
+
+  /// The fold-open editing section shown below the tile when [_expanded]:
+  /// title, labels/quick-priority and description, editable in place —
+  /// exactly the fields the old "Edit wishlist item" dialog offered.
+  Widget _buildExpandedFields(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Focus(
+            onFocusChange: (hasFocus) {
+              if (!hasFocus) widget.onFieldsChanged();
+            },
+            child: TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(labelText: 'Title'),
+              onChanged: (v) => setState(() => widget.item.title = v),
+            ),
+          ),
+          LabelPickerField(
+            value: widget.item.label,
+            fieldLabel: 'Labels / tags',
+            onChanged: (v) {
+              setState(() => widget.item.label = v);
+              widget.onFieldsChanged();
+            },
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Quick priority',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final priority in wishPriorityLabels)
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() => setWishPriority(widget.item, priority));
+                    widget.onFieldsChanged();
+                  },
+                  child: Text(priority.replaceFirst('priority-', '')),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Focus(
+            onFocusChange: (hasFocus) {
+              if (!hasFocus) widget.onFieldsChanged();
+            },
+            child: TextField(
+              controller: _descController,
+              decoration: InputDecoration(
+                labelText: 'Description',
+                suffixIcon: IconButton(
+                  tooltip: 'Paste from clipboard',
+                  icon: const Icon(Icons.content_paste),
+                  onPressed: _pasteDescription,
+                ),
+              ),
+              keyboardType: TextInputType.multiline,
+              maxLines: null,
+              onChanged: (v) => setState(() => widget.item.description = v),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1207,37 +1302,58 @@ class _WishTileState extends State<_WishTile>
                 ],
               ],
             ),
-      onTap: widget.selecting ? widget.onToggleSelected : widget.onEdit,
-      // No per-item action icons: share/copy/export live behind the swipe
-      // options overlay and selection starts with a swipe, so the only
-      // trailing control left is the release-group picker (which has no
-      // swipe equivalent — swiping only steps an item back one group).
-      trailing: widget.selecting ||
-              widget.releaseGroup == WishReleaseGroup.newlyImplemented
+      // Tapping folds the tile open for inline editing, exactly like a home
+      // list task tile — no edit dialog/popover.
+      onTap: widget.selecting ? widget.onToggleSelected : _toggleExpanded,
+      trailing: widget.selecting
           ? null
-          : PopupMenuButton<WishReleaseGroup>(
-              tooltip: 'Move to release group',
-              icon: const Icon(Icons.drive_file_move_outline),
-              initialValue: widget.releaseGroup,
-              onSelected: widget.onSetReleaseGroup,
-              itemBuilder: (context) => [
-                for (final group in const [
-                  WishReleaseGroup.nextRelease,
-                  WishReleaseGroup.soon,
-                  WishReleaseGroup.backlog,
-                ])
-                  PopupMenuItem(
-                    value: group,
-                    child: Row(
-                      children: [
-                        if (group == widget.releaseGroup)
-                          const Icon(Icons.check, size: 18)
-                        else
-                          const SizedBox(width: 18),
-                        const SizedBox(width: 8),
-                        Text(wishReleaseGroupTitle(group)),
-                      ],
-                    ),
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_expanded)
+                  IconButton(
+                    icon: _sendingToClaude
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.smart_toy_outlined),
+                    tooltip: 'Send to Claude',
+                    onPressed: _sendingToClaude ? null : _sendToClaude,
+                  ),
+                if (widget.releaseGroup != WishReleaseGroup.newlyImplemented)
+                  PopupMenuButton<WishReleaseGroup>(
+                    tooltip: 'Move to release group',
+                    icon: const Icon(Icons.drive_file_move_outline),
+                    initialValue: widget.releaseGroup,
+                    onSelected: widget.onSetReleaseGroup,
+                    itemBuilder: (context) => [
+                      for (final group in const [
+                        WishReleaseGroup.nextRelease,
+                        WishReleaseGroup.soon,
+                        WishReleaseGroup.backlog,
+                      ])
+                        PopupMenuItem(
+                          value: group,
+                          child: Row(
+                            children: [
+                              if (group == widget.releaseGroup)
+                                const Icon(Icons.check, size: 18)
+                              else
+                                const SizedBox(width: 18),
+                              const SizedBox(width: 8),
+                              Text(wishReleaseGroupTitle(group)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                if (_expanded)
+                  IconButton(
+                    icon: const Icon(Icons.expand_less),
+                    tooltip: 'Collapse',
+                    onPressed: _toggleExpanded,
                   ),
               ],
             ),
@@ -1259,7 +1375,6 @@ class _WishTileState extends State<_WishTile>
                     alignment: WrapAlignment.end,
                     children: [
                       TextButton.icon(
-                        style: _optionButtonStyle,
                         onPressed:
                             isQueuedForBuild(widget.item) ? null : _sendToBuild,
                         icon: Icon(
@@ -1272,32 +1387,21 @@ class _WishTileState extends State<_WishTile>
                             isQueuedForBuild(widget.item) ? 'Queued' : 'Build'),
                       ),
                       TextButton.icon(
-                        style: _optionButtonStyle,
-                        onPressed:
-                            _sendingToClaude ? null : _sendToClaudeTapped,
-                        icon: const Icon(Icons.smart_toy_outlined, size: 18),
-                        label: const Text('Claude'),
-                      ),
-                      TextButton.icon(
-                        style: _optionButtonStyle,
                         onPressed: _share,
                         icon: const Icon(Icons.share, size: 18),
                         label: const Text('Share'),
                       ),
                       TextButton.icon(
-                        style: _optionButtonStyle,
                         onPressed: _copy,
                         icon: const Icon(Icons.content_copy, size: 18),
                         label: const Text('Copy'),
                       ),
                       TextButton.icon(
-                        style: _optionButtonStyle,
                         onPressed: _export,
                         icon: const Icon(Icons.download_outlined, size: 18),
                         label: const Text('Export'),
                       ),
                       TextButton.icon(
-                        style: _optionButtonStyle,
                         onPressed: _delete,
                         icon: const Icon(Icons.delete, size: 18),
                         label: const Text('Delete'),
@@ -1325,7 +1429,12 @@ class _WishTileState extends State<_WishTile>
     final slide = AnimatedSlide(
       offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
       duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
-      child: stackTile,
+      child: Column(
+        children: [
+          stackTile,
+          if (_expanded) _buildExpandedFields(context),
+        ],
+      ),
     );
 
     Widget? background;
