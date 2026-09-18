@@ -231,20 +231,10 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 
   Future<void> _load() async {
-    // Also merges legacy wishlist.json items into the task list.
+    // Also merges legacy wishlist.json items into the task list. The
+    // Wishlist starts empty — no dev-only demo item — so a fresh/cleared
+    // list stays genuinely empty instead of quietly repopulating.
     final tasks = await _repository.loadItems();
-    // Platforms without storage (web) load an empty list; dev builds seed
-    // the same wish item the home page seeds so the tool is testable in
-    // Chrome. On devices with data the list is never empty here.
-    if (tasks.isEmpty && Config.isDev) {
-      tasks.add(Task(
-        title: 'Learn to sail',
-        description: 'Dev seed: a wishlist item',
-        label: addLabelToken('priority-medium', demoToken),
-        createdAt: DateTime.now(),
-        isWish: true,
-      ));
-    }
     // Only touch the shared store (and re-persist locally) when actually
     // connected — an app that never connects behaves exactly as before.
     final connected = await _sharedStore.isConnected();

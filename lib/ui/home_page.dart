@@ -38,8 +38,6 @@ import '../services/todoist_sync_service.dart';
 import '../services/food_diary_widget_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
-import '../services/wishlist_migration.dart';
-import '../services/wishlist_shipped.dart';
 import '../utils/date_utils.dart';
 import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
@@ -400,27 +398,6 @@ class _HomePageState extends State<HomePage>
     return seeded;
   }
 
-  /// Dev-only wishlist seed. The real backlog import
-  /// ([StorageService] via `wishlist_migration`) is a one-time, flag-guarded
-  /// event, so dev machines that already spent the flag come up with an empty
-  /// wishlist. This rebuilds the [legacyTodoWishlistItems] backlog as wish
-  /// tasks. Callers only invoke it when the list holds no wishes, so it never
-  /// duplicates existing ones.
-  List<Task> _buildDevWishlistSeed() {
-    final now = DateTime.now();
-    return [
-      for (final legacy in legacyTodoWishlistItems)
-        Task(
-          uid: legacy.uid,
-          title: legacy.title,
-          description: legacy.description,
-          label: addLabelToken(legacyTodoImportLabel, demoToken),
-          createdAt: now,
-          isWish: true,
-        ),
-    ];
-  }
-
   /// Spreads the dev-seeded future tasks across the seed projects (one task
   /// per Kanban column in each project) so dev builds — including desktop
   /// and web, where the Projects tool is exercised with a mouse — open with
@@ -442,19 +419,6 @@ class _HomePageState extends State<HomePage>
       projectId: ProjectService.instance.list.isNotEmpty
           ? ProjectService.instance.list.first.id
           : null,
-    ));
-  }
-
-  /// Dev-only: one wishlist item, so the Wishlist tool and the wish rows on
-  /// the Future tab have data on platforms where the one-time Todo.md import
-  /// cannot run (the browser has no files to import from).
-  void _seedDevWishItem() {
-    _tasks.add(Task(
-      title: 'Learn to sail',
-      description: 'Dev seed: a wishlist item',
-      label: addLabelToken('priority-medium', demoToken),
-      createdAt: DateTime.now(),
-      isWish: true,
     ));
   }
 
@@ -730,17 +694,6 @@ class _HomePageState extends State<HomePage>
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
     }
-    // Backfill the wishlist for dev installs whose one-time backlog import
-    // flag is already spent (so nothing else repopulates it). Runs only when
-    // no wishes exist, keeping it idempotent across loads.
-    if (Config.isDev && !_tasks.any((t) => t.isWish)) {
-      final seeded = _buildDevWishlistSeed();
-      // The seed lands after loadTaskList already ran its shipped-wish pass,
-      // so apply it here too — otherwise a dev install shows the backlog
-      // untagged until the next launch.
-      applyShippedWishes(seeded);
-      _tasks.addAll(seeded);
-    }
     // Backfill a demo text attachment for dev installs so the task-detail
     // "with attachment" state (AttachmentsField, expanded task tile) is
     // visible without manual setup — and, symmetrically, the other starter
@@ -771,7 +724,6 @@ class _HomePageState extends State<HomePage>
       // be tested immediately: Tools → Projects → open a board → tap a card.
       if (isFirstLaunch) {
         _seedDevRangeTask();
-        _seedDevWishItem();
         _seedDevItemHistory();
         _seedDevLinkedReminder();
       }

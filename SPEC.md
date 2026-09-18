@@ -1196,10 +1196,11 @@ mechanism (§4.2e).
 stamped onto every task/alarm/timer the app ever generates for itself instead of the user: the
 first-run starter tasks (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
 seed — `home_page.dart`'s `_buildDevDeletedSeed`/`_buildDevAutoDeletedBackfill`/
-`_buildDevFutureTasksSeed`/`_buildDevWishlistSeed`/`_seedDevRangeTask`/`_seedDevWishItem`/
-`_seedDevLinkedReminder`'s reminder alarm, `AlarmService._buildDevSeed`,
-`CountdownTimerPage._devSeedTimers`, `FoodDiaryPage._buildDevSeed` and `WishlistPage._load`'s
-dev fallback. Existing tokens on those items (`old`, `priority-medium`, …) are kept —
+`_buildDevFutureTasksSeed`/`_seedDevRangeTask`/`_seedDevLinkedReminder`'s reminder alarm,
+`AlarmService._buildDevSeed`, `CountdownTimerPage._devSeedTimers` and `FoodDiaryPage._buildDevSeed`
+(the Wishlist tool's own dev seeding — `home_page.dart`'s `_seedDevWishItem`/`_buildDevWishlistSeed`
+and `WishlistPage._load`'s dev fallback — was removed in 0.2.77: the Wishlist starts empty even
+in dev builds now, see §10.6). Existing tokens on those items (`old`, `priority-medium`, …) are kept —
 `addLabelToken` appends `demo` alongside them rather than replacing the label. The point: once
 one of these seeded items is saved to disk it is a normal record indistinguishable from
 anything the user typed, and outlives whatever produced it — including `Config.isDev` going
@@ -3674,6 +3675,18 @@ this to a temp directory and force a connected/not-connected state without the r
 deletion visibility, `reconcileWishlist`) and `test/tools/wishlist_cross_app_sync_test.dart` pumps
 both `WishlistPage` and `MusicWishlistPage` against separate fake app-private directories but one
 shared override directory, proving an item added (or deleted) in one is visible in the other.
+
+**Empty by default, even in dev builds (0.2.77)**: both Wishlist tools used to seed demo content
+on an empty list — `WishlistPage._load`'s "Learn to sail" fallback, `home_page.dart`'s
+`_seedDevWishItem` (same item, seeded on first launch) and `_buildDevWishlistSeed` (the
+`legacyTodoWishlistItems` backlog, re-backfilled on *every* dev launch once no wishes remain,
+independent of first-launch) — all gated on `Config.isDev`. That backfill in particular meant a
+developer who cleared the Wishlist to test an empty state saw it silently repopulate on the next
+launch. All three are removed; the Wishlist starts (and stays) genuinely empty in dev builds
+exactly like production, so testing the cross-app sync feature above from a clean slate doesn't
+require fighting demo data first. The production one-time Todo.md-backlog import
+(`StorageService`/`wishlist_migration.dart`, §10.6, unconditional on `Config.isDev`) is untouched
+— that is a real, flag-guarded, one-time migration for actual installs, not a dev convenience.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
