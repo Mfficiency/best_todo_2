@@ -2,6 +2,8 @@
 
 ## [0.2.80] - 2026-09-18
 - Wishlist: tapping an item now folds it open in place for editing — title, labels/quick-priority and description become editable right there, exactly like a home-list task tile — instead of popping up an edit dialog. The "Send to Claude" robot button (added a couple releases back, but easy to miss behind a swipe) now shows directly in that folded-open row next to "Move to release group", so it's visible without swiping first
+- Local build: 2026-09-18 13:17
+- Build duration (windows): 2m 53s
 
 ## [0.2.79] - 2026-09-18
 - Wishlist: no more dev-only "Learn to sail" placeholder or backlog backfill — both BestToDo's and Best Music's Wishlist tools now genuinely start empty (in dev builds too), instead of quietly repopulating with demo/backlog items when the list is cleared for testing
