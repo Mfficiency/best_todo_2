@@ -631,7 +631,8 @@ tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name
 
 **Label picker (0.1.255):** `LabelPickerField` (`lib/ui/label_picker.dart`) replaces the
 raw comma-separated label text field everywhere a task's `label` is edited (task-tile
-inline editor, wishlist add/edit dialog). Current tokens render as removable `InputChip`s;
+inline editor, wishlist add dialog and its own inline editor). Current tokens render as
+removable `InputChip`s;
 an "Add label" chip opens a dialog with a search/create field over every known label
 (`LabelService.instance.labels`, checkbox-toggled) — typing a name that isn't already a
 label offers "Add "<name>"" to create and select it in one tap. Selection is staged in
@@ -1196,10 +1197,11 @@ mechanism (§4.2e).
 stamped onto every task/alarm/timer the app ever generates for itself instead of the user: the
 first-run starter tasks (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
 seed — `home_page.dart`'s `_buildDevDeletedSeed`/`_buildDevAutoDeletedBackfill`/
-`_buildDevFutureTasksSeed`/`_buildDevWishlistSeed`/`_seedDevRangeTask`/`_seedDevWishItem`/
-`_seedDevLinkedReminder`'s reminder alarm, `AlarmService._buildDevSeed`,
-`CountdownTimerPage._devSeedTimers`, `FoodDiaryPage._buildDevSeed` and `WishlistPage._load`'s
-dev fallback. Existing tokens on those items (`old`, `priority-medium`, …) are kept —
+`_buildDevFutureTasksSeed`/`_seedDevRangeTask`/`_seedDevLinkedReminder`'s reminder alarm,
+`AlarmService._buildDevSeed`, `CountdownTimerPage._devSeedTimers` and `FoodDiaryPage._buildDevSeed`
+(the Wishlist tool's own dev seeding — `home_page.dart`'s `_seedDevWishItem`/`_buildDevWishlistSeed`
+and `WishlistPage._load`'s dev fallback — was removed in 0.2.77: the Wishlist starts empty even
+in dev builds now, see §10.6). Existing tokens on those items (`old`, `priority-medium`, …) are kept —
 `addLabelToken` appends `demo` alongside them rather than replacing the label. The point: once
 one of these seeded items is saved to disk it is a normal record indistinguishable from
 anything the user typed, and outlives whatever produced it — including `Config.isDev` going
@@ -2416,7 +2418,7 @@ Food Diary tile and `TaskTile`'s own wish subtitle. The FAB's add dialog keeps i
 0.1.148 field order (title, labels/tags with the quick-priority buttons right below —
 most wishes are a title plus a priority, description last; a `_WishEditDialog`
 StatefulWidget owning its controllers, add-only). **Tapping an existing tile no
-longer opens a dialog (0.2.77):** it folds open in place exactly like a home-list
+longer opens a dialog (0.2.80):** it folds open in place exactly like a home-list
 `TaskTile` — title/labels-and-quick-priority/description become editable `TextField`s/
 `LabelPickerField` right below the tile (`_WishTileState._buildExpandedFields`,
 toggled by `_expanded`), and the trailing row gains the "Send to Claude" robot button
@@ -2457,7 +2459,7 @@ skipped entirely; "Next release" always renders (even at 0) since it carries the
 Every tile except a "Newly implemented" one carries a "Move to release group" icon
 button (`Icons.drive_file_move_outline`, a `PopupMenuButton`) offering Next release /
 Soon / Backlog with a checkmark on the current group — same shape as the sort menu.
-Since 0.1.259 it was the tile's only trailing control; since 0.2.77 a folded-open tile
+Since 0.1.259 it was the tile's only trailing control; since 0.2.80 a folded-open tile
 also shows the "Send to Claude" robot button and a collapse chevron alongside it (see
 above). The swipe default still only steps an item back one group, so the picker has
 no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
@@ -2507,7 +2509,7 @@ own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
 itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
 does for any other `dev` push — no separate delivery mechanism was needed.
 
-**Send to Claude (0.2.74, moved to the tile's trailing row 0.2.77):** a robot
+**Send to Claude (0.2.74, moved to the tile's trailing row 0.2.80):** a robot
 icon button (`Icons.smart_toy_outlined`, tooltip "Send to Claude") in the
 tile's trailing row, shown only while the tile is folded open — the same
 "Send to Claude" action the main task list's expanded tile already offers
@@ -3553,7 +3555,7 @@ GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateSer
 doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
 this repo — the folder stays each app's only update-check source.
 
-### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74)
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74, CSV bulk metadata export/import 0.2.77)
 **Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
 (`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
 of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
@@ -3682,18 +3684,54 @@ testWidgets" note) — and set the page's initial "scanning" field directly in `
 than via `setState` (illegal before `initState` returns), letting only the later, async-gap
 `setState` calls do the rebuilding.
 
-### 10.6h Best Music Wishlist (0.2.75)
+**CSV bulk metadata export/import (0.2.77)** — a way to fill in metadata for a whole collection
+at once outside the app (e.g. hand it to an AI), for when editing one track at a time via
+`TrackMetadataPage` doesn't scale. `lib/services/music_metadata_csv.dart` (`MusicMetadataCsv`):
+`encode(tracks)` writes one CSV row per track — `id, filename, title, artist, album, genre,
+year` — reusing `UsageDataService.csvField`/`toCsv` for RFC-4180-style quoting rather than
+duplicating that escaping logic (`UsageDataService`'s CSV primitives are public statics
+precisely so other export features can share them). `decode(csvText)` is a hand-rolled decoder
+(no `csv` package dependency; none existed in the codebase and none was added) — a small
+state-machine parser handling quoted fields, doubled-quote escaping, CRLF/bare-LF line endings,
+and a missing trailing newline, then looking columns up **by header name** (case-insensitive,
+tolerant of reordering/missing/extra columns) rather than by position, so a spreadsheet round
+-trip that reorders columns still imports correctly. A row's `id` is the match key (the export's
+`filename` column is read-only context for an AI when a file has no tags to go on at all —
+title/artist/album are also empty in that case); a row with a blank `id` is skipped, and a file
+with no `id` column at all decodes to zero rows rather than guessing.
+
+`MusicLibraryService.applyMetadataRows(List<ParsedMetadataRow>)` matches each row's `id` against
+the library and, for every match, sets `title`/`artist`/`album`/`genre`/`year` — but **only the
+non-empty fields**: a blank cell leaves that track's existing value untouched, so a spreadsheet
+edit that accidentally clears a cell (or an AI that only filled in the columns it was asked to)
+can't silently erase data the app already had. Every matched row gets `metadataEdited: true`,
+same as a manual `TrackMetadataPage` edit — so it also survives a later rescan (§ above). Returns
+how many rows matched, for the caller's "Updated N of M" summary.
+
+The UI lives on `MusicMetadataScanPage`, alongside the scan itself: "Export metadata CSV" writes
+the current library (`MusicLibraryService.instance.tracks.value`, not just what's scanned into
+the page's own live list — so it works even without running a fresh scan first) to a file in
+`getTemporaryDirectory()` and hands it straight to the OS share sheet
+(`SharePlus.instance.share(ShareParams(files: [XFile(path)]))` — the same pattern
+`attachments_field.dart` uses to share an attachment) rather than a folder-picker write like
+`UsageDataPage`'s CSV export — simpler for "get this file into another app" than picking a save
+folder first. "Import filled-in CSV" uses `file_selector`'s `openFile` (same pattern as the M3U
+import in `music_player_page.dart`), reads and decodes the file, applies it, and refreshes the
+scan page's already-displayed rows in place (looked back up by id) so their status icons update
+without a full rescan. Neither the export/import buttons themselves nor the M3U import they
+mirror are exercised in `testWidgets` — both go through a real OS file picker/share sheet with no
+test seam in this codebase, so only the pure `MusicMetadataCsv`/`applyMetadataRows` logic
+underneath is unit tested.
+
+### 10.6h Best Music Wishlist, cross-app sync (0.2.75, actually shared across both apps 0.2.78)
 Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
 BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
 records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
-Wishlist reads and writes (`tasks.json`, unchanged JSON shape), so an item created in either
-app is byte-for-byte the same record; an export from BestToDo's Wishlist (its "Export" action,
-`{export_version, exported_at, wishlist_items: [...]}` of plain `Task.toJson()` records) can be
-copied in and read back by anything that understands that same `Task` shape. Priority (`0..3`,
-stored as one of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared
-code too: `lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/
-`setWishPriority`/`bumpWishPriority`) is the single source both `wishlist_page.dart` and
-`music_wishlist_page.dart` import, rather than each keeping its own copy.
+Wishlist reads and writes (`tasks.json`, unchanged JSON shape). Priority (`0..3`, stored as one
+of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared code too:
+`lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/`setWishPriority`/
+`bumpWishPriority`) is the single source both `wishlist_page.dart` and `music_wishlist_page.dart`
+import, rather than each keeping its own copy.
 
 Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
 (release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
@@ -3708,6 +3746,55 @@ mirrors BestToDo's default: open items before done ones, then by priority, other
 `ItemViews.wishlist` (the same shared query BestToDo's Wishlist filters through) is the
 visibility gate, so demo-seed hiding and the isWish/isVisibleInMainViews rules apply identically
 in both apps.
+
+**Cross-app sync (0.2.78)**: BestToDo and Best Music are two separately-sandboxed Android apps
+(different `applicationId`, §10.6f) — `getApplicationDocumentsDirectory()` (what
+`StorageService`/`ItemRepository` use for `tasks.json`) is invisible across that sandbox
+boundary, so until this version each app's Wishlist really was its own local database, matching
+on JSON shape alone but never actually shared. `lib/services/shared_wishlist_store.dart`
+(`SharedWishlistStore`) fixes that: it reads/writes one file — a fixed path under public external
+storage (`/storage/emulated/0/BestToDo/wishlist_shared.json`) both apps can reach because both
+already hold `MANAGE_EXTERNAL_STORAGE` (the shared `AndroidManifest.xml`; `MusicLibraryService.
+ensureFolderPermission` already requests the same permission for the music folder, and Best Music
+already asks for it eagerly at startup, §10.6e/f) — via `SafeFile`, the same atomic-write/
+corruption-recovery helper `StorageService` itself uses. Only wish-flagged tasks ever go through
+this store; every other task stays in each app's own private `tasks.json`, untouched.
+
+Both Wishlist pages treat the shared file as authoritative once it exists: on load,
+`reconcileWishlist(local, shared)` replaces the local wish-item subset with the shared file's
+content whenever that file already exists (so a deletion or edit made in the other app takes
+effect here too — the whole set is replaced, not merged item-by-item, since there is no
+per-field "last modified" timestamp on `Task` to arbitrate a real conflict), and only falls back
+to seeding the shared file from local data the first time, before it exists at all. Every save
+(add/edit/delete/toggle) re-pushes the page's current wish-item set out to the shared file, so
+the next time either app's Wishlist tool opens it picks up the change. Sync is opt-in and
+silent-first: `SharedWishlistStore.isConnected()` only checks the permission's current status
+(no prompt) on every load, so an app that has never connected behaves exactly as it did before
+this version — no surprise "All files access" prompt for anyone using just one of the two apps.
+Discoverability is a dismissible `WishlistSyncBanner` (`lib/ui/wishlist_sync_banner.dart`,
+shared by both pages) shown only while not yet connected and not dismissed
+(`Config.wishlistSyncBannerDismissed`, persisted on "Not now"); its "Connect" button calls
+`SharedWishlistStore.requestConnection()`, which shows Android's "All files access" settings
+screen if needed, then immediately reloads so anything already on the shared file shows up right
+away. `SharedWishlistStore.sharedDirectoryOverride`/`connectionOverride` (test-only) redirect
+this to a temp directory and force a connected/not-connected state without the real
+`permission_handler` plugin, which `flutter test`'s host platform can't provide —
+`test/core/shared_wishlist_store_test.dart` covers the store directly (save/load round-trip,
+deletion visibility, `reconcileWishlist`) and `test/tools/wishlist_cross_app_sync_test.dart` pumps
+both `WishlistPage` and `MusicWishlistPage` against separate fake app-private directories but one
+shared override directory, proving an item added (or deleted) in one is visible in the other.
+
+**Empty by default, even in dev builds (0.2.77)**: both Wishlist tools used to seed demo content
+on an empty list — `WishlistPage._load`'s "Learn to sail" fallback, `home_page.dart`'s
+`_seedDevWishItem` (same item, seeded on first launch) and `_buildDevWishlistSeed` (the
+`legacyTodoWishlistItems` backlog, re-backfilled on *every* dev launch once no wishes remain,
+independent of first-launch) — all gated on `Config.isDev`. That backfill in particular meant a
+developer who cleared the Wishlist to test an empty state saw it silently repopulate on the next
+launch. All three are removed; the Wishlist starts (and stays) genuinely empty in dev builds
+exactly like production, so testing the cross-app sync feature above from a clean slate doesn't
+require fighting demo data first. The production one-time Todo.md-backlog import
+(`StorageService`/`wishlist_migration.dart`, §10.6, unconditional on `Config.isDev`) is untouched
+— that is a real, flag-guarded, one-time migration for actual installs, not a dev convenience.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

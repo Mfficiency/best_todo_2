@@ -69,6 +69,20 @@ void main() {
     expect(find.textContaining('no year'), findsOneWidget);
   });
 
+  testWidgets('shows Export/Import CSV actions alongside Scan again',
+      (tester) async {
+    // Not tapped: Export/Import go through real platform channels (the
+    // share sheet, the OS file picker) with no test seam in this codebase
+    // (music_player_page.dart's M3U import is the same, untapped-in-tests
+    // pattern) — this only checks the buttons are there.
+    await tester.pumpWidget(const MaterialApp(home: MusicMetadataScanPage()));
+    await pumpUntilScanDone(tester);
+
+    expect(find.byTooltip('Export metadata CSV'), findsOneWidget);
+    expect(find.byTooltip('Import filled-in CSV'), findsOneWidget);
+    expect(find.byTooltip('Scan again'), findsOneWidget);
+  });
+
   testWidgets('the refresh action re-runs the scan', (tester) async {
     await writeFile('a.mp3');
 

@@ -1,7 +1,20 @@
 # Changelog
 
+## [0.2.80] - 2026-09-18
+- Wishlist: tapping an item now folds it open in place for editing — title, labels/quick-priority and description become editable right there, exactly like a home-list task tile — instead of popping up an edit dialog. The "Send to Claude" robot button (added a couple releases back, but easy to miss behind a swipe) now shows directly in that folded-open row next to "Move to release group", so it's visible without swiping first
+
+## [0.2.79] - 2026-09-18
+- Wishlist: no more dev-only "Learn to sail" placeholder or backlog backfill — both BestToDo's and Best Music's Wishlist tools now genuinely start empty (in dev builds too), instead of quietly repopulating with demo/backlog items when the list is cleared for testing
+
+## [0.2.78] - 2026-09-18
+- Wishlist: BestToDo and Best Music now actually share wishlist items instead of each keeping its own separate local copy. Since the two apps are sandboxed from each other on Android (separate `applicationId`s), items are synced through one file under shared external storage instead of each app's private storage — a "Connect" banner (only shown once, and only while not yet connected) requests the "All files access" permission both apps already use for their Music folders. Once connected, adding/editing/deleting a wishlist item in either app shows up in the other next time its Wishlist tool is opened
+- Local build: 2026-09-18 09:25
+- Build duration (windows): 52s
+
 ## [0.2.77] - 2026-09-18
-- Wishlist: tapping an item now folds it open in place for editing — title, labels/quick-priority and description become editable right there, exactly like a home-list task tile — instead of popping up an edit dialog. The "Send to Claude" robot button (added last release, but easy to miss behind a swipe) now shows directly in that folded-open row next to "Move to release group", so it's visible without swiping first
+- Music Player/Best Music: the Metadata Scan page can now export every scanned track's metadata to a CSV (share sheet) to hand to an AI (or edit by hand) for filling in whatever's missing, then import the filled-in file back in — matched to the right songs automatically, blank cells left alone so nothing already known gets erased
+- Local build: 2026-09-18 08:45
+- Build duration (windows): 52s
 
 ## [0.2.76] - 2026-09-18
 - Wishlist items now get the "Claude" robot button too, not just the main task list: swipe a wishlist item open (same panel as Build/Share/Copy/Export/Delete) to fire your configured Claude Routine with that item's title/description/labels as context, starting a real Claude Code cloud session, exactly like "Send to Claude" already does for regular tasks
