@@ -3724,7 +3724,8 @@ mirror are exercised in `testWidgets` — both go through a real OS file picker/
 test seam in this codebase, so only the pure `MusicMetadataCsv`/`applyMetadataRows` logic
 underneath is unit tested.
 
-### 10.6h Best Music Wishlist, cross-app sync (0.2.75, actually shared across both apps 0.2.78)
+### 10.6h Best Music Wishlist, cross-app sync (0.2.75, actually shared across both apps 0.2.78,
+no more inherited backlog + checkbox Best Music 0.2.83 — see §10.6i for the version split)
 Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
 BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
 records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
@@ -3737,16 +3738,29 @@ import, rather than each keeping its own copy.
 Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
 (release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
 multi-select) — those are specific to BestToDo's own development workflow, not something Best
-Music's users need. The list itself renders nothing but each item's title (struck through once
-done) — no leading checkbox, no priority/tag chips, no trailing icon, literally a plain list of
-items — and tapping one pushes a full-page editor showing every field at once: a "Done" switch,
-priority as three `ChoiceChip`s, tags via the shared `LabelPickerField`, and a multi-line
-description field. The app bar's check icon saves; a delete icon (edit mode only) confirms then
-removes the item. Adding is the same editor with no item, reached via the page's `+` FAB. Sorting
-mirrors BestToDo's default: open items before done ones, then by priority, otherwise list order.
-`ItemViews.wishlist` (the same shared query BestToDo's Wishlist filters through) is the
-visibility gate, so demo-seed hiding and the isWish/isVisibleInMainViews rules apply identically
-in both apps.
+Music's users need. Each row is just a leading `Checkbox` (toggles `isDone`/`completedAt` and
+saves immediately, no editor needed — Best Music 0.2.83; the original "no icons at all" design
+was amended once actually asked for) and the title (struck through once done) — no priority/tag chips, no
+trailing icon. Tapping the title itself pushes a full-page editor for everything else: a "Done"
+switch (kept there too, alongside the list's own checkbox), priority as three `ChoiceChip`s, tags
+via the shared `LabelPickerField`, and a multi-line description field. The app bar's check icon
+saves; a delete icon (edit mode only) confirms then removes the item. Adding is the same editor
+with no item, reached via the page's `+` FAB. Sorting mirrors BestToDo's default: open items
+before done ones, then by priority, otherwise list order. `ItemViews.wishlist` (the same shared
+query BestToDo's Wishlist filters through) is the visibility gate, so demo-seed hiding and the
+isWish/isVisibleInMainViews rules apply identically in both apps.
+
+**No inherited BestToDo backlog (Best Music 0.2.83)**: `ItemRepository.loadItems()`/`StorageService.
+loadTaskList()` is shared code, and it unconditionally ran a one-time migration
+(`_maybeImportLegacyTodoItems`, `lib/services/wishlist_migration.dart`'s `legacyTodoWishlistItems`
+— 61 items straight from BestToDo's own historical `Todo.md` backlog) into whichever app's own
+`tasks.json` was empty and had never run it before — including a genuinely fresh Best Music
+install, which has its own separate app-private storage and so had never spent that one-time flag
+either. `Config.isBestMusic` (`lib/config.dart`, default `false`) is set once, first line of
+`main_music.dart`'s `main()`, before anything else runs; `_maybeImportLegacyTodoItems` returns
+immediately when it's true, so Best Music's Wishlist now starts genuinely empty on a fresh
+install, same as its dev-build behavior (see "Empty by default" below) — the migration itself,
+and BestToDo's own behavior, are untouched.
 
 **Cross-app sync (0.2.78)**: BestToDo and Best Music are two separately-sandboxed Android apps
 (different `applicationId`, §10.6f) — `getApplicationDocumentsDirectory()` (what

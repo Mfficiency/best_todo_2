@@ -18,6 +18,18 @@ class Config {
   /// Uses the `dart.vm.product` flag to detect production builds.
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
+  /// True only in the Best Music build (set once, at the very top of
+  /// `main_music.dart`'s `main()`, before anything else runs). Both apps
+  /// share this codebase and its generic storage/services layer, but a
+  /// handful of behaviors are specific to one app's users — e.g.
+  /// `StorageService`'s one-time Todo.md backlog import, which makes sense
+  /// for BestToDo's own history and none at all for a music player's
+  /// wishlist. Runtime-only, never persisted (which app is running isn't a
+  /// user setting), so it's just a plain static default of `false` that
+  /// tests never need to touch unless they're specifically exercising
+  /// Best-Music-only behavior.
+  static bool isBestMusic = false;
+
   /// Whether every demo/dev-seed item (see `demoToken` in `label_utils.dart`)
   /// is hidden from every view, ahead of and independent from any Settings →
   /// Filtering rules configuration. Defaults to hidden outside dev builds —

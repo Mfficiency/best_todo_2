@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/music_wishlist_page.dart';
@@ -7,9 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
-/// Best Music's Wishlist tool: a plain, icon-free list over the same
-/// [Task] records (flagged [Task.isWish]) BestToDo's own Wishlist writes to
-/// `tasks.json`, so items are compatible across both apps.
+/// Best Music's Wishlist tool: a plain list over the same [Task] records
+/// (flagged [Task.isWish]) BestToDo's own Wishlist writes to `tasks.json`,
+/// so items are compatible across both apps — each row is just a checkbox
+/// and a title, with no other chrome.
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.path);
   final String path;
@@ -24,10 +26,17 @@ void main() {
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
-    // Opt out of the one-time Todo.md import so tests only see their own
-    // items.
+    // Real Best Music behavior: StorageService skips its BestToDo-only
+    // Todo.md backlog import entirely when this is set (see main_music.dart).
+    Config.isBestMusic = true;
+    // Also opt out via the flag file, so tests that don't care about the
+    // import either way still only see their own items.
     await File('${tempDir.path}/${StorageService.wishlistImportFlagFileName}')
         .writeAsString('done');
+  });
+
+  tearDown(() {
+    Config.isBestMusic = false;
   });
 
   /// Pumps rounds of real-event-loop delay + frame pumps until [finder]
@@ -65,7 +74,8 @@ void main() {
     await pumpUntilFound(tester, marker);
   }
 
-  testWidgets('shows only wish-flagged items, as plain titles with no icons',
+  testWidgets(
+      'shows only wish-flagged items, as a checkbox and title with no other chrome',
       (tester) async {
     final wish = Task(
       title: 'Learn to sail',
@@ -81,8 +91,44 @@ void main() {
     expect(find.text('Buy milk'), findsNothing);
 
     final tile = tester.widget<ListTile>(find.byType(ListTile).first);
-    expect(tile.leading, isNull);
+    expect(tile.leading, isA<Checkbox>());
     expect(tile.trailing, isNull);
+    final checkbox = tile.leading as Checkbox;
+    expect(checkbox.value, isFalse);
+  });
+
+  testWidgets(
+      'tapping the checkbox marks an item done and persists it, without '
+      'opening the editor', (tester) async {
+    final wish = Task(
+      title: 'Mark me done',
+      isWish: true,
+      createdAt: DateTime.now(),
+    );
+    await pumpWishlist(tester,
+        tasks: [wish], marker: find.text('Mark me done'));
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await settleWrites(tester);
+
+    expect(find.text('Edit wishlist item'), findsNothing);
+    final tile = tester.widget<ListTile>(find.byType(ListTile).first);
+    final checkbox = tile.leading as Checkbox;
+    expect(checkbox.value, isTrue);
+    expect((tile.title as Text).style?.decoration, TextDecoration.lineThrough);
+
+    final saved = await tester.runAsync(() => StorageService().loadTaskList());
+    expect(saved!.single.isDone, isTrue);
+    expect(saved.single.completedAt, isNotNull);
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await settleWrites(tester);
+    final unsaved =
+        await tester.runAsync(() => StorageService().loadTaskList());
+    expect(unsaved!.single.isDone, isFalse);
+    expect(unsaved.single.completedAt, isNull);
   });
 
   testWidgets('empty state shown when there are no wishlist items',

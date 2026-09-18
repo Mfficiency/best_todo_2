@@ -20,9 +20,10 @@ import 'wishlist_sync_banner.dart';
 /// shared external-storage file rather than each app's own sandboxed
 /// storage (see that file's doc). Unlike BestToDo's Wishlist, this page
 /// carries none of that tool's build-tracking chrome (release-group
-/// sections, GitHub "Send to build", swipe menus): the list itself shows
-/// nothing but each item's title, no icons at all, and tapping a title
-/// opens every field — done, priority, tags, description — in one editor.
+/// sections, GitHub "Send to build", swipe menus): each row is just a
+/// checkbox (mark done right from the list) and a title, and tapping the
+/// title opens every other field — priority, tags, description — in one
+/// editor.
 class MusicWishlistPage extends StatefulWidget {
   const MusicWishlistPage({super.key});
 
@@ -112,6 +113,14 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
     return wishes;
   }
 
+  void _toggleDone(Task item) {
+    setState(() {
+      item.isDone = !item.isDone;
+      item.completedAt = item.isDone ? DateTime.now() : null;
+    });
+    _save();
+  }
+
   Future<void> _openItem([Task? item]) async {
     final result = await Navigator.of(context).push<_MusicWishItemResult>(
       MaterialPageRoute(builder: (_) => _MusicWishItemPage(item: item)),
@@ -187,6 +196,10 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
                         itemBuilder: (context, index) {
                           final item = wishes[index];
                           return ListTile(
+                            leading: Checkbox(
+                              value: item.isDone,
+                              onChanged: (_) => _toggleDone(item),
+                            ),
                             title: Text(
                               item.title,
                               style: TextStyle(
