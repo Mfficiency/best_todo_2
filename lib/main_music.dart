@@ -34,6 +34,11 @@ Future<void> _initStep(String label, Future<void> Function() step) async {
 }
 
 Future<void> main() async {
+  // Set before anything else runs (and never persisted): the generic
+  // storage layer this app shares with BestToDo reads it to skip
+  // BestToDo-only behavior, e.g. the Wishlist's one-time Todo.md backlog
+  // import (see StorageService._maybeImportLegacyTodoItems).
+  Config.isBestMusic = true;
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
   await _initStep('config', Config.load);

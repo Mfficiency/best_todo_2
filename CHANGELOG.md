@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.78] - 2026-09-18
+- Best Music's Wishlist now genuinely starts empty on a fresh install: it was silently inheriting BestToDo's own historical feature-request backlog (a one-time import both apps' generic storage layer shared) even outside dev builds. Wishlist items also get a checkbox now, so you can mark one done right from the list instead of opening it first
+
 ## [0.2.77] - 2026-09-18
 - Wishlist: no more dev-only "Learn to sail" placeholder or backlog backfill — both BestToDo's and Best Music's Wishlist tools now genuinely start empty (in dev builds too), instead of quietly repopulating with demo/backlog items when the list is cleared for testing
 

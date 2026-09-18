@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/wishlist_migration.dart';
@@ -20,6 +21,10 @@ void main() {
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+  });
+
+  tearDown(() {
+    Config.isBestMusic = false;
   });
 
   File flagFile() =>
@@ -93,5 +98,18 @@ void main() {
     final normalized =
         legacyTodoWishlistItems.map((i) => normalizeWishlistTitle(i.title));
     expect(normalized.toSet().length, legacyTodoWishlistItems.length);
+  });
+
+  test(
+      'Best Music never imports the backlog, even on a genuinely fresh '
+      'install (no flag file at all)', () async {
+    Config.isBestMusic = true;
+
+    final items = await StorageService().loadWishlist();
+
+    expect(items, isEmpty);
+    // No flag file needed — Best Music always skips this BestToDo-only
+    // import, so there is nothing to guard against re-running.
+    expect(flagFile().existsSync(), isFalse);
   });
 }
