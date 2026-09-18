@@ -2,6 +2,8 @@
 
 ## [0.2.77] - 2026-09-18
 - Music Player/Best Music: the Metadata Scan page can now export every scanned track's metadata to a CSV (share sheet) to hand to an AI (or edit by hand) for filling in whatever's missing, then import the filled-in file back in — matched to the right songs automatically, blank cells left alone so nothing already known gets erased
+- Local build: 2026-09-18 08:45
+- Build duration (windows): 52s
 
 ## [0.2.76] - 2026-09-18
 - Wishlist items now get the "Claude" robot button too, not just the main task list: swipe a wishlist item open (same panel as Build/Share/Copy/Export/Delete) to fire your configured Claude Routine with that item's title/description/labels as context, starting a real Claude Code cloud session, exactly like "Send to Claude" already does for regular tasks
