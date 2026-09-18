@@ -158,7 +158,14 @@ class MusicLibraryService {
   /// [Config.musicExcludedSubfolders]. Persists the result and updates
   /// [tracks]. A scan failure (folder missing, permission denied) leaves the
   /// previously cached library untouched instead of wiping it out.
-  Future<List<Track>> rescan() async {
+  ///
+  /// [onTrackScanned] fires once per supported audio file found, with the
+  /// running count and that file's final [Track] (already merged with its
+  /// previous dateAdded/playCount/manual edits, if any) — how
+  /// `MusicMetadataScanPage` reports live scan progress without waiting for
+  /// the whole folder to finish.
+  Future<List<Track>> rescan(
+      {void Function(int scanned, Track track)? onTrackScanned}) async {
     final root = Config.musicFolder.trim();
     if (root.isEmpty) {
       LogService.add('Music', 'rescan: no music folder configured');
@@ -185,6 +192,13 @@ class MusicLibraryService {
       }
       final excluded = Config.musicExcludedSubfolders;
       final normalizedRoot = normalizePath(root);
+      // Keyed by id so each freshly-scanned track can inherit its previous
+      // dateAdded/playCount (always) and, when it was manually edited via
+      // the Track info page, its title/artist/album/genre/year too — a
+      // rescan must never quietly discard a manual fix with a fresh
+      // (possibly still empty) tag read.
+      final previousById = {for (final t in tracks.value) t.id: t};
+      final now = DateTime.now();
       final found = <Track>[];
       var filesSeen = 0;
       var skippedUnsupportedExt = 0;
@@ -205,19 +219,16 @@ class MusicLibraryService {
           skippedExcludedDir++;
           continue;
         }
-        found.add(await _buildTrack(entity.path, ext));
-      }
-      // Preserve dateAdded/playCount for tracks that were already known —
-      // a rescan refreshes tags/paths, it shouldn't reset "when was this
-      // added" or "how many times has this been played".
-      final previousById = {for (final t in tracks.value) t.id: t};
-      final now = DateTime.now();
-      for (var i = 0; i < found.length; i++) {
-        final previous = previousById[found[i].id];
-        found[i] = found[i].copyWith(
-          dateAdded: previous?.dateAdded ?? now,
-          playCount: previous?.playCount ?? 0,
-        );
+        var track = await _buildTrack(entity.path, ext);
+        final previous = previousById[track.id];
+        track = (previous != null && previous.metadataEdited)
+            ? previous.copyWith(durationMs: track.durationMs ?? previous.durationMs)
+            : track.copyWith(
+                dateAdded: previous?.dateAdded ?? now,
+                playCount: previous?.playCount ?? 0,
+              );
+        found.add(track);
+        onTrackScanned?.call(found.length, track);
       }
       found.sort((a, b) =>
           a.title.toLowerCase().compareTo(b.title.toLowerCase()));
@@ -263,6 +274,44 @@ class MusicLibraryService {
     } catch (_) {
       return Track.local(filePath: filePath, title: fallbackTitle);
     }
+  }
+
+  /// Sets [trackId]'s title/artist/album/genre/year to exactly the given
+  /// values (the Track info page's "fill in missing metadata" — not the
+  /// file's actual tags, just this app's cached record of them, which is
+  /// all rule/smart playlists read) and marks it [Track.metadataEdited] so
+  /// a later [rescan] keeps these instead of overwriting them with a fresh
+  /// tag read. No-op if the track isn't currently in the library.
+  Future<void> updateTrackMetadata(
+    String trackId, {
+    required String title,
+    required String artist,
+    required String album,
+    required String genre,
+    int? year,
+  }) async {
+    final index = tracks.value.indexWhere((t) => t.id == trackId);
+    if (index < 0) return;
+    final existing = tracks.value[index];
+    final updated = Track(
+      id: existing.id,
+      source: existing.source,
+      filePath: existing.filePath,
+      remoteId: existing.remoteId,
+      title: title,
+      artist: artist,
+      album: album,
+      durationMs: existing.durationMs,
+      genre: genre,
+      year: year,
+      dateAdded: existing.dateAdded,
+      playCount: existing.playCount,
+      metadataEdited: true,
+    );
+    final list = List<Track>.of(tracks.value);
+    list[index] = updated;
+    tracks.value = list;
+    await _save();
   }
 
   /// Bumps [trackId]'s play count and persists it. No-op if the track isn't
