@@ -79,6 +79,25 @@ void main() {
     expect(MusicPlaylistService.instance.byId(playlist.id), isNull);
   });
 
+  test('addAllTo adds every new id in one batch, skipping ones already present',
+      () async {
+    await MusicPlaylistService.instance.load();
+    final playlist =
+        await MusicPlaylistService.instance.createPlaylist('Road trip', ['t1']);
+
+    await MusicPlaylistService.instance
+        .addAllTo(playlist.id, ['t1', 't2', 't3']);
+
+    expect(MusicPlaylistService.instance.byId(playlist.id)?.trackIds,
+        ['t1', 't2', 't3']);
+  });
+
+  test('addAllTo is a no-op for an unknown playlist id', () async {
+    await MusicPlaylistService.instance.load();
+    await MusicPlaylistService.instance.addAllTo('nope', ['t1']);
+    expect(MusicPlaylistService.instance.byId('nope'), isNull);
+  });
+
   test('deletePlaylist refuses to remove a system playlist', () async {
     await MusicPlaylistService.instance.load();
     await MusicPlaylistService.instance.deletePlaylist(MusicPlaylist.favoritesId);

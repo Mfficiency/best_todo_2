@@ -116,6 +116,24 @@ class MusicPlaylistService {
     await _save();
   }
 
+  /// Adds every id in [trackIds] not already in [playlistId] — one save and
+  /// one notify for the whole batch, unlike calling [addTo] in a loop. Used
+  /// by the playlist detail page's "+" multi-select add-songs flow.
+  Future<void> addAllTo(String playlistId, Iterable<String> trackIds) async {
+    final playlist = byId(playlistId);
+    if (playlist == null) return;
+    var changed = false;
+    for (final trackId in trackIds) {
+      if (!playlist.trackIds.contains(trackId)) {
+        playlist.trackIds.add(trackId);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    playlists.value = [...playlists.value];
+    await _save();
+  }
+
   /// Creates a new (non-system) playlist, e.g. from an M3U import. Returns
   /// the created playlist.
   Future<MusicPlaylist> createPlaylist(String name, List<String> trackIds,

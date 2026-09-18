@@ -62,10 +62,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Choose music folder'), findsOneWidget);
-    expect(find.text('Library'), findsNothing);
+    expect(find.text('Tracks'), findsNothing);
   });
 
-  testWidgets('shows Library/Playlists tabs once a folder is set',
+  testWidgets(
+      'shows Favourites/Playlists/Tracks/Artists/Folders tabs once a folder is set',
       (tester) async {
     Config.musicFolder = '/does/not/matter/for/this/test';
     // Pre-populate the library so initState's "scan if empty" check finds
@@ -79,8 +80,11 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Favourites'), findsOneWidget);
     expect(find.text('Playlists'), findsOneWidget);
+    expect(find.text('Tracks'), findsOneWidget);
+    expect(find.text('Artists'), findsOneWidget);
+    expect(find.text('Folders'), findsOneWidget);
     expect(find.text('Choose music folder'), findsNothing);
   });
 
@@ -211,7 +215,7 @@ void main() {
     });
 
     testWidgets(
-        "Library tab's Add to playlist sheet toggles a track's membership",
+        "Tracks tab's more-options menu Add to playlist toggles a track's membership",
         (tester) async {
       Config.musicFolder = '/does/not/matter/for/this/test';
       final song =
@@ -225,7 +229,9 @@ void main() {
 
       await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Add to playlist'));
+      await tester.tap(find.byTooltip('More options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add to playlist'));
       await tester.pumpAndSettle();
 
       expect(find.text('Road trip'), findsOneWidget);
@@ -236,7 +242,7 @@ void main() {
     });
 
     testWidgets(
-        'playlist detail page removes a track when its remove button is tapped',
+        'playlist detail page removes a track via the more-options menu',
         (tester) async {
       Config.musicFolder = '/does/not/matter/for/this/test';
       final song =
@@ -256,7 +262,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Song'), findsOneWidget);
-      await tester.tap(find.byTooltip('Remove from playlist'));
+      await tester.tap(find.byTooltip('More options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove from playlist'));
       await drainIo(tester);
       await tester.pumpAndSettle();
 
@@ -265,7 +273,7 @@ void main() {
     });
 
     testWidgets(
-        'favorites/disliked and smart playlists never show a remove button',
+        'favorites/disliked and smart playlists never offer Remove from playlist',
         (tester) async {
       Config.musicFolder = '/does/not/matter/for/this/test';
       final song =
@@ -284,7 +292,149 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Song'), findsOneWidget);
-      expect(find.byTooltip('Remove from playlist'), findsNothing);
+      // Favorites is a system playlist — no "+" add-songs button either.
+      expect(find.byTooltip('Add songs'), findsNothing);
+      await tester.tap(find.byTooltip('More options'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remove from playlist'), findsNothing);
+    });
+
+    testWidgets(
+        "playlist detail page's + button adds selected songs in one go",
+        (tester) async {
+      Config.musicFolder = '/does/not/matter/for/this/test';
+      final song1 =
+          Track.local(filePath: '/does/not/matter/song1.mp3', title: 'Song 1');
+      final song2 =
+          Track.local(filePath: '/does/not/matter/song2.mp3', title: 'Song 2');
+      MusicLibraryService.instance.tracks.value = [song1, song2];
+      MusicPlaylistService.instance.playlists.value = [
+        MusicPlaylist.favorites(),
+        MusicPlaylist.disliked(),
+        MusicPlaylist(id: 'p1', name: 'Road trip'),
+      ];
+
+      await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Playlists'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Road trip'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Add songs'), findsOneWidget);
+      await tester.tap(find.byTooltip('Add songs'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song 1'), findsOneWidget);
+      expect(find.text('Song 2'), findsOneWidget);
+      await tester.tap(find.text('Song 1'));
+      await tester.tap(find.text('Song 2'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Add selected'));
+      await drainIo(tester);
+      await tester.pumpAndSettle();
+
+      expect(MusicPlaylistService.instance.byId('p1')!.trackIds,
+          containsAll([song1.id, song2.id]));
+    });
+  });
+
+  group('Favourites/Artists/Folders tabs', () {
+    testWidgets('Favourites tab shows only favorited tracks', (tester) async {
+      Config.musicFolder = '/does/not/matter/for/this/test';
+      final loved =
+          Track.local(filePath: '/does/not/matter/loved.mp3', title: 'Loved');
+      final other =
+          Track.local(filePath: '/does/not/matter/other.mp3', title: 'Other');
+      MusicLibraryService.instance.tracks.value = [loved, other];
+      MusicPlaylistService.instance.playlists.value = [
+        MusicPlaylist.favorites()..trackIds.add(loved.id),
+        MusicPlaylist.disliked(),
+      ];
+
+      await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Favourites'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Loved'), findsOneWidget);
+      expect(find.text('Other'), findsNothing);
+    });
+
+    testWidgets('Artists tab groups tracks by artist and drills in',
+        (tester) async {
+      Config.musicFolder = '/does/not/matter/for/this/test';
+      MusicLibraryService.instance.tracks.value = [
+        Track.local(
+            filePath: '/does/not/matter/a.mp3', title: 'Song A', artist: 'Alice'),
+        Track.local(
+            filePath: '/does/not/matter/b.mp3', title: 'Song B', artist: 'Alice'),
+        Track.local(filePath: '/does/not/matter/c.mp3', title: 'Song C'),
+      ];
+
+      await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Artists'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('2 tracks'), findsOneWidget);
+      expect(find.text('Unknown artist'), findsOneWidget);
+
+      await tester.tap(find.text('Alice'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song A'), findsOneWidget);
+      expect(find.text('Song B'), findsOneWidget);
+      expect(find.text('Song C'), findsNothing);
+    });
+
+    testWidgets('Folders tab groups tracks by their folder and drills in',
+        (tester) async {
+      Config.musicFolder = '/music';
+      MusicLibraryService.instance.tracks.value = [
+        Track.local(filePath: '/music/Road Trip/song1.mp3', title: 'Song 1'),
+        Track.local(filePath: '/music/Road Trip/song2.mp3', title: 'Song 2'),
+        Track.local(filePath: '/music/root.mp3', title: 'Root song'),
+      ];
+
+      await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Folders'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Road Trip'), findsOneWidget);
+      expect(find.text('(Music folder)'), findsOneWidget);
+
+      await tester.tap(find.text('Road Trip'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song 1'), findsOneWidget);
+      expect(find.text('Song 2'), findsOneWidget);
+      expect(find.text('Root song'), findsNothing);
+    });
+  });
+
+  group('search', () {
+    testWidgets('search icon filters tracks by title/artist and plays a result',
+        (tester) async {
+      Config.musicFolder = '/does/not/matter/for/this/test';
+      MusicLibraryService.instance.tracks.value = [
+        Track.local(
+            filePath: '/does/not/matter/a.mp3', title: 'Bohemian Rhapsody', artist: 'Queen'),
+        Track.local(filePath: '/does/not/matter/b.mp3', title: 'Yesterday', artist: 'The Beatles'),
+      ];
+
+      await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Search music'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'queen');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bohemian Rhapsody'), findsOneWidget);
+      expect(find.text('Yesterday'), findsNothing);
     });
   });
 }

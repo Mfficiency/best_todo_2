@@ -25,6 +25,7 @@ import 'now_playing_page.dart';
 import 'rule_playlist_editor_page.dart';
 import 'startup_times_page.dart';
 import 'subpage_app_bar.dart';
+import 'track_metadata_page.dart';
 
 /// Tools → Music Player: browse/play tracks scanned from
 /// [Config.musicFolder] (and, once configured, a Subsonic server), manage
@@ -53,7 +54,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     // The MP3 Downloader's folder is the common case for where music already
     // lives, so default straight to it instead of asking the user to pick
     // the same folder twice.
@@ -242,6 +243,14 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         title: widget.standalone ? 'Best Music' : 'Music Player',
         actions: [
           IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Search music',
+            onPressed: () => showSearch(
+              context: context,
+              delegate: _MusicSearchDelegate(),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.shuffle),
             tooltip: 'Shuffle play',
             onPressed: () async {
@@ -272,9 +281,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         ],
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           tabs: const [
-            Tab(text: 'Library'),
+            Tab(text: 'Favourites'),
             Tab(text: 'Playlists'),
+            Tab(text: 'Tracks'),
+            Tab(text: 'Artists'),
+            Tab(text: 'Folders'),
           ],
         ),
       ),
@@ -284,8 +297,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             child: TabBarView(
               controller: _tabController,
               children: const [
-                _LibraryTab(),
+                _FavouritesTab(),
                 _PlaylistsTab(),
+                _TracksTab(),
+                _ArtistsTab(),
+                _FoldersTab(),
               ],
             ),
           ),
@@ -296,8 +312,62 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   }
 }
 
-class _LibraryTab extends StatelessWidget {
-  const _LibraryTab();
+/// Every track whose [Track.title]/[Track.artist] (or filename, as a
+/// fallback) contains [query], case-insensitively. Used by
+/// [_MusicSearchDelegate].
+List<Track> _filterTracks(List<Track> tracks, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return tracks;
+  return tracks
+      .where((t) =>
+          t.title.toLowerCase().contains(q) ||
+          t.fileBaseName.toLowerCase().contains(q) ||
+          t.artist.toLowerCase().contains(q))
+      .toList();
+}
+
+/// Library-wide search reached from the app bar's search icon — Samsung
+/// Music style: type to filter by title or artist, tap a result to start
+/// playing it from that point.
+class _MusicSearchDelegate extends SearchDelegate<void> {
+  Widget _buildTrackResults(BuildContext context) {
+    final tracks = _filterTracks(MusicLibraryService.instance.tracks.value, query);
+    if (tracks.isEmpty) {
+      return Center(
+        child: Text(query.trim().isEmpty
+            ? 'Search by title or artist'
+            : 'No matches for "$query"'),
+      );
+    }
+    return TrackListView(tracks: tracks);
+  }
+
+  @override
+  List<Widget>? buildActions(BuildContext context) => [
+        if (query.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.clear),
+            tooltip: 'Clear search',
+            onPressed: () => query = '',
+          ),
+      ];
+
+  @override
+  Widget? buildLeading(BuildContext context) => IconButton(
+        icon: const BackButtonIcon(),
+        tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+        onPressed: () => close(context, null),
+      );
+
+  @override
+  Widget buildResults(BuildContext context) => _buildTrackResults(context);
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildTrackResults(context);
+}
+
+class _TracksTab extends StatelessWidget {
+  const _TracksTab();
 
   @override
   Widget build(BuildContext context) {
@@ -309,6 +379,158 @@ class _LibraryTab extends StatelessWidget {
         }
         return TrackListView(tracks: tracks);
       },
+    );
+  }
+}
+
+/// Shortcut tab straight to the Favorites system playlist — the same track
+/// list also reachable from Playlists → Favorites, just one tap away like
+/// Samsung Music's own Favourites tab.
+class _FavouritesTab extends StatelessWidget {
+  const _FavouritesTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<Track>>(
+      valueListenable: MusicLibraryService.instance.tracks,
+      builder: (context, _, __) {
+        return ValueListenableBuilder<List<MusicPlaylist>>(
+          valueListenable: MusicPlaylistService.instance.playlists,
+          builder: (context, __, ___) {
+            final tracks = MusicPlaylistService.instance
+                .resolvedTracks(MusicPlaylistService.instance.favorites);
+            if (tracks.isEmpty) {
+              return const Center(
+                child: Text(
+                    'No favorites yet. Tap the heart on a track to add one.'),
+              );
+            }
+            return TrackListView(tracks: tracks);
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Every artist present in the library (an empty [Track.artist] groups
+/// under "Unknown artist"), sorted alphabetically with "Unknown artist"
+/// last. Tapping one opens its own filtered track list.
+class _ArtistsTab extends StatelessWidget {
+  const _ArtistsTab();
+
+  static const String _unknownArtist = 'Unknown artist';
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<Track>>(
+      valueListenable: MusicLibraryService.instance.tracks,
+      builder: (context, tracks, _) {
+        if (tracks.isEmpty) {
+          return const Center(child: Text('No tracks found. Tap refresh to rescan.'));
+        }
+        final byArtist = <String, List<Track>>{};
+        for (final track in tracks) {
+          final artist = track.artist.trim().isEmpty ? _unknownArtist : track.artist.trim();
+          byArtist.putIfAbsent(artist, () => []).add(track);
+        }
+        final artists = byArtist.keys.toList()
+          ..sort((a, b) {
+            if (a == _unknownArtist) return b == _unknownArtist ? 0 : 1;
+            if (b == _unknownArtist) return -1;
+            return a.toLowerCase().compareTo(b.toLowerCase());
+          });
+        return ListView.builder(
+          itemCount: artists.length,
+          itemBuilder: (context, index) {
+            final artist = artists[index];
+            final artistTracks = byArtist[artist]!;
+            return ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: Text(artist),
+              subtitle: Text(
+                  '${artistTracks.length} track${artistTracks.length == 1 ? '' : 's'}'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => _FilteredTracksPage(title: artist, tracks: artistTracks),
+              )),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// The folder (relative to [Config.musicFolder]) a local [track] lives in,
+/// for grouping in the Folders tab. Tracks right under the music folder
+/// itself group under "(Music folder)"; a Subsonic track (no [Track.filePath])
+/// groups under "Other".
+String folderLabelOf(Track track) {
+  final path = track.filePath;
+  if (path == null) return 'Other';
+  final root = MusicLibraryService.normalizePath(Config.musicFolder.trim());
+  final normalized = MusicLibraryService.normalizePath(path);
+  var rel = normalized.startsWith(root) ? normalized.substring(root.length) : normalized;
+  if (rel.startsWith('/')) rel = rel.substring(1);
+  final slash = rel.lastIndexOf('/');
+  final folder = slash >= 0 ? rel.substring(0, slash) : '';
+  return folder.isEmpty ? '(Music folder)' : folder;
+}
+
+/// Every folder tracks were scanned from, sorted alphabetically — the
+/// leading "(" on "(Music folder)" sorts it ahead of any real subfolder
+/// name. Tapping one opens its own filtered track list.
+class _FoldersTab extends StatelessWidget {
+  const _FoldersTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<Track>>(
+      valueListenable: MusicLibraryService.instance.tracks,
+      builder: (context, tracks, _) {
+        if (tracks.isEmpty) {
+          return const Center(child: Text('No tracks found. Tap refresh to rescan.'));
+        }
+        final byFolder = <String, List<Track>>{};
+        for (final track in tracks) {
+          byFolder.putIfAbsent(folderLabelOf(track), () => []).add(track);
+        }
+        final folders = byFolder.keys.toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        return ListView.builder(
+          itemCount: folders.length,
+          itemBuilder: (context, index) {
+            final folder = folders[index];
+            final folderTracks = byFolder[folder]!;
+            return ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: Text(folder),
+              subtitle: Text(
+                  '${folderTracks.length} track${folderTracks.length == 1 ? '' : 's'}'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => _FilteredTracksPage(title: folder, tracks: folderTracks),
+              )),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Plain subpage showing a fixed track list — used by the Artists and
+/// Folders tabs to drill into one artist/folder's songs.
+class _FilteredTracksPage extends StatelessWidget {
+  const _FilteredTracksPage({required this.title, required this.tracks});
+
+  final String title;
+  final List<Track> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: buildSubpageAppBar(context, title: title),
+      body: TrackListView(tracks: tracks),
     );
   }
 }
@@ -423,26 +645,39 @@ class MusicPlaylistDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: buildSubpageAppBar(context, title: playlist.name),
-      body: ValueListenableBuilder<List<MusicPlaylist>>(
-        valueListenable: MusicPlaylistService.instance.playlists,
-        builder: (context, __, _) {
-          // A persisted playlist (list/rule) may have changed since
-          // [playlist] was captured (a rule edit, a favorite toggle); a
-          // computed smart playlist isn't in this list at all, so falls
-          // back to the one passed in — its kind/genreFilter never change.
-          final current =
-              MusicPlaylistService.instance.byId(playlist.id) ?? playlist;
-          return ValueListenableBuilder<List<Track>>(
+    return ValueListenableBuilder<List<MusicPlaylist>>(
+      valueListenable: MusicPlaylistService.instance.playlists,
+      builder: (context, __, _) {
+        // A persisted playlist (list/rule) may have changed since
+        // [playlist] was captured (a rule edit, a favorite toggle); a
+        // computed smart playlist isn't in this list at all, so falls
+        // back to the one passed in — its kind/genreFilter never change.
+        final current =
+            MusicPlaylistService.instance.byId(playlist.id) ?? playlist;
+        // Only a hand-built, non-system playlist has a fixed track list
+        // songs can actually be added to or removed from — a smart/rule
+        // playlist is recomputed, and Favorites/"Don't really like" are
+        // toggled via the heart/dislike gesture instead.
+        final editable = current.kind == PlaylistKind.list && !current.isSystem;
+        return Scaffold(
+          appBar: buildSubpageAppBar(
+            context,
+            title: current.name,
+            actions: [
+              if (editable)
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add songs',
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => AddSongsToPlaylistPage(playlistId: current.id),
+                  )),
+                ),
+            ],
+          ),
+          body: ValueListenableBuilder<List<Track>>(
             valueListenable: MusicLibraryService.instance.tracks,
             builder: (context, _, __) {
               final tracks = MusicPlaylistService.instance.resolvedTracks(current);
-              // Only a hand-built, non-system playlist has a fixed track
-              // list a song can actually be removed from — a smart/rule
-              // playlist is recomputed, and Favorites/"Don't really like"
-              // are toggled via the heart/dislike gesture instead.
-              final removable = current.kind == PlaylistKind.list && !current.isSystem;
               if (tracks.isEmpty) {
                 return Center(
                   child: Text(current.kind == PlaylistKind.rule
@@ -452,78 +687,304 @@ class MusicPlaylistDetailPage extends StatelessWidget {
               }
               return TrackListView(
                 tracks: tracks,
-                onRemove: removable
+                onRemove: editable
                     ? (track) =>
                         MusicPlaylistService.instance.removeFrom(current.id, track.id)
                     : null,
               );
             },
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-/// Shared track list used by the Library tab and playlist detail pages.
-/// Tapping a row plays the whole list starting from that track.
-class TrackListView extends StatelessWidget {
+/// Multi-select track picker reached from a playlist's "+" app bar button —
+/// every library track not already in the playlist, with a checkbox each;
+/// "Add" applies the whole selection in one go.
+class AddSongsToPlaylistPage extends StatefulWidget {
+  const AddSongsToPlaylistPage({super.key, required this.playlistId});
+
+  final String playlistId;
+
+  @override
+  State<AddSongsToPlaylistPage> createState() => _AddSongsToPlaylistPageState();
+}
+
+class _AddSongsToPlaylistPageState extends State<AddSongsToPlaylistPage> {
+  final Set<String> _selected = {};
+
+  Future<void> _confirm() async {
+    await MusicPlaylistService.instance.addAllTo(widget.playlistId, _selected);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final playlist = MusicPlaylistService.instance.byId(widget.playlistId);
+    final existing = playlist?.trackIds.toSet() ?? <String>{};
+    return ValueListenableBuilder<List<Track>>(
+      valueListenable: MusicLibraryService.instance.tracks,
+      builder: (context, allTracks, _) {
+        final candidates = allTracks.where((t) => !existing.contains(t.id)).toList();
+        return Scaffold(
+          appBar: buildSubpageAppBar(
+            context,
+            title: 'Add songs',
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.check),
+                tooltip: 'Add selected',
+                onPressed: _selected.isEmpty ? null : _confirm,
+              ),
+            ],
+          ),
+          body: candidates.isEmpty
+              ? const Center(child: Text('Every track is already in this playlist.'))
+              : ListView.builder(
+                  itemCount: candidates.length,
+                  itemBuilder: (context, index) {
+                    final track = candidates[index];
+                    return CheckboxListTile(
+                      value: _selected.contains(track.id),
+                      title: Text(track.title.isNotEmpty ? track.title : track.fileBaseName),
+                      subtitle: track.artist.isNotEmpty ? Text(track.artist) : null,
+                      onChanged: (checked) => setState(() {
+                        if (checked == true) {
+                          _selected.add(track.id);
+                        } else {
+                          _selected.remove(track.id);
+                        }
+                      }),
+                    );
+                  },
+                ),
+        );
+      },
+    );
+  }
+}
+
+/// Quick ways to reorder a [TrackListView] — mirrors the sort options
+/// Samsung Music offers on its Tracks list.
+enum TrackSortOrder { dateAddedDesc, titleAsc, artistAsc, durationDesc }
+
+String trackSortLabel(TrackSortOrder order) {
+  switch (order) {
+    case TrackSortOrder.dateAddedDesc:
+      return 'Date added';
+    case TrackSortOrder.titleAsc:
+      return 'Title';
+    case TrackSortOrder.artistAsc:
+      return 'Artist';
+    case TrackSortOrder.durationDesc:
+      return 'Duration';
+  }
+}
+
+List<Track> sortTracks(List<Track> tracks, TrackSortOrder order) {
+  final sorted = [...tracks];
+  switch (order) {
+    case TrackSortOrder.dateAddedDesc:
+      sorted.sort((a, b) {
+        final aDate = a.dateAdded;
+        final bDate = b.dateAdded;
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        return bDate.compareTo(aDate);
+      });
+      break;
+    case TrackSortOrder.titleAsc:
+      sorted.sort((a, b) {
+        final aTitle = a.title.isNotEmpty ? a.title : a.fileBaseName;
+        final bTitle = b.title.isNotEmpty ? b.title : b.fileBaseName;
+        return aTitle.toLowerCase().compareTo(bTitle.toLowerCase());
+      });
+      break;
+    case TrackSortOrder.artistAsc:
+      sorted.sort((a, b) => a.artist.toLowerCase().compareTo(b.artist.toLowerCase()));
+      break;
+    case TrackSortOrder.durationDesc:
+      sorted.sort((a, b) => (b.durationMs ?? 0).compareTo(a.durationMs ?? 0));
+      break;
+  }
+  return sorted;
+}
+
+/// Shared track list used by the Tracks/Favourites tabs, artist/folder
+/// drill-downs, search results and playlist detail pages. Tapping a row
+/// plays the whole (sorted) list starting from that track; the header row
+/// offers a quick sort menu plus shuffle/play-all, Samsung Music style.
+class TrackListView extends StatefulWidget {
   const TrackListView({super.key, required this.tracks, this.onRemove});
 
   final List<Track> tracks;
 
-  /// When set, each row gets a "Remove from playlist" button — only passed
-  /// by [MusicPlaylistDetailPage] for a hand-built playlist the track list
-  /// can actually be edited on.
+  /// When set, each row's "more options" menu gets a "Remove from
+  /// playlist" entry — only passed by [MusicPlaylistDetailPage] for a
+  /// hand-built playlist the track list can actually be edited on.
   final void Function(Track track)? onRemove;
 
   @override
+  State<TrackListView> createState() => _TrackListViewState();
+}
+
+class _TrackListViewState extends State<TrackListView> {
+  TrackSortOrder _sortOrder = TrackSortOrder.dateAddedDesc;
+
+  Future<void> _play(List<Track> tracks, {int startIndex = 0}) async {
+    await MusicPlayerService.playQueue(tracks, startIndex: startIndex);
+    if (context.mounted) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const NowPlayingPage()));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: tracks.length,
-      itemBuilder: (context, index) {
-        final track = tracks[index];
-        return ValueListenableBuilder<List<MusicPlaylist>>(
-          valueListenable: MusicPlaylistService.instance.playlists,
-          builder: (context, _, __) {
-            final isFavorite = MusicPlaylistService.instance.isFavorite(track.id);
-            return ListTile(
-              leading: const Icon(Icons.music_note),
-              title: Text(track.title.isNotEmpty ? track.title : track.fileBaseName),
-              subtitle: track.artist.isNotEmpty ? Text(track.artist) : null,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                    color: isFavorite ? Colors.pink : null,
-                    tooltip: 'Favorite',
-                    onPressed: () => MusicPlaylistService.instance.toggleFavorite(track.id),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.playlist_add),
-                    tooltip: 'Add to playlist',
-                    onPressed: () => showAddToPlaylistSheet(context, track),
-                  ),
-                  if (onRemove != null)
-                    IconButton(
-                      icon: const Icon(Icons.remove_circle_outline),
-                      tooltip: 'Remove from playlist',
-                      onPressed: () => onRemove!(track),
+    final tracks = sortTracks(widget.tracks, _sortOrder);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            children: [
+              PopupMenuButton<TrackSortOrder>(
+                tooltip: 'Sort tracks',
+                initialValue: _sortOrder,
+                onSelected: (value) => setState(() => _sortOrder = value),
+                itemBuilder: (context) => [
+                  for (final order in TrackSortOrder.values)
+                    PopupMenuItem(
+                      value: order,
+                      child: Row(
+                        children: [
+                          if (order == _sortOrder)
+                            const Icon(Icons.check, size: 18)
+                          else
+                            const SizedBox(width: 18),
+                          const SizedBox(width: 8),
+                          Text(trackSortLabel(order)),
+                        ],
+                      ),
                     ),
                 ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(trackSortLabel(_sortOrder)),
+                      const Icon(Icons.arrow_drop_down),
+                    ],
+                  ),
+                ),
               ),
-              onTap: () async {
-                await MusicPlayerService.playQueue(tracks, startIndex: index);
-                if (context.mounted) {
-                  Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const NowPlayingPage()));
-                }
-              },
-            );
-          },
-        );
-      },
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.shuffle),
+                tooltip: 'Shuffle these tracks',
+                onPressed: () =>
+                    _play(MusicPlaylistService.instance.weightedShuffle(tracks)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.play_arrow),
+                tooltip: 'Play all',
+                onPressed: () => _play(tracks),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: tracks.length,
+            itemBuilder: (context, index) {
+              final track = tracks[index];
+              return ValueListenableBuilder<List<MusicPlaylist>>(
+                valueListenable: MusicPlaylistService.instance.playlists,
+                builder: (context, _, __) {
+                  final isFavorite = MusicPlaylistService.instance.isFavorite(track.id);
+                  return ListTile(
+                    leading: const Icon(Icons.music_note),
+                    title: Text(track.title.isNotEmpty ? track.title : track.fileBaseName),
+                    subtitle: track.artist.isNotEmpty ? Text(track.artist) : null,
+                    trailing: PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert),
+                      tooltip: 'More options',
+                      onSelected: (value) async {
+                        switch (value) {
+                          case 'favorite':
+                            await MusicPlaylistService.instance.toggleFavorite(track.id);
+                            break;
+                          case 'add':
+                            if (context.mounted) {
+                              await showAddToPlaylistSheet(context, track);
+                            }
+                            break;
+                          case 'remove':
+                            widget.onRemove?.call(track);
+                            break;
+                          case 'info':
+                            if (context.mounted) {
+                              Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => TrackMetadataPage(trackId: track.id),
+                              ));
+                            }
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'favorite',
+                          child: Row(
+                            children: [
+                              Icon(
+                                isFavorite ? Icons.favorite : Icons.favorite_border,
+                                size: 18,
+                                color: isFavorite ? Colors.pink : null,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(isFavorite ? 'Remove from Favorites' : 'Add to Favorites'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'add',
+                          child: Row(children: [
+                            Icon(Icons.playlist_add, size: 18),
+                            SizedBox(width: 8),
+                            Text('Add to playlist'),
+                          ]),
+                        ),
+                        if (widget.onRemove != null)
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: Row(children: [
+                              Icon(Icons.remove_circle_outline, size: 18),
+                              SizedBox(width: 8),
+                              Text('Remove from playlist'),
+                            ]),
+                          ),
+                        const PopupMenuItem(
+                          value: 'info',
+                          child: Row(children: [
+                            Icon(Icons.info_outline, size: 18),
+                            SizedBox(width: 8),
+                            Text('Track info'),
+                          ]),
+                        ),
+                      ],
+                    ),
+                    onTap: () => _play(tracks, startIndex: index),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -531,7 +992,7 @@ class TrackListView extends StatelessWidget {
 /// Prompts for a playlist name (Cancel/Create). The dialog owns its own
 /// [TextEditingController] in a dedicated [StatefulWidget] rather than one
 /// disposed right after `showDialog` returns — the exit animation still
-/// builds the field after the pop.
+/// builds the fields after the pop.
 Future<String?> promptPlaylistName(BuildContext context) {
   return showDialog<String>(
     context: context,

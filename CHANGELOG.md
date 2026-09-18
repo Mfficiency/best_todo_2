@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.79] - 2026-09-18
+- Music Player/Best Music: redesigned around Samsung Music's layout — Favourites/Playlists/Tracks/Artists/Folders tabs (Tracks was "Library"), a search icon to find any track by title/artist, a quick sort menu (Date added/Title/Artist/Duration) plus shuffle/play-all on every track list, each track's separate action icons folded into one more-options (⋮) menu (Favorite, Add to playlist, Track info, and Remove from playlist inside a hand-built playlist), and a "+" button on a hand-built playlist to pick and add several songs at once instead of one at a time from the library
+
 ## [0.2.78] - 2026-09-18
 - Wishlist: BestToDo and Best Music now actually share wishlist items instead of each keeping its own separate local copy. Since the two apps are sandboxed from each other on Android (separate `applicationId`s), items are synced through one file under shared external storage instead of each app's private storage — a "Connect" banner (only shown once, and only while not yet connected) requests the "All files access" permission both apps already use for their Music folders. Once connected, adding/editing/deleting a wishlist item in either app shows up in the other next time its Wishlist tool is opened
 - Local build: 2026-09-18 09:25
