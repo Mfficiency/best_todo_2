@@ -277,12 +277,12 @@ class MusicLibraryService {
     }
   }
 
-  /// Sets [trackId]'s title/artist/album/genre/year to exactly the given
-  /// values (the Track info page's "fill in missing metadata" — not the
-  /// file's actual tags, just this app's cached record of them, which is
-  /// all rule/smart playlists read) and marks it [Track.metadataEdited] so
-  /// a later [rescan] keeps these instead of overwriting them with a fresh
-  /// tag read. No-op if the track isn't currently in the library.
+  /// Sets [trackId]'s title/artist/album/genre/year/tags to exactly the
+  /// given values (the Track info page's "fill in missing metadata" — not
+  /// the file's actual tags, just this app's cached record of them, which
+  /// is all rule/smart playlists read) and marks it [Track.metadataEdited]
+  /// so a later [rescan] keeps these instead of overwriting them with a
+  /// fresh tag read. No-op if the track isn't currently in the library.
   Future<void> updateTrackMetadata(
     String trackId, {
     required String title,
@@ -290,6 +290,7 @@ class MusicLibraryService {
     required String album,
     required String genre,
     int? year,
+    List<String> tags = const [],
   }) async {
     final index = tracks.value.indexWhere((t) => t.id == trackId);
     if (index < 0) return;
@@ -308,6 +309,7 @@ class MusicLibraryService {
       dateAdded: existing.dateAdded,
       playCount: existing.playCount,
       metadataEdited: true,
+      tags: tags,
     );
     final list = List<Track>.of(tracks.value);
     list[index] = updated;
@@ -344,6 +346,7 @@ class MusicLibraryService {
         dateAdded: existing.dateAdded,
         playCount: existing.playCount,
         metadataEdited: true,
+        tags: row.tags.isNotEmpty ? row.tags : existing.tags,
       );
       applied++;
     }

@@ -66,7 +66,7 @@ void main() {
   });
 
   testWidgets(
-      'shows Favourites/Playlists/Tracks/Artists/Folders tabs once a folder is set',
+      'shows Favourites/Playlists/Tracks/Artists/Tags/Folders tabs once a folder is set',
       (tester) async {
     Config.musicFolder = '/does/not/matter/for/this/test';
     // Pre-populate the library so initState's "scan if empty" check finds
@@ -84,6 +84,7 @@ void main() {
     expect(find.text('Playlists'), findsOneWidget);
     expect(find.text('Tracks'), findsOneWidget);
     expect(find.text('Artists'), findsOneWidget);
+    expect(find.text('Tags'), findsOneWidget);
     expect(find.text('Folders'), findsOneWidget);
     expect(find.text('Choose music folder'), findsNothing);
   });
@@ -344,7 +345,7 @@ void main() {
     });
   });
 
-  group('Favourites/Artists/Folders tabs', () {
+  group('Favourites/Artists/Tags/Folders tabs', () {
     testWidgets('Favourites tab shows only favorited tracks', (tester) async {
       Config.musicFolder = '/does/not/matter/for/this/test';
       final loved =
@@ -392,6 +393,64 @@ void main() {
       expect(find.text('Song A'), findsOneWidget);
       expect(find.text('Song B'), findsOneWidget);
       expect(find.text('Song C'), findsNothing);
+    });
+
+    testWidgets(
+        'Artists tab groups a "feat." credit under its main artist and shows who\'s featured',
+        (tester) async {
+      Config.musicFolder = '/does/not/matter/for/this/test';
+      MusicLibraryService.instance.tracks.value = [
+        Track.local(
+            filePath: '/does/not/matter/a.mp3',
+            title: 'Song A',
+            artist: '49th & Main'),
+        Track.local(
+            filePath: '/does/not/matter/b.mp3',
+            title: 'Song B',
+            artist: '49th & Main feat. SKYLAR'),
+      ];
+
+      await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Artists'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('49th & Main'), findsOneWidget);
+      expect(find.text('2 tracks'), findsOneWidget);
+      expect(find.text('feat. SKYLAR'), findsOneWidget);
+
+      await tester.tap(find.text('49th & Main'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song A'), findsOneWidget);
+      expect(find.text('Song B'), findsOneWidget);
+    });
+
+    testWidgets('Tags tab groups tracks by tag, a multi-tagged track appearing under each',
+        (tester) async {
+      Config.musicFolder = '/does/not/matter/for/this/test';
+      MusicLibraryService.instance.tracks.value = [
+        Track.local(
+            filePath: '/does/not/matter/a.mp3',
+            title: 'Song A',
+            tags: ['Wedding songs', 'Belgian Top Charts']),
+        Track.local(filePath: '/does/not/matter/b.mp3', title: 'Song B'),
+      ];
+
+      await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tags'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Wedding songs'), findsOneWidget);
+      expect(find.text('Belgian Top Charts'), findsOneWidget);
+      expect(find.text('Untagged'), findsOneWidget);
+
+      await tester.tap(find.text('Wedding songs'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song A'), findsOneWidget);
+      expect(find.text('Song B'), findsNothing);
     });
 
     testWidgets('Folders tab groups tracks by their folder and drills in',

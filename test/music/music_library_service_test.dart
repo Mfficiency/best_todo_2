@@ -287,6 +287,27 @@ void main() {
       expect(rescanned.single.metadataEdited, isTrue);
     });
 
+    test('sets tags and a later rescan keeps them', () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Title',
+        artist: 'Artist',
+        album: 'Album',
+        genre: '',
+        tags: ['Wedding songs', 'Belgian Top Charts'],
+      );
+
+      expect(MusicLibraryService.instance.byId(id)!.tags,
+          ['Wedding songs', 'Belgian Top Charts']);
+
+      final rescanned = await MusicLibraryService.instance.rescan();
+      expect(rescanned.single.tags, ['Wedding songs', 'Belgian Top Charts']);
+    });
+
     test('is a no-op for an id not in the library', () async {
       await writeFile('a.mp3');
       await MusicLibraryService.instance.rescan();
@@ -381,6 +402,32 @@ void main() {
 
       expect(applied, 1);
       expect(MusicLibraryService.instance.byId(id)!.genre, 'Rock');
+    });
+
+    test('a non-empty tags row replaces existing tags; a blank one keeps them',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+          id: id,
+          title: '',
+          artist: '',
+          album: '',
+          genre: '',
+          year: null,
+          tags: const ['Wedding songs'],
+        ),
+      ]);
+      expect(MusicLibraryService.instance.byId(id)!.tags, ['Wedding songs']);
+
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: '', year: null),
+      ]);
+      expect(MusicLibraryService.instance.byId(id)!.tags, ['Wedding songs']);
     });
 
     test('an empty row list is a no-op and persists nothing', () async {

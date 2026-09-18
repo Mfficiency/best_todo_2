@@ -13,6 +13,7 @@ import '../services/music_audio_handler.dart';
 import '../services/music_library_service.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
+import '../utils/artist_utils.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
 import 'home_scaffold_key.dart';
@@ -54,7 +55,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     // The MP3 Downloader's folder is the common case for where music already
     // lives, so default straight to it instead of asking the user to pick
     // the same folder twice.
@@ -290,6 +291,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             Tab(text: 'Playlists'),
             Tab(text: 'Tracks'),
             Tab(text: 'Artists'),
+            Tab(text: 'Tags'),
             Tab(text: 'Folders'),
           ],
         ),
@@ -304,6 +306,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 _PlaylistsTab(),
                 _TracksTab(),
                 _ArtistsTab(),
+                _TagsTab(),
                 _FoldersTab(),
               ],
             ),
@@ -416,9 +419,12 @@ class _FavouritesTab extends StatelessWidget {
   }
 }
 
-/// Every artist present in the library (an empty [Track.artist] groups
+/// Every artist present in the library, grouped by [splitArtistCredit]'s
+/// main artist so "49th & Main" and "49th & Main feat. SKYLAR" land under
+/// one "49th & Main" entry rather than two (an empty [Track.artist] groups
 /// under "Unknown artist"), sorted alphabetically with "Unknown artist"
-/// last. Tapping one opens its own filtered track list.
+/// last. Tapping one opens its own filtered track list; an entry whose
+/// tracks include a featuring credit shows who's featured on the right.
 class _ArtistsTab extends StatelessWidget {
   const _ArtistsTab();
 
@@ -433,9 +439,14 @@ class _ArtistsTab extends StatelessWidget {
           return const Center(child: Text('No tracks found. Tap refresh to rescan.'));
         }
         final byArtist = <String, List<Track>>{};
+        final featuringByArtist = <String, Set<String>>{};
         for (final track in tracks) {
-          final artist = track.artist.trim().isEmpty ? _unknownArtist : track.artist.trim();
+          final credit = splitArtistCredit(track.artist);
+          final artist = credit.mainArtist.isEmpty ? _unknownArtist : credit.mainArtist;
           byArtist.putIfAbsent(artist, () => []).add(track);
+          if (credit.featuring.isNotEmpty) {
+            featuringByArtist.putIfAbsent(artist, () => <String>{}).add(credit.featuring);
+          }
         }
         final artists = byArtist.keys.toList()
           ..sort((a, b) {
@@ -448,13 +459,82 @@ class _ArtistsTab extends StatelessWidget {
           itemBuilder: (context, index) {
             final artist = artists[index];
             final artistTracks = byArtist[artist]!;
+            final featuring = featuringByArtist[artist];
             return ListTile(
               leading: const Icon(Icons.person_outline),
               title: Text(artist),
               subtitle: Text(
                   '${artistTracks.length} track${artistTracks.length == 1 ? '' : 's'}'),
+              trailing: (featuring == null || featuring.isEmpty)
+                  ? null
+                  : SizedBox(
+                      width: 120,
+                      child: Text(
+                        'feat. ${featuring.join(', ')}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.end,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => _FilteredTracksPage(title: artist, tracks: artistTracks),
+              )),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Every tag present in the library — a track with no [Track.tags] groups
+/// under "Untagged"; a track with several tags appears under each of them
+/// (tags are a many-to-many grouping, unlike Artists/Folders). Tags are
+/// user-assigned via the Track info page (e.g. "Wedding songs", "Belgian
+/// Top Charts") rather than read from file metadata. Sorted alphabetically
+/// with "Untagged" last; tapping one opens its own filtered track list.
+class _TagsTab extends StatelessWidget {
+  const _TagsTab();
+
+  static const String _untagged = 'Untagged';
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<Track>>(
+      valueListenable: MusicLibraryService.instance.tracks,
+      builder: (context, tracks, _) {
+        if (tracks.isEmpty) {
+          return const Center(child: Text('No tracks found. Tap refresh to rescan.'));
+        }
+        final byTag = <String, List<Track>>{};
+        for (final track in tracks) {
+          if (track.tags.isEmpty) {
+            byTag.putIfAbsent(_untagged, () => []).add(track);
+            continue;
+          }
+          for (final tag in track.tags) {
+            byTag.putIfAbsent(tag, () => []).add(track);
+          }
+        }
+        final tagNames = byTag.keys.toList()
+          ..sort((a, b) {
+            if (a == _untagged) return b == _untagged ? 0 : 1;
+            if (b == _untagged) return -1;
+            return a.toLowerCase().compareTo(b.toLowerCase());
+          });
+        return ListView.builder(
+          itemCount: tagNames.length,
+          itemBuilder: (context, index) {
+            final tag = tagNames[index];
+            final tagTracks = byTag[tag]!;
+            return ListTile(
+              leading: const Icon(Icons.label_outline),
+              title: Text(tag),
+              subtitle:
+                  Text('${tagTracks.length} track${tagTracks.length == 1 ? '' : 's'}'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => _FilteredTracksPage(title: tag, tracks: tagTracks),
               )),
             );
           },

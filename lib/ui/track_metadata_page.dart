@@ -28,6 +28,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
   late final TextEditingController _albumController;
   late final TextEditingController _genreController;
   late final TextEditingController _yearController;
+  late final TextEditingController _tagsController;
 
   @override
   void initState() {
@@ -38,6 +39,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
     _albumController = TextEditingController(text: track?.album ?? '');
     _genreController = TextEditingController(text: track?.genre ?? '');
     _yearController = TextEditingController(text: track?.year?.toString() ?? '');
+    _tagsController = TextEditingController(text: (track?.tags ?? const []).join(', '));
   }
 
   @override
@@ -47,6 +49,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
     _albumController.dispose();
     _genreController.dispose();
     _yearController.dispose();
+    _tagsController.dispose();
     super.dispose();
   }
 
@@ -59,6 +62,11 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
           const SnackBar(content: Text('Year must be a number, e.g. 2021')));
       return;
     }
+    final tags = _tagsController.text
+        .split(',')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
     await MusicLibraryService.instance.updateTrackMetadata(
       widget.trackId,
       title: _titleController.text.trim(),
@@ -66,6 +74,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
       album: _albumController.text.trim(),
       genre: _genreController.text.trim(),
       year: year,
+      tags: tags,
     );
     if (mounted) Navigator.of(context).pop();
   }
@@ -117,6 +126,14 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
                       controller: _yearController,
                       decoration: const InputDecoration(labelText: 'Year'),
                       keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _tagsController,
+                      decoration: const InputDecoration(
+                        labelText: 'Tags',
+                        helperText: 'Comma-separated, e.g. Wedding songs, Belgian Top Charts',
+                      ),
                     ),
                     if (track.metadataEdited) ...[
                       const SizedBox(height: 12),

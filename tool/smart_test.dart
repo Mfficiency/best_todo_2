@@ -98,7 +98,7 @@ final List<SuiteRule> suiteRules = [
     'lib/models/track.dart', 'lib/models/music_playlist.dart', 'lib/services/music_library_service.dart',
     'lib/services/music_playlist_service.dart', 'lib/services/music_audio_handler.dart', 'lib/services/music_player_service.dart',
     'lib/services/music_widget_service.dart', 'lib/services/m3u_playlist_service.dart', 'lib/services/subsonic_client.dart',
-    'lib/ui/music_player_page.dart', 'lib/ui/now_playing_page.dart',
+    'lib/utils/artist_utils.dart', 'lib/ui/music_player_page.dart', 'lib/ui/now_playing_page.dart',
   ], {'music', 'home'}),
   SuiteRule(['lib/services/task_mutation_service.dart', 'lib/models/task_change_source.dart'], {'history', 'home'}),
   SuiteRule([

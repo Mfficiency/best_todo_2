@@ -11,6 +11,7 @@ class ParsedMetadataRow {
     required this.album,
     required this.genre,
     required this.year,
+    this.tags = const [],
   });
 
   /// [Track.id] — the match key. Never edited by whoever filled in the
@@ -22,12 +23,14 @@ class ParsedMetadataRow {
   /// [MusicLibraryService.applyMetadataRows] only overwrites a field when
   /// the imported value is non-empty, so a spreadsheet round-trip that
   /// happens to clear a cell can't silently wipe out a value the app
-  /// already had.
+  /// already had. Same rule for [tags]: an empty list leaves the track's
+  /// existing tags alone.
   final String title;
   final String artist;
   final String album;
   final String genre;
   final int? year;
+  final List<String> tags;
 }
 
 /// Round-trips track metadata through a CSV a person can hand to an AI (or
@@ -53,6 +56,7 @@ class MusicMetadataCsv {
     'album',
     'genre',
     'year',
+    'tags',
   ];
 
   static String encode(List<Track> tracks) {
@@ -66,6 +70,7 @@ class MusicMetadataCsv {
         track.album,
         track.genre,
         track.year,
+        track.tags.join('; '),
       ]);
     }
     return UsageDataService.toCsv(rows);
@@ -86,6 +91,7 @@ class MusicMetadataCsv {
     final albumIndex = header.indexOf('album');
     final genreIndex = header.indexOf('genre');
     final yearIndex = header.indexOf('year');
+    final tagsIndex = header.indexOf('tags');
 
     String cell(List<String> row, int index) =>
         (index >= 0 && index < row.length) ? row[index].trim() : '';
@@ -95,6 +101,7 @@ class MusicMetadataCsv {
       final id = cell(row, idIndex);
       if (id.isEmpty) continue;
       final yearText = cell(row, yearIndex);
+      final tagsText = cell(row, tagsIndex);
       result.add(ParsedMetadataRow(
         id: id,
         title: cell(row, titleIndex),
@@ -102,6 +109,13 @@ class MusicMetadataCsv {
         album: cell(row, albumIndex),
         genre: cell(row, genreIndex),
         year: yearText.isEmpty ? null : int.tryParse(yearText),
+        tags: tagsText.isEmpty
+            ? const []
+            : tagsText
+                .split(';')
+                .map((t) => t.trim())
+                .where((t) => t.isNotEmpty)
+                .toList(),
       ));
     }
     return result;

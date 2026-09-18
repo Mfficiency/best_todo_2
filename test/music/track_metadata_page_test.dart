@@ -107,6 +107,21 @@ void main() {
     expect(find.text('open'), findsOneWidget);
   });
 
+  testWidgets('editing tags saves them as a trimmed, comma-split list',
+      (tester) async {
+    final track = Track.local(filePath: '/music/song.mp3', title: 'Untagged');
+    MusicLibraryService.instance.tracks.value = [track];
+
+    await pushPage(tester, track.id);
+    await tester.enterText(find.widgetWithText(TextField, 'Tags'),
+        'Wedding songs,  Belgian Top Charts ,,');
+    await tester.tap(find.byTooltip('Save'));
+    await drainIo(tester);
+
+    final updated = MusicLibraryService.instance.byId(track.id)!;
+    expect(updated.tags, ['Wedding songs', 'Belgian Top Charts']);
+  });
+
   testWidgets('a non-numeric year shows an error and does not save',
       (tester) async {
     final track = Track.local(filePath: '/music/song.mp3', title: 'Untagged');

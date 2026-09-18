@@ -3906,6 +3906,45 @@ for the whole batch rather than one per track (`addTo` in a loop). Complements t
 one-track-at-a-time flow from a track row's own "Add to playlist" menu entry, for adding several
 songs into a playlist at once instead.
 
+### 10.6k Artists tab groups "feat." credits, free-form Tags (Best Music 0.2.82)
+**Artists tab merges featuring credits.** A library ripped from Samsung Music (or similarly
+tagged) often has one artist appear as several distinct `Track.artist` strings — "49th & Main",
+"49th & Main feat. SKYLAR", "50 Cent feat. Justin Timberlake" — because the ID3 `TPE1` tag
+folds the featured artist into the same field. `lib/utils/artist_utils.dart`'s
+`splitArtistCredit(artist)` splits that on the first `feat.`/`feat`/`ft.`/`ft`/`featuring`
+marker (case-insensitive, tolerant of surrounding whitespace) into `mainArtist` + `featuring`,
+returning an empty `featuring` when there's no such marker. `_ArtistsTab` groups by
+`mainArtist` instead of the raw `Track.artist` (an empty main artist still falls back to
+"Unknown artist", sorted last) — so "49th & Main" and "49th & Main feat. SKYLAR" land under one
+row, its track count covering both. When any of a main artist's tracks carry a featuring
+credit, the row's `trailing` shows "feat. <names>" (deduped via a `Set`, comma-joined, ellipsized
+past two lines) so that information isn't lost, just moved out of the grouping key. This only
+affects grouping in the Artists tab — `Track.artist` itself, and every other view/search/sort
+that reads it, is untouched.
+
+**Free-form tags.** `Track` gained `tags` (`List<String>`, default `const []`, omitted from
+`toJson` when empty, tolerant of a missing/non-list key in `fromJson`) — unlike every other
+metadata field, never read from a file's ID3 tags; purely a user-assigned label for grouping
+tracks the way genre/artist/folder can't (occasion, a personal chart, "songs for a specific
+playlist elsewhere"), e.g. "Belgian Top Charts", "Wedding songs". Editable on
+`TrackMetadataPage` (a comma-separated "Tags" text field alongside title/artist/album/genre/
+year, `helperText` showing the format) — saving goes through the same
+`MusicLibraryService.updateTrackMetadata(..., tags: [...])` call as every other field (now
+taking an optional `tags` parameter, default `const []`) and sets `metadataEdited: true`, so
+tags survive a rescan exactly like a manually-fixed genre does (§10.6g). `applyMetadataRows`
+gained the same blank-means-leave-alone semantics for tags as every other field: a row's empty
+`tags` list keeps the track's existing tags. `MusicMetadataCsv` round-trips tags as an eighth
+`tags` column, multiple tags in one cell `; `-joined (not `,`-joined, since the CSV's own field
+separator is a comma) and split back the same way on import.
+
+A new **Tags tab** (`_TagsTab`, `TabController` grown from 5 to 6, `TabBar` labels Favourites/
+Playlists/Tracks/Artists/Tags/Folders) groups the library by tag the same way Artists/Folders
+do, computed live from `MusicLibraryService.instance.tracks` — but unlike those two (each track
+belongs to exactly one artist/folder), a tag grouping is many-to-many: a track with several tags
+appears once under each one, and a track with none groups under "Untagged" (sorted last, same
+pattern as "Unknown artist"). Tapping a tag row pushes the same `_FilteredTracksPage` Artists/
+Folders already use.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line

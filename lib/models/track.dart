@@ -53,6 +53,14 @@ class Track {
   /// tag read.
   final bool metadataEdited;
 
+  /// Free-form labels the user assigns by hand (e.g. "Belgian Top Charts",
+  /// "Wedding songs") to group tracks by occasion/playlist-worthiness in
+  /// ways artist/genre/folder don't capture — see the Tags tab. Never read
+  /// from a file's tags; always set via [MusicLibraryService.updateTrackMetadata]
+  /// or a metadata CSV import, so it survives a rescan the same way other
+  /// manually-edited fields do.
+  final List<String> tags;
+
   const Track({
     required this.id,
     required this.source,
@@ -67,6 +75,7 @@ class Track {
     this.dateAdded,
     this.playCount = 0,
     this.metadataEdited = false,
+    this.tags = const [],
   });
 
   factory Track.local({
@@ -80,6 +89,7 @@ class Track {
     DateTime? dateAdded,
     int playCount = 0,
     bool metadataEdited = false,
+    List<String> tags = const [],
   }) {
     return Track(
       id: 'local:$filePath',
@@ -94,6 +104,7 @@ class Track {
       dateAdded: dateAdded,
       playCount: playCount,
       metadataEdited: metadataEdited,
+      tags: tags,
     );
   }
 
@@ -138,6 +149,7 @@ class Track {
     DateTime? dateAdded,
     int? playCount,
     bool? metadataEdited,
+    List<String>? tags,
   }) {
     return Track(
       id: id,
@@ -153,6 +165,7 @@ class Track {
       dateAdded: dateAdded ?? this.dateAdded,
       playCount: playCount ?? this.playCount,
       metadataEdited: metadataEdited ?? this.metadataEdited,
+      tags: tags ?? this.tags,
     );
   }
 
@@ -170,6 +183,7 @@ class Track {
         if (dateAdded != null) 'dateAdded': dateAdded!.millisecondsSinceEpoch,
         if (playCount != 0) 'playCount': playCount,
         if (metadataEdited) 'metadataEdited': metadataEdited,
+        if (tags.isNotEmpty) 'tags': tags,
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -195,6 +209,8 @@ class Track {
           : null,
       playCount: (json['playCount'] as num?)?.round() ?? 0,
       metadataEdited: json['metadataEdited'] as bool? ?? false,
+      tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ??
+          const [],
     );
   }
 

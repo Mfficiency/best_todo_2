@@ -17,17 +17,33 @@ void main() {
       ]);
 
       final lines = csv.split('\r\n');
-      expect(lines[0], 'id,filename,title,artist,album,genre,year');
-      expect(lines[1], 'local:/music/song.mp3,song,Song,Artist,Album,Rock,2021');
+      expect(lines[0], 'id,filename,title,artist,album,genre,year,tags');
+      expect(lines[1], 'local:/music/song.mp3,song,Song,Artist,Album,Rock,2021,');
     });
 
-    test('leaves genre/year empty for a track with no known value', () {
+    test('leaves genre/year/tags empty for a track with no known value', () {
       final csv = MusicMetadataCsv.encode([
         Track.local(filePath: '/music/untagged.mp3', title: 'untagged'),
       ]);
 
       final lines = csv.split('\r\n');
-      expect(lines[1], 'local:/music/untagged.mp3,untagged,untagged,,,,');
+      expect(lines[1], 'local:/music/untagged.mp3,untagged,untagged,,,,,');
+    });
+
+    test('joins multiple tags with "; " in one cell', () {
+      final csv = MusicMetadataCsv.encode([
+        Track.local(
+          filePath: '/music/song.mp3',
+          title: 'Song',
+          tags: ['Wedding songs', 'Belgian Top Charts'],
+        ),
+      ]);
+
+      final lines = csv.split('\r\n');
+      expect(
+          lines[1],
+          'local:/music/song.mp3,song,Song,,,,,'
+          'Wedding songs; Belgian Top Charts');
     });
 
     test('quotes a field containing a comma', () {
@@ -44,7 +60,7 @@ void main() {
 
     test('an empty track list still writes just the header row', () {
       final csv = MusicMetadataCsv.encode(const []);
-      expect(csv.trim(), 'id,filename,title,artist,album,genre,year');
+      expect(csv.trim(), 'id,filename,title,artist,album,genre,year,tags');
     });
   });
 
@@ -58,6 +74,7 @@ void main() {
           album: 'Album A',
           genre: 'Rock',
           year: 2020,
+          tags: ['Wedding songs', 'Belgian Top Charts'],
         ),
         Track.local(filePath: '/b.mp3', title: 'b'),
       ];
@@ -71,9 +88,11 @@ void main() {
       expect(rows[0].album, 'Album A');
       expect(rows[0].genre, 'Rock');
       expect(rows[0].year, 2020);
+      expect(rows[0].tags, ['Wedding songs', 'Belgian Top Charts']);
       expect(rows[1].id, 'local:/b.mp3');
       expect(rows[1].genre, '');
       expect(rows[1].year, isNull);
+      expect(rows[1].tags, isEmpty);
     });
 
     test('handles quoted fields containing commas and escaped quotes', () {
