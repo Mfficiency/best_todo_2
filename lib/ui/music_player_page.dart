@@ -19,6 +19,7 @@ import 'home_scaffold_key.dart';
 import 'mp3_downloader_page.dart';
 import 'music_about_page.dart';
 import 'music_settings_page.dart';
+import 'music_wishlist_page.dart';
 import 'now_playing_page.dart';
 import 'rule_playlist_editor_page.dart';
 import 'startup_times_page.dart';
@@ -159,6 +160,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             title: const Text('MP3 Downloader'),
             onTap: () =>
                 _pushStandalonePage(() => const Mp3DownloaderPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.star_border),
+            title: const Text('Wishlist'),
+            onTap: () => _pushStandalonePage(() => const MusicWishlistPage()),
           ),
           ListTile(
             leading: const Icon(Icons.settings),
