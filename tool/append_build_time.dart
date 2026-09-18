@@ -13,6 +13,12 @@
 //   dart run tool/append_build_time.dart                     (called by tool/build.sh)
 //   dart run tool/append_build_time.dart --duration 102 --target apk
 //   dart run tool/append_build_time.dart --dry-run
+//   dart run tool/append_build_time.dart --app music --duration 102 --target apk
+//
+// `--app music` notes the build in Best Music's own CHANGELOG_MUSIC.md and
+// reads its version from MUSIC_VERSION instead of pubspec.yaml — the two
+// apps version and changelog independently since the split
+// (CLAUDE.md/SPEC.md §10.6i). Default (no `--app`) stays BestToDo.
 
 import 'dart:convert';
 import 'dart:io';
@@ -115,9 +121,11 @@ Map<String, dynamic> historyRecord({
   required String target,
   required int durationSeconds,
   required DateTime finishedAt,
+  String app = 'todo',
 }) =>
     {
       'version': version,
+      'app': app,
       'target': target,
       'durationSeconds': durationSeconds,
       'finishedAt': finishedAt.toIso8601String(),
@@ -148,13 +156,13 @@ List<dynamic> readHistory(File file) {
   return <dynamic>[];
 }
 
-/// `version: x.y.z+build` read from pubspec.yaml in the current directory,
-/// or null if it can't be found.
-String? readPubspecVersion() {
-  final pubspec = File('pubspec.yaml');
-  if (!pubspec.existsSync()) return null;
+/// `version: x.y.z+build` read from [path] (pubspec.yaml or MUSIC_VERSION,
+/// both share that line shape), or null if it can't be found.
+String? readVersionFrom(String path) {
+  final file = File(path);
+  if (!file.existsSync()) return null;
   final match = RegExp(r'^version:\s*(\S+)', multiLine: true)
-      .firstMatch(pubspec.readAsStringSync());
+      .firstMatch(file.readAsStringSync());
   return match?.group(1);
 }
 
@@ -162,6 +170,7 @@ void main(List<String> args) {
   final dryRun = args.contains('--dry-run');
   int? durationSeconds;
   String? target;
+  String? app;
   for (var i = 0; i < args.length; i++) {
     if (args[i] == '--duration' && i + 1 < args.length) {
       durationSeconds = int.tryParse(args[i + 1]);
@@ -169,14 +178,19 @@ void main(List<String> args) {
     } else if (args[i] == '--target' && i + 1 < args.length) {
       target = args[i + 1];
       i++;
+    } else if (args[i] == '--app' && i + 1 < args.length) {
+      app = args[i + 1];
+      i++;
     }
   }
   final hasDuration =
       durationSeconds != null && target != null && target.isNotEmpty;
+  final isMusic = app == 'music';
 
-  final changelogFile = File('CHANGELOG.md');
+  final changelogPath = isMusic ? 'CHANGELOG_MUSIC.md' : 'CHANGELOG.md';
+  final changelogFile = File(changelogPath);
   if (!changelogFile.existsSync()) {
-    stderr.writeln('CHANGELOG.md not found.');
+    stderr.writeln('$changelogPath not found.');
     exitCode = 1;
     return;
   }
@@ -205,21 +219,22 @@ void main(List<String> args) {
       : '$buildTime ($target: $durationText)';
 
   if (updated == changelog) {
-    stdout.writeln('CHANGELOG.md already notes this build.');
+    stdout.writeln('$changelogPath already notes this build.');
   } else if (dryRun) {
-    stdout.writeln('Would record local build in CHANGELOG.md: $summary');
+    stdout.writeln('Would record local build in $changelogPath: $summary');
   } else {
     changelogFile.writeAsStringSync(updated);
-    stdout.writeln('Recorded local build in CHANGELOG.md: $summary');
+    stdout.writeln('Recorded local build in $changelogPath: $summary');
   }
 
   if (!hasDuration) return;
   final durationSecondsValue = durationSeconds!;
   final targetValue = target!;
 
-  final version = readPubspecVersion();
+  final versionPath = isMusic ? 'MUSIC_VERSION' : 'pubspec.yaml';
+  final version = readVersionFrom(versionPath);
   if (version == null) {
-    stdout.writeln('No version in pubspec.yaml; skipping $historyFileName.');
+    stdout.writeln('No version in $versionPath; skipping $historyFileName.');
     return;
   }
 
@@ -227,6 +242,7 @@ void main(List<String> args) {
   final history = readHistory(historyFile);
   final record = historyRecord(
     version: version,
+    app: isMusic ? 'music' : 'todo',
     target: targetValue,
     durationSeconds: durationSecondsValue,
     finishedAt: now,

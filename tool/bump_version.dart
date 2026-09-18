@@ -1,38 +1,49 @@
 import 'dart:io';
 
+/// `--music` bumps Best Music's own MUSIC_VERSION + CHANGELOG_MUSIC.md
+/// instead of BestToDo's pubspec.yaml + CHANGELOG.md — the two apps version
+/// and changelog independently since the split (CLAUDE.md/SPEC.md §10.6i).
 void main(List<String> args) {
-  if (args.isEmpty) {
+  final isMusic = args.contains('--music');
+  final positional = args.where((a) => a != '--music').toList();
+
+  if (positional.isEmpty) {
     stderr.writeln(
-      'Usage: dart run tool/bump_version.dart <version>[+build] [changelog entry]',
+      'Usage: dart run tool/bump_version.dart <version>[+build] [changelog entry] [--music]',
     );
     exitCode = 64;
     return;
   }
 
-  final rawVersion = args.first.trim();
-  final changelogEntry = args.length > 1 ? args.sublist(1).join(' ').trim() : '';
+  final rawVersion = positional.first.trim();
+  final changelogEntry =
+      positional.length > 1 ? positional.sublist(1).join(' ').trim() : '';
   final versionOnly = rawVersion.split('+').first;
 
-  final pubspecFile = File('pubspec.yaml');
-  final changelogFile = File('CHANGELOG.md');
+  // BestToDo's version lives inside pubspec.yaml's `version:` line; Best
+  // Music's is the whole content of its own MUSIC_VERSION file, in the same
+  // `version: x.y.z+build` shape so the parsing/rewriting below is identical
+  // either way.
+  final versionFile = File(isMusic ? 'MUSIC_VERSION' : 'pubspec.yaml');
+  final changelogFile = File(isMusic ? 'CHANGELOG_MUSIC.md' : 'CHANGELOG.md');
 
-  if (!pubspecFile.existsSync()) {
-    stderr.writeln('pubspec.yaml not found.');
+  if (!versionFile.existsSync()) {
+    stderr.writeln('${versionFile.path} not found.');
     exitCode = 1;
     return;
   }
   if (!changelogFile.existsSync()) {
-    stderr.writeln('CHANGELOG.md not found.');
+    stderr.writeln('${changelogFile.path} not found.');
     exitCode = 1;
     return;
   }
 
-  final pubspec = pubspecFile.readAsStringSync();
+  final versionFileContents = versionFile.readAsStringSync();
   final versionRegex = RegExp(r'^version:\s*(.+)$', multiLine: true);
-  final versionMatch = versionRegex.firstMatch(pubspec);
+  final versionMatch = versionRegex.firstMatch(versionFileContents);
 
   if (versionMatch == null) {
-    stderr.writeln('Could not find a `version:` line in pubspec.yaml.');
+    stderr.writeln('Could not find a `version:` line in ${versionFile.path}.');
     exitCode = 1;
     return;
   }
@@ -54,17 +65,17 @@ void main(List<String> args) {
   }
 
   if (currentVersion == newVersion) {
-    stdout.writeln('pubspec.yaml already at version $newVersion.');
+    stdout.writeln('${versionFile.path} already at version $newVersion.');
   } else {
-    final updatedPubspec =
-        pubspec.replaceFirst(versionRegex, 'version: $newVersion');
-    pubspecFile.writeAsStringSync(updatedPubspec);
-    stdout.writeln('Updated pubspec.yaml: $currentVersion -> $newVersion');
+    final updatedVersionFile =
+        versionFileContents.replaceFirst(versionRegex, 'version: $newVersion');
+    versionFile.writeAsStringSync(updatedVersionFile);
+    stdout.writeln('Updated ${versionFile.path}: $currentVersion -> $newVersion');
   }
 
   final changelog = changelogFile.readAsStringSync();
   if (changelog.contains('## [$versionOnly] - ')) {
-    stdout.writeln('CHANGELOG.md already contains version $versionOnly.');
+    stdout.writeln('${changelogFile.path} already contains version $versionOnly.');
     return;
   }
 
@@ -74,17 +85,22 @@ void main(List<String> args) {
   final entryLine = changelogEntry.isEmpty ? '- TBD' : '- $changelogEntry';
   final newSection = '## [$versionOnly] - $date\n$entryLine\n';
 
-  const header = '# Changelog';
-  final lines = changelog.split(RegExp(r'\r?\n'));
-  final bodyStart =
-      lines.isNotEmpty && lines.first.trim() == header ? 1 : 0;
-  final bodyLines = lines.sublist(bodyStart);
-
-  while (bodyLines.isNotEmpty && bodyLines.first.trim().isEmpty) {
-    bodyLines.removeAt(0);
+  // Insert the new section right before the first existing `## [...]`
+  // release heading, so everything above it — the `# Changelog` title, and
+  // for CHANGELOG_MUSIC.md the explanatory preamble paragraph — is kept
+  // untouched instead of being collapsed down to a single header line.
+  final firstReleaseHeading =
+      RegExp(r'^##\s*\[', multiLine: true).firstMatch(changelog);
+  final String updated;
+  if (firstReleaseHeading == null) {
+    // No release section yet (a brand new changelog): keep whatever preamble
+    // is there and append the first section after it.
+    updated = '${changelog.trimRight()}\n\n$newSection';
+  } else {
+    final before = changelog.substring(0, firstReleaseHeading.start).trimRight();
+    final after = changelog.substring(firstReleaseHeading.start);
+    updated = '$before\n\n$newSection\n$after'.trimRight();
   }
-
-  final updated = '$header\n\n$newSection\n${bodyLines.join('\n').trimRight()}';
   changelogFile.writeAsStringSync('$updated\n');
-  stdout.writeln('Updated CHANGELOG.md entry for $versionOnly.');
+  stdout.writeln('Updated ${changelogFile.path} entry for $versionOnly.');
 }

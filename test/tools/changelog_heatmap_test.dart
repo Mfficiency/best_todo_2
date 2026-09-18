@@ -24,17 +24,29 @@ class _FakeBundle extends CachingAssetBundle {
 
   final String contents;
 
+  /// The asset key `ChangelogPage` last asked this bundle to load, so tests
+  /// can check it picked the right app's changelog file.
+  String? lastRequestedKey;
+
   @override
   Future<ByteData> load(String key) async {
+    lastRequestedKey = key;
     return ByteData.sublistView(Uint8List.fromList(utf8.encode(contents)));
   }
 }
 
-Widget _wrap(String changelog) {
+Widget _wrap(
+  String changelog, {
+  String assetPath = 'CHANGELOG.md',
+  bool showStoryPoster = true,
+}) {
   return MaterialApp(
     home: DefaultAssetBundle(
       bundle: _FakeBundle(changelog),
-      child: const ChangelogPage(),
+      child: ChangelogPage(
+        assetPath: assetPath,
+        showStoryPoster: showStoryPoster,
+      ),
     ),
   );
 }
@@ -192,6 +204,41 @@ void main() {
       await tester.tap(find.byTooltip('Show changelog text'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('development-story-poster')), findsNothing);
+    });
+  });
+
+  group('ChangelogPage app-awareness', () {
+    testWidgets('defaults to CHANGELOG.md with the story poster offered',
+        (tester) async {
+      final bundle = _FakeBundle(_sampleChangelog);
+      await tester.pumpWidget(MaterialApp(
+        home: DefaultAssetBundle(bundle: bundle, child: const ChangelogPage()),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(bundle.lastRequestedKey, 'CHANGELOG.md');
+      expect(find.byTooltip('Show development story'), findsOneWidget);
+    });
+
+    testWidgets(
+        "loads Best Music's own changelog and hides BestToDo's story poster",
+        (tester) async {
+      final bundle = _FakeBundle(_sampleChangelog);
+      await tester.pumpWidget(MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: bundle,
+          child: const ChangelogPage(
+            assetPath: 'CHANGELOG_MUSIC.md',
+            showStoryPoster: false,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(bundle.lastRequestedKey, 'CHANGELOG_MUSIC.md');
+      expect(find.byTooltip('Show development story'), findsNothing);
+      // The heatmap toggle is unaffected either way.
+      expect(find.byTooltip('Show update heatmap'), findsOneWidget);
     });
   });
 }

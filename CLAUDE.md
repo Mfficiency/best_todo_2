@@ -68,7 +68,9 @@ file is the short operational guide.
   `flutter test --machine > build/ci/machine.jsonl` then
   `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
-  or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`
+  or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`.
+  Best Music versions and changelogs independently of BestToDo (SPEC.md §10.6i) — add
+  `--music` to bump `MUSIC_VERSION` + `CHANGELOG_MUSIC.md` instead
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 

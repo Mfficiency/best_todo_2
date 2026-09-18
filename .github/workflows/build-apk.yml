@@ -168,10 +168,12 @@ jobs:
     - name: Get Flutter dependencies
       run: flutter pub get
 
+    # Best Music versions independently of BestToDo now (its own
+    # MUSIC_VERSION file, CLAUDE.md/SPEC.md §10.6f) rather than pubspec.yaml.
     - name: Read app version
       id: appver
       shell: bash
-      run: echo "version=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      run: echo "version=$(grep '^version:' MUSIC_VERSION | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
 
     - name: Build Best Music APK
       run: flutter build apk --release --flavor music -t lib/main_music.dart
@@ -204,7 +206,7 @@ jobs:
       run: |
         dart run tool/stage_local_release.dart \
           --apk "build/app/outputs/flutter-apk/app-music-release.apk" \
-          --prefix best_music
+          --prefix best_music --version "${{ steps.appver.outputs.version }}"
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add github_releases
