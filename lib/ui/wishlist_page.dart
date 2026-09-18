@@ -8,11 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../services/auto_tag_service.dart';
+import '../services/claude_routine_service.dart';
 import '../services/github_wishlist_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -1054,6 +1056,7 @@ class _WishTileState extends State<_WishTile>
   late final AnimationController _progressController;
   double _dragOffset = 0;
   bool _dragging = false;
+  bool _sendingToClaude = false;
 
   @override
   void initState() {
@@ -1113,6 +1116,67 @@ class _WishTileState extends State<_WishTile>
   void _sendToBuild() {
     _closeOptions();
     widget.onSendToBuild();
+  }
+
+  /// Fires the routine configured in Settings → Claude Routine with this
+  /// wishlist item as context, starting a real Claude Code cloud session —
+  /// the same "Send to Claude" action the main task list offers, so wishlist
+  /// items can be built with AI without first having to send them to the
+  /// GitHub build queue.
+  Future<void> _sendToClaude() async {
+    final url = Config.claudeRoutineUrl.trim();
+    final token = Config.claudeRoutineToken.trim();
+    if (url.isEmpty || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set up Claude Routine in Settings first'),
+        ),
+      );
+      return;
+    }
+    setState(() => _sendingToClaude = true);
+    try {
+      final result = await ClaudeRoutineService.instance.fire(
+        fireUrl: url,
+        token: token,
+        text: ClaudeRoutineService.instance.buildPayload(widget.item),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Claude session started'),
+          duration: const Duration(seconds: 8),
+          action: result.sessionUrl.isEmpty
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => launchUrl(
+                    Uri.parse(result.sessionUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is ClaudeRoutineException
+              ? (e.statusCode == 401
+                  ? 'Invalid Claude Routine token'
+                  : 'Failed to start session: ${e.message}')
+              : 'Failed to start session: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingToClaude = false);
+    }
+  }
+
+  void _sendToClaudeTapped() {
+    _closeOptions();
+    _sendToClaude();
   }
 
   List<String> _labels() => widget.item.label
@@ -1235,6 +1299,12 @@ class _WishTileState extends State<_WishTile>
                         ),
                         label: Text(
                             isQueuedForBuild(widget.item) ? 'Queued' : 'Build'),
+                      ),
+                      TextButton.icon(
+                        onPressed:
+                            _sendingToClaude ? null : _sendToClaudeTapped,
+                        icon: const Icon(Icons.smart_toy_outlined, size: 18),
+                        label: const Text('Claude'),
                       ),
                       TextButton.icon(
                         onPressed: _share,

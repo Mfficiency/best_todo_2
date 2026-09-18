@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/services/claude_routine_service.dart';
 import 'package:besttodo/services/github_wishlist_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/wishlist_shipped.dart';
@@ -65,7 +66,10 @@ void main() {
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
     Config.swipeLeftDelete = true;
     Config.githubWishlistToken = '';
+    Config.claudeRoutineUrl = '';
+    Config.claudeRoutineToken = '';
     GithubWishlistService.instance = GithubWishlistService();
+    ClaudeRoutineService.instance = ClaudeRoutineService();
     // Opt out of the one-time Todo.md import so tests only see their own
     // items.
     await File('${tempDir.path}/${StorageService.wishlistImportFlagFileName}')
@@ -706,6 +710,76 @@ void main() {
 
     expect(find.text('Queued'), findsOneWidget);
     expect(fake.created, isEmpty);
+  });
+
+  testWidgets(
+      'Send to Claude with no routine configured shows a snackbar',
+      (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Buy a telescope', isWish: true)],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    await tester.tap(find.text('Claude'));
+    await tester.pump();
+
+    expect(
+      find.text('Set up Claude Routine in Settings first'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'Send to Claude fires the configured routine with the item as context '
+      'and offers to open the session', (tester) async {
+    Config.claudeRoutineUrl = 'https://example.com/fire';
+    Config.claudeRoutineToken = 'routine-token';
+    http.Request? captured;
+    ClaudeRoutineService.instance = ClaudeRoutineService(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'claude_code_session_id': 'sess_1',
+            'claude_code_session_url': 'https://claude.ai/code/session_1',
+          }),
+          200,
+        );
+      }),
+    );
+    final launcher = _FakeUrlLauncher();
+    UrlLauncherPlatform.instance = launcher;
+
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'For stargazing weekends',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    await tester.tap(find.text('Claude'));
+    await settleWrites(tester);
+
+    expect(captured, isNotNull);
+    expect(captured!.headers['Authorization'], 'Bearer routine-token');
+    final body = jsonDecode(captured!.body) as Map<String, dynamic>;
+    expect(body['text'], contains('Buy a telescope'));
+    expect(body['text'], contains('For stargazing weekends'));
+    expect(find.text('Claude session started'), findsOneWidget);
+
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    expect(launcher.launched, ['https://claude.ai/code/session_1']);
   });
 
   Future<void> openSection(WidgetTester tester, String title) async {

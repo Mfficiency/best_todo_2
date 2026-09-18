@@ -2496,6 +2496,22 @@ own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
 itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
 does for any other `dev` push — no separate delivery mechanism was needed.
 
+**Send to Claude (0.2.74):** the options-swipe row also gets a "Claude"
+button (`Icons.smart_toy_outlined`), right next to "Build" — the same
+"Send to Claude" action the main task list's expanded tile already offers
+(`_TaskTileState._sendToClaude` in `lib/ui/task_tile.dart`), now reachable
+from wishlist items too so an idea can be built with AI directly, without
+first routing it through the GitHub build queue above. Fires the routine
+configured in Settings → Claude Routine (`Config.claudeRoutineUrl`/
+`claudeRoutineToken`) via `ClaudeRoutineService.fire` with
+`ClaudeRoutineService.buildPayload(item)` (title/description/note/label) as
+the `text` context, starting a real Claude Code cloud session; a snackbar
+confirms with an "Open" action (`url_launcher`, external application) once
+the fire call returns a session URL. Unlike "Build", this action carries no
+tagging/dedup state of its own — it's a one-shot fire-and-forget, so it can
+be pressed again freely. With no routine configured, or on any API failure
+(bad/expired token, network error), a snackbar explains why.
+
 **Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
 numbers in descriptions are auto-linkified by `LinkifiedText`
 (`lib/utils/linkified_text.dart`): a StatefulWidget that renders `Text.rich` with
