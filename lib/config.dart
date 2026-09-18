@@ -324,6 +324,13 @@ class Config {
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
+  /// If true, the Wishlist tool's "Connect with BestToDo"/"Connect with Best
+  /// Music" banner ([WishlistSyncBanner]) has been dismissed and stays
+  /// hidden — set only by tapping "Not now", never by connecting (a
+  /// successful connect removes the banner because it's no longer needed,
+  /// not because it was dismissed). See `shared_wishlist_store.dart`.
+  static bool wishlistSyncBannerDismissed = false;
+
   /// Default delay before sending a manual notification from a task bell.
   /// Dev builds use 00:03 for faster testing, production defaults to 05:00.
   static int defaultNotificationDelaySeconds = isDev ? 3 : 300;
@@ -684,6 +691,7 @@ class Config {
       'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
       'enableNotifications': enableNotifications,
+      'wishlistSyncBannerDismissed': wishlistSyncBannerDismissed,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
       'startTabIndex': startTabIndex,
       'quietHoursEnabled': quietHoursEnabled,
@@ -714,7 +722,8 @@ class Config {
       ],
       'streakKindEnabled': Map<String, bool>.from(streakKindEnabled),
       'streakGoals': {
-        for (final entry in streakGoals.entries) entry.key: entry.value.toJson(),
+        for (final entry in streakGoals.entries)
+          entry.key: entry.value.toJson(),
       },
       'streakCompletionAnimation': streakCompletionAnimation,
       'simpleMode': simpleMode,
@@ -758,6 +767,8 @@ class Config {
     showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
+    wishlistSyncBannerDismissed =
+        data['wishlistSyncBannerDismissed'] ?? wishlistSyncBannerDismissed;
     defaultNotificationDelaySeconds =
         (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
             defaultNotificationDelaySeconds;
@@ -880,8 +891,7 @@ class Config {
         data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
     mp3DownloadFolder =
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
-    mp3CompareFolder =
-        data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
+    mp3CompareFolder = data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
     musicFolder = data['musicFolder'] as String? ?? musicFolder;
     final savedExcludedSubfolders = data['musicExcludedSubfolders'];
     if (savedExcludedSubfolders is List) {

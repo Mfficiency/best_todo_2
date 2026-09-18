@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.76] - 2026-09-18
+- Wishlist: BestToDo and Best Music now actually share wishlist items instead of each keeping its own separate local copy. Since the two apps are sandboxed from each other on Android (separate `applicationId`s), items are synced through one file under shared external storage instead of each app's private storage — a "Connect" banner (only shown once, and only while not yet connected) requests the "All files access" permission both apps already use for their Music folders. Once connected, adding/editing/deleting a wishlist item in either app shows up in the other next time its Wishlist tool is opened
+
 ## [0.2.74] - 2026-09-18
 - Best Music: added a Wishlist tool (drawer → Wishlist), reusing the same wishlist items BestToDo's own Wishlist writes — flagged tasks in the identical `tasks.json` record shape, so an item created in either app looks the same in both. Unlike BestToDo's Wishlist, the list itself shows nothing but each item's title (no icons, no checkboxes, no tags/priority chips) — tapping an item opens every field (done, priority, tags, description) in one editor
 

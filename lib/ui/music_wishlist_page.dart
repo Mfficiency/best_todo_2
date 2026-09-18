@@ -1,22 +1,28 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/task.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
+import '../services/shared_wishlist_store.dart';
 import '../utils/wish_priority.dart';
 import 'label_picker.dart';
 import 'subpage_app_bar.dart';
+import 'wishlist_sync_banner.dart';
 
 /// Tools → Wishlist for Best Music: the same wishlist BestToDo has, reduced
 /// to its plainest form. Items are ordinary [Task] records flagged
 /// [Task.isWish] — the identical JSON shape BestToDo's own Wishlist tool
-/// (`wishlist_page.dart`) writes to `tasks.json` — so an export from one
-/// app's Wishlist imports cleanly into the other's. Unlike BestToDo's
-/// Wishlist, this page carries none of that tool's build-tracking chrome
-/// (release-group sections, GitHub "Send to build", swipe menus): the list
-/// itself shows nothing but each item's title, no icons at all, and tapping
-/// a title opens every field — done, priority, tags, description — in one
-/// editor.
+/// (`wishlist_page.dart`) writes to `tasks.json`, and — once connected via
+/// [SharedWishlistStore] — genuinely the same records, synced through one
+/// shared external-storage file rather than each app's own sandboxed
+/// storage (see that file's doc). Unlike BestToDo's Wishlist, this page
+/// carries none of that tool's build-tracking chrome (release-group
+/// sections, GitHub "Send to build", swipe menus): the list itself shows
+/// nothing but each item's title, no icons at all, and tapping a title
+/// opens every field — done, priority, tags, description — in one editor.
 class MusicWishlistPage extends StatefulWidget {
   const MusicWishlistPage({super.key});
 
@@ -26,11 +32,17 @@ class MusicWishlistPage extends StatefulWidget {
 
 class _MusicWishlistPageState extends State<MusicWishlistPage> {
   final ItemRepository _repository = ItemRepository.instance;
+  final SharedWishlistStore _sharedStore = SharedWishlistStore.instance;
 
   /// The full item list; the page shows and mutates only the isWish subset
   /// but always persists the whole list, exactly like BestToDo's Wishlist.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
+
+  /// Whether this app currently holds the permission [SharedWishlistStore]
+  /// needs, i.e. whether wishlist items are actually shared with BestToDo
+  /// right now — checked on load, never auto-requested.
+  bool _syncConnected = false;
 
   @override
   void initState() {
@@ -40,14 +52,49 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
 
   Future<void> _load() async {
     final tasks = await _repository.loadItems();
+    // Only touch the shared store (and re-persist locally) when actually
+    // connected — an app that never connects behaves exactly as before.
+    final connected = await _sharedStore.isConnected();
+    if (connected) {
+      final shared = await _sharedStore.load();
+      final localWishes = tasks.where((t) => t.isWish).toList();
+      final canonicalWishes = reconcileWishlist(localWishes, shared);
+      tasks.removeWhere((t) => t.isWish);
+      tasks.addAll(canonicalWishes);
+      if (shared.fileExisted) {
+        await _repository.saveItems(tasks);
+      } else {
+        unawaited(_sharedStore.save(canonicalWishes));
+      }
+    }
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
       _loading = false;
+      _syncConnected = connected;
     });
   }
 
-  Future<void> _save() => _repository.saveItems(_tasks);
+  Future<void> _save() async {
+    await _repository.saveItems(_tasks);
+    if (_syncConnected) {
+      unawaited(_sharedStore.save(_tasks.where((t) => t.isWish).toList()));
+    }
+  }
+
+  Future<bool> _connectSync() async {
+    final granted = await _sharedStore.requestConnection();
+    if (granted && mounted) {
+      setState(() => _syncConnected = true);
+      await _load();
+    }
+    return granted;
+  }
+
+  void _dismissSyncBanner() {
+    setState(() => Config.wishlistSyncBannerDismissed = true);
+    unawaited(Config.save());
+  }
 
   /// Wishlist items sorted like BestToDo's: open items before done ones,
   /// then by priority, otherwise keeping list order.
@@ -91,7 +138,8 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
           ..description = result.description
           ..label = result.label
           ..isDone = result.isDone
-          ..completedAt = result.isDone ? (item.completedAt ?? DateTime.now()) : null;
+          ..completedAt =
+              result.isDone ? (item.completedAt ?? DateTime.now()) : null;
       }
     });
     await _save();
@@ -100,6 +148,10 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
   @override
   Widget build(BuildContext context) {
     final wishes = _wishes();
+    final showSyncBanner = !_loading &&
+        !_syncConnected &&
+        !Config.wishlistSyncBannerDismissed &&
+        _sharedStore.isSupported;
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Wishlist'),
       floatingActionButton: FloatingActionButton(
@@ -107,36 +159,49 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
         onPressed: () => _openItem(),
         child: const Icon(Icons.add),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : wishes.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No wishlist items yet. Add ideas here; tap one to see '
-                      'its description, priority and tags.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(0, 8, 0, 88),
-                  itemCount: wishes.length,
-                  itemBuilder: (context, index) {
-                    final item = wishes[index];
-                    return ListTile(
-                      title: Text(
-                        item.title,
-                        style: TextStyle(
-                          decoration:
-                              item.isDone ? TextDecoration.lineThrough : null,
+      body: Column(
+        children: [
+          if (showSyncBanner)
+            WishlistSyncBanner(
+              otherAppName: 'BestToDo',
+              onConnect: _connectSync,
+              onDismiss: _dismissSyncBanner,
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : wishes.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No wishlist items yet. Add ideas here; tap one to see '
+                            'its description, priority and tags.',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(0, 8, 0, 88),
+                        itemCount: wishes.length,
+                        itemBuilder: (context, index) {
+                          final item = wishes[index];
+                          return ListTile(
+                            title: Text(
+                              item.title,
+                              style: TextStyle(
+                                decoration: item.isDone
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
+                            onTap: () => _openItem(item),
+                          );
+                        },
                       ),
-                      onTap: () => _openItem(item),
-                    );
-                  },
-                ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -208,8 +273,7 @@ class _MusicWishItemPageState extends State<_MusicWishItemPage> {
   }
 
   int get _priorityRank {
-    final labels =
-        _labelsFromText(_label).map((l) => l.toLowerCase()).toSet();
+    final labels = _labelsFromText(_label).map((l) => l.toLowerCase()).toSet();
     for (var i = wishPriorityLabels.length - 1; i >= 0; i--) {
       if (labels.contains(wishPriorityLabels[i])) return i + 1;
     }
@@ -246,8 +310,7 @@ class _MusicWishItemPageState extends State<_MusicWishItemPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    Navigator.of(context)
-        .pop(const _MusicWishItemResult(deleted: true));
+    Navigator.of(context).pop(const _MusicWishItemResult(deleted: true));
   }
 
   @override
