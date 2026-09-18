@@ -3859,6 +3859,53 @@ entry with BestToDo's `pubspec.yaml` version regardless of which app's screensho
 recording — a known, low-stakes inconsistency (it's an audit log, not a user-facing changelog)
 left for a future pass if it's ever worth the tooling churn.
 
+### 10.6j Samsung-Music-style redesign: Favourites/Artists/Folders tabs, search, sort, "+" add-songs (Best Music 0.2.81)
+`MusicPlayerPage`'s `TabController` grew from 2 tabs (Library/Playlists) to 5, matching Samsung
+Music's own layout: Favourites, Playlists, **Tracks** (renamed from Library), Artists, Folders —
+`TabBar(isScrollable: true)` since five labels don't all fit on a phone width, same as Samsung's.
+Favourites (`_FavouritesTab`) is a shortcut straight to the Favorites system playlist's resolved
+tracks — the same list already reachable via Playlists → Favorites, just one tap away. Artists
+(`_ArtistsTab`) and Folders (`_FoldersTab`) are new grouping views computed live from
+`MusicLibraryService.instance.tracks` (never persisted): Artists groups by `Track.artist`
+(`Unknown artist` for a blank tag, sorted last); Folders groups by each local track's folder
+relative to `Config.musicFolder` (`folderLabelOf`, a top-level function in
+`music_player_page.dart` — tracks right under the music folder itself land in `(Music folder)`,
+whose leading `(` sorts it ahead of any real subfolder name; a Subsonic track with no
+`Track.filePath` groups under `Other`). Tapping a row in either tab pushes `_FilteredTracksPage`,
+a plain `TrackListView` over that artist's/folder's tracks.
+
+**Search** (app bar search icon, `_MusicSearchDelegate extends SearchDelegate<void>`): filters
+the whole library by title/artist (falling back to the filename), reusing `TrackListView` for
+results so a search hit is playable and carries the same "more options" menu as everywhere else.
+Plain `showSearch(context:, delegate:)` — no separate search page/route to maintain.
+
+**Quick sort + shuffle/play-all header** (`TrackListView`, now a `StatefulWidget` owning its own
+`TrackSortOrder`): every track list — Tracks/Favourites tabs, an artist/folder drill-down, search
+results, and any playlist detail page — gets a header row with a `PopupMenuButton<TrackSortOrder>`
+(Date added [default] / Title / Artist / Duration, checkmark on the active choice — same
+`PopupMenuItem` pattern `wishlist_page.dart`'s sort menu already uses) plus shuffle and play-all
+icon buttons that queue the *currently sorted* list. Sorting is local UI state, not persisted —
+reopening a list resets to Date added.
+
+**Per-track "more options" menu**: the row's separate Favorite/"Add to playlist"/"Remove from
+playlist" icon buttons were folded into one `PopupMenuButton<String>` (`Icons.more_vert`, tooltip
+"More options") per Samsung Music's own ⋮ button — Favorite/Unfavorite (dynamic label + heart
+icon), Add to playlist (still `showAddToPlaylistSheet`), Remove from playlist (only when
+`TrackListView.onRemove` is set — i.e. inside a hand-built, non-system playlist, unchanged
+condition), and a new Track info entry (`TrackMetadataPage`, previously only reachable from Now
+Playing's info button). Tapping the row itself still plays the (sorted) list from that track,
+unchanged.
+
+**"+" add-songs-to-playlist (`AddSongsToPlaylistPage`)**: `MusicPlaylistDetailPage` gained an
+"Add songs" app bar button, shown under the same `editable` condition as its existing "Remove
+from playlist" wiring (`kind == list && !isSystem` — a hand-built playlist only; Favorites/
+disliked/smart/rule playlists don't get one). It opens a full-screen multi-select checkbox list
+of every library track not already in the playlist; "Add selected" (enabled once at least one is
+checked) calls the new `MusicPlaylistService.addAllTo(playlistId, trackIds)` — one save/notify
+for the whole batch rather than one per track (`addTo` in a loop). Complements the existing
+one-track-at-a-time flow from a track row's own "Add to playlist" menu entry, for adding several
+songs into a playlist at once instead.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
