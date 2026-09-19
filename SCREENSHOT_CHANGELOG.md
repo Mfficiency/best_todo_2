@@ -20,6 +20,220 @@ Jump to a screenshot from the most recent run:
 
 ---
 
+## 2026.09.19 08:28:49 | branch: dev v0.2.82+373 | source: 10aeb2d
+
+- Folder: `docs/screenshots/music/20260919-062847-10aeb2d`
+
+### Mp3 Downloader Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - mp3_downloader_page](docs/screenshots/music/20260919-062847-10aeb2d/mp3_downloader_page.png)
+
+### Mp3 Downloads Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - mp3_downloads_page](docs/screenshots/music/20260919-062847-10aeb2d/mp3_downloads_page.png)
+
+### Music About Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_about_page](docs/screenshots/music/20260919-062847-10aeb2d/music_about_page.png)
+
+### Music App Logs Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_app_logs_page](docs/screenshots/music/20260919-062847-10aeb2d/music_app_logs_page.png)
+
+### Music Changelog Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_changelog_page](docs/screenshots/music/20260919-062847-10aeb2d/music_changelog_page.png)
+
+### Music Home Library Tab
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_home_library_tab](docs/screenshots/music/20260919-062847-10aeb2d/music_home_library_tab.png)
+
+### Music Home Playlists Tab
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_home_playlists_tab](docs/screenshots/music/20260919-062847-10aeb2d/music_home_playlists_tab.png)
+
+### Music Playlist Detail Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_playlist_detail_page](docs/screenshots/music/20260919-062847-10aeb2d/music_playlist_detail_page.png)
+
+### Music Settings Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_settings_page](docs/screenshots/music/20260919-062847-10aeb2d/music_settings_page.png)
+
+### Music Startup Times Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - music_startup_times_page](docs/screenshots/music/20260919-062847-10aeb2d/music_startup_times_page.png)
+
+### Rule Playlist Editor Page
+![2026.09.19 08:28:49 - dev v0.2.82+373 - rule_playlist_editor_page](docs/screenshots/music/20260919-062847-10aeb2d/rule_playlist_editor_page.png)
+
+---
+
+## 2026.09.19 08:28:48 | branch: dev v0.2.82+373 | source: 10aeb2d
+
+- Folder: `docs/screenshots/home/20260919-062847-10aeb2d`
+
+### About Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - about_page](docs/screenshots/home/20260919-062847-10aeb2d/about_page.png)
+
+### Alarm Edit Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - alarm_edit_page](docs/screenshots/home/20260919-062847-10aeb2d/alarm_edit_page.png)
+
+### Alarm Log Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - alarm_log_page](docs/screenshots/home/20260919-062847-10aeb2d/alarm_log_page.png)
+
+### Alarms Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - alarms_page](docs/screenshots/home/20260919-062847-10aeb2d/alarms_page.png)
+
+### App Logs Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - app_logs_page](docs/screenshots/home/20260919-062847-10aeb2d/app_logs_page.png)
+
+### Approval Quick Tags Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - approval_quick_tags_page](docs/screenshots/home/20260919-062847-10aeb2d/approval_quick_tags_page.png)
+
+### Archived Items Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - archived_items_page](docs/screenshots/home/20260919-062847-10aeb2d/archived_items_page.png)
+
+### Auto Tag Rules Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - auto_tag_rules_page](docs/screenshots/home/20260919-062847-10aeb2d/auto_tag_rules_page.png)
+
+### Calendar View Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - calendar_view_page](docs/screenshots/home/20260919-062847-10aeb2d/calendar_view_page.png)
+
+### Changelog Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - changelog_page](docs/screenshots/home/20260919-062847-10aeb2d/changelog_page.png)
+
+### Chronize Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - chronize_page](docs/screenshots/home/20260919-062847-10aeb2d/chronize_page.png)
+
+### Countdown Milestones Dialog
+![2026.09.19 08:28:48 - dev v0.2.82+373 - countdown_milestones_dialog](docs/screenshots/home/20260919-062847-10aeb2d/countdown_milestones_dialog.png)
+
+### Countdown Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - countdown_page](docs/screenshots/home/20260919-062847-10aeb2d/countdown_page.png)
+
+### Deleted Bin Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - deleted_bin_page](docs/screenshots/home/20260919-062847-10aeb2d/deleted_bin_page.png)
+
+### Fitness Activity Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - fitness_activity_page](docs/screenshots/home/20260919-062847-10aeb2d/fitness_activity_page.png)
+
+### Food Diary Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - food_diary_page](docs/screenshots/home/20260919-062847-10aeb2d/food_diary_page.png)
+
+### Home Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - home_page](docs/screenshots/home/20260919-062847-10aeb2d/home_page.png)
+
+### Menu Open
+![2026.09.19 08:28:48 - dev v0.2.82+373 - menu_open](docs/screenshots/home/20260919-062847-10aeb2d/menu_open.png)
+
+### Project Board Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - project_board_page](docs/screenshots/home/20260919-062847-10aeb2d/project_board_page.png)
+
+### Project Edit Dialog
+![2026.09.19 08:28:48 - dev v0.2.82+373 - project_edit_dialog](docs/screenshots/home/20260919-062847-10aeb2d/project_edit_dialog.png)
+
+### Projects Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - projects_page](docs/screenshots/home/20260919-062847-10aeb2d/projects_page.png)
+
+### Recurrence Editor
+![2026.09.19 08:28:48 - dev v0.2.82+373 - recurrence_editor](docs/screenshots/home/20260919-062847-10aeb2d/recurrence_editor.png)
+
+### Research Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - research_page](docs/screenshots/home/20260919-062847-10aeb2d/research_page.png)
+
+### Search Active
+![2026.09.19 08:28:48 - dev v0.2.82+373 - search_active](docs/screenshots/home/20260919-062847-10aeb2d/search_active.png)
+
+### Settings Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_page](docs/screenshots/home/20260919-062847-10aeb2d/settings_page.png)
+
+### Settings Section Appearance
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_appearance](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_backup](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_dice_timer](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_filtering_rules](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_mode_features](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_notifications](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_sms_report](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_streak](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_sync_export](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_tasks](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_todoist_sync](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_updates](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.09.19 08:28:48 - dev v0.2.82+373 - settings_section_widget](docs/screenshots/home/20260919-062847-10aeb2d/settings_section_widget.png)
+
+### Sms Report Log Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - sms_report_log_page](docs/screenshots/home/20260919-062847-10aeb2d/sms_report_log_page.png)
+
+### Startup Times Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - startup_times_page](docs/screenshots/home/20260919-062847-10aeb2d/startup_times_page.png)
+
+### Streak Calendar Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - streak_calendar_page](docs/screenshots/home/20260919-062847-10aeb2d/streak_calendar_page.png)
+
+### Streak Goal Dialog
+![2026.09.19 08:28:48 - dev v0.2.82+373 - streak_goal_dialog](docs/screenshots/home/20260919-062847-10aeb2d/streak_goal_dialog.png)
+
+### Streak Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - streak_page](docs/screenshots/home/20260919-062847-10aeb2d/streak_page.png)
+
+### Task Detail Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - task_detail_page](docs/screenshots/home/20260919-062847-10aeb2d/task_detail_page.png)
+
+### Task Open No Attachment
+![2026.09.19 08:28:48 - dev v0.2.82+373 - task_open_no_attachment](docs/screenshots/home/20260919-062847-10aeb2d/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.09.19 08:28:48 - dev v0.2.82+373 - task_open_with_attachment](docs/screenshots/home/20260919-062847-10aeb2d/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - test_results_page](docs/screenshots/home/20260919-062847-10aeb2d/test_results_page.png)
+
+### Todo Mp3 Downloader Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - todo_mp3_downloader_page](docs/screenshots/home/20260919-062847-10aeb2d/todo_mp3_downloader_page.png)
+
+### Todo Music Player Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - todo_music_player_page](docs/screenshots/home/20260919-062847-10aeb2d/todo_music_player_page.png)
+
+### Usage Data Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - usage_data_page](docs/screenshots/home/20260919-062847-10aeb2d/usage_data_page.png)
+
+### Waiting Approval Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - waiting_approval_page](docs/screenshots/home/20260919-062847-10aeb2d/waiting_approval_page.png)
+
+### Weekly Hours Planner Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - weekly_hours_planner_page](docs/screenshots/home/20260919-062847-10aeb2d/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - widget_previews_page](docs/screenshots/home/20260919-062847-10aeb2d/widget_previews_page.png)
+
+### Wishlist Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - wishlist_page](docs/screenshots/home/20260919-062847-10aeb2d/wishlist_page.png)
+
+### Your Stats Page
+![2026.09.19 08:28:48 - dev v0.2.82+373 - your_stats_page](docs/screenshots/home/20260919-062847-10aeb2d/your_stats_page.png)
+
+---
+
+
+
+---
+
 ## 2026.09.18 23:37:32 | branch: dev v0.2.82+373 | source: 92c1844
 
 - Folder: `docs/screenshots/music/20260918-213730-92c1844`
