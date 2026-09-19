@@ -5,6 +5,7 @@ import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/claude_routine_service.dart';
 import 'package:besttodo/services/github_wishlist_service.dart';
+import 'package:besttodo/services/shared_wishlist_store.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/wishlist_shipped.dart';
 import 'package:besttodo/ui/settings_page.dart';
@@ -904,5 +905,33 @@ void main() {
     await tester.tap(find.text('Test connection'));
     await settleWrites(tester);
     expect(find.text('Invalid token'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Connect banner pushes wish items to the shared external-storage file '
+      '(Best Music no longer reads it, but BestToDo\'s own connect flow is '
+      'unchanged)', (tester) async {
+    final sharedDir = await Directory.systemTemp.createTemp('shared_');
+    SharedWishlistStore.sharedDirectoryOverride = sharedDir;
+    SharedWishlistStore.connectionOverride = false;
+    Config.wishlistSyncBannerDismissed = false;
+    addTearDown(() {
+      SharedWishlistStore.sharedDirectoryOverride = null;
+      SharedWishlistStore.connectionOverride = null;
+      Config.wishlistSyncBannerDismissed = false;
+    });
+
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Placeholder', isWish: true)],
+      marker: 'Placeholder',
+    );
+
+    expect(find.text('Connect'), findsOneWidget);
+    await tester.tap(find.text('Connect'));
+    await settleWrites(tester);
+
+    final shared = await tester.runAsync(() => SharedWishlistStore.instance.load());
+    expect(shared!.items.single.title, 'Placeholder');
   });
 }

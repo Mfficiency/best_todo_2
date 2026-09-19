@@ -7,27 +7,29 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/task.dart';
 import 'safe_file.dart';
 
-/// Cross-app wishlist storage.
+/// Shared external-storage wishlist file, used today only by BestToDo's own
+/// Wishlist tool ([wishlist_page.dart]).
 ///
 /// BestToDo and Best Music are two separate Android apps (different
 /// `applicationId`), so their app-private storage
-/// (`getApplicationDocumentsDirectory`) is sandboxed from each other — a
-/// wishlist item saved by one app's `tasks.json` is invisible to the other.
-/// This store instead reads/writes one file under public external storage,
-/// which both apps can reach because both already hold
+/// (`getApplicationDocumentsDirectory`) is sandboxed from each other. This
+/// store reads/writes one file under public external storage instead, which
+/// both apps could technically reach since both already hold
 /// `MANAGE_EXTERNAL_STORAGE` (declared in the shared `AndroidManifest.xml`,
 /// requested at runtime the same way `MusicLibraryService.
-/// ensureFolderPermission` already does for the music folder) — so a
-/// wishlist item is genuinely the same record in both apps, not merely the
-/// same JSON shape.
+/// ensureFolderPermission` already does for the music folder). It briefly
+/// made a wishlist item genuinely the same record in both apps (0.2.78-
+/// 0.2.83), but that surprised users who didn't expect the two apps' lists
+/// to be the same list — checking an item off in Best Music also checked it
+/// off in BestToDo. Best Music's Wishlist ([music_wishlist_page.dart]) no
+/// longer touches this store at all (0.2.84); only BestToDo's Wishlist does,
+/// via its own "Connect" banner.
 ///
 /// Only wishlist items ([Task.isWish]) ever go through this store; every
-/// other task stays in each app's own private `tasks.json`, untouched.
-/// [wishlist_page.dart] (BestToDo) and [music_wishlist_page.dart] (Best
-/// Music) both treat this file as the source of truth: on load its content
-/// replaces the local wish-item subset (so a deletion in one app is also a
-/// deletion in the other), and every save re-pushes the current wish-item
-/// set out to it.
+/// other task stays in each app's own private `tasks.json`, untouched. On
+/// load, [wishlist_page.dart] treats this file's content as the source of
+/// truth once it exists (replacing the local wish-item subset), and every
+/// save re-pushes the current wish-item set out to it.
 class SharedWishlistStore {
   SharedWishlistStore._();
 

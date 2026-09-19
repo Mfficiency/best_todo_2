@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/services/shared_wishlist_store.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/music_wishlist_page.dart';
 import 'package:flutter/material.dart';
@@ -9,9 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 /// Best Music's Wishlist tool: a plain list over the same [Task] records
-/// (flagged [Task.isWish]) BestToDo's own Wishlist writes to `tasks.json`,
-/// so items are compatible across both apps — each row is just a checkbox
-/// and a title, with no other chrome.
+/// (flagged [Task.isWish]) BestToDo's own Wishlist writes to `tasks.json` —
+/// the same JSON shape, but each app's own `tasks.json`. This page never
+/// touches [SharedWishlistStore] (BestToDo's Wishlist still can, unchanged),
+/// so checking an item off here never marks it done in BestToDo and vice
+/// versa; each row is just a checkbox and a title, with no other chrome.
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.path);
   final String path;
@@ -240,5 +243,55 @@ void main() {
 
     final saved = await tester.runAsync(() => StorageService().loadTaskList());
     expect(saved, isEmpty);
+  });
+
+  group('does not sync with BestToDo', () {
+    late Directory sharedDir;
+
+    setUp(() async {
+      sharedDir = await Directory.systemTemp.createTemp('shared_');
+      SharedWishlistStore.sharedDirectoryOverride = sharedDir;
+    });
+
+    tearDown(() {
+      SharedWishlistStore.sharedDirectoryOverride = null;
+      SharedWishlistStore.connectionOverride = null;
+    });
+
+    testWidgets(
+        'an item already sitting in the shared external-storage file never '
+        'shows up here', (tester) async {
+      await tester.runAsync(() => SharedWishlistStore.instance.save(
+          [Task(title: 'From BestToDo', isWish: true, createdAt: DateTime.now())]));
+
+      await pumpWishlist(
+        tester,
+        tasks: const [],
+        marker: find.textContaining('No wishlist items yet'),
+      );
+
+      expect(find.text('From BestToDo'), findsNothing);
+    });
+
+    testWidgets(
+        'checking an item off here never writes to the shared '
+        'external-storage file BestToDo reads', (tester) async {
+      final wish = Task(
+        title: 'Only in Best Music',
+        isWish: true,
+        createdAt: DateTime.now(),
+      );
+      await pumpWishlist(tester,
+          tasks: [wish], marker: find.text('Only in Best Music'));
+
+      await tester.tap(find.byType(Checkbox));
+      await tester.pump();
+      await settleWrites(tester);
+
+      final shared =
+          await tester.runAsync(() => SharedWishlistStore.instance.load());
+      expect(shared!.fileExisted, isFalse);
+      expect(shared.items, isEmpty);
+    });
   });
 }

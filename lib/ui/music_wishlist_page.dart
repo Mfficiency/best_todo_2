@@ -1,29 +1,24 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/material.dart';
 
-import '../config.dart';
 import '../models/task.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
-import '../services/shared_wishlist_store.dart';
 import '../utils/wish_priority.dart';
 import 'label_picker.dart';
 import 'subpage_app_bar.dart';
-import 'wishlist_sync_banner.dart';
 
 /// Tools → Wishlist for Best Music: the same wishlist BestToDo has, reduced
 /// to its plainest form. Items are ordinary [Task] records flagged
 /// [Task.isWish] — the identical JSON shape BestToDo's own Wishlist tool
-/// (`wishlist_page.dart`) writes to `tasks.json`, and — once connected via
-/// [SharedWishlistStore] — genuinely the same records, synced through one
-/// shared external-storage file rather than each app's own sandboxed
-/// storage (see that file's doc). Unlike BestToDo's Wishlist, this page
-/// carries none of that tool's build-tracking chrome (release-group
-/// sections, GitHub "Send to build", swipe menus): each row is just a
-/// checkbox (mark done right from the list) and a title, and tapping the
-/// title opens every other field — priority, tags, description — in one
-/// editor.
+/// (`wishlist_page.dart`) writes to `tasks.json` — but this list is Best
+/// Music's own, stored only in its own app-private `tasks.json`. It is never
+/// synced with BestToDo's Wishlist (the two apps are sandboxed from each
+/// other; see [ItemRepository]), so checking an item off here never affects
+/// BestToDo. Unlike BestToDo's Wishlist, this page carries none of that
+/// tool's build-tracking chrome (release-group sections, GitHub "Send to
+/// build", swipe menus): each row is just a checkbox (mark done right from
+/// the list) and a title, and tapping the title opens every other field —
+/// priority, tags, description — in one editor.
 class MusicWishlistPage extends StatefulWidget {
   const MusicWishlistPage({super.key});
 
@@ -33,17 +28,11 @@ class MusicWishlistPage extends StatefulWidget {
 
 class _MusicWishlistPageState extends State<MusicWishlistPage> {
   final ItemRepository _repository = ItemRepository.instance;
-  final SharedWishlistStore _sharedStore = SharedWishlistStore.instance;
 
   /// The full item list; the page shows and mutates only the isWish subset
   /// but always persists the whole list, exactly like BestToDo's Wishlist.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
-
-  /// Whether this app currently holds the permission [SharedWishlistStore]
-  /// needs, i.e. whether wishlist items are actually shared with BestToDo
-  /// right now — checked on load, never auto-requested.
-  bool _syncConnected = false;
 
   @override
   void initState() {
@@ -53,48 +42,15 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
 
   Future<void> _load() async {
     final tasks = await _repository.loadItems();
-    // Only touch the shared store (and re-persist locally) when actually
-    // connected — an app that never connects behaves exactly as before.
-    final connected = await _sharedStore.isConnected();
-    if (connected) {
-      final shared = await _sharedStore.load();
-      final localWishes = tasks.where((t) => t.isWish).toList();
-      final canonicalWishes = reconcileWishlist(localWishes, shared);
-      tasks.removeWhere((t) => t.isWish);
-      tasks.addAll(canonicalWishes);
-      if (shared.fileExisted) {
-        await _repository.saveItems(tasks);
-      } else {
-        unawaited(_sharedStore.save(canonicalWishes));
-      }
-    }
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
       _loading = false;
-      _syncConnected = connected;
     });
   }
 
   Future<void> _save() async {
     await _repository.saveItems(_tasks);
-    if (_syncConnected) {
-      unawaited(_sharedStore.save(_tasks.where((t) => t.isWish).toList()));
-    }
-  }
-
-  Future<bool> _connectSync() async {
-    final granted = await _sharedStore.requestConnection();
-    if (granted && mounted) {
-      setState(() => _syncConnected = true);
-      await _load();
-    }
-    return granted;
-  }
-
-  void _dismissSyncBanner() {
-    setState(() => Config.wishlistSyncBannerDismissed = true);
-    unawaited(Config.save());
   }
 
   /// Wishlist items sorted like BestToDo's: open items before done ones,
@@ -157,10 +113,6 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
   @override
   Widget build(BuildContext context) {
     final wishes = _wishes();
-    final showSyncBanner = !_loading &&
-        !_syncConnected &&
-        !Config.wishlistSyncBannerDismissed &&
-        _sharedStore.isSupported;
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Wishlist'),
       floatingActionButton: FloatingActionButton(
@@ -170,12 +122,6 @@ class _MusicWishlistPageState extends State<MusicWishlistPage> {
       ),
       body: Column(
         children: [
-          if (showSyncBanner)
-            WishlistSyncBanner(
-              otherAppName: 'BestToDo',
-              onConnect: _connectSync,
-              onDismiss: _dismissSyncBanner,
-            ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())

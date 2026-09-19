@@ -336,11 +336,13 @@ class Config {
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
-  /// If true, the Wishlist tool's "Connect with BestToDo"/"Connect with Best
-  /// Music" banner ([WishlistSyncBanner]) has been dismissed and stays
-  /// hidden — set only by tapping "Not now", never by connecting (a
-  /// successful connect removes the banner because it's no longer needed,
-  /// not because it was dismissed). See `shared_wishlist_store.dart`.
+  /// If true, BestToDo's Wishlist tool's "Connect with Best Music" banner
+  /// ([WishlistSyncBanner]) has been dismissed and stays hidden — set only
+  /// by tapping "Not now", never by connecting (a successful connect
+  /// removes the banner because it's no longer needed, not because it was
+  /// dismissed). Best Music's own Wishlist doesn't show this banner at all
+  /// (its list is local-only; see `music_wishlist_page.dart`). See
+  /// `shared_wishlist_store.dart`.
   static bool wishlistSyncBannerDismissed = false;
 
   /// Default delay before sending a manual notification from a task bell.
