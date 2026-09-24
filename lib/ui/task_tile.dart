@@ -650,7 +650,20 @@ class _TaskTileState extends State<TaskTile>
         .map((label) => label.trim())
         .where((label) => label.isNotEmpty)
         .toList();
-    if (task.projectId == null && !task.isWish && labels.isEmpty) return null;
+    // A Research item isn't bucketed into a dated tab, so its due date (if
+    // any) is shown on the tile itself, and — like a wish — its description
+    // is shown collapsed under the title.
+    final researchDue = task.isResearch && !Task.isFutureBucketDue(task.dueDate)
+        ? task.dueDate
+        : null;
+    final researchDescription = task.isResearch && task.description.isNotEmpty;
+    if (task.projectId == null &&
+        !task.isWish &&
+        researchDue == null &&
+        !researchDescription &&
+        labels.isEmpty) {
+      return null;
+    }
     return ValueListenableBuilder<List<Project>>(
       valueListenable: ProjectService.instance.projects,
       builder: (context, _, __) => Padding(
@@ -667,11 +680,14 @@ class _TaskTileState extends State<TaskTile>
                   _tag(ProjectService.stageLabel(task.kanbanStatus)),
                 ],
                 if (task.isWish) _tag('wish', protected: true),
+                if (researchDue != null)
+                  _tag('Due ${researchDue.toLocal().toString().split(' ')[0]}'),
                 for (final label in labels)
                   _tag(label, protected: isProtectedToken(label)),
               ],
             ),
-            if (task.isWish && task.description.isNotEmpty)
+            if ((task.isWish && task.description.isNotEmpty) ||
+                researchDescription)
               DescriptionDisclosure(description: task.description),
           ],
         ),

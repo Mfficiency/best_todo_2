@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.84] - 2026-09-24
+- Research items now have all the same fields as normal tasks: each one shows the same tile as the home tabs, with a done checkbox, and tapping it folds it open to edit title, description, note, labels, attachments, due date and recurrence in place (plus Notify and Send to Claude). Swipe to reschedule or delete works like the home tabs, and the add dialog also takes a note and an optional due date. A recurring research item's repeats now stay in Research instead of showing up on the home tabs
+
 ## [0.2.83] - 2026-09-24
 - Fixed press-and-hold drag-reorder on the home tabs always springing back to its original position: Home's default Filtering rule (it excludes every other view's reserved tag out of the box) was disabling reorder for everyone, even when nothing in the current tab was actually hidden by it
 

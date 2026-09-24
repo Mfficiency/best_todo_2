@@ -156,6 +156,7 @@ class RecurrenceService {
       dueDate: date,
       hasExplicitTime: master.hasExplicitTime,
       isWish: master.isWish,
+      isResearch: master.isResearch,
       isEatingHabit: master.isEatingHabit,
       isStomachIssue: master.isStomachIssue,
       stomachEventType: master.stomachEventType,

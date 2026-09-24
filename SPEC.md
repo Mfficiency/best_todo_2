@@ -569,8 +569,18 @@ isApproved`, and `ItemViews.isVisibleInMainViews` excludes research items from e
 view (home tabs, schedule view, wishlist, projects, Todoist sync), so an item only shows up
 here (or, once deleted, Archived Items) — never on the home tabs. Items arrive either
 quick-tag-approved from Waiting for Approval, or typed directly with the page's own FAB
-(title, description, `LabelPickerField` tags — no due date, no checkbox, just a log line
-like a Food Diary entry). `researchToken` (`'Research'`) is a `protectedStateTokens` entry
+(title, `LabelPickerField` tags, description, note and an optional due date). Since 0.2.84
+a research item has every field a normal item has: each entry is rendered with the home
+tabs' own `TaskTile` (done checkbox, tap to fold open for inline Title/Description/Note/
+labels/attachments/due date/Recurring editing, Notify and Send to Claude), and the collapsed
+tile shows its due date (a `Due yyyy-mm-dd` tag — research items aren't bucketed into dated
+tabs) and a collapsed description disclosure, like a wish. Swiping works exactly as on the
+home tabs: the reschedule options only change the item's due date (it stays in Research,
+`_ResearchPageState._rescheduleEntry`), and delete archives it with an undo snackbar,
+including the "this event / this and following / all events" scope dialog for a recurring
+item (`_requestDelete`, a port of `HomePage._requestDeleteTask`).
+`RecurrenceService.buildOccurrence` copies `isResearch` onto generated occurrences (like
+`isWish`), so a recurring research item's series never leaks onto the home tabs. `researchToken` (`'Research'`) is a `protectedStateTokens` entry
 and a full `ViewFilterRules` view id (`ViewFilterRules.research`), threaded through every
 other view's default Hide list the same way `fooddiaryToken` is — bumped
 `_currentViewFilterRulesSeedVersion` to 3 so existing installs re-sync their Filtering
