@@ -1158,12 +1158,17 @@ by is visible even though (being unconditional, not itself one of the `excludeTa
 rules" section (index 2, right after Mode & features) lists all nine views with the built-in
 line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
 ×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
-Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever one is
-active (`_homeFilterRulesActive`), exactly like it already is while a search query is active —
-reordering a narrowed list would renumber only the visible subset and scramble the hidden
-tasks' rank order; renumbering on save (`_saveTasks`, `applySearch: false`) always sees the
-true unfiltered tab so ranks never drift. Countdown applies the same disable-reorder-while-
-filtered rule to its own manual drag order (`_CountdownTimerPageState._onReorder`).
+Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever search,
+`widget.tagFilter` (Worklist), or the Home rule is actually hiding a task on that specific tab
+(`_tabNarrowedByFilters`, comparing the tab's filtered vs. unfiltered task count) — reordering a
+narrowed list would renumber only the visible subset and scramble the hidden tasks' rank order;
+renumbering on save (`_saveTasks`, `applySearch: false`) always sees the true unfiltered tab so
+ranks never drift. This is a per-tab, actually-hiding-something check rather than "is any of
+these set": Home ships with a non-empty default rule (it excludes every other view's reserved
+tag), so merely checking `Config.viewFilterRules[home]` for emptiness would leave reordering
+permanently disabled for every install even when nothing in the current tab carries an excluded
+tag. Countdown applies the same disable-reorder-while-filtered rule to its own manual drag order
+(`_CountdownTimerPageState._onReorder`).
 
 *Matching, including a task's synthetic state.* Matching (`ItemViews.passesTagRules`) is
 case-insensitive against a *combined* token set: a task's real `Task.label` tokens
@@ -2941,8 +2946,13 @@ null for the regular home page):
 - Drag-reorder (`_reorderTask`/`_reorderTaskInSection`) already refused to run
   while a search query or a Home filter rule narrowed the tab (renumbering a
   subset would scramble the rest); the same guard, factored into a
-  `_tabNarrowed` getter, now also covers `tagFilter != null` — reordering is
-  simply off inside Worklist.
+  `_tabNarrowed` getter, now also covered `tagFilter != null` — reordering
+  simply off inside Worklist. That getter was since replaced by
+  `_tabNarrowedByFilters(pageIndex)` (see §Filtering rules below), which
+  compares the tab's filtered vs. unfiltered task count instead of checking
+  each condition (search/tagFilter/rules) for being merely *set* — Home's
+  non-empty default rule made the old getter true for nearly every install
+  even when nothing in the tab was actually hidden.
 - `_addTask` stamps `tagFilter` onto a task typed directly into a filtered
   instance's add row (`addLabelToken`), so it shows up immediately.
 - Two pieces of state are process-wide singletons the real home page owns —

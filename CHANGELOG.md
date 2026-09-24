@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.83] - 2026-09-24
+- Fixed press-and-hold drag-reorder on the home tabs always springing back to its original position: Home's default Filtering rule (it excludes every other view's reserved tag out of the box) was disabling reorder for everyone, even when nothing in the current tab was actually hidden by it
+
 ## [0.2.82] - 2026-09-18
 - Fixed the Best Music release build, which had been silently producing no Best Music APK at all on any machine that had previously built BestToDo: Gradle worked out which app it had just built by scanning the (never-cleaned) build output folder for the first `app-<flavor>-release.apk` it could find, so a music build kept matching the leftover BestToDo one and re-copying that stale APK under BestToDo's name instead. The rename is now done by a separate task per flavor, wired to that flavor's own build, so it can't be confused by leftovers. `tool/build.ps1` also gained full Best Music support (a `music-apk` shorthand, `MUSIC_VERSION`/`CHANGELOG_MUSIC.md` handling and the `best_music_` artifact prefix), and `build.sh all`/`build.ps1 all` now build and stage the Best Music APK alongside BestToDo's and the Windows exe (skip it with `MUSIC=0`)
 - Local build: 2026-09-18 23:27

@@ -1385,9 +1385,10 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
-    // See _reorderTask: reordering is disabled whenever a tab is narrowed.
-    if (_tabNarrowed) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
+    // See _reorderTask: reordering is disabled whenever this tab is
+    // actually narrowed.
+    if (_tabNarrowedByFilters(pageIndex)) return;
     final fullList = _tasksForTab(pageIndex);
 
     final sectionSet = Set<Task>.identity()..addAll(sectionTasks);
@@ -2131,9 +2132,9 @@ class _HomePageState extends State<HomePage>
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
     // Reordering a narrowed list would renumber only the visible subset and
-    // scramble the hidden tasks' order, so it is disabled while narrowed —
-    // see _tabNarrowed.
-    if (_tabNarrowed) return;
+    // scramble the hidden tasks' order, so it is disabled whenever this tab
+    // is actually narrowed — see _tabNarrowedByFilters.
+    if (_tabNarrowedByFilters(pageIndex)) return;
     final tasks = _tasksForTab(pageIndex);
     if (oldIndex >= tasks.length || newIndex > tasks.length) return;
     setState(() {
@@ -2845,19 +2846,22 @@ class _HomePageState extends State<HomePage>
   ViewFilterRules? get _homeFilterRules =>
       Config.viewFilterRules[ViewFilterRules.home];
 
-  /// Whether the Home view's configured filter rules currently hide
-  /// anything.
-  bool get _homeFilterRulesActive => !(_homeFilterRules?.isEmpty ?? true);
-
-  /// Whether any tab is currently showing a narrowed subset — a search
-  /// query, configured Home filter rules, or [widget.tagFilter] (Worklist).
-  /// Reordering is disabled whenever this is true: renumbering only the
-  /// visible subset would scramble the hidden tasks' [Task.listRanking] —
-  /// see [_reorderTask].
-  bool get _tabNarrowed =>
-      _searchQuery.trim().isNotEmpty ||
-      _homeFilterRulesActive ||
-      widget.tagFilter != null;
+  /// Whether an active search, [widget.tagFilter] (Worklist), or the
+  /// configured Home filter rules (Settings → Filtering rules) are
+  /// currently hiding at least one task that otherwise belongs on tab
+  /// [pageIndex]. Home ships with a non-empty default rule (it excludes
+  /// every other view's reserved tag — Wish, Project, ...), so merely
+  /// checking whether a rule is *configured* is true for nearly every
+  /// install; that alone must not block reordering a tab none of these are
+  /// actually narrowing, which is why this compares the tab's filtered and
+  /// unfiltered task counts (`_tasksForTab`'s `applySearch` toggle turns off
+  /// search, tagFilter and rules together) instead of checking each
+  /// condition directly. Reordering is disabled whenever this is true:
+  /// renumbering only the visible subset would scramble the hidden tasks'
+  /// [Task.listRanking] — see [_reorderTask].
+  bool _tabNarrowedByFilters(int pageIndex) =>
+      _tasksForTab(pageIndex).length !=
+      _tasksForTab(pageIndex, applySearch: false).length;
 
   /// Tasks shown on [pageIndex]. While a search query is active the list is
   /// narrowed to matching tasks, [widget.tagFilter] (Worklist) narrows it to
