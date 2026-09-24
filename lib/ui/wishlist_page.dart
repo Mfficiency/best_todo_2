@@ -8,63 +8,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../services/auto_tag_service.dart';
+import '../services/claude_routine_service.dart';
 import '../services/github_wishlist_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
+import '../services/shared_wishlist_store.dart';
 import '../services/wishlist_shipped.dart';
 import '../utils/description_disclosure.dart';
 import '../utils/label_utils.dart';
+import '../utils/wish_priority.dart';
 import 'label_picker.dart';
 import 'subpage_app_bar.dart';
+import 'wishlist_sync_banner.dart';
 
 enum _WishlistSortOrder { priority, newest, oldest, title }
-
-/// Priority labels a wishlist item can carry inside [Task.label], ordered
-/// from lowest to highest.
-const List<String> wishPriorityLabels = <String>[
-  'priority-low',
-  'priority-medium',
-  'priority-high',
-];
-
-/// 0 for no priority label, 1..3 for low..high.
-int wishPriorityRank(Task task) {
-  final labels = task.label
-      .toLowerCase()
-      .split(RegExp(r'[,\s]+'))
-      .map((label) => label.trim())
-      .toSet();
-  for (var i = wishPriorityLabels.length - 1; i >= 0; i--) {
-    if (labels.contains(wishPriorityLabels[i])) return i + 1;
-  }
-  return 0;
-}
-
-/// Rewrites [task]'s label so [priorityLabel] is its only priority label;
-/// all other labels are kept.
-void setWishPriority(Task task, String priorityLabel) {
-  final labels = task.label
-      .split(RegExp(r'[,\s]+'))
-      .map((label) => label.trim())
-      .where((label) => label.isNotEmpty)
-      .where((label) => !wishPriorityLabels.contains(label.toLowerCase()))
-      .toList();
-  labels.insert(0, priorityLabel);
-  task.label = labels.join(', ');
-}
-
-/// Raises [task]'s priority one step: none → low → medium → high (capped).
-void bumpWishPriority(Task task) {
-  final rank = wishPriorityRank(task);
-  final next =
-      rank >= wishPriorityLabels.length ? wishPriorityLabels.length - 1 : rank;
-  setWishPriority(task, wishPriorityLabels[next]);
-}
 
 /// The release-tracking group a wishlist item is sorted into — rendered as
 /// the wishlist's sections, top to bottom, exactly like the home page's
@@ -242,12 +205,18 @@ class WishlistPage extends StatefulWidget {
 class _WishlistPageState extends State<WishlistPage> {
   final ItemRepository _repository = ItemRepository.instance;
   final GithubWishlistService _githubService = GithubWishlistService.instance;
+  final SharedWishlistStore _sharedStore = SharedWishlistStore.instance;
 
   /// The full task list; the page shows and mutates only the isWish subset
   /// but always persists the whole list.
   List<Task> _tasks = <Task>[];
   bool _loading = true;
   _WishlistSortOrder _sortOrder = _WishlistSortOrder.priority;
+
+  /// Whether this app currently holds the permission [SharedWishlistStore]
+  /// needs, i.e. whether wishlist items are actually shared with Best
+  /// Music right now — checked on load, never auto-requested.
+  bool _syncConnected = false;
 
   /// The running app's version, for [wishReleaseGroupOf]. Empty until
   /// loaded, which no shipped-wish version ever matches, so every item
@@ -264,28 +233,53 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 
   Future<void> _load() async {
-    // Also merges legacy wishlist.json items into the task list.
+    // Also merges legacy wishlist.json items into the task list. The
+    // Wishlist starts empty — no dev-only demo item — so a fresh/cleared
+    // list stays genuinely empty instead of quietly repopulating.
     final tasks = await _repository.loadItems();
-    // Platforms without storage (web) load an empty list; dev builds seed
-    // the same wish item the home page seeds so the tool is testable in
-    // Chrome. On devices with data the list is never empty here.
-    if (tasks.isEmpty && Config.isDev) {
-      tasks.add(Task(
-        title: 'Learn to sail',
-        description: 'Dev seed: a wishlist item',
-        label: addLabelToken('priority-medium', demoToken),
-        createdAt: DateTime.now(),
-        isWish: true,
-      ));
+    // Only touch the shared store (and re-persist locally) when actually
+    // connected — an app that never connects behaves exactly as before.
+    final connected = await _sharedStore.isConnected();
+    if (connected) {
+      final shared = await _sharedStore.load();
+      final localWishes = tasks.where((t) => t.isWish).toList();
+      final canonicalWishes = reconcileWishlist(localWishes, shared);
+      tasks.removeWhere((t) => t.isWish);
+      tasks.addAll(canonicalWishes);
+      if (shared.fileExisted) {
+        await _repository.saveItems(tasks);
+      } else {
+        unawaited(_sharedStore.save(canonicalWishes));
+      }
     }
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
       _loading = false;
+      _syncConnected = connected;
     });
   }
 
-  Future<void> _save() => _repository.saveItems(_tasks);
+  Future<void> _save() async {
+    await _repository.saveItems(_tasks);
+    if (_syncConnected) {
+      unawaited(_sharedStore.save(_tasks.where((t) => t.isWish).toList()));
+    }
+  }
+
+  Future<bool> _connectSync() async {
+    final granted = await _sharedStore.requestConnection();
+    if (granted && mounted) {
+      setState(() => _syncConnected = true);
+      await _load();
+    }
+    return granted;
+  }
+
+  void _dismissSyncBanner() {
+    setState(() => Config.wishlistSyncBannerDismissed = true);
+    unawaited(Config.save());
+  }
 
   int _compareCreatedAt(Task a, Task b, {required bool newestFirst}) {
     final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -448,37 +442,40 @@ class _WishlistPageState extends State<WishlistPage> {
     return labels.join(', ');
   }
 
-  Future<void> _editItem([Task? item]) async {
+  /// The "Add wishlist item" FAB flow. Editing an existing item happens
+  /// inline (tapping a tile folds it open, like the home list's tiles) —
+  /// this dialog is only ever used to create a new one.
+  Future<void> _addItem() async {
     final result = await showDialog<_WishEditResult>(
       context: context,
       builder: (context) => _WishEditDialog(
-        item: item,
         labelTextWithPriority: _labelTextWithPriority,
       ),
     );
 
     if (result == null) return;
     setState(() {
-      if (item == null) {
-        _tasks.insert(
-          0,
-          Task(
-            title: result.title,
-            description: result.description,
-            label: AutoTagService.instance.withAutoTags(
-                result.title, result.label),
-            createdAt: DateTime.now(),
-            isWish: true,
-          ),
-        );
-      } else {
-        item
-          ..title = result.title
-          ..description = result.description
-          ..label = result.label;
-      }
+      _tasks.insert(
+        0,
+        Task(
+          title: result.title,
+          description: result.description,
+          label: AutoTagService.instance.withAutoTags(
+              result.title, result.label),
+          createdAt: DateTime.now(),
+          isWish: true,
+        ),
+      );
     });
     await _save();
+  }
+
+  /// Persists a field an expanded tile just edited inline, and refreshes
+  /// this page's own sort/grouping (a priority or release-tag change moves
+  /// the item to a different section/position).
+  void _persistFieldEdit() {
+    setState(() {});
+    _save();
   }
 
   void _toggleDone(Task item) {
@@ -553,12 +550,14 @@ class _WishlistPageState extends State<WishlistPage> {
       if (!mounted) return;
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Queued "${item.title}" for build')));
+        ..showSnackBar(
+            SnackBar(content: Text('Queued "${item.title}" for build')));
     } catch (e) {
       if (!mounted) return;
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Failed to send "${item.title}": $e')));
+        ..showSnackBar(
+            SnackBar(content: Text('Failed to send "${item.title}": $e')));
     }
   }
 
@@ -569,7 +568,8 @@ class _WishlistPageState extends State<WishlistPage> {
     final candidates = _wishes().where((wish) {
       if (wish.isDone) return false;
       final group = wishReleaseGroupOf(wish, _currentVersion);
-      return group == WishReleaseGroup.backlog || group == WishReleaseGroup.soon;
+      return group == WishReleaseGroup.backlog ||
+          group == WishReleaseGroup.soon;
     }).toList();
     await Clipboard.setData(
         ClipboardData(text: proposeForNextPrompt(candidates)));
@@ -577,9 +577,9 @@ class _WishlistPageState extends State<WishlistPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(
-        content: Text(
-            'Prompt copied — paste it to Claude, then sync Todoist to '
-            'update the groups.'),
+        content:
+            Text('Prompt copied — paste it to Claude, then sync Todoist to '
+                'update the groups.'),
       ));
   }
 
@@ -747,68 +747,84 @@ class _WishlistPageState extends State<WishlistPage> {
   Widget build(BuildContext context) {
     final wishes = _wishes();
     final grouped = _groupedWishes(wishes);
+    final showSyncBanner = !_loading &&
+        !_syncConnected &&
+        !Config.wishlistSyncBannerDismissed &&
+        _sharedStore.isSupported;
     return Scaffold(
       appBar: _buildAppBar(context),
       floatingActionButton: _selecting
           ? null
           : FloatingActionButton(
               tooltip: 'Add wishlist item',
-              onPressed: () => _editItem(),
+              onPressed: _addItem,
               child: const Icon(Icons.add),
             ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : wishes.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No wishlist items yet. Add ideas here; swipe right to '
-                      'share/copy/export, swipe left to select.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  children: [
-                    for (final group in WishReleaseGroup.values)
-                      // "Next release" always shows — it's where "Propose for
-                      // next" lives, and that button should stay reachable
-                      // even before anything has been tagged into it.
-                      if (grouped[group]!.isNotEmpty ||
-                          group == WishReleaseGroup.nextRelease) ...[
-                        _WishReleaseSectionHeader(
-                          group: group,
-                          count: grouped[group]!.length,
-                          onProposeForNext:
-                              group == WishReleaseGroup.nextRelease
-                                  ? _proposeForNext
-                                  : null,
-                        ),
-                        for (final item in grouped[group]!)
-                          _WishTile(
-                            key: ValueKey(item.uid),
-                            item: item,
-                            releaseGroup: group,
-                            selecting: _selecting,
-                            selected: _selectedUids.contains(item.uid),
-                            onToggle: () => _toggleDone(item),
-                            onToggleSelected: () => _toggleSelected(item),
-                            onStartSelection: () => _startSelection(item),
-                            onEdit: () => _editItem(item),
-                            onCopy: () => _copyItem(item),
-                            onShare: () => _shareItem(item),
-                            onExport: () => _exportItem(item),
-                            onDelete: () => _deleteItems([item]),
-                            onSendToBuild: () => _sendToBuild(item),
-                            onRegressRelease: () => _regressRelease(item),
-                            onSetReleaseGroup: (newGroup) =>
-                                _setReleaseGroup(item, newGroup),
+      body: Column(
+        children: [
+          if (showSyncBanner)
+            WishlistSyncBanner(
+              otherAppName: 'Best Music',
+              onConnect: _connectSync,
+              onDismiss: _dismissSyncBanner,
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : wishes.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No wishlist items yet. Add ideas here; swipe right to '
+                            'share/copy/export, swipe left to select.',
+                            textAlign: TextAlign.center,
                           ),
-                      ],
-                  ],
-                ),
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                        children: [
+                          for (final group in WishReleaseGroup.values)
+                            // "Next release" always shows — it's where "Propose for
+                            // next" lives, and that button should stay reachable
+                            // even before anything has been tagged into it.
+                            if (grouped[group]!.isNotEmpty ||
+                                group == WishReleaseGroup.nextRelease) ...[
+                              _WishReleaseSectionHeader(
+                                group: group,
+                                count: grouped[group]!.length,
+                                onProposeForNext:
+                                    group == WishReleaseGroup.nextRelease
+                                        ? _proposeForNext
+                                        : null,
+                              ),
+                              for (final item in grouped[group]!)
+                                _WishTile(
+                                  key: ValueKey(item.uid),
+                                  item: item,
+                                  releaseGroup: group,
+                                  selecting: _selecting,
+                                  selected: _selectedUids.contains(item.uid),
+                                  onToggle: () => _toggleDone(item),
+                                  onToggleSelected: () => _toggleSelected(item),
+                                  onStartSelection: () => _startSelection(item),
+                                  onFieldsChanged: _persistFieldEdit,
+                                  onCopy: () => _copyItem(item),
+                                  onShare: () => _shareItem(item),
+                                  onExport: () => _exportItem(item),
+                                  onDelete: () => _deleteItems([item]),
+                                  onSendToBuild: () => _sendToBuild(item),
+                                  onRegressRelease: () => _regressRelease(item),
+                                  onSetReleaseGroup: (newGroup) =>
+                                      _setReleaseGroup(item, newGroup),
+                                ),
+                            ],
+                        ],
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -862,15 +878,13 @@ class _WishEditResult {
   const _WishEditResult(this.title, this.description, this.label);
 }
 
-/// Add/edit dialog owning its text controllers, so the dialog's exit
-/// animation never builds fields with disposed controllers.
+/// The "Add wishlist item" dialog, owning its own text controllers so its
+/// exit animation never builds fields with disposed controllers.
 class _WishEditDialog extends StatefulWidget {
-  final Task? item;
   final String Function(String text, String priorityLabel)
       labelTextWithPriority;
 
   const _WishEditDialog({
-    required this.item,
     required this.labelTextWithPriority,
   });
 
@@ -881,15 +895,13 @@ class _WishEditDialog extends StatefulWidget {
 class _WishEditDialogState extends State<_WishEditDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
-  late String _label;
+  String _label = '';
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.item?.title ?? '');
-    _descriptionController =
-        TextEditingController(text: widget.item?.description ?? '');
-    _label = widget.item?.label ?? '';
+    _titleController = TextEditingController();
+    _descriptionController = TextEditingController();
   }
 
   @override
@@ -907,7 +919,8 @@ class _WishEditDialogState extends State<_WishEditDialog> {
     if (pasted == null || pasted.isEmpty) return;
     final controller = _descriptionController;
     final selection = controller.selection;
-    final insertAt = selection.isValid ? selection.start : controller.text.length;
+    final insertAt =
+        selection.isValid ? selection.start : controller.text.length;
     final removeTo = selection.isValid ? selection.end : controller.text.length;
     final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
     controller.text = newText;
@@ -919,8 +932,7 @@ class _WishEditDialogState extends State<_WishEditDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(
-          widget.item == null ? 'Add wishlist item' : 'Edit wishlist item'),
+      title: const Text('Add wishlist item'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -999,14 +1011,17 @@ class _WishEditDialogState extends State<_WishEditDialog> {
 }
 
 /// A wishlist item rendered like a home-page task tile (checkbox, title,
-/// labels — never a due date) with the wishlist swipe actions: swiping
-/// toward the options side opens Share/Copy/Export/Build/Delete shortcuts and
-/// moves the item back one release step ([WishlistPage]'s [regressWishReleaseGroup])
-/// when the countdown runs out; swiping toward the other side starts
-/// multi-select ([onStartSelection])/toggles it ([onToggleSelected]) instead
-/// of deleting — deleting a single item now lives in the options panel
-/// above, and the selection app bar still deletes several at once. Directions
-/// follow [Config.swipeLeftDelete] like the home list.
+/// labels — never a due date). Tapping it folds it open in place, exactly
+/// like a home-list task tile: title/labels/description become editable
+/// fields, and a "Send to Claude" robot button appears right there — no
+/// popover needed. Swiping toward the options side still opens
+/// Share/Copy/Export/Build/Delete shortcuts and moves the item back one
+/// release step ([WishlistPage]'s [regressWishReleaseGroup]) when the
+/// countdown runs out; swiping toward the other side starts multi-select
+/// ([onStartSelection])/toggles it ([onToggleSelected]) instead of deleting —
+/// deleting a single item now lives in the options panel above, and the
+/// selection app bar still deletes several at once. Directions follow
+/// [Config.swipeLeftDelete] like the home list.
 class _WishTile extends StatefulWidget {
   final Task item;
   final WishReleaseGroup releaseGroup;
@@ -1015,7 +1030,7 @@ class _WishTile extends StatefulWidget {
   final VoidCallback onToggle;
   final VoidCallback onToggleSelected;
   final VoidCallback onStartSelection;
-  final VoidCallback onEdit;
+  final VoidCallback onFieldsChanged;
   final VoidCallback onCopy;
   final VoidCallback onShare;
   final VoidCallback onExport;
@@ -1033,7 +1048,7 @@ class _WishTile extends StatefulWidget {
     required this.onToggle,
     required this.onToggleSelected,
     required this.onStartSelection,
-    required this.onEdit,
+    required this.onFieldsChanged,
     required this.onCopy,
     required this.onShare,
     required this.onExport,
@@ -1054,10 +1069,21 @@ class _WishTileState extends State<_WishTile>
   late final AnimationController _progressController;
   double _dragOffset = 0;
   bool _dragging = false;
+  bool _sendingToClaude = false;
+
+  /// Whether the tile is folded open for inline editing — like tapping a
+  /// task tile on the home list. Title/labels/description become editable
+  /// fields and the "Send to Claude" robot button appears in the trailing
+  /// row.
+  bool _expanded = false;
+  late final TextEditingController _titleController;
+  late final TextEditingController _descController;
 
   @override
   void initState() {
     super.initState();
+    _titleController = TextEditingController(text: widget.item.title);
+    _descController = TextEditingController(text: widget.item.description);
     _progressController = AnimationController(
       vsync: this,
       duration: wishlistSweepDelay,
@@ -1068,8 +1094,12 @@ class _WishTileState extends State<_WishTile>
   void dispose() {
     _timer?.cancel();
     _progressController.dispose();
+    _titleController.dispose();
+    _descController.dispose();
     super.dispose();
   }
+
+  void _toggleExpanded() => setState(() => _expanded = !_expanded);
 
   void _startSwipeOptions() {
     setState(() => _optionsOpen = true);
@@ -1115,11 +1145,163 @@ class _WishTileState extends State<_WishTile>
     widget.onSendToBuild();
   }
 
+  /// Fires the routine configured in Settings → Claude Routine with this
+  /// wishlist item as context, starting a real Claude Code cloud session —
+  /// the same "Send to Claude" action the main task list offers, so wishlist
+  /// items can be built with AI without first having to send them to the
+  /// GitHub build queue. Only reachable once the tile is folded open (like
+  /// the home list's own robot button, which only shows on an expanded
+  /// tile).
+  Future<void> _sendToClaude() async {
+    final url = Config.claudeRoutineUrl.trim();
+    final token = Config.claudeRoutineToken.trim();
+    if (url.isEmpty || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set up Claude Routine in Settings first'),
+        ),
+      );
+      return;
+    }
+    setState(() => _sendingToClaude = true);
+    try {
+      final result = await ClaudeRoutineService.instance.fire(
+        fireUrl: url,
+        token: token,
+        text: ClaudeRoutineService.instance.buildPayload(widget.item),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Claude session started'),
+          duration: const Duration(seconds: 8),
+          action: result.sessionUrl.isEmpty
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => launchUrl(
+                    Uri.parse(result.sessionUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is ClaudeRoutineException
+              ? (e.statusCode == 401
+                  ? 'Invalid Claude Routine token'
+                  : 'Failed to start session: ${e.message}')
+              : 'Failed to start session: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingToClaude = false);
+    }
+  }
+
+  /// Pastes clipboard text into the inline description field at the current
+  /// selection (or appended, if the field has no active selection) — the
+  /// same behavior the "Add wishlist item" dialog's paste button offers.
+  Future<void> _pasteDescription() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty) return;
+    final controller = _descController;
+    final selection = controller.selection;
+    final insertAt = selection.isValid ? selection.start : controller.text.length;
+    final removeTo = selection.isValid ? selection.end : controller.text.length;
+    final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
+    controller.text = newText;
+    controller.selection = TextSelection.collapsed(
+      offset: (insertAt + pasted.length).clamp(0, newText.length),
+    );
+    setState(() => widget.item.description = newText);
+    widget.onFieldsChanged();
+  }
+
   List<String> _labels() => widget.item.label
       .split(RegExp(r'[,\s]+'))
       .map((label) => label.trim())
       .where((label) => label.isNotEmpty)
       .toList();
+
+  /// The fold-open editing section shown below the tile when [_expanded]:
+  /// title, labels/quick-priority and description, editable in place —
+  /// exactly the fields the old "Edit wishlist item" dialog offered.
+  Widget _buildExpandedFields(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Focus(
+            onFocusChange: (hasFocus) {
+              if (!hasFocus) widget.onFieldsChanged();
+            },
+            child: TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(labelText: 'Title'),
+              onChanged: (v) => setState(() => widget.item.title = v),
+            ),
+          ),
+          LabelPickerField(
+            value: widget.item.label,
+            fieldLabel: 'Labels / tags',
+            onChanged: (v) {
+              setState(() => widget.item.label = v);
+              widget.onFieldsChanged();
+            },
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Quick priority',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final priority in wishPriorityLabels)
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() => setWishPriority(widget.item, priority));
+                    widget.onFieldsChanged();
+                  },
+                  child: Text(priority.replaceFirst('priority-', '')),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Focus(
+            onFocusChange: (hasFocus) {
+              if (!hasFocus) widget.onFieldsChanged();
+            },
+            child: TextField(
+              controller: _descController,
+              decoration: InputDecoration(
+                labelText: 'Description',
+                suffixIcon: IconButton(
+                  tooltip: 'Paste from clipboard',
+                  icon: const Icon(Icons.content_paste),
+                  onPressed: _pasteDescription,
+                ),
+              ),
+              keyboardType: TextInputType.multiline,
+              maxLines: null,
+              onChanged: (v) => setState(() => widget.item.description = v),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1173,37 +1355,58 @@ class _WishTileState extends State<_WishTile>
                 ],
               ],
             ),
-      onTap: widget.selecting ? widget.onToggleSelected : widget.onEdit,
-      // No per-item action icons: share/copy/export live behind the swipe
-      // options overlay and selection starts with a swipe, so the only
-      // trailing control left is the release-group picker (which has no
-      // swipe equivalent — swiping only steps an item back one group).
-      trailing: widget.selecting ||
-              widget.releaseGroup == WishReleaseGroup.newlyImplemented
+      // Tapping folds the tile open for inline editing, exactly like a home
+      // list task tile — no edit dialog/popover.
+      onTap: widget.selecting ? widget.onToggleSelected : _toggleExpanded,
+      trailing: widget.selecting
           ? null
-          : PopupMenuButton<WishReleaseGroup>(
-              tooltip: 'Move to release group',
-              icon: const Icon(Icons.drive_file_move_outline),
-              initialValue: widget.releaseGroup,
-              onSelected: widget.onSetReleaseGroup,
-              itemBuilder: (context) => [
-                for (final group in const [
-                  WishReleaseGroup.nextRelease,
-                  WishReleaseGroup.soon,
-                  WishReleaseGroup.backlog,
-                ])
-                  PopupMenuItem(
-                    value: group,
-                    child: Row(
-                      children: [
-                        if (group == widget.releaseGroup)
-                          const Icon(Icons.check, size: 18)
-                        else
-                          const SizedBox(width: 18),
-                        const SizedBox(width: 8),
-                        Text(wishReleaseGroupTitle(group)),
-                      ],
-                    ),
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_expanded)
+                  IconButton(
+                    icon: _sendingToClaude
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.smart_toy_outlined),
+                    tooltip: 'Send to Claude',
+                    onPressed: _sendingToClaude ? null : _sendToClaude,
+                  ),
+                if (widget.releaseGroup != WishReleaseGroup.newlyImplemented)
+                  PopupMenuButton<WishReleaseGroup>(
+                    tooltip: 'Move to release group',
+                    icon: const Icon(Icons.drive_file_move_outline),
+                    initialValue: widget.releaseGroup,
+                    onSelected: widget.onSetReleaseGroup,
+                    itemBuilder: (context) => [
+                      for (final group in const [
+                        WishReleaseGroup.nextRelease,
+                        WishReleaseGroup.soon,
+                        WishReleaseGroup.backlog,
+                      ])
+                        PopupMenuItem(
+                          value: group,
+                          child: Row(
+                            children: [
+                              if (group == widget.releaseGroup)
+                                const Icon(Icons.check, size: 18)
+                              else
+                                const SizedBox(width: 18),
+                              const SizedBox(width: 8),
+                              Text(wishReleaseGroupTitle(group)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                if (_expanded)
+                  IconButton(
+                    icon: const Icon(Icons.expand_less),
+                    tooltip: 'Collapse',
+                    onPressed: _toggleExpanded,
                   ),
               ],
             ),
@@ -1279,7 +1482,12 @@ class _WishTileState extends State<_WishTile>
     final slide = AnimatedSlide(
       offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
       duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
-      child: stackTile,
+      child: Column(
+        children: [
+          stackTile,
+          if (_expanded) _buildExpandedFields(context),
+        ],
+      ),
     );
 
     Widget? background;
@@ -1325,8 +1533,8 @@ class _WishTileState extends State<_WishTile>
           child: Container(
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Icon(Icons.undo,
-                color: Theme.of(context).colorScheme.primary),
+            child:
+                Icon(Icons.undo, color: Theme.of(context).colorScheme.primary),
           ),
         );
       }

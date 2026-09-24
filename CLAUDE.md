@@ -24,16 +24,32 @@ file is the short operational guide.
   `.smart_test_state.json`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
-  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
-- Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main). Best Music has its own
+  suite: `flutter test integration_test/music_home_page_screenshot_test.dart -d windows`
+  → `build/e2e_screenshots_music/`, archived to `docs/screenshots/music/` the same way.
+- Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
+  keystore). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
+  (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
+  separate standalone app from this same codebase (Music Player + MP3 Downloader only, no
+  to-do features — `lib/main_music.dart`, SPEC.md §10.6f). Build it with
+  `sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass
+  -File tool\build.ps1 music-apk --release`). CI also builds and stages it
+  automatically on every push to main/staging/dev (`build_music_apk` job in
+  `build-apk.yml`). The per-flavor rename to `best_<flavor>_<version>.apk` is done
+  by Gradle's `createVersioned<Flavor>ReleaseApk` task — one task per flavor, wired
+  to that flavor's own `assemble<Flavor>Release`, because
+  `build/app/outputs/flutter-apk/` is never cleaned between builds and anything
+  that infers the flavor by looking for an existing `app-<flavor>-release.apk`
+  picks up the *previous* app's leftover.
 - Build everything + ship: `sh tool/build.sh all --release` (alias for
   `sh tool/build_all.sh --release`), or on Windows without Git Bash/WSL:
   `powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release`.
-  Builds the APK **and** the Windows exe, stages the APK into `github_releases/`,
-  then commits and pushes the current branch so the app can download it.
+  Builds the BestToDo APK, the Best Music APK **and** the Windows exe, stages both
+  APKs into `github_releases/`, then commits and pushes the current branch so the
+  apps can download them.
   Switches: `SYNC=0` (no git), `PUSH=0` (commit only), `WINDOWS=0`/`ANDROID=0`
-  (one target), `REQUIRE_WINDOWS=1` (a failing Windows build aborts instead of
-  warning).
+  (one target), `MUSIC=0` (skip the Best Music APK), `REQUIRE_WINDOWS=1` (a failing
+  Windows build aborts instead of warning).
 - Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
   `github_releases/` and deletes the older ones; commit the folder — the app's About page
@@ -60,7 +76,9 @@ file is the short operational guide.
   `flutter test --machine > build/ci/machine.jsonl` then
   `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
-  or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`
+  or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`.
+  Best Music versions and changelogs independently of BestToDo (SPEC.md §10.6i) — add
+  `--music` to bump `MUSIC_VERSION` + `CHANGELOG_MUSIC.md` instead
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 

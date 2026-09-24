@@ -27,6 +27,40 @@ class Track {
   /// Track length in milliseconds, when known (from ID3 tags or the server).
   final int? durationMs;
 
+  /// Genre, when known (from an mp3's `TCON` ID3 tag). Empty when unknown —
+  /// used to build "most played per genre" smart playlists and genre rule
+  /// conditions.
+  final String genre;
+
+  /// Release year, when known (from an mp3's `TDRC`/`TYER`/`TDOR` ID3 tag).
+  final int? year;
+
+  /// When this track was first seen by a library scan. Preserved across
+  /// later rescans (a file that's still there doesn't get a new "added"
+  /// date just because the library was refreshed) — backs the "Last Added"
+  /// smart playlist.
+  final DateTime? dateAdded;
+
+  /// How many times this track has been played to completion. Backs the
+  /// "Most Played" smart playlists; bumped by [MusicAudioHandler], not by a
+  /// manual skip.
+  final int playCount;
+
+  /// True once title/artist/album/genre/year were set by hand (the Track
+  /// info page's "fill in missing metadata"), rather than read from the
+  /// file's tags. A later [MusicLibraryService.rescan] keeps those fields
+  /// as-is instead of overwriting them with a fresh (possibly still empty)
+  /// tag read.
+  final bool metadataEdited;
+
+  /// Free-form labels the user assigns by hand (e.g. "Belgian Top Charts",
+  /// "Wedding songs") to group tracks by occasion/playlist-worthiness in
+  /// ways artist/genre/folder don't capture — see the Tags tab. Never read
+  /// from a file's tags; always set via [MusicLibraryService.updateTrackMetadata]
+  /// or a metadata CSV import, so it survives a rescan the same way other
+  /// manually-edited fields do.
+  final List<String> tags;
+
   const Track({
     required this.id,
     required this.source,
@@ -36,6 +70,12 @@ class Track {
     this.artist = '',
     this.album = '',
     this.durationMs,
+    this.genre = '',
+    this.year,
+    this.dateAdded,
+    this.playCount = 0,
+    this.metadataEdited = false,
+    this.tags = const [],
   });
 
   factory Track.local({
@@ -44,6 +84,12 @@ class Track {
     String artist = '',
     String album = '',
     int? durationMs,
+    String genre = '',
+    int? year,
+    DateTime? dateAdded,
+    int playCount = 0,
+    bool metadataEdited = false,
+    List<String> tags = const [],
   }) {
     return Track(
       id: 'local:$filePath',
@@ -53,6 +99,12 @@ class Track {
       artist: artist,
       album: album,
       durationMs: durationMs,
+      genre: genre,
+      year: year,
+      dateAdded: dateAdded,
+      playCount: playCount,
+      metadataEdited: metadataEdited,
+      tags: tags,
     );
   }
 
@@ -84,6 +136,39 @@ class Track {
     return dot > 0 ? name.substring(0, dot) : name;
   }
 
+  /// Returns a copy with the given fields replaced. Used to update
+  /// per-scan metadata while preserving [dateAdded]/[playCount] across a
+  /// rescan, and to bump [playCount] on playback.
+  Track copyWith({
+    String? title,
+    String? artist,
+    String? album,
+    int? durationMs,
+    String? genre,
+    int? year,
+    DateTime? dateAdded,
+    int? playCount,
+    bool? metadataEdited,
+    List<String>? tags,
+  }) {
+    return Track(
+      id: id,
+      source: source,
+      filePath: filePath,
+      remoteId: remoteId,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      durationMs: durationMs ?? this.durationMs,
+      genre: genre ?? this.genre,
+      year: year ?? this.year,
+      dateAdded: dateAdded ?? this.dateAdded,
+      playCount: playCount ?? this.playCount,
+      metadataEdited: metadataEdited ?? this.metadataEdited,
+      tags: tags ?? this.tags,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'source': source.name,
@@ -93,6 +178,12 @@ class Track {
         'artist': artist,
         'album': album,
         if (durationMs != null) 'durationMs': durationMs,
+        if (genre.isNotEmpty) 'genre': genre,
+        if (year != null) 'year': year,
+        if (dateAdded != null) 'dateAdded': dateAdded!.millisecondsSinceEpoch,
+        if (playCount != 0) 'playCount': playCount,
+        if (metadataEdited) 'metadataEdited': metadataEdited,
+        if (tags.isNotEmpty) 'tags': tags,
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -101,6 +192,7 @@ class Track {
       (s) => s.name == sourceName,
       orElse: () => TrackSource.local,
     );
+    final dateAddedMs = json['dateAdded'];
     return Track(
       id: json['id'] as String? ?? '',
       source: source,
@@ -110,6 +202,15 @@ class Track {
       artist: json['artist'] as String? ?? '',
       album: json['album'] as String? ?? '',
       durationMs: (json['durationMs'] as num?)?.round(),
+      genre: json['genre'] as String? ?? '',
+      year: (json['year'] as num?)?.round(),
+      dateAdded: dateAddedMs is num
+          ? DateTime.fromMillisecondsSinceEpoch(dateAddedMs.round())
+          : null,
+      playCount: (json['playCount'] as num?)?.round() ?? 0,
+      metadataEdited: json['metadataEdited'] as bool? ?? false,
+      tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ??
+          const [],
     );
   }
 

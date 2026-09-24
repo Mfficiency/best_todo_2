@@ -196,5 +196,69 @@ void main() {
       expect(changelog, isNot(contains('Local build')));
       expect(File('${temp.path}/build_history.json').existsSync(), isFalse);
     });
+
+    test('tags a BestToDo history record with app: todo', () {
+      tool.main(['--duration', '102', '--target', 'apk']);
+
+      final history = jsonDecode(
+          File('${temp.path}/build_history.json').readAsStringSync()) as List;
+      expect(history.single['app'], 'todo');
+    });
+  });
+
+  // Best Music versions and changelogs independently of BestToDo (its own
+  // MUSIC_VERSION file and CHANGELOG_MUSIC.md, CLAUDE.md/SPEC.md §10.6f);
+  // `--app music` points this tool at those instead.
+  group('--app music', () {
+    late Directory temp;
+    late String previousCwd;
+
+    setUp(() {
+      temp = Directory.systemTemp.createTempSync('append_build_time_music_test');
+      previousCwd = Directory.current.path;
+      Directory.current = temp;
+      File('${temp.path}/MUSIC_VERSION')
+          .writeAsStringSync('version: 0.2.80+371\n');
+      File('${temp.path}/CHANGELOG_MUSIC.md').writeAsStringSync(
+          '# Best Music Changelog\n\n## [0.2.80] - 2026-09-18\n- Did a thing\n');
+      // A music run must never touch BestToDo's own files.
+      File('${temp.path}/pubspec.yaml')
+          .writeAsStringSync('name: besttodo\nversion: 0.2.2+293\n');
+      File('${temp.path}/CHANGELOG.md').writeAsStringSync(
+          '# Changelog\n\n## [0.2.2] - 2026-08-27\n- Did a thing\n');
+    });
+
+    tearDown(() {
+      Directory.current = previousCwd;
+      try {
+        temp.deleteSync(recursive: true);
+      } catch (_) {
+        // Windows can hold the handle briefly; the temp dir is disposable.
+      }
+    });
+
+    test('notes the build in CHANGELOG_MUSIC.md, not CHANGELOG.md', () {
+      tool.main(['--app', 'music']);
+
+      final musicChangelog =
+          File('${temp.path}/CHANGELOG_MUSIC.md').readAsStringSync();
+      expect(musicChangelog, contains('- Local build: '));
+
+      final todoChangelog =
+          File('${temp.path}/CHANGELOG.md').readAsStringSync();
+      expect(todoChangelog, isNot(contains('Local build')));
+    });
+
+    test('records history with the MUSIC_VERSION version and app: music',
+        () {
+      tool.main(['--app', 'music', '--duration', '102', '--target', 'apk']);
+
+      final history = jsonDecode(
+          File('${temp.path}/build_history.json').readAsStringSync()) as List;
+      expect(history, hasLength(1));
+      expect(history.single['version'], '0.2.80+371');
+      expect(history.single['app'], 'music');
+      expect(history.single['target'], 'apk');
+    });
   });
 }

@@ -3,11 +3,14 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:id3_codec/id3_codec.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../config.dart';
 import '../models/track.dart';
+import 'log_service.dart';
+import 'music_metadata_csv.dart';
+import 'music_metadata_extractor.dart';
 
 /// Scans [Config.musicFolder] and every subfolder for playable audio files,
 /// skipping anything under [Config.musicExcludedSubfolders]. Reads ID3 tags
@@ -33,12 +36,6 @@ class MusicLibraryService {
     'aac',
     'wma',
   };
-
-  /// How many bytes of an mp3 file's head to read when looking for an ID3v2
-  /// tag. Large enough for typical tags (including small embedded art);
-  /// files whose tag runs past this are simply scanned without tags rather
-  /// than reading the whole file for every track.
-  static const int _id3ReadCap = 1024 * 1024;
 
   final ValueNotifier<List<Track>> tracks = ValueNotifier<List<Track>>([]);
   bool _loaded = false;
@@ -95,6 +92,24 @@ class MusicLibraryService {
     return false;
   }
 
+  /// On Android, the folder scan needs the "All files access"
+  /// (`MANAGE_EXTERNAL_STORAGE`) permission — nothing else in the music
+  /// folder pick flow asks for it, so without this a freshly chosen folder
+  /// scans as empty with no visible error (`rescan` logs the denial, but by
+  /// then the user has already picked a folder that "has no songs"). Call
+  /// this right after the user picks a folder, before the first scan. No-op
+  /// (always true) off Android.
+  Future<bool> ensureFolderPermission() async {
+    if (!Platform.isAndroid) return true;
+    var status = await Permission.manageExternalStorage.status;
+    LogService.add('Music', 'ensureFolderPermission: status=$status');
+    if (!status.isGranted) {
+      status = await Permission.manageExternalStorage.request();
+      LogService.add('Music', 'ensureFolderPermission: requested -> $status');
+    }
+    return status.isGranted;
+  }
+
   static String extensionOf(String path) {
     final dot = path.lastIndexOf('.');
     if (dot < 0 || dot == path.length - 1) return '';
@@ -126,7 +141,9 @@ class MusicLibraryService {
         final rel = _relativePath(normalizePath(entity.path), normalizedRoot);
         if (rel.isNotEmpty) result.add(rel);
       }
-    } catch (_) {}
+    } catch (e) {
+      LogService.add('Music', 'listSubfolders: "$root" failed: $e');
+    }
     result.sort();
     return result;
   }
@@ -142,38 +159,92 @@ class MusicLibraryService {
   /// [Config.musicExcludedSubfolders]. Persists the result and updates
   /// [tracks]. A scan failure (folder missing, permission denied) leaves the
   /// previously cached library untouched instead of wiping it out.
-  Future<List<Track>> rescan() async {
+  ///
+  /// [onTrackScanned] fires once per supported audio file found, with the
+  /// running count and that file's final [Track] (already merged with its
+  /// previous dateAdded/playCount/manual edits, if any) — how
+  /// `MusicMetadataScanPage` reports live scan progress without waiting for
+  /// the whole folder to finish.
+  Future<List<Track>> rescan(
+      {void Function(int scanned, Track track)? onTrackScanned}) async {
     final root = Config.musicFolder.trim();
     if (root.isEmpty) {
+      LogService.add('Music', 'rescan: no music folder configured');
       tracks.value = [];
       await _save();
       return tracks.value;
     }
     scanning = true;
     try {
+      if (Platform.isAndroid) {
+        final status = await Permission.manageExternalStorage.status;
+        LogService.add('Music', 'rescan: manageExternalStorage=$status');
+      }
       final rootDir = Directory(root);
-      if (!await rootDir.exists()) return tracks.value;
+      final rootExists = await rootDir.exists();
+      LogService.add('Music', 'rescan: "$root" exists=$rootExists');
+      if (!rootExists) {
+        LogService.add(
+            'Music',
+            'rescan: "$root" not found by Directory.exists() — on Android '
+            'this also happens when "All files access" isn\'t granted, not '
+            'just a missing/moved folder');
+        return tracks.value;
+      }
       final excluded = Config.musicExcludedSubfolders;
       final normalizedRoot = normalizePath(root);
+      // Keyed by id so each freshly-scanned track can inherit its previous
+      // dateAdded/playCount (always) and, when it was manually edited via
+      // the Track info page, its title/artist/album/genre/year too — a
+      // rescan must never quietly discard a manual fix with a fresh
+      // (possibly still empty) tag read.
+      final previousById = {for (final t in tracks.value) t.id: t};
+      final now = DateTime.now();
       final found = <Track>[];
+      var filesSeen = 0;
+      var skippedUnsupportedExt = 0;
+      var skippedExcludedDir = 0;
       await for (final entity
           in rootDir.list(recursive: true, followLinks: false)) {
         if (entity is! File) continue;
+        filesSeen++;
         final path = normalizePath(entity.path);
         final ext = extensionOf(path);
-        if (!supportedExtensions.contains(ext)) continue;
+        if (!supportedExtensions.contains(ext)) {
+          skippedUnsupportedExt++;
+          continue;
+        }
         final rel = _relativePath(path, normalizedRoot);
         final relDir = rel.contains('/') ? rel.substring(0, rel.lastIndexOf('/')) : '';
-        if (isExcludedRelativeDir(relDir, excluded)) continue;
-        found.add(await _buildTrack(entity.path, ext));
+        if (isExcludedRelativeDir(relDir, excluded)) {
+          skippedExcludedDir++;
+          continue;
+        }
+        var track = await _buildTrack(entity.path, ext);
+        final previous = previousById[track.id];
+        track = (previous != null && previous.metadataEdited)
+            ? previous.copyWith(durationMs: track.durationMs ?? previous.durationMs)
+            : track.copyWith(
+                dateAdded: previous?.dateAdded ?? now,
+                playCount: previous?.playCount ?? 0,
+              );
+        found.add(track);
+        onTrackScanned?.call(found.length, track);
       }
       found.sort((a, b) =>
           a.title.toLowerCase().compareTo(b.title.toLowerCase()));
       tracks.value = found;
       await _save();
-    } catch (_) {
+      LogService.add(
+          'Music',
+          'rescan: "$root" — $filesSeen file(s) seen, ${found.length} '
+          'track(s) kept, $skippedUnsupportedExt unsupported extension, '
+          '$skippedExcludedDir in excluded subfolders');
+    } catch (e, st) {
       // Keep whatever was loaded/cached before; a partial or failed scan
       // shouldn't wipe out a previously known library.
+      debugPrint('MusicLibraryService.rescan: "$root" failed: $e\n$st');
+      LogService.add('Music', 'rescan: "$root" failed: $e');
     } finally {
       scanning = false;
     }
@@ -188,35 +259,115 @@ class MusicLibraryService {
     try {
       final raf = await File(filePath).open();
       final length = await raf.length();
-      final headBytes = await raf.read(min(length, _id3ReadCap));
+      final headBytes = await raf.read(min(length, id3ReadCap));
       await raf.close();
-      final tagMap = <String, dynamic>{};
-      for (final info in ID3Decoder(headBytes).decodeSync()) {
-        tagMap.addAll(info.toTagMap());
-      }
-      final title = _frameInfo(tagMap, 'TIT2') ?? tagMap['Title'] as String?;
-      final artist = _frameInfo(tagMap, 'TPE1') ?? tagMap['Artist'] as String?;
-      final album = _frameInfo(tagMap, 'TALB') ?? tagMap['Album'] as String?;
+      final tags = decodeMp3Tags(headBytes);
       return Track.local(
         filePath: filePath,
-        title: (title != null && title.trim().isNotEmpty)
-            ? title.trim()
+        title: (tags.title != null && tags.title!.trim().isNotEmpty)
+            ? tags.title!.trim()
             : fallbackTitle,
-        artist: (artist ?? '').trim(),
-        album: (album ?? '').trim(),
+        artist: (tags.artist ?? '').trim(),
+        album: (tags.album ?? '').trim(),
+        genre: (tags.genre ?? '').trim(),
+        year: tags.year,
       );
     } catch (_) {
       return Track.local(filePath: filePath, title: fallbackTitle);
     }
   }
 
-  static String? _frameInfo(Map<String, dynamic> tagMap, String frameId) {
-    final frame = tagMap['Frame[$frameId]'];
-    if (frame is Map) {
-      final info = frame['Information'];
-      if (info is String) return info;
+  /// Sets [trackId]'s title/artist/album/genre/year/tags to exactly the
+  /// given values (the Track info page's "fill in missing metadata" — not
+  /// the file's actual tags, just this app's cached record of them, which
+  /// is all rule/smart playlists read) and marks it [Track.metadataEdited]
+  /// so a later [rescan] keeps these instead of overwriting them with a
+  /// fresh tag read. No-op if the track isn't currently in the library.
+  Future<void> updateTrackMetadata(
+    String trackId, {
+    required String title,
+    required String artist,
+    required String album,
+    required String genre,
+    int? year,
+    List<String> tags = const [],
+  }) async {
+    final index = tracks.value.indexWhere((t) => t.id == trackId);
+    if (index < 0) return;
+    final existing = tracks.value[index];
+    final updated = Track(
+      id: existing.id,
+      source: existing.source,
+      filePath: existing.filePath,
+      remoteId: existing.remoteId,
+      title: title,
+      artist: artist,
+      album: album,
+      durationMs: existing.durationMs,
+      genre: genre,
+      year: year,
+      dateAdded: existing.dateAdded,
+      playCount: existing.playCount,
+      metadataEdited: true,
+      tags: tags,
+    );
+    final list = List<Track>.of(tracks.value);
+    list[index] = updated;
+    tracks.value = list;
+    await _save();
+  }
+
+  /// Applies a batch of parsed CSV rows (from [MusicMetadataCsv.decode]) to
+  /// the matching tracks, keyed by [ParsedMetadataRow.id]. A blank field on
+  /// a row leaves that track field untouched — only a non-empty imported
+  /// value overwrites it — so a round-trip through a spreadsheet that
+  /// happens to clear a cell can't silently erase a value the app already
+  /// had. Every matched row is marked [Track.metadataEdited], same as a
+  /// manual edit on the Track info page. Rows whose id isn't in the
+  /// library are silently skipped. Returns how many rows matched a track.
+  Future<int> applyMetadataRows(List<ParsedMetadataRow> rows) async {
+    final list = List<Track>.of(tracks.value);
+    var applied = 0;
+    for (final row in rows) {
+      final index = list.indexWhere((t) => t.id == row.id);
+      if (index < 0) continue;
+      final existing = list[index];
+      list[index] = Track(
+        id: existing.id,
+        source: existing.source,
+        filePath: existing.filePath,
+        remoteId: existing.remoteId,
+        title: row.title.isNotEmpty ? row.title : existing.title,
+        artist: row.artist.isNotEmpty ? row.artist : existing.artist,
+        album: row.album.isNotEmpty ? row.album : existing.album,
+        durationMs: existing.durationMs,
+        genre: row.genre.isNotEmpty ? row.genre : existing.genre,
+        year: row.year ?? existing.year,
+        dateAdded: existing.dateAdded,
+        playCount: existing.playCount,
+        metadataEdited: true,
+        tags: row.tags.isNotEmpty ? row.tags : existing.tags,
+      );
+      applied++;
     }
-    return null;
+    if (applied > 0) {
+      tracks.value = list;
+      await _save();
+    }
+    return applied;
+  }
+
+  /// Bumps [trackId]'s play count and persists it. No-op if the track isn't
+  /// currently in the library (e.g. it was removed since the queue was
+  /// built).
+  Future<void> incrementPlayCount(String trackId) async {
+    final index = tracks.value.indexWhere((t) => t.id == trackId);
+    if (index < 0) return;
+    final updated = List<Track>.of(tracks.value);
+    updated[index] =
+        updated[index].copyWith(playCount: updated[index].playCount + 1);
+    tracks.value = updated;
+    await _save();
   }
 
   Track? byId(String id) {

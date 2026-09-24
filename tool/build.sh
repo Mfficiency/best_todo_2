@@ -11,22 +11,69 @@ if [ "$1" = "all" ]; then
   exec sh tool/build_all.sh "$@"
 fi
 
+# `music-apk` is a shorthand for building the Best Music flavor (Music
+# Player + MP3 Downloader, no to-do features — see lib/main_music.dart):
+#   sh tool/build.sh music-apk --release
+# is exactly sh tool/build.sh apk --release --flavor music -t lib/main_music.dart.
+if [ "$1" = "music-apk" ]; then
+  shift
+  exec sh tool/build.sh apk --flavor music -t lib/main_music.dart "$@"
+fi
+
 # No version bump here: tool/bump_version.dart requires an explicit
 # `<version> [changelog entry]` (see the "bump, sync and build" workflow), so
 # calling it argument-less only printed its usage line on every build. Bump
 # first, then build:  dart run tool/bump_version.dart 0.1.258 "what changed"
 
-# Extract the version string from pubspec.yaml. Versioned release artifact names
-# are the cache key for deciding whether this build already exists.
-VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
+# Which app is being built. android/app/build.gradle.kts defines the `todo`
+# (BestToDo, unchanged) and `music` (Best Music) product flavors; `apk` builds
+# now require an explicit --flavor, so default to `todo` here rather than
+# making every existing `sh tool/build.sh apk --release` caller pass one.
+# Renamed/staged artifact names key off FLAVOR too (best_<flavor>_<version>.apk
+# — see the Gradle createVersionedReleaseApk task), which is what
+# UpdateService's per-app folder filtering relies on.
+FLAVOR=""
+if [ "$1" = "apk" ]; then
+  prev=""
+  for arg in "$@"; do
+    [ "$prev" = "--flavor" ] && FLAVOR="$arg"
+    prev="$arg"
+  done
+  if [ -z "$FLAVOR" ]; then
+    FLAVOR="todo"
+    set -- "$@" --flavor todo
+  fi
+fi
+PREFIX="best_${FLAVOR:-todo}"
+
+# Extract the version string. Versioned release artifact names are the cache
+# key for deciding whether this build already exists. Best Music versions
+# independently of BestToDo (its own MUSIC_VERSION file, CLAUDE.md/SPEC.md
+# §10.6i) rather than pubspec.yaml, so this — and everything below that
+# writes a build-time note or stages a release — has to branch on FLAVOR.
+APP_ARG=""
+if [ "$FLAVOR" = "music" ]; then
+  VERSION=$(grep '^version:' MUSIC_VERSION | cut -d ' ' -f2)
+  APP_ARG="--app music"
+else
+  VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
+fi
 
 is_cacheable_release_build() {
   [ "$#" -gt 0 ] || return 1
   shift
 
+  skip_next=0
   for arg in "$@"; do
+    if [ "$skip_next" = 1 ]; then
+      skip_next=0
+      continue
+    fi
     case "$arg" in
       --release)
+        ;;
+      --flavor|-t)
+        skip_next=1
         ;;
       *)
         return 1
@@ -47,8 +94,8 @@ existing_build_artifact() {
   case "$target" in
     apk)
       for path in \
-        "github_releases/best_todo_${version}.apk" \
-        "build/app/outputs/flutter-apk/best_todo_${version}.apk"
+        "github_releases/${PREFIX}_${version}.apk" \
+        "build/app/outputs/flutter-apk/${PREFIX}_${version}.apk"
       do
         [ -e "$path" ] && printf '%s\n' "$path" && return 0
       done
@@ -85,11 +132,16 @@ if [ -n "$EXISTING_ARTIFACT" ]; then
 
   case "$1:$EXISTING_ARTIFACT" in
     apk:build/app/outputs/flutter-apk/*)
-      dart run tool/stage_local_release.dart --apk "$EXISTING_ARTIFACT"
+      dart run tool/stage_local_release.dart --apk "$EXISTING_ARTIFACT" --prefix "$PREFIX" --version "$VERSION"
       ;;
   esac
 
-  if [ "$PUBLISH_APK" = "1" ]; then
+  # tool/publish_apk.dart only ever publishes a BestToDo GitHub release (see
+  # its own header comment) -- Best Music's update check never looks at
+  # GitHub releases, only github_releases/ (UpdateService.checkReleases), so
+  # publishing there for a music build would just mislabel this APK as a
+  # BestToDo one.
+  if [ "$PUBLISH_APK" = "1" ] && [ "$FLAVOR" != "music" ]; then
     case "$EXISTING_ARTIFACT" in
       *.apk)
         dart run tool/publish_apk.dart --apk "$EXISTING_ARTIFACT"
@@ -122,16 +174,17 @@ flutter build "$@"
 BUILD_STATUS=$?
 BUILD_DURATION=$(( $(date +%s) - BUILD_START ))
 
-# Record when this build finished (and how long it took) in CHANGELOG.md: a
-# "- Local build: <time>" line plus a "- Build duration (<target>): <time>"
-# line in the newest version's section, each updated in place on repeat
-# builds. Also appends a record to build_history.json (committed, so build
-# times are tracked across builds/machines over time). CHANGELOG.md is
-# bundled as an app asset by the `flutter build` above, so this build's own
-# asset already froze the old text -- only the *next* build will show this
-# timestamp/duration. That's expected.
+# Record when this build finished (and how long it took) in the app's own
+# changelog (CHANGELOG.md, or CHANGELOG_MUSIC.md for a music build -- see
+# APP_ARG above): a "- Local build: <time>" line plus a "- Build duration
+# (<target>): <time>" line in the newest version's section, each updated in
+# place on repeat builds. Also appends a record to build_history.json
+# (committed, so build times are tracked across builds/machines over time).
+# The changelog is bundled as an app asset by the `flutter build` above, so
+# this build's own asset already froze the old text -- only the *next* build
+# will show this timestamp/duration. That's expected.
 if [ "$BUILD_STATUS" -eq 0 ]; then
-  dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1"
+  dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" $APP_ARG
 else
   # Don't rename or stage artifacts left over from an earlier build.
   echo "flutter build $* failed (status $BUILD_STATUS)" >&2
@@ -146,16 +199,20 @@ rename_if_exists() {
   fi
 }
 
-# Android APK -> best_todo_<version>.apk
-rename_if_exists "build/app/outputs/flutter-apk/app-release.apk" \
-  "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk"
+# Android APK -> best_<flavor>_<version>.apk (Gradle's createVersionedReleaseApk
+# task already writes this file directly; this is a fallback for whichever of
+# the two names the Flutter/Gradle tooling actually produced).
+rename_if_exists "build/app/outputs/flutter-apk/app-${FLAVOR:-todo}-release.apk" \
+  "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk"
 
-# Keep the last two APKs in github_releases/ (newest + one version back): the
-# app's About page reads that folder for both its "Download & install" and its
-# "Go back to …" button. Commit the folder for the build to reach the app.
-if [ -e "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk" ]; then
+# Keep the last two APKs of each app in github_releases/ (newest + one version
+# back): the app's About/update-check reads that folder, filtered to its own
+# best_<flavor>_ prefix (see UpdateService.apkPrefix). Commit the folder for
+# the build to reach the app.
+if [ -e "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk" ]; then
   dart run tool/stage_local_release.dart \
-    --apk "build/app/outputs/flutter-apk/best_todo_${VERSION}.apk"
+    --apk "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk" \
+    --prefix "$PREFIX" --version "$VERSION"
 fi
 
 # Web build directory
@@ -184,7 +241,8 @@ fi
 # "Check for updates" button looks for new versions. Opt-in:
 #   PUBLISH_APK=1 sh tool/build.sh apk --release
 # Needs a GitHub token (GITHUB_TOKEN / GH_TOKEN, or a logged-in gh CLI).
-if [ "$PUBLISH_APK" = "1" ]; then
+# BestToDo only -- see the matching guard above for why.
+if [ "$PUBLISH_APK" = "1" ] && [ "$FLAVOR" != "music" ]; then
   dart run tool/publish_apk.dart
 fi
 

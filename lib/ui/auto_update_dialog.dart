@@ -38,17 +38,17 @@ Future<bool?> showUpdateAvailableDialog(
 /// and failures surface as brief snackbars instead of a modal that would
 /// otherwise sit in front of the app for the whole download.
 Future<void> downloadUpdateInBackground(
-    BuildContext context, UpdateInfo info) async {
+    BuildContext context, UpdateInfo info, {UpdateService? service}) async {
+  final updateService = service ?? UpdateService.instance;
   final messenger = ScaffoldMessenger.maybeOf(context);
   messenger?.showSnackBar(SnackBar(
     content: Text('Downloading v${info.version} in the background…'),
   ));
   try {
-    await for (final progress
-        in UpdateService.instance.downloadInBackground(info)) {
+    await for (final progress in updateService.downloadInBackground(info)) {
       if (progress.status == DownloadStatus.successful &&
           progress.localPath != null) {
-        await UpdateService.instance.installApk(progress.localPath!);
+        await updateService.installApk(progress.localPath!);
       } else if (progress.status == DownloadStatus.failed) {
         messenger?.showSnackBar(SnackBar(
           content: Text('Update download failed${progress.reason != null ? ' (${progress.reason})' : ''}.'),

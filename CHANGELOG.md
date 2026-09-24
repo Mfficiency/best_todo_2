@@ -1,7 +1,93 @@
 # Changelog
 
-## [0.2.65] - 2026-09-17
+## [0.2.83] - 2026-09-24
 - Fixed press-and-hold drag-reorder on the home tabs always springing back to its original position: Home's default Filtering rule (it excludes every other view's reserved tag out of the box) was disabling reorder for everyone, even when nothing in the current tab was actually hidden by it
+
+## [0.2.82] - 2026-09-18
+- Fixed the Best Music release build, which had been silently producing no Best Music APK at all on any machine that had previously built BestToDo: Gradle worked out which app it had just built by scanning the (never-cleaned) build output folder for the first `app-<flavor>-release.apk` it could find, so a music build kept matching the leftover BestToDo one and re-copying that stale APK under BestToDo's name instead. The rename is now done by a separate task per flavor, wired to that flavor's own build, so it can't be confused by leftovers. `tool/build.ps1` also gained full Best Music support (a `music-apk` shorthand, `MUSIC_VERSION`/`CHANGELOG_MUSIC.md` handling and the `best_music_` artifact prefix), and `build.sh all`/`build.ps1 all` now build and stage the Best Music APK alongside BestToDo's and the Windows exe (skip it with `MUSIC=0`)
+- Local build: 2026-09-18 23:27
+- Build duration (apk): 6m 23s
+- Build duration (windows): 1m 35s
+
+## [0.2.81] - 2026-09-18
+- BestToDo and Best Music now version and changelog independently: Best Music gets its own `MUSIC_VERSION` and `CHANGELOG_MUSIC.md` (starting from 0.2.80+371, the last build number the two apps shared) instead of piggybacking on this file/pubspec.yaml, so a Todo-only release no longer bumps Music's version or vice versa. `dart run tool/bump_version.dart <version> "<entry>" --music` bumps Best Music's own files; local `sh tool/build.sh music-apk` builds and CI's `build_music_apk` job now record their own build time/duration in CHANGELOG_MUSIC.md and stage/tag their APK with Music's own version
+- Local build: 2026-09-18 13:55
+- Build duration (windows): 59s
+
+## [0.2.80] - 2026-09-18
+- Wishlist: tapping an item now folds it open in place for editing — title, labels/quick-priority and description become editable right there, exactly like a home-list task tile — instead of popping up an edit dialog. The "Send to Claude" robot button (added a couple releases back, but easy to miss behind a swipe) now shows directly in that folded-open row next to "Move to release group", so it's visible without swiping first
+- Local build: 2026-09-18 13:17
+- Build duration (windows): 2m 53s
+
+## [0.2.79] - 2026-09-18
+- Wishlist: no more dev-only "Learn to sail" placeholder or backlog backfill — both BestToDo's and Best Music's Wishlist tools now genuinely start empty (in dev builds too), instead of quietly repopulating with demo/backlog items when the list is cleared for testing
+- Local build: 2026-09-18 12:37
+- Build duration (windows): 2m 57s
+
+## [0.2.78] - 2026-09-18
+- Wishlist: BestToDo and Best Music now actually share wishlist items instead of each keeping its own separate local copy. Since the two apps are sandboxed from each other on Android (separate `applicationId`s), items are synced through one file under shared external storage instead of each app's private storage — a "Connect" banner (only shown once, and only while not yet connected) requests the "All files access" permission both apps already use for their Music folders. Once connected, adding/editing/deleting a wishlist item in either app shows up in the other next time its Wishlist tool is opened
+- Local build: 2026-09-18 09:25
+- Build duration (windows): 52s
+
+## [0.2.77] - 2026-09-18
+- Music Player/Best Music: the Metadata Scan page can now export every scanned track's metadata to a CSV (share sheet) to hand to an AI (or edit by hand) for filling in whatever's missing, then import the filled-in file back in — matched to the right songs automatically, blank cells left alone so nothing already known gets erased
+- Local build: 2026-09-18 08:45
+- Build duration (windows): 52s
+
+## [0.2.76] - 2026-09-18
+- Wishlist items now get the "Claude" robot button too, not just the main task list: swipe a wishlist item open (same panel as Build/Share/Copy/Export/Delete) to fire your configured Claude Routine with that item's title/description/labels as context, starting a real Claude Code cloud session, exactly like "Send to Claude" already does for regular tasks
+
+## [0.2.75] - 2026-09-18
+- Best Music: added a Wishlist tool (drawer → Wishlist), reusing the same wishlist items BestToDo's own Wishlist writes — flagged tasks in the identical `tasks.json` record shape, so an item created in either app looks the same in both. Unlike BestToDo's Wishlist, the list itself shows nothing but each item's title (no icons, no checkboxes, no tags/priority chips) — tapping an item opens every field (done, priority, tags, description) in one editor
+- Local build: 2026-09-18 07:55
+- Build duration (windows): 53s
+
+## [0.2.74] - 2026-09-18
+- Music Player/Best Music: added a Metadata Scan tool (app bar icon next to Rescan) that scans your music folder on demand and shows every song live as it's found, with a status icon for whether it has a genre and a year. Now Playing has an info (ⓘ) button showing the current song's full metadata, where you can also fill in whatever's missing (genre, year, title, artist, album) — a manual fix now survives future rescans instead of getting silently overwritten
+
+## [0.2.73] - 2026-09-17
+- CI: the BestToDo release publish step (uploading the APK asset to its GitHub release, which is what the About page's "Check for updates" reads) now retries up to 3 times on a dropped connection instead of failing the whole build outright. This was silently leaving the published release behind the app's actual code for several releases in a row — the CI job built the Todo APK fine each time, but a large-upload network blip (`SocketException: Broken pipe`) kept killing the publish step, so `v0.2.71-362` stayed the newest release while several versions' worth of changes (this swipe fix included) piled up unpublished behind it. Best Music's own release path (staged into `github_releases/` instead of a GitHub release) was unaffected
+- Local build: 2026-09-17 22:55
+- Build duration (windows): 57s
+
+## [0.2.72] - 2026-09-17
+- Fixed swipe-to-move defaulting to the wrong tab on every page except Today: swiping a task always auto-committed to whichever tab happened to sort first (usually Today), so a task swiped from Tomorrow snapped back to Today instead of moving forward to Day after tomorrow. The default now always follows the intended "move forward one tab" order (Today→Tomorrow→Day after→Next week→Next month→Future→back to Today), matching the move-options row and the spec
+
+## [0.2.71] - 2026-09-17
+- Music Player/Best Music: you can now build normal playlists by hand, Samsung Music style. "New playlist" on the Playlists tab creates an empty one; every song row (Library tab or any playlist) gets an "Add to playlist" button showing which playlists it's already in, with a "New playlist" shortcut right there too. Hand-built playlists also get a "Remove from playlist" button on each song
+- Local build: 2026-09-17 19:55
+- Build duration (windows): 52s
+
+## [0.2.70] - 2026-09-17
+- Music Player/Best Music: added smart playlists ("Last Added" and "Most Played", including one per genre, computed automatically) and rule-based playlists you build yourself from AND/OR/NOT conditions over title/artist/album/genre/year (e.g. "genre Rock and year 2025, excluding Artist C") from the Playlists tab's "New rule playlist". Track scanning now also reads genre and release year (mp3 ID3 tags) to power these. A standalone `dart run tool/scan_music_metadata.dart <folder>` script reports every scanned file's metadata for checking your collection's coverage outside the app. Best Music now also checks for its own updates in the background, like BestToDo already does
+- Local build: 2026-09-17 18:45
+- Build duration (windows): 53s
+
+## [0.2.69] - 2026-09-17
+- Music Player/Best Music now proactively ask for the permissions they need instead of waiting for a scan to quietly fail: Best Music requests "All files access" on first launch (like other music apps), BestToDo asks once a music folder is already configured, and both ask for notification access for the playback controls. If the permission was the reason an already-configured folder scanned empty, granting it now re-scans right away
+- Local build: 2026-09-17 17:55
+- Build duration (windows): 52s
+
+## [0.2.68] - 2026-09-17
+- Fixed Music Player/Best Music finding no songs in any chosen folder: the folder scan needs Android's "All files access" permission, but nothing in the music folder picker ever asked for it, so a freshly picked folder silently scanned as empty. Picking a music folder now requests that permission first, and every scan step (folder existence, permission status, files seen/skipped/kept, any error) is now written to App Logs so a bad scan is diagnosable in-app instead of silent
+- Local build: 2026-09-17 17:35
+- Build duration (windows): 52s
+
+## [0.2.67] - 2026-09-17
+- Best Music now has a proper menu (drawer), matching BestToDo's own home page: MP3 Downloader, Settings, Changelog, Startup Times, App Logs and About. Settings lets you choose the music folder and exclude specific subfolders. "Check for updates" moved from the app bar into the About page (same flow as BestToDo's own About page)
+- Local build: 2026-09-17 14:35
+- Build duration (windows): 52s
+
+## [0.2.66] - 2026-09-17
+- Added Best Music, a separate app built from this same codebase (Android build flavor, applicationId `com.mfficiency.best_music`, black-music-note-on-white launcher icon): opens straight into the Music Player, with the MP3 Downloader one tap away and its own "Check for updates" — no to-do features. Build it with `sh tool/build.sh music-apk --release`; installs side by side with BestToDo. BestToDo itself is unchanged (now built as the `todo` flavor)
+- Local build: 2026-09-17 12:55
+- Build duration (windows): 57s
+
+## [0.2.65] - 2026-09-17
+- Music Player: Now Playing has a shuffle toggle (shuffles the upcoming queue, keeping the current track and playback history in place) and a Queue page reachable from the app bar to view and drag-reorder the play queue into a custom order
+- Local build: 2026-09-17 10:38
+- Build duration (apk): 2m 44s
+- Build duration (windows): 59s
 
 ## [0.2.64] - 2026-09-17
 - Added "Send to Claude" on a task (expand it, tap the robot icon) to fire a Claude Code Routine's API trigger and start a real cloud coding session with that task as context, configured in Settings → Claude Routine

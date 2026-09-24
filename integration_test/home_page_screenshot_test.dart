@@ -5,7 +5,9 @@ import 'package:besttodo/config.dart';
 import 'package:besttodo/main.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
+import 'package:besttodo/ui/project_board_page.dart';
 import 'package:besttodo/ui/projects_page.dart';
+import 'package:besttodo/ui/streak_flame_button.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -173,6 +175,32 @@ void main() {
           .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
           .replaceAll(RegExp(r'^_+|_+$'), '');
       await capture('settings_section_$slug');
+
+      // A handful of sections push their own subpage/dialog; capture those
+      // right after their section, while it's expanded, rather than
+      // re-navigating to Settings a second time later.
+      if (title == 'Tasks') {
+        await tester.tap(find.text('Auto-tag rules'));
+        await tester.pumpAndSettle();
+        await capture('auto_tag_rules_page');
+        await popCurrentPage();
+
+        await tester.tap(find.text('Approval quick tags'));
+        await tester.pumpAndSettle();
+        await capture('approval_quick_tags_page');
+        await popCurrentPage();
+      } else if (title == 'SMS report') {
+        await tester.tap(find.text('Sent message history'));
+        await tester.pumpAndSettle();
+        await capture('sms_report_log_page');
+        await popCurrentPage();
+      } else if (title == 'Streak') {
+        await tester.tap(find.widgetWithText(TextButton, 'Set goal').first);
+        await tester.pumpAndSettle();
+        await capture('streak_goal_dialog');
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+      }
     }
 
     await popCurrentPage();
@@ -258,6 +286,15 @@ void main() {
     await tester.pumpAndSettle();
     await capture('project_board_page');
 
+    // Task detail page: a board card's own full-page view, distinct from
+    // the home list's inline expansion (task_open_with_attachment below).
+    final boardPage = find.byType(ProjectBoardPage);
+    await tester.tap(
+        find.descendant(of: boardPage, matching: find.text('Get milk')));
+    await tester.pumpAndSettle();
+    await capture('task_detail_page');
+    await popCurrentPage();
+
     // Project edit dialog (name + description).
     await tester.tap(find.byTooltip('Edit project'));
     await tester.pumpAndSettle();
@@ -276,6 +313,12 @@ void main() {
     await tester.tap(find.text('Archived Items'));
     await tester.pumpAndSettle();
     await capture('archived_items_page');
+
+    await tester.tap(find.byTooltip('Deleted items (bin)'));
+    await tester.pumpAndSettle();
+    await capture('deleted_bin_page');
+    await popCurrentPage();
+
     await popCurrentPage();
 
     // Widget Previews lives directly in the drawer too (dev-only tool
@@ -299,8 +342,15 @@ void main() {
     await popCurrentPage();
 
     // Wishlist plus every remaining Tools entry — Projects and Productivity
-    // Stats already have their own screenshots above.
-    Future<void> captureTool(String label, String screenshotName) async {
+    // Stats already have their own screenshots above. [onOpen] runs after
+    // the tool's own screenshot, for tools with a reachable subpage/dialog
+    // worth its own capture; it must leave the tool's own page as the top
+    // route so the trailing popCurrentPage() lands back on Home.
+    Future<void> captureTool(
+      String label,
+      String screenshotName, {
+      Future<void> Function()? onOpen,
+    }) async {
       await tester.tap(find.byTooltip('Open navigation menu'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Tools'));
@@ -318,17 +368,101 @@ void main() {
       await tester.tap(entry);
       await tester.pumpAndSettle();
       await capture(screenshotName);
+      if (onOpen != null) await onOpen();
       await popCurrentPage();
     }
 
     await captureTool('Wishlist', 'wishlist_page');
-    await captureTool('Alarms', 'alarms_page');
-    await captureTool('Countdown', 'countdown_page');
+    await captureTool('Alarms', 'alarms_page', onOpen: () async {
+      await tester.tap(find.byTooltip('Add alarm'));
+      await tester.pumpAndSettle();
+      await capture('alarm_edit_page');
+      await popCurrentPage();
+
+      await tester.tap(find.byTooltip('Alarm reliability log'));
+      await tester.pumpAndSettle();
+      await capture('alarm_log_page');
+      await popCurrentPage();
+    });
+    await captureTool('Countdown', 'countdown_page', onOpen: () async {
+      // The draft composer at the top of the page is always present, so
+      // tapping its "Add" button creates one timer with the auto-generated
+      // default name/target — enough to expand and reach the milestones
+      // dialog from its tag icon.
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Add'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Timer 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.tag));
+      await tester.pumpAndSettle();
+      await capture('countdown_milestones_dialog');
+      await popCurrentPage();
+    });
     await captureTool('Food Diary', 'food_diary_page');
     await captureTool('Chronize', 'chronize_page');
     await captureTool('Usage Data', 'usage_data_page');
     await captureTool('Test Results', 'test_results_page');
     await captureTool('Weekly Hours Planner', 'weekly_hours_planner_page');
+    await captureTool('Research', 'research_page');
+    await captureTool('Fitness Activity', 'fitness_activity_page');
+    // Same shared pages Best Music ships standalone — captured again here
+    // embedded in BestToDo's own Tools menu (no music folder seeded, so
+    // Music Player shows its empty state, same as Best Music's own test).
+    await captureTool('MP3 Downloader', 'todo_mp3_downloader_page');
+    await captureTool('Music Player', 'todo_music_player_page');
+
+    // Drawer items outside the Tools submenu that don't have their own
+    // screenshot yet.
+    Future<void> captureDrawerItem(String label, String screenshotName) async {
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      await capture(screenshotName);
+      await popCurrentPage();
+    }
+
+    await captureDrawerItem('Waiting for Approval', 'waiting_approval_page');
+    await captureDrawerItem('Changelog', 'changelog_page');
+    await captureDrawerItem('About', 'about_page');
+    await captureDrawerItem('App Logs', 'app_logs_page');
+    await captureDrawerItem('Startup Times', 'startup_times_page');
+
+    // Schedule view: toggles the home body in place rather than pushing a
+    // route, so there's no popCurrentPage() — tap the same tooltip again
+    // (now reading "List view") to switch back before continuing.
+    await tester.tap(find.byTooltip('Schedule view'));
+    await tester.pumpAndSettle();
+    await capture('calendar_view_page');
+    await tester.tap(find.byTooltip('List view'));
+    await tester.pumpAndSettle();
+
+    // Streak page (via the app bar's flame button — its tooltip/icon vary
+    // with streak state, so target the button by type) and, from its
+    // "Longest streak ever" stat, the streak calendar. StreakPage owns a
+    // perpetual `_flicker` AnimationController (repeat(reverse: true)), so
+    // pumpAndSettle() never settles anywhere it's mounted — including
+    // underneath StreakCalendarPage — so this whole block pumps a fixed
+    // page-transition duration instead, all the way back out to Home.
+    Future<void> pumpTransition() async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    await tester.tap(find.descendant(
+      of: find.byType(StreakFlameButton),
+      matching: find.byType(IconButton),
+    ));
+    await pumpTransition();
+    await capture('streak_page');
+    await tester.tap(find.text('Longest streak ever'));
+    await pumpTransition();
+    await capture('streak_calendar_page');
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator).first);
+    navigator.pop();
+    await pumpTransition();
+    navigator.pop();
+    await pumpTransition();
 
     // A task expanded in place on the main screen (tapping a tile toggles
     // its inline editor, including the AttachmentsField), once for a task
@@ -350,5 +484,14 @@ void main() {
     await tester.tap(noAttachmentTile);
     await tester.pumpAndSettle();
     await capture('task_open_no_attachment');
+
+    // Recurrence editor: appears inline once the "Recurring" switch on this
+    // same expanded tile is turned on.
+    await tester.tap(find.descendant(
+      of: find.widgetWithText(Row, 'Recurring'),
+      matching: find.byType(Switch),
+    ));
+    await tester.pumpAndSettle();
+    await capture('recurrence_editor');
   });
 }

@@ -18,6 +18,18 @@ class Config {
   /// Uses the `dart.vm.product` flag to detect production builds.
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
+  /// True only in the Best Music build (set once, at the very top of
+  /// `main_music.dart`'s `main()`, before anything else runs). Both apps
+  /// share this codebase and its generic storage/services layer, but a
+  /// handful of behaviors are specific to one app's users — e.g.
+  /// `StorageService`'s one-time Todo.md backlog import, which makes sense
+  /// for BestToDo's own history and none at all for a music player's
+  /// wishlist. Runtime-only, never persisted (which app is running isn't a
+  /// user setting), so it's just a plain static default of `false` that
+  /// tests never need to touch unless they're specifically exercising
+  /// Best-Music-only behavior.
+  static bool isBestMusic = false;
+
   /// Whether every demo/dev-seed item (see `demoToken` in `label_utils.dart`)
   /// is hidden from every view, ahead of and independent from any Settings →
   /// Filtering rules configuration. Defaults to hidden outside dev builds —
@@ -323,6 +335,15 @@ class Config {
 
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
+
+  /// If true, BestToDo's Wishlist tool's "Connect with Best Music" banner
+  /// ([WishlistSyncBanner]) has been dismissed and stays hidden — set only
+  /// by tapping "Not now", never by connecting (a successful connect
+  /// removes the banner because it's no longer needed, not because it was
+  /// dismissed). Best Music's own Wishlist doesn't show this banner at all
+  /// (its list is local-only; see `music_wishlist_page.dart`). See
+  /// `shared_wishlist_store.dart`.
+  static bool wishlistSyncBannerDismissed = false;
 
   /// Default delay before sending a manual notification from a task bell.
   /// Dev builds use 00:03 for faster testing, production defaults to 05:00.
@@ -684,6 +705,7 @@ class Config {
       'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
       'enableNotifications': enableNotifications,
+      'wishlistSyncBannerDismissed': wishlistSyncBannerDismissed,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
       'startTabIndex': startTabIndex,
       'quietHoursEnabled': quietHoursEnabled,
@@ -714,7 +736,8 @@ class Config {
       ],
       'streakKindEnabled': Map<String, bool>.from(streakKindEnabled),
       'streakGoals': {
-        for (final entry in streakGoals.entries) entry.key: entry.value.toJson(),
+        for (final entry in streakGoals.entries)
+          entry.key: entry.value.toJson(),
       },
       'streakCompletionAnimation': streakCompletionAnimation,
       'simpleMode': simpleMode,
@@ -758,6 +781,8 @@ class Config {
     showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
+    wishlistSyncBannerDismissed =
+        data['wishlistSyncBannerDismissed'] ?? wishlistSyncBannerDismissed;
     defaultNotificationDelaySeconds =
         (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
             defaultNotificationDelaySeconds;
@@ -880,8 +905,7 @@ class Config {
         data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
     mp3DownloadFolder =
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
-    mp3CompareFolder =
-        data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
+    mp3CompareFolder = data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
     musicFolder = data['musicFolder'] as String? ?? musicFolder;
     final savedExcludedSubfolders = data['musicExcludedSubfolders'];
     if (savedExcludedSubfolders is List) {

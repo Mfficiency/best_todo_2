@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:besttodo/models/music_playlist.dart';
+import 'package:besttodo/models/playlist_rule.dart';
 import 'package:besttodo/models/track.dart';
+import 'package:besttodo/services/music_library_service.dart';
 import 'package:besttodo/services/music_playlist_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -21,6 +23,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
     MusicPlaylistService.instance.resetForTest();
+    MusicLibraryService.instance.resetForTest();
   });
 
   tearDown(() async {
@@ -74,6 +77,25 @@ void main() {
 
     await MusicPlaylistService.instance.deletePlaylist(playlist.id);
     expect(MusicPlaylistService.instance.byId(playlist.id), isNull);
+  });
+
+  test('addAllTo adds every new id in one batch, skipping ones already present',
+      () async {
+    await MusicPlaylistService.instance.load();
+    final playlist =
+        await MusicPlaylistService.instance.createPlaylist('Road trip', ['t1']);
+
+    await MusicPlaylistService.instance
+        .addAllTo(playlist.id, ['t1', 't2', 't3']);
+
+    expect(MusicPlaylistService.instance.byId(playlist.id)?.trackIds,
+        ['t1', 't2', 't3']);
+  });
+
+  test('addAllTo is a no-op for an unknown playlist id', () async {
+    await MusicPlaylistService.instance.load();
+    await MusicPlaylistService.instance.addAllTo('nope', ['t1']);
+    expect(MusicPlaylistService.instance.byId('nope'), isNull);
   });
 
   test('deletePlaylist refuses to remove a system playlist', () async {
@@ -144,6 +166,155 @@ void main() {
       // clearly later than the favorite's — a large margin keeps this from
       // ever being flaky.
       expect(dislikedIndexSum / trials, greaterThan(favoriteIndexSum / trials));
+    });
+  });
+
+  group('resolvedTracks', () {
+    Track track(String id,
+            {String genre = '', int? year, DateTime? dateAdded, int playCount = 0}) =>
+        Track.local(
+          filePath: '/$id.mp3',
+          title: id,
+          genre: genre,
+          year: year,
+          dateAdded: dateAdded,
+          playCount: playCount,
+        );
+
+    test('a list playlist resolves trackIds against the library, dropping missing ids',
+        () async {
+      await MusicPlaylistService.instance.load();
+      final a = track('a');
+      MusicLibraryService.instance.tracks.value = [a];
+      final playlist =
+          await MusicPlaylistService.instance.createPlaylist('Mix', [a.id, 'local:/gone.mp3']);
+
+      final resolved = MusicPlaylistService.instance.resolvedTracks(playlist);
+
+      expect(resolved, [a]);
+    });
+
+    test('lastAdded sorts newest-dateAdded first', () async {
+      final older = track('a', dateAdded: DateTime(2020));
+      final newer = track('b', dateAdded: DateTime(2024));
+      MusicLibraryService.instance.tracks.value = [older, newer];
+      final playlist = MusicPlaylist(
+          id: MusicPlaylistService.lastAddedId, name: 'Last Added', kind: PlaylistKind.lastAdded);
+
+      final resolved = MusicPlaylistService.instance.resolvedTracks(playlist);
+
+      expect(resolved, [newer, older]);
+    });
+
+    test('mostPlayed sorts by playCount and drops never-played tracks', () async {
+      final popular = track('a', playCount: 10);
+      final unplayed = track('b', playCount: 0);
+      final lessPopular = track('c', playCount: 2);
+      MusicLibraryService.instance.tracks.value = [popular, unplayed, lessPopular];
+      final playlist = MusicPlaylist(
+          id: MusicPlaylistService.mostPlayedId, name: 'Most Played', kind: PlaylistKind.mostPlayed);
+
+      final resolved = MusicPlaylistService.instance.resolvedTracks(playlist);
+
+      expect(resolved, [popular, lessPopular]);
+    });
+
+    test('mostPlayed with a genreFilter only considers that genre', () async {
+      final rock = track('a', genre: 'Rock', playCount: 5);
+      final pop = track('b', genre: 'Pop', playCount: 5);
+      MusicLibraryService.instance.tracks.value = [rock, pop];
+      final playlist = MusicPlaylist(
+        id: 'smart_most_played_Rock',
+        name: 'Most Played: Rock',
+        kind: PlaylistKind.mostPlayed,
+        genreFilter: 'Rock',
+      );
+
+      final resolved = MusicPlaylistService.instance.resolvedTracks(playlist);
+
+      expect(resolved, [rock]);
+    });
+
+    test('a rule playlist evaluates its ruleSet against the library', () async {
+      final rock = track('a', genre: 'Rock');
+      final pop = track('b', genre: 'Pop');
+      MusicLibraryService.instance.tracks.value = [rock, pop];
+      final playlist = MusicPlaylist(
+        id: 'rule1',
+        name: 'Rock only',
+        kind: PlaylistKind.rule,
+        ruleSet: const PlaylistRuleSet(conditions: [
+          RuleCondition(field: RuleField.genre, operator: RuleOperator.equals, values: ['Rock']),
+        ]),
+      );
+
+      final resolved = MusicPlaylistService.instance.resolvedTracks(playlist);
+
+      expect(resolved, [rock]);
+    });
+  });
+
+  group('smartPlaylists', () {
+    test('is empty when the library is empty', () async {
+      MusicLibraryService.instance.tracks.value = [];
+      expect(MusicPlaylistService.instance.smartPlaylists, isEmpty);
+    });
+
+    test('includes Last Added, an overall Most Played, and one per genre', () async {
+      MusicLibraryService.instance.tracks.value = [
+        Track.local(filePath: '/a.mp3', title: 'a', genre: 'Rock'),
+        Track.local(filePath: '/b.mp3', title: 'b', genre: 'Pop'),
+        Track.local(filePath: '/c.mp3', title: 'c'), // no genre
+      ];
+
+      final names = MusicPlaylistService.instance.smartPlaylists.map((p) => p.name).toList();
+
+      expect(names, ['Last Added', 'Most Played', 'Most Played: Pop', 'Most Played: Rock']);
+    });
+  });
+
+  group('rule playlists', () {
+    test('createRulePlaylist adds a deletable, non-system rule playlist', () async {
+      await MusicPlaylistService.instance.load();
+      const ruleSet = PlaylistRuleSet(conditions: [
+        RuleCondition(field: RuleField.genre, operator: RuleOperator.equals, values: ['Rock']),
+      ]);
+
+      final playlist =
+          await MusicPlaylistService.instance.createRulePlaylist('Rock only', ruleSet);
+
+      expect(playlist.kind, PlaylistKind.rule);
+      expect(playlist.isSystem, isFalse);
+      expect(MusicPlaylistService.instance.byId(playlist.id)?.ruleSet?.conditions, hasLength(1));
+    });
+
+    test('updateRulePlaylist replaces name/ruleSet in place', () async {
+      await MusicPlaylistService.instance.load();
+      const originalRules = PlaylistRuleSet(conditions: [
+        RuleCondition(field: RuleField.genre, operator: RuleOperator.equals, values: ['Rock']),
+      ]);
+      final playlist =
+          await MusicPlaylistService.instance.createRulePlaylist('Rock only', originalRules);
+      const newRules = PlaylistRuleSet(conditions: [
+        RuleCondition(field: RuleField.genre, operator: RuleOperator.equals, values: ['Jazz']),
+      ]);
+
+      await MusicPlaylistService.instance
+          .updateRulePlaylist(playlist.id, name: 'Jazz only', ruleSet: newRules);
+
+      final updated = MusicPlaylistService.instance.byId(playlist.id)!;
+      expect(updated.name, 'Jazz only');
+      expect(updated.ruleSet!.conditions.first.values, ['Jazz']);
+    });
+
+    test('a rule playlist can be deleted like any other', () async {
+      await MusicPlaylistService.instance.load();
+      final playlist = await MusicPlaylistService.instance
+          .createRulePlaylist('Temp', const PlaylistRuleSet());
+
+      await MusicPlaylistService.instance.deletePlaylist(playlist.id);
+
+      expect(MusicPlaylistService.instance.byId(playlist.id), isNull);
     });
   });
 }

@@ -11,6 +11,9 @@ on:
     paths-ignore:
       - 'assets/test_report.json'
       - 'docs/ci/**'
+      # The build_music_apk job below commits its staged APK here; without
+      # this, that commit's own push would retrigger this whole workflow.
+      - 'github_releases/**'
   pull_request:
     branches: [ main, staging, dev ]
   workflow_dispatch:
@@ -87,15 +90,19 @@ jobs:
       run: |
         bash tool/ci/publish_test_report.sh build/ci/test_report.json "${GITHUB_REF_NAME}"
 
+    # `--flavor todo` builds BestToDo itself (android/app/build.gradle.kts
+    # also defines a `music` flavor for the separate Best Music app —
+    # lib/main_music.dart — built locally via `sh tool/build.sh music-apk`,
+    # not by this workflow).
     - name: Build APK
-      run: flutter build apk --release
+      run: flutter build apk --release --flavor todo
 
     - name: Stage APK with version in filename
       id: stage_apk
       shell: bash
       run: |
         ver="${{ steps.appver.outputs.version }}"
-        src="build/app/outputs/flutter-apk/app-release.apk"
+        src="build/app/outputs/flutter-apk/app-todo-release.apk"
         out="build/app/outputs/flutter-apk/besttodo-${ver}.apk"
         cp "$src" "$out"
         echo "apk=$out" >> "$GITHUB_OUTPUT"
@@ -128,4 +135,104 @@ jobs:
         if [ -n "${{ steps.upload_apk.outputs.artifact-url }}" ]; then
           echo "### APK Download" >> "$GITHUB_STEP_SUMMARY"
           echo "- [Download app-release-apk artifact](${{ steps.upload_apk.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+  # Best Music (SPEC.md §10.6f, lib/main_music.dart): a separate app from this
+  # same codebase, its own Android build flavor. Runs independently of the
+  # `build` job above (no shared state needed) and, on a push, stages its APK
+  # into github_releases/ the same way a local `sh tool/build.sh music-apk
+  # --release` would — that folder is UpdateService's primary (and, for a
+  # non-`best_todo` app, only) update-check source, deliberately not a GitHub
+  # Release: see UpdateService.checkReleases's doc comment for why a shared
+  # repo-wide `releases/latest` isn't safe to use for a second app.
+  build_music_apk:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.29.2'
+        channel: 'stable'
+        cache: true
+
+    - name: Get Flutter dependencies
+      run: flutter pub get
+
+    # Best Music versions independently of BestToDo now (its own
+    # MUSIC_VERSION file, CLAUDE.md/SPEC.md §10.6f) rather than pubspec.yaml.
+    - name: Read app version
+      id: appver
+      shell: bash
+      run: echo "version=$(grep '^version:' MUSIC_VERSION | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+    - name: Build Best Music APK
+      run: flutter build apk --release --flavor music -t lib/main_music.dart
+
+    - name: Stage APK with version in filename
+      id: stage_apk
+      shell: bash
+      run: |
+        src="build/app/outputs/flutter-apk/app-music-release.apk"
+        out="build/app/outputs/flutter-apk/bestmusic-${{ steps.appver.outputs.version }}.apk"
+        cp "$src" "$out"
+        echo "apk=$out" >> "$GITHUB_OUTPUT"
+
+    - name: Upload APK
+      id: upload_apk
+      uses: actions/upload-artifact@v4
+      with:
+        name: bestmusic-${{ steps.appver.outputs.version }}
+        path: ${{ steps.stage_apk.outputs.apk }}
+        if-no-files-found: error
+        retention-days: 30
+
+    # Keeps github_releases/ at Best Music's own newest two builds (pruned
+    # independently of BestToDo's — see tool/stage_local_release.dart's
+    # --prefix), then commits+pushes so the folder the app actually reads is
+    # live. Only on a real push (not a PR, which shouldn't push commits back).
+    - name: Stage into github_releases/ and push
+      if: github.event_name == 'push'
+      shell: bash
+      run: |
+        dart run tool/stage_local_release.dart \
+          --apk "build/app/outputs/flutter-apk/app-music-release.apk" \
+          --prefix best_music --version "${{ steps.appver.outputs.version }}"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add github_releases
+        if git diff --cached --quiet; then
+          echo "nothing to commit (github_releases/ already up to date)"
+          exit 0
+        fi
+        git commit -m "chore: stage Best Music release build ${{ steps.appver.outputs.version }} [ci]"
+        # The `build` job's own release publish and other same-branch CI runs
+        # can land around the same time (a plain push has lost this race on
+        # dev before — see screenshot_changelog.yml) — rebase-and-retry.
+        for attempt in 1 2 3; do
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            exit 0
+          fi
+          echo "Push attempt $attempt failed; retrying."
+          sleep $((attempt * 3))
+        done
+        exit 1
+
+    - name: Add APK download link to summary
+      if: always()
+      shell: bash
+      run: |
+        if [ -n "${{ steps.upload_apk.outputs.artifact-url }}" ]; then
+          echo "### Best Music APK Download" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [Download bestmusic-apk artifact](${{ steps.upload_apk.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
         fi

@@ -631,7 +631,8 @@ tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name
 
 **Label picker (0.1.255):** `LabelPickerField` (`lib/ui/label_picker.dart`) replaces the
 raw comma-separated label text field everywhere a task's `label` is edited (task-tile
-inline editor, wishlist add/edit dialog). Current tokens render as removable `InputChip`s;
+inline editor, wishlist add dialog and its own inline editor). Current tokens render as
+removable `InputChip`s;
 an "Add label" chip opens a dialog with a search/create field over every known label
 (`LabelService.instance.labels`, checkbox-toggled) — typing a name that isn't already a
 label offers "Add "<name>"" to create and select it in one tap. Selection is staged in
@@ -1201,10 +1202,11 @@ mechanism (§4.2e).
 stamped onto every task/alarm/timer the app ever generates for itself instead of the user: the
 first-run starter tasks (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
 seed — `home_page.dart`'s `_buildDevDeletedSeed`/`_buildDevAutoDeletedBackfill`/
-`_buildDevFutureTasksSeed`/`_buildDevWishlistSeed`/`_seedDevRangeTask`/`_seedDevWishItem`/
-`_seedDevLinkedReminder`'s reminder alarm, `AlarmService._buildDevSeed`,
-`CountdownTimerPage._devSeedTimers`, `FoodDiaryPage._buildDevSeed` and `WishlistPage._load`'s
-dev fallback. Existing tokens on those items (`old`, `priority-medium`, …) are kept —
+`_buildDevFutureTasksSeed`/`_seedDevRangeTask`/`_seedDevLinkedReminder`'s reminder alarm,
+`AlarmService._buildDevSeed`, `CountdownTimerPage._devSeedTimers` and `FoodDiaryPage._buildDevSeed`
+(the Wishlist tool's own dev seeding — `home_page.dart`'s `_seedDevWishItem`/`_buildDevWishlistSeed`
+and `WishlistPage._load`'s dev fallback — was removed in 0.2.77: the Wishlist starts empty even
+in dev builds now, see §10.6). Existing tokens on those items (`old`, `priority-medium`, …) are kept —
 `addLabelToken` appends `demo` alongside them rather than replacing the label. The point: once
 one of these seeded items is saved to disk it is a normal record indistinguishable from
 anything the user typed, and outlives whatever produced it — including `Config.isDev` going
@@ -2417,12 +2419,21 @@ items first, then by priority label (`priority-high` > `priority-medium` >
 (checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
 archived by the normal new-day rollover); the subtitle shows label tags first, then a
 `DescriptionDisclosure` chevron for the description — same order and widget as the
-Food Diary tile and `TaskTile`'s own wish subtitle. Tap opens the add/edit dialog — field order
-since 0.1.148: title, labels/tags with the quick-priority buttons right below (most
-wishes are a title plus a priority), description last (a `_WishEditDialog`
-StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
-recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
-exported_at, wishlist_items: [...]}`) remain.
+Food Diary tile and `TaskTile`'s own wish subtitle. The FAB's add dialog keeps its
+0.1.148 field order (title, labels/tags with the quick-priority buttons right below —
+most wishes are a title plus a priority, description last; a `_WishEditDialog`
+StatefulWidget owning its controllers, add-only). **Tapping an existing tile no
+longer opens a dialog (0.2.80):** it folds open in place exactly like a home-list
+`TaskTile` — title/labels-and-quick-priority/description become editable `TextField`s/
+`LabelPickerField` right below the tile (`_WishTileState._buildExpandedFields`,
+toggled by `_expanded`), and the trailing row gains the "Send to Claude" robot button
+(see below) plus a collapse chevron while open. Free-text fields (title/description)
+save on blur (`Focus.onFocusChange`, like `TaskTile`); label/quick-priority taps save
+immediately — both call `widget.onFieldsChanged` (`_WishlistPageState._persistFieldEdit`),
+which also re-sorts/re-groups the page so a priority or release-tag change moves the
+item right away. Edits mutate the task in place so uid/project/recurrence fields
+survive. Per-item and export-all JSON export (`{export_version: 1, exported_at,
+wishlist_items: [...]}`) remain.
 
 **Copy to clipboard (0.1.236, moved behind the swipe panel 0.1.259):** "Copy" puts the
 plain-text item on the clipboard via `_WishlistPageState.clipboardText` — title, then
@@ -2453,8 +2464,10 @@ skipped entirely; "Next release" always renders (even at 0) since it carries the
 Every tile except a "Newly implemented" one carries a "Move to release group" icon
 button (`Icons.drive_file_move_outline`, a `PopupMenuButton`) offering Next release /
 Soon / Backlog with a checkmark on the current group — same shape as the sort menu.
-Since 0.1.259 it is the tile's *only* trailing control (see Swipes below): the swipe
-default only steps an item back one group, so an explicit picker has no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
+Since 0.1.259 it was the tile's only trailing control; since 0.2.80 a folded-open tile
+also shows the "Send to Claude" robot button and a collapse chevron alongside it (see
+above). The swipe default still only steps an item back one group, so the picker has
+no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
 native labels (§ Sync), tagging an item `release-next` in Todoist (by hand, or via
 "Propose for next" below) moves it here on the next sync, with no extra plumbing.
 
@@ -2500,6 +2513,26 @@ PR/approval step by design, matching the "bump, sync and build" workflow's
 own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
 itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
 does for any other `dev` push — no separate delivery mechanism was needed.
+
+**Send to Claude (0.2.74, moved to the tile's trailing row 0.2.80):** a robot
+icon button (`Icons.smart_toy_outlined`, tooltip "Send to Claude") in the
+tile's trailing row, shown only while the tile is folded open — the same
+"Send to Claude" action the main task list's expanded tile already offers
+(`_TaskTileState._sendToClaude` in `lib/ui/task_tile.dart`), so an idea can
+be built with AI directly without first routing it through the GitHub build
+queue above. It briefly lived in the options-swipe panel instead (0.2.74);
+that made it too easy to miss, so it moved next to "Move to release group"
+where expanding the tile already puts it in view. Fires the routine
+configured in Settings → Claude Routine (`Config.claudeRoutineUrl`/
+`claudeRoutineToken`) via `ClaudeRoutineService.fire` with
+`ClaudeRoutineService.buildPayload(item)` (title/description/note/label) as
+the `text` context, starting a real Claude Code cloud session; the icon
+swaps for a small spinner while in flight, and a snackbar confirms with an
+"Open" action (`url_launcher`, external application) once the fire call
+returns a session URL. Unlike "Build", this action carries no tagging/dedup
+state of its own — it's a one-shot fire-and-forget, so it can be pressed
+again freely. With no routine configured, or on any API failure (bad/expired
+token, network error), a snackbar explains why.
 
 **Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
 numbers in descriptions are auto-linkified by `LinkifiedText`
@@ -3307,7 +3340,8 @@ start page).
 
 ### 10.6e Music Player (0.2.61)
 
-Tools ▸ Music Player (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`):
+Tools ▸ Music Player (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`,
+`lib/ui/queue_page.dart`):
 a full local MP3/audio player with background playback, home-screen widgets, notification
 and lock-screen controls, an M3U/M3U8 playlist import (Samsung Music's share-out format),
 and a "Tinder for songs" swipe gesture on Now Playing — swipe up favorites the current
@@ -3332,9 +3366,30 @@ hold thousands of tracks); a file with no/unreadable tag, or any non-mp3 format,
 its filename as the title. Results cache to `music_library.json` (same
 singleton/`ValueNotifier`/`flush: true`/swallowed-errors pattern as `ProjectService`, §4.2) so
 the library shows up instantly on the next launch; a failed or partial rescan (folder deleted,
-permission revoked) leaves the previous cache in place rather than clearing it. Rescans are
-manual (Music Player's refresh button, or automatically once on first open when the folder is
-set but the cache is empty) — there is no filesystem watcher.
+permission revoked) leaves the previous cache in place rather than clearing it (0.2.68 —
+`rescan` no longer swallows the failure silently: every step — permission status, folder
+existence, files seen/skipped/kept, any thrown error — is written to `LogService` under source
+`Music`, viewable in App Logs, since a scan that quietly finds nothing was previously
+undiagnosable from the UI). Rescans are manual (Music Player's refresh button, or automatically
+once on first open when the folder is set but the cache is empty) — there is no filesystem
+watcher. All three folder pickers (Music Player's own, and Settings → Music Player in both
+BestToDo and Best Music) call `MusicLibraryService.ensureFolderPermission()` before opening the
+picker (0.2.68): on Android this checks/requests `MANAGE_EXTERNAL_STORAGE`, the same "All files
+access" grant §10.6d's MP3 Downloader already prompts for — the music folder pick flow was the
+one place in the app that scanned an arbitrary folder without ever asking for it, so a folder
+picked before granting it anywhere else scanned as empty with no error shown.
+
+`MusicPlayerService.ensurePermissions` (0.2.69, called from both `main.dart` and
+`main_music.dart` shortly after first frame) covers the case where the folder was configured
+before the permission existed (e.g. restored from a backup) rather than through the picker:
+Best Music requests `MANAGE_EXTERNAL_STORAGE` unconditionally (`eager: true` — local playback is
+its whole purpose, so it asks up front like other music apps); BestToDo only asks once
+`Config.musicFolder` is already set, so the far larger group of BestToDo users who never open
+Music Player aren't interrupted at launch for a permission a tool they don't use needs. Either
+way it also requests notification access (for the playback controls notification) and, if
+`MANAGE_EXTERNAL_STORAGE` had just been denied and is now granted, immediately re-runs `rescan`
+rather than leaving the already-configured folder empty until the user notices and retriggers
+one themselves.
 
 **Playback engine** (`lib/services/music_audio_handler.dart`'s `MusicAudioHandler`, a
 `BaseAudioHandler` from `audio_service` wrapping a single `just_audio` `AudioPlayer`):
@@ -3372,6 +3427,21 @@ gets a key of `random()^(1/weight)` and the result sorts descending by key — f
 later, ordinary tracks (weight 1.0) fall in between, and every track can still appear (nothing
 is ever hard-excluded, since a mood can change). `toggleFavorite`/`markDisliked` are mutually
 exclusive on a track (favoriting clears a dislike and vice versa).
+
+**Shuffle toggle and queue reordering** (0.2.65 — `MusicAudioHandler.toggleShuffle`/
+`reorderQueue`, `lib/ui/queue_page.dart`'s `QueuePage`): a shuffle icon button in Now
+Playing's app bar (`ValueNotifier<bool> shuffleEnabled`) shuffles only the not-yet-played
+tail of `_queue`, leaving playback history and the current track's position untouched;
+toggling it back off restores the tail's pre-shuffle order (captured in `_preShuffleOrder`
+when shuffle turns on). A "Queue" icon button next to it opens `QueuePage`, a
+`ReorderableListView.builder` (same drag-handle pattern as the task list, `home_page.dart`'s
+`_reorderTask`) over `MusicAudioHandler.currentQueueTracks`; dragging calls `reorderQueue`,
+which moves the track and keeps `_queueIndex` pointing at whichever track is actually
+playing even if its position shifted, then clears `_preShuffleOrder` (a manual drag is a
+new baseline order, not something a later shuffle-off should undo). This is separate from
+the existing `weightedShuffle`-driven "radio" reshuffle that happens when the queue runs
+off the end (**Playback engine**, above) — that automatic reshuffle from the full library is
+unaffected by the shuffle toggle.
 
 **Now Playing swipe gesture** (`lib/ui/now_playing_page.dart`): a `GestureDetector` on the
 artwork/title column tracks vertical drag distance and velocity; crossing a distance or
@@ -3428,16 +3498,511 @@ not a Samsung Music export sample, on the assumption documented in this section 
 list, possibly `file://`, matched by basename when the exact path doesn't line up) — worth
 confirming against a real Samsung Music export.
 
+### 10.6f Best Music — a second app from the same codebase (0.2.66, drawer + Settings + About 0.2.67)
+`lib/main_music.dart` is a second entry point, built as its own Android app rather than a
+BestToDo tool: no task list, alarms, sync, or any other to-do feature — just §10.6e's Music
+Player as the home page, with a proper drawer menu (MP3 Downloader, Wishlist, Settings,
+Changelog, Startup Times, App Logs, About — see §10.6h for Wishlist) mirroring BestToDo's own
+home page. Installs side by side with
+BestToDo on the same device (separate `applicationId`, so Android sandboxes its storage
+independently — no data collision with BestToDo's own `Config`/library files).
+
+**Build**: `android/app/build.gradle.kts` defines two product flavors under a single `app`
+flavor dimension — `todo` (BestToDo, `applicationId` unchanged, still the default: `flutter
+build apk` now requires an explicit `--flavor`, so `tool/build.sh` injects `--flavor todo`
+when a caller doesn't pass one) and `music` (`applicationId com.mfficiency.best_music`).
+`sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass -File
+tool\build.ps1 music-apk --release`) is shorthand for `flutter build apk --release --flavor
+music -t lib/main_music.dart`; Gradle's `createVersioned<Flavor>ReleaseApk` task — **one task
+per flavor**, each finalizing only its own `assemble<Flavor>Release` — renames that flavor's
+output to `best_todo_<version>.apk` or `best_music_<version>.apk`, matching what
+`tool/stage_local_release.dart --prefix
+best_music` stages into `github_releases/` alongside BestToDo's own APKs — both apps' last two
+builds live in that one folder, pruned independently by prefix (`namesToPrune` is prefix-blind;
+`main()` filters `present` to the caller's own prefix before pruning, since a prefix-blind prune
+could otherwise delete the wrong app's build purely by version-number coincidence — see §10.6i
+for why that's true even though the two apps no longer share one version).
+
+**Branding, not a fork**: app label (`res/values/strings.xml` `app_name`, overridden per flavor
+in `src/music/res/values/strings.xml`) and launcher icon (`src/music/res/mipmap-*/ic_launcher.png`
+— a flat black eighth note on white, generated at each mipmap density) are the only
+flavor-specific Android resources; everything else (permissions, receivers/services, signing)
+stays the single shared manifest, unused permissions in the Best Music APK included — a
+deliberate simplification since it is sideloaded, not Play-Store-distributed.
+
+**In-app updates**: `UpdateService` gained per-app instance config (`appDisplayName`,
+`apkPrefix`, via `UpdateService.forApp(...)`; `UpdateService.instance` stays BestToDo's own
+`best_todo`/`BestToDo` default) so each app's folder/release lookup only ever considers its own
+prefix — a bare version-number regex over the whole `github_releases/` listing would otherwise
+happily match the other app's file name too. A non-default app's `checkReleases` skips the
+repo-wide "latest release" fallback entirely (GitHub's `releases/latest` endpoint isn't
+per-app), reporting no update rather than risking BestToDo's release.
+
+**The drawer/menu (0.2.67)**: `MusicPlayerPage` gained a `standalone` flag (true only from
+`main_music.dart`). Standalone, its `Scaffold` carries `key: homeScaffoldKey` and a real
+`Drawer` — the same key `home_page.dart` uses for its own — so it is the Best Music app's home
+page in the same sense BestToDo's home page is: `buildSubpageAppBar`'s "Menu" button (used by
+every page the drawer pushes: MP3 Downloader, Wishlist, Settings, Changelog, Startup Times, App
+Logs, About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
+root route it has no "Back to Home" to offer) gets Flutter's automatic drawer-hamburger button
+for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a small
+standalone settings page — just the music folder picker and excluded-subfolders dialog,
+reimplemented from BestToDo's Settings → Music Player section (`settings_page.dart`) since that
+page is one monolithic widget tightly coupled to BestToDo's full settings list.
+`lib/ui/music_about_page.dart` mirrors `AboutPage` (Best Music branding + an
+`UpdateService.forApp` instance, exposed as `MusicAboutPage.updateService` for tests) — the
+`UpdateSection` widget (`about_page.dart`, made public and given optional `service`/`appName`
+params for this) is shared between the two About pages rather than duplicated. Reusable as-is,
+unmodified: `ChangelogPage` (pure CHANGELOG.md rendering, no BestToDo-coupled service),
+`StartupTimesPage` (`StartupTimeService.start()`/`.record()` added to `main_music.dart`,
+mirroring `main.dart`, so it has real data) and `AppLogsPage` (its Sync/Todoist tabs just stay
+empty for Best Music, which never touches those services — a known, harmless simplification
+rather than forking the page to hide them).
+
+**CI**: `.github/workflows/build-apk.yml`'s `build_music_apk` job builds the `music` flavor on
+every push to main/staging/dev, uploads it as a workflow artifact, and — mirroring what a local
+`sh tool/build.sh music-apk --release` does — stages it into `github_releases/` (`--prefix
+best_music`) and commits+pushes (rebase-and-retry against the `build` job's own same-branch
+push, same pattern `screenshot_changelog.yml` uses). Deliberately does *not* also publish to a
+GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateService.checkReleases`'s
+doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
+this repo — the folder stays each app's only update-check source.
+
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74, CSV bulk metadata export/import 0.2.77)
+**Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
+(`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
+of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
+minimal-JSON convention as the rest of the model). `Track` stays immutable (`final` fields); a
+new `copyWith` is how the library scan/audio handler update just the fields that changed.
+`dateAdded`/`playCount` are scan-preserved, not scan-derived: `MusicLibraryService.rescan()`
+merges each freshly-scanned `Track` with the previous library entry of the same `id` (falling
+back to `DateTime.now()`/`0` for a track seen for the first time) — a rescan refreshes tags, it
+must never reset "when was this added" or "how many times has this been played".
+
+**Metadata extraction moved to `lib/services/music_metadata_extractor.dart`** — pure Dart (only
+`dart:typed_data` + `package:id3_codec`, no Flutter import), decoding `TIT2`/`TPE1`/`TALB` (as
+before) plus `TCON` (genre, stripping an old ID3v1 `"(17)Rock"`-style numeric-code wrapper down
+to the trailing name) and `TDRC`/`TYER`/`TDOR` (year, first 4-digit run). `MusicLibraryService`
+calls this from `_buildTrack` instead of decoding tags itself; still mp3-only, still capped to
+the first `id3ReadCap` (1 MiB) bytes — m4a/flac/etc. still fall back to filename-as-title with
+no metadata, unchanged from §10.6e. Never throws — an unreadable/absent tag yields an
+all-null `ExtractedTags`, same fallback-to-filename behavior as before.
+
+**`tool/scan_music_metadata.dart`** — a standalone `dart run` script (no Flutter engine, no
+`flutter test` harness) sharing that same extractor module, so it reports exactly what the app
+itself would see. Walks a folder recursively and prints (or `--out file.json` writes) a JSON
+array of `{path, title, artist?, album?, genre?, year?}` per supported audio file, plus a
+scanned/tagged-count summary on stderr. For sanity-checking a whole collection's metadata
+coverage (which files actually have a readable genre/year) before relying on it for rule
+playlists — independent of the app, the music folder setting, or a device.
+
+**Play count**: `MusicLibraryService.incrementPlayCount(trackId)` bumps and persists one
+track's count. Called from `MusicAudioHandler`'s `processingStateStream` listener only on
+`ja.ProcessingState.completed` (a track that played to the end) — a manual `skipToNext`/
+`skipToPrevious` never reaches that stream state, so skipping doesn't count as a play.
+
+**Smart (computed) playlists** — `MusicPlaylist` gained a `kind` (`PlaylistKind`: `list` — the
+existing stored-`trackIds` behavior, now the explicit default; `lastAdded`; `mostPlayed`; `rule`)
+plus `genreFilter` (scopes `mostPlayed`) and `ruleSet` (drives `rule`), all JSON round-tripped.
+`MusicPlaylistService.smartPlaylists` computes "Last Added" and "Most Played" (overall, plus one
+per distinct `Track.genre` present in the library) fresh from `MusicLibraryService.instance.tracks`
+on every read — never persisted, never deletable, empty entirely when the library itself is
+empty. Both cap at `smartPlaylistLimit` (50) tracks. `MusicPlaylistService.resolvedTracks(playlist)`
+is the one place that turns any `MusicPlaylist` (whatever its `kind`) into an actual `List<Track>`
+— `MusicPlaylistDetailPage`/the Playlists tab's track-count subtitle both go through it instead of
+reading `trackIds` directly, so they work uniformly across stored and computed playlists.
+
+**Rule-based ("smart" in the iTunes/Plex sense) playlists** — `lib/models/playlist_rule.dart`:
+`RuleCondition` (a `RuleField` — title/artist/album/genre/year — a `RuleOperator`, and a
+`values` list) plus `PlaylistRuleSet` (a `RuleCombinator.all`/`any` over a list of conditions).
+Deliberately a **flat** model, not a nested AND/OR/NOT expression tree: NOT lives per-condition
+(`notEquals`/`notContains`/`notInList`), OR lives inside one `inList` condition's value list
+("Artist A or Artist B"), and AND is `RuleCombinator.all` across conditions ("genre X and
+released last year, excluding Artist C" is three conditions ANDed together). This covers every
+case actually asked for with a UI and evaluator an order of magnitude simpler than a real
+boolean-tree editor, at the cost of not supporting an arbitrary nested expression (e.g. "(A or B)
+and not (C and D)") — acceptable for a personal playlist-building tool. `year` is the only
+numeric field (`greaterOrEqual`/`lessOrEqual` besides the text operators); an empty rule set
+matches nothing (not "everything") so a freshly created empty rule playlist reads as empty
+rather than the whole library. `lib/ui/rule_playlist_editor_page.dart` is the builder: a name
+field, an all/any selector, and a dynamic list of field/operator/value rows (comma-separated
+values for `inList`/`notInList`) — reachable from the Playlists tab's "New rule playlist" row,
+or an existing rule playlist's edit icon (`MusicPlaylistService.createRulePlaylist`/
+`updateRulePlaylist`). Rule playlists are ordinary (non-system) playlists — deletable like any
+hand-built one.
+
+**Best Music's own background update poll**: `AutoUpdateChecker.start`/`checkOnce` gained an
+optional `service` parameter (defaults to `UpdateService.instance`, so BestToDo's own wiring in
+`main.dart` is unchanged) so the same checker class can drive a second app's update instance.
+`main_music.dart`'s `BestMusicApp` became a `StatefulWidget` that starts it (Android only,
+pointed at `MusicAboutPage.updateService`) in `initState`, showing the same "New version
+available" dialog (`showUpdateAvailableDialog`) and background download
+(`downloadUpdateInBackground`) BestToDo's own poll uses, via a dedicated `musicNavigatorKey`
+(mirrors `appNavigatorKey`) since there is no `BuildContext` on hand outside the widget tree.
+Best Music has no Settings toggle for this yet (unlike BestToDo's "Automatically check for
+updates" switch) — it simply always polls; the manual "Check for updates" button on
+`MusicAboutPage` (§10.6f) is unaffected either way.
+
+**Hand-built playlists (0.2.71)** — the plain, add-songs-yourself kind Samsung Music and every
+other player offer, previously only reachable via M3U import: the Playlists tab's "New playlist"
+row prompts for a name (`promptPlaylistName`/`_PlaylistNameDialog` in `music_player_page.dart` —
+its own `StatefulWidget` owning the `TextEditingController`, per the "never dispose right after
+`showDialog` returns" convention) and creates an empty `PlaylistKind.list` playlist via the
+existing `MusicPlaylistService.createPlaylist`. Every song row (`TrackListView`, shared by the
+Library tab and every playlist detail page) gained an "Add to playlist" button
+(`showAddToPlaylistSheet`) opening a bottom sheet: a `CheckboxListTile` per hand-built,
+non-system playlist (`kind == list && !isSystem` — this excludes Favorites/"Don't really like"
+and every smart/rule playlist, which aren't a plain track list to add to) checked when the track
+is already in it, toggling `addTo`/`removeFrom` immediately on tap, plus a "New playlist" row at
+the top that creates one pre-filled with the current track without leaving the sheet. Removing a
+song again happens on the playlist itself: `MusicPlaylistDetailPage` now passes `TrackListView`
+an `onRemove` callback (a "Remove from playlist" icon per row) only when the playlist being
+viewed is itself a hand-built, non-system one — Favorites/disliked stay swipe-gesture-only, and a
+smart/rule playlist's tracks aren't stored to remove from in the first place.
+
+**In-app metadata scan + editor (0.2.74)** — `Track` gained `metadataEdited` (`bool`, default
+false, omitted from JSON when false). `MusicLibraryService.rescan` now takes an optional
+`onTrackScanned(int scanned, Track track)` callback, fired once per supported file found (with
+that file's already-merged final `Track` — dateAdded/playCount preserved as before, and, new
+here, its title/artist/album/genre/year preserved too when the previous entry had
+`metadataEdited: true`, instead of being overwritten by a fresh — possibly still empty — tag
+read); the per-file merge/callback logic that used to run as a separate pass after the whole
+folder was walked was folded into the main scan loop so the callback sees final values without a
+second pass. `MusicLibraryService.updateTrackMetadata(trackId, {title, artist, album, genre,
+year})` sets those fields to exactly the given values (required, not merged via `copyWith`'s
+`?? this.field` pattern — an editor needs to be able to clear a field, which that pattern can't
+express) and sets `metadataEdited: true`.
+
+`lib/ui/music_metadata_scan_page.dart` (`MusicMetadataScanPage`, opened from
+`MusicPlayerPage`'s app bar, "Metadata scan" icon next to "Rescan library") runs `rescan` on
+open (and again on its refresh action) and renders every track live as `onTrackScanned` fires —
+a `LinearProgressIndicator` plus a running count while scanning, then a
+found/with-genre/with-year summary, with each row showing a green check (both genre and year
+known), orange (one of the two) or red (neither) icon. Tapping a row opens
+`lib/ui/track_metadata_page.dart` (`TrackMetadataPage`), also reachable via a new "Track info"
+(ⓘ) button on Now Playing's app bar (disabled — `onPressed: null` — while nothing is playing):
+editable title/artist/album/genre/year fields pre-filled from `MusicLibraryService.byId`, plus
+read-only duration/play count/date added/source/file path, and a note when the track was already
+manually edited. Saving calls `updateTrackMetadata`; an unparsable year shows an inline error
+instead of saving. This only ever changes this app's own cached record (`music_library.json`) —
+it does not write ID3 tags back into the file itself, which stays a possible future addition, not
+something either page does today.
+
+Widget tests that pump a page whose `initState` triggers `rescan` (`MusicMetadataScanPage`) poll
+with real delays (`tester.runAsync(delay) + pump()`, condition-driven on the progress indicator
+disappearing) rather than `pumpAndSettle()`, which both never resolves the real dart:io Future
+inside `testWidgets`' fake-async zone and would hang forever on the indeterminate
+`LinearProgressIndicator` even if it did (see CLAUDE.md's "Real file I/O hangs inside
+testWidgets" note) — and set the page's initial "scanning" field directly in `initState` rather
+than via `setState` (illegal before `initState` returns), letting only the later, async-gap
+`setState` calls do the rebuilding.
+
+**CSV bulk metadata export/import (0.2.77)** — a way to fill in metadata for a whole collection
+at once outside the app (e.g. hand it to an AI), for when editing one track at a time via
+`TrackMetadataPage` doesn't scale. `lib/services/music_metadata_csv.dart` (`MusicMetadataCsv`):
+`encode(tracks)` writes one CSV row per track — `id, filename, title, artist, album, genre,
+year` — reusing `UsageDataService.csvField`/`toCsv` for RFC-4180-style quoting rather than
+duplicating that escaping logic (`UsageDataService`'s CSV primitives are public statics
+precisely so other export features can share them). `decode(csvText)` is a hand-rolled decoder
+(no `csv` package dependency; none existed in the codebase and none was added) — a small
+state-machine parser handling quoted fields, doubled-quote escaping, CRLF/bare-LF line endings,
+and a missing trailing newline, then looking columns up **by header name** (case-insensitive,
+tolerant of reordering/missing/extra columns) rather than by position, so a spreadsheet round
+-trip that reorders columns still imports correctly. A row's `id` is the match key (the export's
+`filename` column is read-only context for an AI when a file has no tags to go on at all —
+title/artist/album are also empty in that case); a row with a blank `id` is skipped, and a file
+with no `id` column at all decodes to zero rows rather than guessing.
+
+`MusicLibraryService.applyMetadataRows(List<ParsedMetadataRow>)` matches each row's `id` against
+the library and, for every match, sets `title`/`artist`/`album`/`genre`/`year` — but **only the
+non-empty fields**: a blank cell leaves that track's existing value untouched, so a spreadsheet
+edit that accidentally clears a cell (or an AI that only filled in the columns it was asked to)
+can't silently erase data the app already had. Every matched row gets `metadataEdited: true`,
+same as a manual `TrackMetadataPage` edit — so it also survives a later rescan (§ above). Returns
+how many rows matched, for the caller's "Updated N of M" summary.
+
+The UI lives on `MusicMetadataScanPage`, alongside the scan itself: "Export metadata CSV" writes
+the current library (`MusicLibraryService.instance.tracks.value`, not just what's scanned into
+the page's own live list — so it works even without running a fresh scan first) to a file in
+`getTemporaryDirectory()` and hands it straight to the OS share sheet
+(`SharePlus.instance.share(ShareParams(files: [XFile(path)]))` — the same pattern
+`attachments_field.dart` uses to share an attachment) rather than a folder-picker write like
+`UsageDataPage`'s CSV export — simpler for "get this file into another app" than picking a save
+folder first. "Import filled-in CSV" uses `file_selector`'s `openFile` (same pattern as the M3U
+import in `music_player_page.dart`), reads and decodes the file, applies it, and refreshes the
+scan page's already-displayed rows in place (looked back up by id) so their status icons update
+without a full rescan. Neither the export/import buttons themselves nor the M3U import they
+mirror are exercised in `testWidgets` — both go through a real OS file picker/share sheet with no
+test seam in this codebase, so only the pure `MusicMetadataCsv`/`applyMetadataRows` logic
+underneath is unit tested.
+
+### 10.6h Best Music Wishlist (0.2.75, briefly shared across both apps 0.2.78-0.2.83, reverted to
+local-only Best Music 0.2.84 — see §10.6i for the version split)
+Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
+BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
+records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
+Wishlist reads and writes (`tasks.json`, unchanged JSON shape). Priority (`0..3`, stored as one
+of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared code too:
+`lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/`setWishPriority`/
+`bumpWishPriority`) is the single source both `wishlist_page.dart` and `music_wishlist_page.dart`
+import, rather than each keeping its own copy.
+
+Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
+(release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
+multi-select) — those are specific to BestToDo's own development workflow, not something Best
+Music's users need. Each row is just a leading `Checkbox` (toggles `isDone`/`completedAt` and
+saves immediately, no editor needed — Best Music 0.2.83; the original "no icons at all" design
+was amended once actually asked for) and the title (struck through once done) — no priority/tag chips, no
+trailing icon. Tapping the title itself pushes a full-page editor for everything else: a "Done"
+switch (kept there too, alongside the list's own checkbox), priority as three `ChoiceChip`s, tags
+via the shared `LabelPickerField`, and a multi-line description field. The app bar's check icon
+saves; a delete icon (edit mode only) confirms then removes the item. Adding is the same editor
+with no item, reached via the page's `+` FAB. Sorting mirrors BestToDo's default: open items
+before done ones, then by priority, otherwise list order. `ItemViews.wishlist` (the same shared
+query BestToDo's Wishlist filters through) is the visibility gate, so demo-seed hiding and the
+isWish/isVisibleInMainViews rules apply identically in both apps.
+
+**No inherited BestToDo backlog (Best Music 0.2.83)**: `ItemRepository.loadItems()`/`StorageService.
+loadTaskList()` is shared code, and it unconditionally ran a one-time migration
+(`_maybeImportLegacyTodoItems`, `lib/services/wishlist_migration.dart`'s `legacyTodoWishlistItems`
+— 61 items straight from BestToDo's own historical `Todo.md` backlog) into whichever app's own
+`tasks.json` was empty and had never run it before — including a genuinely fresh Best Music
+install, which has its own separate app-private storage and so had never spent that one-time flag
+either. `Config.isBestMusic` (`lib/config.dart`, default `false`) is set once, first line of
+`main_music.dart`'s `main()`, before anything else runs; `_maybeImportLegacyTodoItems` returns
+immediately when it's true, so Best Music's Wishlist now starts genuinely empty on a fresh
+install, same as its dev-build behavior (see "Empty by default" below) — the migration itself,
+and BestToDo's own behavior, are untouched.
+
+**Cross-app sync, added 0.2.78 then reverted to BestToDo-only 0.2.84**: BestToDo and Best Music
+are two separately-sandboxed Android apps (different `applicationId`, §10.6f) —
+`getApplicationDocumentsDirectory()` (what `StorageService`/`ItemRepository` use for
+`tasks.json`) is invisible across that sandbox boundary, so each app's Wishlist really is its own
+local database, matching on JSON shape alone but never actually shared. 0.2.78 added
+`lib/services/shared_wishlist_store.dart` (`SharedWishlistStore`) to bridge that: it reads/writes
+one file — a fixed path under public external storage
+(`/storage/emulated/0/BestToDo/wishlist_shared.json`) both apps can reach because both already
+hold `MANAGE_EXTERNAL_STORAGE` (the shared `AndroidManifest.xml`; `MusicLibraryService.
+ensureFolderPermission` already requests the same permission for the music folder, and Best Music
+already asks for it eagerly at startup, §10.6e/f) — via `SafeFile`, the same atomic-write/
+corruption-recovery helper `StorageService` itself uses.
+
+Both Wishlist pages treated the shared file as authoritative once it existed: on load,
+`reconcileWishlist(local, shared)` replaced the local wish-item subset with the shared file's
+content whenever that file already existed (so a deletion or edit made in the other app took
+effect here too — the whole set was replaced, not merged item-by-item, since there is no
+per-field "last modified" timestamp on `Task` to arbitrate a real conflict), and only fell back
+to seeding the shared file from local data the first time, before it existed at all. Every save
+(add/edit/delete/toggle) re-pushed the page's current wish-item set out to the shared file.
+**0.2.84 reverted this for Best Music**: `music_wishlist_page.dart` no longer imports
+`SharedWishlistStore`/`WishlistSyncBanner` at all — it reads and writes only its own
+app-private `tasks.json` via `ItemRepository`, exactly like every other Best Music list, so
+checking an item off there can never mark it done in BestToDo (users had not asked for the two
+lists to be the same list, and being checked in an app they weren't using was surprising). Best
+Music's Wishlist drawer entry no longer shows a connect banner or offers to sync at all.
+BestToDo's own Wishlist (`wishlist_page.dart`) is untouched: `SharedWishlistStore`, the dismissible
+`WishlistSyncBanner` (`lib/ui/wishlist_sync_banner.dart`) and its "Connect" flow
+(`Config.wishlistSyncBannerDismissed`, `SharedWishlistStore.requestConnection()` showing
+Android's "All files access" settings screen) still exist there exactly as before — connecting
+now just means nothing else reads the file it writes to.
+`SharedWishlistStore.sharedDirectoryOverride`/`connectionOverride` (test-only) redirect this to a
+temp directory and force a connected/not-connected state without the real `permission_handler`
+plugin, which `flutter test`'s host platform can't provide —
+`test/core/shared_wishlist_store_test.dart` covers the store directly (save/load round-trip,
+deletion visibility, `reconcileWishlist`); the former `test/tools/wishlist_cross_app_sync_test.dart`,
+which proved an item added/deleted in one app's Wishlist showed up in the other's, was removed
+along with that behavior.
+
+**Empty by default, even in dev builds (0.2.77)**: both Wishlist tools used to seed demo content
+on an empty list — `WishlistPage._load`'s "Learn to sail" fallback, `home_page.dart`'s
+`_seedDevWishItem` (same item, seeded on first launch) and `_buildDevWishlistSeed` (the
+`legacyTodoWishlistItems` backlog, re-backfilled on *every* dev launch once no wishes remain,
+independent of first-launch) — all gated on `Config.isDev`. That backfill in particular meant a
+developer who cleared the Wishlist to test an empty state saw it silently repopulate on the next
+launch. All three are removed; the Wishlist starts (and stays) genuinely empty in dev builds
+exactly like production, so testing the cross-app sync feature above from a clean slate doesn't
+require fighting demo data first. The production one-time Todo.md-backlog import
+(`StorageService`/`wishlist_migration.dart`, §10.6, unconditional on `Config.isDev`) is untouched
+— that is a real, flag-guarded, one-time migration for actual installs, not a dev convenience.
+
+### 10.6i Independent versioning and changelogs (0.2.81)
+Through 0.2.80, Best Music's every build shared BestToDo's own `pubspec.yaml` `version:` line
+(via Flutter's `flutter.versionCode`/`flutter.versionName`, injected into both Gradle product
+flavors alike) and its Android APK's release notes came from BestToDo's own CHANGELOG.md — so a
+Todo-only release always bumped Music's version number too, and Music's own Changelog tool
+showed BestToDo's whole history mixed in with the entries actually about Music. The two apps now
+version and changelog fully independently, seeded from 0.2.80+371 (the last build number they
+shared) going forward — nothing before the split was rewritten or copied over; BestToDo's own
+history stays in CHANGELOG.md.
+
+**Best Music's own version file**: `MUSIC_VERSION` at the repo root holds a single `version:
+x.y.z+build` line, the same shape as `pubspec.yaml`'s. `android/app/build.gradle.kts` reads it
+(`rootProject.file("../MUSIC_VERSION")`, mirroring how `key.properties` is already read) and
+overrides `versionCode`/`versionName` on the `music` product flavor only — `todo` keeps coming
+from `flutter.versionCode`/`flutter.versionName` (i.e. `pubspec.yaml`) exactly as before. The
+`createVersionedReleaseApk` task's `fullVersion` (used to name `best_todo_<version>.apk` /
+`best_music_<version>.apk`) now branches on which flavor's APK it actually found rather than
+always reading `flutter.*`. `PackageInfo.fromPlatform()` (what `Config.versionWithBuild` and
+`MusicAboutPage` read) then reports each installed app's own real version for free, since it
+reads the running APK's own `versionCode`/`versionName` — no Dart-side change needed there.
+`versionCode` only ever moves forward from 371 (Android refuses an "update" with a lower
+versionCode than what's installed), so bumping `MUSIC_VERSION` always increments the existing
+build number rather than resetting it, even though its `x.y.z` name can change freely.
+
+**Best Music's own changelog**: `CHANGELOG_MUSIC.md` at the repo root, bundled as an app asset
+alongside `CHANGELOG.md` (`pubspec.yaml`'s `assets:`). `ChangelogPage` (§10.7) gained `assetPath`
+(default `CHANGELOG.md`) and `showStoryPoster` (default `true`) constructor params;
+`MusicPlayerPage`'s drawer entry passes `assetPath: 'CHANGELOG_MUSIC.md', showStoryPoster:
+false` — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
+would be wrong to show under Best Music.
+
+**Tooling, both apps share the same scripts with a flag rather than forking them**:
+- `dart run tool/bump_version.dart <version> "<entry>" --music` bumps `MUSIC_VERSION` +
+  `CHANGELOG_MUSIC.md` instead of `pubspec.yaml` + `CHANGELOG.md`; the changelog-insertion logic
+  now finds the first `## [...]` heading and inserts the new section right above it rather than
+  assuming a single-line header, so `CHANGELOG_MUSIC.md`'s explanatory preamble paragraph (above
+  its first release) survives every bump untouched.
+- `dart run tool/append_build_time.dart --app music` (default: BestToDo) notes a local build in
+  `CHANGELOG_MUSIC.md` and reads `MUSIC_VERSION` for its `build_history.json` record, which now
+  also carries an `app` field (`'todo'`/`'music'`).
+- `dart run tool/stage_local_release.dart --version <x.y.z+build>` names the staged file
+  explicitly instead of the tool re-reading `pubspec.yaml` — without it, staging a
+  `--prefix best_music` build would silently tag it with BestToDo's version once the two
+  diverged. `tool/build.sh`/CI always pass it now.
+- `tool/build.sh`: `VERSION` is read from `MUSIC_VERSION` instead of `pubspec.yaml` whenever
+  `FLAVOR=music` (i.e. every `music-apk` build), and `--app music`/`--version "$VERSION"` are
+  passed through to `append_build_time.dart`/`stage_local_release.dart` accordingly.
+  `tool/publish_apk.dart` stays BestToDo-only (Best Music's update check never looks at GitHub
+  releases — see §10.6f's "In-app updates" paragraph), so `PUBLISH_APK=1` is now a no-op for a
+  music build rather than publishing a GitHub release mislabeled "BestToDo" from Music's bytes.
+- `.github/workflows/build-apk.yml`'s `build_music_apk` job reads its "app version" step from
+  `MUSIC_VERSION` and passes `--version` to `stage_local_release.dart` the same way.
+- `tool/build_all.sh`/`tool/build.ps1` (the gap this change originally left open, closed since):
+  `all` now builds the Best Music APK as its own step between the BestToDo APK and the Windows
+  exe — "everything this project ships" includes Best Music — skippable with `MUSIC=0`, and the
+  sync step also stages `CHANGELOG_MUSIC.md`. `tool/build.ps1` has full flavor parity with
+  `tool/build.sh`: a `music-apk` shorthand, `--flavor todo` injected when an `apk` build doesn't
+  name one, `MUSIC_VERSION` as the version source and `best_music_` as the artifact prefix for a
+  music build, `--app music`/`--version`/`--prefix` passed through to
+  `append_build_time.dart`/`stage_local_release.dart`, and the same BestToDo-only `PUBLISH_APK`
+  guard.
+
+**Why the rename task is per-flavor** (regression fixed after the split): a single shared
+`createVersionedReleaseApk` used to decide which app it had just built by scanning
+`build/app/outputs/flutter-apk/` for the first existing `app-<flavor>-release.apk`, `todo`
+first. That directory is never cleaned between builds, so on any machine that had built
+BestToDo at least once, every subsequent `--flavor music` build matched the leftover
+`app-todo-release.apk`, re-copied that stale BestToDo APK as `best_todo_<pubspec version>.apk`
+and produced **no** `best_music_<MUSIC_VERSION>.apk` at all. The music build exited 0, so the
+failure was silent — `stage_local_release.dart` then staged nothing (or the wrong app). CI never
+saw it because each job starts from a clean checkout. Deciding the flavor from the task that
+triggered the rename, rather than from whatever files happen to be on disk, is what makes a
+local music build correct.
+
+Not split by this change: `SCREENSHOT_CHANGELOG.md` (`tool/update_screenshot_changelog.dart`)
+stays one shared file for both apps' screenshot-capture audit trail, and still labels every
+entry with BestToDo's `pubspec.yaml` version regardless of which app's screenshots it's
+recording — a known, low-stakes inconsistency (it's an audit log, not a user-facing changelog)
+left for a future pass if it's ever worth the tooling churn.
+
+### 10.6j Samsung-Music-style redesign: Favourites/Artists/Folders tabs, search, sort, "+" add-songs (Best Music 0.2.81)
+`MusicPlayerPage`'s `TabController` grew from 2 tabs (Library/Playlists) to 5, matching Samsung
+Music's own layout: Favourites, Playlists, **Tracks** (renamed from Library), Artists, Folders —
+`TabBar(isScrollable: true)` since five labels don't all fit on a phone width, same as Samsung's.
+Favourites (`_FavouritesTab`) is a shortcut straight to the Favorites system playlist's resolved
+tracks — the same list already reachable via Playlists → Favorites, just one tap away. Artists
+(`_ArtistsTab`) and Folders (`_FoldersTab`) are new grouping views computed live from
+`MusicLibraryService.instance.tracks` (never persisted): Artists groups by `Track.artist`
+(`Unknown artist` for a blank tag, sorted last); Folders groups by each local track's folder
+relative to `Config.musicFolder` (`folderLabelOf`, a top-level function in
+`music_player_page.dart` — tracks right under the music folder itself land in `(Music folder)`,
+whose leading `(` sorts it ahead of any real subfolder name; a Subsonic track with no
+`Track.filePath` groups under `Other`). Tapping a row in either tab pushes `_FilteredTracksPage`,
+a plain `TrackListView` over that artist's/folder's tracks.
+
+**Search** (app bar search icon, `_MusicSearchDelegate extends SearchDelegate<void>`): filters
+the whole library by title/artist (falling back to the filename), reusing `TrackListView` for
+results so a search hit is playable and carries the same "more options" menu as everywhere else.
+Plain `showSearch(context:, delegate:)` — no separate search page/route to maintain.
+
+**Quick sort + shuffle/play-all header** (`TrackListView`, now a `StatefulWidget` owning its own
+`TrackSortOrder`): every track list — Tracks/Favourites tabs, an artist/folder drill-down, search
+results, and any playlist detail page — gets a header row with a `PopupMenuButton<TrackSortOrder>`
+(Date added [default] / Title / Artist / Duration, checkmark on the active choice — same
+`PopupMenuItem` pattern `wishlist_page.dart`'s sort menu already uses) plus shuffle and play-all
+icon buttons that queue the *currently sorted* list. Sorting is local UI state, not persisted —
+reopening a list resets to Date added.
+
+**Per-track "more options" menu**: the row's separate Favorite/"Add to playlist"/"Remove from
+playlist" icon buttons were folded into one `PopupMenuButton<String>` (`Icons.more_vert`, tooltip
+"More options") per Samsung Music's own ⋮ button — Favorite/Unfavorite (dynamic label + heart
+icon), Add to playlist (still `showAddToPlaylistSheet`), Remove from playlist (only when
+`TrackListView.onRemove` is set — i.e. inside a hand-built, non-system playlist, unchanged
+condition), and a new Track info entry (`TrackMetadataPage`, previously only reachable from Now
+Playing's info button). Tapping the row itself still plays the (sorted) list from that track,
+unchanged.
+
+**"+" add-songs-to-playlist (`AddSongsToPlaylistPage`)**: `MusicPlaylistDetailPage` gained an
+"Add songs" app bar button, shown under the same `editable` condition as its existing "Remove
+from playlist" wiring (`kind == list && !isSystem` — a hand-built playlist only; Favorites/
+disliked/smart/rule playlists don't get one). It opens a full-screen multi-select checkbox list
+of every library track not already in the playlist; "Add selected" (enabled once at least one is
+checked) calls the new `MusicPlaylistService.addAllTo(playlistId, trackIds)` — one save/notify
+for the whole batch rather than one per track (`addTo` in a loop). Complements the existing
+one-track-at-a-time flow from a track row's own "Add to playlist" menu entry, for adding several
+songs into a playlist at once instead.
+
+### 10.6k Artists tab groups "feat." credits, free-form Tags (Best Music 0.2.82)
+**Artists tab merges featuring credits.** A library ripped from Samsung Music (or similarly
+tagged) often has one artist appear as several distinct `Track.artist` strings — "49th & Main",
+"49th & Main feat. SKYLAR", "50 Cent feat. Justin Timberlake" — because the ID3 `TPE1` tag
+folds the featured artist into the same field. `lib/utils/artist_utils.dart`'s
+`splitArtistCredit(artist)` splits that on the first `feat.`/`feat`/`ft.`/`ft`/`featuring`
+marker (case-insensitive, tolerant of surrounding whitespace) into `mainArtist` + `featuring`,
+returning an empty `featuring` when there's no such marker. `_ArtistsTab` groups by
+`mainArtist` instead of the raw `Track.artist` (an empty main artist still falls back to
+"Unknown artist", sorted last) — so "49th & Main" and "49th & Main feat. SKYLAR" land under one
+row, its track count covering both. When any of a main artist's tracks carry a featuring
+credit, the row's `trailing` shows "feat. <names>" (deduped via a `Set`, comma-joined, ellipsized
+past two lines) so that information isn't lost, just moved out of the grouping key. This only
+affects grouping in the Artists tab — `Track.artist` itself, and every other view/search/sort
+that reads it, is untouched.
+
+**Free-form tags.** `Track` gained `tags` (`List<String>`, default `const []`, omitted from
+`toJson` when empty, tolerant of a missing/non-list key in `fromJson`) — unlike every other
+metadata field, never read from a file's ID3 tags; purely a user-assigned label for grouping
+tracks the way genre/artist/folder can't (occasion, a personal chart, "songs for a specific
+playlist elsewhere"), e.g. "Belgian Top Charts", "Wedding songs". Editable on
+`TrackMetadataPage` (a comma-separated "Tags" text field alongside title/artist/album/genre/
+year, `helperText` showing the format) — saving goes through the same
+`MusicLibraryService.updateTrackMetadata(..., tags: [...])` call as every other field (now
+taking an optional `tags` parameter, default `const []`) and sets `metadataEdited: true`, so
+tags survive a rescan exactly like a manually-fixed genre does (§10.6g). `applyMetadataRows`
+gained the same blank-means-leave-alone semantics for tags as every other field: a row's empty
+`tags` list keeps the track's existing tags. `MusicMetadataCsv` round-trips tags as an eighth
+`tags` column, multiple tags in one cell `; `-joined (not `,`-joined, since the CSV's own field
+separator is a comma) and split back the same way on import.
+
+A new **Tags tab** (`_TagsTab`, `TabController` grown from 5 to 6, `TabBar` labels Favourites/
+Playlists/Tracks/Artists/Tags/Folders) groups the library by tag the same way Artists/Folders
+do, computed live from `MusicLibraryService.instance.tracks` — but unlike those two (each track
+belongs to exactly one artist/folder), a tag grouping is many-to-many: a track with several tags
+appears once under each one, and a track with none groups under "Untagged" (sorted last, same
+pattern as "Unknown artist"). Tapping a tag row pushes the same `_FilteredTracksPage` Artists/
+Folders already use.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer
 trend, share of slow starts, outlier callout, first-launch-of-day cold-start comparison;
-uses timestamped history with legacy fallback. **Changelog**: renders CHANGELOG.md
-(markdown, bundled asset); an app-bar button toggles an update heatmap — the file is
-parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd` headings +
-their bullets, wrapped lines joined, undated headings skipped) and drawn as a
+uses timestamped history with legacy fallback. **Changelog**: `ChangelogPage` renders a
+bundled markdown asset — CHANGELOG.md by default, or Best Music's own CHANGELOG_MUSIC.md
+via `assetPath`/`showStoryPoster` (`false` for Music: `changelogMilestones` below is
+BestToDo's own curated history — see §10.6i); an app-bar button toggles an update heatmap
+— the file is parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd`
+headings + their bullets, wrapped lines joined, undated headings skipped) and drawn as a
 GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri labels, month label
 above the week where the month changes — with the year appended on the first column and
 at every year switch, e.g. "Jan 2026", drawn in an `OverflowBox` so it can run past its
@@ -3481,7 +4046,8 @@ in App Logs → Todoist — onboarding has already finished by then.
   --target $1` → rename artifacts with the version (`best_todo_<VERSION>.apk`,
   `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart` for an APK build →
   optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`. `tool/build.ps1` mirrors
-  this with `[System.Diagnostics.Stopwatch]` for the timing.
+  this (including the flavor/`music-apk` handling — §10.6i) with
+  `[System.Diagnostics.Stopwatch]` for the timing.
 - **Local build time & duration (0.1.240; duration + build_history.json added later):**
   `tool/append_build_time.dart` writes/updates a `- Local build: yyyy-mm-dd HH:MM` bullet
   inside the *newest* CHANGELOG.md section (`withBuildTimeNote`: replaces the existing line

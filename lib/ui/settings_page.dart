@@ -2334,6 +2334,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Settings → Music Player: the folder the Music Player scans for tracks
   /// (recursively, every subfolder included unless excluded below).
   Future<void> _pickMusicFolder() async {
+    await MusicLibraryService.instance.ensureFolderPermission();
     final directory = await getDirectoryPath(
       initialDirectory:
           Config.musicFolder.isNotEmpty ? Config.musicFolder : null,
