@@ -49,6 +49,7 @@ import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
+import 'f1_reminder_page.dart';
 import 'recurrence_editor.dart';
 import 'recurrence_scope_dialog.dart';
 import 'deleted_bin_page.dart';
@@ -1226,6 +1227,8 @@ class _HomePageState extends State<HomePage>
         return const Mp3DownloaderPage();
       case 'music_player':
         return const MusicPlayerPage();
+      case 'f1_reminder':
+        return const F1ReminderPage();
     }
     return null;
   }
@@ -3147,6 +3150,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('worklist', 'Worklist', Icons.checklist),
     _ToolEntry('mp3_downloader', 'MP3 Downloader', Icons.music_note),
     _ToolEntry('music_player', 'Music Player', Icons.library_music),
+    _ToolEntry('f1_reminder', 'F1 Reminder', Icons.sports_score),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —

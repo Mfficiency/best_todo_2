@@ -115,6 +115,8 @@ final List<SuiteRule> suiteRules = [
     'lib/services/sms_report_config_service.dart', 'lib/models/sms_report_log_entry.dart',
     'lib/services/sms_report_log_service.dart', 'lib/ui/sms_report_log_page.dart',
   ], {'sms', 'home', 'streaks'}),
+  SuiteRule(['lib/models/f1_reminder.dart', 'lib/services/f1_reminder_service.dart', 'lib/ui/f1_reminder_page.dart'],
+      {'sms', 'home'}),
   SuiteRule([
     'lib/services/sync_service.dart', 'lib/services/sync_markdown.dart', 'lib/services/todoist_sync_service.dart',
     'lib/services/todoist_api_client.dart', 'lib/services/todoist_metadata_codec.dart', 'lib/models/sync_log_entry.dart',

@@ -41,6 +41,7 @@ import 'services/sync_service.dart';
 import 'services/todoist_sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
+import 'services/f1_reminder_service.dart';
 import 'services/sms_report_scheduler.dart';
 import 'services/update_service.dart';
 
@@ -160,6 +161,7 @@ Future<void> main() async {
   await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
     await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
+    await _initStep('f1 reminder', F1ReminderService.applyFromConfig);
   }
   await _initStep('alarms', AlarmService.instance.load);
   await _initStep('music library', MusicLibraryService.instance.load);

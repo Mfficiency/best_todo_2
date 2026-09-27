@@ -137,6 +137,7 @@ class Config {
     'worklist',
     'mp3_downloader',
     'music_player',
+    'f1_reminder',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -157,6 +158,7 @@ class Config {
     'Worklist',
     'MP3 Downloader',
     'Music Player',
+    'F1 Reminder',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -206,6 +208,7 @@ class Config {
     'app_logs',
     'startup_times',
     'sms_report',
+    'f1_reminder',
   ];
 
   /// Human-readable labels for [featureKeys], index-aligned.
@@ -234,6 +237,7 @@ class Config {
     'App logs',
     'Startup times',
     'Daily SMS report',
+    'F1 Reminder',
   ];
 
   /// One-line explanations for [featureKeys], index-aligned.
@@ -262,6 +266,7 @@ class Config {
     'Diagnostic log of what the app did',
     'How fast the app started, over time',
     'Daily SMS with your completion rate',
+    'Texts a phone number 4 hours before every F1 race',
   ];
 
   /// Per-feature switches used in full mode. Missing keys count as enabled.

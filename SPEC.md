@@ -4001,6 +4001,39 @@ appears once under each one, and a track with none groups under "Untagged" (sort
 pattern as "Unknown artist"). Tapping a tag row pushes the same `_FilteredTracksPage` Artists/
 Folders already use.
 
+### 10.6l F1 Reminder (0.2.85)
+Tools → **F1 Reminder** (feature/start-tool key `f1_reminder`, `Icons.sports_score`) texts one
+phone number 4 hours (`kF1ReminderLead`) before every remaining race of the season.
+- **Calendar**: `kF1Races` in `lib/models/f1_reminder.dart` — hard-coded `F1Race(name, start)`
+  entries in the phone's local clock time (entered as CET/CEST): Singapore GP Sprint Sat 10 Oct
+  11:00, Singapore GP Sun 11 Oct 14:00, United States 25 Oct 21:00, Mexico City 1 Nov 21:00,
+  Brazil 8 Nov 18:00, Las Vegas 22 Nov 05:00, Qatar 29 Nov 17:00, Abu Dhabi 6 Dec 14:00 (all
+  2026). `F1Race.key` = the start's ISO string.
+- **Config** (`f1_reminder.json`, `F1ReminderConfig`): `enabled`, `phoneNumber`, `template`,
+  `handledRaces` (race keys already sent *or attempted* — a failed send is not retried so a bad
+  number can't loop), `history` (`F1SendRecord`, newest last, capped at 50). Tolerant `fromJson`;
+  an empty template falls back to `kDefaultF1Template`.
+- **Template tokens**: `{race}`, `{time}` (HH:mm), `{date}` ("Sunday 8 November"), `{countdown}`
+  (time left at the moment of sending — "4 hours" normally, "2 hours 20 minutes" for a late send).
+- **Scheduling** (`F1ReminderService`): `nextPending` = earliest non-handled race still more than
+  `kF1LateSendCutoff` (30 min) away; its send time may be in the past (missed alarm → sent ASAP).
+  `applyFromConfig` (also a startup step in `main.dart`, after the SMS report scheduler) cancels
+  alarm id `0xF1F1` and, when the feature is enabled, the switch is on and a number is set, arms a
+  one-shot `AndroidAlarmManager.oneShotAt(exact, wakeup, allowWhileIdle, rescheduleOnReboot)` at
+  `max(sendAt, now+10 s)`. The background `f1ReminderAlarmCallback` → `runDue`: if a reminder is
+  due (send time ≤ now+1 min) it marks the race handled and saves, re-arms for the next race,
+  THEN sends (invariant 10) and appends the result to `history`.
+- **Page** (`lib/ui/f1_reminder_page.dart`): next-text card ("Next text: <date>, <time>" + race +
+  relative time, or "Reminders are off" / "Add a phone number" / "No more races this season"),
+  "Send race reminders" switch (switching on requests SMS/exact-alarm/battery/notification
+  permissions via `SmsReportScheduler.ensureBackgroundPermissions`), phone field, message field
+  (reset button + live preview for the next race), "Send welcome message" button
+  (`sendWelcome`: fixed `kDefaultF1WelcomeTemplate` naming the next race), the race list with a
+  per-race status (Text sent / Finished / Next / Text at HH:mm), and "Recent texts". Save
+  (app-bar, tooltip "Save") persists the fields and re-arms the alarm; the switch saves too.
+  Sending uses `another_telephony` directly (`F1ReminderService.sendSms`, test seam
+  `sendOverride`); the daily SMS report's send path is untouched.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
