@@ -2,6 +2,8 @@
 
 ## [0.2.85] - 2026-09-27
 - New tool: F1 Reminder (Tools → F1 Reminder). Enter a phone number and it texts "Lights out in 4 hours!" before every remaining race of the season — Singapore through Abu Dhabi. Shows when the next text goes out and every race date with its status, has an on/off switch, an editable message with a live preview ({race}, {time}, {date}, {countdown}), a "Send welcome message" button and a list of recent texts. A reminder missed while the phone was off is still sent late with the real time left, up to 30 minutes before the start
+- Local build: 2026-09-27 22:55
+- Build duration (windows): 46s
 
 ## [0.2.84] - 2026-09-24
 - Research items now have all the same fields as normal tasks: each one shows the same tile as the home tabs, with a done checkbox, and tapping it folds it open to edit title, description, note, labels, attachments, due date and recurrence in place (plus Notify and Send to Claude). Swipe to reschedule or delete works like the home tabs, and the add dialog also takes a note and an optional due date. A recurring research item's repeats now stay in Research instead of showing up on the home tabs
