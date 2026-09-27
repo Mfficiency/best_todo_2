@@ -76,12 +76,9 @@ class F1ReminderService {
   static F1PendingReminder? nextPending(
     F1ReminderConfig config, {
     DateTime? now,
-    List<F1Race>? races,
   }) {
     final t = now ?? DateTime.now();
-    final sorted = [...(races ?? kF1Races)]
-      ..sort((a, b) => a.start.compareTo(b.start));
-    for (final race in sorted) {
+    for (final race in config.races) {
       if (config.handledRaces.contains(race.key)) continue;
       if (!race.start.subtract(kF1LateSendCutoff).isAfter(t)) continue;
       return F1PendingReminder(race, sendTimeFor(race));
@@ -90,11 +87,9 @@ class F1ReminderService {
   }
 
   /// The first race that hasn't started yet (used for the welcome text).
-  static F1Race? nextRace({DateTime? now, List<F1Race>? races}) {
+  static F1Race? nextRace(F1ReminderConfig config, {DateTime? now}) {
     final t = now ?? DateTime.now();
-    final sorted = [...(races ?? kF1Races)]
-      ..sort((a, b) => a.start.compareTo(b.start));
-    for (final race in sorted) {
+    for (final race in config.races) {
       if (race.start.isAfter(t)) return race;
     }
     return null;
@@ -211,7 +206,7 @@ class F1ReminderService {
   /// [config]. Returns null on success, else an error description.
   static Future<String?> sendWelcome(F1ReminderConfig config,
       {DateTime? now}) async {
-    final race = nextRace(now: now);
+    final race = nextRace(config, now: now);
     final message = race == null
         ? 'Welcome to F1 race reminders! 🏎️ The season is over for now — '
             'you\'ll hear from me when the next one starts.'

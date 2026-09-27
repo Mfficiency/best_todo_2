@@ -218,8 +218,10 @@ class _F1ReminderPageState extends State<F1ReminderPage> {
         ),
         const SizedBox(height: 24),
         Text('Races', style: theme.textTheme.titleMedium),
+        Text('Tap a race to change its date or start time',
+            style: theme.textTheme.bodySmall),
         const SizedBox(height: 4),
-        for (final race in kF1Races) _buildRaceTile(theme, config, race, pending),
+        for (final race in config.races) _buildRaceTile(theme, config, race, pending),
         if (config.history.isNotEmpty) ...[
           const SizedBox(height: 24),
           Text('Recent texts', style: theme.textTheme.titleMedium),
@@ -294,11 +296,52 @@ class _F1ReminderPageState extends State<F1ReminderPage> {
     );
   }
 
+  /// Tap on a race: pick a new date, then a new start time. Saving re-arms
+  /// the alarm; an already-sent reminder goes out again for the new time.
+  Future<void> _editRaceTime(F1ReminderConfig config, F1Race race) async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: race.start,
+      firstDate: DateTime(race.start.year - 1),
+      lastDate: DateTime(race.start.year + 2),
+      helpText: '${race.name} — race day',
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(race.start),
+      helpText: '${race.name} — lights out',
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (time == null || !mounted) return;
+    final start =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (start == race.start) return;
+    await _setRaceStart(config, race, start);
+  }
+
+  Future<void> _setRaceStart(
+      F1ReminderConfig config, F1Race race, DateTime start) async {
+    setState(() => config.setStart(race, start));
+    await _save();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(
+            '${race.name}: ${F1ReminderService.formatDateTime(start)}'),
+      ));
+  }
+
   Widget _buildRaceTile(ThemeData theme, F1ReminderConfig config, F1Race race,
       F1PendingReminder? pending) {
     final handled = config.handledRaces.contains(race.key);
     final isNext = pending?.race.key == race.key;
     final over = !race.start.isAfter(_now);
+    final edited = config.startOverrides.containsKey(race.key);
     final String status;
     final IconData icon;
     Color? color;
@@ -310,25 +353,45 @@ class _F1ReminderPageState extends State<F1ReminderPage> {
       status = 'Finished';
       icon = Icons.flag;
       color = theme.disabledColor;
-    } else if (isNext) {
-      status = 'Next';
-      icon = Icons.schedule_send;
-      color = theme.colorScheme.primary;
     } else {
-      status = 'Text at '
-          '${F1ReminderService.formatTime(F1ReminderService.sendTimeFor(race))}';
-      icon = Icons.sports_motorsports;
+      final at =
+          F1ReminderService.formatTime(F1ReminderService.sendTimeFor(race));
+      status = isNext ? 'Next text at $at' : 'Text at $at';
+      icon = isNext ? Icons.schedule_send : Icons.sports_motorsports;
+      if (isNext) color = theme.colorScheme.primary;
     }
+    final original = kF1Races.firstWhere((r) => r.key == race.key,
+        orElse: () => race);
     return ListTile(
+      key: Key('f1-race-${race.key}'),
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, color: color),
       title: Text(race.name,
           style: over && !handled
               ? TextStyle(color: theme.disabledColor)
               : (isNext ? const TextStyle(fontWeight: FontWeight.bold) : null)),
-      subtitle: Text(F1ReminderService.formatDateTime(race.start)),
-      trailing: Text(status,
-          style: theme.textTheme.labelMedium?.copyWith(color: color)),
+      subtitle: Text(
+        '${F1ReminderService.formatDateTime(race.start)}'
+        '${edited ? ' (edited)' : ''}\n$status',
+      ),
+      isThreeLine: true,
+      onTap: () => _editRaceTime(config, race),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (edited)
+            IconButton(
+              icon: const Icon(Icons.restore),
+              tooltip: 'Reset time',
+              onPressed: () => _setRaceStart(config, race, original.start),
+            ),
+          IconButton(
+            icon: const Icon(Icons.edit_calendar),
+            tooltip: 'Edit time',
+            onPressed: () => _editRaceTime(config, race),
+          ),
+        ],
+      ),
     );
   }
 }

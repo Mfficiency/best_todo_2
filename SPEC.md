@@ -4033,6 +4033,14 @@ phone number 4 hours (`kF1ReminderLead`) before every remaining race of the seas
   (app-bar, tooltip "Save") persists the fields and re-arms the alarm; the switch saves too.
   Sending uses `another_telephony` directly (`F1ReminderService.sendSms`, test seam
   `sendOverride`); the daily SMS report's send path is untouched.
+- **Editable race times (0.2.86)**: `F1ReminderConfig.startOverrides` (`{raceKey: ISO start}`,
+  tolerant `fromJson`) moves a calendar race; `config.races` is `kF1Races` with overrides applied
+  (`F1Race.withStart` keeps the original `key`, so handled flags/overrides stay attached), sorted by
+  start — every scheduling path (`nextPending`, `nextRace`, the page list) reads it.
+  `setStart(race, start)` stores the override (or drops it when set back to the calendar time) and
+  un-handles the race, so an already-sent reminder goes out again for the new time. On the page,
+  tapping a race (or its "Edit time" button) opens a date picker then a 24-hour time picker;
+  edited races show "(edited)" and a "Reset time" button; each change saves and re-arms the alarm.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

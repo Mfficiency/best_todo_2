@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.86] - 2026-09-27
+- F1 Reminder: race times are now editable — tap a race (or its calendar icon) to pick a new date and start time; the reminder text moves with it (and goes out again if it was already sent for the old time). Edited races are marked "(edited)" with a button to reset them to the calendar time
+
 ## [0.2.85] - 2026-09-27
 - New tool: F1 Reminder (Tools → F1 Reminder). Enter a phone number and it texts "Lights out in 4 hours!" before every remaining race of the season — Singapore through Abu Dhabi. Shows when the next text goes out and every race date with its status, has an on/off switch, an editable message with a live preview ({race}, {time}, {date}, {countdown}), a "Send welcome message" button and a list of recent texts. A reminder missed while the phone was off is still sent late with the real time left, up to 30 minutes before the start
 

@@ -3,11 +3,16 @@
 class F1Race {
   final String name;
   final DateTime start;
+  final String? _id;
 
-  const F1Race(this.name, this.start);
+  const F1Race(this.name, this.start, {String? id}) : _id = id;
 
-  /// Stable id used to remember which races already got their text.
-  String get key => start.toIso8601String();
+  /// Stable id used to remember which races already got their text and
+  /// which start time the user edited: the calendar's original start, kept
+  /// even when the start is moved (see [F1ReminderConfig.startOverrides]).
+  String get key => _id ?? start.toIso8601String();
+
+  F1Race withStart(DateTime newStart) => F1Race(name, newStart, id: key);
 }
 
 /// How long before lights-out the reminder text goes out.
@@ -84,6 +89,9 @@ class F1ReminderConfig {
   /// Newest last, capped at [maxHistory].
   List<F1SendRecord> history;
 
+  /// User-edited start times, keyed by [F1Race.key] of the [kF1Races] entry.
+  Map<String, DateTime> startOverrides;
+
   static const int maxHistory = 50;
 
   F1ReminderConfig({
@@ -92,8 +100,34 @@ class F1ReminderConfig {
     this.template = kDefaultF1Template,
     Set<String>? handledRaces,
     List<F1SendRecord>? history,
+    Map<String, DateTime>? startOverrides,
   })  : handledRaces = handledRaces ?? <String>{},
-        history = history ?? <F1SendRecord>[];
+        history = history ?? <F1SendRecord>[],
+        startOverrides = startOverrides ?? <String, DateTime>{};
+
+  /// The calendar with the user's edited start times applied, in start order.
+  List<F1Race> get races {
+    final list = [
+      for (final race in kF1Races)
+        startOverrides.containsKey(race.key)
+            ? race.withStart(startOverrides[race.key]!)
+            : race,
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    return list;
+  }
+
+  /// Moves [race]'s start. Its reminder is re-armed (un-handled), so a text
+  /// already sent for the old time goes out again for the new one. Setting
+  /// the calendar's original time removes the override.
+  void setStart(F1Race race, DateTime start) {
+    final original = kF1Races.where((r) => r.key == race.key);
+    if (original.isNotEmpty && original.first.start == start) {
+      startOverrides.remove(race.key);
+    } else {
+      startOverrides[race.key] = start;
+    }
+    handledRaces.remove(race.key);
+  }
 
   void addHistory(F1SendRecord record) {
     history.add(record);
@@ -108,6 +142,10 @@ class F1ReminderConfig {
         'template': template,
         'handledRaces': handledRaces.toList(),
         'history': history.map((h) => h.toJson()).toList(),
+        'startOverrides': {
+          for (final e in startOverrides.entries)
+            e.key: e.value.toIso8601String(),
+        },
       };
 
   factory F1ReminderConfig.fromJson(Map<String, dynamic> json) {
@@ -126,6 +164,14 @@ class F1ReminderConfig {
         for (final h in (json['history'] as List? ?? const []))
           if (h is Map) F1SendRecord.fromJson(Map<String, dynamic>.from(h)),
       ],
+      startOverrides: {
+        for (final e
+            in ((json['startOverrides'] as Map?) ?? const {}).entries)
+          if (e.key is String &&
+              e.value is String &&
+              DateTime.tryParse(e.value as String) != null)
+            e.key as String: DateTime.parse(e.value as String),
+      },
     );
   }
 }

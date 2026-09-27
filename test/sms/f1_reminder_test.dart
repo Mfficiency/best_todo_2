@@ -140,6 +140,33 @@ void main() {
       expect(back.handledRaces, isEmpty);
     });
 
+    test('start overrides round-trip and move the race', () {
+      final race = kF1Races[3]; // Mexico City, 1 Nov 21:00
+      final config = F1ReminderConfig(handledRaces: {race.key})
+        ..setStart(race, DateTime(2026, 11, 2, 1, 0));
+      // Moving a race re-arms its reminder.
+      expect(config.handledRaces, isEmpty);
+      final back = F1ReminderConfig.fromJson(config.toJson());
+      final moved = back.races.firstWhere((r) => r.key == race.key);
+      expect(moved.start, DateTime(2026, 11, 2, 1, 0));
+      expect(moved.name, 'Mexico City GP');
+      final p = F1ReminderService.nextPending(back,
+          now: DateTime(2026, 11, 1, 22, 0))!;
+      expect(p.race.key, race.key);
+      expect(p.sendAt, DateTime(2026, 11, 1, 21, 0));
+
+      // Setting the calendar's own time drops the override.
+      back.setStart(moved, race.start);
+      expect(back.startOverrides, isEmpty);
+    });
+
+    test('an edit can reorder the races', () {
+      final config = F1ReminderConfig()
+        ..setStart(kF1Races[0], DateTime(2026, 10, 12, 9, 0));
+      expect(config.races.first.name, 'Singapore GP');
+      expect(config.races[1].name, 'Singapore GP Sprint');
+    });
+
     test('history is capped', () {
       final config = F1ReminderConfig();
       for (var i = 0; i < F1ReminderConfig.maxHistory + 5; i++) {
@@ -220,7 +247,88 @@ void main() {
       await tester.scrollUntilVisible(find.text('Abu Dhabi GP'), 200,
           scrollable: find.descendant(
               of: list, matching: find.byType(Scrollable)).first);
-      expect(find.text('Sunday 6 December, 14:00'), findsOneWidget);
+      expect(find.text('Sunday 6 December, 14:00\nText at 10:00'),
+          findsOneWidget);
+      expect(find.byTooltip('Edit time'), findsWidgets);
+    });
+
+    testWidgets('an edited race shows its new time and can be reset',
+        (tester) async {
+      final race = kF1Races[2]; // United States GP, 21:00
+      await tester.runAsync(() => F1ReminderService.save(F1ReminderConfig(
+            enabled: true,
+            phoneNumber: '+333',
+            startOverrides: {race.key: DateTime(2026, 10, 25, 20, 0)},
+          )));
+      await tester.pumpWidget(MaterialApp(
+          home: F1ReminderPage(now: DateTime(2026, 9, 27, 12))));
+      await settle(tester);
+      final list = find.byKey(const Key('f1-reminder-list'));
+      final tile = find.byKey(Key('f1-race-${race.key}'));
+      await tester.scrollUntilVisible(tile, 200,
+          scrollable: find
+              .descendant(of: list, matching: find.byType(Scrollable))
+              .first);
+      expect(
+          find.text('Sunday 25 October, 20:00 (edited)\nText at 16:00'),
+          findsOneWidget);
+
+      await tester.tap(
+          find.descendant(of: tile, matching: find.byTooltip('Reset time')));
+      await settle(tester);
+      expect(find.text('Sunday 25 October, 21:00\nText at 17:00'),
+          findsOneWidget);
+      final saved = await tester.runAsync(F1ReminderService.load);
+      expect(saved!.startOverrides, isEmpty);
+    });
+
+    testWidgets('Edit time opens a date then a 24-hour time picker',
+        (tester) async {
+      // Phone-sized portrait screen, like the real device.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      // The stock time picker's input mode overflows by a few pixels with
+      // the test font (every glyph a full square); not this page's layout.
+      final onError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.exceptionAsString().contains('overflowed')) return;
+        onError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = onError);
+      await tester.runAsync(() => F1ReminderService.save(
+          F1ReminderConfig(enabled: true, phoneNumber: '+333')));
+      await tester.pumpWidget(MaterialApp(
+          home: F1ReminderPage(now: DateTime(2026, 9, 27, 12))));
+      await settle(tester);
+      final tile = find.byKey(Key('f1-race-${kF1Races[0].key}'));
+      await tester.scrollUntilVisible(tile, 200,
+          scrollable: find
+              .descendant(
+                  of: find.byKey(const Key('f1-reminder-list')),
+                  matching: find.byType(Scrollable))
+              .first);
+      await tester.tap(
+          find.descendant(of: tile, matching: find.byTooltip('Edit time')));
+      await tester.pumpAndSettle();
+      expect(find.text('Singapore GP Sprint — race day'), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('Singapore GP Sprint — lights out'), findsOneWidget);
+      // Switch to text entry and type a new start time.
+      await tester.tap(find.byIcon(Icons.keyboard_outlined));
+      await tester.pumpAndSettle();
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(fields.evaluate().length - 2), '12');
+      await tester.enterText(fields.last, '30');
+      await tester.tap(find.text('OK'));
+      await settle(tester);
+      expect(find.text('Saturday 10 October, 12:30 (edited)\nNext text at 08:30'),
+          findsOneWidget);
+      await tester.drag(
+          find.byKey(const Key('f1-reminder-list')), const Offset(0, 3000));
+      await tester.pumpAndSettle();
+      expect(find.text('Next text: Saturday 10 October, 08:30'), findsOneWidget);
     });
 
     testWidgets('toggle off shows reminders are off', (tester) async {
