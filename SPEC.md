@@ -933,8 +933,9 @@ clears the memoized version future so widget tests reload it per async zone.
 non-empty query narrows every tab and the schedule view to tasks whose title,
 description, note, label or assigned project name contains it (case-insensitive
 substring); a clear (×) suffix button resets it. Index-based handlers (move/delete)
-recompute the same filtered list so they act on the right task, but reorder is a no-op
-while searching and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
+recompute the same filtered list so they act on the right task; a drag-reorder while
+searching permutes only the matching tasks among the rank slots they already hold (see
+§Filtering rules, `_reorderSliceOfTab`), and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
 (`_tasksForTab(i, applySearch: false)`) — otherwise a save during search would scramble
 hidden tasks' order.
 
@@ -1168,16 +1169,18 @@ by is visible even though (being unconditional, not itself one of the `excludeTa
 rules" section (index 2, right after Mode & features) lists all nine views with the built-in
 line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
 ×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
-Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever search,
-`widget.tagFilter` (Worklist), or the Home rule is actually hiding a task on that specific tab
-(`_tabNarrowedByFilters`, comparing the tab's filtered vs. unfiltered task count) — reordering a
-narrowed list would renumber only the visible subset and scramble the hidden tasks' rank order;
-renumbering on save (`_saveTasks`, `applySearch: false`) always sees the true unfiltered tab so
-ranks never drift. This is a per-tab, actually-hiding-something check rather than "is any of
-these set": Home ships with a non-empty default rule (it excludes every other view's reserved
-tag), so merely checking `Config.viewFilterRules[home]` for emptiness would leave reordering
-permanently disabled for every install even when nothing in the current tab carries an excluded
-tag. Countdown applies the same disable-reorder-while-filtered rule to its own manual drag order
+Home rule can hide tasks mid-tab, drag-reorder on the home list (`_reorderTask`, and the
+schedule view's per-day `_reorderTaskInSection`) goes through `_reorderSliceOfTab`: the
+visible slice the user dragged is permuted only among the rank slots those same tasks already
+occupy in the full, UNfiltered tab (`_tasksForTab(i, applySearch: false)`), then the whole tab
+is renumbered `1..n`. Every task hidden by search, `widget.tagFilter` (Worklist) or a Home rule
+therefore keeps its exact rank position, so reordering never needs to be disabled. (0.2.87:
+until then reorder was refused whenever the tab was narrowed at all — and since Home ships with
+a non-empty default rule hiding every other view's reserved tag (Wish, Project, ...), a single
+such task due today made every drag on that tab silently spring back.) Renumbering on save
+(`_saveTasks`, `applySearch: false`) likewise always sees the true unfiltered tab so ranks never
+drift. Countdown (which has no such default rule) still applies a disable-reorder-while-filtered
+rule to its own manual drag order
 (`_CountdownTimerPageState._onReorder`).
 
 *Matching, including a task's synthetic state.* Matching (`ItemViews.passesTagRules`) is
@@ -2962,7 +2965,9 @@ null for the regular home page):
   compares the tab's filtered vs. unfiltered task count instead of checking
   each condition (search/tagFilter/rules) for being merely *set* — Home's
   non-empty default rule made the old getter true for nearly every install
-  even when nothing in the tab was actually hidden.
+  even when nothing in the tab was actually hidden. Since 0.2.87 there is no
+  guard at all: `_reorderSliceOfTab` reorders the visible slice within its
+  own rank slots, leaving hidden tasks untouched (see §Filtering rules).
 - `_addTask` stamps `tagFilter` onto a task typed directly into a filtered
   instance's add row (`addLabelToken`), so it shows up immediately.
 - Two pieces of state are process-wide singletons the real home page owns —

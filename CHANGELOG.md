@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.87] - 2026-09-29
+- Long-press drag to reorder tasks on the home screen works again: a drag no longer springs back to where it started when the tab also holds a task hidden by a Home filtering rule (for example a Wish- or Project-tagged task, hidden by default). Only the tasks you can see are reordered; hidden ones keep their place
+
 ## [0.2.86] - 2026-09-27
 - F1 Reminder: race times are now editable — tap a race (or its calendar icon) to pick a new date and start time; the reminder text moves with it (and goes out again if it was already sent for the old time). Edited races are marked "(edited)" with a button to reset them to the calendar time
 - Local build: 2026-09-27 23:20

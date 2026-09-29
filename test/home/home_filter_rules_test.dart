@@ -55,8 +55,7 @@ void main() {
         reason: 'HomePage never loaded the tasks');
   }
 
-  testWidgets(
-      'a Home exclude-tag rule hides matching tasks from the Today tab',
+  testWidgets('a Home exclude-tag rule hides matching tasks from the Today tab',
       (tester) async {
     final today = DateTime.now();
     Config.viewFilterRules[ViewFilterRules.home] =
@@ -134,8 +133,11 @@ void main() {
   });
 
   testWidgets(
-      'a Home filter rule that actually hides a task in this tab still '
-      'disables drag-reorder', (tester) async {
+      'a Home filter rule that hides a task in this tab does not block '
+      'drag-reorder, and the hidden task keeps its rank slot', (tester) async {
+    // Regression: any hidden task in a tab (e.g. a Wish/Project-tagged one
+    // under Home's default rule) used to disable reordering the whole tab,
+    // so every drag sprang back.
     final today = DateTime.now();
     Config.viewFilterRules[ViewFilterRules.home] =
         ViewFilterRules(excludeTags: ['workstuff']);
@@ -143,28 +145,33 @@ void main() {
     await pumpHome(
       tester,
       tasks: [
-        Task(title: 'Visible task', dueDate: today, listRanking: 1),
-        Task(title: 'Also visible', dueDate: today, listRanking: 2),
+        Task(title: 'Alpha task', dueDate: today, listRanking: 1),
         Task(
           title: 'Blocked task',
           dueDate: today,
-          listRanking: 3,
+          listRanking: 2,
           label: 'workstuff',
         ),
+        Task(title: 'Beta task', dueDate: today, listRanking: 3),
+        Task(title: 'Gamma task', dueDate: today, listRanking: 4),
       ],
-      marker: 'Visible task',
+      marker: 'Alpha task',
     );
+    expect(find.text('Blocked task'), findsNothing);
 
-    await dragFirstItemDown(tester, 'Visible task');
+    await dragFirstItemDown(tester, 'Alpha task');
 
     final saved = await tester.runAsync(() => StorageService().loadTaskList());
-    const titles = {'Visible task', 'Also visible', 'Blocked task'};
+    const titles = {'Alpha task', 'Blocked task', 'Beta task', 'Gamma task'};
     final order = saved!.where((t) => titles.contains(t.title)).toList()
       ..sort((a, b) => (a.listRanking ?? 0).compareTo(b.listRanking ?? 0));
-    expect(order.first.title, 'Visible task',
-        reason: 'reordering a tab a rule is actually narrowing would '
-            'renumber only the visible subset and scramble the hidden '
-            'task, so it must stay disabled');
+    expect(order.first.title, isNot('Alpha task'),
+        reason: 'dragging the top visible task down should have moved it, '
+            'not sprung back because a rule hides another task in the tab');
+    expect(order[1].title, 'Blocked task',
+        reason: 'only the visible tasks are permuted, among the slots they '
+            'already hold — the hidden task keeps its rank position');
+    expect(order.map((t) => t.listRanking), [1, 2, 3, 4]);
   });
 
   testWidgets(

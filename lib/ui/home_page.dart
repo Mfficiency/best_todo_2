@@ -1389,27 +1389,50 @@ class _HomePageState extends State<HomePage>
   ) {
     if (sectionTasks.isEmpty) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
-    // See _reorderTask: reordering is disabled whenever this tab is
-    // actually narrowed.
-    if (_tabNarrowedByFilters(pageIndex)) return;
-    final fullList = _tasksForTab(pageIndex);
+    final moved =
+        _reorderSliceOfTab(pageIndex, sectionTasks, oldIndex, newIndex);
+    if (moved == null) return;
+    LogService.add(
+      'HomePage._reorderTaskInSection',
+      'Reordered "${moved.title}" within day section of tab $pageIndex',
+    );
+  }
 
-    final sectionSet = Set<Task>.identity()..addAll(sectionTasks);
-    final sectionPositions = <int>[];
+  /// Moves `slice[oldIndex]` to [newIndex] (ReorderableListView semantics:
+  /// [newIndex] counts the moved item still in place) and renumbers
+  /// [Task.listRanking] across the WHOLE tab [pageIndex] — unfiltered by
+  /// search, [widget.tagFilter] or the Home filter rules. [slice] is what the
+  /// user actually sees and drags (the visible tab, or one schedule-view day
+  /// section); its tasks are permuted only among the rank slots they already
+  /// occupy, so every task hidden by a filter keeps its exact position
+  /// relative to everything else. This is why reordering never needs to be
+  /// disabled while something is filtered out: Home ships with a non-empty
+  /// default rule (it hides every other view's reserved tag — Wish,
+  /// Project, ...), so a single such task due today used to make every drag
+  /// on that tab silently spring back. Returns the moved task, or null when
+  /// the drop was a no-op / out of range.
+  Task? _reorderSliceOfTab(
+    int pageIndex,
+    List<Task> slice,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (oldIndex < 0 || oldIndex >= slice.length) return null;
+    if (newIndex < 0 || newIndex > slice.length) return null;
+    final fullList = _tasksForTab(pageIndex, applySearch: false);
+    final sliceSet = Set<Task>.identity()..addAll(slice);
+    final slots = <int>[];
     for (var i = 0; i < fullList.length; i++) {
-      if (sectionSet.contains(fullList[i])) sectionPositions.add(i);
+      if (sliceSet.contains(fullList[i])) slots.add(i);
     }
-    if (sectionPositions.length != sectionTasks.length) return;
-    if (oldIndex < 0 || oldIndex >= sectionTasks.length) return;
-    if (newIndex < 0 || newIndex > sectionTasks.length) return;
+    if (slots.length != slice.length) return null;
 
-    final reordered = List<Task>.from(sectionTasks);
+    final reordered = List<Task>.from(slice);
     if (newIndex > oldIndex) newIndex -= 1;
     final moved = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, moved);
-
-    for (var k = 0; k < sectionPositions.length; k++) {
-      fullList[sectionPositions[k]] = reordered[k];
+    for (var k = 0; k < slots.length; k++) {
+      fullList[slots[k]] = reordered[k];
     }
 
     setState(() {
@@ -1418,10 +1441,7 @@ class _HomePageState extends State<HomePage>
       }
     });
     _saveTasks();
-    LogService.add(
-      'HomePage._reorderTaskInSection',
-      'Reordered "${moved.title}" within day section of tab $pageIndex',
-    );
+    return moved;
   }
 
   void _scrollToScheduleAnchor(int tabIndex) {
@@ -2134,23 +2154,13 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
-    // Reordering a narrowed list would renumber only the visible subset and
-    // scramble the hidden tasks' order, so it is disabled whenever this tab
-    // is actually narrowed — see _tabNarrowedByFilters.
-    if (_tabNarrowedByFilters(pageIndex)) return;
-    final tasks = _tasksForTab(pageIndex);
-    if (oldIndex >= tasks.length || newIndex > tasks.length) return;
-    setState(() {
-      if (newIndex > oldIndex) newIndex -= 1;
-      final task = tasks.removeAt(oldIndex);
-      tasks.insert(newIndex, task);
-      for (var i = 0; i < tasks.length; i++) {
-        tasks[i].listRanking = i + 1;
-      }
-    });
-    _saveTasks();
+    // Only the visible tasks are permuted, within the slots they hold in the
+    // full tab — see _reorderSliceOfTab.
+    final moved = _reorderSliceOfTab(
+        pageIndex, _tasksForTab(pageIndex), oldIndex, newIndex);
+    if (moved == null) return;
     LogService.add('HomePage._reorderTask',
-        'Reordered task to position ${newIndex + 1} on page $pageIndex');
+        'Reordered "${moved.title}" on page $pageIndex');
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -2849,30 +2859,13 @@ class _HomePageState extends State<HomePage>
   ViewFilterRules? get _homeFilterRules =>
       Config.viewFilterRules[ViewFilterRules.home];
 
-  /// Whether an active search, [widget.tagFilter] (Worklist), or the
-  /// configured Home filter rules (Settings → Filtering rules) are
-  /// currently hiding at least one task that otherwise belongs on tab
-  /// [pageIndex]. Home ships with a non-empty default rule (it excludes
-  /// every other view's reserved tag — Wish, Project, ...), so merely
-  /// checking whether a rule is *configured* is true for nearly every
-  /// install; that alone must not block reordering a tab none of these are
-  /// actually narrowing, which is why this compares the tab's filtered and
-  /// unfiltered task counts (`_tasksForTab`'s `applySearch` toggle turns off
-  /// search, tagFilter and rules together) instead of checking each
-  /// condition directly. Reordering is disabled whenever this is true:
-  /// renumbering only the visible subset would scramble the hidden tasks'
-  /// [Task.listRanking] — see [_reorderTask].
-  bool _tabNarrowedByFilters(int pageIndex) =>
-      _tasksForTab(pageIndex).length !=
-      _tasksForTab(pageIndex, applySearch: false).length;
-
   /// Tasks shown on [pageIndex]. While a search query is active the list is
   /// narrowed to matching tasks, [widget.tagFilter] (Worklist) narrows it to
   /// one tag, and the configured Home filter rules (if any) are always
   /// applied on top; pass [applySearch] false for logic that must see the
   /// full tab regardless of any of these (e.g. renumbering [Task.listRanking]
-  /// on save — see [_reorderTask]'s doc on why a narrowed list must never
-  /// drive that renumbering).
+  /// on save or on a drag — see [_reorderSliceOfTab] on why a narrowed list
+  /// must never drive that renumbering on its own).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
     // Tab membership is a query over the one list (ItemViews); only the
     // search predicate and the tag filter are home-page state.
