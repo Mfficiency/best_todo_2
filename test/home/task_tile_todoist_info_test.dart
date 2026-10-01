@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/task_change_source.dart';
+import 'package:besttodo/services/item_event_journal.dart';
 import 'package:besttodo/services/label_service.dart';
 import 'package:besttodo/services/todoist_sync_service.dart';
 import 'package:besttodo/ui/task_tile.dart';
@@ -24,6 +26,7 @@ void main() {
     docsDir = await Directory.systemTemp.createTemp('task_tile_todoist_docs');
     PathProviderPlatform.instance = _FakePathProvider(docsDir.path);
     TodoistSyncService.resetForTest();
+    ItemEventJournal.instance.resetForTest();
     LabelService.instance.resetForTest();
     // Expanding the tile renders LabelPickerField, which fires
     // LabelService.ensureLoaded()/registerTokens() fire-and-forget from
@@ -52,21 +55,55 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a task with no Todoist link shows no info icon beside Note',
-      (tester) async {
+  /// Opens the info dialog and lets its lazy history load finish — the
+  /// journal read is real dart:io, so it needs runAsync rounds (CLAUDE.md).
+  Future<void> openInfo(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('Task info'));
+    await tester.pump();
+    for (var i = 0;
+        i < 60 && find.text('Loading…').evaluate().isNotEmpty;
+        i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+      'every task shows an info icon beside Note with its creation time, '
+      'in-app origin and history', (tester) async {
     await tester.runAsync(() => TodoistSyncService.instance.ensureLoaded());
-    final task = Task(title: 'Unsynced task');
+    final task = Task(
+      title: 'Typed task',
+      createdAt: DateTime(2026, 9, 30, 14, 5),
+      origin: TaskChangeSource.user,
+    );
 
     await pumpTile(tester, task);
+    expect(find.byTooltip('Task info'), findsOneWidget);
 
-    expect(find.byIcon(Icons.info_outline), findsNothing);
+    await openInfo(tester);
+
+    expect(find.text('Task info'), findsOneWidget);
+    expect(find.text('Created: 2026-09-30 14:05'), findsOneWidget);
+    expect(find.text('Origin: Manually in the app'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
+    expect(find.text('No history recorded for this task.'), findsOneWidget);
+    expect(find.textContaining('Todoist ID'), findsNothing);
   });
 
   testWidgets(
-      'a task synced with Todoist shows an info icon beside Note with '
-      'source, synced date and Todoist id — none of it in the description',
-      (tester) async {
-    final task = Task(title: 'Synced task', description: 'Free-text notes');
+      'a task pulled in from Todoist shows the approval path, Todoist id '
+      'and sync date — none of it in the description', (tester) async {
+    final task = Task(
+      title: 'Synced task',
+      description: 'Free-text notes',
+      createdAt: DateTime(2026, 8, 20, 9),
+      origin: TaskChangeSource.sync,
+      pendingSourceTitle: 'Trip planning',
+      approvedAt: DateTime(2026, 8, 21, 7, 30),
+    );
     final stateFile = File('${docsDir.path}/todoist_sync_state.json');
     await tester.runAsync(() => stateFile.writeAsString(jsonEncode({
           'taskEntries': [
@@ -83,19 +120,20 @@ void main() {
 
     await pumpTile(tester, task);
 
-    expect(find.byIcon(Icons.info_outline), findsOneWidget);
     // The description field carries only the free text the user typed — no
     // Todoist id/date/source trailer.
-    final descField = tester.widget<TextField>(
-        find.widgetWithText(TextField, 'Description'));
+    final descField =
+        tester.widget<TextField>(find.widgetWithText(TextField, 'Description'));
     expect(descField.controller!.text, 'Free-text notes');
-    expect(find.text('Todoist ID: 999'), findsNothing);
+    expect(find.textContaining('Todoist ID'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.info_outline));
-    await tester.pumpAndSettle();
+    await openInfo(tester);
 
-    expect(find.text('Source: Todoist'), findsOneWidget);
+    expect(find.text('Origin: Automatically via Todoist (approval path)'),
+        findsOneWidget);
+    expect(find.text('Todoist source: Trip planning'), findsOneWidget);
+    expect(find.text('Approved: 2026-08-21 07:30'), findsOneWidget);
     expect(find.text('Todoist ID: 999'), findsOneWidget);
-    expect(find.textContaining('Synced:'), findsOneWidget);
+    expect(find.textContaining('Last synced:'), findsOneWidget);
   });
 }

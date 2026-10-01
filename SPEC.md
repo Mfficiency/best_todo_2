@@ -1749,12 +1749,32 @@ is picked up. Label fingerprints (both push- and pull-side) compare the token *s
 case-insensitively, order-independent, so re-ordering labels on either side isn't treated
 as a change.
 
-**Sync info in the UI, not the description** (0.1.263): `TodoistSyncService.entryForLocalUid`
-looks up a task's `TodoistSyncMapEntry` by `Task.uid`. `TaskTile`'s expanded edit view shows
-an info icon (`Icons.info_outline`) as the Note field's `suffixIcon` when a mapping exists —
-tapping it opens a dialog with the sync source ("Todoist"), the entry's `syncedAt` (local
-time) and its `todoistId`. `Task.description` never carries any of this — it round-trips only
-the free text on both sides, unlike the note/label/project/Kanban trailer above.
+**Sync info in the UI, not the description** (0.1.263; widened to every task as the Task
+info dialog in 0.2.88): `TodoistSyncService.entryForLocalUid` looks up a task's
+`TodoistSyncMapEntry` by `Task.uid`. `TaskTile`'s expanded edit view shows an info icon
+(`Icons.info_outline`, tooltip "Task info") as the Note field's `suffixIcon` on **every**
+task. Tapping it opens `showTaskInfoDialog` (`lib/ui/task_info_dialog.dart`): Created
+(`Task.createdAt`), Origin, the Todoist source (`pendingSourceTitle`), Approved
+(`Task.approvedAt`) or "Waiting for approval", Completed/Deleted times, the Todoist id and
+last `syncedAt` when a mapping exists, and the full History timeline from the item journal
+(same `describeItemEvent` wording as Task Details; a label change that drops the
+`Waiting_for_approval` token reads "Approved"). `TaskDetailPage` shows the same
+Created/Origin/approval rows (`TaskInfoView(showHistory: false)`) above its own History
+section. `Task.description` never carries any of this — it round-trips only the free text
+on both sides, unlike the note/label/project/Kanban trailer above.
+
+**Task origin** (0.2.88): `Task.origin` (JSON `origin`, omitted when null) is one of
+`TaskChangeSource`'s constants, stamped once at creation — `sync` by
+`TodoistSyncService._taskFromRemote` (every Todoist pull goes through Waiting for Approval),
+`share` by the share-sheet quick-add screen, `automation` by
+`RecurrenceService.buildOccurrence`, `user` by the home add row, Chronize, Wishlist and
+Research add paths. `Task.approvedAt` (JSON `approvedAt`, omitted when null) is stamped by
+every approve action on the Waiting for Approval page (single, dated, weekday, quick-tag and
+bulk). Neither is pushed to Todoist. `resolveTaskOrigin` infers an origin for unstamped
+(pre-0.2.88) tasks, shown with "(inferred)": approval traces (`pendingSourceTitle`,
+`approvedAt`, the waiting token) → Todoist; else the journal's live (non-seeded) `created`
+event's source; else `recurrenceParentUid` → automation; else "Unknown — created before
+origin tracking".
 
 **Algorithm** (`TodoistSyncService._runSync`, six passes over one fetch of Todoist's
 active tasks + projects): (0) every Kanban project already mapped in `_projectMap` has its

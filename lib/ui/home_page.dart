@@ -1489,6 +1489,7 @@ class _HomePageState extends State<HomePage>
       title: title,
       label: label,
       createdAt: DateTime.now(),
+      origin: TaskChangeSource.user,
       dueDate: dueDate,
       isRecurring: recurrence != null,
       listRanking: _listRankingForNewTask(
@@ -1901,6 +1902,7 @@ class _HomePageState extends State<HomePage>
       title: trimmedTitle,
       label: AutoTagService.instance.withAutoTags(trimmedTitle, ''),
       createdAt: DateTime.now(),
+      origin: TaskChangeSource.user,
       dueDate: dueDate,
       hasExplicitTime: true,
       listRanking: 1 << 30,

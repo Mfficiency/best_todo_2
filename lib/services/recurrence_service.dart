@@ -1,4 +1,5 @@
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 
 /// Add/remove plan produced by [RecurrenceService.planRefresh]. Kept
 /// side-effect free so it's trivial to unit test: the caller decides how
@@ -153,6 +154,7 @@ class RecurrenceService {
       note: master.note,
       label: master.label,
       createdAt: DateTime.now(),
+      origin: TaskChangeSource.automation,
       dueDate: date,
       hasExplicitTime: master.hasExplicitTime,
       isWish: master.isWish,

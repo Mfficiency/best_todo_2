@@ -8,12 +8,10 @@ import 'dart:async';
 import '../models/project.dart';
 import '../models/recurrence_config.dart';
 import '../models/task.dart';
-import '../models/todoist_sync_map_entry.dart';
 import '../config.dart';
 import '../services/claude_routine_service.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
-import '../services/todoist_sync_service.dart';
 import '../utils/description_disclosure.dart';
 import '../utils/label_style.dart';
 import '../utils/label_utils.dart';
@@ -22,6 +20,7 @@ import 'attachments_field.dart';
 import 'label_picker.dart';
 import 'recurrence_editor.dart';
 import 'recurrence_scope_dialog.dart';
+import 'task_info_dialog.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -225,47 +224,15 @@ class _TaskTileState extends State<TaskTile>
     if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
-  /// A small info button shown next to the Note field for a task linked to
-  /// Todoist, so the sync id/date live in one tap-away place instead of
-  /// cluttering the free-text description. Null (no icon) for a task that
-  /// has never been synced.
-  Widget? _todoistSyncInfoIcon() {
-    final entry =
-        TodoistSyncService.instance.entryForLocalUid(widget.task.uid);
-    if (entry == null) return null;
+  /// A small info button shown next to the Note field: opens the task info
+  /// dialog — when the task was created, whether it was typed in the app or
+  /// came in via Todoist / the approval path, Todoist sync details and the
+  /// full history timeline (see [showTaskInfoDialog]).
+  Widget _taskInfoIcon() {
     return IconButton(
       icon: const Icon(Icons.info_outline),
-      tooltip: 'Todoist sync info',
-      onPressed: () => _showTodoistSyncInfo(entry),
-    );
-  }
-
-  void _showTodoistSyncInfo(TodoistSyncMapEntry entry) {
-    final synced = entry.syncedAt.toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
-    final syncedLabel =
-        '${synced.year}-${two(synced.month)}-${two(synced.day)} '
-        '${two(synced.hour)}:${two(synced.minute)}';
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Todoist sync info'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Source: Todoist'),
-            Text('Synced: $syncedLabel'),
-            Text('Todoist ID: ${entry.todoistId}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+      tooltip: 'Task info',
+      onPressed: () => showTaskInfoDialog(context, widget.task),
     );
   }
 
@@ -875,7 +842,7 @@ class _TaskTileState extends State<TaskTile>
                       controller: _noteController,
                       decoration: InputDecoration(
                         labelText: 'Note',
-                        suffixIcon: _todoistSyncInfoIcon(),
+                        suffixIcon: _taskInfoIcon(),
                       ),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,

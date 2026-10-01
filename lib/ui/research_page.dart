@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../models/view_filter_rules.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -109,6 +110,7 @@ class _ResearchPageState extends State<ResearchPage> {
           label: result.label,
           dueDate: result.dueDate,
           createdAt: DateTime.now(),
+          origin: TaskChangeSource.user,
           isResearch: true,
         ),
       );

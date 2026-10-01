@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../models/view_filter_rules.dart';
 import '../services/auto_tag_service.dart';
 import '../services/claude_routine_service.dart';
@@ -463,6 +464,7 @@ class _WishlistPageState extends State<WishlistPage> {
           label: AutoTagService.instance.withAutoTags(
               result.title, result.label),
           createdAt: DateTime.now(),
+          origin: TaskChangeSource.user,
           isWish: true,
         ),
       );
