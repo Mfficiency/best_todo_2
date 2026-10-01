@@ -2,6 +2,9 @@
 
 ## [0.2.88] - 2026-10-01
 - Task info: tap a task and press the info icon beside Note to see when it was created, whether you added it in the app or it came in automatically via Todoist (the Waiting for Approval path) or the share sheet, when it was approved, its Todoist sync details and its full change history. The icon now shows on every task, not just Todoist-synced ones; Task Details shows the created time and origin too
+- Local build: 2026-10-01 07:52
+- Build duration (apk): 5m 13s
+- Build duration (windows): 1m 36s
 
 ## [0.2.87] - 2026-09-29
 - Long-press drag to reorder tasks on the home screen works again: a drag no longer springs back to where it started when the tab also holds a task hidden by a Home filtering rule (for example a Wish- or Project-tagged task, hidden by default). Only the tasks you can see are reordered; hidden ones keep their place
