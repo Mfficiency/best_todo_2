@@ -656,10 +656,11 @@ class Config {
   /// checkbox.
   static List<String> musicExcludedSubfolders = [];
 
-  /// Music Player track-list sort field (`TrackSortField.name`: dateAdded,
-  /// title, artist or duration) and direction, remembered across restarts
-  /// so the Tracks tab reopens the way it was left.
-  static String musicTrackSortField = 'dateAdded';
+  /// Music Player track-list sort field (`TrackSortField.name`:
+  /// deviceDate, dateAdded, title, artist or duration) and direction,
+  /// remembered across restarts so the Tracks tab reopens the way it was
+  /// left. Defaults to when files arrived on the device, newest first.
+  static String musicTrackSortField = 'deviceDate';
   static bool musicTrackSortAscending = false;
 
   /// Base URL of a self-hosted Subsonic/OpenSubsonic-compatible server

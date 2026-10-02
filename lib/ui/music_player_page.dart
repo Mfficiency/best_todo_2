@@ -64,8 +64,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
       Config.musicFolder = Config.mp3DownloadFolder;
       unawaited(Config.save());
     }
+    // Also rescan a library cached before 0.2.87, whose local tracks don't
+    // know when their file arrived on the device yet ([Track.deviceDate]).
+    final cached = MusicLibraryService.instance.tracks.value;
     if (Config.musicFolder.isNotEmpty &&
-        MusicLibraryService.instance.tracks.value.isEmpty) {
+        (cached.isEmpty ||
+            cached.any((t) =>
+                t.source == TrackSource.local && t.deviceDate == null))) {
       unawaited(MusicLibraryService.instance
           .ensureFolderPermission()
           .then((_) => MusicLibraryService.instance.rescan()));
@@ -852,13 +857,17 @@ class _AddSongsToPlaylistPageState extends State<AddSongsToPlaylistPage> {
 
 /// Quick ways to reorder a [TrackListView] — mirrors the sort options
 /// Samsung Music offers on its Tracks list. Each field sorts either
-/// ascending or descending; see [trackSortDefaultAscending].
-enum TrackSortField { dateAdded, title, artist, duration }
+/// ascending or descending; see [trackSortDefaultAscending]. [deviceDate]
+/// is when the file arrived on the phone/computer ([Track.deviceDate]),
+/// [dateAdded] when Best Music's scan first saw it ([Track.dateAdded]).
+enum TrackSortField { deviceDate, dateAdded, title, artist, duration }
 
 String trackSortLabel(TrackSortField field) {
   switch (field) {
+    case TrackSortField.deviceDate:
+      return 'Added to device';
     case TrackSortField.dateAdded:
-      return 'Date added';
+      return 'Added to app';
     case TrackSortField.title:
       return 'Title';
     case TrackSortField.artist:
@@ -871,6 +880,7 @@ String trackSortLabel(TrackSortField field) {
 /// Human wording of a direction for [field] ("A–Z", "Newest first", ...).
 String trackSortDirectionLabel(TrackSortField field, bool ascending) {
   switch (field) {
+    case TrackSortField.deviceDate:
     case TrackSortField.dateAdded:
       return ascending ? 'Oldest first' : 'Newest first';
     case TrackSortField.title:
@@ -889,8 +899,11 @@ bool trackSortDefaultAscending(TrackSortField field) =>
 String _trackDisplayTitle(Track t) =>
     t.title.isNotEmpty ? t.title : t.fileBaseName;
 
+DateTime? _trackSortDate(Track t, TrackSortField field) =>
+    field == TrackSortField.deviceDate ? t.deviceDate : t.dateAdded;
+
 /// Sorts [tracks] by [field] in the given direction. Tracks with no date
-/// added always sink to the bottom, whichever way the list runs; ties
+/// for a date field always sink to the bottom, whichever way the list runs; ties
 /// fall back to title so the order is stable.
 List<Track> sortTracks(List<Track> tracks, TrackSortField field,
     {bool? ascending}) {
@@ -903,9 +916,10 @@ List<Track> sortTracks(List<Track> tracks, TrackSortField field,
   sorted.sort((a, b) {
     int primary;
     switch (field) {
+      case TrackSortField.deviceDate:
       case TrackSortField.dateAdded:
-        final aDate = a.dateAdded;
-        final bDate = b.dateAdded;
+        final aDate = _trackSortDate(a, field);
+        final bDate = _trackSortDate(b, field);
         if (aDate == null && bDate == null) return byTitle(a, b);
         if (aDate == null) return 1;
         if (bDate == null) return -1;
@@ -949,15 +963,16 @@ String _initialOf(String text) {
 }
 
 /// Fast-scroll bubble text for [track] under [field]: the initial letter
-/// for title/artist, "Sep 2026" for date added, "3 min" for duration.
+/// for title/artist, "Sep 2026" for either date, "3 min" for duration.
 String trackSectionLabel(Track track, TrackSortField field) {
   switch (field) {
     case TrackSortField.title:
       return _initialOf(_trackDisplayTitle(track));
     case TrackSortField.artist:
       return _initialOf(track.artist);
+    case TrackSortField.deviceDate:
     case TrackSortField.dateAdded:
-      final date = track.dateAdded;
+      final date = _trackSortDate(track, field);
       if (date == null) return '—';
       return '${_monthAbbr[date.month - 1]} ${date.year}';
     case TrackSortField.duration:
@@ -988,7 +1003,7 @@ class TrackListView extends StatefulWidget {
 class _TrackListViewState extends State<TrackListView> {
   TrackSortField _sortField = TrackSortField.values.firstWhere(
     (f) => f.name == Config.musicTrackSortField,
-    orElse: () => TrackSortField.dateAdded,
+    orElse: () => TrackSortField.deviceDate,
   );
   bool _ascending = Config.musicTrackSortAscending;
 

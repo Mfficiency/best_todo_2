@@ -221,11 +221,16 @@ class MusicLibraryService {
           continue;
         }
         var track = await _buildTrack(entity.path, ext);
+        final deviceDate = await _deviceDateOf(entity);
         final previous = previousById[track.id];
         track = (previous != null && previous.metadataEdited)
-            ? previous.copyWith(durationMs: track.durationMs ?? previous.durationMs)
+            ? previous.copyWith(
+                durationMs: track.durationMs ?? previous.durationMs,
+                deviceDate: deviceDate,
+              )
             : track.copyWith(
                 dateAdded: previous?.dateAdded ?? now,
+                deviceDate: deviceDate ?? previous?.deviceDate,
                 playCount: previous?.playCount ?? 0,
               );
         found.add(track);
@@ -249,6 +254,18 @@ class MusicLibraryService {
       scanning = false;
     }
     return tracks.value;
+  }
+
+  /// When [file] arrived on this device — see [Track.deviceDate]. Null if
+  /// the file can't be stat'ed.
+  static Future<DateTime?> _deviceDateOf(File file) async {
+    try {
+      final stat = await file.stat();
+      if (stat.type == FileSystemEntityType.notFound) return null;
+      return stat.changed;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<Track> _buildTrack(String filePath, String ext) async {
@@ -307,6 +324,7 @@ class MusicLibraryService {
       genre: genre,
       year: year,
       dateAdded: existing.dateAdded,
+      deviceDate: existing.deviceDate,
       playCount: existing.playCount,
       metadataEdited: true,
       tags: tags,
@@ -344,6 +362,7 @@ class MusicLibraryService {
         genre: row.genre.isNotEmpty ? row.genre : existing.genre,
         year: row.year ?? existing.year,
         dateAdded: existing.dateAdded,
+        deviceDate: existing.deviceDate,
         playCount: existing.playCount,
         metadataEdited: true,
         tags: row.tags.isNotEmpty ? row.tags : existing.tags,

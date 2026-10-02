@@ -28,7 +28,7 @@ void main() {
     Config.musicFolder = '';
     Config.musicExcludedSubfolders = [];
     Config.mp3DownloadFolder = '';
-    Config.musicTrackSortField = 'dateAdded';
+    Config.musicTrackSortField = 'deviceDate';
     Config.musicTrackSortAscending = false;
     MusicLibraryService.instance.resetForTest();
     MusicPlaylistService.instance.resetForTest();
@@ -505,19 +505,22 @@ void main() {
           title: 'Bravo',
           artist: 'Zed',
           durationMs: 200000,
-          dateAdded: DateTime(2026, 2, 1)),
+          dateAdded: DateTime(2026, 2, 1),
+          deviceDate: DateTime(2024, 1, 1)),
       Track.local(
           filePath: '/m/a.mp3',
           title: 'alpha',
           artist: 'Mia',
           durationMs: 300000,
-          dateAdded: DateTime(2026, 3, 1)),
+          dateAdded: DateTime(2026, 3, 1),
+          deviceDate: DateTime(2025, 1, 1)),
       Track.local(
           filePath: '/m/c.mp3',
           title: 'Charlie',
           artist: 'Abe',
           durationMs: 100000,
-          dateAdded: DateTime(2026, 1, 1)),
+          dateAdded: DateTime(2026, 1, 1),
+          deviceDate: DateTime(2023, 1, 1)),
       Track.local(filePath: '/m/d.mp3', title: 'Delta', artist: 'Kim'),
     ];
     List<String> titles(List<Track> list) => [for (final t in list) t.title];
@@ -547,6 +550,34 @@ void main() {
           ['alpha', 'Bravo', 'Charlie', 'Delta']);
     });
 
+    test('"Added to device" sorts by the file date, not the app scan date',
+        () {
+      final onDevice = [
+        Track.local(
+            filePath: '/m/old.mp3',
+            title: 'Old file, scanned late',
+            dateAdded: DateTime(2026, 9, 1),
+            deviceDate: DateTime(2020, 1, 1)),
+        Track.local(
+            filePath: '/m/new.mp3',
+            title: 'New file, scanned early',
+            dateAdded: DateTime(2026, 1, 1),
+            deviceDate: DateTime(2025, 1, 1)),
+      ];
+      expect(
+          titles(sortTracks(onDevice, TrackSortField.deviceDate,
+              ascending: false)),
+          ['New file, scanned early', 'Old file, scanned late']);
+      expect(
+          titles(sortTracks(onDevice, TrackSortField.dateAdded,
+              ascending: false)),
+          ['Old file, scanned late', 'New file, scanned early']);
+      expect(trackSectionLabel(onDevice[0], TrackSortField.deviceDate),
+          'Jan 2020');
+      expect(trackSectionLabel(onDevice[0], TrackSortField.dateAdded),
+          'Sep 2026');
+    });
+
     test('section labels follow the sort field', () {
       expect(trackSectionLabel(tracks[1], TrackSortField.title), 'A');
       expect(trackSectionLabel(tracks[0], TrackSortField.artist), 'Z');
@@ -566,7 +597,8 @@ void main() {
       await tester.pumpAndSettle();
 
       double y(String text) => tester.getTopLeft(find.text(text)).dy;
-      // Default: date added, newest first.
+      // Default: added to device, newest first.
+      expect(find.text('Added to device'), findsOneWidget);
       expect(find.text('Newest first'), findsOneWidget);
       expect(y('alpha'), lessThan(y('Charlie')));
 

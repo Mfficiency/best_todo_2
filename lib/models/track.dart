@@ -41,6 +41,14 @@ class Track {
   /// smart playlist.
   final DateTime? dateAdded;
 
+  /// When the file itself arrived on this phone/computer, read from the
+  /// file system on every scan (`FileStat.changed`: the creation time on
+  /// Windows, the inode change time on Android/Linux — set when the file
+  /// was copied/downloaded there). Unlike [dateAdded] it is independent of
+  /// when Best Music first scanned it. Null for Subsonic tracks and for
+  /// libraries not rescanned since 0.2.87.
+  final DateTime? deviceDate;
+
   /// How many times this track has been played to completion. Backs the
   /// "Most Played" smart playlists; bumped by [MusicAudioHandler], not by a
   /// manual skip.
@@ -73,6 +81,7 @@ class Track {
     this.genre = '',
     this.year,
     this.dateAdded,
+    this.deviceDate,
     this.playCount = 0,
     this.metadataEdited = false,
     this.tags = const [],
@@ -87,6 +96,7 @@ class Track {
     String genre = '',
     int? year,
     DateTime? dateAdded,
+    DateTime? deviceDate,
     int playCount = 0,
     bool metadataEdited = false,
     List<String> tags = const [],
@@ -102,6 +112,7 @@ class Track {
       genre: genre,
       year: year,
       dateAdded: dateAdded,
+      deviceDate: deviceDate,
       playCount: playCount,
       metadataEdited: metadataEdited,
       tags: tags,
@@ -147,6 +158,7 @@ class Track {
     String? genre,
     int? year,
     DateTime? dateAdded,
+    DateTime? deviceDate,
     int? playCount,
     bool? metadataEdited,
     List<String>? tags,
@@ -163,6 +175,7 @@ class Track {
       genre: genre ?? this.genre,
       year: year ?? this.year,
       dateAdded: dateAdded ?? this.dateAdded,
+      deviceDate: deviceDate ?? this.deviceDate,
       playCount: playCount ?? this.playCount,
       metadataEdited: metadataEdited ?? this.metadataEdited,
       tags: tags ?? this.tags,
@@ -181,6 +194,8 @@ class Track {
         if (genre.isNotEmpty) 'genre': genre,
         if (year != null) 'year': year,
         if (dateAdded != null) 'dateAdded': dateAdded!.millisecondsSinceEpoch,
+        if (deviceDate != null)
+          'deviceDate': deviceDate!.millisecondsSinceEpoch,
         if (playCount != 0) 'playCount': playCount,
         if (metadataEdited) 'metadataEdited': metadataEdited,
         if (tags.isNotEmpty) 'tags': tags,
@@ -193,6 +208,7 @@ class Track {
       orElse: () => TrackSource.local,
     );
     final dateAddedMs = json['dateAdded'];
+    final deviceDateMs = json['deviceDate'];
     return Track(
       id: json['id'] as String? ?? '',
       source: source,
@@ -206,6 +222,9 @@ class Track {
       year: (json['year'] as num?)?.round(),
       dateAdded: dateAddedMs is num
           ? DateTime.fromMillisecondsSinceEpoch(dateAddedMs.round())
+          : null,
+      deviceDate: deviceDateMs is num
+          ? DateTime.fromMillisecondsSinceEpoch(deviceDateMs.round())
           : null,
       playCount: (json['playCount'] as num?)?.round() ?? 0,
       metadataEdited: json['metadataEdited'] as bool? ?? false,

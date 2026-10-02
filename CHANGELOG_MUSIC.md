@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.87] - 2026-10-02
+- Date added now means when the song arrived on your phone/computer: the default sort is "Added to device" (read from the file itself), with "Added to app" (when Best Music first found it) kept as a separate sort option. Track info shows both dates. Your library rescans itself once after updating to pick up the device dates
+
 ## [0.2.86] - 2026-10-02
 - Fixed screens hiding behind the phone's navigation bar on every page (track lists, Track info, ...) — Best Music now keeps clear of it the same way BestToDo does. Also fixed the now-playing bar taking over the whole screen in 0.2.85
 

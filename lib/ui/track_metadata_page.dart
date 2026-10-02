@@ -150,7 +150,13 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
                     _infoRow('Duration', _formatDuration(track.durationMs)),
                     _infoRow('Play count', '${track.playCount}'),
                     _infoRow(
-                      'Added',
+                      'Added to device',
+                      track.deviceDate == null
+                          ? 'Unknown'
+                          : _formatDate(track.deviceDate!),
+                    ),
+                    _infoRow(
+                      'Added to app',
                       track.dateAdded == null
                           ? 'Unknown'
                           : _formatDate(track.dateAdded!),
@@ -171,7 +177,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 90,
+              width: 130,
               child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
             ),
             Expanded(child: Text(value)),

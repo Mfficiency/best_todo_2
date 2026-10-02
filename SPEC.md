@@ -3963,7 +3963,8 @@ Plain `showSearch(context:, delegate:)` — no separate search page/route to mai
 **Quick sort + shuffle/play-all header** (`TrackListView`, a `StatefulWidget` owning its own
 `TrackSortField` + direction): every track list — Tracks/Favourites tabs, an artist/folder
 drill-down, search results, and any playlist detail page — gets a header row with a
-`PopupMenuButton<TrackSortField>` (Date added [default] / Title / Artist / Duration, checkmark plus
+`PopupMenuButton<TrackSortField>` (Added to device [default] / Added to app / Title / Artist /
+Duration, checkmark plus
 an up/down arrow on the active choice), a direction `TextButton` (key `sortDirectionButton`,
 labelled per field: Newest/Oldest first, A–Z/Z–A, Longest/Shortest first) that flips ascending ↔
 descending, plus shuffle and play-all icon buttons that queue the *currently sorted* list.
@@ -3972,6 +3973,13 @@ direction (`trackSortDefaultAscending`: A–Z for text, newest/longest first oth
 back to title; tracks with no date added always sink to the bottom. The choice is persisted in
 `Config.musicTrackSortField`/`musicTrackSortAscending` (0.2.85) so every list and the next launch
 follow it.
+
+**Two "date added"s** (0.2.87): `Track.deviceDate` is when the *file* arrived on the
+phone/computer — `FileStat.changed` (creation time on Windows, inode change time on Android/Linux,
+i.e. when it was copied/downloaded there), re-read on every rescan, persisted as `deviceDate`
+(ms), null for Subsonic tracks. `Track.dateAdded` stays "first seen by a Best Music scan" (backs the
+Last Added smart playlist, unchanged). Sorting offers both ("Added to device" — the default — and
+"Added to app"); Track info shows both rows ("Added to device", "Added to app").
 
 **Fast scroll** (`lib/ui/fast_scroll_list.dart`, `FastScrollList`, 0.2.85): track rows are a
 fixed two-line height (`prototypeItem`; title/artist ellipsize to one line, a missing artist reads

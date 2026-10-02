@@ -68,6 +68,8 @@ void main() {
       year: 2020,
       durationMs: 125000,
       playCount: 3,
+      deviceDate: DateTime(2025, 6, 7),
+      dateAdded: DateTime(2026, 9, 18),
     );
     MusicLibraryService.instance.tracks.value = [track];
 
@@ -80,6 +82,13 @@ void main() {
     expect(find.text('2020'), findsOneWidget);
     expect(find.text('3'), findsOneWidget); // play count
     expect(find.text('2:05'), findsOneWidget); // duration
+    // Both dates: when the file arrived on the device, and in the app.
+    await tester.dragUntilVisible(find.text('Added to app'),
+        find.byType(Scrollable).first, const Offset(0, -200));
+    expect(find.text('Added to device'), findsOneWidget);
+    expect(find.text('2025-06-07'), findsOneWidget);
+    expect(find.text('Added to app'), findsOneWidget);
+    expect(find.text('2026-09-18'), findsOneWidget);
   });
 
   testWidgets('shows "Track not found" for an unknown id', (tester) async {

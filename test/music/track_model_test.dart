@@ -48,7 +48,9 @@ void main() {
         durationMs: 9000,
         genre: 'Rock',
         year: 2021,
-        dateAdded: DateTime.utc(2024, 3, 1, 12),
+        // Local, as fromJson restores it (fromMillisecondsSinceEpoch).
+        dateAdded: DateTime(2024, 3, 1, 12),
+        deviceDate: DateTime(2023, 5, 6, 7, 8),
         playCount: 4,
         metadataEdited: true,
         tags: ['Wedding songs', 'Belgian Top Charts'],
@@ -66,6 +68,7 @@ void main() {
       expect(restored.genre, 'Rock');
       expect(restored.year, 2021);
       expect(restored.dateAdded, track.dateAdded);
+      expect(restored.deviceDate, track.deviceDate);
       expect(restored.playCount, 4);
       expect(restored.metadataEdited, isTrue);
       expect(restored.tags, ['Wedding songs', 'Belgian Top Charts']);

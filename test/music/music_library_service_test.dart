@@ -137,6 +137,16 @@ void main() {
       expect(tracks.single.playCount, 0);
     });
 
+    test('a scanned track carries the date its file arrived on the device',
+        () async {
+      await writeFile('device.mp3');
+
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      final expected = (await File(tracks.single.filePath!).stat()).changed;
+      expect(tracks.single.deviceDate, expected);
+    });
+
     test('a rescan preserves dateAdded/playCount for a track still there',
         () async {
       await writeFile('keep.mp3');
