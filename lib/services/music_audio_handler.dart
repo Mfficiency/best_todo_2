@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart' as ja;
 import '../models/track.dart';
 import 'music_library_service.dart';
 import 'music_playlist_service.dart';
+import 'music_resume_service.dart';
 import 'subsonic_client.dart';
 
 /// The app's single [BaseAudioHandler]: everything the system media
@@ -36,6 +37,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   // the Now Playing progress line/position text never advances while a
   // track is actually playing.
   Timer? _positionTicker;
+  int _ticksSinceSave = 0;
+
+  /// False after [restore]: the remembered track is shown (mini player,
+  /// notification) but its audio isn't loaded until [play] is pressed, so
+  /// app start does no audio work.
+  bool _sourceLoaded = false;
+
+  /// Where to start the remembered track once [play] loads it.
+  Duration? _resumePosition;
 
   MusicAudioHandler() {
     _player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {
@@ -57,8 +67,12 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     _player.playingStream.listen((playing) {
       _positionTicker?.cancel();
       _positionTicker = playing
-          ? Timer.periodic(const Duration(seconds: 1),
-              (_) => _broadcastState(_player.playbackEvent))
+          ? Timer.periodic(const Duration(seconds: 1), (_) {
+              _broadcastState(_player.playbackEvent);
+              // Remember the position now and then, so a reboot or a killed
+              // app resumes close to where it was.
+              if (++_ticksSinceSave >= 15) _persist();
+            })
           : null;
     });
     // Track duration isn't reliably known from file tags at scan time; take
@@ -121,6 +135,45 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  /// Saves queue/track/position for [restore] after a restart.
+  void _persist() {
+    _ticksSinceSave = 0;
+    final track = currentTrack;
+    if (track == null) return;
+    unawaited(MusicResumeService.save(MusicResumeState(
+      queueIds: [for (final t in _queue) t.id],
+      index: _queueIndex,
+      position: _sourceLoaded
+          ? _player.position
+          : (_resumePosition ?? Duration.zero),
+      current: track,
+    )));
+  }
+
+  /// Shows [tracks]/[index] as the current, paused queue without loading
+  /// any audio — the app-start "last played" state. [play] then loads the
+  /// track and starts at [position].
+  void restore(List<Track> tracks, {int index = 0, Duration position = Duration.zero}) {
+    if (tracks.isEmpty) return;
+    _queue = tracks;
+    _queueIndex = index.clamp(0, tracks.length - 1);
+    _sourceLoaded = false;
+    _resumePosition = position;
+    queue.add(_queue.map(_toMediaItem).toList());
+    mediaItem.add(_toMediaItem(currentTrack!));
+    playbackState.add(playbackState.value.copyWith(
+      controls: const [
+        MediaControl.skipToPrevious,
+        MediaControl.play,
+        MediaControl.skipToNext,
+      ],
+      processingState: AudioProcessingState.ready,
+      playing: false,
+      updatePosition: position,
+      queueIndex: _queueIndex,
+    ));
+  }
+
   /// Replaces the play queue and starts playing at [startIndex] (default:
   /// the first track).
   Future<void> setQueueAndPlay(List<Track> tracks, {int startIndex = 0}) async {
@@ -128,6 +181,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     _queue = tracks;
     _queueIndex = startIndex.clamp(0, tracks.length - 1);
     _preShuffleOrder = null;
+    _resumePosition = null;
     shuffleEnabled.value = false;
     queue.add(_queue.map(_toMediaItem).toList());
     await _playCurrent();
@@ -137,9 +191,14 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     final track = currentTrack;
     if (track == null) return;
     mediaItem.add(_toMediaItem(track));
+    final startAt = _resumePosition;
+    _resumePosition = null;
+    _persist();
     try {
       final uri = await _resolveUri(track);
-      await _player.setAudioSource(ja.AudioSource.uri(uri));
+      await _player.setAudioSource(ja.AudioSource.uri(uri),
+          initialPosition: startAt);
+      _sourceLoaded = true;
       await _player.play();
     } catch (_) {
       // Unplayable track (missing file, unreachable server): skip it rather
@@ -149,10 +208,17 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() {
+    // A restored "last played" track has no audio loaded yet.
+    if (!_sourceLoaded && currentTrack != null) return _playCurrent();
+    return _player.play();
+  }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() async {
+    await _player.pause();
+    _persist();
+  }
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);
@@ -175,6 +241,8 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       next = 0;
     }
     if (next < 0) next = 0;
+    // A remembered position belongs to the restored track only.
+    if (next != _queueIndex) _resumePosition = null;
     _queueIndex = next;
     await _playCurrent();
   }
@@ -202,6 +270,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     final upcoming = _queue.sublist(_queueIndex + 1)..shuffle();
     _queue = [..._queue.sublist(0, _queueIndex + 1), ...upcoming];
     queue.add(_queue.map(_toMediaItem).toList());
+    _persist();
   }
 
   /// Moves the track at [oldIndex] to [newIndex] (Flutter
@@ -224,6 +293,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     }
     _preShuffleOrder = null;
     queue.add(_queue.map(_toMediaItem).toList());
+    _persist();
   }
 
   /// Swipe-up on Now Playing: favorites the current track without

@@ -1,0 +1,180 @@
+import 'dart:io';
+
+import 'package:audio_service/audio_service.dart';
+import 'package:besttodo/models/track.dart';
+import 'package:besttodo/services/music_audio_handler.dart';
+import 'package:besttodo/services/music_library_service.dart';
+import 'package:besttodo/services/music_player_service.dart';
+import 'package:besttodo/services/music_playlist_service.dart';
+import 'package:besttodo/services/music_resume_service.dart';
+import 'package:besttodo/ui/music_mini_player_bar.dart';
+import 'package:besttodo/ui/now_playing_page.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+
+class _FakePathProvider extends PathProviderPlatform {
+  _FakePathProvider(this.path);
+  final String path;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => path;
+}
+
+/// Records play/pause instead of touching a real audio player.
+class _FakeAudioHandler extends BaseAudioHandler {
+  int plays = 0;
+  int pauses = 0;
+
+  @override
+  Future<void> play() async {
+    plays++;
+    playbackState.add(playbackState.value.copyWith(playing: true));
+  }
+
+  @override
+  Future<void> pause() async {
+    pauses++;
+    playbackState.add(playbackState.value.copyWith(playing: false));
+  }
+}
+
+void main() {
+  late Directory tempDir;
+
+  Track track(String id, {String artist = ''}) =>
+      Track.local(filePath: '/fake/$id.mp3', title: id, artist: artist);
+
+  setUp(() async {
+    tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    MusicLibraryService.instance.resetForTest();
+    MusicPlaylistService.instance.resetForTest();
+    MusicPlayerService.setHandlerForTest(null);
+  });
+
+  tearDown(() async {
+    MusicPlayerService.setHandlerForTest(null);
+    await tempDir.delete(recursive: true);
+  });
+
+  group('MusicResumeService', () {
+    test('saves and loads the queue, index, position and current track',
+        () async {
+      await MusicResumeService.save(MusicResumeState(
+        queueIds: ['local:/fake/a.mp3', 'local:/fake/b.mp3'],
+        index: 1,
+        position: const Duration(seconds: 42),
+        current: track('b', artist: 'Bee'),
+      ));
+
+      final state = await MusicResumeService.load();
+
+      expect(state, isNotNull);
+      expect(state!.queueIds, ['local:/fake/a.mp3', 'local:/fake/b.mp3']);
+      expect(state.index, 1);
+      expect(state.position, const Duration(seconds: 42));
+      expect(state.current!.title, 'b');
+      expect(state.current!.artist, 'Bee');
+    });
+
+    test('nothing saved yet loads as null', () async {
+      expect(await MusicResumeService.load(), isNull);
+    });
+  });
+
+  group('restoreLastSession', () {
+    test(
+        'shows the last-played track paused at its position, dropping '
+        'queue entries no longer in the library', () async {
+      MusicLibraryService.instance.tracks.value = [track('a'), track('c')];
+      await MusicResumeService.save(MusicResumeState(
+        queueIds: [
+          'local:/fake/a.mp3',
+          'local:/fake/gone.mp3',
+          'local:/fake/c.mp3',
+        ],
+        index: 2,
+        position: const Duration(minutes: 1, seconds: 5),
+        current: track('c'),
+      ));
+      final handler = MusicAudioHandler();
+      MusicPlayerService.setHandlerForTest(handler);
+
+      await MusicPlayerService.restoreLastSession();
+
+      expect(handler.currentQueueTracks.map((t) => t.title), ['a', 'c']);
+      expect(handler.currentTrack!.title, 'c');
+      expect(handler.mediaItem.value!.title, 'c');
+      expect(handler.playbackState.value.playing, isFalse);
+      expect(handler.playbackState.value.updatePosition,
+          const Duration(minutes: 1, seconds: 5));
+    });
+
+    test('keeps the last track from its saved copy if the library lost it',
+        () async {
+      await MusicResumeService.save(MusicResumeState(
+        queueIds: ['local:/fake/solo.mp3'],
+        index: 0,
+        position: Duration.zero,
+        current: track('solo', artist: 'Someone'),
+      ));
+      final handler = MusicAudioHandler();
+      MusicPlayerService.setHandlerForTest(handler);
+
+      await MusicPlayerService.restoreLastSession();
+
+      expect(handler.mediaItem.value!.title, 'solo');
+      expect(handler.mediaItem.value!.artist, 'Someone');
+    });
+  });
+
+  group('MusicMiniPlayerBar', () {
+    testWidgets('shows the last-played song with a play button that plays it',
+        (tester) async {
+      final audio = _FakeAudioHandler();
+      audio.mediaItem.add(const MediaItem(
+          id: 'local:/fake/x.mp3', title: 'Last Song', artist: 'Band'));
+
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: MusicMiniPlayerBar(handler: audio))));
+      await tester.pump();
+
+      expect(find.text('Last Song'), findsOneWidget);
+      expect(find.text('Band'), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('musicMiniPlayerPlayPause')));
+      await tester.pump();
+      expect(audio.plays, 1);
+      expect(find.byIcon(Icons.pause), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('musicMiniPlayerPlayPause')));
+      await tester.pump();
+      expect(audio.pauses, 1);
+    });
+
+    testWidgets('is hidden when there is no current or last-played song',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: MusicMiniPlayerBar(handler: _FakeAudioHandler()))));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('musicMiniPlayer')), findsNothing);
+    });
+
+    testWidgets('hides while Now Playing is open', (tester) async {
+      final audio = _FakeAudioHandler();
+      audio.mediaItem.add(const MediaItem(id: 'x', title: 'Song'));
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: MusicMiniPlayerBar(handler: audio))));
+      await tester.pump();
+      expect(find.text('Song'), findsOneWidget);
+
+      NowPlayingPage.openCount.value = 1;
+      await tester.pump();
+      expect(find.text('Song'), findsNothing);
+      NowPlayingPage.openCount.value = 0;
+    });
+  });
+}

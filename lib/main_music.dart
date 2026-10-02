@@ -18,6 +18,7 @@ import 'services/startup_time_service.dart';
 import 'services/update_service.dart';
 import 'ui/auto_update_dialog.dart';
 import 'ui/music_about_page.dart';
+import 'ui/music_mini_player_bar.dart';
 import 'ui/music_player_page.dart';
 
 /// Best Music's own navigator, so the background update poll can show its
@@ -45,6 +46,7 @@ Future<void> main() async {
   await _initStep('music library', MusicLibraryService.instance.load);
   await _initStep('music playlists', MusicPlaylistService.instance.load);
   await _initStep('music player', MusicPlayerService.init);
+  await _initStep('last played', MusicPlayerService.restoreLastSession);
   runApp(const BestMusicApp());
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
@@ -137,7 +139,14 @@ class _BestMusicAppState extends State<BestMusicApp> {
           left: false,
           right: false,
           bottom: true,
-          child: child ?? const SizedBox.shrink(),
+          // The mini player lives here, below the navigator, so the current
+          // (or last-played) song is at the bottom of every screen.
+          child: Column(
+            children: [
+              Expanded(child: child ?? const SizedBox.shrink()),
+              MusicMiniPlayerBar(navigatorKey: musicNavigatorKey),
+            ],
+          ),
         );
       },
       theme: ThemeData(

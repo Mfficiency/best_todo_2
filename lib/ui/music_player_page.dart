@@ -1,7 +1,6 @@
 import 'dart:async' show unawaited;
 import 'dart:io';
 
-import 'package:audio_service/audio_service.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -9,7 +8,6 @@ import '../config.dart';
 import '../models/music_playlist.dart';
 import '../models/track.dart';
 import '../services/m3u_playlist_service.dart';
-import '../services/music_audio_handler.dart';
 import '../services/music_library_service.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
@@ -21,6 +19,7 @@ import 'home_scaffold_key.dart';
 import 'mp3_downloader_page.dart';
 import 'music_about_page.dart';
 import 'music_metadata_scan_page.dart';
+import 'music_mini_player_bar.dart';
 import 'music_settings_page.dart';
 import 'music_wishlist_page.dart';
 import 'now_playing_page.dart';
@@ -317,7 +316,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               ],
             ),
           ),
-          const _MiniPlayerBar(),
+          // Best Music shows its mini player below every screen instead
+          // (main_music.dart); BestToDo's Music Player tool keeps its own.
+          if (!widget.standalone) const MusicMiniPlayerBar(),
         ],
       ),
     );
@@ -1347,63 +1348,4 @@ Future<void> showAddToPlaylistSheet(BuildContext context, Track track) {
       ),
     ),
   );
-}
-
-/// Small persistent bar showing what's currently playing, with play/pause
-/// and a tap-through to [NowPlayingPage].
-class _MiniPlayerBar extends StatelessWidget {
-  const _MiniPlayerBar();
-
-  @override
-  Widget build(BuildContext context) {
-    if (!MusicPlayerService.isReady) return const SizedBox.shrink();
-    final MusicAudioHandler handler = MusicPlayerService.handler;
-    return StreamBuilder<MediaItem?>(
-      stream: handler.mediaItem,
-      builder: (context, snapshot) {
-        final item = snapshot.data;
-        if (item == null) return const SizedBox.shrink();
-        return Material(
-          elevation: 4,
-          child: InkWell(
-            onTap: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const NowPlayingPage())),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.music_note),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        if ((item.artist ?? '').isNotEmpty)
-                          Text(item.artist!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall),
-                      ],
-                    ),
-                  ),
-                  StreamBuilder<PlaybackState>(
-                    stream: handler.playbackState,
-                    builder: (context, stateSnapshot) {
-                      final playing = stateSnapshot.data?.playing ?? false;
-                      return IconButton(
-                        icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                        onPressed: () => playing ? handler.pause() : handler.play(),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 }

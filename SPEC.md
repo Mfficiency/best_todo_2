@@ -3988,6 +3988,25 @@ handle on the right edge (key `fastScrollHandle`; tap or drag to jump) with a bu
 top row's `trackSectionLabel` — initial letter (digits → `#`) for Title/Artist, "Sep 2026" for
 Date added, "3 min" for Duration.
 
+**Always-visible mini player + resume after restart** (0.2.88): `MusicMiniPlayerBar`
+(`lib/ui/music_mini_player_bar.dart`) is mounted once in `BestMusicApp`'s `MaterialApp.builder`
+(a `Column` of the navigator + the bar, inside the bottom `SafeArea`), so the current song — title,
+artist, play/pause, tap → `NowPlayingPage` via `musicNavigatorKey` — is at the bottom of every Best
+Music screen. That spot has no Overlay, so the bar uses no tooltips (play/pause has key
+`musicMiniPlayerPlayPause` + a Semantics label). It hides while Now Playing is open
+(`NowPlayingPage.openCount`, bumped in a microtask from initState/dispose) and when there is no
+current or remembered song. `MusicPlayerPage(standalone: true)` no longer renders its own bar;
+BestToDo's Music Player tool still does.
+`MusicResumeService` (`music_resume_service.dart`) persists `{queue: [track ids], index, positionMs,
+current: Track json}` to `music_resume.json` in the app documents dir (survives restarts, reboots
+and app updates). `MusicAudioHandler` saves it on every track change, pause, shuffle/reorder and
+every 15 s while playing (writes chained so they never interleave). At startup `main_music.dart`
+calls `MusicPlayerService.restoreLastSession()` after the library loads: queue ids are mapped
+through the library (missing ones dropped, the current track falling back to its saved copy) and
+`handler.restore()` shows it paused (mediaItem + paused playbackState at the saved position)
+without loading audio; the first `play()` loads it with `initialPosition`. Skipping before
+playing drops the saved position.
+
 **Navigation-bar inset** (0.2.86): `BestMusicApp` (`lib/main_music.dart`) wraps every route in
 `MaterialApp.builder: SafeArea(bottom: true)` exactly like BestToDo's `main.dart`, so no page (track
 lists, Track info, the mini player) draws under Android's edge-to-edge navigation bar. 0.2.85's

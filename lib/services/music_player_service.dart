@@ -1,7 +1,8 @@
 import 'dart:io' show Platform;
 
 import 'package:audio_service/audio_service.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kIsWeb, visibleForTesting;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../config.dart';
@@ -9,6 +10,7 @@ import '../models/track.dart';
 import 'music_audio_handler.dart';
 import 'music_library_service.dart';
 import 'music_playlist_service.dart';
+import 'music_resume_service.dart';
 import 'music_widget_service.dart';
 
 /// Facade over [MusicAudioHandler]: owns startup (registering it with
@@ -33,6 +35,11 @@ class MusicPlayerService {
   }
 
   static bool get isReady => _handler != null;
+
+  /// Installs [handler] without [init]'s platform registration — tests only.
+  @visibleForTesting
+  static void setHandlerForTest(MusicAudioHandler? handler) =>
+      _handler = handler;
 
   /// `audio_service`'s Android/iOS/macOS notification+lock-screen wrapper
   /// isn't available on every platform this app runs on (Windows desktop is
@@ -59,6 +66,34 @@ class MusicPlayerService {
       _handler = MusicAudioHandler();
     }
     MusicWidgetService.attach(_handler!);
+  }
+
+  /// Brings back what was playing before the app was closed, the phone
+  /// rebooted or the app updated — paused, so the mini player shows the
+  /// last-played song with a play button that resumes it where it was.
+  /// Queue entries no longer in the library are dropped; the last track
+  /// itself is kept from its saved copy even if the library lost it. Call
+  /// after [init] and after the library has loaded.
+  static Future<void> restoreLastSession() async {
+    if (!isReady) return;
+    final state = await MusicResumeService.load();
+    if (state == null) return;
+    final byId = {
+      for (final t in MusicLibraryService.instance.tracks.value) t.id: t,
+    };
+    final current = state.index >= 0 && state.index < state.queueIds.length
+        ? state.queueIds[state.index]
+        : state.current?.id;
+    final queue = <Track>[];
+    var index = 0;
+    for (final id in state.queueIds) {
+      final track = byId[id] ?? (id == current ? state.current : null);
+      if (track == null) continue;
+      if (id == current) index = queue.length;
+      queue.add(track);
+    }
+    if (queue.isEmpty && state.current != null) queue.add(state.current!);
+    handler.restore(queue, index: index, position: state.position);
   }
 
   /// Plays the whole local+configured library in a fresh weighted shuffle

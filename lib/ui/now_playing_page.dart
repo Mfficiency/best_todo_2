@@ -17,6 +17,10 @@ import 'track_metadata_page.dart';
 class NowPlayingPage extends StatefulWidget {
   const NowPlayingPage({super.key});
 
+  /// How many Now Playing pages are open — [MusicMiniPlayerBar] hides while
+  /// this is above zero, since the page already shows the same controls.
+  static final ValueNotifier<int> openCount = ValueNotifier(0);
+
   @override
   State<NowPlayingPage> createState() => _NowPlayingPageState();
 }
@@ -27,8 +31,16 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
   Timer? _flashTimer;
 
   @override
+  void initState() {
+    super.initState();
+    // Deferred: listeners (the mini player) can't rebuild mid-build/dispose.
+    Future.microtask(() => NowPlayingPage.openCount.value++);
+  }
+
+  @override
   void dispose() {
     _flashTimer?.cancel();
+    Future.microtask(() => NowPlayingPage.openCount.value--);
     super.dispose();
   }
 
