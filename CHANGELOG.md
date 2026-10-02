@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.89] - 2026-10-02
+- Only one copy of the app can be open at a time: opening it again from the home screen, a notification, a widget or a shared link brings back the copy that's already running instead of starting a second one (on Windows too)
+
 ## [0.2.88] - 2026-10-01
 - Task info: tap a task and press the info icon beside Note to see when it was created, whether you added it in the app or it came in automatically via Todoist (the Waiting for Approval path) or the share sheet, when it was approved, its Todoist sync details and its full change history. The icon now shows on every task, not just Todoist-synced ones; Task Details shows the created time and origin too
 - Local build: 2026-10-01 07:52

@@ -2165,6 +2165,16 @@ cannot write into the app's *internal* `filesDir`, only its external one), with
 keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
 cursor back into a status/progress map.
 
+**Single instance** (BestToDo 0.2.89, Best Music 0.2.90): only one copy of either
+app ever runs. Android: `MainActivity` is `launchMode="singleTask"` with the default task affinity
+(the app's package, so BestToDo and Best Music stay separate apps) — previously `singleTop` +
+`taskAffinity=""` (Flutter template default), which let a launch from the media notification, a
+widget or a link start a second `MainActivity`/Flutter engine in a new task. Every launch now
+re-fronts the one instance and arrives via `onNewIntent` (already handled for alarms and shares).
+Windows: `windows/runner/main.cpp` takes the named mutex `Local\BestToDo.SingleInstance`; a second
+launch finds it taken, restores + foregrounds the existing "BestToDo" window and exits. Guarded by
+`test/share/single_instance_wiring_test.dart`.
+
 **Share-sheet task capture** (0.1.145; quick-add screen, images/PDFs, Today/Inbox
 choice, redelivery dedup added later): BestToDo appears in Android's share sheet for
 `text/plain`, `image/*` and `application/pdf` ACTION_SEND, plus `ACTION_SEND_MULTIPLE`
