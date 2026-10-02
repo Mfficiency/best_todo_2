@@ -3960,13 +3960,29 @@ the whole library by title/artist (falling back to the filename), reusing `Track
 results so a search hit is playable and carries the same "more options" menu as everywhere else.
 Plain `showSearch(context:, delegate:)` — no separate search page/route to maintain.
 
-**Quick sort + shuffle/play-all header** (`TrackListView`, now a `StatefulWidget` owning its own
-`TrackSortOrder`): every track list — Tracks/Favourites tabs, an artist/folder drill-down, search
-results, and any playlist detail page — gets a header row with a `PopupMenuButton<TrackSortOrder>`
-(Date added [default] / Title / Artist / Duration, checkmark on the active choice — same
-`PopupMenuItem` pattern `wishlist_page.dart`'s sort menu already uses) plus shuffle and play-all
-icon buttons that queue the *currently sorted* list. Sorting is local UI state, not persisted —
-reopening a list resets to Date added.
+**Quick sort + shuffle/play-all header** (`TrackListView`, a `StatefulWidget` owning its own
+`TrackSortField` + direction): every track list — Tracks/Favourites tabs, an artist/folder
+drill-down, search results, and any playlist detail page — gets a header row with a
+`PopupMenuButton<TrackSortField>` (Date added [default] / Title / Artist / Duration, checkmark plus
+an up/down arrow on the active choice), a direction `TextButton` (key `sortDirectionButton`,
+labelled per field: Newest/Oldest first, A–Z/Z–A, Longest/Shortest first) that flips ascending ↔
+descending, plus shuffle and play-all icon buttons that queue the *currently sorted* list.
+Re-picking the active field also flips its direction; picking a new field starts in its natural
+direction (`trackSortDefaultAscending`: A–Z for text, newest/longest first otherwise). Ties fall
+back to title; tracks with no date added always sink to the bottom. The choice is persisted in
+`Config.musicTrackSortField`/`musicTrackSortAscending` (0.2.85) so every list and the next launch
+follow it.
+
+**Fast scroll** (`lib/ui/fast_scroll_list.dart`, `FastScrollList`, 0.2.85): track rows are a
+fixed two-line height (`prototypeItem`; title/artist ellipsize to one line, a missing artist reads
+"Unknown artist") so a drag position maps exactly onto a row. Lists of 30+ tracks get a draggable
+handle on the right edge (key `fastScrollHandle`; tap or drag to jump) with a bubble showing the
+top row's `trackSectionLabel` — initial letter (digits → `#`) for Title/Artist, "Sep 2026" for
+Date added, "3 min" for Duration.
+
+**Mini player / navigation-bar inset** (0.2.85): the mini player is the home Scaffold's
+`bottomNavigationBar` wrapped in `SafeArea(top: false)` (an empty `SafeArea` when nothing plays),
+so neither it nor the last list rows sit under Android's edge-to-edge system navigation bar.
 
 **Per-track "more options" menu**: the row's separate Favorite/"Add to playlist"/"Remove from
 playlist" icon buttons were folded into one `PopupMenuButton<String>` (`Icons.more_vert`, tooltip

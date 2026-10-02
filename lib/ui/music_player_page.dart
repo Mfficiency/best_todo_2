@@ -16,6 +16,7 @@ import '../services/music_playlist_service.dart';
 import '../utils/artist_utils.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'fast_scroll_list.dart';
 import 'home_scaffold_key.dart';
 import 'mp3_downloader_page.dart';
 import 'music_about_page.dart';
@@ -296,24 +297,21 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           ],
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: const [
-                _FavouritesTab(),
-                _PlaylistsTab(),
-                _TracksTab(),
-                _ArtistsTab(),
-                _TagsTab(),
-                _FoldersTab(),
-              ],
-            ),
-          ),
-          const _MiniPlayerBar(),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _FavouritesTab(),
+          _PlaylistsTab(),
+          _TracksTab(),
+          _ArtistsTab(),
+          _TagsTab(),
+          _FoldersTab(),
         ],
       ),
+      // As the Scaffold's bottom bar (not the last child of a body Column)
+      // the mini player sits above Android's gesture/3-button navigation
+      // bar instead of underneath it in edge-to-edge mode.
+      bottomNavigationBar: const _MiniPlayerBar(),
     );
   }
 }
@@ -850,50 +848,120 @@ class _AddSongsToPlaylistPageState extends State<AddSongsToPlaylistPage> {
 }
 
 /// Quick ways to reorder a [TrackListView] — mirrors the sort options
-/// Samsung Music offers on its Tracks list.
-enum TrackSortOrder { dateAddedDesc, titleAsc, artistAsc, durationDesc }
+/// Samsung Music offers on its Tracks list. Each field sorts either
+/// ascending or descending; see [trackSortDefaultAscending].
+enum TrackSortField { dateAdded, title, artist, duration }
 
-String trackSortLabel(TrackSortOrder order) {
-  switch (order) {
-    case TrackSortOrder.dateAddedDesc:
+String trackSortLabel(TrackSortField field) {
+  switch (field) {
+    case TrackSortField.dateAdded:
       return 'Date added';
-    case TrackSortOrder.titleAsc:
+    case TrackSortField.title:
       return 'Title';
-    case TrackSortOrder.artistAsc:
+    case TrackSortField.artist:
       return 'Artist';
-    case TrackSortOrder.durationDesc:
+    case TrackSortField.duration:
       return 'Duration';
   }
 }
 
-List<Track> sortTracks(List<Track> tracks, TrackSortOrder order) {
+/// Human wording of a direction for [field] ("A–Z", "Newest first", ...).
+String trackSortDirectionLabel(TrackSortField field, bool ascending) {
+  switch (field) {
+    case TrackSortField.dateAdded:
+      return ascending ? 'Oldest first' : 'Newest first';
+    case TrackSortField.title:
+    case TrackSortField.artist:
+      return ascending ? 'A–Z' : 'Z–A';
+    case TrackSortField.duration:
+      return ascending ? 'Shortest first' : 'Longest first';
+  }
+}
+
+/// The direction a field starts in when first picked: newest/longest first
+/// for dates and durations, A–Z for text.
+bool trackSortDefaultAscending(TrackSortField field) =>
+    field == TrackSortField.title || field == TrackSortField.artist;
+
+String _trackDisplayTitle(Track t) =>
+    t.title.isNotEmpty ? t.title : t.fileBaseName;
+
+/// Sorts [tracks] by [field] in the given direction. Tracks with no date
+/// added always sink to the bottom, whichever way the list runs; ties
+/// fall back to title so the order is stable.
+List<Track> sortTracks(List<Track> tracks, TrackSortField field,
+    {bool? ascending}) {
+  final asc = ascending ?? trackSortDefaultAscending(field);
+  final sign = asc ? 1 : -1;
+  int byTitle(Track a, Track b) => _trackDisplayTitle(a)
+      .toLowerCase()
+      .compareTo(_trackDisplayTitle(b).toLowerCase());
   final sorted = [...tracks];
-  switch (order) {
-    case TrackSortOrder.dateAddedDesc:
-      sorted.sort((a, b) {
+  sorted.sort((a, b) {
+    int primary;
+    switch (field) {
+      case TrackSortField.dateAdded:
         final aDate = a.dateAdded;
         final bDate = b.dateAdded;
-        if (aDate == null && bDate == null) return 0;
+        if (aDate == null && bDate == null) return byTitle(a, b);
         if (aDate == null) return 1;
         if (bDate == null) return -1;
-        return bDate.compareTo(aDate);
-      });
-      break;
-    case TrackSortOrder.titleAsc:
-      sorted.sort((a, b) {
-        final aTitle = a.title.isNotEmpty ? a.title : a.fileBaseName;
-        final bTitle = b.title.isNotEmpty ? b.title : b.fileBaseName;
-        return aTitle.toLowerCase().compareTo(bTitle.toLowerCase());
-      });
-      break;
-    case TrackSortOrder.artistAsc:
-      sorted.sort((a, b) => a.artist.toLowerCase().compareTo(b.artist.toLowerCase()));
-      break;
-    case TrackSortOrder.durationDesc:
-      sorted.sort((a, b) => (b.durationMs ?? 0).compareTo(a.durationMs ?? 0));
-      break;
-  }
+        primary = sign * aDate.compareTo(bDate);
+        break;
+      case TrackSortField.title:
+        return sign * byTitle(a, b);
+      case TrackSortField.artist:
+        primary =
+            sign * a.artist.toLowerCase().compareTo(b.artist.toLowerCase());
+        break;
+      case TrackSortField.duration:
+        primary = sign * (a.durationMs ?? 0).compareTo(b.durationMs ?? 0);
+        break;
+    }
+    return primary != 0 ? primary : byTitle(a, b);
+  });
   return sorted;
+}
+
+const _monthAbbr = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _initialOf(String text) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return '#';
+  final first = String.fromCharCode(trimmed.runes.first).toUpperCase();
+  return RegExp(r'[0-9]').hasMatch(first) ? '#' : first;
+}
+
+/// Fast-scroll bubble text for [track] under [field]: the initial letter
+/// for title/artist, "Sep 2026" for date added, "3 min" for duration.
+String trackSectionLabel(Track track, TrackSortField field) {
+  switch (field) {
+    case TrackSortField.title:
+      return _initialOf(_trackDisplayTitle(track));
+    case TrackSortField.artist:
+      return _initialOf(track.artist);
+    case TrackSortField.dateAdded:
+      final date = track.dateAdded;
+      if (date == null) return '—';
+      return '${_monthAbbr[date.month - 1]} ${date.year}';
+    case TrackSortField.duration:
+      final ms = track.durationMs;
+      if (ms == null) return '—';
+      return '${ms ~/ 60000} min';
+  }
 }
 
 /// Shared track list used by the Tracks/Favourites tabs, artist/folder
@@ -915,7 +983,37 @@ class TrackListView extends StatefulWidget {
 }
 
 class _TrackListViewState extends State<TrackListView> {
-  TrackSortOrder _sortOrder = TrackSortOrder.dateAddedDesc;
+  TrackSortField _sortField = TrackSortField.values.firstWhere(
+    (f) => f.name == Config.musicTrackSortField,
+    orElse: () => TrackSortField.dateAdded,
+  );
+  bool _ascending = Config.musicTrackSortAscending;
+
+  /// Picking the field already in use flips its direction; picking a new
+  /// one starts it in that field's natural direction. Remembered in
+  /// [Config] so every track list (and the next launch) follows it.
+  void _selectSort(TrackSortField field) {
+    setState(() {
+      if (field == _sortField) {
+        _ascending = !_ascending;
+      } else {
+        _sortField = field;
+        _ascending = trackSortDefaultAscending(field);
+      }
+    });
+    _persistSort();
+  }
+
+  void _toggleDirection() {
+    setState(() => _ascending = !_ascending);
+    _persistSort();
+  }
+
+  void _persistSort() {
+    Config.musicTrackSortField = _sortField.name;
+    Config.musicTrackSortAscending = _ascending;
+    unawaited(Config.save());
+  }
 
   Future<void> _play(List<Track> tracks, {int startIndex = 0}) async {
     await MusicPlayerService.playQueue(tracks, startIndex: startIndex);
@@ -927,52 +1025,73 @@ class _TrackListViewState extends State<TrackListView> {
 
   @override
   Widget build(BuildContext context) {
-    final tracks = sortTracks(widget.tracks, _sortOrder);
+    final tracks = sortTracks(widget.tracks, _sortField, ascending: _ascending);
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(
             children: [
-              PopupMenuButton<TrackSortOrder>(
-                tooltip: 'Sort tracks',
-                initialValue: _sortOrder,
-                onSelected: (value) => setState(() => _sortOrder = value),
-                itemBuilder: (context) => [
-                  for (final order in TrackSortOrder.values)
-                    PopupMenuItem(
-                      value: order,
-                      child: Row(
-                        children: [
-                          if (order == _sortOrder)
-                            const Icon(Icons.check, size: 18)
-                          else
-                            const SizedBox(width: 18),
-                          const SizedBox(width: 8),
-                          Flexible(
-                              child: Text(trackSortLabel(order),
-                                  overflow: TextOverflow.ellipsis)),
-                        ],
+              Flexible(
+                child: PopupMenuButton<TrackSortField>(
+                  tooltip: 'Sort tracks',
+                  initialValue: _sortField,
+                  onSelected: _selectSort,
+                  itemBuilder: (context) => [
+                    for (final field in TrackSortField.values)
+                      PopupMenuItem(
+                        value: field,
+                        child: Row(
+                          children: [
+                            if (field == _sortField)
+                              const Icon(Icons.check, size: 18)
+                            else
+                              const SizedBox(width: 18),
+                            const SizedBox(width: 8),
+                            Flexible(
+                                child: Text(trackSortLabel(field),
+                                    overflow: TextOverflow.ellipsis)),
+                            if (field == _sortField) ...[
+                              const SizedBox(width: 8),
+                              Icon(
+                                  _ascending
+                                      ? Icons.arrow_upward
+                                      : Icons.arrow_downward,
+                                  size: 16),
+                            ],
+                          ],
+                        ),
                       ),
+                  ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(trackSortLabel(_sortField),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        const Icon(Icons.arrow_drop_down),
+                      ],
                     ),
-                ],
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(trackSortLabel(_sortOrder)),
-                      const Icon(Icons.arrow_drop_down),
-                    ],
                   ),
                 ),
+              ),
+              TextButton.icon(
+                key: const ValueKey('sortDirectionButton'),
+                onPressed: _toggleDirection,
+                icon: Icon(
+                    _ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                    size: 18),
+                label: Text(trackSortDirectionLabel(_sortField, _ascending)),
               ),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.shuffle),
                 tooltip: 'Shuffle these tracks',
-                onPressed: () =>
-                    _play(MusicPlaylistService.instance.weightedShuffle(tracks)),
+                onPressed: () => _play(
+                    MusicPlaylistService.instance.weightedShuffle(tracks)),
               ),
               IconButton(
                 icon: const Icon(Icons.play_arrow),
@@ -983,25 +1102,43 @@ class _TrackListViewState extends State<TrackListView> {
           ),
         ),
         Expanded(
-          child: ListView.builder(
+          child: FastScrollList(
             itemCount: tracks.length,
+            labelFor: (index) => trackSectionLabel(tracks[index], _sortField),
+            // Every row is one fixed two-line height (long titles ellipsize)
+            // so the fast-scroll handle maps exactly onto a row.
+            prototypeItem: const ListTile(
+              leading: Icon(Icons.music_note),
+              title: Text('Title', maxLines: 1),
+              subtitle: Text('Artist', maxLines: 1),
+              trailing: Icon(Icons.more_vert),
+            ),
             itemBuilder: (context, index) {
               final track = tracks[index];
               return ValueListenableBuilder<List<MusicPlaylist>>(
                 valueListenable: MusicPlaylistService.instance.playlists,
                 builder: (context, _, __) {
-                  final isFavorite = MusicPlaylistService.instance.isFavorite(track.id);
+                  final isFavorite =
+                      MusicPlaylistService.instance.isFavorite(track.id);
                   return ListTile(
                     leading: const Icon(Icons.music_note),
-                    title: Text(track.title.isNotEmpty ? track.title : track.fileBaseName),
-                    subtitle: track.artist.isNotEmpty ? Text(track.artist) : null,
+                    title: Text(_trackDisplayTitle(track),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    // Always two lines (matching the prototype row height).
+                    subtitle: Text(
+                        track.artist.isNotEmpty
+                            ? track.artist
+                            : 'Unknown artist',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                     trailing: PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert),
                       tooltip: 'More options',
                       onSelected: (value) async {
                         switch (value) {
                           case 'favorite':
-                            await MusicPlaylistService.instance.toggleFavorite(track.id);
+                            await MusicPlaylistService.instance
+                                .toggleFavorite(track.id);
                             break;
                           case 'add':
                             if (context.mounted) {
@@ -1014,7 +1151,8 @@ class _TrackListViewState extends State<TrackListView> {
                           case 'info':
                             if (context.mounted) {
                               Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => TrackMetadataPage(trackId: track.id),
+                                builder: (_) =>
+                                    TrackMetadataPage(trackId: track.id),
                               ));
                             }
                             break;
@@ -1026,14 +1164,18 @@ class _TrackListViewState extends State<TrackListView> {
                           child: Row(
                             children: [
                               Icon(
-                                isFavorite ? Icons.favorite : Icons.favorite_border,
+                                isFavorite
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
                                 size: 18,
                                 color: isFavorite ? Colors.pink : null,
                               ),
                               const SizedBox(width: 8),
                               Flexible(
                                 child: Text(
-                                  isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+                                  isFavorite
+                                      ? 'Remove from Favorites'
+                                      : 'Add to Favorites',
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -1045,7 +1187,9 @@ class _TrackListViewState extends State<TrackListView> {
                           child: Row(children: [
                             Icon(Icons.playlist_add, size: 18),
                             SizedBox(width: 8),
-                            Flexible(child: Text('Add to playlist', overflow: TextOverflow.ellipsis)),
+                            Flexible(
+                                child: Text('Add to playlist',
+                                    overflow: TextOverflow.ellipsis)),
                           ]),
                         ),
                         if (widget.onRemove != null)
@@ -1064,7 +1208,9 @@ class _TrackListViewState extends State<TrackListView> {
                           child: Row(children: [
                             Icon(Icons.info_outline, size: 18),
                             SizedBox(width: 8),
-                            Flexible(child: Text('Track info', overflow: TextOverflow.ellipsis)),
+                            Flexible(
+                                child: Text('Track info',
+                                    overflow: TextOverflow.ellipsis)),
                           ]),
                         ),
                       ],
@@ -1192,48 +1338,58 @@ class _MiniPlayerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!MusicPlayerService.isReady) return const SizedBox.shrink();
+    // A Scaffold with a bottomNavigationBar stops padding its body for the
+    // system navigation bar, so even with nothing playing this still
+    // reserves that inset — otherwise the last list rows hide behind it.
+    const nothingPlaying = SafeArea(top: false, child: SizedBox.shrink());
+    if (!MusicPlayerService.isReady) return nothingPlaying;
     final MusicAudioHandler handler = MusicPlayerService.handler;
     return StreamBuilder<MediaItem?>(
       stream: handler.mediaItem,
       builder: (context, snapshot) {
         final item = snapshot.data;
-        if (item == null) return const SizedBox.shrink();
+        if (item == null) return nothingPlaying;
         return Material(
           elevation: 4,
-          child: InkWell(
-            onTap: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const NowPlayingPage())),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.music_note),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        if ((item.artist ?? '').isNotEmpty)
-                          Text(item.artist!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall),
-                      ],
+          child: SafeArea(
+            top: false,
+            child: InkWell(
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NowPlayingPage())),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.music_note),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.title,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          if ((item.artist ?? '').isNotEmpty)
+                            Text(item.artist!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall),
+                        ],
+                      ),
                     ),
-                  ),
-                  StreamBuilder<PlaybackState>(
-                    stream: handler.playbackState,
-                    builder: (context, stateSnapshot) {
-                      final playing = stateSnapshot.data?.playing ?? false;
-                      return IconButton(
-                        icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                        onPressed: () => playing ? handler.pause() : handler.play(),
-                      );
-                    },
-                  ),
-                ],
+                    StreamBuilder<PlaybackState>(
+                      stream: handler.playbackState,
+                      builder: (context, stateSnapshot) {
+                        final playing = stateSnapshot.data?.playing ?? false;
+                        return IconButton(
+                          icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                          onPressed: () =>
+                              playing ? handler.pause() : handler.play(),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

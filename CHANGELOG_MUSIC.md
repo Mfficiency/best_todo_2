@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.85] - 2026-10-02
+- Music Player: every sort option (Date added, Title, Artist, Duration) now goes both ways — tap the new Newest/Oldest first, A–Z/Z–A or Longest/Shortest first button next to the sort menu (or pick the same option again) to flip it, and your choice is remembered. Long track lists get a fast-scroll handle on the right edge: drag it to fly through hundreds of songs, with a bubble showing the letter, month or length you're at. Fixed the mini player and the bottom of the list hiding behind the phone's navigation bar
+
 ## [0.2.84] - 2026-09-19
 - Fixed the Wishlist checking an item off here also marking it done in BestToDo: since 0.2.78 both apps' Wishlists were quietly synced through one shared external-storage file, so a checkbox tapped in either app took effect in both. Best Music's Wishlist is local-only again, stored purely in its own app-private storage like every other Best Music list — BestToDo's own Wishlist and its "Connect"/sync option are unchanged
 

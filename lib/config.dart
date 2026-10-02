@@ -656,6 +656,12 @@ class Config {
   /// checkbox.
   static List<String> musicExcludedSubfolders = [];
 
+  /// Music Player track-list sort field (`TrackSortField.name`: dateAdded,
+  /// title, artist or duration) and direction, remembered across restarts
+  /// so the Tracks tab reopens the way it was left.
+  static String musicTrackSortField = 'dateAdded';
+  static bool musicTrackSortAscending = false;
+
   /// Base URL of a self-hosted Subsonic/OpenSubsonic-compatible server
   /// (Navidrome, Airsonic, Gonic, …), e.g. `https://music.example.com`.
   /// Empty means the Music Player only plays from [musicFolder].
@@ -765,6 +771,8 @@ class Config {
       'mp3CompareFolder': mp3CompareFolder,
       'musicFolder': musicFolder,
       'musicExcludedSubfolders': musicExcludedSubfolders,
+      'musicTrackSortField': musicTrackSortField,
+      'musicTrackSortAscending': musicTrackSortAscending,
       'subsonicServerUrl': subsonicServerUrl,
       'subsonicUsername': subsonicUsername,
       'subsonicPassword': subsonicPassword,
@@ -917,6 +925,10 @@ class Config {
       musicExcludedSubfolders =
           savedExcludedSubfolders.whereType<String>().toList();
     }
+    musicTrackSortField =
+        data['musicTrackSortField'] as String? ?? musicTrackSortField;
+    musicTrackSortAscending =
+        data['musicTrackSortAscending'] as bool? ?? musicTrackSortAscending;
     subsonicServerUrl =
         data['subsonicServerUrl'] as String? ?? subsonicServerUrl;
     subsonicUsername = data['subsonicUsername'] as String? ?? subsonicUsername;

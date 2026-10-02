@@ -27,6 +27,8 @@ void main() {
     Config.musicFolder = '';
     Config.musicExcludedSubfolders = [];
     Config.mp3DownloadFolder = '';
+    Config.musicTrackSortField = 'dateAdded';
+    Config.musicTrackSortAscending = false;
     MusicLibraryService.instance.resetForTest();
     MusicPlaylistService.instance.resetForTest();
     MusicPlaylistService.instance.playlists.value = [
@@ -476,6 +478,141 @@ void main() {
       expect(find.text('Song 1'), findsOneWidget);
       expect(find.text('Song 2'), findsOneWidget);
       expect(find.text('Root song'), findsNothing);
+    });
+  });
+
+  group('track sorting', () {
+    final tracks = [
+      Track.local(
+          filePath: '/m/b.mp3',
+          title: 'Bravo',
+          artist: 'Zed',
+          durationMs: 200000,
+          dateAdded: DateTime(2026, 2, 1)),
+      Track.local(
+          filePath: '/m/a.mp3',
+          title: 'alpha',
+          artist: 'Mia',
+          durationMs: 300000,
+          dateAdded: DateTime(2026, 3, 1)),
+      Track.local(
+          filePath: '/m/c.mp3',
+          title: 'Charlie',
+          artist: 'Abe',
+          durationMs: 100000,
+          dateAdded: DateTime(2026, 1, 1)),
+      Track.local(filePath: '/m/d.mp3', title: 'Delta', artist: 'Kim'),
+    ];
+    List<String> titles(List<Track> list) => [for (final t in list) t.title];
+
+    test('every field sorts both ascending and descending', () {
+      expect(titles(sortTracks(tracks, TrackSortField.title, ascending: true)),
+          ['alpha', 'Bravo', 'Charlie', 'Delta']);
+      expect(titles(sortTracks(tracks, TrackSortField.title, ascending: false)),
+          ['Delta', 'Charlie', 'Bravo', 'alpha']);
+      expect(titles(sortTracks(tracks, TrackSortField.artist, ascending: true)),
+          ['Charlie', 'Delta', 'alpha', 'Bravo']);
+      expect(titles(sortTracks(tracks, TrackSortField.artist, ascending: false)),
+          ['Bravo', 'alpha', 'Delta', 'Charlie']);
+      expect(
+          titles(sortTracks(tracks, TrackSortField.duration, ascending: true)),
+          ['Delta', 'Charlie', 'Bravo', 'alpha']);
+      expect(
+          titles(sortTracks(tracks, TrackSortField.duration, ascending: false)),
+          ['alpha', 'Bravo', 'Charlie', 'Delta']);
+      // A track with no date added stays last either way.
+      expect(
+          titles(sortTracks(tracks, TrackSortField.dateAdded, ascending: true)),
+          ['Charlie', 'Bravo', 'alpha', 'Delta']);
+      expect(
+          titles(
+              sortTracks(tracks, TrackSortField.dateAdded, ascending: false)),
+          ['alpha', 'Bravo', 'Charlie', 'Delta']);
+    });
+
+    test('section labels follow the sort field', () {
+      expect(trackSectionLabel(tracks[1], TrackSortField.title), 'A');
+      expect(trackSectionLabel(tracks[0], TrackSortField.artist), 'Z');
+      expect(trackSectionLabel(tracks[0], TrackSortField.dateAdded), 'Feb 2026');
+      expect(trackSectionLabel(tracks[1], TrackSortField.duration), '5 min');
+      expect(
+          trackSectionLabel(
+              Track.local(filePath: '/m/1.mp3', title: '1999'),
+              TrackSortField.title),
+          '#');
+    });
+
+    testWidgets('direction button and re-picking a field flip the order',
+        (tester) async {
+      await tester.pumpWidget(
+          MaterialApp(home: Scaffold(body: TrackListView(tracks: tracks))));
+      await tester.pumpAndSettle();
+
+      double y(String text) => tester.getTopLeft(find.text(text)).dy;
+      // Default: date added, newest first.
+      expect(find.text('Newest first'), findsOneWidget);
+      expect(y('alpha'), lessThan(y('Charlie')));
+
+      await tester.tap(find.byKey(const ValueKey('sortDirectionButton')));
+      await tester.pumpAndSettle();
+      expect(find.text('Oldest first'), findsOneWidget);
+      expect(y('Charlie'), lessThan(y('alpha')));
+      expect(Config.musicTrackSortAscending, isTrue);
+
+      // Picking Title starts A–Z; picking it again flips to Z–A.
+      await tester.tap(find.byTooltip('Sort tracks'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Title').last);
+      await tester.pumpAndSettle();
+      expect(find.text('A–Z'), findsOneWidget);
+      expect(y('alpha'), lessThan(y('Delta')));
+      expect(Config.musicTrackSortField, 'title');
+
+      await tester.tap(find.byTooltip('Sort tracks'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Title').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Z–A'), findsOneWidget);
+      expect(y('Delta'), lessThan(y('alpha')));
+    });
+
+    testWidgets('a long list gets a fast-scroll handle that jumps to the end',
+        (tester) async {
+      final many = [
+        for (var i = 0; i < 200; i++)
+          Track.local(
+              filePath: '/m/$i.mp3',
+              title: 'Song ${i.toString().padLeft(3, '0')}'),
+      ];
+      Config.musicTrackSortField = 'title';
+      Config.musicTrackSortAscending = true;
+      await tester.pumpWidget(
+          MaterialApp(home: Scaffold(body: TrackListView(tracks: many))));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song 000'), findsOneWidget);
+      final handle = find.byKey(const ValueKey('fastScrollHandle'));
+      expect(handle, findsOneWidget);
+
+      final box = tester.getRect(handle);
+      final gesture = await tester.startGesture(box.topCenter + const Offset(0, 30));
+      await tester.pump();
+      await gesture.moveTo(box.bottomCenter - const Offset(0, 2));
+      await tester.pump();
+      // Dragging shows the bubble for the row now on top.
+      expect(find.textContaining('S'), findsWidgets);
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song 000'), findsNothing);
+      expect(find.text('Song 199'), findsOneWidget);
+    });
+
+    testWidgets('a short list has no fast-scroll handle', (tester) async {
+      await tester.pumpWidget(
+          MaterialApp(home: Scaffold(body: TrackListView(tracks: tracks))));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('fastScrollHandle')), findsNothing);
     });
   });
 
