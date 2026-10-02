@@ -951,5 +951,29 @@
     "durationSeconds": 96,
     "finishedAt": "2026-10-01T07:52:06.644534",
     "os": "windows"
+  },
+  {
+    "version": "0.2.89+380",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 418,
+    "finishedAt": "2026-10-02T19:11:41.255543",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.90+381",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 210,
+    "finishedAt": "2026-10-02T19:15:16.017351",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.89+380",
+    "app": "todo",
+    "target": "windows",
+    "durationSeconds": 161,
+    "finishedAt": "2026-10-02T19:18:02.631282",
+    "os": "windows"
   }
 ]

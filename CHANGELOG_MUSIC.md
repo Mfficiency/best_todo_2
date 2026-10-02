@@ -8,6 +8,8 @@ nothing has been copied over here.
 
 ## [0.2.90] - 2026-10-02
 - Only one copy of the app can be open at a time: opening it again from the home screen, a notification, a widget or a shared link brings back the copy that's already running instead of starting a second one (on Windows too)
+- Local build: 2026-10-02 19:15
+- Build duration (apk): 3m 30s
 
 ## [0.2.89] - 2026-10-02
 - Best Music is now blue like BestToDo, and Settings has a Dark mode switch that applies right away. New sleep timer: pause after 5 minutes to 1.5 hours, a custom time, or at the end of the current song — set it from Now Playing (moon icon), the menu, Settings, or by long-pressing the song bar at the bottom; while it runs the song bar shows the time left
