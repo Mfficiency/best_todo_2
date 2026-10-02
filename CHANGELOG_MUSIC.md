@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.89] - 2026-10-02
+- Best Music is now blue like BestToDo, and Settings has a Dark mode switch that applies right away. New sleep timer: pause after 5 minutes to 1.5 hours, a custom time, or at the end of the current song — set it from Now Playing (moon icon), the menu, Settings, or by long-pressing the song bar at the bottom; while it runs the song bar shows the time left
+
 ## [0.2.88] - 2026-10-02
 - The song bar now sits at the bottom of every screen in Best Music, showing what's playing with a play/pause button (tap it to open Now Playing). When nothing is playing it shows the last song you played — press play to carry on right where you left off, even after closing the app, restarting your phone or updating
 

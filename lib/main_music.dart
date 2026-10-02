@@ -20,6 +20,7 @@ import 'ui/auto_update_dialog.dart';
 import 'ui/music_about_page.dart';
 import 'ui/music_mini_player_bar.dart';
 import 'ui/music_player_page.dart';
+import 'ui/music_theme.dart';
 
 /// Best Music's own navigator, so the background update poll can show its
 /// "New version available" dialog without a [BuildContext] on hand — same
@@ -43,6 +44,7 @@ Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
   await _initStep('config', Config.load);
+  MusicTheme.darkMode.value = Config.darkMode;
   await _initStep('music library', MusicLibraryService.instance.load);
   await _initStep('music playlists', MusicPlaylistService.instance.load);
   await _initStep('music player', MusicPlayerService.init);
@@ -127,41 +129,36 @@ class _BestMusicAppState extends State<BestMusicApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: musicNavigatorKey,
-      title: 'Best Music',
-      // Same as BestToDo's main.dart: Android draws edge-to-edge, so keep
-      // every page (lists, Track info, the mini player) clear of the system
-      // navigation bar instead of underneath it.
-      builder: (context, child) {
-        return SafeArea(
-          top: false,
-          left: false,
-          right: false,
-          bottom: true,
-          // The mini player lives here, below the navigator, so the current
-          // (or last-played) song is at the bottom of every screen.
-          child: Column(
-            children: [
-              Expanded(child: child ?? const SizedBox.shrink()),
-              MusicMiniPlayerBar(navigatorKey: musicNavigatorKey),
-            ],
-          ),
-        );
-      },
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.black),
-        useMaterial3: true,
+    // Rebuilt when Settings → Appearance → Dark mode flips.
+    return ValueListenableBuilder<bool>(
+      valueListenable: MusicTheme.darkMode,
+      builder: (context, darkMode, _) => MaterialApp(
+        navigatorKey: musicNavigatorKey,
+        title: 'Best Music',
+        // Same as BestToDo's main.dart: Android draws edge-to-edge, so keep
+        // every page (lists, Track info, the mini player) clear of the system
+        // navigation bar instead of underneath it.
+        builder: (context, child) {
+          return SafeArea(
+            top: false,
+            left: false,
+            right: false,
+            bottom: true,
+            // The mini player lives here, below the navigator, so the current
+            // (or last-played) song is at the bottom of every screen.
+            child: Column(
+              children: [
+                Expanded(child: child ?? const SizedBox.shrink()),
+                MusicMiniPlayerBar(navigatorKey: musicNavigatorKey),
+              ],
+            ),
+          );
+        },
+        theme: buildMusicTheme(Brightness.light),
+        darkTheme: buildMusicTheme(Brightness.dark),
+        themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
+        home: const MusicPlayerPage(standalone: true),
       ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.white,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: const MusicPlayerPage(standalone: true),
     );
   }
 }

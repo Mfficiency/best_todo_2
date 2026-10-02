@@ -3988,6 +3988,24 @@ handle on the right edge (key `fastScrollHandle`; tap or drag to jump) with a bu
 top row's `trackSectionLabel` — initial letter (digits → `#`) for Title/Artist, "Sep 2026" for
 Date added, "3 min" for Duration.
 
+**Blue theme + dark mode** (0.2.89): Best Music's theme comes from `lib/ui/music_theme.dart` —
+`buildMusicTheme(brightness)` seeds `ColorScheme.fromSeed` with `musicSeedColor` (0xFF005FDD, the
+same blue as BestToDo's `_seedColor`) and pins `primary` to it, light and dark. Settings →
+"Dark mode" (`SwitchListTile`) calls `MusicTheme.setDarkMode`, which persists `Config.darkMode` (Best
+Music's own settings file) and flips the `MusicTheme.darkMode` notifier that `BestMusicApp` wraps its
+`MaterialApp` in, so the switch applies instantly.
+
+**Sleep timer** (0.2.89): `MusicSleepTimer.instance` (`lib/services/music_sleep_timer.dart`) holds a
+`ValueNotifier<SleepTimerState>` — off, timed (`endsAt`, a Dart `Timer` that pauses playback when
+it fires) or end-of-song (`MusicAudioHandler`'s completion listener calls `consumeEndOfTrack()` and,
+when set, pauses and rewinds instead of advancing). `extend()` adds time, `cancel()` turns it off.
+One picker, `showSleepTimerSheet` (`lib/ui/sleep_timer_sheet.dart`: 5/10/15/30/45/60/90 min, End of
+current song, Custom… minutes, plus Add 10 minutes / Turn off while active), opened from: Now
+Playing's app bar (`SleepTimerButton`, tooltip "Sleep timer" / "Sleep timer: 23 min"), the Best
+Music drawer ("Sleep timer" with time left), Settings ("Sleep timer" row), and the mini player
+(a bedtime + time-left badge while running, and long-press on the bar). The timer is in-memory —
+not restored after the app process is killed.
+
 **Always-visible mini player + resume after restart** (0.2.88): `MusicMiniPlayerBar`
 (`lib/ui/music_mini_player_bar.dart`) is mounted once in `BestMusicApp`'s `MaterialApp.builder`
 (a `Column` of the navigator + the bar, inside the bottom `SafeArea`), so the current song — title,

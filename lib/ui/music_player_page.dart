@@ -11,6 +11,7 @@ import '../services/m3u_playlist_service.dart';
 import '../services/music_library_service.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
+import '../services/music_sleep_timer.dart';
 import '../utils/artist_utils.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
@@ -21,6 +22,7 @@ import 'music_about_page.dart';
 import 'music_metadata_scan_page.dart';
 import 'music_mini_player_bar.dart';
 import 'music_settings_page.dart';
+import 'sleep_timer_sheet.dart';
 import 'music_wishlist_page.dart';
 import 'now_playing_page.dart';
 import 'rule_playlist_editor_page.dart';
@@ -173,6 +175,21 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             leading: const Icon(Icons.star_border),
             title: const Text('Wishlist'),
             onTap: () => _pushStandalonePage(() => const MusicWishlistPage()),
+          ),
+          ValueListenableBuilder<SleepTimerState>(
+            valueListenable: MusicSleepTimer.instance.state,
+            builder: (context, state, _) => ListTile(
+              leading: Icon(
+                  state.isActive ? Icons.bedtime : Icons.bedtime_outlined),
+              title: const Text('Sleep timer'),
+              subtitle: state.isActive
+                  ? Text(MusicSleepTimer.describe(state))
+                  : null,
+              onTap: () {
+                Navigator.of(context).pop(); // close the drawer
+                showSleepTimerSheet(this.context);
+              },
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.settings),

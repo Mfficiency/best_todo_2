@@ -2,7 +2,9 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
 import '../services/music_player_service.dart';
+import '../services/music_sleep_timer.dart';
 import 'now_playing_page.dart';
+import 'sleep_timer_sheet.dart';
 
 /// Small persistent bar showing the current song — or, when nothing is
 /// playing, the last-played one restored at startup
@@ -27,6 +29,11 @@ class MusicMiniPlayerBar extends StatelessWidget {
     navigator.push(MaterialPageRoute(builder: (_) => const NowPlayingPage()));
   }
 
+  /// Context under the navigator (the bar itself sits outside it, so it
+  /// can't host a bottom sheet).
+  BuildContext _sheetContext(BuildContext context) =>
+      navigatorKey?.currentContext ?? context;
+
   @override
   Widget build(BuildContext context) {
     final BaseAudioHandler? audio = handler ??
@@ -47,6 +54,8 @@ class MusicMiniPlayerBar extends StatelessWidget {
               elevation: 4,
               child: InkWell(
                 onTap: () => _openNowPlaying(context),
+                // Long-press: the sleep timer, from anywhere in the app.
+                onLongPress: () => showSleepTimerSheet(_sheetContext(context)),
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -69,6 +78,9 @@ class MusicMiniPlayerBar extends StatelessWidget {
                           ],
                         ),
                       ),
+                      _SleepTimerBadge(
+                          onTap: () =>
+                              showSleepTimerSheet(_sheetContext(context))),
                       StreamBuilder<PlaybackState>(
                         stream: audio.playbackState,
                         initialData: audio.playbackState.valueOrNull,
@@ -93,6 +105,48 @@ class MusicMiniPlayerBar extends StatelessWidget {
               ),
             );
           },
+        );
+      },
+    );
+  }
+}
+
+/// Bedtime icon + time left, shown in the mini player only while a sleep
+/// timer runs; refreshes every 15 s so the minutes count down.
+class _SleepTimerBadge extends StatelessWidget {
+  const _SleepTimerBadge({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<SleepTimerState>(
+      valueListenable: MusicSleepTimer.instance.state,
+      builder: (context, state, _) {
+        if (!state.isActive) return const SizedBox.shrink();
+        final color = Theme.of(context).colorScheme.primary;
+        return StreamBuilder<void>(
+          stream: Stream<void>.periodic(const Duration(seconds: 15)),
+          builder: (context, _) => InkWell(
+            key: const ValueKey('musicMiniPlayerSleepTimer'),
+            borderRadius: BorderRadius.circular(16),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.bedtime, size: 18, color: color),
+                  const SizedBox(width: 4),
+                  Text(MusicSleepTimer.describe(state),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelMedium
+                          ?.copyWith(color: color)),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );

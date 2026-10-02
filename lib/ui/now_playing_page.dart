@@ -7,6 +7,7 @@ import '../services/music_audio_handler.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
 import 'queue_page.dart';
+import 'sleep_timer_sheet.dart';
 import 'subpage_app_bar.dart';
 import 'track_metadata_page.dart';
 
@@ -73,6 +74,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
         context,
         title: 'Now Playing',
         actions: [
+          const SleepTimerButton(),
           ValueListenableBuilder<bool>(
             valueListenable: handler.shuffleEnabled,
             builder: (context, shuffleOn, _) => IconButton(

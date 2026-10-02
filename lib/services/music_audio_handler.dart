@@ -8,6 +8,7 @@ import '../models/track.dart';
 import 'music_library_service.dart';
 import 'music_playlist_service.dart';
 import 'music_resume_service.dart';
+import 'music_sleep_timer.dart';
 import 'subsonic_client.dart';
 
 /// The app's single [BaseAudioHandler]: everything the system media
@@ -60,6 +61,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         final finished = currentTrack;
         if (finished != null) {
           unawaited(MusicLibraryService.instance.incrementPlayCount(finished.id));
+        }
+        // Sleep timer set to "end of song": stop here, rewound so play
+        // starts this song again rather than sitting at its end.
+        if (MusicSleepTimer.instance.consumeEndOfTrack()) {
+          unawaited(_player.pause().then((_) async {
+            await _player.seek(Duration.zero);
+            _persist();
+          }));
+          return;
         }
         _advance(1, wrapWithReshuffle: true);
       }

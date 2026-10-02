@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../services/music_library_service.dart';
+import '../services/music_sleep_timer.dart';
+import 'music_theme.dart';
+import 'sleep_timer_sheet.dart';
 import 'subpage_app_bar.dart';
 
 /// Best Music's Settings page: just the music folder and its excluded
@@ -138,6 +141,28 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
               onTap: _openExclusionsDialog,
             ),
           ],
+          const Divider(),
+          ValueListenableBuilder<bool>(
+            valueListenable: MusicTheme.darkMode,
+            builder: (context, dark, _) => SwitchListTile(
+              secondary: const Icon(Icons.dark_mode_outlined),
+              title: const Text('Dark mode'),
+              value: dark,
+              onChanged: (value) => MusicTheme.setDarkMode(value),
+            ),
+          ),
+          ValueListenableBuilder<SleepTimerState>(
+            valueListenable: MusicSleepTimer.instance.state,
+            builder: (context, state, _) => ListTile(
+              leading: Icon(
+                  state.isActive ? Icons.bedtime : Icons.bedtime_outlined),
+              title: const Text('Sleep timer'),
+              subtitle: Text(state.isActive
+                  ? 'On — ${MusicSleepTimer.describe(state)}'
+                  : 'Off — pause playback after a while'),
+              onTap: () => showSleepTimerSheet(context),
+            ),
+          ),
         ],
       ),
     );
