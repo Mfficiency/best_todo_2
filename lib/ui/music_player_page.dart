@@ -297,21 +297,24 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          _FavouritesTab(),
-          _PlaylistsTab(),
-          _TracksTab(),
-          _ArtistsTab(),
-          _TagsTab(),
-          _FoldersTab(),
+      body: Column(
+        children: [
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: const [
+                _FavouritesTab(),
+                _PlaylistsTab(),
+                _TracksTab(),
+                _ArtistsTab(),
+                _TagsTab(),
+                _FoldersTab(),
+              ],
+            ),
+          ),
+          const _MiniPlayerBar(),
         ],
       ),
-      // As the Scaffold's bottom bar (not the last child of a body Column)
-      // the mini player sits above Android's gesture/3-button navigation
-      // bar instead of underneath it in edge-to-edge mode.
-      bottomNavigationBar: const _MiniPlayerBar(),
     );
   }
 }
@@ -1338,58 +1341,49 @@ class _MiniPlayerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A Scaffold with a bottomNavigationBar stops padding its body for the
-    // system navigation bar, so even with nothing playing this still
-    // reserves that inset — otherwise the last list rows hide behind it.
-    const nothingPlaying = SafeArea(top: false, child: SizedBox.shrink());
-    if (!MusicPlayerService.isReady) return nothingPlaying;
+    if (!MusicPlayerService.isReady) return const SizedBox.shrink();
     final MusicAudioHandler handler = MusicPlayerService.handler;
     return StreamBuilder<MediaItem?>(
       stream: handler.mediaItem,
       builder: (context, snapshot) {
         final item = snapshot.data;
-        if (item == null) return nothingPlaying;
+        if (item == null) return const SizedBox.shrink();
         return Material(
           elevation: 4,
-          child: SafeArea(
-            top: false,
-            child: InkWell(
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NowPlayingPage())),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.music_note),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(item.title,
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                          if ((item.artist ?? '').isNotEmpty)
-                            Text(item.artist!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall),
-                        ],
-                      ),
+          child: InkWell(
+            onTap: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const NowPlayingPage())),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.music_note),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        if ((item.artist ?? '').isNotEmpty)
+                          Text(item.artist!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall),
+                      ],
                     ),
-                    StreamBuilder<PlaybackState>(
-                      stream: handler.playbackState,
-                      builder: (context, stateSnapshot) {
-                        final playing = stateSnapshot.data?.playing ?? false;
-                        return IconButton(
-                          icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                          onPressed: () =>
-                              playing ? handler.pause() : handler.play(),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                  ),
+                  StreamBuilder<PlaybackState>(
+                    stream: handler.playbackState,
+                    builder: (context, stateSnapshot) {
+                      final playing = stateSnapshot.data?.playing ?? false;
+                      return IconButton(
+                        icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                        onPressed: () => playing ? handler.pause() : handler.play(),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),

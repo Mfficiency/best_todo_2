@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:besttodo/config.dart';
+import 'package:besttodo/main_music.dart';
 import 'package:besttodo/models/music_playlist.dart';
 import 'package:besttodo/models/track.dart';
 import 'package:besttodo/services/music_library_service.dart';
@@ -127,6 +128,22 @@ void main() {
   // it is the app's root/home page, so it gets a real Drawer (like
   // BestToDo's own home page) instead of buildSubpageAppBar's
   // "Menu"/"Back to Home" leading buttons, which have no drawer to open here.
+  testWidgets(
+      'Best Music keeps every page clear of the system navigation bar '
+      '(edge-to-edge inset), like BestToDo', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3;
+    tester.view.padding = const FakeViewPadding(bottom: 144);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 144);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const BestMusicApp());
+    await tester.pumpAndSettle();
+
+    // 2400/3 = 800 logical px tall; the 48 px navigation bar is excluded.
+    expect(tester.getBottomLeft(find.byType(Scaffold).first).dy, 800 - 48);
+  });
+
   group('standalone (Best Music app home page)', () {
     testWidgets('has a drawer button instead of Menu/Back to Home, '
         'even before a folder is set', (tester) async {

@@ -3980,9 +3980,12 @@ handle on the right edge (key `fastScrollHandle`; tap or drag to jump) with a bu
 top row's `trackSectionLabel` — initial letter (digits → `#`) for Title/Artist, "Sep 2026" for
 Date added, "3 min" for Duration.
 
-**Mini player / navigation-bar inset** (0.2.85): the mini player is the home Scaffold's
-`bottomNavigationBar` wrapped in `SafeArea(top: false)` (an empty `SafeArea` when nothing plays),
-so neither it nor the last list rows sit under Android's edge-to-edge system navigation bar.
+**Navigation-bar inset** (0.2.86): `BestMusicApp` (`lib/main_music.dart`) wraps every route in
+`MaterialApp.builder: SafeArea(bottom: true)` exactly like BestToDo's `main.dart`, so no page (track
+lists, Track info, the mini player) draws under Android's edge-to-edge navigation bar. 0.2.85's
+attempt (mini player as the Scaffold's `bottomNavigationBar`) only covered the home page and let
+the mini player's `Column` stretch to the full screen height — reverted; the mini player is back
+as the last child of the home body `Column` (its text `Column` now `MainAxisSize.min`).
 
 **Per-track "more options" menu**: the row's separate Favorite/"Add to playlist"/"Remove from
 playlist" icon buttons were folded into one `PopupMenuButton<String>` (`Icons.more_vert`, tooltip

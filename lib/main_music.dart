@@ -128,6 +128,18 @@ class _BestMusicAppState extends State<BestMusicApp> {
     return MaterialApp(
       navigatorKey: musicNavigatorKey,
       title: 'Best Music',
+      // Same as BestToDo's main.dart: Android draws edge-to-edge, so keep
+      // every page (lists, Track info, the mini player) clear of the system
+      // navigation bar instead of underneath it.
+      builder: (context, child) {
+        return SafeArea(
+          top: false,
+          left: false,
+          right: false,
+          bottom: true,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.black),
         useMaterial3: true,
