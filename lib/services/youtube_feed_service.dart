@@ -68,6 +68,9 @@ class YoutubeFeedService {
 
   final ValueNotifier<bool> refreshing = ValueNotifier(false);
 
+  /// How far the running refresh is, `[0, 1]` by channels fetched.
+  final ValueNotifier<double> refreshProgress = ValueNotifier(0);
+
   DateTime? lastRefresh;
 
   /// Channels whose last refresh failed, for the feed's error banner.
@@ -343,10 +346,12 @@ class YoutubeFeedService {
   }) async {
     if (channels.isEmpty) return;
     refreshing.value = true;
+    refreshProgress.value = 0;
     final fetched = <String, List<FeedVideo>>{};
     final failed = <String>[];
     try {
       var next = 0;
+      var done = 0;
       Future<void> worker() async {
         while (next < channels.length) {
           final channel = channels[next++];
@@ -356,6 +361,7 @@ class YoutubeFeedService {
             failed.add(channel.name);
             _log('Refreshing ${channel.name} failed: $e');
           }
+          refreshProgress.value = ++done / channels.length;
         }
       }
 

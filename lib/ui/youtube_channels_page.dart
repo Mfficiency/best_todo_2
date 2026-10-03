@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/youtube_feed.dart';
 import '../services/youtube_feed_service.dart';
+import 'estimated_progress_bar.dart';
 import 'subpage_app_bar.dart';
 
 /// Subscriptions → Channels: search YouTube channels by name to subscribe,
@@ -147,7 +148,7 @@ class _YoutubeChannelsPageState extends State<YoutubeChannelsPage> {
               ),
             ),
           ),
-          if (_searching || _importing) const LinearProgressIndicator(),
+          EstimatedProgressBar(active: _searching || _importing),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.all(12),

@@ -18,6 +18,7 @@ import '../services/music_youtube_fallback.dart';
 import '../utils/artist_utils.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
+import 'estimated_progress_bar.dart';
 import 'fast_scroll_list.dart';
 import 'home_scaffold_key.dart';
 import 'mp3_downloader_page.dart';
@@ -506,13 +507,6 @@ class _YoutubeSearchFallbackState extends State<YoutubeSearchFallback> {
                   'stream it — it\'s saved to your library in the background.',
           style: TextStyle(color: scheme.onSecondaryContainer),
         ),
-        trailing: _searching
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : null,
       ),
     );
   }
@@ -523,6 +517,7 @@ class _YoutubeSearchFallbackState extends State<YoutubeSearchFallback> {
     final results = _results;
     return ListView(
       children: [
+        EstimatedProgressBar(active: _searching),
         _banner(context),
         if (_error != null)
           Padding(

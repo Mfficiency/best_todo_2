@@ -13,9 +13,30 @@ import 'music_playlist_service.dart';
 import 'music_resume_service.dart';
 import 'music_sleep_timer.dart';
 import 'sponsorblock_service.dart';
+import 'video_audio_cache.dart';
 import 'subsonic_client.dart';
 import 'youtube_audio_source.dart';
 import 'youtube_feed_service.dart';
+
+/// A paused queue kept aside for [MusicAudioHandler.switchToOtherSession]:
+/// the last music queue while a Subscriptions video plays, or the last
+/// video queue while music plays, with where it was stopped.
+class PlaybackSession {
+  const PlaybackSession({
+    required this.queue,
+    required this.index,
+    required this.position,
+  });
+
+  final List<Track> queue;
+  final int index;
+  final Duration position;
+
+  Track get current => queue[index.clamp(0, queue.length - 1)];
+
+  /// Whether this is a Subscriptions-video session (else music).
+  bool get isVideo => current.isFeedVideo;
+}
 
 /// The app's single [BaseAudioHandler]: everything the system media
 /// notification, lock screen, headset buttons and (when registered through
@@ -81,6 +102,11 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   /// The speed feed videos play at right now — what Now Playing's speed
   /// button shows.
   final ValueNotifier<double> videoSpeed = ValueNotifier(1.0);
+
+  /// The other kind's paused session (see [PlaybackSession]) — what the
+  /// "Back to music"/"Back to video" buttons resume. Set whenever playback
+  /// switches between music and Subscriptions videos.
+  final ValueNotifier<PlaybackSession?> otherSession = ValueNotifier(null);
 
   /// The track whose audio the player currently holds.
   String? _loadedTrackId;
@@ -190,6 +216,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         return ja.AudioSource.uri(
             SubsonicClient.instance.streamUri(track.remoteId!));
       case TrackSource.youtube:
+        // A feed video played in the last week is on disk already.
+        if (track.isFeedVideo) {
+          final cached =
+              await VideoAudioCache.instance.cachedFile(track.remoteId!);
+          if (cached != null) {
+            unawaited(VideoAudioCache.instance.touch(cached));
+            return ja.AudioSource.uri(Uri.file(cached.path));
+          }
+        }
         return YoutubeAudioSource(
           track.remoteId!,
           duration: track.durationMs != null
@@ -230,6 +265,58 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  /// The current queue and where it is, for [otherSession].
+  PlaybackSession? _snapshotCurrent() {
+    final track = currentTrack;
+    if (track == null) return null;
+    final position = _sourceLoaded && _loadedTrackId == track.id
+        ? _player.position
+        : (_resumePosition ?? Duration.zero);
+    return PlaybackSession(
+        queue: List.of(_queue), index: _queueIndex, position: position);
+  }
+
+  static MusicResumeState _resumeStateOf(
+    List<Track> queue,
+    int index,
+    Duration position,
+  ) {
+    final current = queue[index.clamp(0, queue.length - 1)];
+    return MusicResumeState(
+      queueIds: [for (final t in queue) t.id],
+      index: index,
+      position: position,
+      current: current,
+      // Feed videos aren't in the library to be looked up by id later.
+      tracks: current.isFeedVideo ? queue : null,
+    );
+  }
+
+  /// Puts back the other kind's session saved before a restart.
+  void restoreOtherSession(PlaybackSession? session) {
+    otherSession.value =
+        session == null || session.queue.isEmpty ? null : session;
+  }
+
+  /// One tap back into the other kind of listening: pauses what's playing
+  /// now (remembering where, so the same button flips straight back) and
+  /// resumes the last music queue or the last video queue where it
+  /// stopped.
+  Future<void> switchToOtherSession() async {
+    final other = otherSession.value;
+    if (other == null || other.queue.isEmpty) return;
+    _persist(); // a feed video records its resume point here
+    otherSession.value = _snapshotCurrent();
+    _queue = other.queue;
+    _queueIndex = other.index.clamp(0, other.queue.length - 1);
+    _preShuffleOrder = null;
+    _videoSpeedOverride = null;
+    shuffleEnabled.value = false;
+    _resumePosition = other.position > Duration.zero ? other.position : null;
+    queue.add(_queue.map(_toMediaItem).toList());
+    await _playCurrent();
+  }
+
   /// Saves queue/track/position for [restore] after a restart.
   void _persist() {
     _ticksSinceSave = 0;
@@ -244,14 +331,17 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         duration: _player.duration,
       ));
     }
-    unawaited(MusicResumeService.save(MusicResumeState(
-      queueIds: [for (final t in _queue) t.id],
-      index: _queueIndex,
-      position: _sourceLoaded
-          ? _player.position
-          : (_resumePosition ?? Duration.zero),
-      current: track,
-    )));
+    final other = otherSession.value;
+    unawaited(MusicResumeService.save(
+      _resumeStateOf(
+        _queue,
+        _queueIndex,
+        _sourceLoaded ? _player.position : (_resumePosition ?? Duration.zero),
+      ),
+      other: other == null
+          ? null
+          : _resumeStateOf(other.queue, other.index, other.position),
+    ));
   }
 
   /// Shows [tracks]/[index] as the current, paused queue without loading
@@ -282,6 +372,14 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   /// the first track).
   Future<void> setQueueAndPlay(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
+    // Switching between music and Subscriptions videos: keep the queue
+    // being left so it's one tap to get back into it.
+    final current = currentTrack;
+    final next = tracks[startIndex.clamp(0, tracks.length - 1)];
+    if (current != null && current.isFeedVideo != next.isFeedVideo) {
+      _persist();
+      otherSession.value = _snapshotCurrent();
+    }
     _queue = tracks;
     _queueIndex = startIndex.clamp(0, tracks.length - 1);
     _preShuffleOrder = null;
@@ -312,6 +410,11 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       _loadedTrackId = track.id;
       await _applySpeed(track);
       await _applyVolume(track);
+      // Keep a full copy of a video you start, so stopping halfway and
+      // coming back later (even offline) is instant.
+      if (track.isFeedVideo) {
+        unawaited(VideoAudioCache.instance.cacheInBackground(track));
+      }
       await _player.play();
     } catch (_) {
       // Unplayable track (missing file, unreachable server): skip it rather
@@ -500,6 +603,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     YoutubeFeedService.instance.settings.removeListener(applyCurrentVolume);
     shuffleEnabled.dispose();
     videoSpeed.dispose();
+    otherSession.dispose();
     await _player.dispose();
   }
 }

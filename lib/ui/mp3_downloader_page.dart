@@ -12,6 +12,7 @@ import '../services/mp3_downloader_service.dart';
 import '../services/music_share_link.dart';
 import '../services/share_intent_service.dart';
 import '../services/track_title.dart';
+import 'estimated_progress_bar.dart';
 import 'mp3_downloads_page.dart';
 import 'subpage_app_bar.dart';
 
@@ -807,7 +808,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       case _Stage.idle:
         return const SizedBox.shrink();
       case _Stage.searching:
-        return const Center(child: CircularProgressIndicator());
+        return const Align(
+          alignment: Alignment.topCenter,
+          child: EstimatedProgressBar(active: true),
+        );
       case _Stage.picking:
         final autoVideoId = _autoJob?.videoId;
         final list = ListView.separated(
