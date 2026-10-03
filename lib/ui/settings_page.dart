@@ -25,6 +25,7 @@ import '../services/subsonic_client.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import '../services/update_service.dart';
 import '../utils/date_time_format.dart';
 import 'approval_quick_tags_page.dart';
 import 'auto_tag_rules_page.dart';
@@ -33,6 +34,7 @@ import 'fitness_activity_page.dart';
 import 'sms_report_log_page.dart';
 import 'streak_goal_dialog.dart';
 import 'subpage_app_bar.dart';
+import 'update_downloads_folder_tile.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
@@ -230,6 +232,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
     _SettingsSearchEntry('Automatically check for updates', 9,
         'auto update version release new build startup prompt install about'),
+    _SettingsSearchEntry('Update downloads folder', 9,
+        'apk download path location directory storage temporary'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
         'deleted bin hide show tag exclude include only filter built in'),
@@ -2735,6 +2739,7 @@ class _SettingsPageState extends State<SettingsPage> {
           value: _autoUpdateCheckEnabled,
           onChanged: _setAutoUpdateCheckEnabled,
         ),
+        UpdateDownloadsFolderTile(updateService: UpdateService.instance),
       ],
     );
   }

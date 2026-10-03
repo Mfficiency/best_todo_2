@@ -143,6 +143,7 @@ final List<SuiteRule> suiteRules = [
     'lib/services/update_service.dart', 'lib/services/auto_update_checker.dart', 'lib/ui/about_page.dart',
     'lib/ui/auto_update_dialog.dart', 'tool/publish_apk.dart', 'tool/stage_local_release.dart', 'tool/append_build_time.dart',
   ], {'update'}),
+  SuiteRule(['lib/ui/update_downloads_folder_tile.dart'], {'update', 'home', 'music'}),
   SuiteRule(['lib/utils/linkified_text.dart', 'lib/ui/task_detail_page.dart', 'lib/ui/task_info_dialog.dart'], {'home', 'tools'}),
   SuiteRule(['AlarmsWidgetProvider.kt'], {'alarms', 'home'}),
   SuiteRule(['SimpleWidgetProvider.kt'], {'home'}),

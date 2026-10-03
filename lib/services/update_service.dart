@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -444,6 +445,23 @@ class UpdateService {
       localPath: map['localPath'] as String?,
       reason: map['reason']?.toString(),
     );
+  }
+
+  /// Absolute path of the folder update APKs are downloaded into (the app's
+  /// external files dir + `updates/`, e.g.
+  /// `/storage/emulated/0/Android/data/<app id>/files/updates`), shown in
+  /// Settings. Null off Android — no in-app downloads happen there — or when
+  /// the native side can't resolve it (external storage unavailable).
+  Future<String?> updateDownloadsDirectory() async {
+    if (downloadChannelOverride == null && (kIsWeb || !Platform.isAndroid)) {
+      return null;
+    }
+    try {
+      final result = await _invokeDownloadChannel('updateDownloadsDir', {});
+      return result is String && result.isNotEmpty ? result : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Removes a download from `DownloadManager` (and its partial file).

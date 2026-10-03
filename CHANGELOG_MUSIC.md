@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.97] - 2026-10-03
+- Settings now shows the folder where update downloads are saved, with a button to copy its path
+
 ## [0.2.96] - 2026-10-03
 - Playback speed for Subscriptions videos: set a default speed in Feed settings (0.5× to 3×), and change it any time while a video plays with the new speed button (e.g. 1.5×) at the top of Now Playing — pick a preset or fine-tune in 0.05 steps, and tap "Make … the default" to keep it. A speed you pick while playing lasts for the rest of that queue. Your own music always plays at normal speed
 - Local build: 2026-10-03 19:28

@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/music_library_service.dart';
 import '../services/music_sleep_timer.dart';
+import 'music_about_page.dart';
 import 'music_theme.dart';
 import 'sleep_timer_sheet.dart';
 import 'subpage_app_bar.dart';
+import 'update_downloads_folder_tile.dart';
 import 'youtube_feed_settings_page.dart';
 
 /// Best Music's Settings page: just the music folder and its excluded
@@ -183,6 +185,9 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const YoutubeFeedSettingsPage())),
           ),
+          const Divider(),
+          UpdateDownloadsFolderTile(
+              updateService: MusicAboutPage.updateService),
         ],
       ),
     );

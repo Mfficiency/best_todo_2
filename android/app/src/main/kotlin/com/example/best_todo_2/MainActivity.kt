@@ -392,6 +392,14 @@ class MainActivity : AudioServiceFragmentActivity() {
                         )
                     }
                 }
+                // Absolute path of the folder startBackgroundDownload writes
+                // update APKs into (shown in Settings), or null when external
+                // storage is unavailable. Must stay in sync with the
+                // destDir computed there.
+                "updateDownloadsDir" -> {
+                    val baseDir = getExternalFilesDir(null)
+                    result.success(baseDir?.let { File(it, "updates").absolutePath })
+                }
                 // Cancels a download and deletes its partial file.
                 "cancelDownload" -> {
                     val id = call.argument<Number>("downloadId")?.toLong()
