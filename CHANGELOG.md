@@ -2,6 +2,9 @@
 
 ## [0.2.96] - 2026-10-03
 - Music Player: progress bars while songs load and while searching YouTube
+- CI build: 2026-10-03 22:25 UTC
+- Build duration (apk, CI): 8m 23s
+- APK size: 69.7 MB
 
 ## [0.2.95] - 2026-10-03
 - Music Player: when a song isn't in your library, YouTube is searched automatically and the results are clearly marked "Not in your library"; songs streamed from YouTube always play at 1× and use the music volume
