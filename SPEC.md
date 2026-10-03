@@ -2271,6 +2271,32 @@ Save/Discard; a bare back-gesture dismissal does the same from `dispose()`. Test
 `test/tools/music_share_link_test.dart`,
 `test/tools/mp3_downloader_test.dart` ("opened from a share (sharedLink)").
 
+**Best Music share-to-download** (Best Music 0.2.91): Best Music uses the same native path
+(`ShareActivity` → `MainActivity` → `besttodo/share` → `ShareIntentService`), hooked up in
+`lib/main_music.dart`'s `_BestMusicAppState` with the same one-at-a-time share queue as
+`main.dart`. Since everything shared into a music app is a song to find, it routes through
+`detectBestMusicShare` instead: Spotify/Shazam/YouTube exactly as above, plus any *other*
+link (`MusicLinkSource.otherLink` — Apple Music, Deezer, SoundCloud, ...; caption first,
+else the page's `og:title`/`<title>` minus a short trailing "| Site") and plain text such
+as "Song - Artist" (`MusicLinkSource.text`, searched as-is). Only a blank (file-only)
+share is dropped, straight back to the sharing app. Best Music opens
+`Mp3DownloaderPage(sharedLink: ..., autoDownloadTopMatch: true)`: a share that resolves to
+a *search* queues the top result immediately (no tap needed) and keeps the other
+candidates listed under "Downloading the top match. Wrong song? Tap the right one below
+instead." — tapping another candidate cancels the auto-picked job (`Mp3DownloadManager.
+cancel`) and queues that one. BestToDo keeps the plain picker (flag off). After a download
+lands inside the library folder (`Config.musicFolder`, defaulting to the MP3 download folder
+when unset — same rule as `MusicPlayerPage.initState`), `MusicDownloadLibrarySync`
+(`lib/services/music_download_library_sync.dart`) rescans the library once the download
+queue goes idle, so the song is playable without a manual Rescan; only completions seen
+after `attach()` count, never the persisted history. The music flavor's
+`android/app/src/music/AndroidManifest.xml` replaces `ShareActivity` (`tools:node=
+"replace"`) with a text/plain-only filter, so Best Music isn't offered for images/PDFs.
+Tests: `test/tools/music_share_link_test.dart` (`detectBestMusicShare`, other-link/text
+resolving), `test/tools/mp3_downloader_test.dart` ("autoDownloadTopMatch (Best Music)"),
+`test/music/music_download_library_sync_test.dart`, `test/update/music_build_wiring_test.dart`
+(manifest overlay).
+
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
 here have broken builds before.

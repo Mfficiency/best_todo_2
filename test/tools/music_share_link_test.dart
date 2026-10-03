@@ -144,4 +144,92 @@ void main() {
       );
     });
   });
+
+  group('detectBestMusicShare', () {
+    test('still recognizes Spotify/Shazam/YouTube links first', () {
+      expect(
+        detectBestMusicShare('https://open.spotify.com/track/abc123')!.source,
+        MusicLinkSource.spotify,
+      );
+      expect(
+        detectBestMusicShare('https://youtu.be/dQw4w9WgXcQ')!.source,
+        MusicLinkSource.youtube,
+      );
+    });
+
+    test('any other link is kept, with its caption as a hint', () {
+      final link = detectBestMusicShare(
+        'Yellow by Coldplay https://music.apple.com/us/album/yellow/1122?i=33',
+      );
+      expect(link!.source, MusicLinkSource.otherLink);
+      expect(link.url, 'https://music.apple.com/us/album/yellow/1122?i=33');
+      expect(link.textHint, 'Yellow by Coldplay');
+    });
+
+    test('plain text is searched as-is', () {
+      final link = detectBestMusicShare('  Yellow -\n Coldplay ');
+      expect(link!.source, MusicLinkSource.text);
+      expect(link.textHint, 'Yellow - Coldplay');
+    });
+
+    test('blank text (a file-only share) is nothing to search for', () {
+      expect(detectBestMusicShare('   '), isNull);
+    });
+  });
+
+  group('MusicLinkResolverService for Best Music shares', () {
+    test('plain text resolves to itself without a network fetch', () async {
+      var fetched = false;
+      final resolver = MusicLinkResolverService(
+        client: MockClient((request) async {
+          fetched = true;
+          return http.Response('', 200);
+        }),
+      );
+      final query = await resolver.resolveSearchQuery(
+        const MusicShareLink(
+          url: '',
+          source: MusicLinkSource.text,
+          textHint: 'Listen to Yellow - Coldplay!',
+        ),
+      );
+      expect(query, 'Yellow - Coldplay');
+      expect(fetched, isFalse);
+    });
+
+    test('another service\'s link with no caption uses its og:title',
+        () async {
+      final resolver = MusicLinkResolverService(
+        client: MockClient((request) async => http.Response(
+              '<html><head>'
+              '<meta property="og:title" content="Yellow - Coldplay | Deezer">'
+              '<title>ignored</title></head></html>',
+              200,
+            )),
+      );
+      final query = await resolver.resolveSearchQuery(
+        const MusicShareLink(
+          url: 'https://www.deezer.com/track/3135556',
+          source: MusicLinkSource.otherLink,
+        ),
+      );
+      expect(query, 'Yellow - Coldplay');
+    });
+
+    test('another service\'s unreadable link throws a readable error',
+        () async {
+      final resolver = MusicLinkResolverService(
+        client: MockClient((request) async => http.Response('', 404)),
+      );
+      expect(
+        () => resolver.resolveSearchQuery(
+          const MusicShareLink(
+            url: 'https://www.deezer.com/track/3135556',
+            source: MusicLinkSource.otherLink,
+          ),
+        ),
+        throwsA(isA<MusicLinkResolveException>()),
+      );
+    });
+  });
 }

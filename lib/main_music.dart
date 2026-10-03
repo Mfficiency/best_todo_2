@@ -10,13 +10,19 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'config.dart';
+import 'models/shared_payload.dart';
 import 'services/auto_update_checker.dart';
+import 'services/mp3_download_manager.dart';
+import 'services/music_download_library_sync.dart';
 import 'services/music_library_service.dart';
 import 'services/music_player_service.dart';
 import 'services/music_playlist_service.dart';
+import 'services/music_share_link.dart';
+import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/update_service.dart';
 import 'ui/auto_update_dialog.dart';
+import 'ui/mp3_downloader_page.dart';
 import 'ui/music_about_page.dart';
 import 'ui/music_mini_player_bar.dart';
 import 'ui/music_player_page.dart';
@@ -75,9 +81,27 @@ class _BestMusicAppState extends State<BestMusicApp> {
   /// doesn't need.
   String? _pendingUpdateVersion;
 
+  /// Shares waiting for the downloader screen, shown one at a time — same
+  /// queue as `_MyAppState._pendingShares` in `main.dart`.
+  final List<SharedPayload> _pendingShares = [];
+  bool _shareScreenOpen = false;
+
   @override
   void initState() {
     super.initState();
+    // A finished download lands in the library without a manual rescan.
+    unawaited(Mp3DownloadManager.instance
+        .load()
+        .then((_) => MusicDownloadLibrarySync.instance.attach())
+        .catchError((_) {}));
+    if (!kIsWeb && Platform.isAndroid) {
+      // A song shared from Spotify, Shazam, YouTube (or any other app — a
+      // link or just "Song - Artist") goes straight to the MP3 Downloader,
+      // which starts downloading the best match right away. Same native
+      // ShareActivity → MainActivity → `besttodo/share` channel as BestToDo.
+      ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
+      unawaited(ShareIntentService.instance.init().catchError((_) {}));
+    }
     // Settings → Updates → "Automatically check for updates" applies to
     // BestToDo's own build; Best Music has no such toggle yet, so this
     // background poll (mirroring main.dart's) always runs. Points at
@@ -92,7 +116,48 @@ class _BestMusicAppState extends State<BestMusicApp> {
   @override
   void dispose() {
     AutoUpdateChecker.instance.stop();
+    ShareIntentService.instance.setOnSharedPayload(null);
+    MusicDownloadLibrarySync.instance.detach();
     super.dispose();
+  }
+
+  void _queueSharedPayload(SharedPayload payload) {
+    _pendingShares.add(payload);
+    if (!_shareScreenOpen) _presentNextSharedPayload();
+  }
+
+  void _presentNextSharedPayload() {
+    if (_pendingShares.isEmpty) return;
+    final payload = _pendingShares.removeAt(0);
+    final link = detectBestMusicShare(
+      payload.text.isNotEmpty ? payload.text : payload.subject,
+    );
+    if (link == null) {
+      // A file-only share (Best Music's share target only takes text, but
+      // be safe): nothing to search for, so hand control straight back.
+      unawaited(ShareIntentService.instance.returnToPreviousApp());
+      _presentNextSharedPayload();
+      return;
+    }
+    // Wait for the first frame so the navigator exists on a cold start.
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = musicNavigatorKey.currentState;
+      if (navigator == null) return;
+      _shareScreenOpen = true;
+      navigator
+          .push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => Mp3DownloaderPage(
+              sharedLink: link,
+              autoDownloadTopMatch: true,
+            ),
+          ))
+          .whenComplete(() {
+        _shareScreenOpen = false;
+        _presentNextSharedPayload();
+      });
+    });
   }
 
   void _onUpdateFound(UpdateInfo info) {

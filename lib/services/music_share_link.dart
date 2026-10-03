@@ -10,7 +10,12 @@ import 'mp3_downloader_service.dart'
 /// is resolved into a search query — YouTube resolves straight through the
 /// existing MP3 Downloader URL handling, Spotify/Shazam need their page's
 /// title looked up first.
-enum MusicLinkSource { spotify, shazam, youtube }
+///
+/// [otherLink] and [text] only ever come from [detectBestMusicShare] — Best
+/// Music treats *any* share as a song to find, so a link from some other
+/// music service (Apple Music, Deezer, SoundCloud, ...) is resolved through
+/// its page title and plain text ("Song - Artist") is searched as-is.
+enum MusicLinkSource { spotify, shazam, youtube, otherLink, text }
 
 /// A song/video link recognized inside a shared payload's text (see
 /// `ShareIntentService`/`main.dart`), plus whatever other text came with it
@@ -68,6 +73,36 @@ MusicShareLink? detectMusicShareLink(String text) {
   return null;
 }
 
+/// Best Music's share routing: everything shared into the app is a song to
+/// find, so on top of [detectMusicShareLink]'s Spotify/Shazam/YouTube links
+/// this also accepts any other link (resolved by its page title, see
+/// [MusicLinkSource.otherLink]) and plain text such as "Song - Artist"
+/// ([MusicLinkSource.text], searched as-is). Null only when [text] is blank
+/// (a file-only share), which the app can't do anything with.
+MusicShareLink? detectBestMusicShare(String text) {
+  final link = detectMusicShareLink(text);
+  if (link != null) return link;
+  final match = _urlPattern.firstMatch(text);
+  if (match != null) {
+    final hint = (text.substring(0, match.start) + text.substring(match.end))
+        .replaceAll(_urlPattern, ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return MusicShareLink(
+      url: match.group(0)!,
+      source: MusicLinkSource.otherLink,
+      textHint: hint,
+    );
+  }
+  final trimmed = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (trimmed.isEmpty) return null;
+  return MusicShareLink(
+    url: '',
+    source: MusicLinkSource.text,
+    textHint: trimmed,
+  );
+}
+
 /// Thrown by [MusicLinkResolverService.resolveSearchQuery] when a
 /// Spotify/Shazam link's title couldn't be read and no usable text came
 /// with the share either.
@@ -111,9 +146,18 @@ class MusicLinkResolverService {
     if (link.source == MusicLinkSource.youtube) return link.url;
     final hint = _cleanedHint(link.textHint);
     if (hint.isNotEmpty) return hint;
-    return link.source == MusicLinkSource.spotify
-        ? _resolveSpotify(link.url)
-        : _resolveShazam(link.url);
+    switch (link.source) {
+      case MusicLinkSource.spotify:
+        return _resolveSpotify(link.url);
+      case MusicLinkSource.shazam:
+        return _resolvePageTitle(link.url, 'Shazam');
+      case MusicLinkSource.otherLink:
+        return _resolvePageTitle(link.url, null);
+      case MusicLinkSource.youtube:
+      case MusicLinkSource.text:
+        throw MusicLinkResolveException(
+            'Nothing to search for. Type the song name instead.');
+    }
   }
 
   Future<String> _resolveSpotify(String url) async {
@@ -134,7 +178,11 @@ class MusicLinkResolverService {
         "Couldn't read this Spotify link's title. Paste the song name instead.");
   }
 
-  Future<String> _resolveShazam(String url) async {
+  /// Reads a song title off [url]'s `og:title` (falling back to `<title>`),
+  /// minus a trailing " | <siteName>"/" - <siteName>" suffix. [siteName]
+  /// null (a link from a service this file doesn't know) strips any short
+  /// trailing "| Site" suffix instead.
+  Future<String> _resolvePageTitle(String url, String? siteName) async {
     try {
       final response = await _client
           .get(Uri.parse(url))
@@ -147,13 +195,19 @@ class MusicLinkResolverService {
                 ?.trim() ??
             '';
         if (title.isEmpty) title = document.querySelector('title')?.text.trim() ?? '';
-        title = title
-            .replaceAll(RegExp(r'\s*[|–-]\s*Shazam\s*$', caseSensitive: false), '')
-            .trim();
+        title = siteName != null
+            ? title
+                .replaceAll(
+                    RegExp('\\s*[|–-]\\s*${RegExp.escape(siteName)}\\s*\$',
+                        caseSensitive: false),
+                    '')
+                .trim()
+            : title.replaceAll(RegExp(r'\s*\|\s*[^|]{1,40}$'), '').trim();
         if (title.isNotEmpty) return title;
       }
     } catch (_) {}
-    throw MusicLinkResolveException(
-        "Couldn't read this Shazam link's title. Paste the song name instead.");
+    throw MusicLinkResolveException(siteName != null
+        ? "Couldn't read this $siteName link's title. Paste the song name instead."
+        : "Couldn't read this link's title. Paste the song name instead.");
   }
 }

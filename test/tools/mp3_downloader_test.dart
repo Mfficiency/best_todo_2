@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -835,6 +836,152 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Coldplay - Yellow'), findsOneWidget);
+      });
+
+      group('autoDownloadTopMatch (Best Music)', () {
+        const candidates = [
+          Mp3SearchResult(
+            videoId: 'right',
+            title: 'Coldplay - Yellow',
+            channel: 'Coldplay',
+            duration: Duration(minutes: 4),
+          ),
+          Mp3SearchResult(
+            videoId: 'other',
+            title: 'Coldplay - Yellow (Live)',
+            channel: 'Coldplay',
+            duration: Duration(minutes: 5),
+          ),
+        ];
+
+        testWidgets(
+            'a shared Shazam link downloads the top match straight away and '
+            'keeps the other candidates listed', (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async {
+            expect(query, 'Yellow by Coldplay');
+            return candidates;
+          };
+          Mp3DownloaderService.instance.downloadOverride =
+              (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              autoDownloadTopMatch: true,
+              sharedLink: MusicShareLink(
+                url: 'https://www.shazam.com/track/52323911/yellow',
+                source: MusicLinkSource.shazam,
+                textHint: 'I used Shazam to discover Yellow by Coldplay.',
+              ),
+            ),
+          ));
+          await tester.pumpAndSettle();
+
+          final jobs = Mp3DownloadManager.instance.jobs.value;
+          expect(jobs, hasLength(1));
+          expect(jobs.first.videoId, 'right');
+          expect(find.textContaining('Downloading the top match'),
+              findsOneWidget);
+          expect(find.text('Coldplay - Yellow (Live)'), findsOneWidget);
+        });
+
+        testWidgets('tapping a different candidate swaps the download',
+            (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async => candidates;
+          // The auto-picked download is still running when the other
+          // candidate is tapped; it only ends once [stopRight] fires, the way
+          // a real download ends at the next chunk after a cancel request.
+          final stopRight = Completer<String>();
+          Mp3DownloaderService.instance.downloadOverride =
+              (result, dir, onProgress) => result.videoId == 'right'
+                  ? stopRight.future
+                  : Completer<String>().future;
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              autoDownloadTopMatch: true,
+              sharedLink: MusicShareLink(
+                url: '',
+                source: MusicLinkSource.text,
+                textHint: 'Yellow Coldplay',
+              ),
+            ),
+          ));
+          await tester.pumpAndSettle();
+          expect(Mp3DownloadManager.instance.jobs.value.single.videoId,
+              'right');
+
+          await tester.tap(find.text('Coldplay - Yellow (Live)'));
+          await tester.pump();
+          stopRight.completeError(Exception('stopped'));
+          await tester.pumpAndSettle();
+
+          final jobs = Mp3DownloadManager.instance.jobs.value;
+          expect(jobs.firstWhere((j) => j.videoId == 'right').status,
+              Mp3DownloadStatus.cancelled);
+          expect(jobs.map((j) => j.videoId), contains('other'));
+          expect(find.textContaining('Downloading the top match'),
+              findsNothing);
+        });
+
+        testWidgets('a shared YouTube link still downloads directly',
+            (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          var searched = false;
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async {
+            searched = true;
+            return candidates;
+          };
+          Mp3DownloaderService.instance.resolveOverride = (id) async =>
+              Mp3SearchResult(
+                videoId: id,
+                title: 'Shared video',
+                channel: 'Some channel',
+                duration: const Duration(minutes: 3),
+              );
+          Mp3DownloaderService.instance.downloadOverride =
+              (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              autoDownloadTopMatch: true,
+              sharedLink: MusicShareLink(
+                url: 'https://youtu.be/dQw4w9WgXcQ',
+                source: MusicLinkSource.youtube,
+              ),
+            ),
+          ));
+          await tester.pumpAndSettle();
+
+          expect(searched, isFalse);
+          expect(Mp3DownloadManager.instance.jobs.value.single.title,
+              'Shared video');
+        });
+
+        testWidgets('without the flag a Shazam share still waits on the picker',
+            (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async => candidates;
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              sharedLink: MusicShareLink(
+                url: 'https://www.shazam.com/track/52323911/yellow',
+                source: MusicLinkSource.shazam,
+                textHint: 'Yellow by Coldplay',
+              ),
+            ),
+          ));
+          await tester.pumpAndSettle();
+
+          expect(Mp3DownloadManager.instance.jobs.value, isEmpty);
+          expect(find.text('Coldplay - Yellow'), findsOneWidget);
+        });
       });
 
       testWidgets('the Close button returns to the previous sharing app',

@@ -1,0 +1,25 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Best Music's share-sheet entry: the same ShareActivity trampoline
+             as BestToDo (see src/main/AndroidManifest.xml), but only for
+             text — a Spotify/Shazam/YouTube link or a "Song - Artist" line
+             goes straight to the MP3 Downloader (lib/main_music.dart).
+             Images/PDFs mean nothing to a music app, so replacing the
+             activity drops those filters and keeps Best Music out of the
+             share sheet for them. -->
+        <activity
+            android:name="com.mfficiency.best_todo_2.ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            tools:node="replace">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

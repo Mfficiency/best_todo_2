@@ -51,6 +51,7 @@ class Mp3DownloaderPage extends StatefulWidget {
     Mp3DownloadManager? manager,
     MusicLinkResolverService? resolver,
     this.sharedLink,
+    this.autoDownloadTopMatch = false,
   })  : _service = service,
         _manager = manager,
         _resolver = resolver,
@@ -66,6 +67,15 @@ class Mp3DownloaderPage extends StatefulWidget {
   /// of waiting for the user to type, and swaps the app bar for one that can
   /// hand control back to the sharing app.
   final MusicShareLink? sharedLink;
+
+  /// Best Music's share flow (see `main_music.dart`): a shared link or song
+  /// name that resolves to a *search* (anything but a direct YouTube link,
+  /// which already downloads immediately) queues the top match straight
+  /// away instead of waiting on the candidate picker. The other candidates
+  /// stay listed, so a wrong guess is one tap to swap — tapping another
+  /// candidate cancels the auto-picked download if it's still running.
+  /// Off for BestToDo, whose share flow keeps the plain picker.
+  final bool autoDownloadTopMatch;
 
   @override
   State<Mp3DownloaderPage> createState() => _Mp3DownloaderPageState();
@@ -97,6 +107,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
   // to the sharing app on a bare back-gesture dismissal, without
   // double-firing the platform call. Mirrors QuickAddSharePage.
   bool _shareFinished = false;
+
+  // The download [Mp3DownloaderPage.autoDownloadTopMatch] queued on its own,
+  // until the user picks a candidate themselves.
+  Mp3DownloadJob? _autoJob;
 
   @override
   void initState() {
@@ -132,7 +146,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       final query = await _resolver.resolveSearchQuery(link);
       if (!mounted) return;
       _controller.text = query;
-      await _submit();
+      await _submit(
+        autoPickTop: widget.autoDownloadTopMatch &&
+            link.source != MusicLinkSource.youtube,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -287,7 +304,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     );
   }
 
-  Future<void> _submit() async {
+  /// [autoPickTop]: queue the first search result right away (see
+  /// [Mp3DownloaderPage.autoDownloadTopMatch]) while still listing every
+  /// candidate.
+  Future<void> _submit({bool autoPickTop = false}) async {
     final input = _controller.text.trim();
     if (input.isEmpty) return;
     FocusScope.of(context).unfocus();
@@ -320,7 +340,12 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       setState(() {
         _stage = _Stage.picking;
         _results = results;
+        _autoJob = null;
       });
+      if (autoPickTop) {
+        final job = await _queueDownload(results.first);
+        if (mounted && job != null) setState(() => _autoJob = job);
+      }
     } catch (e) {
       if (!mounted) return;
       final verb = looksLikeYoutubePlaylistUrl(input)
@@ -403,10 +428,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     );
   }
 
-  Future<void> _queueDownload(Mp3SearchResult result) async {
+  Future<Mp3DownloadJob?> _queueDownload(Mp3SearchResult result) async {
     final folder = await _ensureDownloadFolder();
-    if (!mounted || folder == null) return;
-    _manager.enqueue(result, folder);
+    if (!mounted || folder == null) return null;
+    final job = _manager.enqueue(result, folder);
     _controller.clear();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -417,6 +442,20 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
         ),
       ),
     );
+    return job;
+  }
+
+  /// A candidate tapped in the picker. If it isn't the one
+  /// [Mp3DownloaderPage.autoDownloadTopMatch] already started, that guess
+  /// was wrong: stop it (if it's still running) before queuing this one.
+  Future<void> _pickCandidate(Mp3SearchResult result) async {
+    final auto = _autoJob;
+    if (auto != null) {
+      if (auto.videoId == result.videoId) return;
+      _manager.cancel(auto.id);
+      setState(() => _autoJob = null);
+    }
+    await _queueDownload(result);
   }
 
   void _openDownloads() {
@@ -436,6 +475,7 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       _playlistFolder = null;
       _selectedVideoIds = <String>{};
       _alreadyDownloadedVideoIds = <String>{};
+      _autoJob = null;
     });
   }
 
@@ -760,23 +800,41 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       case _Stage.searching:
         return const Center(child: CircularProgressIndicator());
       case _Stage.picking:
-        return ListView.separated(
+        final autoVideoId = _autoJob?.videoId;
+        final list = ListView.separated(
           itemCount: _results.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final result = _results[index];
             final plays = formatViewCount(result.viewCount);
+            final isAuto = result.videoId == autoVideoId;
             return ListTile(
+              selected: isAuto,
               title: Text(result.title,
                   maxLines: 2, overflow: TextOverflow.ellipsis),
               subtitle: Text(
                 '${result.channel} · ${_formatDuration(result.duration)}'
                 '${plays.isEmpty ? '' : ' · $plays plays'}',
               ),
-              trailing: const Icon(Icons.download),
-              onTap: () => _queueDownload(result),
+              trailing: Icon(isAuto ? Icons.downloading : Icons.download),
+              onTap: () => _pickCandidate(result),
             );
           },
+        );
+        if (autoVideoId == null) return list;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Downloading the top match. Wrong song? Tap the right one '
+                'below instead.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            Expanded(child: list),
+          ],
         );
       case _Stage.playlist:
         return _buildPlaylistPicker(context);

@@ -104,4 +104,19 @@ void main() {
       expect(ps1, contains('CHANGELOG_MUSIC.md'));
     });
   });
+
+  group('Best Music share-sheet entry', () {
+    test('the music flavor replaces ShareActivity with a text-only one', () {
+      // Shared Spotify/Shazam/YouTube links reach Best Music through the same
+      // ShareActivity trampoline as BestToDo; the music flavor's manifest
+      // overlay narrows it to text so Best Music isn't offered for photos
+      // and PDFs it can't do anything with (lib/main_music.dart).
+      final manifest = read('android/app/src/music/AndroidManifest.xml');
+      expect(manifest, contains('ShareActivity'));
+      expect(manifest, contains('tools:node="replace"'));
+      expect(manifest, contains('text/plain'));
+      expect(manifest, isNot(contains('image/')));
+      expect(manifest, isNot(contains('application/pdf')));
+    });
+  });
 }
