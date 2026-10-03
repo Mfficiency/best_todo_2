@@ -8,11 +8,13 @@ import '../config.dart';
 import '../models/music_playlist.dart';
 import '../models/track.dart';
 import '../services/m3u_playlist_service.dart';
+import '../services/mp3_downloader_service.dart';
 import '../services/music_library_service.dart';
 import '../services/music_player_service.dart';
 import '../services/speaker_play_guard.dart';
 import '../services/music_playlist_service.dart';
 import '../services/music_sleep_timer.dart';
+import '../services/music_youtube_fallback.dart';
 import '../utils/artist_utils.dart';
 import 'app_logs_page.dart';
 import 'changelog_page.dart';
@@ -367,16 +369,20 @@ List<Track> _filterTracks(List<Track> tracks, String query) {
 
 /// Library-wide search reached from the app bar's search icon — Samsung
 /// Music style: type to filter by title or artist, tap a result to start
-/// playing it from that point.
+/// playing it from that point. When nothing in the library matches, it
+/// offers to look the query up on YouTube instead ([YoutubeSearchFallback]).
 class _MusicSearchDelegate extends SearchDelegate<void> {
   Widget _buildTrackResults(BuildContext context) {
     final tracks = _filterTracks(MusicLibraryService.instance.tracks.value, query);
     if (tracks.isEmpty) {
-      return Center(
-        child: Text(query.trim().isEmpty
-            ? 'Search by title or artist'
-            : 'No matches for "$query"'),
-      );
+      final trimmed = query.trim();
+      if (trimmed.isEmpty) {
+        return const Center(child: Text('Search by title or artist'));
+      }
+      if (!Mp3DownloaderService.instance.isSupported) {
+        return Center(child: Text('No matches for "$query"'));
+      }
+      return YoutubeSearchFallback(key: ValueKey(trimmed), query: trimmed);
     }
     return TrackListView(tracks: tracks);
   }
@@ -403,6 +409,123 @@ class _MusicSearchDelegate extends SearchDelegate<void> {
 
   @override
   Widget buildSuggestions(BuildContext context) => _buildTrackResults(context);
+}
+
+/// Shown by the library search when nothing matches [query]: offers to
+/// search YouTube for it, lists the results, and tapping one starts playing
+/// it straight away while it silently downloads in the background
+/// ([MusicYoutubeFallback.playAndDownload]).
+class YoutubeSearchFallback extends StatefulWidget {
+  const YoutubeSearchFallback({super.key, required this.query});
+
+  final String query;
+
+  @override
+  State<YoutubeSearchFallback> createState() => _YoutubeSearchFallbackState();
+}
+
+class _YoutubeSearchFallbackState extends State<YoutubeSearchFallback> {
+  bool _searching = false;
+  String? _error;
+  List<Mp3SearchResult>? _results;
+
+  Future<void> _search() async {
+    setState(() {
+      _searching = true;
+      _error = null;
+    });
+    try {
+      final results =
+          await Mp3DownloaderService.instance.search(widget.query, limit: 10);
+      if (!mounted) return;
+      setState(() => _results = results);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'YouTube search failed. Check your connection '
+          'and try again.');
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _play(Mp3SearchResult result) async {
+    if (!await SpeakerPlayGuard.confirmPlay(context)) return;
+    await MusicYoutubeFallback.playAndDownload(result);
+    if (mounted) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const NowPlayingPage()));
+    }
+  }
+
+  static String _formatDuration(Duration? d) {
+    if (d == null) return '';
+    final minutes = d.inMinutes;
+    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final results = _results;
+    if (results == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('No matches for "${widget.query}" in your library',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              if (_searching)
+                const CircularProgressIndicator()
+              else
+                FilledButton.icon(
+                  onPressed: _search,
+                  icon: const Icon(Icons.travel_explore),
+                  label: const Text('Search on YouTube'),
+                ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.error)),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    if (results.isEmpty) {
+      return Center(child: Text('Nothing on YouTube for "${widget.query}"'));
+    }
+    return ListView(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            'From YouTube — tap to play; it downloads to your library too',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+        ),
+        for (final result in results)
+          ListTile(
+            leading: const Icon(Icons.smart_display_outlined),
+            title: Text(result.title,
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              [result.channel, _formatDuration(result.duration)]
+                  .where((s) => s.isNotEmpty)
+                  .join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => _play(result),
+          ),
+      ],
+    );
+  }
 }
 
 class _TracksTab extends StatelessWidget {
