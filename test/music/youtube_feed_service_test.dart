@@ -332,6 +332,20 @@ void main() {
     expect(service.videos.value.map((v) => v.videoId), ['a2', 'a1']);
   });
 
+  test('refresh reports progress by channels fetched', () async {
+    const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+    const b = YoutubeChannel(id: 'UCbbbbbbbbbbbbbbbbbbbbbb', name: 'B');
+    service.subscriptions.value = [a, b];
+    service.fetchOverride = (_) async => const ChannelFetchResult([]);
+    final seen = <double>[];
+    void listener() => seen.add(service.refreshProgress.value);
+    service.refreshProgress.addListener(listener);
+    await service.refresh();
+    service.refreshProgress.removeListener(listener);
+    expect(seen.last, 1.0);
+    expect(seen, contains(0.5));
+  });
+
   group('listening progress', () {
     test('counts as played within the last 30 s and resumes otherwise',
         () async {

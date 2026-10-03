@@ -1,9 +1,11 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
+import '../services/music_audio_handler.dart';
 import '../services/music_player_service.dart';
 import '../services/speaker_play_guard.dart';
 import '../services/music_sleep_timer.dart';
+import 'estimated_progress_bar.dart';
 import 'now_playing_page.dart';
 import 'sleep_timer_sheet.dart';
 
@@ -53,65 +55,129 @@ class MusicMiniPlayerBar extends StatelessWidget {
             return Material(
               key: const ValueKey('musicMiniPlayer'),
               elevation: 4,
-              child: InkWell(
-                onTap: () => _openNowPlaying(context),
-                // Long-press: the sleep timer, from anywhere in the app.
-                onLongPress: () => showSleepTimerSheet(_sheetContext(context)),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.music_note),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item.title,
-                                maxLines: 1, overflow: TextOverflow.ellipsis),
-                            if ((item.artist ?? '').isNotEmpty)
-                              Text(item.artist!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall),
-                          ],
-                        ),
-                      ),
-                      _SleepTimerBadge(
-                          onTap: () =>
-                              showSleepTimerSheet(_sheetContext(context))),
-                      StreamBuilder<PlaybackState>(
-                        stream: audio.playbackState,
-                        initialData: audio.playbackState.valueOrNull,
-                        builder: (context, stateSnapshot) {
-                          final playing = stateSnapshot.data?.playing ?? false;
-                          return Semantics(
-                            label: playing ? 'Pause' : 'Play',
-                            button: true,
-                            child: IconButton(
-                              key: const ValueKey('musicMiniPlayerPlayPause'),
-                              icon: Icon(
-                                  playing ? Icons.pause : Icons.play_arrow),
-                              onPressed: () async {
-                                if (playing) {
-                                  await audio.pause();
-                                } else if (await SpeakerPlayGuard.confirmPlay(
-                                    _sheetContext(context))) {
-                                  await audio.play();
-                                }
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Loading a track (resolving a video, buffering): a bar
+                  // that visibly fills instead of a silent wait.
+                  StreamBuilder<PlaybackState>(
+                    stream: audio.playbackState,
+                    initialData: audio.playbackState.valueOrNull,
+                    builder: (context, stateSnapshot) {
+                      final state = stateSnapshot.data?.processingState;
+                      return EstimatedProgressBar(
+                        active: state == AudioProcessingState.loading ||
+                            state == AudioProcessingState.buffering,
+                        expected: const Duration(seconds: 5),
+                        minHeight: 2,
+                      );
+                    },
                   ),
-                ),
+                  InkWell(
+                    onTap: () => _openNowPlaying(context),
+                    // Long-press: the sleep timer, from anywhere in the app.
+                    onLongPress: () =>
+                        showSleepTimerSheet(_sheetContext(context)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.music_note),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                                if ((item.artist ?? '').isNotEmpty)
+                                  Text(item.artist!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall),
+                              ],
+                            ),
+                          ),
+                          if (audio is MusicAudioHandler)
+                            SwitchSessionButton(handler: audio),
+                          _SleepTimerBadge(
+                              onTap: () =>
+                                  showSleepTimerSheet(_sheetContext(context))),
+                          StreamBuilder<PlaybackState>(
+                            stream: audio.playbackState,
+                            initialData: audio.playbackState.valueOrNull,
+                            builder: (context, stateSnapshot) {
+                              final playing =
+                                  stateSnapshot.data?.playing ?? false;
+                              return Semantics(
+                                label: playing ? 'Pause' : 'Play',
+                                button: true,
+                                child: IconButton(
+                                  key: const ValueKey(
+                                      'musicMiniPlayerPlayPause'),
+                                  icon: Icon(
+                                      playing ? Icons.pause : Icons.play_arrow),
+                                  onPressed: () async {
+                                    if (playing) {
+                                      await audio.pause();
+                                    } else if (await SpeakerPlayGuard
+                                        .confirmPlay(_sheetContext(context))) {
+                                      await audio.play();
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           },
+        );
+      },
+    );
+  }
+}
+
+/// One tap back into the other kind of listening — the last song while a
+/// video plays, the last video while music plays — resuming where it was
+/// stopped ([MusicAudioHandler.switchToOtherSession]). Hidden until there
+/// is one. No tooltip: the mini player has no Overlay, so it's labelled
+/// through [Semantics] instead.
+class SwitchSessionButton extends StatelessWidget {
+  const SwitchSessionButton({super.key, required this.handler});
+
+  final MusicAudioHandler handler;
+
+  static String labelFor(PlaybackSession session) =>
+      '${session.isVideo ? 'Back to video' : 'Back to music'}: '
+      '${session.current.title}';
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<PlaybackSession?>(
+      valueListenable: handler.otherSession,
+      builder: (context, other, _) {
+        if (other == null) return const SizedBox.shrink();
+        return Semantics(
+          label: labelFor(other),
+          button: true,
+          child: IconButton(
+            key: const ValueKey('switchSessionButton'),
+            icon: Icon(other.isVideo
+                ? Icons.smart_display_outlined
+                : Icons.library_music_outlined),
+            onPressed: handler.switchToOtherSession,
+          ),
         );
       },
     );

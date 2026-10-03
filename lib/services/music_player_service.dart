@@ -78,6 +78,26 @@ class MusicPlayerService {
     if (!isReady) return;
     final state = await MusicResumeService.load();
     if (state == null) return;
+    final active = _resolve(state);
+    if (active == null) return;
+    handler.restore(active.queue, index: active.index, position: state.position);
+    final other = await MusicResumeService.loadOther();
+    handler.restoreOtherSession(other == null ? null : _resolve(other));
+  }
+
+  /// Turns a saved session back into tracks: a video session carries full
+  /// copies ([MusicResumeState.tracks]); a music one is looked up by id in
+  /// the library, dropping what's gone but keeping the last track itself
+  /// from its saved copy.
+  static PlaybackSession? _resolve(MusicResumeState state) {
+    final saved = state.tracks;
+    if (saved != null && saved.isNotEmpty) {
+      return PlaybackSession(
+        queue: saved,
+        index: state.index.clamp(0, saved.length - 1),
+        position: state.position,
+      );
+    }
     final byId = {
       for (final t in MusicLibraryService.instance.tracks.value) t.id: t,
     };
@@ -93,7 +113,9 @@ class MusicPlayerService {
       queue.add(track);
     }
     if (queue.isEmpty && state.current != null) queue.add(state.current!);
-    handler.restore(queue, index: index, position: state.position);
+    if (queue.isEmpty) return null;
+    return PlaybackSession(
+        queue: queue, index: index, position: state.position);
   }
 
   /// Plays the whole local+configured library in a fresh weighted shuffle

@@ -16,6 +16,7 @@ import 'services/mp3_download_manager.dart';
 import 'services/music_download_library_sync.dart';
 import 'services/music_library_service.dart';
 import 'services/music_player_service.dart';
+import 'services/video_audio_cache.dart';
 import 'services/music_playlist_service.dart';
 import 'services/music_share_link.dart';
 import 'services/share_intent_service.dart';
@@ -59,6 +60,8 @@ Future<void> main() async {
   await _initStep('subscriptions feed', YoutubeFeedService.instance.load);
   await _initStep('music player', MusicPlayerService.init);
   await _initStep('last played', MusicPlayerService.restoreLastSession);
+  // Cached Subscriptions videos are kept a week after last play.
+  unawaited(VideoAudioCache.instance.purgeExpired());
   runApp(const BestMusicApp());
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();

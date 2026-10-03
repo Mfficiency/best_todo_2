@@ -80,6 +80,34 @@ void main() {
 
     test('nothing saved yet loads as null', () async {
       expect(await MusicResumeService.load(), isNull);
+      expect(await MusicResumeService.loadOther(), isNull);
+    });
+
+    test('also keeps the other kind\'s session, videos as full copies',
+        () async {
+      final v1 = Track.youtube(videoId: 'v1', title: 'Talk', artist: 'Ch');
+      final v2 = Track.youtube(videoId: 'v2', title: 'Next', artist: 'Ch');
+      await MusicResumeService.save(
+        MusicResumeState(
+          queueIds: ['local:/fake/a.mp3'],
+          index: 0,
+          position: const Duration(seconds: 3),
+          current: track('a'),
+        ),
+        other: MusicResumeState(
+          queueIds: [v1.id, v2.id],
+          index: 0,
+          position: const Duration(minutes: 12),
+          current: v1,
+          tracks: [v1, v2],
+        ),
+      );
+
+      expect((await MusicResumeService.load())!.current!.title, 'a');
+      final other = await MusicResumeService.loadOther();
+      expect(other!.position, const Duration(minutes: 12));
+      expect(other.tracks!.map((t) => t.title), ['Talk', 'Next']);
+      expect(other.tracks!.first.isFeedVideo, isTrue);
     });
   });
 
@@ -126,6 +154,78 @@ void main() {
 
       expect(handler.mediaItem.value!.title, 'solo');
       expect(handler.mediaItem.value!.artist, 'Someone');
+    });
+  });
+
+  group('switching between the last song and the last video', () {
+    test('restoreLastSession brings back the other session too', () async {
+      MusicLibraryService.instance.tracks.value = [track('a')];
+      final v1 = Track.youtube(videoId: 'v1', title: 'Talk', artist: 'Ch');
+      await MusicResumeService.save(
+        MusicResumeState(
+          queueIds: ['local:/fake/a.mp3'],
+          index: 0,
+          position: const Duration(seconds: 30),
+          current: track('a'),
+        ),
+        other: MusicResumeState(
+          queueIds: [v1.id],
+          index: 0,
+          position: const Duration(minutes: 12),
+          current: v1,
+          tracks: [v1],
+        ),
+      );
+      final handler = MusicAudioHandler();
+      MusicPlayerService.setHandlerForTest(handler);
+
+      await MusicPlayerService.restoreLastSession();
+
+      expect(handler.currentTrack!.title, 'a');
+      final other = handler.otherSession.value!;
+      expect(other.isVideo, isTrue);
+      expect(other.current.title, 'Talk');
+      expect(other.position, const Duration(minutes: 12));
+    });
+
+    test('a restored video session keeps its whole queue', () async {
+      final v1 = Track.youtube(videoId: 'v1', title: 'One');
+      final v2 = Track.youtube(videoId: 'v2', title: 'Two');
+      await MusicResumeService.save(MusicResumeState(
+        queueIds: [v1.id, v2.id],
+        index: 1,
+        position: const Duration(minutes: 2),
+        current: v2,
+        tracks: [v1, v2],
+      ));
+      final handler = MusicAudioHandler();
+      MusicPlayerService.setHandlerForTest(handler);
+
+      await MusicPlayerService.restoreLastSession();
+
+      expect(handler.currentQueueTracks.map((t) => t.title), ['One', 'Two']);
+      expect(handler.currentTrack!.title, 'Two');
+      expect(handler.otherSession.value, isNull);
+    });
+
+    testWidgets('the mini player offers one tap back to the other session',
+        (tester) async {
+      final handler = MusicAudioHandler();
+      handler.restore([track('a')]);
+
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: MusicMiniPlayerBar(handler: handler))));
+      expect(find.byKey(const ValueKey('switchSessionButton')), findsNothing);
+
+      handler.restoreOtherSession(PlaybackSession(
+        queue: [Track.youtube(videoId: 'v1', title: 'Talk')],
+        index: 0,
+        position: const Duration(minutes: 12),
+      ));
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('switchSessionButton')), findsOneWidget);
+      expect(find.bySemanticsLabel('Back to video: Talk'), findsOneWidget);
     });
   });
 

@@ -4344,6 +4344,40 @@ live while dragging, saved on release. Opened from Now Playing's volume button (
 "Music volume" or "Video volume" by the current track), Feed settings → "Video volume", and
 Best Music Settings → "Music volume".
 
+**Last song ↔ last video (Best Music 0.2.99).** `MusicAudioHandler.otherSession`
+(`ValueNotifier<PlaybackSession?>`; `PlaybackSession` = queue, index, position) holds the
+paused queue of the *other* kind. `setQueueAndPlay` snapshots the current queue into it
+(after a `_persist()` so a feed video records its resume point) whenever the new queue's
+first track differs in `isFeedVideo` from the current one; `switchToOtherSession()` swaps the
+two — the current queue becomes `otherSession`, the saved one is resumed at its position
+(`_resumePosition`; speed override cleared, shuffle off). `MusicResumeService.save(state,
+other:)` writes it under `"other"` in `music_resume.json` (`loadOther()` reads it back);
+video sessions — active or other — also store full `tracks` copies since feed videos aren't
+in the library. `MusicPlayerService.restoreLastSession` resolves both
+(`_resolve`: `tracks` if present, else library ids + saved `current`) and calls
+`restoreOtherSession`. UI: `SwitchSessionButton` in the mini player (icon only, labelled via
+`Semantics` "Back to video: <title>"/"Back to music: <title>" — the bar has no Overlay for
+tooltips) and an `ActionChip` with the same label at the top of Now Playing.
+
+**Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
+(`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
+`_playCurrent` calls `cacheInBackground(track)` for `isFeedVideo` tracks once loaded; it
+downloads one at a time with `Mp3DownloaderService.downloadMp3` into
+`<app support>/video_cache/<videoId>/` (not the library, not the MP3 downloads list; a failed
+download deletes its folder). `_audioSourceFor` plays a feed video from `cachedFile(id)` when
+present and `touch`es it. A file's mtime = last played; `keepFor` = 7 days — `cachedFile`
+ignores older files and `purgeExpired` (after each download batch and at Best Music startup)
+deletes folders not played within 7 days.
+
+**Loading progress (Best Music 0.2.99).** `EstimatedProgressBar`
+(`lib/ui/estimated_progress_bar.dart`): a thin `LinearProgressIndicator` that shows a real
+`value` when known, otherwise an estimate `0.95·(1−e^(−t/τ))`, τ = `expected`/2.5, so it
+always visibly fills; it jumps to 100% for 300 ms when `active` turns false, then hides.
+Used for track loading/buffering (mini player top edge, Now Playing), the feed refresh (real
+fraction: `YoutubeFeedService.refreshProgress` = channels fetched / total), a feed video's
+description, channel search/import, the library search's YouTube lookup and the MP3
+Downloader's search.
+
 **Settings** (`YoutubeFeedSettingsPage`, from the feed's tune icon or Best Music Settings →
 "Subscriptions feed"): Default playback speed (above), Hide Shorts (default on), Hide livestreams (default on), SponsorBlock
 on/off (default on) and per-category checkboxes (default sponsor, selfpromo, interaction,

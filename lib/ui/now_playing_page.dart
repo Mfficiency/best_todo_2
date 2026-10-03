@@ -7,6 +7,8 @@ import '../services/music_audio_handler.dart';
 import '../services/music_player_service.dart';
 import '../services/speaker_play_guard.dart';
 import '../services/music_playlist_service.dart';
+import 'estimated_progress_bar.dart';
+import 'music_mini_player_bar.dart' show SwitchSessionButton;
 import 'playback_speed_sheet.dart';
 import 'volume_sheet.dart';
 import 'queue_page.dart';
@@ -151,6 +153,38 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // Loading (resolving a video, buffering): a filling bar.
+                  StreamBuilder<PlaybackState>(
+                    stream: handler.playbackState,
+                    initialData: handler.playbackState.valueOrNull,
+                    builder: (context, snapshot) {
+                      final state = snapshot.data?.processingState;
+                      return EstimatedProgressBar(
+                        active: state == AudioProcessingState.loading ||
+                            state == AudioProcessingState.buffering,
+                        expected: const Duration(seconds: 5),
+                      );
+                    },
+                  ),
+                  // One tap back to the last song / last video.
+                  ValueListenableBuilder<PlaybackSession?>(
+                    valueListenable: handler.otherSession,
+                    builder: (context, other, _) {
+                      if (other == null) return const SizedBox.shrink();
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: ActionChip(
+                          key: const ValueKey('nowPlayingSwitchSession'),
+                          avatar: Icon(other.isVideo
+                              ? Icons.smart_display_outlined
+                              : Icons.library_music_outlined),
+                          label: Text(SwitchSessionButton.labelFor(other),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          onPressed: handler.switchToOtherSession,
+                        ),
+                      );
+                    },
+                  ),
                   Expanded(
                     child: Stack(
                       alignment: Alignment.center,

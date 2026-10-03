@@ -9,6 +9,7 @@ import '../services/music_player_service.dart';
 import '../services/youtube_feed_service.dart';
 import '../utils/linkified_text.dart';
 import 'mp3_downloader_page.dart';
+import 'estimated_progress_bar.dart';
 import 'subpage_app_bar.dart';
 import 'youtube_channels_page.dart';
 import 'youtube_feed_settings_page.dart';
@@ -105,6 +106,7 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
           _service.settings,
           _service.progress,
           _service.refreshing,
+          _service.refreshProgress,
           _service.failedChannels,
         ]),
         builder: (context, _) {
@@ -121,8 +123,12 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return Column(children: [
-                    if (_service.refreshing.value)
-                      const LinearProgressIndicator(),
+                    EstimatedProgressBar(
+                      active: _service.refreshing.value,
+                      value: _service.refreshProgress.value > 0
+                          ? _service.refreshProgress.value
+                          : null,
+                    ),
                     if (failed.isNotEmpty)
                       ListTile(
                         dense: true,
@@ -451,7 +457,8 @@ class _YoutubeVideoPageState extends State<YoutubeVideoPage> {
               ),
               const Divider(height: 32),
               if (_loadingDescription)
-                const Center(child: CircularProgressIndicator())
+                const EstimatedProgressBar(
+                    active: true, expected: Duration(seconds: 3))
               else if (_description.isEmpty)
                 Text('No description.', style: theme.textTheme.bodySmall)
               else

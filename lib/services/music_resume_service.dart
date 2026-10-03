@@ -14,6 +14,7 @@ class MusicResumeState {
     required this.index,
     required this.position,
     this.current,
+    this.tracks,
   });
 
   final List<String> queueIds;
@@ -24,11 +25,18 @@ class MusicResumeState {
   /// be shown (and played) even if it isn't in the cached library.
   final Track? current;
 
+  /// Full copies of the whole queue — set for a Subscriptions-video
+  /// session, whose videos aren't in the library for [queueIds] to be
+  /// looked up in. Music sessions leave it null (a shuffled library queue
+  /// can be thousands of tracks; ids keep the file small).
+  final List<Track>? tracks;
+
   Map<String, dynamic> toJson() => {
         'queue': queueIds,
         'index': index,
         'positionMs': position.inMilliseconds,
         if (current != null) 'current': current!.toJson(),
+        if (tracks != null) 'tracks': [for (final t in tracks!) t.toJson()],
       };
 
   static MusicResumeState? fromJson(Map<String, dynamic> json) {
@@ -37,6 +45,13 @@ class MusicResumeState {
     final current = currentJson is Map
         ? Track.fromJson(Map<String, dynamic>.from(currentJson))
         : null;
+    final tracksJson = json['tracks'];
+    final tracks = tracksJson is List
+        ? [
+            for (final t in tracksJson)
+              if (t is Map) Track.fromJson(Map<String, dynamic>.from(t)),
+          ]
+        : null;
     if (ids.isEmpty && current == null) return null;
     return MusicResumeState(
       queueIds: ids,
@@ -44,6 +59,7 @@ class MusicResumeState {
       position: Duration(
           milliseconds: (json['positionMs'] as num?)?.round() ?? 0),
       current: current,
+      tracks: tracks,
     );
   }
 }
@@ -68,25 +84,45 @@ class MusicResumeService {
     return File('${dir.path}/$fileName');
   }
 
-  static Future<void> save(MusicResumeState state) {
+  /// Saves the active session ([state]) and, if any, the *other* kind's
+  /// paused session ([other]: the last song while a video plays, or the
+  /// last video while music plays) for the one-tap switch back.
+  static Future<void> save(MusicResumeState state, {MusicResumeState? other}) {
     _pending = _pending.then((_) async {
       try {
         final file = await _file();
-        await file.writeAsString(jsonEncode(state.toJson()), flush: true);
+        await file.writeAsString(
+            jsonEncode({
+              ...state.toJson(),
+              if (other != null) 'other': other.toJson(),
+            }),
+            flush: true);
       } catch (_) {}
     });
     return _pending;
   }
 
-  static Future<MusicResumeState?> load() async {
+  static Future<Map<String, dynamic>?> _read() async {
     try {
       final file = await _file();
       if (!await file.exists()) return null;
       final data = jsonDecode(await file.readAsString());
-      if (data is! Map) return null;
-      return MusicResumeState.fromJson(Map<String, dynamic>.from(data));
+      return data is Map ? Map<String, dynamic>.from(data) : null;
     } catch (_) {
       return null;
     }
+  }
+
+  static Future<MusicResumeState?> load() async {
+    final data = await _read();
+    return data == null ? null : MusicResumeState.fromJson(data);
+  }
+
+  /// The other kind's session saved by [save], if any.
+  static Future<MusicResumeState?> loadOther() async {
+    final other = (await _read())?['other'];
+    return other is Map
+        ? MusicResumeState.fromJson(Map<String, dynamic>.from(other))
+        : null;
   }
 }
