@@ -441,8 +441,11 @@ class _YoutubeSearchFallbackState extends State<YoutubeSearchFallback> {
       setState(() => _results = results);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'YouTube search failed. Check your connection '
-          'and try again.');
+      // Show what actually went wrong — "check your connection" alone hid a
+      // consent-page parsing failure on a perfectly good connection.
+      setState(() => _error = e is Mp3DownloadException
+          ? e.message
+          : 'YouTube search failed: $e');
     } finally {
       if (mounted) setState(() => _searching = false);
     }

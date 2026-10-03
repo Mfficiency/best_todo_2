@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.95] - 2026-10-03
+- Fixed "YouTube search failed" on a working connection — searching YouTube from the library and the MP3 Downloader works again, and a real failure now says what went wrong
+
 ## [0.2.94] - 2026-10-03
 - Fixed Subscriptions → Channels search failing with "Search failed: NoSuchMethodError ... getT" for every search. You can now also type or paste a channel link or @handle to find that exact channel
 

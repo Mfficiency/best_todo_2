@@ -3602,6 +3602,18 @@ The YouTube track plays through the same `YoutubeAudioSource` path the Subscript
 uses (thumbnail as cover art), so a restored "last played" YouTube track still works after a
 restart.
 
+**YouTube search goes through the JSON API (Best Music 0.2.95 / BestToDo 0.2.93).** `Mp3DownloaderService.search` (used by
+the search fallback above and the MP3 Downloader) first calls `YoutubeSearchApi.search`
+(`lib/services/youtube_search_api.dart`): a POST to `youtube.com/youtubei/v1/search` with a WEB
+client context and the "videos only" `params` (`EgIQAQ==`), parsing every `videoRenderer` in
+page order (title, channel, `lengthText` clock → duration, view count, "N years ago" →
+approximate upload date for the year tag). Only if that fails or returns nothing does it fall
+back to `youtube_explode_dart`'s `search.search`, which scrapes the HTML results page with the
+legacy `CONSENT=YES+cb` cookie — in the EU that page can be Google's consent interstitial, so
+every search failed on a working connection (reported as "YouTube search failed. Check your
+connection"). A failure now throws `Mp3DownloadException('YouTube search failed: <cause>')`
+and the search fallback shows that message instead of a generic connection hint.
+
 **Settings → Music Player** (`lib/ui/settings_page.dart`, section 16): folder picker (shares
 the `file_selector` `getDirectoryPath` pattern §4.4/§10.6d use), an "Excluded subfolders"
 dialog populated from `MusicLibraryService.listSubfolders`, and the Subsonic server

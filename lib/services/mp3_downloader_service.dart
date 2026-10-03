@@ -10,6 +10,7 @@ import 'log_service.dart';
 import 'mp4_metadata_writer.dart';
 import 'playlist_video_ids.dart';
 import 'track_title.dart';
+import 'youtube_search_api.dart';
 
 /// One candidate track shown to the user when a search query is ambiguous —
 /// title, channel, duration and play count are enough to tell tracks apart
@@ -397,9 +398,24 @@ class Mp3DownloaderService {
 
   void _log(String message) => LogService.add('MP3', message);
 
+  /// Searches YouTube for videos matching [query]. Tries the JSON search
+  /// API first ([YoutubeSearchApi] — immune to the EU cookie-consent page
+  /// that breaks HTML scraping), then `youtube_explode_dart`'s scraper.
   Future<List<Mp3SearchResult>> search(String query, {int limit = 5}) async {
     if (searchOverride != null) return searchOverride!(query, limit);
     _log('Searching for "$query"');
+    Object? apiError;
+    try {
+      final results = await YoutubeSearchApi.search(query, limit: limit);
+      if (results.isNotEmpty) {
+        _log('Search API returned ${results.length} result(s) for "$query"');
+        return results;
+      }
+      _log('Search API returned nothing for "$query", trying the scraper');
+    } catch (e) {
+      apiError = e;
+      _log('Search API failed for "$query": $e — trying the scraper');
+    }
     final client = yt_explode.YoutubeExplode();
     try {
       final results = await client.search.search(query);
@@ -418,7 +434,9 @@ class Mp3DownloaderService {
       return mapped;
     } catch (e) {
       _log('Search for "$query" failed: $e');
-      rethrow;
+      throw Mp3DownloadException(
+        'YouTube search failed: ${apiError ?? e}',
+      );
     } finally {
       client.close();
     }

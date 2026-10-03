@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.93] - 2026-10-03
+- Fixed "YouTube search failed" on a working connection in the Music Player and MP3 Downloader; a real failure now says what went wrong
+
 ## [0.2.92] - 2026-10-03
 - Music Player: when a search finds nothing in your library, tap "Search on YouTube" — picking a song plays it immediately and silently downloads it in the background
 - Local build: 2026-10-03 19:07
