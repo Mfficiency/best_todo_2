@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.92] - 2026-10-03
+- Search finds nothing in your library? Tap "Search on YouTube", pick a song and it starts playing right away while it quietly downloads into your library in the background
+
 ## [0.2.91] - 2026-10-03
 - Share a song from Shazam, Spotify or YouTube to Best Music and it starts downloading right away: the best match downloads immediately (a YouTube link downloads that exact video), and if it picked the wrong version, tap the right one in the list to swap
 - Works for links from other music apps too (Apple Music, Deezer, SoundCloud, ...) and for plain text like "Song - Artist"

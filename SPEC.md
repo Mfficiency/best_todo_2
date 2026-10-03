@@ -3583,6 +3583,26 @@ next — no Stop button, by request) come from `audio_service` itself once `Audi
 custom notification code needed, unlike the alarm subsystem's hand-built full-screen
 notification (§5, §6).
 
+**YouTube fallback in search (0.2.92).** When the library search (`_MusicSearchDelegate`)
+finds no track for a non-empty query, it shows `YoutubeSearchFallback` instead of a bare "No
+matches": "No matches for "<q>" in your library" plus a **Search on YouTube** button (hidden
+on web, where `Mp3DownloaderService.isSupported` is false). Tapping it runs
+`Mp3DownloaderService.search(q, limit: 10)` and lists the results (title, channel ·
+duration). Tapping a result goes through `SpeakerPlayGuard.confirmPlay`, then
+`MusicYoutubeFallback.playAndDownload` (`lib/services/music_youtube_fallback.dart`) does two
+things at once: (1) silently queues the video on `Mp3DownloadManager` — no folder prompt; the
+folder is `Config.mp3DownloadFolder` if set, else `Config.musicFolder` if writable, else
+`defaultDownloadFolder()`; skipped if a job for the same video id is already active or
+completed with its file still present — so `MusicDownloadLibrarySync` rescans it into the
+library when it lands there; (2) plays a one-track queue of `Track.youtube(videoId, ...)`
+(`TrackSource.youtube`, id `youtube:<videoId>`, `remoteId` = video id, title/artist from
+`parseTrackTitle` so it matches the downloaded file's tags), then opens Now Playing.
+`MusicAudioHandler._resolveUri` resolves a YouTube track through
+`Mp3DownloaderService.resolveAudioStreamUri`, which reuses the downloader's `_resolveStream`
+client fallback (only a client proven to serve bytes past the 1 MiB PoToken wall), freshly on
+every play since the stream URLs expire — so a restored "last played" YouTube track still
+works after a restart.
+
 **Settings → Music Player** (`lib/ui/settings_page.dart`, section 16): folder picker (shares
 the `file_selector` `getDirectoryPath` pattern §4.4/§10.6d use), an "Excluded subfolders"
 dialog populated from `MusicLibraryService.listSubfolders`, and the Subsonic server

@@ -394,6 +394,8 @@ class Mp3DownloaderService {
     String destinationDir,
     void Function(int received, int total)? onProgress,
   )? downloadOverride;
+  @visibleForTesting
+  Future<Uri> Function(String videoId)? streamUriOverride;
 
   void _log(String message) => LogService.add('MP3', message);
 
@@ -572,6 +574,28 @@ class Mp3DownloaderService {
       '${lastError == null ? '' : ' ($lastError)'}. '
       'It may be age-restricted, private, or region-locked.',
     );
+  }
+
+  /// A directly playable audio-only stream URL for [videoId] — the same
+  /// stream [downloadMp3] would save, picked by [_resolveStream] so it is
+  /// known to serve bytes past the 1 MiB PoToken wall. Used to start
+  /// playing a YouTube result while it downloads in the background. The URL
+  /// expires after a few hours, so resolve it fresh for every play.
+  Future<Uri> resolveAudioStreamUri(String videoId) async {
+    if (streamUriOverride != null) return streamUriOverride!(videoId);
+    final http = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final resolved = await _resolveStream(videoId, http)
+          .timeout(kResolveTimeout, onTimeout: () {
+        throw Mp3DownloadException(
+          'Timed out working out how to play this track. Check your '
+          'connection and try again.',
+        );
+      });
+      return resolved.info.url;
+    } finally {
+      http.close(force: true);
+    }
   }
 
   /// Fetches `bytes=[start]-[end]` into [sink] and returns the new byte

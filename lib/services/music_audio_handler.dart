@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:just_audio/just_audio.dart' as ja;
 
 import '../models/track.dart';
+import 'mp3_downloader_service.dart';
 import 'music_library_service.dart';
 import 'music_playlist_service.dart';
 import 'music_resume_service.dart';
@@ -141,6 +142,9 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         return Uri.file(track.filePath!);
       case TrackSource.subsonic:
         return SubsonicClient.instance.streamUri(track.remoteId!);
+      case TrackSource.youtube:
+        return Mp3DownloaderService.instance
+            .resolveAudioStreamUri(track.remoteId!);
     }
   }
 

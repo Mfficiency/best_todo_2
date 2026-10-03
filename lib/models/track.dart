@@ -1,12 +1,15 @@
 /// Where a [Track]'s audio bytes come from.
-enum TrackSource { local, subsonic }
+enum TrackSource { local, subsonic, youtube }
 
 /// A single playable song, either a file under the user's configured music
-/// folder ([TrackSource.local]) or a song on a connected Subsonic/
-/// OpenSubsonic server ([TrackSource.subsonic]).
+/// folder ([TrackSource.local]), a song on a connected Subsonic/
+/// OpenSubsonic server ([TrackSource.subsonic]), or a YouTube video picked
+/// from the library search's "Search YouTube" fallback
+/// ([TrackSource.youtube]) — streamed while it downloads in the background.
 ///
-/// [id] is stable and unique across both sources: `local:<absolute path>`
-/// for local files, `subsonic:<server song id>` for remote ones — used as
+/// [id] is stable and unique across every source: `local:<absolute path>`
+/// for local files, `subsonic:<server song id>` for remote ones,
+/// `youtube:<video id>` for YouTube streams — used as
 /// the key everywhere a track needs to be referenced (favorites, disliked,
 /// playlists, the now-playing queue) without holding the whole object.
 class Track {
@@ -16,8 +19,8 @@ class Track {
   /// Absolute file path. Only set for [TrackSource.local].
   final String? filePath;
 
-  /// Subsonic song id on the configured server. Only set for
-  /// [TrackSource.subsonic].
+  /// Subsonic song id on the configured server for [TrackSource.subsonic],
+  /// or the YouTube video id for [TrackSource.youtube].
   final String? remoteId;
 
   final String title;
@@ -133,6 +136,25 @@ class Track {
       title: title,
       artist: artist,
       album: album,
+      durationMs: durationMs,
+    );
+  }
+
+  /// A YouTube video streamed straight from YouTube (see
+  /// `MusicYoutubeFallback`); [videoId] is resolved to a fresh audio stream
+  /// URL each time it's played, since those URLs expire.
+  factory Track.youtube({
+    required String videoId,
+    required String title,
+    String artist = '',
+    int? durationMs,
+  }) {
+    return Track(
+      id: 'youtube:$videoId',
+      source: TrackSource.youtube,
+      remoteId: videoId,
+      title: title,
+      artist: artist,
       durationMs: durationMs,
     );
   }
