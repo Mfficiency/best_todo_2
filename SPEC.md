@@ -671,9 +671,28 @@ every load/save) merges any groups sharing a tag and dedupes their keywords, so 
 and hand-edited duplicates both collapse into one clean group per tag. Settings → Tasks
 has the on/off switch ("Auto-tag new items") and an "Auto-tag rules" entry point
 (`AutoTagRulesPage`) to add/rename/delete a tag and edit its whole word group (comma/space
-separated) in one dialog. Deliberately dumb today (a fixed dictionary, no real NLP); the
-plan is to later swap the matching in `tagsFor` for an on-device LLM without touching
-callers, which only ever see the resulting tag list.
+separated) in one dialog. Deliberately dumb (a fixed dictionary, no real NLP), so it's
+cheap and predictable.
+
+**Smart auto-tag (0.2.91).** Optional fallback for titles the dictionary misses, using a
+*decision model* rather than an LLM: TypeSafe's Jev (`lib/services/jev_decision_service.dart`,
+`POST https://api.typesafe.ai/v1/systemone`, `model: jev-latest`, Bearer key). Decision
+models (Jev, Fastino's GLiDE / open-weight GLiNER2.5-Decide) take a `state` plus typed
+questions (`choice`/`score`/`noul`) and return a bounded answer with probabilities — no
+generated text, output tokens free, ~$0.04 per million input tokens. Picking a tag is
+exactly that shape. `AutoTagService.smartTagFor(title)` returns null unless
+`Config.autoTagEnabled` && `Config.smartAutoTagEnabled` (default **false**) && a non-empty
+`Config.jevApiKey`, *and* `tagsFor` found nothing (so the network is never hit for titles
+the dictionary already handles). It asks one `choice` question whose criteria are every
+tag group (`tag` → "Things related to: <keywords>") plus `AutoTagService.noTagOption`
+(`__none__`), and accepts the pick only if it's a real tag with confidence ≥
+`smartTagMinConfidence` (0.6). Any error (401/422/429/529, timeout after 10 s) → null.
+`HomePage._applySmartTagInBackground` runs it *after* `_addTask`/`_addTaskFromChronize`
+have added and saved the task, then adds the tag via `addLabelToken` and saves again if the
+task still exists — adding a task never waits on the network. Settings > Tasks: "Smart
+auto-tag (Jev)" switch (disabled while auto-tag is off) and, when on, a "TypeSafe API key"
+field (plain text in config, same caveat as the Todoist token). Tests:
+`test/home/smart_auto_tag_test.dart` (MockClient).
 
 ### 4.2h Change sources & global Undo (0.1.281)
 

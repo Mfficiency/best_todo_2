@@ -495,6 +495,14 @@ class Config {
   /// rules and any matched tags are appended to their label on creation.
   static bool autoTagEnabled = true;
 
+  /// Smart auto-tag: when the keyword rules find no tag for a new task, ask
+  /// TypeSafe's Jev decision model (one `choice` question over the existing
+  /// tag groups) and apply its pick if it's confident enough. Off by default
+  /// and a no-op without [jevApiKey]. Stored in plain text like
+  /// [todoistApiToken] — same no-secret-storage caveat applies.
+  static bool smartAutoTagEnabled = false;
+  static String jevApiKey = '';
+
   /// If true, Enter saves the add-task field. When false, the add-task field
   /// accepts multiple lines and Ctrl+Enter saves it.
   static bool enterSavesNewTask = true;
@@ -728,6 +736,8 @@ class Config {
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
       'autoTagEnabled': autoTagEnabled,
+      'smartAutoTagEnabled': smartAutoTagEnabled,
+      'jevApiKey': jevApiKey,
       'enterSavesNewTask': enterSavesNewTask,
       'defaultAddTabIndex': defaultAddTabIndex,
       'use24HourFormat': use24HourFormat,
@@ -816,6 +826,9 @@ class Config {
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
     autoTagEnabled = data['autoTagEnabled'] ?? autoTagEnabled;
+    smartAutoTagEnabled =
+        data['smartAutoTagEnabled'] as bool? ?? smartAutoTagEnabled;
+    jevApiKey = data['jevApiKey'] as String? ?? jevApiKey;
     enterSavesNewTask = data['enterSavesNewTask'] ?? enterSavesNewTask;
     defaultAddTabIndex = (data['defaultAddTabIndex'] as num?)
             ?.round()

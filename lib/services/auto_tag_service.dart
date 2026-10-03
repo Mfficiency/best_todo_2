@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../models/auto_tag_group.dart';
 import '../utils/label_utils.dart';
+import 'jev_decision_service.dart';
 
 /// Auto-tagging: a user-editable dictionary of tag -> group-of-words. When a
 /// new task/wish is created and [Config.autoTagEnabled] is on, its title is
@@ -21,8 +22,9 @@ import '../utils/label_utils.dart';
 /// rules) — add/rename a tag, add/remove words from its group.
 ///
 /// Deliberately dumb — a fixed dictionary, no real NLP — so it's cheap and
-/// predictable today. A later pass can swap [tagsFor] for an on-device LLM
-/// without touching callers (they only ever see the resulting tag list).
+/// predictable today. [smartTagFor] is the opt-in smart fallback: a Jev
+/// decision-model call (see `JevDecisionService`) for titles the dictionary
+/// misses, applied in the background after the task is created.
 class AutoTagService {
   AutoTagService._();
 
@@ -198,6 +200,50 @@ class AutoTagService {
       if (existing.add(tag.toLowerCase())) tokens.add(tag);
     }
     return joinLabelTokens(tokens);
+  }
+
+  /// Option name Jev picks when no tag group fits.
+  static const String noTagOption = '__none__';
+
+  /// Minimum Jev confidence before a smart tag is applied — a wrong tag is
+  /// worse than none.
+  static const double smartTagMinConfidence = 0.6;
+
+  /// Smart fallback for titles the keyword rules miss ("renew my license"
+  /// has no dictionary word but is clearly errands/finance): asks the Jev
+  /// decision model to pick one of the user's existing tag groups (or none).
+  /// Returns null when [Config.smartAutoTagEnabled] is off, no API key is
+  /// set, the dictionary already matched, the model isn't confident, or the
+  /// call fails — callers apply it in the background after creation, so a
+  /// slow/failed network call never blocks adding a task.
+  Future<String?> smartTagFor(String title) async {
+    if (!Config.autoTagEnabled || !Config.smartAutoTagEnabled) return null;
+    final key = Config.jevApiKey.trim();
+    if (key.isEmpty || title.trim().isEmpty) return null;
+    if (tagsFor(title).isNotEmpty) return null;
+    final criteria = <String, String>{
+      for (final group in groups.value)
+        if (group.tag.trim().isNotEmpty)
+          group.tag.trim(): 'Things related to: ${group.keywords.join(', ')}',
+    };
+    if (criteria.isEmpty) return null;
+    criteria[noTagOption] = 'None of the other categories clearly fits';
+    try {
+      final answer = await JevDecisionService.instance.choose(
+        apiKey: key,
+        state: title.trim(),
+        instructions: 'Which category does this to-do item belong to?',
+        criteria: criteria,
+      );
+      if (answer.choice == noTagOption ||
+          !criteria.containsKey(answer.choice) ||
+          answer.confidence < smartTagMinConfidence) {
+        return null;
+      }
+      return answer.choice;
+    } catch (_) {
+      return null;
+    }
   }
 
   @visibleForTesting

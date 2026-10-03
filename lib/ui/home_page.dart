@@ -1506,7 +1506,21 @@ class _HomePageState extends State<HomePage>
     _trackTaskCreated(task);
     _controller.clear();
     _saveTasks();
+    _applySmartTagInBackground(task);
     LogService.add('HomePage._addTask', 'Added task: $title');
+  }
+
+  /// Smart auto-tag fallback (Jev decision model): runs after the task is
+  /// already added and saved, so a slow or failed call never delays it. A
+  /// no-op unless Smart auto-tag is on with an API key and the keyword rules
+  /// found nothing.
+  Future<void> _applySmartTagInBackground(Task task) async {
+    final tag = await AutoTagService.instance.smartTagFor(task.title);
+    if (tag == null || !mounted || !_tasks.contains(task)) return;
+    setState(() => task.label = addLabelToken(task.label, tag));
+    _saveTasks();
+    LogService.add('HomePage._applySmartTagInBackground',
+        'Smart-tagged "${task.title}" as $tag');
   }
 
   /// Opens the "Repeat" picker for the add-task row: a Calendar-style quick
@@ -1912,6 +1926,7 @@ class _HomePageState extends State<HomePage>
     });
     _trackTaskCreated(task);
     _saveTasks();
+    _applySmartTagInBackground(task);
     LogService.add('HomePage._addTaskFromChronize',
         'Added "$title" due ${dueDate.toIso8601String()}');
   }

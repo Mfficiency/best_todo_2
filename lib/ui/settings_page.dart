@@ -279,6 +279,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
   bool _autoTagEnabled = Config.autoTagEnabled;
+  bool _smartAutoTagEnabled = Config.smartAutoTagEnabled;
+  final TextEditingController _jevApiKeyController =
+      TextEditingController(text: Config.jevApiKey);
+  bool _jevApiKeyObscured = true;
   bool _enterSavesNewTask = Config.enterSavesNewTask;
   int _defaultAddTabIndex = Config.defaultAddTabIndex;
   bool _use24HourFormat = Config.use24HourFormat;
@@ -360,6 +364,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
     _autoTagEnabled = Config.autoTagEnabled;
+    _smartAutoTagEnabled = Config.smartAutoTagEnabled;
+    _jevApiKeyController.text = Config.jevApiKey;
     _enterSavesNewTask = Config.enterSavesNewTask;
     _defaultAddTabIndex = Config.defaultAddTabIndex;
     _use24HourFormat = Config.use24HourFormat;
@@ -3086,6 +3092,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _githubTokenController.dispose();
     _claudeRoutineUrlController.dispose();
     _claudeRoutineTokenController.dispose();
+    _jevApiKeyController.dispose();
     _googleCalendarUrlController.dispose();
     _subsonicServerUrlController.dispose();
     _subsonicUsernameController.dispose();
@@ -3500,6 +3507,50 @@ class _SettingsPageState extends State<SettingsPage> {
                                 widget.onSettingsChanged?.call();
                               },
                             ),
+                            SwitchListTile(
+                              title: const Text('Smart auto-tag (Jev)'),
+                              subtitle: const Text(
+                                  'When no keyword matches, ask the Jev decision '
+                                  'model to pick one of your tags (needs a '
+                                  'TypeSafe API key; ~\$0.04 per million tokens)'),
+                              value: _smartAutoTagEnabled,
+                              onChanged: _autoTagEnabled
+                                  ? (val) async {
+                                      setState(
+                                          () => _smartAutoTagEnabled = val);
+                                      Config.smartAutoTagEnabled = val;
+                                      await Config.save();
+                                    }
+                                  : null,
+                            ),
+                            if (_autoTagEnabled && _smartAutoTagEnabled)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                child: TextField(
+                                  controller: _jevApiKeyController,
+                                  obscureText: _jevApiKeyObscured,
+                                  decoration: InputDecoration(
+                                    labelText: 'TypeSafe API key',
+                                    border: const OutlineInputBorder(),
+                                    suffixIcon: IconButton(
+                                      tooltip: _jevApiKeyObscured
+                                          ? 'Show key'
+                                          : 'Hide key',
+                                      icon: Icon(_jevApiKeyObscured
+                                          ? Icons.visibility
+                                          : Icons.visibility_off),
+                                      onPressed: () => setState(() =>
+                                          _jevApiKeyObscured =
+                                              !_jevApiKeyObscured),
+                                    ),
+                                  ),
+                                  onChanged: (val) {
+                                    Config.jevApiKey = val.trim();
+                                    Config.save();
+                                  },
+                                ),
+                              ),
                             ListTile(
                               leading: const Icon(Icons.sell_outlined),
                               title: const Text('Auto-tag rules'),
