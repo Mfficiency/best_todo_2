@@ -217,26 +217,57 @@ class YoutubeFeedService {
     await _save();
   }
 
+  /// Channels matching [query]. A pasted channel URL or `@handle` resolves
+  /// to that one channel instead of searching.
+  ///
+  /// Doesn't use `youtube_explode_dart`'s `searchContent`: its 3.1.0 channel
+  /// parser calls the `getT` extension on a `dynamic` value
+  /// (`videoCountText/runs.first`), which throws `NoSuchMethodError: ...
+  /// '_Map<String, dynamic>' has no instance method 'getT'` for every
+  /// channel YouTube now returns with a video count — i.e. all of them.
+  /// Instead this posts to InnerTube's `search` endpoint with the
+  /// channels-only filter and reads the results with
+  /// [parseChannelSearchResults].
   Future<List<YoutubeChannel>> searchChannels(String query) async {
     final override = searchOverride;
     if (override != null) return override(query);
-    final client = yt.YoutubeExplode();
+    final trimmed = query.trim();
+    final directId = channelIdFromUrl(trimmed);
+    if (directId != null) {
+      final client = yt.YoutubeExplode();
+      try {
+        final channel = await client.channels.get(directId);
+        return [
+          YoutubeChannel(
+              id: directId, name: channel.title, avatarUrl: channel.logoUrl),
+        ];
+      } finally {
+        client.close();
+      }
+    }
+    if (RegExp(r'^@[\w.-]+$').hasMatch(trimmed) ||
+        RegExp(r'youtube\.com/(@|user/)').hasMatch(trimmed)) {
+      final url = trimmed.startsWith('@')
+          ? 'https://www.youtube.com/$trimmed'
+          : trimmed;
+      final channel = await _resolveChannelUrl(url);
+      return channel == null ? const [] : [channel];
+    }
+    final http = yt.YoutubeHttpClient();
     try {
-      final results = await client.search
-          .searchContent(query, filter: yt.TypeFilters.channel);
-      return [
-        for (final r in results)
-          if (r is yt.SearchChannel)
-            YoutubeChannel(
-              id: r.id.value,
-              name: r.name,
-              avatarUrl: r.thumbnails.isEmpty
-                  ? null
-                  : _absoluteUrl(r.thumbnails.last.url.toString()),
-            ),
-      ];
+      final response = await http.sendPost('search', {
+        'query': trimmed,
+        // TypeFilters.channel's `sp` value, base64-decoded for a JSON body.
+        'params': 'EgIQAg==',
+      });
+      final channels = parseChannelSearchResults(response);
+      _log('Channel search "$trimmed": ${channels.length} result(s)');
+      return channels;
+    } catch (e) {
+      _log('Channel search "$trimmed" failed: $e');
+      rethrow;
     } finally {
-      client.close();
+      http.close();
     }
   }
 
@@ -541,6 +572,68 @@ class YoutubeFeedService {
 }
 
 String _absoluteUrl(String url) => url.startsWith('//') ? 'https:$url' : url;
+
+/// Every `channelRenderer` anywhere in an InnerTube `search` response, in
+/// order, deduplicated. Walks the whole tree rather than one fixed path
+/// (`contents/twoColumnSearchResultsRenderer/.../itemSectionRenderer`)
+/// so a reshuffled layout still yields results; every field is read
+/// defensively and a renderer without an id or name is skipped.
+List<YoutubeChannel> parseChannelSearchResults(Object? response) {
+  final channels = <YoutubeChannel>[];
+  final seen = <String>{};
+
+  String? text(Object? node) {
+    if (node is! Map) return null;
+    final simple = node['simpleText'];
+    if (simple is String) return simple;
+    final runs = node['runs'];
+    if (runs is List) {
+      return runs
+          .whereType<Map>()
+          .map((r) => r['text'])
+          .whereType<String>()
+          .join();
+    }
+    return null;
+  }
+
+  void visit(Object? node) {
+    if (node is List) {
+      for (final child in node) {
+        visit(child);
+      }
+      return;
+    }
+    if (node is! Map) return;
+    final renderer = node['channelRenderer'];
+    if (renderer is Map) {
+      final id = renderer['channelId'];
+      final name = text(renderer['title'])?.trim();
+      if (id is String &&
+          id.startsWith('UC') &&
+          name != null &&
+          name.isNotEmpty &&
+          seen.add(id)) {
+        final thumbs = (renderer['thumbnail'] is Map
+                ? (renderer['thumbnail'] as Map)['thumbnails']
+                : null) ??
+            const [];
+        String? avatar;
+        if (thumbs is List && thumbs.isNotEmpty && thumbs.last is Map) {
+          final url = (thumbs.last as Map)['url'];
+          if (url is String && url.isNotEmpty) avatar = _absoluteUrl(url);
+        }
+        channels.add(YoutubeChannel(id: id, name: name, avatarUrl: avatar));
+      }
+    }
+    for (final value in node.values) {
+      visit(value);
+    }
+  }
+
+  visit(response);
+  return channels;
+}
 
 /// Drops Shorts/livestreams per [settings].
 List<FeedVideo> filterFeed(List<FeedVideo> all, YoutubeFeedSettings settings) =>
