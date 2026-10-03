@@ -2,6 +2,9 @@
 
 ## [0.2.94] - 2026-10-03
 - Settings > Updates now shows the folder where update downloads are saved, with a button to copy its path
+- Local build: 2026-10-03 20:12
+- Build duration (apk): 5m 28s
+- Build duration (windows): 1m 58s
 
 ## [0.2.93] - 2026-10-03
 - Fixed "YouTube search failed" on a working connection in the Music Player and MP3 Downloader; a real failure now says what went wrong
