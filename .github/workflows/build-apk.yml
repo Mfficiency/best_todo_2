@@ -94,8 +94,14 @@ jobs:
     # also defines a `music` flavor for the separate Best Music app —
     # lib/main_music.dart — built locally via `sh tool/build.sh music-apk`,
     # not by this workflow).
+    # Timed so the build's duration can be recorded (see the last step).
     - name: Build APK
-      run: flutter build apk --release --flavor todo
+      id: build_apk
+      shell: bash
+      run: |
+        start=$(date +%s)
+        flutter build apk --release --flavor todo
+        echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
 
     - name: Stage APK with version in filename
       id: stage_apk
@@ -127,6 +133,45 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: dart run tool/publish_apk.dart --apk "${{ steps.stage_apk.outputs.apk }}"
+
+    # Versions that are only ever built here (never by tool/build.sh or
+    # build.ps1 locally) used to get no build notes at all. Record this
+    # build's time, duration and APK size in CHANGELOG.md ("- CI build:",
+    # "- Build duration (apk, CI):", "- APK size:") and build_history.json,
+    # then push. dev only: staging/main receive the same commits by merge,
+    # and committing there directly would make those branches diverge.
+    # Re-applied onto a fresh origin/dev on each attempt (other CI jobs push
+    # to dev around the same time); --version pins the notes to the version
+    # actually built even if dev has moved on. A push made with the
+    # workflow's GITHUB_TOKEN never triggers another workflow run.
+    - name: Record build time, duration and APK size
+      if: github.event_name == 'push' && github.ref_name == 'dev'
+      shell: bash
+      run: |
+        ver="${{ steps.appver.outputs.version }}"
+        apk="$RUNNER_TEMP/besttodo.apk"
+        cp "${{ steps.stage_apk.outputs.apk }}" "$apk"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        for attempt in 1 2 3; do
+          git fetch origin dev
+          git reset --hard origin/dev
+          dart run tool/append_build_time.dart --source ci --target apk \
+            --duration "${{ steps.build_apk.outputs.seconds }}" \
+            --artifact "$apk" --version "$ver"
+          git add CHANGELOG.md build_history.json
+          if git diff --cached --quiet; then
+            echo "nothing to record"
+            exit 0
+          fi
+          git commit -m "chore: record CI build $ver [ci]"
+          if git push origin HEAD:dev; then
+            exit 0
+          fi
+          echo "Push attempt $attempt failed; retrying."
+          sleep $((attempt * 3))
+        done
+        exit 1
 
     - name: Add APK download link to summary
       if: always()
@@ -176,7 +221,12 @@ jobs:
       run: echo "version=$(grep '^version:' MUSIC_VERSION | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
 
     - name: Build Best Music APK
-      run: flutter build apk --release --flavor music -t lib/main_music.dart
+      id: build_apk
+      shell: bash
+      run: |
+        start=$(date +%s)
+        flutter build apk --release --flavor music -t lib/main_music.dart
+        echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
 
     - name: Stage APK with version in filename
       id: stage_apk
@@ -204,22 +254,35 @@ jobs:
       if: github.event_name == 'push'
       shell: bash
       run: |
-        dart run tool/stage_local_release.dart \
-          --apk "build/app/outputs/flutter-apk/app-music-release.apk" \
-          --prefix best_music --version "${{ steps.appver.outputs.version }}"
+        ver="${{ steps.appver.outputs.version }}"
+        apk="$RUNNER_TEMP/bestmusic.apk"
+        cp "build/app/outputs/flutter-apk/app-music-release.apk" "$apk"
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add github_releases
-        if git diff --cached --quiet; then
-          echo "nothing to commit (github_releases/ already up to date)"
-          exit 0
-        fi
-        git commit -m "chore: stage Best Music release build ${{ steps.appver.outputs.version }} [ci]"
-        # The `build` job's own release publish and other same-branch CI runs
-        # can land around the same time (a plain push has lost this race on
-        # dev before — see screenshot_changelog.yml) — rebase-and-retry.
+        # The `build` job's own release publish/build record and other
+        # same-branch CI runs can land around the same time (a plain push has
+        # lost this race on dev before — see screenshot_changelog.yml), so
+        # each attempt re-applies everything onto a fresh copy of the branch.
         for attempt in 1 2 3; do
-          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git fetch origin "${GITHUB_REF_NAME}"
+          git reset --hard "origin/${GITHUB_REF_NAME}"
+          dart run tool/stage_local_release.dart \
+            --apk "$apk" --prefix best_music --version "$ver"
+          git add github_releases
+          # On dev, also note this build's time, duration and APK size in
+          # CHANGELOG_MUSIC.md + build_history.json (see the `build` job's
+          # "Record build time" step for why dev only, and --version).
+          if [ "${GITHUB_REF_NAME}" = "dev" ]; then
+            dart run tool/append_build_time.dart --app music --source ci \
+              --target apk --duration "${{ steps.build_apk.outputs.seconds }}" \
+              --artifact "$apk" --version "$ver"
+            git add CHANGELOG_MUSIC.md build_history.json
+          fi
+          if git diff --cached --quiet; then
+            echo "nothing to commit (already up to date)"
+            exit 0
+          fi
+          git commit -m "chore: stage Best Music release build $ver [ci]"
           if git push origin "HEAD:${GITHUB_REF_NAME}"; then
             exit 0
           fi

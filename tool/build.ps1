@@ -205,6 +205,20 @@ function Invoke-SingleBuild {
     if ($appFlavor -eq "music") {
       $appArgs = @("--app", "music")
     }
+    # What was built, so its size is tracked too ("- APK size:" line and
+    # build_history.json's sizeBytes).
+    $artifact = $null
+    if ($target -eq "apk") {
+      $artifact = "build/app/outputs/flutter-apk/${prefix}_$version.apk"
+      if (-not (Test-Path -LiteralPath $artifact)) {
+        $artifact = "build/app/outputs/flutter-apk/app-$appFlavor-release.apk"
+      }
+    } elseif ($target -eq "windows") {
+      $artifact = "build/windows/x64/runner/Release"
+    }
+    if ($artifact) {
+      $appArgs += @("--artifact", $artifact)
+    }
     Invoke-Checked "dart" (@("run", "tool/append_build_time.dart",
       "--duration", "$buildDurationSeconds", "--target", $target) + $appArgs)
   } else {

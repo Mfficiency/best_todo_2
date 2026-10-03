@@ -14,6 +14,25 @@
 //   dart run tool/append_build_time.dart --duration 102 --target apk
 //   dart run tool/append_build_time.dart --dry-run
 //   dart run tool/append_build_time.dart --app music --duration 102 --target apk
+//   dart run tool/append_build_time.dart --duration 102 --target apk \
+//       --artifact build/app/outputs/flutter-apk/best_todo_1.2.3+4.apk
+//   dart run tool/append_build_time.dart --source ci --duration 330 --target apk ...
+//
+// `--artifact` (an APK file, or a build output folder such as the Windows
+// Release dir) adds its size: a "- APK size: 52.3 MB" line (or "- Build
+// size (<target>): ..." for non-APK targets) and `sizeBytes` in the history
+// record, so app size is tracked over time alongside build duration.
+//
+// `--source ci` is for the GitHub Actions build jobs: the notes read
+// "- CI build: <UTC time>" and "- Build duration (<target>, CI): ...", so a
+// version only ever built by CI still gets its build notes (it used to get
+// none, since only tool/build.sh / build.ps1 called this), without being
+// mistaken for a local build. The history record gets `"source": "ci"`.
+//
+// Notes go into the section of the version being built (read from
+// pubspec.yaml / MUSIC_VERSION), falling back to the newest section — so a
+// CI job that rebased onto a newer version bump can't mislabel it (CI also
+// passes `--version <built version>` explicitly for the same reason).
 //
 // `--app music` notes the build in Best Music's own CHANGELOG_MUSIC.md and
 // reads its version from MUSIC_VERSION instead of pubspec.yaml — the two
@@ -27,6 +46,37 @@ import 'dart:io';
 /// building the same version repeatedly updates one line instead of piling
 /// up a new one per build.
 const String buildTimeLinePrefix = '- Local build: ';
+
+/// Build-time note prefix for a CI build (`--source ci`).
+const String ciBuildTimeLinePrefix = '- CI build: ';
+
+/// Size note prefix: `- APK size: ` for APK targets, else per target.
+String buildSizeLinePrefix(String target) => target.contains('apk')
+    ? '- APK size: '
+    : '- Build size ($target): ';
+
+/// `52.3 MB` / `812 KB`.
+String formatSize(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / 1024).round()} KB';
+}
+
+/// Size in bytes of [path]: a file's length, or the total of every file
+/// under a directory. Null when it doesn't exist.
+int? artifactSize(String path) {
+  final type = FileSystemEntity.typeSync(path);
+  if (type == FileSystemEntityType.file) return File(path).lengthSync();
+  if (type == FileSystemEntityType.directory) {
+    var total = 0;
+    for (final entity in Directory(path).listSync(recursive: true)) {
+      if (entity is File) total += entity.lengthSync();
+    }
+    return total;
+  }
+  return null;
+}
 
 /// Where per-build duration history is persisted. Committed to the repo (not
 /// gitignored) so build times are tracked across machines and over the life
@@ -59,16 +109,24 @@ String formatDuration(int seconds) {
 /// Note-line prefix for a build-duration line, keyed by target (`apk`,
 /// `windows`, ...) so each target keeps its own line inside a version's
 /// section instead of overwriting the other's.
-String buildDurationLinePrefix(String target) =>
-    '- Build duration ($target): ';
+String buildDurationLinePrefix(String target, {bool ci = false}) =>
+    ci ? '- Build duration ($target, CI): ' : '- Build duration ($target): ';
 
-/// Inserts/updates a note line (identified by [prefix]) inside the first
-/// (i.e. newest) `## [...]` section of [changelog]. Returns the updated
-/// text, or null when there is no section to attach it to.
-String? _withNoteLine(String changelog, String prefix, String value) {
+/// Inserts/updates a note line (identified by [prefix]) inside the
+/// `## [<version>]` section of [changelog] ([version] without its `+build`
+/// part), or the first (newest) section when [version] is null or has no
+/// section. Returns the updated text, or null when there is no section to
+/// attach it to.
+String? _withNoteLine(String changelog, String prefix, String value,
+    {String? version}) {
   final headerRegex = RegExp(r'^##\s*\[[^\]]+\]\s*-\s*.+$', multiLine: true);
-  final firstHeader = headerRegex.firstMatch(changelog);
-  if (firstHeader == null) return null;
+  final headers = headerRegex.allMatches(changelog).toList();
+  if (headers.isEmpty) return null;
+  final wanted = version?.split('+').first;
+  final firstHeader = headers.firstWhere(
+    (h) => wanted != null && h.group(0)!.contains('[$wanted]'),
+    orElse: () => headers.first,
+  );
 
   final sectionStart = firstHeader.end;
   final nextHeader = headerRegex.firstMatch(changelog.substring(sectionStart));
@@ -103,15 +161,27 @@ String? _withNoteLine(String changelog, String prefix, String value) {
 
 /// Inserts/updates a `- Local build: <time>` line inside the newest
 /// CHANGELOG.md section. Returns null when there is no section to attach to.
-String? withBuildTimeNote(String changelog, String buildTime) =>
-    _withNoteLine(changelog, buildTimeLinePrefix, buildTime);
+String? withBuildTimeNote(String changelog, String buildTime,
+        {String? version, bool ci = false}) =>
+    _withNoteLine(changelog, ci ? ciBuildTimeLinePrefix : buildTimeLinePrefix,
+        buildTime,
+        version: version);
 
 /// Inserts/updates a `- Build duration (<target>): <text>` line inside the
 /// newest CHANGELOG.md section. Returns null when there is no section to
 /// attach to.
 String? withBuildDurationNote(
-        String changelog, String target, String durationText) =>
-    _withNoteLine(changelog, buildDurationLinePrefix(target), durationText);
+        String changelog, String target, String durationText,
+        {String? version, bool ci = false}) =>
+    _withNoteLine(
+        changelog, buildDurationLinePrefix(target, ci: ci), durationText,
+        version: version);
+
+/// Inserts/updates the size note (see [buildSizeLinePrefix]).
+String? withBuildSizeNote(String changelog, String target, int bytes,
+        {String? version}) =>
+    _withNoteLine(changelog, buildSizeLinePrefix(target), formatSize(bytes),
+        version: version);
 
 /// One recorded local build: version, target, how long it took, when it
 /// finished and on what OS. Appended to build_history.json after every
@@ -122,12 +192,16 @@ Map<String, dynamic> historyRecord({
   required int durationSeconds,
   required DateTime finishedAt,
   String app = 'todo',
+  int? sizeBytes,
+  String source = 'local',
 }) =>
     {
       'version': version,
       'app': app,
       'target': target,
       'durationSeconds': durationSeconds,
+      if (sizeBytes != null) 'sizeBytes': sizeBytes,
+      'source': source,
       'finishedAt': finishedAt.toIso8601String(),
       'os': Platform.operatingSystem,
     };
@@ -171,21 +245,36 @@ void main(List<String> args) {
   int? durationSeconds;
   String? target;
   String? app;
+  String? artifact;
+  String? versionArg;
+  var source = 'local';
   for (var i = 0; i < args.length; i++) {
-    if (args[i] == '--duration' && i + 1 < args.length) {
-      durationSeconds = int.tryParse(args[i + 1]);
-      i++;
-    } else if (args[i] == '--target' && i + 1 < args.length) {
-      target = args[i + 1];
-      i++;
-    } else if (args[i] == '--app' && i + 1 < args.length) {
-      app = args[i + 1];
-      i++;
+    final value = i + 1 < args.length ? args[i + 1] : null;
+    switch (args[i]) {
+      case '--duration' when value != null:
+        durationSeconds = int.tryParse(value);
+        i++;
+      case '--target' when value != null:
+        target = value;
+        i++;
+      case '--app' when value != null:
+        app = value;
+        i++;
+      case '--artifact' when value != null:
+        artifact = value;
+        i++;
+      case '--source' when value != null:
+        source = value;
+        i++;
+      case '--version' when value != null:
+        versionArg = value;
+        i++;
     }
   }
   final hasDuration =
       durationSeconds != null && target != null && target.isNotEmpty;
   final isMusic = app == 'music';
+  final ci = source == 'ci';
 
   final changelogPath = isMusic ? 'CHANGELOG_MUSIC.md' : 'CHANGELOG.md';
   final changelogFile = File(changelogPath);
@@ -195,11 +284,19 @@ void main(List<String> args) {
     return;
   }
 
+  final versionPath = isMusic ? 'MUSIC_VERSION' : 'pubspec.yaml';
+  // --version: the version that was actually built, for a CI job that has
+  // since rebased onto a newer version bump.
+  final version = versionArg ?? readVersionFrom(versionPath);
+
   final changelog = changelogFile.readAsStringSync();
   final now = DateTime.now();
-  final buildTime = formatBuildTime(now);
+  // CI runners are on UTC; say so rather than pass it off as local time.
+  final buildTime =
+      ci ? '${formatBuildTime(now.toUtc())} UTC' : formatBuildTime(now);
 
-  var updated = withBuildTimeNote(changelog, buildTime);
+  var updated =
+      withBuildTimeNote(changelog, buildTime, version: version, ci: ci);
   if (updated == null) {
     stdout.writeln('No "## [version] - date" section found; skipping.');
     return;
@@ -207,32 +304,41 @@ void main(List<String> args) {
 
   String? durationText;
   if (hasDuration) {
-    final durationSecondsValue = durationSeconds!;
-    final targetValue = target!;
-    durationText = formatDuration(durationSecondsValue);
-    updated =
-        withBuildDurationNote(updated, targetValue, durationText) ?? updated;
+    durationText = formatDuration(durationSeconds);
+    updated = withBuildDurationNote(updated, target, durationText,
+            version: version, ci: ci) ??
+        updated;
   }
 
-  final summary = durationText == null
-      ? buildTime
-      : '$buildTime ($target: $durationText)';
+  int? sizeBytes;
+  if (artifact != null) {
+    sizeBytes = artifactSize(artifact);
+    if (sizeBytes == null) {
+      stdout.writeln('Artifact $artifact not found; size not recorded.');
+    } else {
+      updated = withBuildSizeNote(updated, target ?? 'apk', sizeBytes,
+              version: version) ??
+          updated;
+    }
+  }
+
+  final summary = [
+    buildTime,
+    if (durationText != null) '$target: $durationText',
+    if (sizeBytes != null) formatSize(sizeBytes),
+  ].join(', ');
+  final kind = ci ? 'CI' : 'local';
 
   if (updated == changelog) {
     stdout.writeln('$changelogPath already notes this build.');
   } else if (dryRun) {
-    stdout.writeln('Would record local build in $changelogPath: $summary');
+    stdout.writeln('Would record $kind build in $changelogPath: $summary');
   } else {
     changelogFile.writeAsStringSync(updated);
-    stdout.writeln('Recorded local build in $changelogPath: $summary');
+    stdout.writeln('Recorded $kind build in $changelogPath: $summary');
   }
 
   if (!hasDuration) return;
-  final durationSecondsValue = durationSeconds!;
-  final targetValue = target!;
-
-  final versionPath = isMusic ? 'MUSIC_VERSION' : 'pubspec.yaml';
-  final version = readVersionFrom(versionPath);
   if (version == null) {
     stdout.writeln('No version in $versionPath; skipping $historyFileName.');
     return;
@@ -243,9 +349,11 @@ void main(List<String> args) {
   final record = historyRecord(
     version: version,
     app: isMusic ? 'music' : 'todo',
-    target: targetValue,
-    durationSeconds: durationSecondsValue,
+    target: target,
+    durationSeconds: durationSeconds,
     finishedAt: now,
+    sizeBytes: sizeBytes,
+    source: source,
   );
   final updatedHistory = appendHistoryRecord(history, record);
 
@@ -255,6 +363,5 @@ void main(List<String> args) {
   }
   historyFile.writeAsStringSync(
       '${const JsonEncoder.withIndent('  ').convert(updatedHistory)}\n');
-  stdout.writeln(
-      'Recorded build duration in $historyFileName ($targetValue: $durationText)');
+  stdout.writeln('Recorded build in $historyFileName ($summary)');
 }

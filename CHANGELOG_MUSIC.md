@@ -10,11 +10,13 @@ nothing has been copied over here.
 - Jump between your last song and your last video in one tap: stop either halfway, and the button on the song bar (or at the top of Now Playing) resumes the other right where you left it — even after restarting the app
 - Every Subscriptions video you start now downloads completely in the background and stays on your phone for a week after you last played it, so jumping back in is instant and works offline
 - Progress bars while things load: songs and videos starting, the feed refreshing (per channel), searches and video descriptions
+- APK size: 61.8 MB
 
 ## [0.2.98] - 2026-10-03
 - Music and Subscriptions videos now keep separate settings: music always plays at 1× (including songs from YouTube search), and each has its own volume — set it with the new volume button on Now Playing, or in Settings / Feed settings
 - Volume boost for quiet Subscriptions videos: a "Boost for quiet videos" slider (up to +12 dB) in the video volume sheet. Never applied to music
 - Searching for a song that isn't in your library now searches YouTube by itself — the results sit under a clear "Not in your library" banner and are marked YouTube, so you can tell them apart from your own songs
+- APK size: 61.8 MB
 
 ## [0.2.97] - 2026-10-03
 - Settings now shows the folder where update downloads are saved, with a button to copy its path

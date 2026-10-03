@@ -176,15 +176,33 @@ BUILD_DURATION=$(( $(date +%s) - BUILD_START ))
 
 # Record when this build finished (and how long it took) in the app's own
 # changelog (CHANGELOG.md, or CHANGELOG_MUSIC.md for a music build -- see
-# APP_ARG above): a "- Local build: <time>" line plus a "- Build duration
-# (<target>): <time>" line in the newest version's section, each updated in
+# APP_ARG above): a "- Local build: <time>" line, a "- Build duration
+# (<target>): <time>" line and the APK/build size in this version's section, each updated in
 # place on repeat builds. Also appends a record to build_history.json
 # (committed, so build times are tracked across builds/machines over time).
 # The changelog is bundled as an app asset by the `flutter build` above, so
 # this build's own asset already froze the old text -- only the *next* build
 # will show this timestamp/duration. That's expected.
 if [ "$BUILD_STATUS" -eq 0 ]; then
-  dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" $APP_ARG
+  # What was built, so its size is tracked too (the "- APK size:" line and
+  # build_history.json's sizeBytes): the versioned APK Gradle just wrote
+  # (or the plain app-<flavor>-release.apk if that task didn't run), or the
+  # whole Windows Release folder.
+  ARTIFACT=""
+  case "$1" in
+    apk)
+      ARTIFACT="build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk"
+      [ -e "$ARTIFACT" ] || ARTIFACT="build/app/outputs/flutter-apk/app-${FLAVOR:-todo}-release.apk"
+      ;;
+    windows)
+      ARTIFACT="build/windows/x64/runner/Release"
+      ;;
+  esac
+  if [ -n "$ARTIFACT" ]; then
+    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" --artifact "$ARTIFACT" $APP_ARG
+  else
+    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" $APP_ARG
+  fi
 else
   # Don't rename or stage artifacts left over from an earlier build.
   echo "flutter build $* failed (status $BUILD_STATUS)" >&2

@@ -55,13 +55,18 @@ file is the short operational guide.
   `github_releases/` and deletes the older ones; commit the folder — the app's About page
   downloads the newest from there ("Download & install") and the other one for
   "Go back to <version>" (`UpdateService.releasesRef` = the `dev` branch)
-- Local build time & duration: `tool/build.sh`/`tool/build.ps1` time the
+- Build time, duration & size: `tool/build.sh`/`tool/build.ps1` time the
   `flutter build` call and, on success, run
-  `dart run tool/append_build_time.dart --duration <secs> --target <apk|windows|...>`,
-  writing/updating a "Local build: <time>" line plus a per-target
-  "Build duration (<target>): <time>" line in the newest CHANGELOG.md entry, and
-  appending `{version, target, durationSeconds, finishedAt, os}` to `build_history.json`
-  (committed, capped at the newest 1000 entries) so build times are tracked over time.
+  `dart run tool/append_build_time.dart --duration <secs> --target <apk|windows|...> --artifact <apk or Release dir>`,
+  writing/updating a "Local build: <time>" line, a per-target
+  "Build duration (<target>): <time>" line and an "APK size: <MB>" line (or
+  "Build size (<target>)") in that version's CHANGELOG.md entry, and appending
+  `{version, app, target, durationSeconds, sizeBytes, source, finishedAt, os}` to
+  `build_history.json` (committed, capped at the newest 1000 entries) so build times and
+  app size are tracked over time. CI does the same for every push to `dev`
+  (`build-apk.yml`, both apps): `--source ci` writes "CI build: <UTC time>" and
+  "Build duration (apk, CI)" instead, commits and pushes — so a version that's only ever
+  built by CI still gets its notes.
   Since CHANGELOG.md is bundled as an asset by that same build, the Changelog page
   only ever shows the *previous* build's time/duration — expected, not a bug.
 - Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
