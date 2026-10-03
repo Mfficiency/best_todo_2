@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.92] - 2026-10-03
+- New Subscriptions feed (menu → Subscriptions): follow YouTube channels — find them by name or import your subscriptions from Tubular/NewPipe — and see their newest videos in one list. Tap a video for its full description, Open in YouTube, or Download (straight into the MP3 Downloader). The play button streams the audio through the normal player (song bar, lock screen, sleep timer) with the thumbnail as cover art and keeps going through the unplayed videos below it. Played videos are dimmed with a check mark, long ones resume where you stopped, and the feed refreshes when you open it or pull down. Feed settings: hide Shorts and livestreams, and SponsorBlock auto-skip of sponsor reads and other marked segments (pick which kinds)
+
 ## [0.2.91] - 2026-10-03
 - Share a song from Shazam, Spotify or YouTube to Best Music and it starts downloading right away: the best match downloads immediately (a YouTube link downloads that exact video), and if it picked the wrong version, tap the right one in the list to swap
 - Works for links from other music apps too (Apple Music, Deezer, SoundCloud, ...) and for plain text like "Song - Artist"

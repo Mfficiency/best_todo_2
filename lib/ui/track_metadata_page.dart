@@ -161,8 +161,11 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
                           ? 'Unknown'
                           : _formatDate(track.dateAdded!),
                     ),
-                    _infoRow('Source',
-                        track.source == TrackSource.local ? 'Local file' : 'Subsonic'),
+                    _infoRow('Source', switch (track.source) {
+                      TrackSource.local => 'Local file',
+                      TrackSource.subsonic => 'Subsonic',
+                      TrackSource.youtube => 'YouTube',
+                    }),
                     if (track.filePath != null) _infoRow('File', track.filePath!),
                   ],
                 ),

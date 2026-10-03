@@ -9,6 +9,7 @@ import '../services/music_sleep_timer.dart';
 import 'music_theme.dart';
 import 'sleep_timer_sheet.dart';
 import 'subpage_app_bar.dart';
+import 'youtube_feed_settings_page.dart';
 
 /// Best Music's Settings page: just the music folder and its excluded
 /// subfolders — the same `Config.musicFolder`/`musicExcludedSubfolders`
@@ -174,6 +175,13 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                   : 'Off — pause playback after a while'),
               onTap: () => showSleepTimerSheet(context),
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.subscriptions_outlined),
+            title: const Text('Subscriptions feed'),
+            subtitle: const Text('Hide Shorts/livestreams, SponsorBlock'),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const YoutubeFeedSettingsPage())),
           ),
         ],
       ),

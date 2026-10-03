@@ -5,11 +5,15 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:just_audio/just_audio.dart' as ja;
 
 import '../models/track.dart';
+import '../models/youtube_feed.dart';
 import 'music_library_service.dart';
 import 'music_playlist_service.dart';
 import 'music_resume_service.dart';
 import 'music_sleep_timer.dart';
+import 'sponsorblock_service.dart';
 import 'subsonic_client.dart';
+import 'youtube_audio_source.dart';
+import 'youtube_feed_service.dart';
 
 /// The app's single [BaseAudioHandler]: everything the system media
 /// notification, lock screen, headset buttons and (when registered through
@@ -48,6 +52,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Where to start the remembered track once [play] loads it.
   Duration? _resumePosition;
 
+  /// SponsorBlock segments to jump over in the current YouTube track, and
+  /// which track they belong to (the lookup is async, so a late answer for
+  /// a track already skipped past must not apply to the next one).
+  List<SkipSegment> _skipSegments = const [];
+
+  /// The track whose audio the player currently holds.
+  String? _loadedTrackId;
+  String? _skipSegmentsTrackId;
+
   MusicAudioHandler() {
     _player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {
       _broadcastState(_player.playbackEvent);
@@ -61,6 +74,10 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         final finished = currentTrack;
         if (finished != null) {
           unawaited(MusicLibraryService.instance.incrementPlayCount(finished.id));
+          if (finished.source == TrackSource.youtube) {
+            unawaited(YoutubeFeedService.instance
+                .setPlayed(finished.remoteId!, true));
+          }
         }
         // Sleep timer set to "end of song": stop here, rewound so play
         // starts this song again rather than sitting at its end.
@@ -74,6 +91,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         _advance(1, wrapWithReshuffle: true);
       }
     });
+    _player.positionStream.listen(_skipSponsorSegment);
     _player.playingStream.listen((playing) {
       _positionTicker?.cancel();
       _positionTicker = playing
@@ -129,18 +147,58 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   MediaItem _toMediaItem(Track t) => MediaItem(
         id: t.id,
+        artUri: t.artUrl != null ? Uri.tryParse(t.artUrl!) : null,
         title: t.title.isNotEmpty ? t.title : t.fileBaseName,
         artist: t.artist.isNotEmpty ? t.artist : null,
         album: t.album.isNotEmpty ? t.album : null,
         duration: t.durationMs != null ? Duration(milliseconds: t.durationMs!) : null,
       );
 
-  Future<Uri> _resolveUri(Track track) async {
+  Future<ja.AudioSource> _audioSourceFor(Track track) async {
     switch (track.source) {
       case TrackSource.local:
-        return Uri.file(track.filePath!);
+        return ja.AudioSource.uri(Uri.file(track.filePath!));
       case TrackSource.subsonic:
-        return SubsonicClient.instance.streamUri(track.remoteId!);
+        return ja.AudioSource.uri(
+            SubsonicClient.instance.streamUri(track.remoteId!));
+      case TrackSource.youtube:
+        return YoutubeAudioSource(
+          track.remoteId!,
+          duration: track.durationMs != null
+              ? Duration(milliseconds: track.durationMs!)
+              : null,
+        );
+    }
+  }
+
+  /// Looks up SponsorBlock segments for a YouTube [track], if enabled.
+  void _loadSkipSegments(Track track) {
+    _skipSegments = const [];
+    _skipSegmentsTrackId = track.id;
+    final settings = YoutubeFeedService.instance.settings.value;
+    if (track.source != TrackSource.youtube || !settings.sponsorBlockEnabled) {
+      return;
+    }
+    unawaited(SponsorBlockService.instance
+        .segmentsFor(track.remoteId!, settings.sponsorBlockCategories)
+        .then((segments) {
+      if (_skipSegmentsTrackId == track.id) _skipSegments = segments;
+    }));
+  }
+
+  /// Seeks past a SponsorBlock segment the playhead has entered. Only near
+  /// a segment's start (the first 2 s), so dragging the seek bar into the
+  /// middle of one deliberately still plays it.
+  void _skipSponsorSegment(Duration position) {
+    if (_skipSegments.isEmpty || !_player.playing) return;
+    if (_skipSegmentsTrackId != currentTrack?.id) return;
+    for (final segment in _skipSegments) {
+      if (position >= segment.start &&
+          position < segment.start + const Duration(seconds: 2) &&
+          position < segment.end) {
+        unawaited(_player.seek(segment.end));
+        return;
+      }
     }
   }
 
@@ -149,6 +207,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     _ticksSinceSave = 0;
     final track = currentTrack;
     if (track == null) return;
+    // Only once this track's own audio is loaded — until then the player
+    // still reports the previous track's position.
+    if (track.source == TrackSource.youtube && _loadedTrackId == track.id) {
+      unawaited(YoutubeFeedService.instance.recordProgress(
+        track.remoteId!,
+        _player.position,
+        duration: _player.duration,
+      ));
+    }
     unawaited(MusicResumeService.save(MusicResumeState(
       queueIds: [for (final t in _queue) t.id],
       index: _queueIndex,
@@ -200,14 +267,20 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     final track = currentTrack;
     if (track == null) return;
     mediaItem.add(_toMediaItem(track));
-    final startAt = _resumePosition;
+    var startAt = _resumePosition;
     _resumePosition = null;
+    // A feed video picks up where it was left (podcasts, long mixes).
+    if (startAt == null && track.source == TrackSource.youtube) {
+      startAt = YoutubeFeedService.instance.resumePosition(track.remoteId!);
+    }
+    _loadedTrackId = null;
     _persist();
+    _loadSkipSegments(track);
     try {
-      final uri = await _resolveUri(track);
-      await _player.setAudioSource(ja.AudioSource.uri(uri),
-          initialPosition: startAt);
+      final source = await _audioSourceFor(track);
+      await _player.setAudioSource(source, initialPosition: startAt);
       _sourceLoaded = true;
+      _loadedTrackId = track.id;
       await _player.play();
     } catch (_) {
       // Unplayable track (missing file, unreachable server): skip it rather
@@ -243,6 +316,12 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     var next = _queueIndex + delta;
     if (next >= _queue.length) {
       if (!wrapWithReshuffle) return;
+      // The end of a Subscriptions-feed queue is the end, not a cue to
+      // start shuffling the local library.
+      if (currentTrack?.source == TrackSource.youtube) {
+        await _player.pause();
+        return;
+      }
       final library = MusicLibraryService.instance.tracks.value;
       if (library.isEmpty) return;
       _queue = MusicPlaylistService.instance.weightedShuffle(library);

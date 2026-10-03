@@ -30,6 +30,7 @@ import 'rule_playlist_editor_page.dart';
 import 'startup_times_page.dart';
 import 'subpage_app_bar.dart';
 import 'track_metadata_page.dart';
+import 'youtube_feed_page.dart';
 
 /// Tools → Music Player: browse/play tracks scanned from
 /// [Config.musicFolder] (and, once configured, a Subsonic server), manage
@@ -171,6 +172,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             title: const Text('MP3 Downloader'),
             onTap: () =>
                 _pushStandalonePage(() => const Mp3DownloaderPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.subscriptions_outlined),
+            title: const Text('Subscriptions'),
+            onTap: () => _pushStandalonePage(() => const YoutubeFeedPage()),
           ),
           ListTile(
             leading: const Icon(Icons.star_border),

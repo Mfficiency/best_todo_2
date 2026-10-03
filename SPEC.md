@@ -4201,6 +4201,86 @@ phone number 4 hours (`kF1ReminderLead`) before every remaining race of the seas
   tapping a race (or its "Edit time" button) opens a date picker then a 24-hour time picker;
   edited races show "(edited)" and a "Reset time" button; each change saves and re-arms the alarm.
 
+### 10.6m Subscriptions feed — YouTube channels in Best Music (Best Music 0.2.92)
+A Tubular/NewPipe-style feed built in Dart on the existing `youtube_explode_dart` + player
+stack rather than by forking Tubular (a native Java app, GPL-3.0 — embedding it would mean
+two UIs and two media sessions, and would make the APK GPL). Drawer entry **Subscriptions**
+in Best Music (`MusicPlayerPage._buildDrawer`) → `YoutubeFeedPage`
+(`lib/ui/youtube_feed_page.dart`).
+
+**State** — `YoutubeFeedService` (`lib/services/youtube_feed_service.dart`, singleton) owns
+`ValueNotifier`s for `subscriptions` (`YoutubeChannel`: `UC...` id, name, avatar URL),
+`videos` (`FeedVideo`, newest first, unfiltered), `settings` (`YoutubeFeedSettings`),
+`progress` (`videoId → WatchProgress`: position, duration, completed, updated; capped at the
+2000 most recently updated) and `refreshing`/`failedChannels`, all persisted to one
+`youtube_feed.json` in the app documents dir (models in `lib/models/youtube_feed.dart`,
+tolerant `fromJson`). `main_music.dart` loads it before `MusicPlayerService.init` so feed
+playback has its settings and resume positions.
+
+**Refresh** — on opening the feed (when there are subscriptions), pull-to-refresh, after a
+Tubular import, and for just the new channel on subscribe. Up to 6 channels in parallel; per
+channel `fetchChannel` reads:
+1. the RSS feed `youtube.com/feeds/videos.xml?channel_id=UC...` (`parseYoutubeRss`, package
+   `xml`): the 15 newest uploads of every kind, exact `published`, full `media:description`,
+   view count; a `/shorts/<id>` link sets `isShort`;
+2. the Videos tab (`channels.getUploadsFromPage`): durations and view counts. Livestreams sit
+   on the separate Live tab, so `mergeVideosTab` flags a non-Short RSS entry missing from a
+   *successfully read, non-empty* Videos tab as `isLivestream`.
+If RSS fails the Videos tab is used alone (approximate "3 days ago" dates, no descriptions —
+the video page fetches one on demand via `videos.get`); if the tab fails nothing is flagged
+live; only both failing fails the channel. A failed channel keeps its cached videos and is
+named in the feed's error row; descriptions fetched on demand survive later refreshes.
+`filterFeed` applies the settings at display time (`visibleVideos`), so toggles need no
+refetch.
+
+**Feed UI** — rows: 16:9 thumbnail (`i.ytimg.com/vi/<id>/mqdefault.jpg`) with duration badge
+and red progress bar, title, "channel · 2d ago · 1.2K views", a Play button (tooltip "Play").
+Played videos are dimmed with a check icon. The app bar has **Channels** and **Feed
+settings**. Empty state → "Add channels". Tapping a row opens `YoutubeVideoPage`: large
+thumbnail, title, meta line, **Play**/"Resume at m:ss", **Open in YouTube**
+(`launchUrl(watchUrl, externalApplication)` → the YouTube app), **Download** (pushes
+`Mp3DownloaderPage(initialQuery: watchUrl)`, which submits it like a typed URL → queued
+through the usual folder checks, §10.6d), **Mark played/unplayed**, and the description as
+`LinkifiedText`.
+
+**Channels** (`YoutubeChannelsPage`) — search by name (`search.searchContent` with
+`TypeFilters.channel`) → Subscribe/Subscribed per result; the subscribed list with
+Unsubscribe (+ Undo snackbar); app-bar "Import from Tubular/NewPipe" opens a `.json` export
+(`{"subscriptions":[{"service_id":0,"url":...,"name":...}]}`, `parseNewPipeSubscriptions`):
+non-YouTube services are dropped, `/channel/UC...` URLs map directly, `@handle`/`/user/` URLs
+are resolved through `youtube_explode_dart`, anything else counts as skipped; already
+subscribed channels are counted, not duplicated.
+
+**Playback** — `TrackSource.youtube` (`Track.youtube`: id `youtube:<videoId>`, `remoteId` =
+video id, `artist` = channel, new `Track.artUrl` = `hqdefault.jpg`, also sent as the
+`MediaItem.artUri` for the notification/lock screen and drawn on Now Playing instead of the
+note icon). Play builds the queue with `queueFrom`: the tapped video, then up to 50 *unplayed*
+videos below it. The end of a YouTube queue pauses instead of reshuffling the local library.
+Audio comes from `YoutubeAudioSource` (`lib/services/youtube_audio_source.dart`, a just_audio
+`StreamAudioSource`): it resolves the stream with `Mp3DownloaderService.resolveAudioStream`
+(the downloader's visionOS-first client walk + PoToken-wall probe) and serves just_audio's
+local proxy from 1 MiB range requests, because YouTube throttles one open response to
+~31 KiB/s and 403s most clients past 1 MiB. Each request bumps a generation counter so the
+stream abandoned by a seek stops at its next chunk, and reads stay at most 6 MiB ahead of
+estimated real-time consumption (the proxy has no back-pressure).
+**Progress**: `MusicAudioHandler._persist` (every ~15 s and on pause) records the position
+of a YouTube track once its own audio is loaded (`_loadedTrackId`); within the last 30 s or
+95 % counts as played, as does reaching the end. `_playCurrent` resumes a feed video at its
+saved position minus 3 s unless it was played or under 10 s in.
+**SponsorBlock**: on loading a YouTube track the handler fetches
+`sponsor.ajay.app/api/skipSegments?videoID=..&categories=[..]` (`SponsorBlockService`; 404/
+errors = nothing to skip; only `actionType: skip`) and, on `positionStream`, seeks to a
+segment's end when the playhead is within its first 2 s — so seeking into the middle of a
+segment on purpose still plays it.
+
+**Settings** (`YoutubeFeedSettingsPage`, from the feed's tune icon or Best Music Settings →
+"Subscriptions feed"): Hide Shorts (default on), Hide livestreams (default on), SponsorBlock
+on/off (default on) and per-category checkboxes (default sponsor, selfpromo, interaction,
+music_offtopic). Log lines go to App Logs under "Feed".
+
+Not done yet (deliberately out of the MVP): in-app video playback, background
+new-upload notifications, feed groups.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line

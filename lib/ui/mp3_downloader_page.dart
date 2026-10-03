@@ -52,6 +52,7 @@ class Mp3DownloaderPage extends StatefulWidget {
     MusicLinkResolverService? resolver,
     this.sharedLink,
     this.autoDownloadTopMatch = false,
+    this.initialQuery,
   })  : _service = service,
         _manager = manager,
         _resolver = resolver,
@@ -76,6 +77,11 @@ class Mp3DownloaderPage extends StatefulWidget {
   /// candidate cancels the auto-picked download if it's still running.
   /// Off for BestToDo, whose share flow keeps the plain picker.
   final bool autoDownloadTopMatch;
+
+  /// Submitted as soon as the page opens, as if typed — the Subscriptions
+  /// feed's "Download" button passes a video URL here, which queues it
+  /// straight away through the usual folder checks.
+  final String? initialQuery;
 
   @override
   State<Mp3DownloaderPage> createState() => _Mp3DownloaderPageState();
@@ -120,6 +126,9 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     if (sharedLink != null) {
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _handleSharedLink(sharedLink));
+    } else if ((widget.initialQuery ?? '').trim().isNotEmpty) {
+      _controller.text = widget.initialQuery!.trim();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _submit());
     }
   }
 
