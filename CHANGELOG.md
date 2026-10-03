@@ -2,8 +2,9 @@
 
 ## [0.2.91] - 2026-10-03
 - Smart auto-tag (optional): when none of your auto-tag keywords match a new task, the app can ask the Jev decision model to pick one of your existing tags instead. It only applies a tag when it's confident, never slows down adding a task, and costs a tiny fraction of a cent per task. Turn it on in Settings > Tasks and paste a TypeSafe API key
-- Local build: 2026-10-03 07:41
+- Local build: 2026-10-03 07:56
 - Build duration (apk): 10m 10s
+- Build duration (windows): 1m 34s
 
 ## [0.2.89] - 2026-10-02
 - Only one copy of the app can be open at a time: opening it again from the home screen, a notification, a widget or a shared link brings back the copy that's already running instead of starting a second one (on Windows too)
