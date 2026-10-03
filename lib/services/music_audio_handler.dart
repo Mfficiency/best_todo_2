@@ -57,6 +57,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   /// a track already skipped past must not apply to the next one).
   List<SkipSegment> _skipSegments = const [];
 
+  /// Playback speed picked from Now Playing for the current queue's feed
+  /// videos; null = the feed's default ([YoutubeFeedSettings.playbackSpeed]).
+  /// Reset by [setQueueAndPlay], so a new queue starts at the default.
+  double? _videoSpeedOverride;
+
+  /// The speed feed videos play at right now — what Now Playing's speed
+  /// button shows.
+  final ValueNotifier<double> videoSpeed = ValueNotifier(1.0);
+
   /// The track whose audio the player currently holds.
   String? _loadedTrackId;
   String? _skipSegmentsTrackId;
@@ -258,6 +267,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     _queueIndex = startIndex.clamp(0, tracks.length - 1);
     _preShuffleOrder = null;
     _resumePosition = null;
+    _videoSpeedOverride = null;
     shuffleEnabled.value = false;
     queue.add(_queue.map(_toMediaItem).toList());
     await _playCurrent();
@@ -281,11 +291,37 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       await _player.setAudioSource(source, initialPosition: startAt);
       _sourceLoaded = true;
       _loadedTrackId = track.id;
+      await _applySpeed(track);
       await _player.play();
     } catch (_) {
       // Unplayable track (missing file, unreachable server): skip it rather
       // than getting stuck silently.
       await _advance(1, wrapWithReshuffle: true);
+    }
+  }
+
+  double get _videoSpeedNow =>
+      _videoSpeedOverride ??
+      YoutubeFeedService.instance.settings.value.playbackSpeed;
+
+  /// Feed videos play at the chosen speed; everything else at 1x.
+  Future<void> _applySpeed(Track track) async {
+    final speed =
+        track.source == TrackSource.youtube ? _videoSpeedNow : 1.0;
+    videoSpeed.value = _videoSpeedNow;
+    if (_player.speed != speed) await _player.setSpeed(speed);
+  }
+
+  /// Now Playing's speed sheet: [speed] for this queue's feed videos,
+  /// applied to the current one right away.
+  Future<void> setVideoSpeed(double speed) async {
+    _videoSpeedOverride = speed.clamp(
+        YoutubeFeedSettings.minSpeed, YoutubeFeedSettings.maxSpeed);
+    final track = currentTrack;
+    if (track != null) {
+      await _applySpeed(track);
+    } else {
+      videoSpeed.value = _videoSpeedNow;
     }
   }
 
@@ -414,6 +450,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> dispose() async {
     _positionTicker?.cancel();
     shuffleEnabled.dispose();
+    videoSpeed.dispose();
     await _player.dispose();
   }
 }

@@ -4310,8 +4310,20 @@ errors = nothing to skip; only `actionType: skip`) and, on `positionStream`, see
 segment's end when the playhead is within its first 2 s — so seeking into the middle of a
 segment on purpose still plays it.
 
+**Playback speed** (Best Music 0.2.95): `YoutubeFeedSettings.playbackSpeed` (default 1.0,
+clamped 0.5–3.0) is the default for feed videos; local/Subsonic tracks always play at 1x.
+`MusicAudioHandler._applySpeed` sets it after each track loads, using
+`_videoSpeedOverride` when set; `setVideoSpeed` (Now Playing) sets that override and applies
+it at once, and `setQueueAndPlay` clears it, so a quick change lasts for the rest of that
+queue only. `handler.videoSpeed` (ValueNotifier) drives Now Playing's app-bar
+`PlaybackSpeedButton` (`lib/ui/playback_speed_sheet.dart`), shown only while the current
+track is `TrackSource.youtube`, labelled e.g. "1.5×" (tooltip "Playback speed"). Its sheet
+has preset chips (0.75–3x), a 0.05-step slider with Slower/Faster buttons, and "Make … the
+default". Feed settings has a "Default playback speed" row opening the same sheet in
+default-only mode.
+
 **Settings** (`YoutubeFeedSettingsPage`, from the feed's tune icon or Best Music Settings →
-"Subscriptions feed"): Hide Shorts (default on), Hide livestreams (default on), SponsorBlock
+"Subscriptions feed"): Default playback speed (above), Hide Shorts (default on), Hide livestreams (default on), SponsorBlock
 on/off (default on) and per-category checkboxes (default sponsor, selfpromo, interaction,
 music_offtopic). Log lines go to App Logs under "Feed".
 

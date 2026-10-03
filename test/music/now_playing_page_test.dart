@@ -38,7 +38,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Track info'), findsOneWidget);
-    final button = tester.widget<IconButton>(find.byTooltip('Track info'));
+    // byTooltip lands on the Tooltip IconButton wraps itself in.
+    final button = tester.widget<IconButton>(find.ancestor(
+        of: find.byTooltip('Track info'),
+        matching: find.byType(IconButton)));
     expect(button.onPressed, isNull);
   });
 

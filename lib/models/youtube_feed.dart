@@ -209,7 +209,16 @@ class YoutubeFeedSettings {
     this.sponsorBlockCategories = defaultSponsorBlockCategories,
     this.hideShorts = true,
     this.hideLivestreams = true,
+    this.playbackSpeed = 1.0,
   });
+
+  /// Speeds offered by the speed sheet; [playbackSpeed] can be anything in
+  /// [minSpeed]..[maxSpeed] via its slider.
+  static const List<double> speedPresets = [
+    0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
+  ];
+  static const double minSpeed = 0.5;
+  static const double maxSpeed = 3.0;
 
   static const Set<SponsorBlockCategory> defaultSponsorBlockCategories = {
     SponsorBlockCategory.sponsor,
@@ -226,11 +235,17 @@ class YoutubeFeedSettings {
   /// under its Live tab rather than its Videos tab.
   final bool hideLivestreams;
 
+  /// Default playback speed for feed videos (local songs always play at
+  /// 1x). Changing the speed from Now Playing overrides it for the rest of
+  /// that queue only.
+  final double playbackSpeed;
+
   YoutubeFeedSettings copyWith({
     bool? sponsorBlockEnabled,
     Set<SponsorBlockCategory>? sponsorBlockCategories,
     bool? hideShorts,
     bool? hideLivestreams,
+    double? playbackSpeed,
   }) =>
       YoutubeFeedSettings(
         sponsorBlockEnabled: sponsorBlockEnabled ?? this.sponsorBlockEnabled,
@@ -238,6 +253,7 @@ class YoutubeFeedSettings {
             sponsorBlockCategories ?? this.sponsorBlockCategories,
         hideShorts: hideShorts ?? this.hideShorts,
         hideLivestreams: hideLivestreams ?? this.hideLivestreams,
+        playbackSpeed: playbackSpeed ?? this.playbackSpeed,
       );
 
   Map<String, dynamic> toJson() => {
@@ -247,6 +263,7 @@ class YoutubeFeedSettings {
         ],
         'hideShorts': hideShorts,
         'hideLivestreams': hideLivestreams,
+        'playbackSpeed': playbackSpeed,
       };
 
   factory YoutubeFeedSettings.fromJson(Map<String, dynamic> json) {
@@ -262,6 +279,8 @@ class YoutubeFeedSettings {
           : defaultSponsorBlockCategories,
       hideShorts: json['hideShorts'] as bool? ?? true,
       hideLivestreams: json['hideLivestreams'] as bool? ?? true,
+      playbackSpeed: ((json['playbackSpeed'] as num?)?.toDouble() ?? 1.0)
+          .clamp(minSpeed, maxSpeed),
     );
   }
 }
