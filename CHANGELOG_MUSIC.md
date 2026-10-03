@@ -6,6 +6,10 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.91] - 2026-10-03
+- The Changelog page now starts straight with the latest release — no title or intro text on top
+- The playback notification shows just Previous, Play/Pause and Next — the Stop button is gone
+
 ## [0.2.90] - 2026-10-02
 - Only one copy of the app can be open at a time: opening it again from the home screen, a notification, a widget or a shared link brings back the copy that's already running instead of starting a second one (on Windows too)
 - Local build: 2026-10-02 19:15

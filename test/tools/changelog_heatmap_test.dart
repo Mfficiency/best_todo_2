@@ -52,6 +52,17 @@ Widget _wrap(
 }
 
 void main() {
+  group('stripChangelogPreamble', () {
+    test('drops everything above the first release heading', () {
+      expect(stripChangelogPreamble('# T\n\nIntro\n\n## [1.0.0] - 2026-01-01\n- x\n'),
+          '## [1.0.0] - 2026-01-01\n- x\n');
+    });
+
+    test('leaves text without a release heading unchanged', () {
+      expect(stripChangelogPreamble('# Only a title\n'), '# Only a title\n');
+    });
+  });
+
   group('parseChangelogReleases', () {
     test('parses versions, dates and bullet entries', () {
       final releases = parseChangelogReleases(_sampleChangelog);
@@ -239,6 +250,26 @@ void main() {
       expect(find.byTooltip('Show development story'), findsNothing);
       // The heatmap toggle is unaffected either way.
       expect(find.byTooltip('Show update heatmap'), findsOneWidget);
+    });
+
+    testWidgets('hidePreamble drops the title and intro from the text view',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _FakeBundle(
+              '# Best Music Changelog\n\nIntro for developers.\n\n$_sampleChangelog'),
+          child: const ChangelogPage(
+            assetPath: 'CHANGELOG_MUSIC.md',
+            showStoryPoster: false,
+            hidePreamble: true,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Best Music Changelog'), findsNothing);
+      expect(find.textContaining('Intro for developers'), findsNothing);
+      expect(find.text('[0.2.0] - 2026-08-05'), findsOneWidget);
     });
   });
 }

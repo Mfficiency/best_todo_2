@@ -108,11 +108,10 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       controls: [
         MediaControl.skipToPrevious,
         if (playing) MediaControl.pause else MediaControl.play,
-        MediaControl.stop,
         MediaControl.skipToNext,
       ],
       systemActions: const {MediaAction.seek},
-      androidCompactActionIndices: const [0, 1, 3],
+      androidCompactActionIndices: const [0, 1, 2],
       processingState: const {
         ja.ProcessingState.idle: AudioProcessingState.idle,
         ja.ProcessingState.loading: AudioProcessingState.loading,

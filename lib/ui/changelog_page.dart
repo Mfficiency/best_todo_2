@@ -175,11 +175,19 @@ List<ChangelogRelease> parseChangelogReleases(String markdown) {
   return releases;
 }
 
+/// Drops everything before the first `## ` heading (title + intro). Returns
+/// [markdown] unchanged when it has no such heading.
+String stripChangelogPreamble(String markdown) {
+  final match = RegExp(r'^## ', multiLine: true).firstMatch(markdown);
+  return match == null ? markdown : markdown.substring(match.start);
+}
+
 class ChangelogPage extends StatefulWidget {
   const ChangelogPage({
     Key? key,
     this.assetPath = 'CHANGELOG.md',
     this.showStoryPoster = true,
+    this.hidePreamble = false,
   }) : super(key: key);
 
   /// Bundled asset to render — BestToDo's own `CHANGELOG.md` by default, or
@@ -192,6 +200,12 @@ class ChangelogPage extends StatefulWidget {
   /// Music: [changelogMilestones] is BestToDo's own curated history and
   /// would be wrong to show under Best Music's changelog.
   final bool showStoryPoster;
+
+  /// Whether the text view drops everything above the first `## ` release
+  /// heading (the file's `# Title` and intro paragraph). On for Best Music,
+  /// whose `CHANGELOG_MUSIC.md` keeps an explanatory preamble for developers
+  /// that users don't need to see.
+  final bool hidePreamble;
 
   @override
   State<ChangelogPage> createState() => _ChangelogPageState();
@@ -343,7 +357,10 @@ class _ChangelogPageState extends State<ChangelogPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (_view == _ChangelogView.text) {
-            return Markdown(data: snapshot.data!, selectable: true);
+            final text = widget.hidePreamble
+                ? stripChangelogPreamble(snapshot.data!)
+                : snapshot.data!;
+            return Markdown(data: text, selectable: true);
           }
           if (_view == _ChangelogView.poster) return _buildStoryPoster();
           return _buildHeatmapView(parseChangelogReleases(snapshot.data!));
