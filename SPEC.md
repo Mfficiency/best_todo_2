@@ -4310,7 +4310,7 @@ errors = nothing to skip; only `actionType: skip`) and, on `positionStream`, see
 segment's end when the playhead is within its first 2 s — so seeking into the middle of a
 segment on purpose still plays it.
 
-**Playback speed** (Best Music 0.2.95): `YoutubeFeedSettings.playbackSpeed` (default 1.0,
+**Playback speed** (Best Music 0.2.96): `YoutubeFeedSettings.playbackSpeed` (default 1.0,
 clamped 0.5–3.0) is the default for feed videos; local/Subsonic tracks always play at 1x.
 `MusicAudioHandler._applySpeed` sets it after each track loads, using
 `_videoSpeedOverride` when set; `setVideoSpeed` (Now Playing) sets that override and applies
