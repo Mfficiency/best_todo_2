@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.94] - 2026-10-03
+- Fixed "YouTube search failed" on a working connection (seen in Europe, where YouTube's cookie-consent page got in the way) — searching YouTube from the library and the MP3 Downloader works again, and a real failure now says what went wrong
+
 ## [0.2.93] - 2026-10-03
 - Search finds nothing in your library? Tap "Search on YouTube", pick a song and it starts playing right away while it quietly downloads into your library in the background
 - Local build: 2026-10-03 18:31
