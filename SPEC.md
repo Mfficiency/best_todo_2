@@ -3578,8 +3578,8 @@ that is the natural next step once a server is actually connected.
 
 **Home-screen widgets and notification/lock screen:** see §8 for the two widgets
 (`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`) and §9 for the `audio_service`
-manifest wiring. The system media notification and lock-screen controls (play/pause/stop/
-skip) come from `audio_service` itself once `AudioService.init` registers the handler — no
+manifest wiring. The system media notification and lock-screen controls (previous, play/pause,
+next — no Stop button, by request) come from `audio_service` itself once `AudioService.init` registers the handler — no
 custom notification code needed, unlike the alarm subsystem's hand-built full-screen
 notification (§5, §6).
 
@@ -3957,7 +3957,8 @@ build number rather than resetting it, even though its `x.y.z` name can change f
 alongside `CHANGELOG.md` (`pubspec.yaml`'s `assets:`). `ChangelogPage` (§10.7) gained `assetPath`
 (default `CHANGELOG.md`) and `showStoryPoster` (default `true`) constructor params;
 `MusicPlayerPage`'s drawer entry passes `assetPath: 'CHANGELOG_MUSIC.md', showStoryPoster:
-false` — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
+false, hidePreamble: true` (the text view starts at the first `## ` release, hiding the file's
+title + developer intro via `stripChangelogPreamble`) — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
 would be wrong to show under Best Music.
 
 **Tooling, both apps share the same scripts with a flag rather than forking them**:

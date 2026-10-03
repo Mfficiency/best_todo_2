@@ -12,6 +12,8 @@ nothing has been copied over here.
 - Finished downloads show up in your library automatically, no Rescan needed
 - Best Music only appears in the share menu for links and text, not for photos or PDFs
 - No more accidental music blasting: when nothing is playing and no Bluetooth speaker or headphones are connected, pressing Play asks "Play out loud?" first (turn it off in Settings → Ask before playing out loud)
+- The Changelog page now starts straight with the latest release — no title or intro text on top
+- The playback notification shows just Previous, Play/Pause and Next — the Stop button is gone
 
 ## [0.2.90] - 2026-10-02
 - Only one copy of the app can be open at a time: opening it again from the home screen, a notification, a widget or a shared link brings back the copy that's already running instead of starting a second one (on Windows too)
