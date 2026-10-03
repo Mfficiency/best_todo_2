@@ -8,6 +8,8 @@ nothing has been copied over here.
 
 ## [0.2.96] - 2026-10-03
 - Playback speed for Subscriptions videos: set a default speed in Feed settings (0.5× to 3×), and change it any time while a video plays with the new speed button (e.g. 1.5×) at the top of Now Playing — pick a preset or fine-tune in 0.05 steps, and tap "Make … the default" to keep it. A speed you pick while playing lasts for the rest of that queue. Your own music always plays at normal speed
+- Local build: 2026-10-03 19:28
+- Build duration (apk): 5m 34s
 
 ## [0.2.95] - 2026-10-03
 - Fixed "YouTube search failed" on a working connection — searching YouTube from the library and the MP3 Downloader works again, and a real failure now says what went wrong
