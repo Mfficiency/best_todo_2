@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
 import '../services/music_player_service.dart';
+import '../services/speaker_play_guard.dart';
 import '../services/music_sleep_timer.dart';
 import 'now_playing_page.dart';
 import 'sleep_timer_sheet.dart';
@@ -93,8 +94,14 @@ class MusicMiniPlayerBar extends StatelessWidget {
                               key: const ValueKey('musicMiniPlayerPlayPause'),
                               icon: Icon(
                                   playing ? Icons.pause : Icons.play_arrow),
-                              onPressed: () =>
-                                  playing ? audio.pause() : audio.play(),
+                              onPressed: () async {
+                                if (playing) {
+                                  await audio.pause();
+                                } else if (await SpeakerPlayGuard.confirmPlay(
+                                    _sheetContext(context))) {
+                                  await audio.play();
+                                }
+                              },
                             ),
                           );
                         },

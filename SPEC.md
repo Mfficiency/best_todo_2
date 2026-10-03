@@ -2271,6 +2271,20 @@ Save/Discard; a bare back-gesture dismissal does the same from `dispose()`. Test
 `test/tools/music_share_link_test.dart`,
 `test/tools/mp3_downloader_test.dart` ("opened from a share (sharedLink)").
 
+**"Play out loud?" confirmation** (Best Music 0.2.91, also BestToDo's Music Player):
+`SpeakerPlayGuard.confirmPlay` (`lib/services/speaker_play_guard.dart`) runs before every
+UI play entry point — `MusicPlayerPage` Shuffle play and `_play` (tap a song / Play / play a
+playlist), the mini player's and Now Playing's play button. It shows a "Play out loud?"
+Cancel/Play dialog only when `Config.musicConfirmSpeakerPlay` (default on; Music Settings →
+"Ask before playing out loud") is set, nothing is playing right now, and the
+`besttodo/audio_output` channel's `isExternalOutputConnected` (MainActivity:
+`AudioManager.getDevices(GET_DEVICES_OUTPUTS)` has any type besides built-in speaker/
+earpiece/speaker-safe/telephony/remote-submix/unknown — i.e. no Bluetooth, wired/USB
+headset, car, HDMI) returns false. Off Android or on a channel error it never asks.
+Hardware media buttons, the notification and home-screen widgets are untouched (no UI to
+ask in; a headset button implies a headset anyway). Tests:
+`test/music/speaker_play_guard_test.dart`.
+
 **Best Music share-to-download** (Best Music 0.2.91): Best Music uses the same native path
 (`ShareActivity` → `MainActivity` → `besttodo/share` → `ShareIntentService`), hooked up in
 `lib/main_music.dart`'s `_BestMusicAppState` with the same one-at-a-time share queue as

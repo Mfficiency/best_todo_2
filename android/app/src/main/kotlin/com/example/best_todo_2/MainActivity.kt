@@ -8,6 +8,8 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -448,6 +450,18 @@ class MainActivity : AudioServiceFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+        // Music Player's "play out loud?" check (SpeakerPlayGuard): is any
+        // audio output besides the phone's own speaker/earpiece connected —
+        // Bluetooth, wired/USB headphones, a car, HDMI, ...?
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/audio_output",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isExternalOutputConnected" -> result.success(isExternalAudioOutputConnected())
+                else -> result.notImplemented()
+            }
+        }
         shareChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/share",
@@ -475,6 +489,20 @@ class MainActivity : AudioServiceFragmentActivity() {
                 }
             }
         }
+    }
+
+    private fun isExternalAudioOutputConnected(): Boolean {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val builtIn = setOf(
+            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+            AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+            AudioDeviceInfo.TYPE_TELEPHONY,
+            AudioDeviceInfo.TYPE_UNKNOWN,
+            AudioDeviceInfo.TYPE_REMOTE_SUBMIX,
+        ) + (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE) else emptySet())
+        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .any { it.type !in builtIn }
     }
 
     private fun openHealthDataSources(): Boolean {

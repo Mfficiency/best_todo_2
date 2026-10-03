@@ -151,6 +151,18 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
               onChanged: (value) => MusicTheme.setDarkMode(value),
             ),
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.volume_up_outlined),
+            title: const Text('Ask before playing out loud'),
+            subtitle: const Text(
+                "Confirm before music starts on the phone's speaker when no "
+                'Bluetooth speaker or headphones are connected'),
+            value: Config.musicConfirmSpeakerPlay,
+            onChanged: (value) {
+              setState(() => Config.musicConfirmSpeakerPlay = value);
+              unawaited(Config.save());
+            },
+          ),
           ValueListenableBuilder<SleepTimerState>(
             valueListenable: MusicSleepTimer.instance.state,
             builder: (context, state, _) => ListTile(

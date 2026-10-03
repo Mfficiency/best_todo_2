@@ -671,6 +671,11 @@ class Config {
   static String musicTrackSortField = 'deviceDate';
   static bool musicTrackSortAscending = false;
 
+  /// Music Player: ask "Play out loud?" before starting playback from a
+  /// standstill while the phone's own speaker is the only audio output (no
+  /// Bluetooth/wired headphones or speaker) — see `SpeakerPlayGuard`.
+  static bool musicConfirmSpeakerPlay = true;
+
   /// Base URL of a self-hosted Subsonic/OpenSubsonic-compatible server
   /// (Navidrome, Airsonic, Gonic, …), e.g. `https://music.example.com`.
   /// Empty means the Music Player only plays from [musicFolder].
@@ -784,6 +789,7 @@ class Config {
       'musicExcludedSubfolders': musicExcludedSubfolders,
       'musicTrackSortField': musicTrackSortField,
       'musicTrackSortAscending': musicTrackSortAscending,
+      'musicConfirmSpeakerPlay': musicConfirmSpeakerPlay,
       'subsonicServerUrl': subsonicServerUrl,
       'subsonicUsername': subsonicUsername,
       'subsonicPassword': subsonicPassword,
@@ -943,6 +949,8 @@ class Config {
         data['musicTrackSortField'] as String? ?? musicTrackSortField;
     musicTrackSortAscending =
         data['musicTrackSortAscending'] as bool? ?? musicTrackSortAscending;
+    musicConfirmSpeakerPlay =
+        data['musicConfirmSpeakerPlay'] as bool? ?? musicConfirmSpeakerPlay;
     subsonicServerUrl =
         data['subsonicServerUrl'] as String? ?? subsonicServerUrl;
     subsonicUsername = data['subsonicUsername'] as String? ?? subsonicUsername;

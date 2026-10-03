@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/music_audio_handler.dart';
 import '../services/music_player_service.dart';
+import '../services/speaker_play_guard.dart';
 import '../services/music_playlist_service.dart';
 import 'queue_page.dart';
 import 'sleep_timer_sheet.dart';
@@ -285,7 +286,13 @@ class _Transport extends StatelessWidget {
               icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_filled),
               tooltip: playing ? 'Pause' : 'Play',
               iconSize: 56,
-              onPressed: () => playing ? handler.pause() : handler.play(),
+              onPressed: () async {
+                if (playing) {
+                  await handler.pause();
+                } else if (await SpeakerPlayGuard.confirmPlay(context)) {
+                  await handler.play();
+                }
+              },
             ),
             IconButton(
               icon: const Icon(Icons.skip_next),

@@ -910,14 +910,22 @@ void main() {
               ),
             ),
           ));
-          await tester.pumpAndSettle();
+          // A running download shows an endless progress spinner, so pump a
+          // fixed number of frames rather than pumpAndSettle.
+          Future<void> pumpFrames() async {
+            for (var i = 0; i < 10; i++) {
+              await tester.pump(const Duration(milliseconds: 50));
+            }
+          }
+
+          await pumpFrames();
           expect(Mp3DownloadManager.instance.jobs.value.single.videoId,
               'right');
 
           await tester.tap(find.text('Coldplay - Yellow (Live)'));
-          await tester.pump();
+          await pumpFrames();
           stopRight.completeError(Exception('stopped'));
-          await tester.pumpAndSettle();
+          await pumpFrames();
 
           final jobs = Mp3DownloadManager.instance.jobs.value;
           expect(jobs.firstWhere((j) => j.videoId == 'right').status,

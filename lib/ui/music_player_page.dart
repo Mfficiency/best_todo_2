@@ -10,6 +10,7 @@ import '../models/track.dart';
 import '../services/m3u_playlist_service.dart';
 import '../services/music_library_service.dart';
 import '../services/music_player_service.dart';
+import '../services/speaker_play_guard.dart';
 import '../services/music_playlist_service.dart';
 import '../services/music_sleep_timer.dart';
 import '../utils/artist_utils.dart';
@@ -280,6 +281,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             icon: const Icon(Icons.shuffle),
             tooltip: 'Shuffle play',
             onPressed: () async {
+              if (!await SpeakerPlayGuard.confirmPlay(context)) return;
               await MusicPlayerService.playLibraryShuffled();
               if (mounted) {
                 Navigator.of(context).push(
@@ -1052,6 +1054,7 @@ class _TrackListViewState extends State<TrackListView> {
   }
 
   Future<void> _play(List<Track> tracks, {int startIndex = 0}) async {
+    if (!await SpeakerPlayGuard.confirmPlay(context)) return;
     await MusicPlayerService.playQueue(tracks, startIndex: startIndex);
     if (context.mounted) {
       Navigator.of(context)
