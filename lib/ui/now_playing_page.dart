@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
+import '../models/track.dart';
 import '../services/music_audio_handler.dart';
 import '../services/music_player_service.dart';
 import '../services/speaker_play_guard.dart';
 import '../services/music_playlist_service.dart';
+import 'playback_speed_sheet.dart';
 import 'queue_page.dart';
 import 'sleep_timer_sheet.dart';
 import 'subpage_app_bar.dart';
@@ -75,6 +77,14 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
         context,
         title: 'Now Playing',
         actions: [
+          // Feed videos only: speed is a podcast/talk thing, not a
+          // local-music one.
+          StreamBuilder<MediaItem?>(
+            stream: handler.mediaItem,
+            builder: (context, _) => PlaybackSpeedButton(
+              visible: handler.currentTrack?.source == TrackSource.youtube,
+            ),
+          ),
           const SleepTimerButton(),
           ValueListenableBuilder<bool>(
             valueListenable: handler.shuffleEnabled,

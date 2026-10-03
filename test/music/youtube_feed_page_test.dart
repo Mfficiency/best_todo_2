@@ -1,5 +1,6 @@
 import 'package:besttodo/models/youtube_feed.dart';
 import 'package:besttodo/services/youtube_feed_service.dart';
+import 'package:besttodo/ui/playback_speed_sheet.dart';
 import 'package:besttodo/ui/youtube_channels_page.dart';
 import 'package:besttodo/ui/youtube_feed_page.dart';
 import 'package:besttodo/ui/youtube_feed_settings_page.dart';
@@ -161,6 +162,27 @@ void main() {
     await tester.pump();
     expect(service.settings.value.sponsorBlockEnabled, isFalse);
     expect(find.text('Filler tangent/jokes'), findsNothing);
+  });
+
+  testWidgets('feed settings set the default playback speed',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedSettingsPage()));
+    expect(find.textContaining('1× — change it'), findsOneWidget);
+    await tester.tap(find.text('Default playback speed'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1.5×'));
+    await tester.pump();
+    expect(service.settings.value.playbackSpeed, 1.5);
+    await tester.tap(find.byTooltip('Faster'));
+    await tester.pump();
+    expect(service.settings.value.playbackSpeed, closeTo(1.55, 0.001));
+  });
+
+  test('formatSpeed', () {
+    expect(formatSpeed(1), '1×');
+    expect(formatSpeed(1.5), '1.5×');
+    expect(formatSpeed(1.25), '1.25×');
+    expect(formatSpeed(2.0), '2×');
   });
 
   test('formatFeedAge / formatVideoDuration', () {

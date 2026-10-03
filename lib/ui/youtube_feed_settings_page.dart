@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/youtube_feed.dart';
 import '../services/youtube_feed_service.dart';
+import 'playback_speed_sheet.dart';
 import 'subpage_app_bar.dart';
 
 /// Subscriptions → Feed settings: what the feed hides, and SponsorBlock.
@@ -36,6 +37,16 @@ class YoutubeFeedSettingsPage extends StatelessWidget {
                 value: settings.hideLivestreams,
                 onChanged: (v) =>
                     update(settings.copyWith(hideLivestreams: v)),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.speed),
+                title: const Text('Default playback speed'),
+                subtitle: Text('${formatSpeed(settings.playbackSpeed)} — '
+                    'change it while playing with the speed button on Now '
+                    'Playing'),
+                onTap: () =>
+                    showPlaybackSpeedSheet(context, forDefault: true),
               ),
               const Divider(),
               SwitchListTile(

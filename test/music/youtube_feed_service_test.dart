@@ -394,6 +394,17 @@ void main() {
     expect(service.progressFor('x1')!.position, const Duration(minutes: 1));
   });
 
+  test('default playback speed round-trips and is clamped to 0.5–3x', () {
+    final json = const YoutubeFeedSettings(playbackSpeed: 1.75).toJson();
+    expect(YoutubeFeedSettings.fromJson(json).playbackSpeed, 1.75);
+    expect(YoutubeFeedSettings.fromJson({}).playbackSpeed, 1.0);
+    expect(YoutubeFeedSettings.fromJson({'playbackSpeed': 9}).playbackSpeed,
+        3.0);
+    expect(
+        YoutubeFeedSettings.fromJson({'playbackSpeed': 0.1}).playbackSpeed,
+        0.5);
+  });
+
   test('Track.youtube round-trips through JSON with its art URL', () {
     final track = YoutubeFeedService.trackFor(
         _video('AAAAAAAAAAA', _channelId, DateTime(2026))
