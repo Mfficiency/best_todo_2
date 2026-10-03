@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.94] - 2026-10-03
+- Fixed Subscriptions → Channels search failing with "Search failed: NoSuchMethodError ... getT" for every search. You can now also type or paste a channel link or @handle to find that exact channel
+
 ## [0.2.93] - 2026-10-03
 - Search finds nothing in your library? Tap "Search on YouTube", pick a song and it starts playing right away while it quietly downloads into your library in the background
 - Local build: 2026-10-03 19:04

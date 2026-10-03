@@ -4262,8 +4262,14 @@ thumbnail, title, meta line, **Play**/"Resume at m:ss", **Open in YouTube**
 through the usual folder checks, §10.6d), **Mark played/unplayed**, and the description as
 `LinkifiedText`.
 
-**Channels** (`YoutubeChannelsPage`) — search by name (`search.searchContent` with
-`TypeFilters.channel`) → Subscribe/Subscribed per result; the subscribed list with
+**Channels** (`YoutubeChannelsPage`) — search by name → Subscribe/Subscribed per result.
+`searchChannels` posts to InnerTube's `search` endpoint (`YoutubeHttpClient.sendPost`,
+`params: EgIQAg==` = channels only) and walks the whole response for `channelRenderer`s
+(`parseChannelSearchResults`); it does **not** use `youtube_explode_dart`'s `searchContent`,
+whose 3.1.0 channel parser calls the `getT` extension on a `dynamic` (`videoCountText/runs
+.first`) and throws `NoSuchMethodError` for every channel with a video count (Best Music
+0.2.94 fix). A typed/pasted `/channel/UC...` URL, `@handle` or `/user/` URL resolves to that
+channel directly; the subscribed list with
 Unsubscribe (+ Undo snackbar); app-bar "Import from Tubular/NewPipe" opens a `.json` export
 (`{"subscriptions":[{"service_id":0,"url":...,"name":...}]}`, `parseNewPipeSubscriptions`):
 non-YouTube services are dropped, `/channel/UC...` URLs map directly, `@handle`/`/user/` URLs

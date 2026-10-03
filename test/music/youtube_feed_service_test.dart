@@ -149,6 +149,100 @@ void main() {
         ['AAAAAAAAAAA', 'BBBBBBBBBBB']);
   });
 
+  group('parseChannelSearchResults', () {
+    Map<String, dynamic> renderer(String id, String title,
+            {bool runsCount = true}) =>
+        {
+          'channelRenderer': {
+            'channelId': id,
+            'title': {'simpleText': title},
+            'thumbnail': {
+              'thumbnails': [
+                {'url': '//yt3.ggpht.com/small', 'width': 88, 'height': 88},
+                {'url': '//yt3.ggpht.com/big', 'width': 176, 'height': 176},
+              ],
+            },
+            // The shape that crashed youtube_explode_dart 3.1.0's parser.
+            if (runsCount)
+              'videoCountText': {
+                'runs': [
+                  {'text': '1.2M'},
+                  {'text': ' subscribers'},
+                ],
+              },
+          },
+        };
+
+    test('reads every channel renderer, with https avatars, deduplicated',
+        () {
+      final response = {
+        'contents': {
+          'twoColumnSearchResultsRenderer': {
+            'primaryContents': {
+              'sectionListRenderer': {
+                'contents': [
+                  {
+                    'itemSectionRenderer': {
+                      'contents': [
+                        renderer('UCaaaaaaaaaaaaaaaaaaaaaa', 'Boy Boy'),
+                        renderer('UCbbbbbbbbbbbbbbbbbbbbbb', 'Boyboy Music',
+                            runsCount: false),
+                        renderer('UCaaaaaaaaaaaaaaaaaaaaaa', 'Boy Boy'),
+                        {'shelfRenderer': {'title': 'not a channel'}},
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      final channels = parseChannelSearchResults(response);
+      expect(channels.map((c) => c.name), ['Boy Boy', 'Boyboy Music']);
+      expect(channels.first.id, 'UCaaaaaaaaaaaaaaaaaaaaaa');
+      expect(channels.first.avatarUrl, 'https://yt3.ggpht.com/big');
+    });
+
+    test('titles given as runs work; renderers without an id are skipped',
+        () {
+      final channels = parseChannelSearchResults([
+        {
+          'channelRenderer': {
+            'channelId': 'UCcccccccccccccccccccccc',
+            'title': {
+              'runs': [
+                {'text': 'Split '},
+                {'text': 'Title'},
+              ],
+            },
+          },
+        },
+        {
+          'channelRenderer': {
+            'title': {'simpleText': 'No id'},
+          },
+        },
+      ]);
+      expect(channels.single.name, 'Split Title');
+      expect(channels.single.avatarUrl, isNull);
+      expect(parseChannelSearchResults(null), isEmpty);
+    });
+  });
+
+  test('searchChannels resolves an @handle directly instead of searching',
+      () async {
+    final asked = <String>[];
+    service.resolveChannelOverride = (url) async {
+      asked.add(url);
+      return const YoutubeChannel(
+          id: 'UChandlehandlehandlehand', name: 'Handle Channel');
+    };
+    final results = await service.searchChannels('@somehandle');
+    expect(results.single.name, 'Handle Channel');
+    expect(asked, ['https://www.youtube.com/@somehandle']);
+  });
+
   group('Tubular/NewPipe import', () {
     final export = jsonEncode({
       'app_version': '0.27.0',
