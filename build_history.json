@@ -1073,6 +1073,30 @@
     "os": "windows"
   },
   {
+    "version": "0.2.95+393",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 531,
+    "finishedAt": "2026-10-03T21:03:55.463930",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.98+392",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 446,
+    "finishedAt": "2026-10-03T21:11:30.705079",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.95+393",
+    "app": "todo",
+    "target": "windows",
+    "durationSeconds": 142,
+    "finishedAt": "2026-10-03T21:14:03.541575",
+    "os": "windows"
+  },
+  {
     "version": "0.2.99+394",
     "app": "music",
     "target": "apk",
