@@ -139,14 +139,36 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                Icons.music_note,
-                                size: 120,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withValues(alpha: 0.5),
-                              ),
+                              if (item.artUri != null)
+                                // A Subscriptions-feed video's thumbnail.
+                                ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxHeight: 220),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      item.artUri.toString(),
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) => Icon(
+                                        Icons.music_note,
+                                        size: 120,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                Icon(
+                                  Icons.music_note,
+                                  size: 120,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.5),
+                                ),
                               const SizedBox(height: 24),
                               Text(
                                 item.title,

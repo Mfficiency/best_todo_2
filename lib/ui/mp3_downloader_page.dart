@@ -51,6 +51,7 @@ class Mp3DownloaderPage extends StatefulWidget {
     Mp3DownloadManager? manager,
     MusicLinkResolverService? resolver,
     this.sharedLink,
+    this.initialQuery,
   })  : _service = service,
         _manager = manager,
         _resolver = resolver,
@@ -66,6 +67,11 @@ class Mp3DownloaderPage extends StatefulWidget {
   /// of waiting for the user to type, and swaps the app bar for one that can
   /// hand control back to the sharing app.
   final MusicShareLink? sharedLink;
+
+  /// Submitted as soon as the page opens, as if typed — the Subscriptions
+  /// feed's "Download" button passes a video URL here, which queues it
+  /// straight away through the usual folder checks.
+  final String? initialQuery;
 
   @override
   State<Mp3DownloaderPage> createState() => _Mp3DownloaderPageState();
@@ -106,6 +112,9 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     if (sharedLink != null) {
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _handleSharedLink(sharedLink));
+    } else if ((widget.initialQuery ?? '').trim().isNotEmpty) {
+      _controller.text = widget.initialQuery!.trim();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _submit());
     }
   }
 

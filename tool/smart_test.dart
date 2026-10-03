@@ -101,6 +101,12 @@ final List<SuiteRule> suiteRules = [
     'lib/utils/artist_utils.dart', 'lib/ui/music_player_page.dart', 'lib/ui/now_playing_page.dart',
     'lib/ui/music_wishlist_page.dart',
   ], {'music', 'home'}),
+  SuiteRule([
+    'lib/models/youtube_feed.dart', 'lib/services/youtube_feed_service.dart',
+    'lib/services/youtube_audio_source.dart', 'lib/services/sponsorblock_service.dart',
+    'lib/ui/youtube_feed_page.dart', 'lib/ui/youtube_channels_page.dart',
+    'lib/ui/youtube_feed_settings_page.dart',
+  ], {'music'}),
   SuiteRule(['lib/services/shared_wishlist_store.dart'], {'music', 'tools'}),
   SuiteRule(['lib/services/task_mutation_service.dart', 'lib/models/task_change_source.dart'], {'history', 'home'}),
   SuiteRule([

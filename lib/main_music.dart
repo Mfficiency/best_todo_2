@@ -16,6 +16,7 @@ import 'services/music_player_service.dart';
 import 'services/music_playlist_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/update_service.dart';
+import 'services/youtube_feed_service.dart';
 import 'ui/auto_update_dialog.dart';
 import 'ui/music_about_page.dart';
 import 'ui/music_mini_player_bar.dart';
@@ -47,6 +48,9 @@ Future<void> main() async {
   MusicTheme.darkMode.value = Config.darkMode;
   await _initStep('music library', MusicLibraryService.instance.load);
   await _initStep('music playlists', MusicPlaylistService.instance.load);
+  // Before the player: feed playback reads its settings (SponsorBlock)
+  // and resume positions.
+  await _initStep('subscriptions feed', YoutubeFeedService.instance.load);
   await _initStep('music player', MusicPlayerService.init);
   await _initStep('last played', MusicPlayerService.restoreLastSession);
   runApp(const BestMusicApp());

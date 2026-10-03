@@ -1,12 +1,14 @@
 /// Where a [Track]'s audio bytes come from.
-enum TrackSource { local, subsonic }
+enum TrackSource { local, subsonic, youtube }
 
 /// A single playable song, either a file under the user's configured music
-/// folder ([TrackSource.local]) or a song on a connected Subsonic/
-/// OpenSubsonic server ([TrackSource.subsonic]).
+/// folder ([TrackSource.local]), a song on a connected Subsonic/
+/// OpenSubsonic server ([TrackSource.subsonic]), or a YouTube video's audio
+/// streamed from the Subscriptions feed ([TrackSource.youtube]).
 ///
-/// [id] is stable and unique across both sources: `local:<absolute path>`
-/// for local files, `subsonic:<server song id>` for remote ones — used as
+/// [id] is stable and unique across all sources: `local:<absolute path>`
+/// for local files, `subsonic:<server song id>` for Subsonic ones,
+/// `youtube:<video id>` for YouTube videos — used as
 /// the key everywhere a track needs to be referenced (favorites, disliked,
 /// playlists, the now-playing queue) without holding the whole object.
 class Track {
@@ -16,9 +18,14 @@ class Track {
   /// Absolute file path. Only set for [TrackSource.local].
   final String? filePath;
 
-  /// Subsonic song id on the configured server. Only set for
-  /// [TrackSource.subsonic].
+  /// Subsonic song id on the configured server ([TrackSource.subsonic]),
+  /// or the 11-character YouTube video id ([TrackSource.youtube]).
   final String? remoteId;
+
+  /// Cover art URL (the video thumbnail for [TrackSource.youtube]); shown
+  /// on Now Playing and handed to the system media notification. Null for
+  /// local/Subsonic tracks, whose art isn't surfaced yet.
+  final String? artUrl;
 
   final String title;
   final String artist;
@@ -74,6 +81,7 @@ class Track {
     required this.source,
     this.filePath,
     this.remoteId,
+    this.artUrl,
     required this.title,
     this.artist = '',
     this.album = '',
@@ -137,6 +145,26 @@ class Track {
     );
   }
 
+  /// A YouTube video's audio, played from the Subscriptions feed. [artist]
+  /// is the channel name; [artUrl] the video thumbnail.
+  factory Track.youtube({
+    required String videoId,
+    required String title,
+    String artist = '',
+    int? durationMs,
+    String? artUrl,
+  }) {
+    return Track(
+      id: 'youtube:$videoId',
+      source: TrackSource.youtube,
+      remoteId: videoId,
+      artUrl: artUrl,
+      title: title,
+      artist: artist,
+      durationMs: durationMs,
+    );
+  }
+
   /// The file's base name without extension, used as a fallback title and
   /// for fuzzy-matching M3U playlist entries.
   String get fileBaseName {
@@ -168,6 +196,7 @@ class Track {
       source: source,
       filePath: filePath,
       remoteId: remoteId,
+      artUrl: artUrl,
       title: title ?? this.title,
       artist: artist ?? this.artist,
       album: album ?? this.album,
@@ -187,6 +216,7 @@ class Track {
         'source': source.name,
         if (filePath != null) 'filePath': filePath,
         if (remoteId != null) 'remoteId': remoteId,
+        if (artUrl != null) 'artUrl': artUrl,
         'title': title,
         'artist': artist,
         'album': album,
@@ -214,6 +244,7 @@ class Track {
       source: source,
       filePath: json['filePath'] as String?,
       remoteId: json['remoteId'] as String?,
+      artUrl: json['artUrl'] as String?,
       title: json['title'] as String? ?? '',
       artist: json['artist'] as String? ?? '',
       album: json['album'] as String? ?? '',

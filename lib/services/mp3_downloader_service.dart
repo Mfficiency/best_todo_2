@@ -520,6 +520,31 @@ class Mp3DownloaderService {
     return videos;
   }
 
+  /// Resolves [videoId]'s best audio-only stream for *streaming* (the
+  /// Subscriptions feed's playback — see `YoutubeAudioSource`): the same
+  /// client walk and PoToken-wall probe a download uses, so whatever URL
+  /// comes back can be read in [kAudioChunkBytes] range requests to the end.
+  Future<ResolvedAudioStream> resolveAudioStream(String videoId) async {
+    final http = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final resolved = await _resolveStream(videoId, http)
+          .timeout(kResolveTimeout, onTimeout: () {
+        throw Mp3DownloadException(
+            'Timed out working out how to stream this video.');
+      });
+      final container = resolved.info.container;
+      return ResolvedAudioStream(
+        url: resolved.info.url,
+        totalBytes: resolved.totalBytes,
+        contentType: container == yt_explode.StreamContainer.mp4
+            ? 'audio/mp4'
+            : 'audio/${container.name}',
+      );
+    } finally {
+      http.close(force: true);
+    }
+  }
+
   /// Picks the best audio stream for [videoId], trying each client in
   /// [_streamClients] until one both returns audio streams *and* proves it
   /// will serve bytes past the 1 MiB PoToken wall.
@@ -798,6 +823,22 @@ class Mp3DownloaderService {
 
   static String _mb(int bytes) =>
       '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+}
+
+/// An audio-only stream URL that serves byte ranges all the way to
+/// [totalBytes] — see [Mp3DownloaderService.resolveAudioStream].
+class ResolvedAudioStream {
+  const ResolvedAudioStream({
+    required this.url,
+    required this.totalBytes,
+    required this.contentType,
+  });
+
+  final Uri url;
+  final int totalBytes;
+
+  /// `audio/mp4` (AAC) or `audio/webm` (Opus).
+  final String contentType;
 }
 
 class _ResolvedStream {

@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.91] - 2026-10-03
+- New Subscriptions feed (menu → Subscriptions): follow YouTube channels — find them by name or import your subscriptions from Tubular/NewPipe — and see their newest videos in one list. Tap a video for its full description, Open in YouTube, or Download (straight into the MP3 Downloader). The play button streams the audio through the normal player (song bar, lock screen, sleep timer) with the thumbnail as cover art and keeps going through the unplayed videos below it. Played videos are dimmed with a check mark, long ones resume where you stopped, and the feed refreshes when you open it or pull down. Feed settings: hide Shorts and livestreams, and SponsorBlock auto-skip of sponsor reads and other marked segments (pick which kinds)
+
 ## [0.2.90] - 2026-10-02
 - Only one copy of the app can be open at a time: opening it again from the home screen, a notification, a widget or a shared link brings back the copy that's already running instead of starting a second one (on Windows too)
 - Local build: 2026-10-02 19:15
