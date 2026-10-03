@@ -60,6 +60,16 @@ void main() {
     expect(track.artist, 'Daft Punk');
     expect(track.title, 'One More Time');
     expect(track.durationMs, 320000);
+    // A song, not a Subscriptions video: plays by music rules (1x speed,
+    // music volume).
+    expect(track.youtubeSong, isTrue);
+    expect(track.isFeedVideo, isFalse);
+  });
+
+  test('a feed video stays a feed video', () {
+    final video = Track.youtube(videoId: 'v', title: 'Podcast');
+    expect(video.isFeedVideo, isTrue);
+    expect(Track.fromJson(video.toJson()).isFeedVideo, isTrue);
   });
 
   test('a YouTube track survives a JSON round-trip', () {
@@ -68,6 +78,8 @@ void main() {
     expect(back.source, TrackSource.youtube);
     expect(back.remoteId, 'abc123');
     expect(back.id, track.id);
+    expect(back.youtubeSong, isTrue);
+    expect(back.isFeedVideo, isFalse);
   });
 
   test('playAndDownload plays the stream and queues a silent download',
@@ -105,7 +117,8 @@ void main() {
   });
 
   testWidgets(
-      'library search with no match offers YouTube and plays a picked result',
+      'library search with no match searches YouTube by itself, marks the '
+      'results as not local, and plays a picked one',
       (tester) async {
     if (!MusicPlayerService.isReady) {
       await tester.runAsync(MusicPlayerService.init);
@@ -128,15 +141,18 @@ void main() {
     await tester.tap(find.byTooltip('Search music'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'one more time');
-    await tester.pumpAndSettle();
+    await tester.pump();
 
-    expect(find.text('No matches for "one more time" in your library'),
-        findsOneWidget);
-    await tester.tap(find.text('Search on YouTube'));
+    // Searching right away, clearly flagged as not from the library.
+    expect(find.text('Not in your library'), findsOneWidget);
+    expect(queries, isEmpty, reason: 'waits for typing to pause');
+    await tester.pump(YoutubeSearchFallback.debounce);
     await tester.pumpAndSettle();
 
     expect(queries, ['one more time']);
     expect(find.text(result.title), findsOneWidget);
+    expect(find.textContaining('YouTube · Daft Punk'), findsOneWidget);
+    expect(find.textContaining('not songs on your phone'), findsOneWidget);
 
     await tester.tap(find.text(result.title));
     await tester.pump();
@@ -144,5 +160,24 @@ void main() {
 
     expect(played.single.id, 'youtube:abc123');
     expect(Mp3DownloadManager.instance.jobs.value.single.videoId, 'abc123');
+  });
+
+  testWidgets('typing on cancels the pending search for the old query',
+      (tester) async {
+    final queries = <String>[];
+    service.searchOverride = (query, limit) async {
+      queries.add(query);
+      return const [];
+    };
+    await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: YoutubeSearchFallback(key: ValueKey('a'), query: 'a'))));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+            body: YoutubeSearchFallback(key: ValueKey('ab'), query: 'ab'))));
+    await tester.pump(YoutubeSearchFallback.debounce);
+    await tester.pumpAndSettle();
+    expect(queries, ['ab']);
+    expect(find.text('Nothing on YouTube for "ab" either'), findsOneWidget);
   });
 }

@@ -4,6 +4,7 @@ import '../models/youtube_feed.dart';
 import '../services/youtube_feed_service.dart';
 import 'playback_speed_sheet.dart';
 import 'subpage_app_bar.dart';
+import 'volume_sheet.dart';
 
 /// Subscriptions → Feed settings: what the feed hides, and SponsorBlock.
 class YoutubeFeedSettingsPage extends StatelessWidget {
@@ -47,6 +48,18 @@ class YoutubeFeedSettingsPage extends StatelessWidget {
                     'Playing'),
                 onTap: () =>
                     showPlaybackSpeedSheet(context, forDefault: true),
+              ),
+              ListTile(
+                leading: const Icon(Icons.volume_up_outlined),
+                title: const Text('Video volume'),
+                subtitle: Text('${formatVolume(settings.videoVolume)}'
+                    '${settings.videoBoostDb > 0 ? ', boost ${formatBoost(settings.videoBoostDb)}' : ''}'
+                    ' — separate from your music volume'),
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (_) => VolumeSheet(video: true, feed: feed),
+                ),
               ),
               const Divider(),
               SwitchListTile(

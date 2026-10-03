@@ -11,6 +11,7 @@ import 'music_theme.dart';
 import 'sleep_timer_sheet.dart';
 import 'subpage_app_bar.dart';
 import 'update_downloads_folder_tile.dart';
+import 'volume_sheet.dart';
 import 'youtube_feed_settings_page.dart';
 
 /// Best Music's Settings page: just the music folder and its excluded
@@ -164,6 +165,16 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
             onChanged: (value) {
               setState(() => Config.musicConfirmSpeakerPlay = value);
               unawaited(Config.save());
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.volume_up_outlined),
+            title: const Text('Music volume'),
+            subtitle: Text('${formatVolume(Config.musicVolume)} — separate '
+                'from Subscriptions videos, which keep their own'),
+            onTap: () async {
+              await showVolumeSheet(context, video: false);
+              if (mounted) setState(() {});
             },
           ),
           ValueListenableBuilder<SleepTimerState>(

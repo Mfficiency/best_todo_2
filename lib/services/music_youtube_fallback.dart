@@ -38,6 +38,7 @@ class MusicYoutubeFallback {
       artist: parts.artist,
       durationMs: result.duration?.inMilliseconds,
       artUrl: 'https://i.ytimg.com/vi/${result.videoId}/hqdefault.jpg',
+      song: true,
     );
   }
 

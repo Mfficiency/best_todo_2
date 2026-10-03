@@ -3584,11 +3584,15 @@ custom notification code needed, unlike the alarm subsystem's hand-built full-sc
 notification (§5, §6).
 
 **YouTube fallback in search (Best Music 0.2.93 / BestToDo 0.2.92).** When the library search (`_MusicSearchDelegate`)
-finds no track for a non-empty query, it shows `YoutubeSearchFallback` instead of a bare "No
-matches": "No matches for "<q>" in your library" plus a **Search on YouTube** button (hidden
-on web, where `Mp3DownloaderService.isSupported` is false). Tapping it runs
-`Mp3DownloaderService.search(q, limit: 10)` and lists the results (title, channel ·
-duration). Tapping a result goes through `SpeakerPlayGuard.confirmPlay`, then
+finds no track for a non-empty query, it shows `YoutubeSearchFallback` (not on web, where
+`Mp3DownloaderService.isSupported` is false), which searches YouTube **automatically**
+(Best Music 0.2.98; before that it waited for a "Search on YouTube" tap) once typing pauses
+for `YoutubeSearchFallback.debounce` (600 ms — the widget is keyed by the query, so each
+keystroke disposes the old one and cancels its timer), via
+`Mp3DownloaderService.search(q, limit: 10)`. Results sit under a "Not in your library" banner
+card ("Results from YouTube, not songs on your phone...", spinner while searching); each row
+has a video icon, a "YouTube · channel · duration" subtitle and a cloud-download icon, so it
+can't be mistaken for a local song. Errors show the real message plus "Try again". Tapping a result goes through `SpeakerPlayGuard.confirmPlay`, then
 `MusicYoutubeFallback.playAndDownload` (`lib/services/music_youtube_fallback.dart`) does two
 things at once: (1) silently queues the video on `Mp3DownloadManager` — no folder prompt; the
 folder is `Config.mp3DownloadFolder` if set, else `Config.musicFolder` if writable, else
@@ -4317,10 +4321,28 @@ clamped 0.5–3.0) is the default for feed videos; local/Subsonic tracks always 
 it at once, and `setQueueAndPlay` clears it, so a quick change lasts for the rest of that
 queue only. `handler.videoSpeed` (ValueNotifier) drives Now Playing's app-bar
 `PlaybackSpeedButton` (`lib/ui/playback_speed_sheet.dart`), shown only while the current
-track is `TrackSource.youtube`, labelled e.g. "1.5×" (tooltip "Playback speed"). Its sheet
+track is a feed video (`isFeedVideo`), labelled e.g. "1.5×" (tooltip "Playback speed"). Its sheet
 has preset chips (0.75–3x), a 0.05-step slider with Slower/Faster buttons, and "Make … the
 default". Feed settings has a "Default playback speed" row opening the same sheet in
 default-only mode.
+
+**Music vs. video playback rules (Best Music 0.2.98).** `Track.isFeedVideo` (=
+`TrackSource.youtube && !youtubeSong`) is what every feed-only behaviour keys on — speed,
+volume/boost, SponsorBlock, resume position/`recordProgress`, "played" marks, and stopping at
+the end of the queue. Songs streamed from the library search's YouTube fallback are
+`Track.youtube(..., song: true)` (`youtubeSong`, persisted as `"youtubeSong": true`), so they
+follow music rules: always 1x, the music volume, no feed bookkeeping; the speed button is
+hidden for them. **Volume** is remembered per kind: `Config.musicVolume` (0–1, default 1) for
+music, `YoutubeFeedSettings.videoVolume` (0–1, default 1) for feed videos, applied by
+`MusicAudioHandler._applyVolume` after each track loads (and on any feed-settings change,
+via a listener, or `applyCurrentVolume()` after a music-volume change).
+`YoutubeFeedSettings.videoBoostDb` (0–12 dB, default 0) drives an `AndroidLoudnessEnhancer`
+in the player's `AudioPipeline` (Android only; enabled only while a feed video plays with
+boost > 0, gain 0/disabled for music). UI: `lib/ui/volume_sheet.dart` — a 5%-step volume
+slider and, for videos on Android, a "Boost for quiet videos" slider ("Off"/"+N dB"); applied
+live while dragging, saved on release. Opened from Now Playing's volume button (tooltip
+"Music volume" or "Video volume" by the current track), Feed settings → "Video volume", and
+Best Music Settings → "Music volume".
 
 **Settings** (`YoutubeFeedSettingsPage`, from the feed's tune icon or Best Music Settings →
 "Subscriptions feed"): Default playback speed (above), Hide Shorts (default on), Hide livestreams (default on), SponsorBlock

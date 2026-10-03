@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -370,7 +370,7 @@ List<Track> _filterTracks(List<Track> tracks, String query) {
 /// Library-wide search reached from the app bar's search icon — Samsung
 /// Music style: type to filter by title or artist, tap a result to start
 /// playing it from that point. When nothing in the library matches, it
-/// offers to look the query up on YouTube instead ([YoutubeSearchFallback]).
+/// searches YouTube instead ([YoutubeSearchFallback]).
 class _MusicSearchDelegate extends SearchDelegate<void> {
   Widget _buildTrackResults(BuildContext context) {
     final tracks = _filterTracks(MusicLibraryService.instance.tracks.value, query);
@@ -411,23 +411,42 @@ class _MusicSearchDelegate extends SearchDelegate<void> {
   Widget buildSuggestions(BuildContext context) => _buildTrackResults(context);
 }
 
-/// Shown by the library search when nothing matches [query]: offers to
-/// search YouTube for it, lists the results, and tapping one starts playing
-/// it straight away while it silently downloads in the background
+/// Shown by the library search when nothing matches [query]: searches
+/// YouTube for it automatically (after a short pause in typing, so every
+/// keystroke doesn't fire a request) and lists the results under a clear
+/// "Not in your library" banner, each tagged YouTube, so they can't be
+/// mistaken for local songs. Tapping one starts playing it straight away
+/// while it silently downloads in the background
 /// ([MusicYoutubeFallback.playAndDownload]).
 class YoutubeSearchFallback extends StatefulWidget {
   const YoutubeSearchFallback({super.key, required this.query});
 
   final String query;
 
+  /// Pause after the last keystroke before searching.
+  static const Duration debounce = Duration(milliseconds: 600);
+
   @override
   State<YoutubeSearchFallback> createState() => _YoutubeSearchFallbackState();
 }
 
 class _YoutubeSearchFallbackState extends State<YoutubeSearchFallback> {
-  bool _searching = false;
+  Timer? _debounce;
+  bool _searching = true;
   String? _error;
   List<Mp3SearchResult>? _results;
+
+  @override
+  void initState() {
+    super.initState();
+    _debounce = Timer(YoutubeSearchFallback.debounce, _search);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
 
   Future<void> _search() async {
     setState(() {
@@ -467,65 +486,84 @@ class _YoutubeSearchFallbackState extends State<YoutubeSearchFallback> {
     return '$minutes:$seconds';
   }
 
+  Widget _banner(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      color: scheme.secondaryContainer,
+      child: ListTile(
+        leading: Icon(Icons.cloud_outlined, color: scheme.onSecondaryContainer),
+        title: Text(
+          'Not in your library',
+          style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: scheme.onSecondaryContainer),
+        ),
+        subtitle: Text(
+          _searching
+              ? 'Searching YouTube for "${widget.query}"...'
+              : 'Results from YouTube, not songs on your phone. Tap one to '
+                  'stream it — it\'s saved to your library in the background.',
+          style: TextStyle(color: scheme.onSecondaryContainer),
+        ),
+        trailing: _searching
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : null,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final results = _results;
-    if (results == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('No matches for "${widget.query}" in your library',
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              if (_searching)
-                const CircularProgressIndicator()
-              else
-                FilledButton.icon(
-                  onPressed: _search,
-                  icon: const Icon(Icons.travel_explore),
-                  label: const Text('Search on YouTube'),
-                ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.error)),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-    if (results.isEmpty) {
-      return Center(child: Text('Nothing on YouTube for "${widget.query}"'));
-    }
     return ListView(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text(
-            'From YouTube — tap to play; it downloads to your library too',
-            style: Theme.of(context).textTheme.labelMedium,
-          ),
-        ),
-        for (final result in results)
-          ListTile(
-            leading: const Icon(Icons.smart_display_outlined),
-            title: Text(result.title,
-                maxLines: 2, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              [result.channel, _formatDuration(result.duration)]
-                  .where((s) => s.isNotEmpty)
-                  .join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+        _banner(context),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Text(_error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: scheme.error)),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _searching ? null : _search,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try again'),
+                ),
+              ],
             ),
-            onTap: () => _play(result),
-          ),
+          )
+        else if (results != null && results.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('Nothing on YouTube for "${widget.query}" either',
+                textAlign: TextAlign.center),
+          )
+        else if (results != null)
+          for (final result in results)
+            ListTile(
+              leading: const Icon(Icons.smart_display_outlined),
+              title: Text(result.title,
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                ['YouTube', result.channel, _formatDuration(result.duration)]
+                    .where((s) => s.isNotEmpty)
+                    .join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Icon(Icons.cloud_download_outlined,
+                  size: 20, color: scheme.outline),
+              onTap: () => _play(result),
+            ),
       ],
     );
   }

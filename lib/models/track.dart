@@ -27,6 +27,17 @@ class Track {
   /// local/Subsonic tracks, whose art isn't surfaced yet.
   final String? artUrl;
 
+  /// A [TrackSource.youtube] track that is a *song* (picked from the
+  /// library search's YouTube fallback) rather than a Subscriptions-feed
+  /// video. Songs follow music playback rules — always 1x speed, the music
+  /// volume, no feed resume/played bookkeeping — see [isFeedVideo].
+  final bool youtubeSong;
+
+  /// True for a Subscriptions-feed video: plays at the feed's speed and
+  /// volume (with optional boost), resumes where it stopped, gets marked
+  /// played. Everything else — local, Subsonic, YouTube songs — is music.
+  bool get isFeedVideo => source == TrackSource.youtube && !youtubeSong;
+
   final String title;
   final String artist;
   final String album;
@@ -82,6 +93,7 @@ class Track {
     this.filePath,
     this.remoteId,
     this.artUrl,
+    this.youtubeSong = false,
     required this.title,
     this.artist = '',
     this.album = '',
@@ -146,19 +158,23 @@ class Track {
   }
 
   /// A YouTube video's audio, played from the Subscriptions feed. [artist]
-  /// is the channel name; [artUrl] the video thumbnail.
+  /// is the channel name; [artUrl] the video thumbnail. [song]: a song
+  /// streamed from the library search's YouTube fallback instead
+  /// ([youtubeSong]).
   factory Track.youtube({
     required String videoId,
     required String title,
     String artist = '',
     int? durationMs,
     String? artUrl,
+    bool song = false,
   }) {
     return Track(
       id: 'youtube:$videoId',
       source: TrackSource.youtube,
       remoteId: videoId,
       artUrl: artUrl,
+      youtubeSong: song,
       title: title,
       artist: artist,
       durationMs: durationMs,
@@ -197,6 +213,7 @@ class Track {
       filePath: filePath,
       remoteId: remoteId,
       artUrl: artUrl,
+      youtubeSong: youtubeSong,
       title: title ?? this.title,
       artist: artist ?? this.artist,
       album: album ?? this.album,
@@ -217,6 +234,7 @@ class Track {
         if (filePath != null) 'filePath': filePath,
         if (remoteId != null) 'remoteId': remoteId,
         if (artUrl != null) 'artUrl': artUrl,
+        if (youtubeSong) 'youtubeSong': true,
         'title': title,
         'artist': artist,
         'album': album,
@@ -245,6 +263,7 @@ class Track {
       filePath: json['filePath'] as String?,
       remoteId: json['remoteId'] as String?,
       artUrl: json['artUrl'] as String?,
+      youtubeSong: json['youtubeSong'] as bool? ?? false,
       title: json['title'] as String? ?? '',
       artist: json['artist'] as String? ?? '',
       album: json['album'] as String? ?? '',

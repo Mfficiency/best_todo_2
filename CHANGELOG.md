@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.95] - 2026-10-03
+- Music Player: when a song isn't in your library, YouTube is searched automatically and the results are clearly marked "Not in your library"; songs streamed from YouTube always play at 1× and use the music volume
+
 ## [0.2.94] - 2026-10-03
 - Settings > Updates now shows the folder where update downloads are saved, with a button to copy its path
 - Local build: 2026-10-03 20:12

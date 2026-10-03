@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:audio_service/audio_service.dart';
-import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:just_audio/just_audio.dart' as ja;
 
+import '../config.dart';
 import '../models/track.dart';
 import '../models/youtube_feed.dart';
 import 'music_library_service.dart';
@@ -23,7 +25,21 @@ import 'youtube_feed_service.dart';
 /// track finishes and reshuffling once the queue runs out so playback keeps
 /// going indefinitely, "radio" style.
 class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
-  final ja.AudioPlayer _player = ja.AudioPlayer();
+  /// Android only: lifts quiet feed videos past 100% volume
+  /// ([YoutubeFeedSettings.videoBoostDb]). Off for music.
+  final ja.AndroidLoudnessEnhancer? _boost =
+      _isAndroid ? ja.AndroidLoudnessEnhancer() : null;
+
+  late final ja.AudioPlayer _player = ja.AudioPlayer(
+    audioPipeline: _boost == null
+        ? null
+        : ja.AudioPipeline(androidAudioEffects: [_boost!]),
+  );
+
+  static bool get _isAndroid => !kIsWeb && Platform.isAndroid;
+
+  /// Whether volume boost is available on this device (Android only).
+  bool get boostSupported => _boost != null;
 
   List<Track> _queue = [];
   int _queueIndex = -1;
@@ -71,6 +87,9 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   String? _skipSegmentsTrackId;
 
   MusicAudioHandler() {
+    // A volume/boost change in Feed settings (or the Now Playing volume
+    // sheet) applies to the playing video right away.
+    YoutubeFeedService.instance.settings.addListener(applyCurrentVolume);
     _player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {
       _broadcastState(_player.playbackEvent);
     });
@@ -83,7 +102,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         final finished = currentTrack;
         if (finished != null) {
           unawaited(MusicLibraryService.instance.incrementPlayCount(finished.id));
-          if (finished.source == TrackSource.youtube) {
+          if (finished.isFeedVideo) {
             unawaited(YoutubeFeedService.instance
                 .setPlayed(finished.remoteId!, true));
           }
@@ -185,7 +204,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     _skipSegments = const [];
     _skipSegmentsTrackId = track.id;
     final settings = YoutubeFeedService.instance.settings.value;
-    if (track.source != TrackSource.youtube || !settings.sponsorBlockEnabled) {
+    if (!track.isFeedVideo || !settings.sponsorBlockEnabled) {
       return;
     }
     unawaited(SponsorBlockService.instance
@@ -218,7 +237,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     if (track == null) return;
     // Only once this track's own audio is loaded — until then the player
     // still reports the previous track's position.
-    if (track.source == TrackSource.youtube && _loadedTrackId == track.id) {
+    if (track.isFeedVideo && _loadedTrackId == track.id) {
       unawaited(YoutubeFeedService.instance.recordProgress(
         track.remoteId!,
         _player.position,
@@ -280,7 +299,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     var startAt = _resumePosition;
     _resumePosition = null;
     // A feed video picks up where it was left (podcasts, long mixes).
-    if (startAt == null && track.source == TrackSource.youtube) {
+    if (startAt == null && track.isFeedVideo) {
       startAt = YoutubeFeedService.instance.resumePosition(track.remoteId!);
     }
     _loadedTrackId = null;
@@ -292,6 +311,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       _sourceLoaded = true;
       _loadedTrackId = track.id;
       await _applySpeed(track);
+      await _applyVolume(track);
       await _player.play();
     } catch (_) {
       // Unplayable track (missing file, unreachable server): skip it rather
@@ -304,10 +324,10 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       _videoSpeedOverride ??
       YoutubeFeedService.instance.settings.value.playbackSpeed;
 
-  /// Feed videos play at the chosen speed; everything else at 1x.
+  /// Feed videos play at the chosen speed; music (including songs
+  /// streamed from YouTube) always at 1x.
   Future<void> _applySpeed(Track track) async {
-    final speed =
-        track.source == TrackSource.youtube ? _videoSpeedNow : 1.0;
+    final speed = track.isFeedVideo ? _videoSpeedNow : 1.0;
     videoSpeed.value = _videoSpeedNow;
     if (_player.speed != speed) await _player.setSpeed(speed);
   }
@@ -323,6 +343,34 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     } else {
       videoSpeed.value = _videoSpeedNow;
     }
+  }
+
+  /// Music and feed videos each keep their own volume: feed videos use
+  /// [YoutubeFeedSettings.videoVolume] plus its boost, everything else
+  /// [Config.musicVolume] with no boost.
+  Future<void> _applyVolume(Track track) async {
+    final settings = YoutubeFeedService.instance.settings.value;
+    final video = track.isFeedVideo;
+    final volume = video ? settings.videoVolume : Config.musicVolume;
+    if (_player.volume != volume) await _player.setVolume(volume);
+    final boost = _boost;
+    if (boost == null) return;
+    final gain = video ? settings.videoBoostDb : 0.0;
+    try {
+      await boost.setTargetGain(gain);
+      await boost.setEnabled(gain > 0);
+    } catch (_) {
+      // Audio effects can be unavailable on some devices/sessions; the
+      // plain volume above still applies.
+    }
+  }
+
+  /// Re-applies the volume for the playing track — after the music volume
+  /// ([Config.musicVolume]) changed. Feed-settings changes trigger this
+  /// on their own.
+  void applyCurrentVolume() {
+    final track = currentTrack;
+    if (track != null && _sourceLoaded) unawaited(_applyVolume(track));
   }
 
   @override
@@ -354,7 +402,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       if (!wrapWithReshuffle) return;
       // The end of a Subscriptions-feed queue is the end, not a cue to
       // start shuffling the local library.
-      if (currentTrack?.source == TrackSource.youtube) {
+      if (currentTrack?.isFeedVideo ?? false) {
         await _player.pause();
         return;
       }
@@ -449,6 +497,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> dispose() async {
     _positionTicker?.cancel();
+    YoutubeFeedService.instance.settings.removeListener(applyCurrentVolume);
     shuffleEnabled.dispose();
     videoSpeed.dispose();
     await _player.dispose();

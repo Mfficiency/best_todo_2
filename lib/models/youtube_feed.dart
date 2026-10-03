@@ -210,7 +210,13 @@ class YoutubeFeedSettings {
     this.hideShorts = true,
     this.hideLivestreams = true,
     this.playbackSpeed = 1.0,
+    this.videoVolume = 1.0,
+    this.videoBoostDb = 0.0,
   });
+
+  /// Upper end of the boost slider. LoudnessEnhancer starts to clip
+  /// audibly much past this on already-loud material.
+  static const double maxBoostDb = 12.0;
 
   /// Speeds offered by the speed sheet; [playbackSpeed] can be anything in
   /// [minSpeed]..[maxSpeed] via its slider.
@@ -240,12 +246,22 @@ class YoutubeFeedSettings {
   /// that queue only.
   final double playbackSpeed;
 
+  /// Player volume (0..1) for feed videos — separate from music's
+  /// (`Config.musicVolume`), since videos are usually played louder.
+  final double videoVolume;
+
+  /// Extra loudness (0..[maxBoostDb] dB, Android's LoudnessEnhancer) for
+  /// quietly mastered videos; applied to feed videos only, never to music.
+  final double videoBoostDb;
+
   YoutubeFeedSettings copyWith({
     bool? sponsorBlockEnabled,
     Set<SponsorBlockCategory>? sponsorBlockCategories,
     bool? hideShorts,
     bool? hideLivestreams,
     double? playbackSpeed,
+    double? videoVolume,
+    double? videoBoostDb,
   }) =>
       YoutubeFeedSettings(
         sponsorBlockEnabled: sponsorBlockEnabled ?? this.sponsorBlockEnabled,
@@ -254,6 +270,8 @@ class YoutubeFeedSettings {
         hideShorts: hideShorts ?? this.hideShorts,
         hideLivestreams: hideLivestreams ?? this.hideLivestreams,
         playbackSpeed: playbackSpeed ?? this.playbackSpeed,
+        videoVolume: videoVolume ?? this.videoVolume,
+        videoBoostDb: videoBoostDb ?? this.videoBoostDb,
       );
 
   Map<String, dynamic> toJson() => {
@@ -264,6 +282,8 @@ class YoutubeFeedSettings {
         'hideShorts': hideShorts,
         'hideLivestreams': hideLivestreams,
         'playbackSpeed': playbackSpeed,
+        'videoVolume': videoVolume,
+        'videoBoostDb': videoBoostDb,
       };
 
   factory YoutubeFeedSettings.fromJson(Map<String, dynamic> json) {
@@ -281,6 +301,10 @@ class YoutubeFeedSettings {
       hideLivestreams: json['hideLivestreams'] as bool? ?? true,
       playbackSpeed: ((json['playbackSpeed'] as num?)?.toDouble() ?? 1.0)
           .clamp(minSpeed, maxSpeed),
+      videoVolume: ((json['videoVolume'] as num?)?.toDouble() ?? 1.0)
+          .clamp(0.0, 1.0),
+      videoBoostDb: ((json['videoBoostDb'] as num?)?.toDouble() ?? 0.0)
+          .clamp(0.0, maxBoostDb),
     );
   }
 }
