@@ -11,6 +11,8 @@ nothing has been copied over here.
 - Every Subscriptions video you start now downloads completely in the background and stays on your phone for a week after you last played it, so jumping back in is instant and works offline
 - Progress bars while things load: songs and videos starting, the feed refreshing (per channel), searches and video descriptions
 - APK size: 61.8 MB
+- CI build: 2026-10-03 21:46 UTC
+- Build duration (apk, CI): 8m 20s
 
 ## [0.2.98] - 2026-10-03
 - Music and Subscriptions videos now keep separate settings: music always plays at 1× (including songs from YouTube search), and each has its own volume — set it with the new volume button on Now Playing, or in Settings / Feed settings

@@ -1071,5 +1071,15 @@
     "durationSeconds": 118,
     "finishedAt": "2026-10-03T20:12:26.933627",
     "os": "windows"
+  },
+  {
+    "version": "0.2.99+394",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 500,
+    "sizeBytes": 64833287,
+    "source": "ci",
+    "finishedAt": "2026-10-03T21:46:41.915553",
+    "os": "linux"
   }
 ]
