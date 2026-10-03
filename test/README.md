@@ -130,6 +130,8 @@ Pick suites by what you touched, always including core:
   `tool/append_build_time.dart` → core + **update** (+ **music**, since
   `about_page.dart`'s `UpdateSection` and `auto_update_dialog.dart`'s
   `downloadUpdateInBackground` are shared with `music_about_page.dart`)
+- `lib/ui/update_downloads_folder_tile.dart` (the "Update downloads folder"
+  row in both apps' Settings) → core + **update** + **home** + **music**
 - `lib/utils/linkified_text.dart`, `lib/ui/task_detail_page.dart`,
   `lib/ui/task_info_dialog.dart` → core +
   **home** + **tools** (the wishlist page renders the same links)

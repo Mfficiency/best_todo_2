@@ -4491,6 +4491,19 @@ in App Logs → Todoist — onboarding has already finished by then.
   foreground at all. `UpdateService.downloadChannelOverride` is the test seam
   for the three new channel methods, mirroring `fetchOverride` for the
   release-JSON lookup.
+- **Update downloads folder in Settings (BestToDo 0.2.94, Best Music 0.2.97):**
+  both apps' Settings (BestToDo: Settings → Updates; Best Music: the bottom of
+  its Settings page) show an "Update downloads folder" row
+  (`lib/ui/update_downloads_folder_tile.dart`, `UpdateDownloadsFolderTile`,
+  given the app's own `UpdateService` — `UpdateService.instance` /
+  `MusicAboutPage.updateService`) with the absolute path the update APKs land
+  in and a "Copy path" button. The path comes from
+  `UpdateService.updateDownloadsDirectory()`, which asks the native side via
+  the `besttodo/update` channel's `updateDownloadsDir` method (the same
+  `getExternalFilesDir(null)/updates` that `startBackgroundDownload` writes
+  to, e.g. `/storage/emulated/0/Android/data/<applicationId>/files/updates`);
+  it returns null off Android (no in-app downloads there) or when external
+  storage is unavailable, and the row then says "Not available".
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a

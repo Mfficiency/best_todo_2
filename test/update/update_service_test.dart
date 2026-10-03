@@ -545,4 +545,30 @@ void main() {
       expect(await UpdateService.instance.pendingDownload(), isNull);
     });
   });
+
+  group('updateDownloadsDirectory', () {
+    test('returns the folder the native side reports', () async {
+      String? method;
+      UpdateService.instance.downloadChannelOverride = (m, a) async {
+        method = m;
+        return '/storage/emulated/0/Android/data/x/files/updates';
+      };
+      expect(await UpdateService.instance.updateDownloadsDirectory(),
+          '/storage/emulated/0/Android/data/x/files/updates');
+      expect(method, 'updateDownloadsDir');
+    });
+
+    test('is null when the native side has no folder or fails', () async {
+      UpdateService.instance.downloadChannelOverride = (m, a) async => null;
+      expect(await UpdateService.instance.updateDownloadsDirectory(), isNull);
+      UpdateService.instance.downloadChannelOverride =
+          (m, a) async => throw StateError('no storage');
+      expect(await UpdateService.instance.updateDownloadsDirectory(), isNull);
+    });
+
+    test('is null off Android without touching the channel', () async {
+      // The test host is never Android, and no override is installed.
+      expect(await UpdateService.instance.updateDownloadsDirectory(), isNull);
+    });
+  });
 }
