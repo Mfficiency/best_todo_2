@@ -2,6 +2,9 @@
 
 ## [0.2.92] - 2026-10-03
 - Music Player: when a search finds nothing in your library, tap "Search on YouTube" — picking a song plays it immediately and silently downloads it in the background
+- Local build: 2026-10-03 19:07
+- Build duration (apk): 8m 52s
+- Build duration (windows): 2m 07s
 
 ## [0.2.91] - 2026-10-03
 - Smart auto-tag (optional): when none of your auto-tag keywords match a new task, the app can ask the Jev decision model to pick one of your existing tags instead. It only applies a tag when it's confident, never slows down adding a task, and costs a tiny fraction of a cent per task. Turn it on in Settings > Tasks and paste a TypeSafe API key
