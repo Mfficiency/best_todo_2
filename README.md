@@ -92,11 +92,15 @@ Check its status:
 Get-ScheduledTask -TaskName "BestTodo Dev Build Watch" | Select TaskName,State
 ```
 
-The task runs:
+The task runs silently in the background (no console window popping up) through a
+windowless `wscript` launcher next to the script:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\noone\AppData\Local\BestTodo\DevBuildWatch\dev-build-watch.ps1"
+wscript.exe //B //Nologo "C:\Users\noone\AppData\Local\BestTodo\DevBuildWatch\dev-build-watch-hidden.vbs"
 ```
+
+which starts `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File dev-build-watch.ps1`
+with a hidden window.
 
 It writes recent activity to `dev_build_watch.log`.
 
