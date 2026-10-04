@@ -15,6 +15,9 @@ nothing has been copied over here.
 - "Back to videos" now also takes you to the Subscriptions feed, and "Back to music" opens the song that's playing — the screen follows the sound
 - Every video in Subscriptions now shows its length, views and upload time (e.g. "12:34 · 1.2K views" and "Today 14:05 (3h ago)"), each on its own line so nothing gets cut off
 - Length and views show up reliably again: YouTube changed its channel pages so they came back empty (and wiped the correct view count) — the app now reads them the new way, never lets a missing value erase a known one, and looks up anything still missing on the video's own page
+- CI build: 2026-10-04 07:29 UTC
+- Build duration (apk, CI): 6m 41s
+- APK size: 62.1 MB
 
 ## [0.3.1] - 2026-10-04
 - Update downloads now show which app and version are downloading in the notification (e.g. "Best Music update 0.3.1+397")
