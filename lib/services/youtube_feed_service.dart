@@ -11,6 +11,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt;
 import '../models/track.dart';
 import '../models/youtube_feed.dart';
 import 'log_service.dart';
+import 'youtube_channel_videos_api.dart';
 
 /// What [YoutubeFeedService.fetchChannel] got for one channel.
 class ChannelFetchResult {
@@ -100,6 +101,18 @@ class YoutubeFeedService {
   @visibleForTesting
   Future<String> Function(String videoId)? descriptionOverride;
 
+  /// Stands in for one video's own page in [fillMissingDetails].
+  @visibleForTesting
+  Future<VideoDetails?> Function(String videoId)? detailsOverride;
+
+  /// Videos [fillMissingDetails] already looked up this run of the app, so
+  /// a video whose page has no duration (a premiere) isn't asked again.
+  final Set<String> _detailsTried = {};
+  Future<void>? _detailsInFlight;
+
+  /// How many videos one [fillMissingDetails] pass looks up at most.
+  static const int maxDetailLookups = 15;
+
   @visibleForTesting
   void resetForTest() {
     subscriptions.value = const [];
@@ -116,6 +129,9 @@ class YoutubeFeedService {
     searchOverride = null;
     resolveChannelOverride = null;
     descriptionOverride = null;
+    detailsOverride = null;
+    _detailsTried.clear();
+    _detailsInFlight = null;
   }
 
   void _log(String message) => LogService.add('Feed', message);
@@ -431,6 +447,9 @@ class YoutubeFeedService {
       _log('Refreshed ${fetched.length}/${channels.length} channel(s), '
           '${merged.length} video(s) in the feed');
       await _save();
+      // Whatever the channel pages left out (duration, views, an exact
+      // upload time) comes from each video's own page, newest first.
+      unawaited(fillMissingDetails());
     } finally {
       refreshing.value = false;
     }
@@ -446,11 +465,108 @@ class YoutubeFeedService {
       for (final v in videos.value)
         if (!fetched.containsKey(v.channelId) && isSubscribed(v.channelId)) v,
       for (final list in fetched.values)
-        for (final v in list)
-          v.description.isEmpty && previous[v.videoId] != null
-              ? v.copyWith(description: previous[v.videoId]!.description)
-              : v,
+        for (final v in list) keepKnownDetails(v, previous[v.videoId]),
     ]..sort(_newestFirst);
+  }
+
+  /// One video's details fetched or looked up again ([fresh]) on top of
+  /// what was already known ([known]): a fetch that missed the duration,
+  /// views, description or exact upload time never erases them.
+  @visibleForTesting
+  static FeedVideo keepKnownDetails(FeedVideo fresh, FeedVideo? known) {
+    if (known == null) return fresh;
+    final keepDate = known.published != null &&
+        (fresh.published == null ||
+            (fresh.publishedApprox && !known.publishedApprox));
+    return fresh.copyWith(
+      description: fresh.description.isEmpty ? known.description : null,
+      duration: fresh.duration ?? known.duration,
+      viewCount: fresh.viewCount ?? known.viewCount,
+      published: keepDate ? known.published : null,
+      publishedApprox: keepDate ? known.publishedApprox : null,
+      // Once a video's own page showed its length it isn't a livestream.
+      isLivestream: fresh.isLivestream && fresh.duration == null &&
+          known.duration != null && !known.isLivestream
+          ? false
+          : null,
+    );
+  }
+
+  /// Looks up, on each video's own page, what the channel pages didn't
+  /// give for the newest feed videos: duration, views, an exact upload
+  /// time. At most [maxDetailLookups] per pass, each video once per app
+  /// run; concurrent calls share one pass.
+  Future<void> fillMissingDetails() =>
+      _detailsInFlight ??= _fillMissingDetails()
+          .whenComplete(() => _detailsInFlight = null);
+
+  Future<void> _fillMissingDetails() async {
+    // Tests that fake the channel fetch never reach the network here.
+    if (fetchOverride != null && detailsOverride == null) return;
+    final todo = [
+      for (final v in filterFeed(videos.value, settings.value))
+        if (!v.isShort &&
+            !_detailsTried.contains(v.videoId) &&
+            (v.duration == null ||
+                v.viewCount == null ||
+                v.published == null ||
+                v.publishedApprox))
+          v,
+    ].take(maxDetailLookups).toList();
+    if (todo.isEmpty) return;
+    var next = 0;
+    var filled = 0;
+    Future<void> worker() async {
+      while (next < todo.length) {
+        final id = todo[next++].videoId;
+        _detailsTried.add(id);
+        try {
+          final d = await (detailsOverride ?? _fetchDetails)(id);
+          if (d == null) continue;
+          filled++;
+          videos.value = [
+            for (final v in videos.value)
+              v.videoId == id
+                  ? v.copyWith(
+                      duration: d.duration,
+                      viewCount: d.views,
+                      published: d.published,
+                      publishedApprox: d.published != null ? false : null,
+                      isLivestream:
+                          d.duration != null ? false : null,
+                    )
+                  : v,
+          ];
+        } catch (e) {
+          _log('Looking up video $id failed: $e');
+        }
+      }
+    }
+
+    await Future.wait([for (var i = 0; i < 3; i++) worker()]);
+    if (filled > 0) {
+      _log('Filled in details for $filled video(s)');
+      await _save();
+    }
+  }
+
+  static Future<VideoDetails?> _fetchDetails(String videoId) async {
+    final client = yt.YoutubeExplode();
+    try {
+      final v = await client.videos
+          .get(videoId)
+          .timeout(const Duration(seconds: 20));
+      final duration = v.duration;
+      final views = v.engagement.viewCount;
+      return VideoDetails(
+        duration:
+            duration == null || duration == Duration.zero ? null : duration,
+        views: views > 0 ? views : null,
+        published: v.uploadDate ?? v.publishDate,
+      );
+    } finally {
+      client.close();
+    }
   }
 
   static int _newestFirst(FeedVideo a, FeedVideo b) {
@@ -483,32 +599,68 @@ class YoutubeFeedService {
       rssError = e;
     }
 
-    List<yt.Video>? tab;
-    final client = yt.YoutubeExplode();
+    // The Videos tab: YouTube's JSON API first; youtube_explode's page
+    // scraper only as a fallback (its parser misses the duration and views
+    // on YouTube's newer video cards, so its zeros count as "unknown").
+    List<ChannelTabVideo>? tab;
+    Map<String, String>? tabTitles;
+    Object? tabError;
     try {
-      tab = (await client.channels.getUploadsFromPage(channel.id)
-              .timeout(const Duration(seconds: 30)))
-          .toList();
+      tab = await YoutubeChannelVideosApi.fetch(channel.id);
       if (tab.isEmpty) tab = null; // unreadable page, not an empty channel
     } catch (e) {
-      if (rss == null) {
-        throw Exception('RSS: $rssError; Videos tab: $e');
+      tabError = e;
+    }
+    if (tab == null) {
+      final client = yt.YoutubeExplode();
+      try {
+        final page = (await client.channels
+                .getUploadsFromPage(channel.id)
+                .timeout(const Duration(seconds: 30)))
+            .toList();
+        if (page.isNotEmpty) {
+          tab = [
+            for (final v in page)
+              ChannelTabVideo(
+                videoId: v.id.value,
+                duration: v.duration == null || v.duration == Duration.zero
+                    ? null
+                    : v.duration,
+                views: v.engagement.viewCount > 0
+                    ? v.engagement.viewCount
+                    : null,
+                published: v.uploadDate,
+              ),
+          ];
+          tabTitles = {for (final v in page) v.id.value: v.title};
+        }
+      } catch (e) {
+        tabError = '$tabError; $e';
+      } finally {
+        client.close();
       }
-    } finally {
-      client.close();
+    }
+    if (rss == null && tab == null) {
+      throw Exception('RSS: $rssError; Videos tab: $tabError');
     }
 
     if (rss == null) {
+      // Titles only come with youtube_explode's page; without RSS or that,
+      // the JSON tab alone isn't enough to list videos.
+      if (tabTitles == null) {
+        throw Exception('RSS: $rssError; Videos tab has no titles');
+      }
       return ChannelFetchResult([
         for (final v in tab!)
           FeedVideo(
-            videoId: v.id.value,
-            title: v.title,
+            videoId: v.videoId,
+            title: tabTitles[v.videoId] ?? '',
             channelId: channel.id,
             channelName: channel.name,
-            published: v.uploadDate,
+            published: v.published,
+            publishedApprox: v.published != null,
             duration: v.duration,
-            viewCount: v.engagement.viewCount,
+            viewCount: v.views,
           ),
       ]);
     }
@@ -516,7 +668,7 @@ class YoutubeFeedService {
         ? null
         : {
             for (final v in tab)
-              v.id.value: (duration: v.duration, views: v.engagement.viewCount),
+              v.videoId: (duration: v.duration, views: v.views),
           }));
   }
 
@@ -740,10 +892,12 @@ List<FeedVideo> filterFeed(List<FeedVideo> all, YoutubeFeedSettings settings) =>
 
 /// Annotates RSS entries with what the channel's Videos tab knows
 /// ([tab]: video id → duration/views; null when the tab couldn't be read).
-/// A non-Short entry missing from a readable tab is a livestream.
+/// A non-Short entry missing from a readable tab is a livestream. Views:
+/// the higher of the two — RSS counts are exact but can lag, the tab's
+/// are rounded ("1.2K"); a missing count never erases the other.
 List<FeedVideo> mergeVideosTab(
   List<FeedVideo> rss,
-  Map<String, ({Duration? duration, int views})>? tab,
+  Map<String, ({Duration? duration, int? views})>? tab,
 ) {
   if (tab == null) return rss;
   return [
@@ -751,7 +905,10 @@ List<FeedVideo> mergeVideosTab(
       if (tab[v.videoId] case final info?)
         v.copyWith(
           duration: info.duration == Duration.zero ? null : info.duration,
-          viewCount: info.views,
+          viewCount: switch ((v.viewCount, info.views)) {
+            (final a?, final b?) => a > b ? a : b,
+            (final a, final b) => a ?? b,
+          },
         )
       else
         FeedVideo(
@@ -831,4 +988,15 @@ List<({String url, String name})> parseNewPipeSubscriptions(String body) {
       if ((e['service_id'] ?? 0) == 0 && e['url'] is String)
         (url: e['url'] as String, name: (e['name'] ?? '').toString()),
   ];
+}
+
+/// What a video's own page says ([YoutubeFeedService.fillMissingDetails]).
+class VideoDetails {
+  const VideoDetails({this.duration, this.views, this.published});
+
+  final Duration? duration;
+  final int? views;
+
+  /// Exact upload time.
+  final DateTime? published;
 }

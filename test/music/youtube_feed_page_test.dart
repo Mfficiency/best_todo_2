@@ -85,9 +85,12 @@ void main() {
     expect(find.text('Title vid2'), findsOneWidget);
     expect(find.text('Title short1'), findsNothing);
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
-    expect(find.text('3:05'), findsNWidgets(2));
+    // On the thumbnail and in the duration/views line of each row.
+    expect(find.text('3:05'), findsNWidgets(4));
     expect(find.textContaining('2d ago'), findsNWidgets(2));
-    // Each row shows when the video went up, on its own line.
+    // Each row shows duration + views and when the video went up, each on
+    // its own line.
+    expect(find.byKey(const ValueKey('feedVideoStats')), findsNWidgets(2));
     expect(find.byKey(const ValueKey('feedVideoUploadTime')), findsNWidgets(2));
 
     expect(service.refreshing.value, isFalse);
@@ -278,6 +281,15 @@ void main() {
         '14 Aug, 07:00');
     expect(formatFeedUploadTime(DateTime(2025, 12, 1, 7, 0), now: now),
         '1 Dec 2025');
+    // A date read off "3 days ago" has no meaningful clock time.
+    expect(
+        formatFeedUploadTime(DateTime(2026, 9, 29, 18, 30),
+            now: now, approx: true),
+        'Tue');
+    expect(
+        formatFeedUploadTime(DateTime(2026, 8, 14, 7, 0),
+            now: now, approx: true),
+        '14 Aug');
     expect(formatVideoDuration(const Duration(hours: 1, minutes: 2, seconds: 3)),
         '1:02:03');
   });

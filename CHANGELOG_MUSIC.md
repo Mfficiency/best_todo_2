@@ -8,7 +8,8 @@ nothing has been copied over here.
 
 ## [0.3.1] - 2026-10-04
 - "Back to videos" now also takes you to the Subscriptions feed, and "Back to music" opens the song that's playing — the screen follows the sound
-- Every video in Subscriptions shows when it was uploaded (e.g. "Today 14:05 · 3h ago")
+- Every video in Subscriptions now shows its length, views and upload time (e.g. "12:34 · 1.2K views" and "Today 14:05 (3h ago)"), each on its own line so nothing gets cut off
+- Length and views show up reliably again: YouTube changed its channel pages so they came back empty (and wiped the correct view count) — the app now reads them the new way, never lets a missing value erase a known one, and looks up anything still missing on the video's own page
 
 ## [0.3.0] - 2026-10-04
 - Subscriptions open faster: the last 2 days show right away, the rest of the week fills in by itself, and older videos load only when you scroll to the end — always newest first

@@ -4397,10 +4397,31 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   `NowPlayingPage.route()`. Every push of those pages uses `route()` so the names are always
   set. The pill and mini player sit outside the navigator, so `main_music.dart` hands them
   `musicNavigatorKey`.
-- `FeedVideoTile` shows the channel on one line and, below it, a clock icon +
-  `formatFeedUploadTime(published)` · `formatFeedAge` · views (key `feedVideoUploadTime`).
-  `formatFeedUploadTime` (local time): "Today 14:05", "Yesterday 09:12", "Mon 18:30" within the
-  week, "3 Oct, 14:05" this year, "3 Oct 2025" before. The video page's meta line includes it.
+- `FeedVideoTile`: title, channel (1 line), then `_MetaRow`s — play icon + "12:34 · 1.2K
+  views" (key `feedVideoStats`) and clock icon + "Today 14:05 (3h ago)" (key
+  `feedVideoUploadTime`). `formatFeedUploadTime` (local time): "Today 14:05", "Yesterday 09:12",
+  "Mon 18:30" within the week, "3 Oct, 14:05" this year, "3 Oct 2025" before; with
+  `approx: true` (`FeedVideo.publishedApprox`, a date read off "3 days ago") no clock time.
+  The video page's meta line has all of it.
+- *Reliable duration/views/date*: `youtube_explode`'s `getUploadsFromPage` reads YouTube's newer
+  `lockupViewModel` cards from dead paths (duration 0, views 0), and `mergeVideosTab` used to
+  overwrite the RSS view count with that 0. Now:
+  `YoutubeChannelVideosApi` (`lib/services/youtube_channel_videos_api.dart`) POSTs
+  `youtubei/v1/browse` (browseId = channel id, params `EgZ2aWRlb3PyBgQKAjoA` = Videos tab)
+  and `parseVideosTab` walks the tree for `videoRenderer`/`gridVideoRenderer`/
+  `lockupViewModel` cards, collecting each card's texts (`simpleText`/`runs`/`text`/
+  `content`) and recognising the clock (`12:34`), views (`parseViewCount`: "1,234 views",
+  "1.2K views", "No views"; "watching" = live, ignored) and "N units ago". `fetchChannel`
+  tries it first and falls back to `getUploadsFromPage` with 0 → null. `mergeVideosTab`
+  takes the higher of the RSS/tab view counts, a null never erases the other.
+  `_merged` runs every fresh video through `keepKnownDetails(fresh, known)` so a refresh that
+  missed duration/views/description/exact date keeps the cached ones. After each refresh,
+  `fillMissingDetails()` (unawaited; also callable) looks up, newest first, up to
+  `maxDetailLookups` (15) non-Short filtered videos still missing duration, views or an exact
+  date on their own page (`youtube_explode` `videos.get`, 3 at a time, each video once per app
+  run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
+  `fetchOverride` is set without one). A video whose page gives a duration is no longer
+  flagged `isLivestream`.
 
 **Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
 (`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
