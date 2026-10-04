@@ -8,6 +8,9 @@ nothing has been copied over here.
 
 ## [0.3.1] - 2026-10-04
 - Update downloads now show which app and version are downloading in the notification (e.g. "Best Music update 0.3.1+397")
+- CI build: 2026-10-04 06:38 UTC
+- Build duration (apk, CI): 7m 51s
+- APK size: 61.8 MB
 
 ## [0.3.0] - 2026-10-04
 - Subscriptions open faster: the last 2 days show right away, the rest of the week fills in by itself, and older videos load only when you scroll to the end — always newest first
