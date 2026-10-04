@@ -7,8 +7,8 @@
 
 ## [0.2.97] - 2026-10-04
 - Update downloads now show which app and version are downloading in the notification (e.g. "BestToDo update 0.2.97+398")
-- CI build: 2026-10-04 18:11 UTC
-- Build duration (apk, CI): 9m 10s
+- CI build: 2026-10-04 20:42 UTC
+- Build duration (apk, CI): 9m 08s
 - APK size: 70.3 MB
 
 ## [0.2.96] - 2026-10-03
