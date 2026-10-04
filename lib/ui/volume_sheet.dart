@@ -4,16 +4,17 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-import '../config.dart';
 import '../models/youtube_feed.dart';
-import '../services/music_player_service.dart';
+import '../services/media_volume.dart';
 import '../services/youtube_feed_service.dart';
 
-/// Volume for music ([video] false: [Config.musicVolume]) or for
-/// Subscriptions-feed videos ([video] true: [YoutubeFeedSettings.videoVolume]
-/// plus a boost slider for quiet videos). The two are remembered
-/// separately — music usually wants to be softer than videos — and a
-/// change applies to what's playing right away.
+/// The phone's media volume for music ([video] false) or for
+/// Subscriptions-feed videos ([video] true, plus a boost slider for quiet
+/// videos). Not an app volume: it is the phone's own volume, remembered
+/// separately for music and videos and switched automatically when
+/// playback goes from one to the other ([MediaVolume]). Moving the slider
+/// for what's playing changes the phone's volume right away; for the
+/// other kind it sets the level it will get next time.
 Future<void> showVolumeSheet(BuildContext context, {required bool video}) {
   return showModalBottomSheet<void>(
     context: context,
@@ -29,6 +30,12 @@ String formatVolume(double volume) => '${(volume * 100).round()}%';
 
 String formatBoost(double db) => db <= 0 ? 'Off' : '+${db.round()} dB';
 
+/// "40%" for a remembered level, or that there isn't one yet.
+String describeRememberedVolume(VolumeKind kind) {
+  final v = MediaVolume.remembered(kind);
+  return v == null ? 'Not remembered yet' : formatVolume(v);
+}
+
 class VolumeSheet extends StatefulWidget {
   const VolumeSheet({super.key, required this.video, this.feed});
 
@@ -42,41 +49,38 @@ class VolumeSheet extends StatefulWidget {
 class _VolumeSheetState extends State<VolumeSheet> {
   late final YoutubeFeedService _feed =
       widget.feed ?? YoutubeFeedService.instance;
-  late double _volume = widget.video
-      ? _feed.settings.value.videoVolume
-      : Config.musicVolume;
+  late final VolumeKind _kind =
+      widget.video ? VolumeKind.video : VolumeKind.music;
+  late double _volume = MediaVolume.remembered(_kind) ?? 0.5;
   late double _boost = _feed.settings.value.videoBoostDb;
 
-  void _applyNow() {
-    if (MusicPlayerService.isReady) {
-      MusicPlayerService.handler.applyCurrentVolume();
-    }
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
   }
 
-  /// Live while dragging: applied to the player, not yet written to disk.
+  Future<void> _load() async {
+    final v = await MediaVolume.current(_kind);
+    if (v != null && mounted) setState(() => _volume = v);
+  }
+
+  /// Live while dragging; remembered once the drag ends.
   void _setVolume(double value) {
     setState(() => _volume = value);
-    if (widget.video) {
-      _feed.settings.value = _feed.settings.value.copyWith(videoVolume: value);
-    } else {
-      Config.musicVolume = value;
-      _applyNow();
-    }
+    unawaited(MediaVolume.choose(_kind, value, persist: false));
   }
+
+  void _persistVolume(double value) =>
+      unawaited(MediaVolume.choose(_kind, value));
 
   void _setBoost(double value) {
     setState(() => _boost = value);
     _feed.settings.value = _feed.settings.value.copyWith(videoBoostDb: value);
   }
 
-  /// Drag finished: remember it.
-  void _persist([double _ = 0]) {
-    if (widget.video) {
+  void _persistBoost(double _) =>
       unawaited(_feed.updateSettings(_feed.settings.value));
-    } else {
-      unawaited(Config.save());
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -95,8 +99,12 @@ class _VolumeSheetState extends State<VolumeSheet> {
             ),
             Text(
               widget.video
-                  ? 'Subscriptions videos only — music keeps its own volume'
-                  : 'Songs only — Subscriptions videos keep their own volume',
+                  ? "Your phone's volume while videos play. It's remembered, "
+                      'and switches back by itself when you go between '
+                      'videos and music'
+                  : "Your phone's volume while music plays. It's remembered, "
+                      'and switches back by itself when you go between '
+                      'music and videos',
               style: theme.textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
@@ -110,7 +118,7 @@ class _VolumeSheetState extends State<VolumeSheet> {
                   divisions: 20,
                   label: formatVolume(_volume),
                   onChanged: _setVolume,
-                  onChangeEnd: _persist,
+                  onChangeEnd: _persistVolume,
                 ),
               ),
               SizedBox(
@@ -132,7 +140,7 @@ class _VolumeSheetState extends State<VolumeSheet> {
                     divisions: YoutubeFeedSettings.maxBoostDb.round(),
                     label: formatBoost(_boost),
                     onChanged: _setBoost,
-                    onChangeEnd: _persist,
+                    onChangeEnd: _persistBoost,
                   ),
                 ),
                 SizedBox(
@@ -141,7 +149,8 @@ class _VolumeSheetState extends State<VolumeSheet> {
                 ),
               ]),
               Text(
-                'Lifts videos past 100% — high boosts can distort loud ones',
+                'Only in this app: lifts videos past the phone\'s 100% — high '
+                    'boosts can distort loud ones',
                 style: theme.textTheme.bodySmall,
               ),
             ],

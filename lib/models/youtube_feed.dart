@@ -221,7 +221,6 @@ class YoutubeFeedSettings {
     this.hideShorts = true,
     this.hideLivestreams = true,
     this.playbackSpeed = 1.0,
-    this.videoVolume = 1.0,
     this.videoBoostDb = 0.0,
     this.autoplayNext = false,
   });
@@ -258,10 +257,6 @@ class YoutubeFeedSettings {
   /// video.
   final double playbackSpeed;
 
-  /// Player volume (0..1) for feed videos — separate from music's
-  /// (`Config.musicVolume`), since videos are usually played louder.
-  final double videoVolume;
-
   /// Extra loudness (0..[maxBoostDb] dB, Android's LoudnessEnhancer) for
   /// quietly mastered videos; applied to feed videos only, never to music.
   final double videoBoostDb;
@@ -276,7 +271,6 @@ class YoutubeFeedSettings {
     bool? hideShorts,
     bool? hideLivestreams,
     double? playbackSpeed,
-    double? videoVolume,
     double? videoBoostDb,
     bool? autoplayNext,
   }) =>
@@ -287,7 +281,6 @@ class YoutubeFeedSettings {
         hideShorts: hideShorts ?? this.hideShorts,
         hideLivestreams: hideLivestreams ?? this.hideLivestreams,
         playbackSpeed: playbackSpeed ?? this.playbackSpeed,
-        videoVolume: videoVolume ?? this.videoVolume,
         videoBoostDb: videoBoostDb ?? this.videoBoostDb,
         autoplayNext: autoplayNext ?? this.autoplayNext,
       );
@@ -300,7 +293,6 @@ class YoutubeFeedSettings {
         'hideShorts': hideShorts,
         'hideLivestreams': hideLivestreams,
         'playbackSpeed': playbackSpeed,
-        'videoVolume': videoVolume,
         'videoBoostDb': videoBoostDb,
         'autoplayNext': autoplayNext,
       };
@@ -320,8 +312,6 @@ class YoutubeFeedSettings {
       hideLivestreams: json['hideLivestreams'] as bool? ?? true,
       playbackSpeed: ((json['playbackSpeed'] as num?)?.toDouble() ?? 1.0)
           .clamp(minSpeed, maxSpeed),
-      videoVolume: ((json['videoVolume'] as num?)?.toDouble() ?? 1.0)
-          .clamp(0.0, 1.0),
       videoBoostDb: ((json['videoBoostDb'] as num?)?.toDouble() ?? 0.0)
           .clamp(0.0, maxBoostDb),
       autoplayNext: json['autoplayNext'] as bool? ?? false,

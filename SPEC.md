@@ -4342,18 +4342,33 @@ default-only mode.
 volume/boost, SponsorBlock, resume position/`recordProgress`, "played" marks, and stopping at
 the end of the queue. Songs streamed from the library search's YouTube fallback are
 `Track.youtube(..., song: true)` (`youtubeSong`, persisted as `"youtubeSong": true`), so they
-follow music rules: always 1x, the music volume, no feed bookkeeping; the speed button is
-hidden for them. **Volume** is remembered per kind: `Config.musicVolume` (0–1, default 1) for
-music, `YoutubeFeedSettings.videoVolume` (0–1, default 1) for feed videos, applied by
-`MusicAudioHandler._applyVolume` after each track loads (and on any feed-settings change,
-via a listener, or `applyCurrentVolume()` after a music-volume change).
-`YoutubeFeedSettings.videoBoostDb` (0–12 dB, default 0) drives an `AndroidLoudnessEnhancer`
-in the player's `AudioPipeline` (Android only; enabled only while a feed video plays with
-boost > 0, gain 0/disabled for music). UI: `lib/ui/volume_sheet.dart` — a 5%-step volume
-slider and, for videos on Android, a "Boost for quiet videos" slider ("Off"/"+N dB"); applied
-live while dragging, saved on release. Opened from Now Playing's volume button (tooltip
-"Music volume" or "Video volume" by the current track), Feed settings → "Video volume", and
-Best Music Settings → "Music volume".
+follow music rules: always 1x, music's phone volume, no feed bookkeeping; the speed button is
+hidden for them. **Volume** (Best Music 0.3.4: no app volume any more) is the phone's own
+media volume (Android `STREAM_MUSIC`), remembered per kind and switched automatically.
+`MediaVolume` (`lib/services/media_volume.dart`) talks to the `besttodo/media_volume`
+channel in `MainActivity.kt` (`get` → current index / max as 0..1, null when unreadable;
+`set {volume, showUi}` → `setStreamVolume`, skipped on fixed-volume devices, a Do Not
+Disturb `SecurityException` swallowed; non-Android: no-ops). State lives in `Config`:
+`musicPhoneVolume`/`videoPhoneVolume` (0..1, null until known) and `phoneVolumeKind`
+(`'music'`/`'video'`/`''`, survives restarts). `MusicAudioHandler._applyVolume` runs for every
+track that loads: the player volume is always 1.0, then `MediaVolume.onPlaying(kind)` — when
+the kind differs from `phoneVolumeKind`, the phone's current level is saved for the kind that
+was playing (so volume-button changes are kept) and the new kind's remembered level, if any,
+is set with `showUi: true` (the phone's own volume bar appears); the very first track, or a
+kind with nothing remembered yet, leaves the phone alone. The old app volumes
+(`Config.musicVolume`, `YoutubeFeedSettings.videoVolume`) are gone; their JSON keys are
+ignored. `YoutubeFeedSettings.videoBoostDb` (0–12 dB, default 0) is the only in-app level: it
+drives an `AndroidLoudnessEnhancer` in the player's `AudioPipeline` (Android only; enabled
+only while a feed video plays with boost > 0, gain 0/disabled for music). UI:
+`lib/ui/volume_sheet.dart` — a 5%-step slider for the kind's phone volume
+(`MediaVolume.choose`: for the kind playing — or when nothing has played yet — it moves the
+phone volume live while dragging; for the other kind it only sets the level it gets on the
+next switch; saved on release) and, for videos on Android, a "Boost for quiet videos" slider
+("Off"/"+N dB"). The sheet opens on `MediaVolume.current` (the phone's level for the kind
+playing, else the remembered one). Opened from Now Playing's volume button (tooltip "Music
+volume" or "Video volume" by the current track), Settings → Subscriptions feed → "Video
+volume" and Settings → Playback → "Music volume" (both show the remembered level, or "Not
+remembered yet").
 
 **Last song ↔ last video (Best Music 0.2.99).** `MusicAudioHandler.otherSession`
 (`ValueNotifier<PlaybackSession?>`; `PlaybackSession` = queue, index, position) holds the

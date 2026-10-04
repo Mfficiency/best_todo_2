@@ -5,9 +5,9 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:just_audio/just_audio.dart' as ja;
 
-import '../config.dart';
 import '../models/track.dart';
 import '../models/youtube_feed.dart';
+import 'media_volume.dart';
 import 'music_library_service.dart';
 import 'music_playlist_service.dart';
 import 'music_resume_service.dart';
@@ -465,14 +465,15 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
             YoutubeFeedSettings.minSpeed, YoutubeFeedSettings.maxSpeed)));
   }
 
-  /// Music and feed videos each keep their own volume: feed videos use
-  /// [YoutubeFeedSettings.videoVolume] plus its boost, everything else
-  /// [Config.musicVolume] with no boost.
+  /// No app-specific volume: the player always runs at full volume and
+  /// the phone's own media volume is switched between music's and
+  /// videos' remembered levels ([MediaVolume.onPlaying]). Feed videos
+  /// also get their boost; music never does.
   Future<void> _applyVolume(Track track) async {
     final settings = YoutubeFeedService.instance.settings.value;
     final video = track.isFeedVideo;
-    final volume = video ? settings.videoVolume : Config.musicVolume;
-    if (_player.volume != volume) await _player.setVolume(volume);
+    if (_player.volume != 1.0) await _player.setVolume(1.0);
+    await MediaVolume.onPlaying(video ? VolumeKind.video : VolumeKind.music);
     final boost = _boost;
     if (boost == null) return;
     final gain = video ? settings.videoBoostDb : 0.0;
@@ -481,13 +482,12 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       await boost.setEnabled(gain > 0);
     } catch (_) {
       // Audio effects can be unavailable on some devices/sessions; the
-      // plain volume above still applies.
+      // phone volume still applies.
     }
   }
 
-  /// Re-applies the volume for the playing track — after the music volume
-  /// ([Config.musicVolume]) changed. Feed-settings changes trigger this
-  /// on their own.
+  /// Re-applies the boost and speed for the playing track — feed-settings
+  /// changes trigger this on their own.
   void applyCurrentVolume() {
     final track = currentTrack;
     if (track == null) return;

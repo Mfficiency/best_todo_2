@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/youtube_feed.dart';
 import '../services/music_library_service.dart';
+import '../services/media_volume.dart';
 import '../services/music_sleep_timer.dart';
 import '../services/youtube_feed_service.dart';
 import 'music_about_page.dart';
@@ -392,9 +393,10 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                       ListTile(
                         leading: const Icon(Icons.volume_up_outlined),
                         title: const Text('Music volume'),
-                        subtitle: Text('${formatVolume(Config.musicVolume)} — '
-                            'separate from Subscriptions videos, which keep '
-                            'their own'),
+                        subtitle: Text(
+                            '${describeRememberedVolume(VolumeKind.music)} — '
+                            "your phone's volume for music, put back when "
+                            'you switch from videos to music'),
                         onTap: () async {
                           await showVolumeSheet(context, video: false);
                           if (mounted) setState(() {});
@@ -479,14 +481,18 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
       ListTile(
         leading: const Icon(Icons.volume_up_outlined),
         title: const Text('Video volume'),
-        subtitle: Text('${formatVolume(settings.videoVolume)}'
+        subtitle: Text('${describeRememberedVolume(VolumeKind.video)}'
             '${settings.videoBoostDb > 0 ? ', boost ${formatBoost(settings.videoBoostDb)}' : ''}'
-            ' — separate from your music volume'),
-        onTap: () => showModalBottomSheet<void>(
-          context: context,
-          showDragHandle: true,
-          builder: (_) => VolumeSheet(video: true, feed: _feed),
-        ),
+            " — your phone's volume for videos, put back when you switch "
+            'from music to videos'),
+        onTap: () async {
+          await showModalBottomSheet<void>(
+            context: context,
+            showDragHandle: true,
+            builder: (_) => VolumeSheet(video: true, feed: _feed),
+          );
+          if (mounted) setState(() {});
+        },
       ),
       SwitchListTile(
         secondary: const Icon(Icons.playlist_play),

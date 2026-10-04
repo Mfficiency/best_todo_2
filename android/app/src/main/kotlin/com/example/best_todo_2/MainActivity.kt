@@ -173,6 +173,41 @@ class MainActivity : AudioServiceFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+        // The phone's own media volume (STREAM_MUSIC) as 0..1. Best Music
+        // remembers one level for music and one for videos and switches the
+        // phone between them (lib/services/media_volume.dart).
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/media_volume",
+        ).setMethodCallHandler { call, result ->
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            when (call.method) {
+                "get" -> result.success(
+                    if (max <= 0) null
+                    else audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        .toDouble() / max
+                )
+                "set" -> {
+                    val volume = (call.argument<Double>("volume") ?: 0.0)
+                        .coerceIn(0.0, 1.0)
+                    val showUi = call.argument<Boolean>("showUi") ?: false
+                    try {
+                        if (max > 0 && !audioManager.isVolumeFixed) {
+                            audioManager.setStreamVolume(
+                                AudioManager.STREAM_MUSIC,
+                                Math.round(volume * max).toInt(),
+                                if (showUi) AudioManager.FLAG_SHOW_UI else 0,
+                            )
+                        }
+                    } catch (_: SecurityException) {
+                        // Do Not Disturb can refuse volume changes.
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/health",

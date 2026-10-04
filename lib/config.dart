@@ -676,11 +676,17 @@ class Config {
   /// Bluetooth/wired headphones or speaker) — see `SpeakerPlayGuard`.
   static bool musicConfirmSpeakerPlay = true;
 
-  /// Player volume (0..1) for music — local/Subsonic songs and songs
-  /// streamed from the library search's YouTube fallback. Kept separate
-  /// from Subscriptions-feed videos' volume (`YoutubeFeedSettings
-  /// .videoVolume`), since videos usually want to be louder than music.
-  static double musicVolume = 1.0;
+  /// The phone's media volume (0..1) last used for music — local/Subsonic
+  /// songs and songs streamed from the library search's YouTube fallback —
+  /// and for Subscriptions videos. There is no app-specific volume:
+  /// switching between music and videos saves the phone's level for the
+  /// kind that was playing and puts back the other's (`MediaVolume`).
+  /// Null until known.
+  static double? musicPhoneVolume;
+  static double? videoPhoneVolume;
+
+  /// Which of those was playing last: 'music', 'video' or '' (nothing yet).
+  static String phoneVolumeKind = '';
 
   /// Base URL of a self-hosted Subsonic/OpenSubsonic-compatible server
   /// (Navidrome, Airsonic, Gonic, …), e.g. `https://music.example.com`.
@@ -796,7 +802,9 @@ class Config {
       'musicTrackSortField': musicTrackSortField,
       'musicTrackSortAscending': musicTrackSortAscending,
       'musicConfirmSpeakerPlay': musicConfirmSpeakerPlay,
-      'musicVolume': musicVolume,
+      'musicPhoneVolume': musicPhoneVolume,
+      'videoPhoneVolume': videoPhoneVolume,
+      'phoneVolumeKind': phoneVolumeKind,
       'subsonicServerUrl': subsonicServerUrl,
       'subsonicUsername': subsonicUsername,
       'subsonicPassword': subsonicPassword,
@@ -958,8 +966,17 @@ class Config {
         data['musicTrackSortAscending'] as bool? ?? musicTrackSortAscending;
     musicConfirmSpeakerPlay =
         data['musicConfirmSpeakerPlay'] as bool? ?? musicConfirmSpeakerPlay;
-    musicVolume = ((data['musicVolume'] as num?)?.toDouble() ?? musicVolume)
-        .clamp(0.0, 1.0);
+    musicPhoneVolume = (data['musicPhoneVolume'] as num?)
+            ?.toDouble()
+            .clamp(0.0, 1.0)
+            .toDouble() ??
+        musicPhoneVolume;
+    videoPhoneVolume = (data['videoPhoneVolume'] as num?)
+            ?.toDouble()
+            .clamp(0.0, 1.0)
+            .toDouble() ??
+        videoPhoneVolume;
+    phoneVolumeKind = data['phoneVolumeKind'] as String? ?? phoneVolumeKind;
     subsonicServerUrl =
         data['subsonicServerUrl'] as String? ?? subsonicServerUrl;
     subsonicUsername = data['subsonicUsername'] as String? ?? subsonicUsername;

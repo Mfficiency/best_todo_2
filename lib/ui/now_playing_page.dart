@@ -96,7 +96,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
               visible: handler.currentTrack?.isFeedVideo ?? false,
             ),
           ),
-          // Music and feed videos each remember their own volume.
+          // The phone's volume, remembered separately for music and videos.
           StreamBuilder<MediaItem?>(
             stream: handler.mediaItem,
             builder: (context, _) {
