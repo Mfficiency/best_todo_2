@@ -415,6 +415,12 @@ class UpdateService {
   /// newer than the running app.
   static const String _downloadedVersionPrefsKey = 'update_downloaded_version';
 
+  /// Title of the system download notification, e.g.
+  /// "Best Music update 0.1.12+30" — names the app and the exact version so
+  /// a BestToDo and a Best Music download can't be told apart only by guesswork.
+  String downloadNotificationTitle(UpdateInfo info) =>
+      '$appDisplayName update ${info.version}';
+
   /// Hands [info]'s APK to Android's `DownloadManager` and returns its
   /// download id. The transfer then runs as a system service, independent of
   /// the app process — it keeps going if the app is backgrounded and rides
@@ -427,8 +433,11 @@ class UpdateService {
     }
     final fileName =
         '$appDisplayName-update-${info.version.replaceAll('+', '-')}.apk';
-    final result = await _invokeDownloadChannel(
-        'startBackgroundDownload', {'url': url, 'fileName': fileName});
+    final result = await _invokeDownloadChannel('startBackgroundDownload', {
+      'url': url,
+      'fileName': fileName,
+      'title': downloadNotificationTitle(info),
+    });
     return (result as Map)['downloadId'] as int;
   }
 

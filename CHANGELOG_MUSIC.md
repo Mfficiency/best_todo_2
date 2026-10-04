@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.2.100] - 2026-10-04
+- Update downloads now show which app and version are downloading in the notification (e.g. "Best Music update 0.2.100+395")
+
 ## [0.2.99] - 2026-10-03
 - Jump between your last song and your last video in one tap: stop either halfway, and the button on the song bar (or at the top of Now Playing) resumes the other right where you left it — even after restarting the app
 - Every Subscriptions video you start now downloads completely in the background and stays on your phone for a week after you last played it, so jumping back in is instant and works offline
