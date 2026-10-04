@@ -10,6 +10,9 @@ nothing has been copied over here.
 - Settings is now organised like BestToDo's: buttons at the top jump to a section, and every section (Library, Playback, Appearance, Subscriptions feed, SponsorBlock, Updates) folds open and closed
 - The Subscriptions feed's settings now live in Settings (the feed's settings button opens them there) instead of on their own page
 - Search your Subscriptions feed: tap the search button and type part of a video title, a channel or a date ("yesterday", "oct 3", "friday", "2026-10-03") — typos are fine, and the Title/Channel/Date buttons narrow it down. It finds older videos too, not just this week's
+- CI build: 2026-10-04 07:32 UTC
+- Build duration (apk, CI): 8m 10s
+- APK size: 62.2 MB
 
 ## [0.3.2] - 2026-10-04
 - "Back to videos" now also takes you to the Subscriptions feed, and "Back to music" opens the song that's playing — the screen follows the sound
