@@ -189,6 +189,10 @@ void main() {
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
 
+      // Sections start collapsed behind their section buttons.
+      expect(find.widgetWithText(ChoiceChip, 'Library'), findsOneWidget);
+      await tester.tap(find.byTooltip('Expand Library'));
+      await tester.pumpAndSettle();
       expect(find.text('Music folder'), findsOneWidget);
     });
 
