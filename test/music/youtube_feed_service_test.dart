@@ -119,7 +119,7 @@ void main() {
         'AAAAAAAAAAA': (duration: const Duration(minutes: 4), views: 99),
       });
       expect(merged[0].duration, const Duration(minutes: 4));
-      expect(merged[0].viewCount, 99);
+      expect(merged[0].viewCount, 12345, reason: 'RSS count is higher');
       expect(merged[0].isLivestream, isFalse);
       expect(merged[1].isLivestream, isFalse, reason: 'Shorts are not live');
       expect(merged[2].isLivestream, isTrue);
@@ -127,6 +127,117 @@ void main() {
 
     test('an unreadable Videos tab flags nothing', () {
       expect(mergeVideosTab(rss, null).any((v) => v.isLivestream), isFalse);
+    });
+
+    test('a missing or lower tab view count never replaces the RSS one', () {
+      // RSS says 12345 views for AAAAAAAAAAA.
+      expect(
+          mergeVideosTab(rss, {
+            'AAAAAAAAAAA': (duration: null, views: null),
+          })[0]
+              .viewCount,
+          12345);
+      expect(
+          mergeVideosTab(rss, {
+            'AAAAAAAAAAA': (duration: null, views: 12000),
+          })[0]
+              .viewCount,
+          12345);
+      expect(
+          mergeVideosTab(rss, {
+            'AAAAAAAAAAA': (duration: null, views: 20000),
+          })[0]
+              .viewCount,
+          20000);
+    });
+  });
+
+  group('keepKnownDetails', () {
+    final known = FeedVideo(
+      videoId: 'v',
+      title: 'T',
+      channelId: 'c',
+      channelName: 'C',
+      published: DateTime.utc(2026, 10, 1, 14, 5),
+      description: 'desc',
+      duration: const Duration(minutes: 9),
+      viewCount: 500,
+    );
+
+    test('a fetch that missed details keeps the known ones', () {
+      final fresh = FeedVideo(
+        videoId: 'v',
+        title: 'T',
+        channelId: 'c',
+        channelName: 'C',
+        published: DateTime.utc(2026, 10, 1),
+        publishedApprox: true,
+      );
+      final merged = YoutubeFeedService.keepKnownDetails(fresh, known);
+      expect(merged.duration, const Duration(minutes: 9));
+      expect(merged.viewCount, 500);
+      expect(merged.description, 'desc');
+      expect(merged.published, DateTime.utc(2026, 10, 1, 14, 5));
+      expect(merged.publishedApprox, isFalse);
+    });
+
+    test('fresh values win', () {
+      final fresh = known.copyWith(
+          viewCount: 900, duration: const Duration(minutes: 10));
+      final merged = YoutubeFeedService.keepKnownDetails(fresh, known);
+      expect(merged.viewCount, 900);
+      expect(merged.duration, const Duration(minutes: 10));
+    });
+  });
+
+  group('fillMissingDetails', () {
+    test('looks up what the channel pages missed, once per video', () async {
+      const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+      service.subscriptions.value = [a];
+      final now = DateTime.now();
+      service.fetchOverride = (_) async => ChannelFetchResult([
+            _video('full', a.id, now).copyWith(
+                duration: const Duration(minutes: 3), viewCount: 10),
+            _video('bare', a.id, now.subtract(const Duration(hours: 1))),
+            _video('short', a.id, now, isShort: true),
+          ]);
+      final lookedUp = <String>[];
+      service.detailsOverride = (id) async {
+        lookedUp.add(id);
+        return VideoDetails(
+          duration: const Duration(minutes: 7),
+          views: 4321,
+          published: DateTime(2026, 10, 4, 8, 30),
+        );
+      };
+      await service.refresh();
+      await service.fillMissingDetails();
+      expect(lookedUp, ['bare'],
+          reason: 'complete videos and Shorts are skipped');
+      final bare = service.videos.value.firstWhere((v) => v.videoId == 'bare');
+      expect(bare.duration, const Duration(minutes: 7));
+      expect(bare.viewCount, 4321);
+
+      // The next refresh again lacks them, but they're kept — and not
+      // looked up a second time.
+      await service.refresh();
+      await service.fillMissingDetails();
+      expect(lookedUp, ['bare']);
+      final again =
+          service.videos.value.firstWhere((v) => v.videoId == 'bare');
+      expect(again.duration, const Duration(minutes: 7));
+      expect(again.viewCount, 4321);
+    });
+
+    test('a failed lookup leaves the video as it was', () async {
+      const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+      service.subscriptions.value = [a];
+      service.fetchOverride = (_) async =>
+          ChannelFetchResult([_video('bare', a.id, DateTime.now())]);
+      service.detailsOverride = (_) async => throw Exception('offline');
+      await service.refresh();
+      await service.fillMissingDetails();
+      expect(service.videos.value.single.duration, isNull);
     });
   });
 
@@ -475,6 +586,19 @@ void main() {
       expect(queue.first.source, TrackSource.youtube);
       expect(queue.first.artUrl, 'https://i.ytimg.com/vi/v1/hqdefault.jpg');
     });
+  });
+
+  test('FeedVideo keeps publishedApprox through JSON', () {
+    final v = FeedVideo.fromJson(FeedVideo(
+      videoId: 'v',
+      title: 'T',
+      channelId: 'c',
+      channelName: 'C',
+      published: DateTime(2026, 10, 1),
+      publishedApprox: true,
+    ).toJson());
+    expect(v.publishedApprox, isTrue);
+    expect(FeedVideo.fromJson(const {'videoId': 'x'}).publishedApprox, isFalse);
   });
 
   test('state survives a reload from youtube_feed.json', () async {

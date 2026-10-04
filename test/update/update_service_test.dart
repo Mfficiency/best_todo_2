@@ -369,7 +369,21 @@ void main() {
       expect(method, 'startBackgroundDownload');
       expect(args!['url'], 'https://example.com/BestToDo.apk');
       expect(args!['fileName'], 'BestToDo-update-0.1.150-120.apk');
+      expect(args!['title'], 'BestToDo update 0.1.150+120');
       expect(id, 42);
+    });
+
+    test('notification title names the app and version being downloaded',
+        () async {
+      Map<String, dynamic>? args;
+      final music = UpdateService.forApp(
+          appDisplayName: 'Best Music', apkPrefix: 'best_music');
+      music.downloadChannelOverride = (m, a) async {
+        args = a;
+        return {'downloadId': 3};
+      };
+      await music.startBackgroundDownload(makeInfo());
+      expect(args!['title'], 'Best Music update 0.1.150+120');
     });
 
     test('throws instead of calling the channel when the release has no APK',

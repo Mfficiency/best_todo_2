@@ -226,10 +226,11 @@ class _BestMusicAppState extends State<BestMusicApp> {
                       Positioned.fill(child: child ?? const SizedBox.shrink()),
                       // Bottom left, just above the song bar: one tap
                       // between the last song and the last video.
-                      const Positioned(
+                      Positioned(
                         left: 12,
                         bottom: 12,
-                        child: SessionSwitchPill(),
+                        child: SessionSwitchPill(
+                            navigatorKey: musicNavigatorKey),
                       ),
                     ],
                   ),

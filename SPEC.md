@@ -2180,6 +2180,8 @@ downloads via DownloadManager" below), which hand the APK transfer to Android's
 `DownloadManager` instead of a Dart-side socket: it is enqueued into the app's
 `getExternalFilesDir(null)/updates/` (DownloadManager runs as a separate system process and
 cannot write into the app's *internal* `filesDir`, only its external one), with
+a notification titled `"<appDisplayName> update <x.y.z+build>"` (e.g. "Best Music update
+0.3.1+397", passed as the channel's `title` arg so the two apps' downloads are distinguishable),
 `VISIBILITY_VISIBLE_NOTIFY_COMPLETED` and both `NETWORK_WIFI`/`NETWORK_MOBILE` allowed so it
 keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
 cursor back into a status/progress map.
@@ -3688,7 +3690,7 @@ for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart
 standalone settings page — the music folder picker and excluded-subfolders dialog are
 reimplemented from BestToDo's Settings → Music Player section (`settings_page.dart`) since that
 page is one monolithic widget tightly coupled to BestToDo's full settings list. Since Best
-Music 0.3.1 it is laid out like BestToDo's Settings: a pinned row of `ChoiceChip` section
+Music 0.3.3 it is laid out like BestToDo's Settings: a pinned row of `ChoiceChip` section
 buttons (tap = open that section and scroll to it; the chip of the section at the top of the
 viewport is highlighted and kept on screen), collapsible `Card` sections that all start
 closed (header tap toggles; tooltip "Expand <title>"/"Collapse <title>") and a Collapse
@@ -4395,6 +4397,43 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   playing) a fresh weighted shuffle of the library. Volume and speed follow the track's kind
   (`_applyVolume`/`_applySpeed` in `_playCurrent`).
 
+**Switching brings its screen, reliable duration/views/upload time in rows (Best Music 0.3.2).**
+- Every "Back to music"/"Back to video(s)" control (the pill, the mini player's
+  `SwitchSessionButton`, Now Playing's chip) calls `switchSessionAndShow(handler, navigator)`:
+  it reads `switchTarget()`, starts `switchToOtherSession()` and calls
+  `showSessionScreen(navigator, video: target.isVideo)` — a video opens the Subscriptions feed,
+  a song opens Now Playing. `showSessionScreen` `popUntil`s a route named
+  `YoutubeFeedPage.routeName` (`/subscriptions`) / `NowPlayingPage.routeName`
+  (`/now-playing`) or the root; if it didn't find one it pushes `YoutubeFeedPage.route()` /
+  `NowPlayingPage.route()`. Every push of those pages uses `route()` so the names are always
+  set. The pill and mini player sit outside the navigator, so `main_music.dart` hands them
+  `musicNavigatorKey`.
+- `FeedVideoTile`: title, channel (1 line), then `_MetaRow`s — play icon + "12:34 · 1.2K
+  views" (key `feedVideoStats`) and clock icon + "Today 14:05 (3h ago)" (key
+  `feedVideoUploadTime`). `formatFeedUploadTime` (local time): "Today 14:05", "Yesterday 09:12",
+  "Mon 18:30" within the week, "3 Oct, 14:05" this year, "3 Oct 2025" before; with
+  `approx: true` (`FeedVideo.publishedApprox`, a date read off "3 days ago") no clock time.
+  The video page's meta line has all of it.
+- *Reliable duration/views/date*: `youtube_explode`'s `getUploadsFromPage` reads YouTube's newer
+  `lockupViewModel` cards from dead paths (duration 0, views 0), and `mergeVideosTab` used to
+  overwrite the RSS view count with that 0. Now:
+  `YoutubeChannelVideosApi` (`lib/services/youtube_channel_videos_api.dart`) POSTs
+  `youtubei/v1/browse` (browseId = channel id, params `EgZ2aWRlb3PyBgQKAjoA` = Videos tab)
+  and `parseVideosTab` walks the tree for `videoRenderer`/`gridVideoRenderer`/
+  `lockupViewModel` cards, collecting each card's texts (`simpleText`/`runs`/`text`/
+  `content`) and recognising the clock (`12:34`), views (`parseViewCount`: "1,234 views",
+  "1.2K views", "No views"; "watching" = live, ignored) and "N units ago". `fetchChannel`
+  tries it first and falls back to `getUploadsFromPage` with 0 → null. `mergeVideosTab`
+  takes the higher of the RSS/tab view counts, a null never erases the other.
+  `_merged` runs every fresh video through `keepKnownDetails(fresh, known)` so a refresh that
+  missed duration/views/description/exact date keeps the cached ones. After each refresh,
+  `fillMissingDetails()` (unawaited; also callable) looks up, newest first, up to
+  `maxDetailLookups` (15) non-Short filtered videos still missing duration, views or an exact
+  date on their own page (`youtube_explode` `videos.get`, 3 at a time, each video once per app
+  run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
+  `fetchOverride` is set without one). A video whose page gives a duration is no longer
+  flagged `isLivestream`.
+
 **Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
 (`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
 `_playCurrent` calls `cacheInBackground(track)` for `isFeedVideo` tracks once loaded; it
@@ -4414,7 +4453,7 @@ fraction: `YoutubeFeedService.refreshProgress` = channels fetched / total), a fe
 description, channel search/import, the library search's YouTube lookup and the MP3
 Downloader's search.
 
-**Settings** (Best Music 0.3.1: no separate page any more — two sections of Best Music's own
+**Settings** (Best Music 0.3.3: no separate page any more — two sections of Best Music's own
 Settings, `MusicSettingsPage`; the feed's tune icon "Feed settings" opens it with
 `initialSection: MusicSettingsSection.feed`, i.e. that section open and scrolled to):
 *Subscriptions feed* — Hide Shorts (default on), Hide livestreams (default on), Video speed
@@ -4422,7 +4461,7 @@ Settings, `MusicSettingsPage`; the feed's tune icon "Feed settings" opens it wit
 segments" on/off (default on) and per-category checkboxes (default sponsor, selfpromo,
 interaction, music_offtopic). Log lines go to App Logs under "Feed".
 
-**Search** (Best Music 0.3.1): the feed's search icon ("Search feed") puts a text field and
+**Search** (Best Music 0.3.3): the feed's search icon ("Search feed") puts a text field and
 All/Title/Channel/Date chips under the app bar. It searches every fetched video
 (`filterFeed(videos, settings)` — Shorts/livestream hiding still applies, but not the
 2-day/week window, so older videos are found too) with `searchFeed`

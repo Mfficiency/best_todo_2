@@ -46,6 +46,7 @@ class FeedVideo {
     this.viewCount,
     this.isShort = false,
     this.isLivestream = false,
+    this.publishedApprox = false,
   });
 
   final String videoId;
@@ -57,6 +58,10 @@ class FeedVideo {
   /// approximate ("3 days ago") when the RSS feed failed and the channel's
   /// Videos tab was used instead.
   final DateTime? published;
+
+  /// [published] came from a relative "3 days ago", so only the day (not
+  /// the clock time) means anything.
+  final bool publishedApprox;
 
   /// Full description from the RSS feed; empty when unknown (the video
   /// page then fetches it on demand).
@@ -86,18 +91,22 @@ class FeedVideo {
     String? description,
     Duration? duration,
     int? viewCount,
+    DateTime? published,
+    bool? publishedApprox,
+    bool? isLivestream,
   }) =>
       FeedVideo(
         videoId: videoId,
         title: title,
         channelId: channelId,
         channelName: channelName,
-        published: published,
+        published: published ?? this.published,
+        publishedApprox: publishedApprox ?? this.publishedApprox,
         description: description ?? this.description,
         duration: duration ?? this.duration,
         viewCount: viewCount ?? this.viewCount,
         isShort: isShort,
-        isLivestream: isLivestream,
+        isLivestream: isLivestream ?? this.isLivestream,
       );
 
   Map<String, dynamic> toJson() => {
@@ -111,6 +120,7 @@ class FeedVideo {
         if (viewCount != null) 'viewCount': viewCount,
         if (isShort) 'isShort': true,
         if (isLivestream) 'isLivestream': true,
+        if (publishedApprox) 'publishedApprox': true,
       };
 
   factory FeedVideo.fromJson(Map<String, dynamic> json) {
@@ -131,6 +141,7 @@ class FeedVideo {
       viewCount: (json['viewCount'] as num?)?.round(),
       isShort: json['isShort'] as bool? ?? false,
       isLivestream: json['isLivestream'] as bool? ?? false,
+      publishedApprox: json['publishedApprox'] as bool? ?? false,
     );
   }
 }

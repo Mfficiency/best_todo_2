@@ -28,6 +28,36 @@ String formatFeedAge(DateTime? published, {DateTime? now}) {
   return '${age.inDays ~/ 365}y ago';
 }
 
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// When a video went up, in local time: "Today 14:05", "Yesterday 09:12",
+/// "Mon 18:30" within the week, "3 Oct, 14:05" this year, "3 Oct 2025"
+/// before that. Empty when unknown. [approx] (a date read off "3 days
+/// ago") leaves the clock time out: "Today", "Mon", "3 Oct".
+String formatFeedUploadTime(DateTime? published,
+    {DateTime? now, bool approx = false}) {
+  if (published == null) return '';
+  final at = published.toLocal();
+  final today = now ?? DateTime.now();
+  final hhmm = approx
+      ? ''
+      : ' ${at.hour.toString().padLeft(2, '0')}:'
+          '${at.minute.toString().padLeft(2, '0')}';
+  final days = DateTime(today.year, today.month, today.day)
+      .difference(DateTime(at.year, at.month, at.day))
+      .inDays;
+  if (days <= 0) return 'Today$hhmm';
+  if (days == 1) return 'Yesterday$hhmm';
+  if (days < 7) return '${_weekdays[at.weekday - 1]}$hhmm';
+  final date = '${at.day} ${_months[at.month - 1]}';
+  if (at.year == today.year) return approx ? date : '$date,$hhmm';
+  return '$date ${at.year}';
+}
+
 /// `4:05` / `1:02:03`.
 String formatVideoDuration(Duration d) {
   final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
@@ -60,6 +90,14 @@ class YoutubeFeedPage extends StatefulWidget {
   /// Starts a queue; defaults to [MusicPlayerService.playQueue]. Tests
   /// pass a recorder.
   final Future<void> Function(List<Track> queue)? playQueue;
+
+  /// Route name, so "Back to videos" can find an open feed instead of
+  /// stacking a second one ([showSessionScreen]).
+  static const routeName = '/subscriptions';
+
+  static Route<void> route() => MaterialPageRoute(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => const YoutubeFeedPage());
 
   @override
   State<YoutubeFeedPage> createState() => _YoutubeFeedPageState();
@@ -463,11 +501,49 @@ class _Thumbnail extends StatelessWidget {
 
 String _metaLine(FeedVideo v) => [
       v.channelName,
-      formatFeedAge(v.published),
-      if (v.viewCount != null) '${formatViewCount(v.viewCount)} views',
+      _statsLine(v),
+      _uploadLine(v),
     ].where((s) => s.isNotEmpty).join(' · ');
 
-/// One feed row: thumbnail, title, channel/age/views and an info button.
+/// "12:34 · 1.2K views" — duration first, then views.
+String _statsLine(FeedVideo v) => [
+      if (v.duration != null) formatVideoDuration(v.duration!),
+      if (v.viewCount != null) '${formatViewCount(v.viewCount)} views',
+    ].join(' · ');
+
+/// "Today 14:05 (3h ago)" — when it went up.
+String _uploadLine(FeedVideo v) {
+  if (v.published == null) return '';
+  final when = formatFeedUploadTime(v.published, approx: v.publishedApprox);
+  return '$when (${formatFeedAge(v.published)})';
+}
+
+/// A small icon + one line of [FeedVideoTile] details.
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({super.key, required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(children: [
+        Icon(icon, size: 14, color: style?.color),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(text,
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+        ),
+      ]),
+    );
+  }
+}
+
+/// One feed row: thumbnail, title, channel, duration/views, upload time
+/// and an info button.
 /// Tapping the row plays the video; the info button opens its page.
 /// Played videos are dimmed with a check mark.
 class FeedVideoTile extends StatelessWidget {
@@ -526,13 +602,27 @@ class FeedVideoTile extends StatelessWidget {
                         ),
                       Expanded(
                         child: Text(
-                          _metaLine(video),
-                          maxLines: 2,
+                          video.channelName,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
                     ]),
+                    // Duration, views and upload time: each on a line of
+                    // its own so none is ever cut off on a narrow phone.
+                    if (_statsLine(video).isNotEmpty)
+                      _MetaRow(
+                        key: const ValueKey('feedVideoStats'),
+                        icon: Icons.play_circle_outline,
+                        text: _statsLine(video),
+                      ),
+                    if (video.published != null)
+                      _MetaRow(
+                        key: const ValueKey('feedVideoUploadTime'),
+                        icon: Icons.schedule,
+                        text: _uploadLine(video),
+                      ),
                   ],
                 ),
               ),
@@ -614,11 +704,7 @@ class _YoutubeVideoPageState extends State<YoutubeVideoPage> {
               SelectableText(video.title, style: theme.textTheme.titleLarge),
               const SizedBox(height: 4),
               Text(
-                [
-                  _metaLine(video),
-                  if (video.duration != null)
-                    formatVideoDuration(video.duration!),
-                ].join(' · '),
+                _metaLine(video),
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 12),

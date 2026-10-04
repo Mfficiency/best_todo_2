@@ -6,10 +6,21 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
-## [0.3.1] - 2026-10-04
+## [0.3.3] - 2026-10-04
 - Settings is now organised like BestToDo's: buttons at the top jump to a section, and every section (Library, Playback, Appearance, Subscriptions feed, SponsorBlock, Updates) folds open and closed
 - The Subscriptions feed's settings now live in Settings (the feed's settings button opens them there) instead of on their own page
 - Search your Subscriptions feed: tap the search button and type part of a video title, a channel or a date ("yesterday", "oct 3", "friday", "2026-10-03") — typos are fine, and the Title/Channel/Date buttons narrow it down. It finds older videos too, not just this week's
+
+## [0.3.2] - 2026-10-04
+- "Back to videos" now also takes you to the Subscriptions feed, and "Back to music" opens the song that's playing — the screen follows the sound
+- Every video in Subscriptions now shows its length, views and upload time (e.g. "12:34 · 1.2K views" and "Today 14:05 (3h ago)"), each on its own line so nothing gets cut off
+- Length and views show up reliably again: YouTube changed its channel pages so they came back empty (and wiped the correct view count) — the app now reads them the new way, never lets a missing value erase a known one, and looks up anything still missing on the video's own page
+
+## [0.3.1] - 2026-10-04
+- Update downloads now show which app and version are downloading in the notification (e.g. "Best Music update 0.3.1+397")
+- CI build: 2026-10-04 06:38 UTC
+- Build duration (apk, CI): 7m 51s
+- APK size: 61.8 MB
 
 ## [0.3.0] - 2026-10-04
 - Subscriptions open faster: the last 2 days show right away, the rest of the week fills in by itself, and older videos load only when you scroll to the end — always newest first
@@ -17,8 +28,8 @@ nothing has been copied over here.
 - Videos no longer play the next one automatically (turn it back on in Feed settings if you like)
 - New "Back to music" / "Back to videos" button at the bottom left, just above the song bar: one tap stops what's playing and picks up the other where you left it, with its own volume and speed
 - The video speed you pick is now remembered for your next videos
-- CI build: 2026-10-04 05:54 UTC
-- Build duration (apk, CI): 7m 41s
+- CI build: 2026-10-04 06:15 UTC
+- Build duration (apk, CI): 5m 43s
 - APK size: 61.8 MB
 
 ## [0.2.99] - 2026-10-03
@@ -33,6 +44,8 @@ nothing has been copied over here.
 - Music and Subscriptions videos now keep separate settings: music always plays at 1× (including songs from YouTube search), and each has its own volume — set it with the new volume button on Now Playing, or in Settings / Feed settings
 - Volume boost for quiet Subscriptions videos: a "Boost for quiet videos" slider (up to +12 dB) in the video volume sheet. Never applied to music
 - Searching for a song that isn't in your library now searches YouTube by itself — the results sit under a clear "Not in your library" banner and are marked YouTube, so you can tell them apart from your own songs
+- Local build: 2026-10-03 21:11
+- Build duration (apk): 7m 26s
 - APK size: 61.8 MB
 
 ## [0.2.97] - 2026-10-03
