@@ -9,6 +9,9 @@ nothing has been copied over here.
 ## [0.3.4] - 2026-10-04
 - Volume now works with your phone's own volume instead of a separate app volume: Best Music remembers the phone volume you use for music and the one you use for videos, and switches the phone to the right one whenever you go between them (the phone's volume bar shows when it does). Changes you make with the volume buttons are remembered too
 - The boost for quiet videos stays inside the app, on top of the phone's volume
+- CI build: 2026-10-04 17:31 UTC
+- Build duration (apk, CI): 8m 20s
+- APK size: 62.2 MB
 
 ## [0.3.3] - 2026-10-04
 - Settings is now organised like BestToDo's: buttons at the top jump to a section, and every section (Library, Playback, Appearance, Subscriptions feed, SponsorBlock, Updates) folds open and closed
