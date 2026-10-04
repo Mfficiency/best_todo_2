@@ -61,6 +61,24 @@ void main() {
     expect(phone, 0.8);
   });
 
+  test('video at 100%, music turned down to 20% with the side button: '
+      'each switch jumps back to that kind\'s level', () async {
+    phone = 1.0;
+    await MediaVolume.onPlaying(VolumeKind.video); // listening to a video
+    await MediaVolume.onPlaying(VolumeKind.music); // switch to music
+    expect(phone, 1.0); // music has no level yet: left alone
+    phone = 0.2; // side button down to 20%
+
+    await MediaVolume.onPlaying(VolumeKind.video); // back to the video
+    expect(phone, 1.0);
+    await MediaVolume.onPlaying(VolumeKind.music); // back to music
+    expect(phone, 0.2);
+    await MediaVolume.onPlaying(VolumeKind.video);
+    expect(phone, 1.0);
+    await MediaVolume.onPlaying(VolumeKind.music);
+    expect(phone, 0.2);
+  });
+
   test('the sheet changes the phone only for what is playing', () async {
     Config.phoneVolumeKind = 'music';
     await MediaVolume.choose(VolumeKind.music, 0.4, persist: false);
