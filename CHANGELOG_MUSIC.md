@@ -12,8 +12,8 @@ nothing has been copied over here.
 - Videos no longer play the next one automatically (turn it back on in Feed settings if you like)
 - New "Back to music" / "Back to videos" button at the bottom left, just above the song bar: one tap stops what's playing and picks up the other where you left it, with its own volume and speed
 - The video speed you pick is now remembered for your next videos
-- CI build: 2026-10-04 05:54 UTC
-- Build duration (apk, CI): 7m 41s
+- CI build: 2026-10-04 06:15 UTC
+- Build duration (apk, CI): 5m 43s
 - APK size: 61.8 MB
 
 ## [0.2.99] - 2026-10-03
