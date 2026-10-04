@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:besttodo/models/track.dart';
+import 'package:besttodo/models/youtube_feed.dart';
 import 'package:besttodo/services/music_audio_handler.dart';
 import 'package:besttodo/services/music_library_service.dart';
 import 'package:besttodo/services/music_player_service.dart';
 import 'package:besttodo/services/music_playlist_service.dart';
 import 'package:besttodo/services/music_resume_service.dart';
+import 'package:besttodo/services/youtube_feed_service.dart';
 import 'package:besttodo/ui/music_mini_player_bar.dart';
 import 'package:besttodo/ui/now_playing_page.dart';
 import 'package:flutter/material.dart';
@@ -226,6 +228,45 @@ void main() {
 
       expect(find.byKey(const ValueKey('switchSessionButton')), findsOneWidget);
       expect(find.bySemanticsLabel('Back to video: Talk'), findsOneWidget);
+    });
+  });
+
+  group('bottom-left switch button', () {
+    testWidgets('shows "Back to videos" with a remembered video session',
+        (tester) async {
+      YoutubeFeedService.instance.resetForTest();
+      final handler = MusicAudioHandler();
+      handler.restore([track('a')]);
+
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: SessionSwitchPill(handler: handler))));
+      expect(find.byKey(const ValueKey('sessionSwitchPill')), findsNothing,
+          reason: 'nothing to switch to yet');
+
+      handler.restoreOtherSession(PlaybackSession(
+        queue: [Track.youtube(videoId: 'v1', title: 'Talk')],
+        index: 0,
+        position: const Duration(minutes: 12),
+      ));
+      await tester.pump();
+      expect(find.text('Back to videos'), findsOneWidget);
+    });
+
+    test('with no remembered video, falls back to the last played one',
+        () async {
+      final feed = YoutubeFeedService.instance..resetForTest();
+      feed.videos.value = [
+        const FeedVideo(
+            videoId: 'v9', title: 'Podcast', channelId: 'c', channelName: 'C'),
+      ];
+      await feed.recordProgress('v9', const Duration(minutes: 3));
+      final handler = MusicAudioHandler();
+      handler.restore([track('a')]);
+
+      final target = handler.switchTarget()!;
+      expect(target.isVideo, isTrue);
+      expect(target.current.title, 'Podcast');
+      feed.resetForTest();
     });
   });
 

@@ -212,6 +212,7 @@ class YoutubeFeedSettings {
     this.playbackSpeed = 1.0,
     this.videoVolume = 1.0,
     this.videoBoostDb = 0.0,
+    this.autoplayNext = false,
   });
 
   /// Upper end of the boost slider. LoudnessEnhancer starts to clip
@@ -241,9 +242,9 @@ class YoutubeFeedSettings {
   /// under its Live tab rather than its Videos tab.
   final bool hideLivestreams;
 
-  /// Default playback speed for feed videos (local songs always play at
-  /// 1x). Changing the speed from Now Playing overrides it for the rest of
-  /// that queue only.
+  /// Playback speed for feed videos (songs always play at 1x) — the speed
+  /// last picked, from Now Playing or Feed settings, kept for the next
+  /// video.
   final double playbackSpeed;
 
   /// Player volume (0..1) for feed videos — separate from music's
@@ -254,6 +255,10 @@ class YoutubeFeedSettings {
   /// quietly mastered videos; applied to feed videos only, never to music.
   final double videoBoostDb;
 
+  /// Keep playing the unplayed videos below the one picked. Off by
+  /// default: a video plays on its own and stops at its end.
+  final bool autoplayNext;
+
   YoutubeFeedSettings copyWith({
     bool? sponsorBlockEnabled,
     Set<SponsorBlockCategory>? sponsorBlockCategories,
@@ -262,6 +267,7 @@ class YoutubeFeedSettings {
     double? playbackSpeed,
     double? videoVolume,
     double? videoBoostDb,
+    bool? autoplayNext,
   }) =>
       YoutubeFeedSettings(
         sponsorBlockEnabled: sponsorBlockEnabled ?? this.sponsorBlockEnabled,
@@ -272,6 +278,7 @@ class YoutubeFeedSettings {
         playbackSpeed: playbackSpeed ?? this.playbackSpeed,
         videoVolume: videoVolume ?? this.videoVolume,
         videoBoostDb: videoBoostDb ?? this.videoBoostDb,
+        autoplayNext: autoplayNext ?? this.autoplayNext,
       );
 
   Map<String, dynamic> toJson() => {
@@ -284,6 +291,7 @@ class YoutubeFeedSettings {
         'playbackSpeed': playbackSpeed,
         'videoVolume': videoVolume,
         'videoBoostDb': videoBoostDb,
+        'autoplayNext': autoplayNext,
       };
 
   factory YoutubeFeedSettings.fromJson(Map<String, dynamic> json) {
@@ -305,6 +313,7 @@ class YoutubeFeedSettings {
           .clamp(0.0, 1.0),
       videoBoostDb: ((json['videoBoostDb'] as num?)?.toDouble() ?? 0.0)
           .clamp(0.0, maxBoostDb),
+      autoplayNext: json['autoplayNext'] as bool? ?? false,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -332,6 +333,88 @@ void main() {
     expect(service.videos.value.map((v) => v.videoId), ['a2', 'a1']);
   });
 
+  group('feed window', () {
+    final now = DateTime(2026, 10, 4, 12);
+    FeedVideo aged(String id, int days) =>
+        _video(id, _channelId, now.subtract(Duration(days: days)));
+
+    test('windowFeed keeps what is new enough; undated only at the end', () {
+      final all = [aged('a', 1), aged('b', 5), aged('c', 12)];
+      expect(
+          windowFeed(all, const Duration(days: 2), now: now)
+              .map((v) => v.videoId),
+          ['a']);
+      expect(
+          windowFeed(all, const Duration(days: 7), now: now)
+              .map((v) => v.videoId),
+          ['a', 'b']);
+      final undated = FeedVideo(
+          videoId: 'u', title: 'U', channelId: _channelId, channelName: 'C');
+      expect(
+          windowFeed([...all, undated], const Duration(days: 30), now: now)
+              .map((v) => v.videoId),
+          ['a', 'b', 'c', 'u']);
+      expect(
+          windowFeed([...all, undated], const Duration(days: 7), now: now)
+              .map((v) => v.videoId),
+          ['a', 'b']);
+    });
+
+    test('a session starts at 2 days, widens to 7, then a week at a time',
+        () {
+      final today = DateTime.now();
+      service.videos.value = [
+        for (final (id, days) in [('a', 1), ('b', 5), ('c', 12), ('d', 30)])
+          _video(id, _channelId, today.subtract(Duration(days: days))),
+      ];
+      service.startSession();
+      expect(service.visibleVideos.map((v) => v.videoId), ['a']);
+      service.widenToBackgroundWindow();
+      expect(service.visibleVideos.map((v) => v.videoId), ['a', 'b']);
+      expect(service.hasOlderVideos, isTrue);
+      service.showOlder();
+      expect(service.visibleVideos.map((v) => v.videoId), ['a', 'b', 'c']);
+      // A quiet stretch (nothing between 12 and 30 days) is crossed in
+      // one step.
+      service.showOlder();
+      expect(service.visibleVideos.map((v) => v.videoId),
+          ['a', 'b', 'c', 'd']);
+      expect(service.hasOlderVideos, isFalse);
+    });
+  });
+
+  test('each channel shows up as soon as it is fetched', () async {
+    const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+    const b = YoutubeChannel(id: 'UCbbbbbbbbbbbbbbbbbbbbbb', name: 'B');
+    service.subscriptions.value = [a, b];
+    final slowB = Completer<ChannelFetchResult>();
+    service.fetchOverride = (channel) => channel.id == a.id
+        ? Future.value(ChannelFetchResult(
+            [_video('a1', a.id, DateTime(2026, 9, 1))]))
+        : slowB.future;
+    final refresh = service.refresh();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(service.videos.value.map((v) => v.videoId), ['a1']);
+    slowB.complete(
+        ChannelFetchResult([_video('b1', b.id, DateTime(2026, 9, 2))]));
+    await refresh;
+    expect(service.videos.value.map((v) => v.videoId), ['b1', 'a1']);
+  });
+
+  test('lastPlayedVideo is the most recently played one in the feed',
+      () async {
+    service.videos.value = [
+      _video('v1', _channelId, DateTime(2026, 9, 1)),
+      _video('v2', _channelId, DateTime(2026, 9, 2)),
+    ];
+    expect(service.lastPlayedVideo(), isNull);
+    await service.recordProgress('v2', const Duration(minutes: 1));
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await service.recordProgress('v1', const Duration(minutes: 1));
+    expect(service.lastPlayedVideo()!.videoId, 'v1');
+  });
+
   test('refresh reports progress by channels fetched', () async {
     const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
     const b = YoutubeChannel(id: 'UCbbbbbbbbbbbbbbbbbbbbbb', name: 'B');
@@ -370,8 +453,17 @@ void main() {
       expect(service.resumePosition('v2'), isNull);
     });
 
-    test('queueFrom starts at the tapped video and skips played ones',
-        () async {
+    test('queueFrom plays just the tapped video by default', () {
+      final list = [
+        for (final id in ['v1', 'v2']) _video(id, _channelId, DateTime(2026)),
+      ];
+      expect(service.queueFrom(list, 0).map((t) => t.id), ['youtube:v1']);
+    });
+
+    test('queueFrom with autoplay starts at the tapped video and skips '
+        'played ones', () async {
+      await service.updateSettings(
+          const YoutubeFeedSettings(autoplayNext: true));
       final list = [
         for (final id in ['v1', 'v2', 'v3', 'v4'])
           _video(id, _channelId, DateTime(2026)),

@@ -42,10 +42,9 @@ class YoutubeFeedSettingsPage extends StatelessWidget {
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.speed),
-                title: const Text('Default playback speed'),
-                subtitle: Text('${formatSpeed(settings.playbackSpeed)} — '
-                    'change it while playing with the speed button on Now '
-                    'Playing'),
+                title: const Text('Video speed'),
+                subtitle: Text('${formatSpeed(settings.playbackSpeed)} — the '
+                    'last speed you picked; songs always play at 1×'),
                 onTap: () =>
                     showPlaybackSpeedSheet(context, forDefault: true),
               ),
@@ -60,6 +59,15 @@ class YoutubeFeedSettingsPage extends StatelessWidget {
                   showDragHandle: true,
                   builder: (_) => VolumeSheet(video: true, feed: feed),
                 ),
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.playlist_play),
+                title: const Text('Play the next video automatically'),
+                subtitle: const Text(
+                    'Off: a video stops at its end instead of moving on to '
+                    'the next unplayed one'),
+                value: settings.autoplayNext,
+                onChanged: (v) => update(settings.copyWith(autoplayNext: v)),
               ),
               const Divider(),
               SwitchListTile(

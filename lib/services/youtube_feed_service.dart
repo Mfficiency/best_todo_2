@@ -73,6 +73,15 @@ class YoutubeFeedService {
 
   DateTime? lastRefresh;
 
+  /// How far back the feed shows: [initialWindow] when the feed opens (so
+  /// the newest videos are up at once), widened to [backgroundWindow] once
+  /// the refresh finishes, then by [windowStep] each time the list is
+  /// scrolled to its end ([showOlder]).
+  final ValueNotifier<Duration> window = ValueNotifier(backgroundWindow);
+  static const Duration initialWindow = Duration(days: 2);
+  static const Duration backgroundWindow = Duration(days: 7);
+  static const Duration windowStep = Duration(days: 7);
+
   /// Channels whose last refresh failed, for the feed's error banner.
   final ValueNotifier<List<String>> failedChannels = ValueNotifier(const []);
 
@@ -98,6 +107,7 @@ class YoutubeFeedService {
     settings.value = const YoutubeFeedSettings();
     progress.value = const {};
     refreshing.value = false;
+    window.value = backgroundWindow;
     failedChannels.value = const [];
     lastRefresh = null;
     _loaded = false;
@@ -193,8 +203,48 @@ class YoutubeFeedService {
     await _save();
   }
 
-  /// The feed as shown: Shorts/livestreams dropped per [settings].
-  List<FeedVideo> get visibleVideos => filterFeed(videos.value, settings.value);
+  /// The feed as shown: Shorts/livestreams dropped per [settings], newest
+  /// first, limited to [window].
+  List<FeedVideo> get visibleVideos =>
+      windowFeed(filterFeed(videos.value, settings.value), window.value);
+
+  /// Whether there are (filtered) videos older than [window] to show.
+  bool get hasOlderVideos {
+    final all = filterFeed(videos.value, settings.value);
+    return windowFeed(all, window.value).length < all.length;
+  }
+
+  /// Opening the feed: start with just the last [initialWindow].
+  void startSession() => window.value = initialWindow;
+
+  /// The background step after the first screenful: up to
+  /// [backgroundWindow].
+  void widenToBackgroundWindow() {
+    if (window.value < backgroundWindow) window.value = backgroundWindow;
+  }
+
+  /// Scrolled to the end: show another [windowStep] of older videos — or,
+  /// across a quiet stretch, at least as far back as the next older video,
+  /// so each step always shows something new.
+  void showOlder() {
+    final cutoff = DateTime.now().subtract(window.value);
+    DateTime? nextOlder;
+    for (final v in filterFeed(videos.value, settings.value)) {
+      final p = v.published;
+      if (p != null && p.isBefore(cutoff) &&
+          (nextOlder == null || p.isAfter(nextOlder))) {
+        nextOlder = p;
+      }
+    }
+    if (nextOlder == null) {
+      if (hasOlderVideos) window.value += windowStep; // undated only
+      return;
+    }
+    final reach = DateTime.now().difference(nextOlder) +
+        const Duration(minutes: 1);
+    final stepped = window.value + windowStep;
+    window.value = reach > stepped ? reach : stepped;
+  }
 
   // ---------------------------------------------------------------------
   // Subscriptions
@@ -357,6 +407,9 @@ class YoutubeFeedService {
           final channel = channels[next++];
           try {
             fetched[channel.id] = (await fetchChannel(channel)).videos;
+            // Show each channel's videos as soon as they arrive rather
+            // than after the slowest channel.
+            videos.value = _merged(fetched);
           } catch (e) {
             failed.add(channel.name);
             _log('Refreshing ${channel.name} failed: $e');
@@ -369,21 +422,7 @@ class YoutubeFeedService {
         for (var i = 0; i < _parallelFetches && i < channels.length; i++)
           worker(),
       ]);
-      // Keep what was cached for a channel that failed this time, and
-      // anything already known about a video (a description fetched on
-      // demand) that this fetch didn't include.
-      final previous = {for (final v in videos.value) v.videoId: v};
-      final merged = <FeedVideo>[
-        for (final v in videos.value)
-          if (!fetched.containsKey(v.channelId) &&
-              isSubscribed(v.channelId))
-            v,
-        for (final list in fetched.values)
-          for (final v in list)
-            v.description.isEmpty && previous[v.videoId] != null
-                ? v.copyWith(description: previous[v.videoId]!.description)
-                : v,
-      ]..sort(_newestFirst);
+      final merged = _merged(fetched);
       videos.value = merged;
       if (all) {
         lastRefresh = DateTime.now();
@@ -395,6 +434,23 @@ class YoutubeFeedService {
     } finally {
       refreshing.value = false;
     }
+  }
+
+  /// [videos] with each channel in [fetched] replaced by its fresh list,
+  /// newest first. Keeps what was cached for a channel not (yet) fetched or
+  /// that failed, and anything already known about a video (a description
+  /// fetched on demand) that this fetch didn't include.
+  List<FeedVideo> _merged(Map<String, List<FeedVideo>> fetched) {
+    final previous = {for (final v in videos.value) v.videoId: v};
+    return <FeedVideo>[
+      for (final v in videos.value)
+        if (!fetched.containsKey(v.channelId) && isSubscribed(v.channelId)) v,
+      for (final list in fetched.values)
+        for (final v in list)
+          v.description.isEmpty && previous[v.videoId] != null
+              ? v.copyWith(description: previous[v.videoId]!.description)
+              : v,
+    ]..sort(_newestFirst);
   }
 
   static int _newestFirst(FeedVideo a, FeedVideo b) {
@@ -559,14 +615,27 @@ class YoutubeFeedService {
   // ---------------------------------------------------------------------
   // Playback
 
-  /// The play queue for tapping [videos]`[index]`: that video, then the
-  /// rest of the list below it that hasn't been played yet — so tapping
-  /// the newest unheard upload keeps going through the backlog.
+  /// The play queue for tapping [videos]`[index]`: just that video —
+  /// unless [YoutubeFeedSettings.autoplayNext] is on, then also the rest of
+  /// the list below it that hasn't been played yet, to keep going through
+  /// the backlog.
   List<Track> queueFrom(List<FeedVideo> videos, int index) => [
         trackFor(videos[index]),
-        for (final v in videos.skip(index + 1).take(50))
-          if (!isPlayed(v.videoId)) trackFor(v),
+        if (settings.value.autoplayNext)
+          for (final v in videos.skip(index + 1).take(50))
+            if (!isPlayed(v.videoId)) trackFor(v),
       ];
+
+  /// The most recently played feed video still in the feed, for switching
+  /// to videos when no video session is remembered yet.
+  FeedVideo? lastPlayedVideo() {
+    final byId = {for (final v in videos.value) v.videoId: v};
+    final entries = progress.value.entries
+        .where((e) => byId.containsKey(e.key))
+        .toList()
+      ..sort((a, b) => b.value.updated.compareTo(a.value.updated));
+    return entries.isEmpty ? null : byId[entries.first.key];
+  }
 
   static Track trackFor(FeedVideo v) => Track.youtube(
         videoId: v.videoId,
@@ -642,6 +711,25 @@ List<YoutubeChannel> parseChannelSearchResults(Object? response) {
 }
 
 /// Drops Shorts/livestreams per [settings].
+/// The part of [all] (newest first) published within [window] of [now].
+/// Undated videos sort last and only show once nothing dated is hidden.
+List<FeedVideo> windowFeed(List<FeedVideo> all, Duration window,
+    {DateTime? now}) {
+  final cutoff = (now ?? DateTime.now()).subtract(window);
+  final dated = [
+    for (final v in all)
+      if (v.published != null && !v.published!.isBefore(cutoff)) v,
+  ];
+  final olderDated =
+      all.any((v) => v.published != null && v.published!.isBefore(cutoff));
+  return [
+    ...dated,
+    if (!olderDated)
+      for (final v in all)
+        if (v.published == null) v,
+  ];
+}
+
 List<FeedVideo> filterFeed(List<FeedVideo> all, YoutubeFeedSettings settings) =>
     [
       for (final v in all)

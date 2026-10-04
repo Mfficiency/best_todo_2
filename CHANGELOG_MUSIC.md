@@ -6,6 +6,13 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.0] - 2026-10-04
+- Subscriptions open faster: the last 2 days show right away, the rest of the week fills in by itself, and older videos load only when you scroll to the end — always newest first
+- Tap a video to play it; the info button (where the play button was) shows its description and options
+- Videos no longer play the next one automatically (turn it back on in Feed settings if you like)
+- New "Back to music" / "Back to videos" button at the bottom left, just above the song bar: one tap stops what's playing and picks up the other where you left it, with its own volume and speed
+- The video speed you pick is now remembered for your next videos
+
 ## [0.2.99] - 2026-10-03
 - Jump between your last song and your last video in one tap: stop either halfway, and the button on the song bar (or at the top of Now Playing) resumes the other right where you left it — even after restarting the app
 - Every Subscriptions video you start now downloads completely in the background and stays on your phone for a week after you last played it, so jumping back in is instant and works offline

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:besttodo/models/youtube_feed.dart';
 import 'package:besttodo/services/youtube_feed_service.dart';
 import 'package:besttodo/ui/playback_speed_sheet.dart';
@@ -18,13 +20,14 @@ class _NoPathProvider extends PathProviderPlatform {
 
 const _channel = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'Chan');
 
-FeedVideo _video(String id, {bool isShort = false, String description = ''}) =>
+FeedVideo _video(String id,
+        {bool isShort = false, String description = '', int ageDays = 2}) =>
     FeedVideo(
       videoId: id,
       title: 'Title $id',
       channelId: _channel.id,
       channelName: _channel.name,
-      published: DateTime.now().subtract(const Duration(days: 2)),
+      published: DateTime.now().subtract(Duration(days: ageDays)),
       description: description,
       duration: const Duration(minutes: 3, seconds: 5),
       isShort: isShort,
@@ -86,7 +89,11 @@ void main() {
     expect(find.textContaining('2d ago'), findsNWidgets(2));
 
     expect(service.refreshing.value, isFalse);
-    await tester.tap(find.text('Title vid1'));
+    // The info button opens the video's page (tapping the row plays it).
+    await tester.tap(find.descendant(
+        of: find.ancestor(
+            of: find.text('Title vid1'), matching: find.byType(FeedVideoTile)),
+        matching: find.byTooltip('Video info')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await tester.scrollUntilVisible(find.byType(LinkifiedText), 200,
@@ -102,6 +109,64 @@ void main() {
     await tester.pump();
     expect(service.isPlayed('vid1'), isTrue);
     expect(find.text('Mark unplayed'), findsOneWidget);
+  });
+
+  testWidgets('tapping a video plays just that video', (tester) async {
+    _ignoreThumbnailErrors();
+    service.subscriptions.value = [_channel];
+    service.fetchOverride = (_) async =>
+        ChannelFetchResult([_video('vid1'), _video('vid2', ageDays: 3)]);
+    final played = <List<String>>[];
+    await tester.pumpWidget(MaterialApp(
+      home: YoutubeFeedPage(
+        playQueue: (queue) async => played.add([for (final t in queue) t.id]),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Title vid1'));
+    await tester.pump();
+    // No auto-playing the next video by default.
+    expect(played, [
+      ['youtube:vid1']
+    ]);
+  });
+
+  testWidgets(
+      'opens on the last 2 days, fills in the week, older only on demand',
+      (tester) async {
+    _ignoreThumbnailErrors();
+    service.subscriptions.value = [_channel];
+    // Already cached from last time: shows at once, but only 2 days of it.
+    service.videos.value = [
+      _video('new', ageDays: 1),
+      _video('week', ageDays: 5),
+      _video('old', ageDays: 12),
+    ];
+    final fetch = Completer<ChannelFetchResult>();
+    service.fetchOverride = (_) => fetch.future;
+
+    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedPage()));
+    await tester.pump();
+    expect(find.text('Title new'), findsOneWidget);
+    expect(find.text('Title week'), findsNothing);
+    expect(find.text('Loading the rest of the week...'), findsOneWidget);
+
+    fetch.complete(ChannelFetchResult([
+      _video('new', ageDays: 1),
+      _video('week', ageDays: 5),
+      _video('old', ageDays: 12),
+    ]));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Title week'), findsOneWidget);
+    expect(find.text('Title old'), findsNothing);
+
+    await tester.tap(find.text('Show older videos'));
+    await tester.pump();
+    expect(find.text('Title old'), findsOneWidget);
+    expect(find.text('No older videos'), findsOneWidget);
   });
 
   testWidgets('a video without a description fetches it on open',
@@ -164,11 +229,11 @@ void main() {
     expect(find.text('Filler tangent/jokes'), findsNothing);
   });
 
-  testWidgets('feed settings set the default playback speed',
-      (tester) async {
+  testWidgets('feed settings set the video speed', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: YoutubeFeedSettingsPage()));
-    expect(find.textContaining('1× — change it'), findsOneWidget);
-    await tester.tap(find.text('Default playback speed'));
+    expect(find.textContaining('1× — the last speed you picked'),
+        findsOneWidget);
+    await tester.tap(find.text('Video speed'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('1.5×'));
     await tester.pump();

@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/track.dart';
 import '../models/youtube_feed.dart';
 import '../services/mp3_downloader_service.dart' show formatViewCount;
 import '../services/music_player_service.dart';
@@ -37,23 +38,25 @@ Future<void> _openOnYoutube(BuildContext context, FeedVideo video) async {
   final ok = await launchUrl(Uri.parse(video.watchUrl),
       mode: LaunchMode.externalApplication);
   if (!ok && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't open YouTube")));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text("Couldn't open YouTube")));
   }
 }
 
-Future<void> _play(List<FeedVideo> list, int index) => MusicPlayerService
-    .playQueue(YoutubeFeedService.instance.queueFrom(list, index));
-
 /// Best Music → Subscriptions: the newest videos from the YouTube channels
-/// the user follows (SPEC.md §10.6m). Tap a video for its description and
-/// "Open in YouTube"/"Download"; the play button streams its audio through
-/// the normal player (mini player, lock screen, sleep timer) and carries
-/// on through the unplayed videos below it.
+/// the user follows (SPEC.md §10.6m), newest first. Opens on the last two
+/// days, widens to a week once the refresh is done, and shows older weeks
+/// only when scrolled to the end. Tapping a video plays its audio through
+/// the normal player (mini player, lock screen, sleep timer); the info
+/// button opens its description and "Open in YouTube"/"Download".
 class YoutubeFeedPage extends StatefulWidget {
-  const YoutubeFeedPage({super.key, this.service});
+  const YoutubeFeedPage({super.key, this.service, this.playQueue});
 
   final YoutubeFeedService? service;
+
+  /// Starts a queue; defaults to [MusicPlayerService.playQueue]. Tests
+  /// pass a recorder.
+  final Future<void> Function(List<Track> queue)? playQueue;
 
   @override
   State<YoutubeFeedPage> createState() => _YoutubeFeedPageState();
@@ -63,18 +66,51 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
   late final YoutubeFeedService _service =
       widget.service ?? YoutubeFeedService.instance;
 
+  Future<void> _play(List<FeedVideo> list, int index) {
+    final queue = _service.queueFrom(list, index);
+    return (widget.playQueue ?? MusicPlayerService.playQueue)(queue);
+  }
+
   @override
   void initState() {
     super.initState();
+    _service.startSession();
     unawaited(_loadAndRefresh());
   }
 
+  /// Cached videos of the last two days show at once and fresh ones join
+  /// as each channel arrives; once the refresh is done the rest of the
+  /// week fills in below.
   Future<void> _loadAndRefresh() async {
     await _service.load();
     if (!mounted) return;
     setState(() {});
-    if (_service.subscriptions.value.isNotEmpty) await _service.refresh();
+    try {
+      if (_service.subscriptions.value.isNotEmpty) await _service.refresh();
+    } finally {
+      _service.widenToBackgroundWindow();
+    }
   }
+
+  /// Older videos only once the week is shown and the list is scrolled
+  /// near its end.
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.extentAfter < 400 &&
+        _service.window.value >= YoutubeFeedService.backgroundWindow &&
+        _service.hasOlderVideos) {
+      _service.showOlder();
+    }
+    return false;
+  }
+
+  void _openInfo(List<FeedVideo> list, int i) =>
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => YoutubeVideoPage(
+          video: list[i],
+          service: _service,
+          onPlay: () => _play(list, i),
+        ),
+      ));
 
   void _openChannels() => Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => YoutubeChannelsPage(service: _service)));
@@ -107,6 +143,7 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
           _service.progress,
           _service.refreshing,
           _service.refreshProgress,
+          _service.window,
           _service.failedChannels,
         ]),
         builder: (context, _) {
@@ -115,55 +152,106 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
           }
           final list = _service.visibleVideos;
           final failed = _service.failedChannels.value;
+          final hasOlder = _service.hasOlderVideos;
           return RefreshIndicator(
             onRefresh: _service.refresh,
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: list.length + 1,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return Column(children: [
-                    EstimatedProgressBar(
-                      active: _service.refreshing.value,
-                      value: _service.refreshProgress.value > 0
-                          ? _service.refreshProgress.value
-                          : null,
-                    ),
-                    if (failed.isNotEmpty)
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.error_outline),
-                        title: Text("Couldn't refresh ${failed.length} "
-                            "channel${failed.length == 1 ? '' : 's'}: "
-                            '${failed.take(3).join(', ')}'
-                            '${failed.length > 3 ? ', ...' : ''}'),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScroll,
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: list.length + 2,
+                itemBuilder: (context, index) {
+                  if (index == list.length + 1) {
+                    return _FeedFooter(
+                      loadingWeek: _service.window.value <
+                          YoutubeFeedService.backgroundWindow,
+                      hasOlder: hasOlder,
+                      empty: list.isEmpty,
+                      onShowOlder: _service.showOlder,
+                    );
+                  }
+                  if (index == 0) {
+                    return Column(children: [
+                      EstimatedProgressBar(
+                        active: _service.refreshing.value,
+                        value: _service.refreshProgress.value > 0
+                            ? _service.refreshProgress.value
+                            : null,
                       ),
-                    if (list.isEmpty && !_service.refreshing.value)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Text('No videos yet — pull down to refresh.',
-                            textAlign: TextAlign.center),
-                      ),
-                  ]);
-                }
-                final i = index - 1;
-                return FeedVideoTile(
-                  video: list[i],
-                  progress: _service.progressFor(list[i].videoId),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => YoutubeVideoPage(
-                      video: list[i],
-                      service: _service,
-                      onPlay: () => _play(list, i),
-                    ),
-                  )),
-                  onPlay: () => _play(list, i),
-                );
-              },
+                      if (failed.isNotEmpty)
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.error_outline),
+                          title: Text("Couldn't refresh ${failed.length} "
+                              "channel${failed.length == 1 ? '' : 's'}: "
+                              '${failed.take(3).join(', ')}'
+                              '${failed.length > 3 ? ', ...' : ''}'),
+                        ),
+                      if (list.isEmpty &&
+                          !hasOlder &&
+                          !_service.refreshing.value)
+                        const Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Text('No videos yet — pull down to refresh.',
+                              textAlign: TextAlign.center),
+                        ),
+                    ]);
+                  }
+                  final i = index - 1;
+                  return FeedVideoTile(
+                    video: list[i],
+                    progress: _service.progressFor(list[i].videoId),
+                    onTap: () => _play(list, i),
+                    onInfo: () => _openInfo(list, i),
+                  );
+                },
+              ),
             ),
           );
         },
       ),
+    );
+  }
+}
+
+/// Below the last video: the week still loading, a way to older videos
+/// (they also load by themselves when scrolled to), or the end.
+class _FeedFooter extends StatelessWidget {
+  const _FeedFooter({
+    required this.loadingWeek,
+    required this.hasOlder,
+    required this.empty,
+    required this.onShowOlder,
+  });
+
+  final bool loadingWeek;
+  final bool hasOlder;
+  final bool empty;
+  final VoidCallback onShowOlder;
+
+  @override
+  Widget build(BuildContext context) {
+    final small = Theme.of(context).textTheme.bodySmall;
+    if (loadingWeek) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text('Loading the rest of the week...',
+            textAlign: TextAlign.center, style: small),
+      );
+    }
+    if (hasOlder) {
+      return Center(
+        child: TextButton.icon(
+          onPressed: onShowOlder,
+          icon: const Icon(Icons.expand_more),
+          label: const Text('Show older videos'),
+        ),
+      );
+    }
+    if (empty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text('No older videos', textAlign: TextAlign.center, style: small),
     );
   }
 }
@@ -271,21 +359,26 @@ String _metaLine(FeedVideo v) => [
       if (v.viewCount != null) '${formatViewCount(v.viewCount)} views',
     ].where((s) => s.isNotEmpty).join(' · ');
 
-/// One feed row: thumbnail, title, channel/age/views, play button. Played
-/// videos are dimmed with a check mark.
+/// One feed row: thumbnail, title, channel/age/views and an info button.
+/// Tapping the row plays the video; the info button opens its page.
+/// Played videos are dimmed with a check mark.
 class FeedVideoTile extends StatelessWidget {
   const FeedVideoTile({
     super.key,
     required this.video,
     required this.progress,
     required this.onTap,
-    required this.onPlay,
+    required this.onInfo,
   });
 
   final FeedVideo video;
   final WatchProgress? progress;
+
+  /// Plays the video.
   final VoidCallback onTap;
-  final VoidCallback onPlay;
+
+  /// Opens the video's page (description, Open in YouTube, Download).
+  final VoidCallback onInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -336,9 +429,9 @@ class FeedVideoTile extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: 'Play',
-                icon: const Icon(Icons.play_circle_outline),
-                onPressed: onPlay,
+                tooltip: 'Video info',
+                icon: const Icon(Icons.info_outline),
+                onPressed: onInfo,
               ),
             ],
           ),
@@ -446,8 +539,7 @@ class _YoutubeVideoPageState extends State<YoutubeVideoPage> {
                     label: const Text('Download'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: () =>
-                        _service.setPlayed(video.videoId, !played),
+                    onPressed: () => _service.setPlayed(video.videoId, !played),
                     icon: Icon(played
                         ? Icons.remove_done
                         : Icons.check_circle_outline),

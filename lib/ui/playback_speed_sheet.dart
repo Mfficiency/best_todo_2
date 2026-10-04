@@ -12,10 +12,9 @@ String formatSpeed(double speed) {
 }
 
 /// Picks a playback speed for Subscriptions-feed videos: preset chips plus
-/// a fine slider. From Now Playing ([forDefault] false) a change applies to
-/// the playing video and the rest of its queue right away, with "Make
-/// default" to also keep it for future videos; from Feed settings
-/// ([forDefault] true) it edits the default directly.
+/// a fine slider. The speed is remembered for the next videos either way;
+/// from Now Playing ([forDefault] false) it also applies to the playing
+/// video right away.
 Future<void> showPlaybackSpeedSheet(
   BuildContext context, {
   bool forDefault = false,
@@ -42,8 +41,6 @@ class _PlaybackSpeedSheetState extends State<_PlaybackSpeedSheet> {
       ? _feed.settings.value.playbackSpeed
       : MusicPlayerService.handler.videoSpeed.value;
 
-  double get _default => _feed.settings.value.playbackSpeed;
-
   Future<void> _set(double speed) async {
     final value = (speed * 20).round() / 20; // 0.05 steps
     setState(() => _speed = value);
@@ -53,15 +50,6 @@ class _PlaybackSpeedSheetState extends State<_PlaybackSpeedSheet> {
     } else if (MusicPlayerService.isReady) {
       await MusicPlayerService.handler.setVideoSpeed(value);
     }
-  }
-
-  Future<void> _makeDefault() async {
-    await _feed
-        .updateSettings(_feed.settings.value.copyWith(playbackSpeed: _speed));
-    if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-        content: Text('Videos now play at ${formatSpeed(_speed)} by default')));
   }
 
   @override
@@ -76,7 +64,7 @@ class _PlaybackSpeedSheetState extends State<_PlaybackSpeedSheet> {
           children: [
             Text(
               widget.forDefault
-                  ? 'Default speed for videos'
+                  ? 'Video speed'
                   : 'Playback speed  ${formatSpeed(_speed)}',
               style: theme.textTheme.titleMedium,
               textAlign: TextAlign.center,
@@ -126,15 +114,11 @@ class _PlaybackSpeedSheetState extends State<_PlaybackSpeedSheet> {
                     : () => _set(_speed + 0.05),
               ),
             ]),
-            if (!widget.forDefault)
-              TextButton(
-                onPressed: (_speed - _default).abs() < 0.001
-                    ? null
-                    : _makeDefault,
-                child: Text((_speed - _default).abs() < 0.001
-                    ? 'This is your default speed'
-                    : 'Make ${formatSpeed(_speed)} the default'),
-              ),
+            Text(
+              'Remembered for your next videos — songs always play at 1×',
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),

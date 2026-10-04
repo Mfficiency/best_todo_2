@@ -220,7 +220,20 @@ class _BestMusicAppState extends State<BestMusicApp> {
             // (or last-played) song is at the bottom of every screen.
             child: Column(
               children: [
-                Expanded(child: child ?? const SizedBox.shrink()),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(child: child ?? const SizedBox.shrink()),
+                      // Bottom left, just above the song bar: one tap
+                      // between the last song and the last video.
+                      const Positioned(
+                        left: 12,
+                        bottom: 12,
+                        child: SessionSwitchPill(),
+                      ),
+                    ],
+                  ),
+                ),
                 MusicMiniPlayerBar(navigatorKey: musicNavigatorKey),
               ],
             ),

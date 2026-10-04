@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/music_audio_handler.dart';
 import '../services/music_player_service.dart';
 import '../services/speaker_play_guard.dart';
+import '../services/youtube_feed_service.dart';
 import '../services/music_sleep_timer.dart';
 import 'estimated_progress_bar.dart';
 import 'now_playing_page.dart';
@@ -219,6 +220,85 @@ class _SleepTimerBadge extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The bottom-left "Back to music" / "Back to videos" button floating just
+/// above the song bar on every Best Music screen (`main_music.dart`). One
+/// tap stops what's playing and resumes the other kind where it was left
+/// — the last song at the music volume and 1×, or the last video at the
+/// video volume and speed ([MusicAudioHandler.switchToOtherSession]).
+/// Hidden while there's nothing to switch to, and while Now Playing (which
+/// has its own switch chip) is open. Outside the navigator, so no tooltip.
+class SessionSwitchPill extends StatelessWidget {
+  const SessionSwitchPill({super.key, this.handler});
+
+  /// Defaults to [MusicPlayerService.handler] once it's ready.
+  final MusicAudioHandler? handler;
+
+  @override
+  Widget build(BuildContext context) {
+    final audio = handler ??
+        (MusicPlayerService.isReady ? MusicPlayerService.handler : null);
+    if (audio == null) return const SizedBox.shrink();
+    final feed = YoutubeFeedService.instance;
+    return ValueListenableBuilder<int>(
+      valueListenable: NowPlayingPage.openCount,
+      builder: (context, nowPlayingOpen, _) {
+        if (nowPlayingOpen > 0) return const SizedBox.shrink();
+        return StreamBuilder<MediaItem?>(
+          stream: audio.mediaItem,
+          initialData: audio.mediaItem.valueOrNull,
+          builder: (context, _) => ListenableBuilder(
+            listenable: Listenable.merge(
+                [audio.otherSession, feed.progress, feed.videos]),
+            builder: (context, _) {
+              final target = audio.switchTarget();
+              if (target == null) return const SizedBox.shrink();
+              final scheme = Theme.of(context).colorScheme;
+              final label = target.isVideo ? 'Back to videos' : 'Back to music';
+              return Semantics(
+                button: true,
+                label: '$label: ${target.current.title}',
+                child: Material(
+                  key: const ValueKey('sessionSwitchPill'),
+                  color: scheme.secondaryContainer,
+                  elevation: 3,
+                  shape: const StadiumBorder(),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: audio.switchToOtherSession,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            target.isVideo
+                                ? Icons.smart_display_outlined
+                                : Icons.library_music_outlined,
+                            size: 18,
+                            color: scheme.onSecondaryContainer,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            label,
+                            style: TextStyle(
+                                color: scheme.onSecondaryContainer,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         );
       },

@@ -94,11 +94,6 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   /// a track already skipped past must not apply to the next one).
   List<SkipSegment> _skipSegments = const [];
 
-  /// Playback speed picked from Now Playing for the current queue's feed
-  /// videos; null = the feed's default ([YoutubeFeedSettings.playbackSpeed]).
-  /// Reset by [setQueueAndPlay], so a new queue starts at the default.
-  double? _videoSpeedOverride;
-
   /// The speed feed videos play at right now — what Now Playing's speed
   /// button shows.
   final ValueNotifier<double> videoSpeed = ValueNotifier(1.0);
@@ -298,19 +293,45 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         session == null || session.queue.isEmpty ? null : session;
   }
 
-  /// One tap back into the other kind of listening: pauses what's playing
+  /// What [switchToOtherSession] would resume: the remembered other
+  /// session, or — before there is one — the last played Subscriptions
+  /// video while music plays (or nothing does), or a fresh shuffle of the
+  /// library while a video plays. Null when there's nothing to switch to.
+  PlaybackSession? switchTarget() {
+    final other = otherSession.value;
+    if (other != null && other.queue.isNotEmpty) return other;
+    final current = currentTrack;
+    if (current == null || !current.isFeedVideo) {
+      final video = YoutubeFeedService.instance.lastPlayedVideo();
+      if (video == null) return null;
+      return PlaybackSession(
+        queue: [YoutubeFeedService.trackFor(video)],
+        index: 0,
+        position: Duration.zero, // the feed's own resume point applies
+      );
+    }
+    final library = MusicLibraryService.instance.tracks.value;
+    if (library.isEmpty) return null;
+    return PlaybackSession(
+      queue: MusicPlaylistService.instance.weightedShuffle(library),
+      index: 0,
+      position: Duration.zero,
+    );
+  }
+
+  /// One tap back into the other kind of listening: stops what's playing
   /// now (remembering where, so the same button flips straight back) and
   /// resumes the last music queue or the last video queue where it
-  /// stopped.
+  /// stopped — each with its own remembered volume and speed (applied by
+  /// [_playCurrent] from the track's kind).
   Future<void> switchToOtherSession() async {
-    final other = otherSession.value;
+    final other = switchTarget();
     if (other == null || other.queue.isEmpty) return;
     _persist(); // a feed video records its resume point here
     otherSession.value = _snapshotCurrent();
     _queue = other.queue;
     _queueIndex = other.index.clamp(0, other.queue.length - 1);
     _preShuffleOrder = null;
-    _videoSpeedOverride = null;
     shuffleEnabled.value = false;
     _resumePosition = other.position > Duration.zero ? other.position : null;
     queue.add(_queue.map(_toMediaItem).toList());
@@ -384,7 +405,6 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     _queueIndex = startIndex.clamp(0, tracks.length - 1);
     _preShuffleOrder = null;
     _resumePosition = null;
-    _videoSpeedOverride = null;
     shuffleEnabled.value = false;
     queue.add(_queue.map(_toMediaItem).toList());
     await _playCurrent();
@@ -423,8 +443,8 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  /// The last video speed picked — remembered in the feed settings.
   double get _videoSpeedNow =>
-      _videoSpeedOverride ??
       YoutubeFeedService.instance.settings.value.playbackSpeed;
 
   /// Feed videos play at the chosen speed; music (including songs
@@ -435,17 +455,14 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     if (_player.speed != speed) await _player.setSpeed(speed);
   }
 
-  /// Now Playing's speed sheet: [speed] for this queue's feed videos,
-  /// applied to the current one right away.
+  /// Now Playing's speed sheet: [speed] for feed videos, applied to the
+  /// current one right away and remembered for the next ones (the
+  /// settings listener applies it).
   Future<void> setVideoSpeed(double speed) async {
-    _videoSpeedOverride = speed.clamp(
-        YoutubeFeedSettings.minSpeed, YoutubeFeedSettings.maxSpeed);
-    final track = currentTrack;
-    if (track != null) {
-      await _applySpeed(track);
-    } else {
-      videoSpeed.value = _videoSpeedNow;
-    }
+    final feed = YoutubeFeedService.instance;
+    await feed.updateSettings(feed.settings.value.copyWith(
+        playbackSpeed: speed.clamp(
+            YoutubeFeedSettings.minSpeed, YoutubeFeedSettings.maxSpeed)));
   }
 
   /// Music and feed videos each keep their own volume: feed videos use
@@ -473,7 +490,13 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   /// on their own.
   void applyCurrentVolume() {
     final track = currentTrack;
-    if (track != null && _sourceLoaded) unawaited(_applyVolume(track));
+    if (track == null) return;
+    if (_sourceLoaded) {
+      unawaited(_applyVolume(track));
+      unawaited(_applySpeed(track));
+    } else {
+      videoSpeed.value = _videoSpeedNow;
+    }
   }
 
   @override

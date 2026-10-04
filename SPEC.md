@@ -4359,6 +4359,33 @@ in the library. `MusicPlayerService.restoreLastSession` resolves both
 `Semantics` "Back to video: <title>"/"Back to music: <title>" — the bar has no Overlay for
 tooltips) and an `ActionChip` with the same label at the top of Now Playing.
 
+**Feed loading, tap-to-play, switch pill (Best Music 0.3.0).**
+- *Staged window*: `YoutubeFeedService.window` (`ValueNotifier<Duration>`). Opening the feed
+  calls `startSession()` (window = `initialWindow`, 2 days) so cached videos of the last two days
+  show at once; the refresh now publishes `videos` after **each** channel finishes (`_merged`),
+  so fresh ones join as they arrive; when the refresh ends (or fails) the page calls
+  `widenToBackgroundWindow()` (7 days). `visibleVideos` = `windowFeed(filterFeed(...), window)`
+  — newest first; undated videos only once nothing dated is hidden. Older weeks only on
+  demand: scrolling within 400 px of the end (once the week is shown) or the footer's "Show
+  older videos" calls `showOlder()` — `windowStep` (7 days) further, or straight to the next
+  older video across a quiet stretch. Footer: "Loading the rest of the week..." /
+  "Show older videos" / "No older videos".
+- *Rows*: tapping a `FeedVideoTile` plays it; its trailing info button (tooltip "Video info",
+  was a play button) opens `YoutubeVideoPage`.
+- *No auto-play*: `YoutubeFeedSettings.autoplayNext` (default **false**): `queueFrom` returns
+  just the tapped video unless it's on (Feed settings → "Play the next video automatically").
+- *Speed remembered*: the Now Playing speed sheet now writes
+  `YoutubeFeedSettings.playbackSpeed` directly (no per-queue override, no "Make default");
+  the handler's feed-settings listener re-applies speed and volume to the playing track.
+- *Switch pill*: `SessionSwitchPill` (`music_mini_player_bar.dart`) floats bottom-left just
+  above the song bar on every Best Music screen (a `Stack` in `main_music.dart`'s builder),
+  hidden while Now Playing is open or there's nothing to switch to. Label "Back to videos" /
+  "Back to music"; tap → `switchToOtherSession()`, which now resumes `switchTarget()`: the
+  remembered `otherSession`, else (music or nothing playing) the feed's
+  `lastPlayedVideo()` (most recently updated progress entry still in the feed), else (a video
+  playing) a fresh weighted shuffle of the library. Volume and speed follow the track's kind
+  (`_applyVolume`/`_applySpeed` in `_playCurrent`).
+
 **Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
 (`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
 `_playCurrent` calls `cacheInBackground(track)` for `isFeedVideo` tracks once loaded; it
