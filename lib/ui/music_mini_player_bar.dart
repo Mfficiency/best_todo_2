@@ -111,6 +111,14 @@ class MusicMiniPlayerBar extends StatelessWidget {
                           _SleepTimerBadge(
                               onTap: () =>
                                   showSleepTimerSheet(_sheetContext(context))),
+                          if (audio is MusicAudioHandler &&
+                              (audio.currentTrack?.isFeedVideo ?? false))
+                            IconButton(
+                              icon: const Icon(Icons.replay_10),
+                              tooltip: 'Back 10 seconds',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: audio.rewind,
+                            ),
                           StreamBuilder<PlaybackState>(
                             stream: audio.playbackState,
                             initialData: audio.playbackState.valueOrNull,
@@ -137,6 +145,14 @@ class MusicMiniPlayerBar extends StatelessWidget {
                               );
                             },
                           ),
+                          if (audio is MusicAudioHandler &&
+                              (audio.currentTrack?.isFeedVideo ?? false))
+                            IconButton(
+                              icon: const Icon(Icons.forward_10),
+                              tooltip: 'Forward 10 seconds',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: audio.fastForward,
+                            ),
                         ],
                       ),
                     ),

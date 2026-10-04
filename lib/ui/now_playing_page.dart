@@ -355,15 +355,26 @@ class _Transport extends StatelessWidget {
       stream: handler.playbackState,
       builder: (context, snapshot) {
         final playing = snapshot.data?.playing ?? false;
+        // A feed video swaps Favorite/"Don't really like" (library-song
+        // things) for back/forward 10 seconds.
+        final video = handler.currentTrack?.isFeedVideo ?? false;
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            IconButton(
-              icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-              tooltip: 'Favorite',
-              color: isFavorite ? Colors.pink : null,
-              onPressed: () => handler.favoriteCurrent(),
-            ),
+            if (video)
+              IconButton(
+                icon: const Icon(Icons.replay_10),
+                tooltip: 'Back 10 seconds',
+                iconSize: 32,
+                onPressed: () => handler.rewind(),
+              )
+            else
+              IconButton(
+                icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                tooltip: 'Favorite',
+                color: isFavorite ? Colors.pink : null,
+                onPressed: () => handler.favoriteCurrent(),
+              ),
             IconButton(
               icon: const Icon(Icons.skip_previous),
               tooltip: 'Previous',
@@ -388,11 +399,19 @@ class _Transport extends StatelessWidget {
               iconSize: 36,
               onPressed: () => handler.skipToNext(),
             ),
-            IconButton(
-              icon: const Icon(Icons.thumb_down_alt_outlined),
-              tooltip: "Don't really like",
-              onPressed: () => handler.dislikeCurrentAndSkip(),
-            ),
+            if (video)
+              IconButton(
+                icon: const Icon(Icons.forward_10),
+                tooltip: 'Forward 10 seconds',
+                iconSize: 32,
+                onPressed: () => handler.fastForward(),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.thumb_down_alt_outlined),
+                tooltip: "Don't really like",
+                onPressed: () => handler.dislikeCurrentAndSkip(),
+              ),
           ],
         );
       },

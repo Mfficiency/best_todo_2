@@ -169,16 +169,49 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   List<Track> get currentQueueTracks => _queue;
 
+  /// How far the back/forward buttons jump in a feed video.
+  static const Duration seekStep = Duration(seconds: 10);
+
+  /// "Back 10 seconds" / "Forward 10 seconds" in the notification, the
+  /// lock screen and Android's media controls — feed videos only.
+  static const MediaControl replay10Control = MediaControl(
+    androidIcon: 'drawable/ic_replay_10',
+    label: 'Back 10 seconds',
+    action: MediaAction.rewind,
+  );
+  static const MediaControl forward10Control = MediaControl(
+    androidIcon: 'drawable/ic_forward_10',
+    label: 'Forward 10 seconds',
+    action: MediaAction.fastForward,
+  );
+
+  /// The notification's buttons: a feed video also gets back/forward 10
+  /// seconds around play/pause, and those three are what the collapsed
+  /// notification shows.
+  List<MediaControl> notificationControls(bool playing) {
+    final video = currentTrack?.isFeedVideo ?? false;
+    return [
+      MediaControl.skipToPrevious,
+      if (video) replay10Control,
+      if (playing) MediaControl.pause else MediaControl.play,
+      if (video) forward10Control,
+      MediaControl.skipToNext,
+    ];
+  }
+
+  List<int> _compactIndices() =>
+      (currentTrack?.isFeedVideo ?? false) ? const [1, 2, 3] : const [0, 1, 2];
+
   void _broadcastState(ja.PlaybackEvent event) {
     final playing = _player.playing;
     playbackState.add(playbackState.value.copyWith(
-      controls: [
-        MediaControl.skipToPrevious,
-        if (playing) MediaControl.pause else MediaControl.play,
-        MediaControl.skipToNext,
-      ],
-      systemActions: const {MediaAction.seek},
-      androidCompactActionIndices: const [0, 1, 2],
+      controls: notificationControls(playing),
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.rewind,
+        MediaAction.fastForward,
+      },
+      androidCompactActionIndices: _compactIndices(),
       processingState: const {
         ja.ProcessingState.idle: AudioProcessingState.idle,
         ja.ProcessingState.loading: AudioProcessingState.loading,
@@ -187,7 +220,10 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
         ja.ProcessingState.completed: AudioProcessingState.completed,
       }[_player.processingState]!,
       playing: playing,
-      updatePosition: _player.position,
+      // A restored track isn't loaded yet: report where it will resume.
+      updatePosition: _sourceLoaded
+          ? _player.position
+          : (_resumePosition ?? Duration.zero),
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
       queueIndex: _queueIndex >= 0 ? _queueIndex : null,
@@ -377,11 +413,8 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     queue.add(_queue.map(_toMediaItem).toList());
     mediaItem.add(_toMediaItem(currentTrack!));
     playbackState.add(playbackState.value.copyWith(
-      controls: const [
-        MediaControl.skipToPrevious,
-        MediaControl.play,
-        MediaControl.skipToNext,
-      ],
+      controls: notificationControls(false),
+      androidCompactActionIndices: _compactIndices(),
       processingState: AudioProcessingState.ready,
       playing: false,
       updatePosition: position,
@@ -514,6 +547,32 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);
+
+  /// Back 10 seconds (notification, lock screen, headset, Now Playing).
+  @override
+  Future<void> rewind() => seekBy(-seekStep);
+
+  /// Forward 10 seconds.
+  @override
+  Future<void> fastForward() => seekBy(seekStep);
+
+  /// Jumps [delta] from where playback is, kept within the track. A
+  /// restored track that isn't loaded yet moves its resume point instead.
+  Future<void> seekBy(Duration delta) async {
+    if (!_sourceLoaded) {
+      if (currentTrack == null) return;
+      var target = (_resumePosition ?? Duration.zero) + delta;
+      if (target < Duration.zero) target = Duration.zero;
+      _resumePosition = target;
+      playbackState.add(playbackState.value.copyWith(updatePosition: target));
+      return;
+    }
+    var target = _player.position + delta;
+    if (target < Duration.zero) target = Duration.zero;
+    final duration = _player.duration;
+    if (duration != null && target > duration) target = duration;
+    await _player.seek(target);
+  }
 
   @override
   Future<void> skipToNext() => _advance(1, wrapWithReshuffle: true);

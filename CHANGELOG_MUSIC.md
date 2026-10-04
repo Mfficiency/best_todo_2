@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.5] - 2026-10-04
+- Subscriptions videos have back 10 seconds and forward 10 seconds buttons: in the notification (also on the lock screen), on the Now Playing screen and on the song bar at the bottom
+
 ## [0.3.4] - 2026-10-04
 - Volume now works with your phone's own volume instead of a separate app volume: Best Music remembers the phone volume you use for music and the one you use for videos, and switches the phone to the right one whenever you go between them (the phone's volume bar shows when it does). Changes you make with the volume buttons are remembered too
 - The boost for quiet videos stays inside the app, on top of the phone's volume

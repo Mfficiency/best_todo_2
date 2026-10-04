@@ -4370,6 +4370,21 @@ volume" or "Video volume" by the current track), Settings → Subscriptions feed
 volume" and Settings → Playback → "Music volume" (both show the remembered level, or "Not
 remembered yet").
 
+**Back/forward 10 seconds (Best Music 0.3.5).** While a feed video is the current track,
+`MusicAudioHandler.notificationControls` is `[previous, replay10, play/pause, forward10,
+next]` (songs keep `[previous, play/pause, next]`) with `androidCompactActionIndices`
+`[1, 2, 3]` so the collapsed notification shows back 10 / play / forward 10. The two controls
+are `MediaAction.rewind`/`fastForward` with the app's own icons
+(`res/drawable/ic_replay_10.xml`/`ic_forward_10.xml`: Material's replay arrow, mirrored for
+forward, around a "10"); audio_service also exposes them as custom actions, so Android 13+'s
+media controls and the lock screen show them, and `systemActions` adds rewind/fastForward for
+headsets and Bluetooth. `rewind()`/`fastForward()` call `seekBy(∓/±seekStep)` (10 s), clamped
+to 0..duration; a restored track that isn't loaded yet moves its resume point instead (and
+`_broadcastState` reports that resume point as the position until it loads). In the app: Now
+Playing's transport row swaps Favorite/"Don't really like" for "Back 10 seconds"/"Forward 10
+seconds" (`Icons.replay_10`/`forward_10`) on a video, and the mini player shows the same two
+around its play button for a video only.
+
 **Last song ↔ last video (Best Music 0.2.99).** `MusicAudioHandler.otherSession`
 (`ValueNotifier<PlaybackSession?>`; `PlaybackSession` = queue, index, position) holds the
 paused queue of the *other* kind. `setQueueAndPlay` snapshots the current queue into it
