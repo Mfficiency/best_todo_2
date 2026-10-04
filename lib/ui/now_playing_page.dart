@@ -8,7 +8,8 @@ import '../services/music_player_service.dart';
 import '../services/speaker_play_guard.dart';
 import '../services/music_playlist_service.dart';
 import 'estimated_progress_bar.dart';
-import 'music_mini_player_bar.dart' show SwitchSessionButton;
+import 'music_mini_player_bar.dart'
+    show SwitchSessionButton, switchSessionAndShow;
 import 'playback_speed_sheet.dart';
 import 'volume_sheet.dart';
 import 'queue_page.dart';
@@ -26,6 +27,14 @@ class NowPlayingPage extends StatefulWidget {
   /// How many Now Playing pages are open — [MusicMiniPlayerBar] hides while
   /// this is above zero, since the page already shows the same controls.
   static final ValueNotifier<int> openCount = ValueNotifier(0);
+
+  /// Route name, so "Back to music" can find an open Now Playing page
+  /// instead of stacking a second one ([showSessionScreen]).
+  static const routeName = '/now-playing';
+
+  static Route<void> route() => MaterialPageRoute(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => const NowPlayingPage());
 
   @override
   State<NowPlayingPage> createState() => _NowPlayingPageState();
@@ -180,7 +189,8 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
                               : Icons.library_music_outlined),
                           label: Text(SwitchSessionButton.labelFor(other),
                               maxLines: 1, overflow: TextOverflow.ellipsis),
-                          onPressed: handler.switchToOtherSession,
+                          onPressed: () => switchSessionAndShow(
+                              handler, Navigator.of(context)),
                         ),
                       );
                     },

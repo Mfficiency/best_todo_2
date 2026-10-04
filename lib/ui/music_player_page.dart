@@ -179,7 +179,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           ListTile(
             leading: const Icon(Icons.subscriptions_outlined),
             title: const Text('Subscriptions'),
-            onTap: () => _pushStandalonePage(() => const YoutubeFeedPage()),
+            onTap: () {
+              Navigator.of(context).pop(); // close the drawer
+              Navigator.of(context).push(YoutubeFeedPage.route());
+            },
           ),
           ListTile(
             leading: const Icon(Icons.star_border),
@@ -295,7 +298,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               await MusicPlayerService.playLibraryShuffled();
               if (mounted) {
                 Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const NowPlayingPage()));
+                    NowPlayingPage.route());
               }
             },
           ),
@@ -476,7 +479,7 @@ class _YoutubeSearchFallbackState extends State<YoutubeSearchFallback> {
     await MusicYoutubeFallback.playAndDownload(result);
     if (mounted) {
       Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const NowPlayingPage()));
+          .push(NowPlayingPage.route());
     }
   }
 
@@ -1224,7 +1227,7 @@ class _TrackListViewState extends State<TrackListView> {
     await MusicPlayerService.playQueue(tracks, startIndex: startIndex);
     if (context.mounted) {
       Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const NowPlayingPage()));
+          .push(NowPlayingPage.route());
     }
   }
 

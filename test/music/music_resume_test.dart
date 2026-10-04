@@ -11,6 +11,7 @@ import 'package:besttodo/services/music_resume_service.dart';
 import 'package:besttodo/services/youtube_feed_service.dart';
 import 'package:besttodo/ui/music_mini_player_bar.dart';
 import 'package:besttodo/ui/now_playing_page.dart';
+import 'package:besttodo/ui/youtube_feed_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -39,6 +40,19 @@ class _FakeAudioHandler extends BaseAudioHandler {
     pauses++;
     playbackState.add(playbackState.value.copyWith(playing: false));
   }
+}
+
+class _RecordingObserver extends NavigatorObserver {
+  _RecordingObserver(this.pushed);
+  final List<String?> pushed;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      pushed.add(route.settings.name);
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      pushed.add('pop ${route.settings.name}');
 }
 
 void main() {
@@ -267,6 +281,68 @@ void main() {
       expect(target.isVideo, isTrue);
       expect(target.current.title, 'Podcast');
       feed.resetForTest();
+    });
+  });
+
+  group('switching brings its screen along', () {
+    Route<void> named(String name, String text) => MaterialPageRoute(
+        settings: RouteSettings(name: name),
+        builder: (_) => Scaffold(body: Text(text)));
+
+    testWidgets('"Back to videos" pops back to an open feed', (tester) async {
+      final key = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(MaterialApp(
+          navigatorKey: key, home: const Scaffold(body: Text('Library'))));
+      key.currentState!.push(named(YoutubeFeedPage.routeName, 'Feed'));
+      key.currentState!.push(named('/other', 'Video info'));
+      await tester.pumpAndSettle();
+
+      showSessionScreen(key.currentState!, video: true);
+      await tester.pumpAndSettle();
+      expect(find.text('Feed'), findsOneWidget);
+      expect(find.text('Video info'), findsNothing);
+    });
+
+    testWidgets('"Back to music" pops back to an open Now Playing',
+        (tester) async {
+      final key = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(MaterialApp(
+          navigatorKey: key, home: const Scaffold(body: Text('Library'))));
+      key.currentState!.push(named(NowPlayingPage.routeName, 'Playing'));
+      key.currentState!.push(named('/other', 'Queue'));
+      await tester.pumpAndSettle();
+
+      showSessionScreen(key.currentState!, video: false);
+      await tester.pumpAndSettle();
+      expect(find.text('Playing'), findsOneWidget);
+      expect(find.text('Queue'), findsNothing);
+    });
+
+    testWidgets('opens the feed fresh from Now Playing', (tester) async {
+      final key = GlobalKey<NavigatorState>();
+      final pushed = <String?>[];
+      await tester.pumpWidget(MaterialApp(
+        navigatorKey: key,
+        navigatorObservers: [_RecordingObserver(pushed)],
+        home: const Scaffold(body: Text('Library')),
+      ));
+      key.currentState!.push(named(NowPlayingPage.routeName, 'Playing'));
+      await tester.pumpAndSettle();
+      pushed.clear();
+
+      showSessionScreen(key.currentState!, video: true);
+      await tester.pump();
+      // Now Playing is left, not kept underneath the feed.
+      expect(pushed,
+          ['pop ${NowPlayingPage.routeName}', YoutubeFeedPage.routeName]);
+    });
+
+    test('does nothing when there is nothing to switch to', () async {
+      YoutubeFeedService.instance.resetForTest();
+      final handler = MusicAudioHandler();
+      handler.restore([track('a')]);
+      await switchSessionAndShow(handler, null);
+      expect(handler.currentTrack!.title, 'a');
     });
   });
 
