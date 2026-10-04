@@ -51,8 +51,8 @@ void main() {
     await pumpSettings(tester);
     await openSection(tester, 'Updates');
 
-    expect(find.text('Automatically check for updates'), findsOneWidget);
-    await tester.tap(find.text('Automatically check for updates'));
+    expect(find.text('Automatically update'), findsOneWidget);
+    await tester.tap(find.text('Automatically update'));
     for (var i = 0; i < 60; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
@@ -76,7 +76,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'auto update');
     await tester.pump();
 
-    expect(find.text('Automatically check for updates'), findsOneWidget);
+    expect(find.text('Automatically update'), findsOneWidget);
     expect(find.text('Updates'), findsWidgets);
   });
 }

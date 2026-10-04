@@ -3786,7 +3786,8 @@ optional `service` parameter (defaults to `UpdateService.instance`, so BestToDo'
 `main.dart` is unchanged) so the same checker class can drive a second app's update instance.
 `main_music.dart`'s `BestMusicApp` became a `StatefulWidget` that starts it (Android only,
 pointed at `MusicAboutPage.updateService`) in `initState`, showing the same "New version
-available" dialog (`showUpdateAvailableDialog`) and background download
+available" dialog (`showUpdateAvailableDialog`, removed in 0.2.98 — updates now install with no
+dialog, see §11) and background download
 (`downloadUpdateInBackground`) BestToDo's own poll uses, via a dedicated `musicNavigatorKey`
 (mirrors `appNavigatorKey`) since there is no `BuildContext` on hand outside the widget tree.
 Best Music has no Settings toggle for this yet (unlike BestToDo's "Automatically check for
@@ -4664,6 +4665,23 @@ historical.
   straight from download into install before this and is unchanged (the
   `AboutPage(autoCheckForUpdate: ...)` pre-trigger the old flow used is gone,
   since nothing navigates there automatically anymore).
+- **Silent auto-update, both apps (0.2.98 / Best Music 0.3.5):** the
+  "New version available" dialog and `showUpdateAvailableDialog` are gone.
+  When the poll reports a build, `_maybeStartAutoUpdate` (in `main.dart` and,
+  identically, `main_music.dart` against `MusicAboutPage.updateService`) skips
+  it if `wasDownloaded(version)` (already downloading or already handed to the
+  installer — e.g. the user backed out of Android's install screen, so the
+  minute poll doesn't re-download it), otherwise calls
+  `downloadUpdateInBackground` straight away; Android's own install prompt is
+  the only confirmation left. `downloadUpdateInBackground` now returns
+  `Future<bool>` (true once the APK reached `installApk`); on false the caller
+  `AutoUpdateChecker.dismiss`es the version, so a failing download isn't
+  retried every minute — the next launch tries again. Settings → Updates'
+  switch is renamed "Automatically update" (same `autoUpdateCheckEnabled`
+  key). `Config.applyMap` turns it back on once for settings saved before this
+  (no `autoUpdateEnabledOnce: true` key — `toMap` always writes it), after which
+  a user's "off" sticks again. Best Music still has no toggle; its poll always
+  runs on Android.
 - **Background downloads via DownloadManager (0.2.x):** both download paths —
   the auto-update Yes and the About page's "Download & install"/rollback
   buttons — go through `UpdateService.downloadInBackground()` instead of a

@@ -222,7 +222,7 @@ class _SettingsPageState extends State<SettingsPage> {
         'Enable Todoist sync', 10, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
-    _SettingsSearchEntry('Automatically check for updates', 9,
+    _SettingsSearchEntry('Automatically update', 9,
         'auto update version release new build startup prompt install about'),
     _SettingsSearchEntry('Update downloads folder', 9,
         'apk download path location directory storage temporary'),
@@ -2356,12 +2356,12 @@ class _SettingsPageState extends State<SettingsPage> {
       title: 'Updates',
       children: [
         SwitchListTile(
-          title: const Text('Automatically check for updates'),
+          title: const Text('Automatically update'),
           subtitle: const Text(
-              'Polls for a newer version every minute while the app is open '
-              'and asks whether to download and install it the moment one '
-              'appears. Manual checks on the About page always work '
-              'regardless of this setting.'),
+              'Checks for a newer version every minute while the app is open '
+              'and downloads and installs it as soon as one appears — only '
+              'Android\'s own install screen asks to confirm. Manual checks '
+              'on the About page always work regardless of this setting.'),
           value: _autoUpdateCheckEnabled,
           onChanged: _setAutoUpdateCheckEnabled,
         ),

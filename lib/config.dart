@@ -692,9 +692,11 @@ class Config {
 
   /// If true, the app polls GitHub for a newer build every minute while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
-  /// appears, asks whether to download and install it — see Settings →
-  /// Updates. On by default; a manual check from the About page always works
-  /// regardless of this setting.
+  /// appears, downloads it and opens Android's installer with no question
+  /// first — see Settings → Updates. On by default, and switched back on
+  /// once for everyone when auto-updating became the default (0.2.98, see
+  /// `autoUpdateEnabledOnce` in [load]); a manual check from the About page
+  /// always works regardless of this setting.
   static bool autoUpdateCheckEnabled = true;
 
   /// How many days a task stays in the real Deleted bin (`deleted_bin.json`)
@@ -799,6 +801,7 @@ class Config {
       'subsonicUsername': subsonicUsername,
       'subsonicPassword': subsonicPassword,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
+      'autoUpdateEnabledOnce': true,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
       'viewFilterRules': {
@@ -975,6 +978,10 @@ class Config {
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.
     autoUpdateCheckEnabled = data['autoUpdateCheckEnabled'] as bool? ?? true;
+    // 0.2.98 made updates install automatically and turned the switch back
+    // on once for installs that had it off; after that the user's choice
+    // sticks again.
+    if (data['autoUpdateEnabledOnce'] != true) autoUpdateCheckEnabled = true;
     deletedItemsRetentionDays =
         (data['deletedItemsRetentionDays'] as num?)?.round().clamp(1, 3650) ??
             deletedItemsRetentionDays;
