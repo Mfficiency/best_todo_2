@@ -9,6 +9,9 @@ nothing has been copied over here.
 ## [0.3.6] - 2026-10-04
 - Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first
 - Changelog now shows when the version you're running was installed (e.g. "Installed v0.3.6+403 · 2026-10-04 18:40 (2 hours ago)"), so you can see when an update came through
+- CI build: 2026-10-04 20:06 UTC
+- Build duration (apk, CI): 8m 11s
+- APK size: 62.2 MB
 
 ## [0.3.5] - 2026-10-04
 - Subscriptions videos have back 10 seconds and forward 10 seconds buttons: in the notification (also on the lock screen), on the Now Playing screen and on the song bar at the bottom
