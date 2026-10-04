@@ -2,6 +2,9 @@
 
 ## [0.2.97] - 2026-10-04
 - Update downloads now show which app and version are downloading in the notification (e.g. "BestToDo update 0.2.97+398")
+- CI build: 2026-10-04 07:13 UTC
+- Build duration (apk, CI): 6m 52s
+- APK size: 69.7 MB
 
 ## [0.2.96] - 2026-10-03
 - Music Player: progress bars while songs load and while searching YouTube
