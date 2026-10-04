@@ -5,8 +5,8 @@
 
 ## [0.2.96] - 2026-10-03
 - Music Player: progress bars while songs load and while searching YouTube
-- CI build: 2026-10-04 06:37 UTC
-- Build duration (apk, CI): 9m 18s
+- CI build: 2026-10-04 06:58 UTC
+- Build duration (apk, CI): 8m 43s
 - APK size: 69.7 MB
 
 ## [0.2.95] - 2026-10-03
