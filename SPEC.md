@@ -4386,6 +4386,22 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   playing) a fresh weighted shuffle of the library. Volume and speed follow the track's kind
   (`_applyVolume`/`_applySpeed` in `_playCurrent`).
 
+**Switching brings its screen, upload time in rows (Best Music 0.3.1).**
+- Every "Back to music"/"Back to video(s)" control (the pill, the mini player's
+  `SwitchSessionButton`, Now Playing's chip) calls `switchSessionAndShow(handler, navigator)`:
+  it reads `switchTarget()`, starts `switchToOtherSession()` and calls
+  `showSessionScreen(navigator, video: target.isVideo)` — a video opens the Subscriptions feed,
+  a song opens Now Playing. `showSessionScreen` `popUntil`s a route named
+  `YoutubeFeedPage.routeName` (`/subscriptions`) / `NowPlayingPage.routeName`
+  (`/now-playing`) or the root; if it didn't find one it pushes `YoutubeFeedPage.route()` /
+  `NowPlayingPage.route()`. Every push of those pages uses `route()` so the names are always
+  set. The pill and mini player sit outside the navigator, so `main_music.dart` hands them
+  `musicNavigatorKey`.
+- `FeedVideoTile` shows the channel on one line and, below it, a clock icon +
+  `formatFeedUploadTime(published)` · `formatFeedAge` · views (key `feedVideoUploadTime`).
+  `formatFeedUploadTime` (local time): "Today 14:05", "Yesterday 09:12", "Mon 18:30" within the
+  week, "3 Oct, 14:05" this year, "3 Oct 2025" before. The video page's meta line includes it.
+
 **Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
 (`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
 `_playCurrent` calls `cacheInBackground(track)` for `isFeedVideo` tracks once loaded; it

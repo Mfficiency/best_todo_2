@@ -6,6 +6,10 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.1] - 2026-10-04
+- "Back to videos" now also takes you to the Subscriptions feed, and "Back to music" opens the song that's playing — the screen follows the sound
+- Every video in Subscriptions shows when it was uploaded (e.g. "Today 14:05 · 3h ago")
+
 ## [0.3.0] - 2026-10-04
 - Subscriptions open faster: the last 2 days show right away, the rest of the week fills in by itself, and older videos load only when you scroll to the end — always newest first
 - Tap a video to play it; the info button (where the play button was) shows its description and options

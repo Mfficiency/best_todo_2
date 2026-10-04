@@ -9,6 +9,7 @@ import '../services/music_sleep_timer.dart';
 import 'estimated_progress_bar.dart';
 import 'now_playing_page.dart';
 import 'sleep_timer_sheet.dart';
+import 'youtube_feed_page.dart';
 
 /// Small persistent bar showing the current song — or, when nothing is
 /// playing, the last-played one restored at startup
@@ -30,7 +31,7 @@ class MusicMiniPlayerBar extends StatelessWidget {
 
   void _openNowPlaying(BuildContext context) {
     final navigator = navigatorKey?.currentState ?? Navigator.of(context);
-    navigator.push(MaterialPageRoute(builder: (_) => const NowPlayingPage()));
+    navigator.push(NowPlayingPage.route());
   }
 
   /// Context under the navigator (the bar itself sits outside it, so it
@@ -105,7 +106,8 @@ class MusicMiniPlayerBar extends StatelessWidget {
                             ),
                           ),
                           if (audio is MusicAudioHandler)
-                            SwitchSessionButton(handler: audio),
+                            SwitchSessionButton(
+                                handler: audio, navigatorKey: navigatorKey),
                           _SleepTimerBadge(
                               onTap: () =>
                                   showSleepTimerSheet(_sheetContext(context))),
@@ -149,15 +151,46 @@ class MusicMiniPlayerBar extends StatelessWidget {
   }
 }
 
+/// Brings the screen along with the sound: the Subscriptions feed for a
+/// video, Now Playing for a song. Pops back to an already open copy of
+/// that page (or to the root) rather than stacking another one.
+void showSessionScreen(NavigatorState navigator, {required bool video}) {
+  final name = video ? YoutubeFeedPage.routeName : NowPlayingPage.routeName;
+  var found = false;
+  navigator.popUntil((route) {
+    if (route.settings.name == name) return found = true;
+    return route.isFirst;
+  });
+  if (!found) {
+    navigator.push(video ? YoutubeFeedPage.route() : NowPlayingPage.route());
+  }
+}
+
+/// "Back to video"/"Back to music": switches playback to the other session
+/// ([MusicAudioHandler.switchToOtherSession]) and, when [navigator] is
+/// given, opens that session's screen too ([showSessionScreen]).
+Future<void> switchSessionAndShow(
+    MusicAudioHandler handler, NavigatorState? navigator) async {
+  final target = handler.switchTarget();
+  if (target == null) return;
+  final switching = handler.switchToOtherSession();
+  if (navigator != null) showSessionScreen(navigator, video: target.isVideo);
+  await switching;
+}
+
 /// One tap back into the other kind of listening — the last song while a
 /// video plays, the last video while music plays — resuming where it was
 /// stopped ([MusicAudioHandler.switchToOtherSession]). Hidden until there
 /// is one. No tooltip: the mini player has no Overlay, so it's labelled
 /// through [Semantics] instead.
 class SwitchSessionButton extends StatelessWidget {
-  const SwitchSessionButton({super.key, required this.handler});
+  const SwitchSessionButton(
+      {super.key, required this.handler, this.navigatorKey});
 
   final MusicAudioHandler handler;
+
+  /// Navigator the target's screen opens on; defaults to the nearest one.
+  final GlobalKey<NavigatorState>? navigatorKey;
 
   static String labelFor(PlaybackSession session) =>
       '${session.isVideo ? 'Back to video' : 'Back to music'}: '
@@ -177,7 +210,8 @@ class SwitchSessionButton extends StatelessWidget {
             icon: Icon(other.isVideo
                 ? Icons.smart_display_outlined
                 : Icons.library_music_outlined),
-            onPressed: handler.switchToOtherSession,
+            onPressed: () => switchSessionAndShow(handler,
+                navigatorKey?.currentState ?? Navigator.maybeOf(context)),
           ),
         );
       },
@@ -229,16 +263,20 @@ class _SleepTimerBadge extends StatelessWidget {
 
 /// The bottom-left "Back to music" / "Back to videos" button floating just
 /// above the song bar on every Best Music screen (`main_music.dart`). One
-/// tap stops what's playing and resumes the other kind where it was left
+/// tap opens the other kind's screen (the feed / Now Playing) and resumes
+/// it where it was left
 /// — the last song at the music volume and 1×, or the last video at the
 /// video volume and speed ([MusicAudioHandler.switchToOtherSession]).
 /// Hidden while there's nothing to switch to, and while Now Playing (which
 /// has its own switch chip) is open. Outside the navigator, so no tooltip.
 class SessionSwitchPill extends StatelessWidget {
-  const SessionSwitchPill({super.key, this.handler});
+  const SessionSwitchPill({super.key, this.handler, this.navigatorKey});
 
   /// Defaults to [MusicPlayerService.handler] once it's ready.
   final MusicAudioHandler? handler;
+
+  /// Navigator the target's screen (feed / Now Playing) opens on.
+  final GlobalKey<NavigatorState>? navigatorKey;
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +309,9 @@ class SessionSwitchPill extends StatelessWidget {
                   shape: const StadiumBorder(),
                   child: InkWell(
                     customBorder: const StadiumBorder(),
-                    onTap: audio.switchToOtherSession,
+                    onTap: () => switchSessionAndShow(audio,
+                        navigatorKey?.currentState ??
+                            Navigator.maybeOf(context)),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),

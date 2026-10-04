@@ -27,6 +27,32 @@ String formatFeedAge(DateTime? published, {DateTime? now}) {
   return '${age.inDays ~/ 365}y ago';
 }
 
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// When a video went up, in local time: "Today 14:05", "Yesterday 09:12",
+/// "Mon 18:30" within the week, "3 Oct, 14:05" this year, "3 Oct 2025"
+/// before that. Empty when unknown.
+String formatFeedUploadTime(DateTime? published, {DateTime? now}) {
+  if (published == null) return '';
+  final at = published.toLocal();
+  final today = now ?? DateTime.now();
+  final hhmm = '${at.hour.toString().padLeft(2, '0')}:'
+      '${at.minute.toString().padLeft(2, '0')}';
+  final days = DateTime(today.year, today.month, today.day)
+      .difference(DateTime(at.year, at.month, at.day))
+      .inDays;
+  if (days <= 0) return 'Today $hhmm';
+  if (days == 1) return 'Yesterday $hhmm';
+  if (days < 7) return '${_weekdays[at.weekday - 1]} $hhmm';
+  final date = '${at.day} ${_months[at.month - 1]}';
+  if (at.year == today.year) return '$date, $hhmm';
+  return '$date ${at.year}';
+}
+
 /// `4:05` / `1:02:03`.
 String formatVideoDuration(Duration d) {
   final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
@@ -57,6 +83,14 @@ class YoutubeFeedPage extends StatefulWidget {
   /// Starts a queue; defaults to [MusicPlayerService.playQueue]. Tests
   /// pass a recorder.
   final Future<void> Function(List<Track> queue)? playQueue;
+
+  /// Route name, so "Back to videos" can find an open feed instead of
+  /// stacking a second one ([showSessionScreen]).
+  static const routeName = '/subscriptions';
+
+  static Route<void> route() => MaterialPageRoute(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => const YoutubeFeedPage());
 
   @override
   State<YoutubeFeedPage> createState() => _YoutubeFeedPageState();
@@ -355,6 +389,13 @@ class _Thumbnail extends StatelessWidget {
 
 String _metaLine(FeedVideo v) => [
       v.channelName,
+      _uploadLine(v),
+    ].where((s) => s.isNotEmpty).join(' · ');
+
+/// "Today 14:05 · 3h ago · 1.2K views" — the upload time on its own row
+/// in the feed list, so a long channel name can't push it out of view.
+String _uploadLine(FeedVideo v) => [
+      formatFeedUploadTime(v.published),
       formatFeedAge(v.published),
       if (v.viewCount != null) '${formatViewCount(v.viewCount)} views',
     ].where((s) => s.isNotEmpty).join(' · ');
@@ -418,13 +459,35 @@ class FeedVideoTile extends StatelessWidget {
                         ),
                       Expanded(
                         child: Text(
-                          _metaLine(video),
-                          maxLines: 2,
+                          video.channelName,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
                     ]),
+                    if (video.published != null || video.viewCount != null)
+                      Row(children: [
+                        if (video.published != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Icon(Icons.schedule,
+                                size: 14,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.color),
+                          ),
+                        Expanded(
+                          child: Text(
+                            _uploadLine(video),
+                            key: const ValueKey('feedVideoUploadTime'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ]),
                   ],
                 ),
               ),
