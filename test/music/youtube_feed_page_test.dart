@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:besttodo/models/youtube_feed.dart';
 import 'package:besttodo/services/youtube_feed_service.dart';
+import 'package:besttodo/ui/music_settings_page.dart';
 import 'package:besttodo/ui/playback_speed_sheet.dart';
 import 'package:besttodo/ui/youtube_channels_page.dart';
 import 'package:besttodo/ui/youtube_feed_page.dart';
-import 'package:besttodo/ui/youtube_feed_settings_page.dart';
 import 'package:besttodo/utils/linkified_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +111,57 @@ void main() {
     expect(find.text('Mark unplayed'), findsOneWidget);
   });
 
+  testWidgets('search finds feed videos by title, channel and date, '
+      'including older ones', (tester) async {
+    _ignoreThumbnailErrors();
+    service.subscriptions.value = [_channel];
+    service.fetchOverride = (_) async => ChannelFetchResult([
+          FeedVideo(
+              videoId: 'lofi',
+              title: 'Lofi beats to study to',
+              channelId: _channel.id,
+              channelName: 'Chan',
+              published: DateTime.now().subtract(const Duration(days: 1))),
+          FeedVideo(
+              videoId: 'jazz',
+              title: 'Late night jazz',
+              channelId: _channel.id,
+              channelName: 'Chan',
+              published: DateTime.now().subtract(const Duration(days: 40))),
+        ]);
+    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedPage()));
+    await tester.pump();
+    await tester.pump();
+    // 40 days old: outside the week the feed opens on.
+    expect(find.text('Late night jazz'), findsNothing);
+
+    await tester.tap(find.byTooltip('Search feed'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'jaz nihgt'); // typos
+    await tester.pump();
+    expect(find.text('Late night jazz'), findsOneWidget);
+    expect(find.text('Lofi beats to study to'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'yesterday');
+    await tester.pump();
+    expect(find.text('Lofi beats to study to'), findsOneWidget);
+    expect(find.text('Late night jazz'), findsNothing);
+
+    // Limited to the title, a channel name no longer matches.
+    await tester.enterText(find.byType(TextField), 'chan');
+    await tester.pump();
+    expect(find.text('Lofi beats to study to'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Title'));
+    await tester.pump();
+    expect(find.text('Lofi beats to study to'), findsNothing);
+    expect(find.text('No videos in your feed match.'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Close search'));
+    await tester.pump();
+    expect(find.text('Lofi beats to study to'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+  });
+
   testWidgets('tapping a video plays just that video', (tester) async {
     _ignoreThumbnailErrors();
     service.subscriptions.value = [_channel];
@@ -211,26 +262,37 @@ void main() {
 
   testWidgets('feed settings toggle Shorts and SponsorBlock categories',
       (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedSettingsPage()));
+    await tester.pumpWidget(const MaterialApp(
+        home: MusicSettingsPage(initialSection: MusicSettingsSection.feed)));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Hide Shorts'));
     await tester.pump();
     expect(service.settings.value.hideShorts, isFalse);
 
-    await tester.scrollUntilVisible(find.text('Filler tangent/jokes'), 100);
+    expect(find.text('Filler tangent/jokes'), findsNothing);
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'SponsorBlock'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'SponsorBlock'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Filler tangent/jokes'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Filler tangent/jokes'));
     await tester.pump();
     expect(service.settings.value.sponsorBlockCategories,
         contains(SponsorBlockCategory.filler));
 
-    await tester.scrollUntilVisible(find.text('SponsorBlock'), -100);
-    await tester.tap(find.text('SponsorBlock'));
+    await tester.ensureVisible(find.text('Skip sponsored segments'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Skip sponsored segments'));
     await tester.pump();
     expect(service.settings.value.sponsorBlockEnabled, isFalse);
     expect(find.text('Filler tangent/jokes'), findsNothing);
   });
 
   testWidgets('feed settings set the video speed', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedSettingsPage()));
+    await tester.pumpWidget(const MaterialApp(
+        home: MusicSettingsPage(initialSection: MusicSettingsSection.feed)));
+    await tester.pumpAndSettle();
     expect(find.textContaining('1× — the last speed you picked'),
         findsOneWidget);
     await tester.tap(find.text('Video speed'));

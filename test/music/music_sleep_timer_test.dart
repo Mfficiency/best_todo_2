@@ -113,8 +113,11 @@ void main() {
   testWidgets('Settings offers dark mode and the sleep timer', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: MusicSettingsPage()));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Expand all'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Sleep timer'), findsOneWidget);
+    await tester.ensureVisible(find.text('Dark mode'));
     await tester.tap(find.text('Dark mode'));
     await tester.pump();
     expect(MusicTheme.darkMode.value, isTrue);

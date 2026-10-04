@@ -3684,10 +3684,19 @@ page in the same sense BestToDo's home page is: `buildSubpageAppBar`'s "Menu" bu
 every page the drawer pushes: MP3 Downloader, Wishlist, Settings, Changelog, Startup Times, App
 Logs, About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
 root route it has no "Back to Home" to offer) gets Flutter's automatic drawer-hamburger button
-for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a small
-standalone settings page — just the music folder picker and excluded-subfolders dialog,
+for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a
+standalone settings page — the music folder picker and excluded-subfolders dialog are
 reimplemented from BestToDo's Settings → Music Player section (`settings_page.dart`) since that
-page is one monolithic widget tightly coupled to BestToDo's full settings list.
+page is one monolithic widget tightly coupled to BestToDo's full settings list. Since Best
+Music 0.3.1 it is laid out like BestToDo's Settings: a pinned row of `ChoiceChip` section
+buttons (tap = open that section and scroll to it; the chip of the section at the top of the
+viewport is highlighted and kept on screen), collapsible `Card` sections that all start
+closed (header tap toggles; tooltip "Expand <title>"/"Collapse <title>") and a Collapse
+all/Expand all button. Sections (`MusicSettingsSection`): Library (music folder, forget,
+excluded subfolders), Playback (ask before playing out loud, music volume, sleep timer),
+Appearance (dark mode), Subscriptions feed and SponsorBlock (§10.6m), Updates (downloads
+folder). `initialSection` opens one section on arrival; the body is a
+`SingleChildScrollView` so every section's context exists for `Scrollable.ensureVisible`.
 `lib/ui/music_about_page.dart` mirrors `AboutPage` (Best Music branding + an
 `UpdateService.forApp` instance, exposed as `MusicAboutPage.updateService` for tests) — the
 `UpdateSection` widget (`about_page.dart`, made public and given optional `service`/`appName`
@@ -4405,10 +4414,30 @@ fraction: `YoutubeFeedService.refreshProgress` = channels fetched / total), a fe
 description, channel search/import, the library search's YouTube lookup and the MP3
 Downloader's search.
 
-**Settings** (`YoutubeFeedSettingsPage`, from the feed's tune icon or Best Music Settings →
-"Subscriptions feed"): Default playback speed (above), Hide Shorts (default on), Hide livestreams (default on), SponsorBlock
-on/off (default on) and per-category checkboxes (default sponsor, selfpromo, interaction,
-music_offtopic). Log lines go to App Logs under "Feed".
+**Settings** (Best Music 0.3.1: no separate page any more — two sections of Best Music's own
+Settings, `MusicSettingsPage`; the feed's tune icon "Feed settings" opens it with
+`initialSection: MusicSettingsSection.feed`, i.e. that section open and scrolled to):
+*Subscriptions feed* — Hide Shorts (default on), Hide livestreams (default on), Video speed
+(above), Video volume, Play the next video automatically; *SponsorBlock* — "Skip sponsored
+segments" on/off (default on) and per-category checkboxes (default sponsor, selfpromo,
+interaction, music_offtopic). Log lines go to App Logs under "Feed".
+
+**Search** (Best Music 0.3.1): the feed's search icon ("Search feed") puts a text field and
+All/Title/Channel/Date chips under the app bar. It searches every fetched video
+(`filterFeed(videos, settings)` — Shorts/livestream hiding still applies, but not the
+2-day/week window, so older videos are found too) with `searchFeed`
+(`lib/services/feed_search.dart`): every query word must match the title, channel name or
+upload date (only the chosen field when a chip other than All is picked). A word matches a
+text best when a word there starts with it (1), then when it's contained (0.85), then within
+1 edit — 2 for words of 7+ letters — of a word or a word's prefix (Levenshtein with adjacent
+swaps: 0.7/0.55), then as letters in order within a word at most twice its length (0.4);
+words under 3 letters only match exactly. Words with digits match whole numbers only
+(`3` finds `3/10/2026`, not `30`). The date text (`feedDateSearchText`) spells the upload day
+as `2026-10-03`, `3/10/2026`, `10/3/2026`, `03.10.2026`, the month name and its 3-letter
+abbreviation, the weekday and its abbreviation, and `today`/`yesterday`. Results sort by the
+average word score (bucketed to tenths) and then newest first; tapping one plays it with the
+search results as the queue. Paging older weeks and the footer are off while searching;
+"No videos in your feed match." when nothing does. The close button clears the search.
 
 Not done yet (deliberately out of the MVP): in-app video playback, background
 new-upload notifications, feed groups.

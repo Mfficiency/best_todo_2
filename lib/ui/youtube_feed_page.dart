@@ -5,15 +5,16 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/track.dart';
 import '../models/youtube_feed.dart';
+import '../services/feed_search.dart';
 import '../services/mp3_downloader_service.dart' show formatViewCount;
 import '../services/music_player_service.dart';
 import '../services/youtube_feed_service.dart';
 import '../utils/linkified_text.dart';
 import 'mp3_downloader_page.dart';
 import 'estimated_progress_bar.dart';
+import 'music_settings_page.dart';
 import 'subpage_app_bar.dart';
 import 'youtube_channels_page.dart';
-import 'youtube_feed_settings_page.dart';
 
 /// "3h ago" / "2d ago" / "5w ago" — compact enough for a phone row.
 String formatFeedAge(DateTime? published, {DateTime? now}) {
@@ -48,7 +49,9 @@ Future<void> _openOnYoutube(BuildContext context, FeedVideo video) async {
 /// days, widens to a week once the refresh is done, and shows older weeks
 /// only when scrolled to the end. Tapping a video plays its audio through
 /// the normal player (mini player, lock screen, sleep timer); the info
-/// button opens its description and "Open in YouTube"/"Download".
+/// button opens its description and "Open in YouTube"/"Download". The
+/// search button fuzzy-searches every fetched video by title, channel and
+/// upload date.
 class YoutubeFeedPage extends StatefulWidget {
   const YoutubeFeedPage({super.key, this.service, this.playQueue});
 
@@ -65,6 +68,26 @@ class YoutubeFeedPage extends StatefulWidget {
 class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
   late final YoutubeFeedService _service =
       widget.service ?? YoutubeFeedService.instance;
+
+  bool _searchActive = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  FeedSearchField _searchField = FeedSearchField.all;
+
+  bool get _searching => _searchActive && _searchQuery.trim().isNotEmpty;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _closeSearch() => setState(() {
+        _searchActive = false;
+        _searchQuery = '';
+        _searchController.clear();
+        _searchField = FeedSearchField.all;
+      });
 
   Future<void> _play(List<FeedVideo> list, int index) {
     final queue = _service.queueFrom(list, index);
@@ -95,7 +118,8 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
   /// Older videos only once the week is shown and the list is scrolled
   /// near its end.
   bool _onScroll(ScrollNotification n) {
-    if (n.metrics.extentAfter < 400 &&
+    if (!_searching &&
+        n.metrics.extentAfter < 400 &&
         _service.window.value >= YoutubeFeedService.backgroundWindow &&
         _service.hasOlderVideos) {
       _service.showOlder();
@@ -115,6 +139,63 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
   void _openChannels() => Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => YoutubeChannelsPage(service: _service)));
 
+  /// The search field plus chips limiting it to the title, channel or date.
+  PreferredSizeWidget _buildSearchBar() {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(104),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search),
+                hintText: _searchField == FeedSearchField.date
+                    ? 'e.g. yesterday, oct 3, 2026-10-03, friday'
+                    : 'Search title, channel or date',
+                border: const OutlineInputBorder(),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => setState(() {
+                          _searchController.clear();
+                          _searchQuery = '';
+                        }),
+                      ),
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final field in FeedSearchField.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(field.label),
+                        selected: _searchField == field,
+                        onSelected: (_) =>
+                            setState(() => _searchField = field),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -127,13 +208,27 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
             icon: const Icon(Icons.subscriptions_outlined),
             onPressed: _openChannels,
           ),
+          _searchActive
+              ? IconButton(
+                  tooltip: 'Close search',
+                  icon: const Icon(Icons.close),
+                  onPressed: _closeSearch,
+                )
+              : IconButton(
+                  tooltip: 'Search feed',
+                  icon: const Icon(Icons.search),
+                  onPressed: () => setState(() => _searchActive = true),
+                ),
           IconButton(
             tooltip: 'Feed settings',
             icon: const Icon(Icons.tune),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => YoutubeFeedSettingsPage(service: _service))),
+                builder: (_) => MusicSettingsPage(
+                    initialSection: MusicSettingsSection.feed,
+                    feedService: _service))),
           ),
         ],
+        bottom: _searchActive ? _buildSearchBar() : null,
       ),
       body: ListenableBuilder(
         listenable: Listenable.merge([
@@ -150,9 +245,15 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
           if (_service.subscriptions.value.isEmpty) {
             return _EmptyFeed(onFindChannels: _openChannels);
           }
-          final list = _service.visibleVideos;
+          final searching = _searching;
+          final list = searching
+              ? searchFeed(
+                  filterFeed(_service.videos.value, _service.settings.value),
+                  _searchQuery,
+                  field: _searchField)
+              : _service.visibleVideos;
           final failed = _service.failedChannels.value;
-          final hasOlder = _service.hasOlderVideos;
+          final hasOlder = !searching && _service.hasOlderVideos;
           return RefreshIndicator(
             onRefresh: _service.refresh,
             child: NotificationListener<ScrollNotification>(
@@ -162,6 +263,7 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
                 itemCount: list.length + 2,
                 itemBuilder: (context, index) {
                   if (index == list.length + 1) {
+                    if (searching) return const SizedBox.shrink();
                     return _FeedFooter(
                       loadingWeek: _service.window.value <
                           YoutubeFeedService.backgroundWindow,
@@ -187,7 +289,13 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
                               '${failed.take(3).join(', ')}'
                               '${failed.length > 3 ? ', ...' : ''}'),
                         ),
-                      if (list.isEmpty &&
+                      if (searching && list.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Text('No videos in your feed match.',
+                              textAlign: TextAlign.center),
+                        )
+                      else if (list.isEmpty &&
                           !hasOlder &&
                           !_service.refreshing.value)
                         const Padding(

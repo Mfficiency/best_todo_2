@@ -6,6 +6,11 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.1] - 2026-10-04
+- Settings is now organised like BestToDo's: buttons at the top jump to a section, and every section (Library, Playback, Appearance, Subscriptions feed, SponsorBlock, Updates) folds open and closed
+- The Subscriptions feed's settings now live in Settings (the feed's settings button opens them there) instead of on their own page
+- Search your Subscriptions feed: tap the search button and type part of a video title, a channel or a date ("yesterday", "oct 3", "friday", "2026-10-03") — typos are fine, and the Title/Channel/Date buttons narrow it down. It finds older videos too, not just this week's
+
 ## [0.3.0] - 2026-10-04
 - Subscriptions open faster: the last 2 days show right away, the rest of the week fills in by itself, and older videos load only when you scroll to the end — always newest first
 - Tap a video to play it; the info button (where the play button was) shows its description and options
