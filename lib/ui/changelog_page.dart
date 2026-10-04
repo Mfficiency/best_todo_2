@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+
+import '../services/install_info_service.dart';
 import 'subpage_app_bar.dart';
 
 /// One `## [version] - date` block of CHANGELOG.md.
@@ -222,6 +224,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
 
   final ScrollController _heatmapScrollController = ScrollController();
   Future<String>? _changelog;
+  Future<InstallInfo?>? _installInfo;
   _ChangelogView _view = _ChangelogView.text;
   DateTime? _selectedDay;
 
@@ -230,6 +233,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
     super.didChangeDependencies();
     // DefaultAssetBundle falls back to rootBundle in the app; tests can swap it.
     _changelog ??= DefaultAssetBundle.of(context).loadString(widget.assetPath);
+    _installInfo ??= InstallInfoService.load();
   }
 
   @override
@@ -360,12 +364,51 @@ class _ChangelogPageState extends State<ChangelogPage> {
             final text = widget.hidePreamble
                 ? stripChangelogPreamble(snapshot.data!)
                 : snapshot.data!;
-            return Markdown(data: text, selectable: true);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildInstalledBanner(),
+                Expanded(child: Markdown(data: text, selectable: true)),
+              ],
+            );
           }
           if (_view == _ChangelogView.poster) return _buildStoryPoster();
           return _buildHeatmapView(parseChangelogReleases(snapshot.data!));
         },
       ),
+    );
+  }
+
+  /// "Installed v0.2.98+399 · 2026-10-04 18:40 (2 hours ago)" above the
+  /// changelog text, so it's clear when the latest (often automatic) update
+  /// came through. Hidden while loading or when the time isn't known.
+  Widget _buildInstalledBanner() {
+    return FutureBuilder<InstallInfo?>(
+      future: _installInfo,
+      builder: (context, snapshot) {
+        final info = snapshot.data;
+        if (info == null) return const SizedBox.shrink();
+        final scheme = Theme.of(context).colorScheme;
+        return Container(
+          key: const Key('changelog-installed-since'),
+          color: scheme.secondaryContainer,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Icon(Icons.system_update_alt,
+                  size: 18, color: scheme.onSecondaryContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Installed v${info.version} · '
+                  '${formatInstalledAt(info.installedAt)}',
+                  style: TextStyle(color: scheme.onSecondaryContainer),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

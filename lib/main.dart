@@ -26,6 +26,7 @@ import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/food_diary_widget_service.dart';
 import 'services/auto_update_checker.dart';
+import 'services/install_info_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
@@ -193,6 +194,9 @@ Future<void> main() async {
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
+    // Fallback install time for the Changelog's "Installed …" line where
+    // Android's own lastUpdateTime isn't available.
+    unawaited(InstallInfoService.recordLaunch());
     // One-time backfill of the item-history journal from pre-journal data.
     // Deliberately a few seconds after the first frame so it never competes
     // with startup or the home page's initial load; once seeded it is a

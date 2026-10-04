@@ -310,6 +310,17 @@ class MainActivity : AudioServiceFragmentActivity() {
             "besttodo/update",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                // When Android last installed/updated this app (epoch ms) —
+                // the Changelog's "Installed …" line, so the user can see
+                // when an automatic update came through.
+                "lastUpdateTime" -> {
+                    try {
+                        val info = packageManager.getPackageInfo(packageName, 0)
+                        result.success(info.lastUpdateTime)
+                    } catch (e: Exception) {
+                        result.success(null)
+                    }
+                }
                 // Hands the update APK to Android's DownloadManager instead
                 // of downloading it on the Dart side: the transfer then runs
                 // as a system service, so it survives the app being

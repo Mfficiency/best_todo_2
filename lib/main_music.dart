@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
 import 'services/auto_update_checker.dart';
+import 'services/install_info_service.dart';
 import 'services/mp3_download_manager.dart';
 import 'services/music_download_library_sync.dart';
 import 'services/music_library_service.dart';
@@ -65,6 +66,9 @@ Future<void> main() async {
   runApp(const BestMusicApp());
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
+    // Fallback install time for the Changelog's "Installed …" line where
+    // Android's own lastUpdateTime isn't available.
+    unawaited(InstallInfoService.recordLaunch());
     // Local playback is this app's whole purpose, so ask for "All files
     // access" up front like other music apps do, rather than waiting for
     // the user to pick a folder and discover it silently finds nothing —

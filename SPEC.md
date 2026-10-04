@@ -4682,6 +4682,18 @@ historical.
   (no `autoUpdateEnabledOnce: true` key — `toMap` always writes it), after which
   a user's "off" sticks again. Best Music still has no toggle; its poll always
   runs on Android.
+- **"Installed …" line on the Changelog (0.2.98 / Best Music 0.3.5):** the
+  text view of `ChangelogPage` (both apps) starts with a banner
+  (`Key('changelog-installed-since')`): "Installed v<versionWithBuild> ·
+  yyyy-MM-dd HH:mm (<n> min/hours/days ago)" (`formatInstalledAt`), so the user
+  can see when an automatic update landed. `InstallInfoService.load()`
+  (`lib/services/install_info_service.dart`) asks the native side first —
+  `lastUpdateTime` on the `besttodo/update` channel returns
+  `PackageInfo.lastUpdateTime` (epoch ms) from `MainActivity` — and falls back
+  to the first time this version was seen running, which both `main()`s record
+  after the first frame (`recordLaunch`, `shared_preferences` key
+  `install_info_first_seen` = `{version, at}`, replaced when the version
+  changes). Hidden when neither source knows (e.g. version 'unknown').
 - **Background downloads via DownloadManager (0.2.x):** both download paths —
   the auto-update Yes and the About page's "Download & install"/rollback
   buttons — go through `UpdateService.downloadInBackground()` instead of a

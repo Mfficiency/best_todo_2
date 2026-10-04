@@ -8,6 +8,7 @@ nothing has been copied over here.
 
 ## [0.3.5] - 2026-10-04
 - Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first
+- Changelog now shows when the version you're running was installed (e.g. "Installed v0.3.5+402 · 2026-10-04 18:40 (2 hours ago)"), so you can see when an update came through
 
 ## [0.3.4] - 2026-10-04
 - Volume now works with your phone's own volume instead of a separate app volume: Best Music remembers the phone volume you use for music and the one you use for videos, and switches the phone to the right one whenever you go between them (the phone's volume bar shows when it does). Changes you make with the volume buttons are remembered too
