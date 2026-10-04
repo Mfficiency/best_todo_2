@@ -2074,8 +2074,8 @@ Six widgets via `home_widget` (app group `group.homeScreenApp`):
   work whenever the Music Player's playback service is alive, in the foreground or not.
   `MusicWidgetService` (`lib/services/music_widget_service.dart`) only pushes the display data
   (title/artist/playing) by subscribing to the audio handler's `mediaItem`/`playbackState`
-  streams; tapping the title opens the app to the Music Player tool (`besttodomusic://open`).
-  See §10.6e.
+  streams; tapping the title opens the app (`besttodomusic://open`). Best Music only since
+  0.2.98 (receivers declared in the `music` flavor manifest) — see §10.6e/§10.6n.
 
 *Pulsing red, not flat red (0.2.32).* `FoodDiaryAlert.kt` (shared by both providers) alternates
 the background between a bright and a dim red every 900ms (`pulseColor`, `pulseIntervalMs`) so a
@@ -2273,7 +2273,7 @@ Save/Discard; a bare back-gesture dismissal does the same from `dispose()`. Test
 `test/tools/music_share_link_test.dart`,
 `test/tools/mp3_downloader_test.dart` ("opened from a share (sharedLink)").
 
-**"Play out loud?" confirmation** (Best Music 0.2.91, also BestToDo's Music Player):
+**"Play out loud?" confirmation** (Best Music 0.2.91):
 `SpeakerPlayGuard.confirmPlay` (`lib/services/speaker_play_guard.dart`) runs before every
 UI play entry point — `MusicPlayerPage` Shuffle play and `_play` (tap a song / Play / play a
 playlist), the mini player's and Now Playing's play button. It shows a "Play out loud?"
@@ -3119,7 +3119,7 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
 ### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56, schema-agnostic playlist-item search 0.2.57, lockupViewModel support 0.2.58)
-Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
+Tools ▸ MP3 Downloader — Best Music only since 0.2.98, see §10.6n (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
 (`looksLikeYoutubeUrl`/`extractYoutubeVideoId` match `youtube.com/watch`,
@@ -3422,8 +3422,8 @@ folder directly.
 The save location is asked for **once** — `Config.mp3DownloadFolder`, set on
 the first download via `file_selector`'s `getDirectoryPath` (defaulting to
 `getDownloadsDirectory()`) and reused silently afterwards. It is editable at
-Settings ▸ MP3 Downloader (section index 15, gated on the `mp3_downloader`
-feature switch), which can also forget it so the next download asks again.
+Settings ▸ MP3 Downloader (BestToDo section index 15 until 0.2.98, §10.6n; gated on the
+`mp3_downloader` feature switch — Best Music's own settings since), which can also forget it so the next download asks again.
 The same section's "Check for existing tracks in" tile sets
 `Config.mp3CompareFolder` (empty = automatic, as above) and can be cleared
 back to automatic detection.
@@ -3446,7 +3446,7 @@ start page).
 
 ### 10.6e Music Player (0.2.61)
 
-Tools ▸ Music Player (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`,
+Tools ▸ Music Player — Best Music only since 0.2.98, see §10.6n (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`,
 `lib/ui/queue_page.dart`):
 a full local MP3/audio player with background playback, home-screen widgets, notification
 and lock-screen controls, an M3U/M3U8 playlist import (Samsung Music's share-out format),
@@ -3620,7 +3620,7 @@ every search failed on a working connection (reported as "YouTube search failed.
 connection"). A failure now throws `Mp3DownloadException('YouTube search failed: <cause>')`
 and the search fallback shows that message instead of a generic connection hint.
 
-**Settings → Music Player** (`lib/ui/settings_page.dart`, section 16): folder picker (shares
+**Settings → Music Player** (removed from BestToDo in 0.2.98, §10.6n; was `lib/ui/settings_page.dart`, section 16): folder picker (shares
 the `file_selector` `getDirectoryPath` pattern §4.4/§10.6d use), an "Excluded subfolders"
 dialog populated from `MusicLibraryService.listSubfolders`, and the Subsonic server
 URL/username/password fields with Save/Test connection. `Config.featureKeys`/
@@ -4129,8 +4129,8 @@ artist, play/pause, tap → `NowPlayingPage` via `musicNavigatorKey` — is at t
 Music screen. That spot has no Overlay, so the bar uses no tooltips (play/pause has key
 `musicMiniPlayerPlayPause` + a Semantics label). It hides while Now Playing is open
 (`NowPlayingPage.openCount`, bumped in a microtask from initState/dispose) and when there is no
-current or remembered song. `MusicPlayerPage(standalone: true)` no longer renders its own bar;
-BestToDo's Music Player tool still does.
+current or remembered song. `MusicPlayerPage(standalone: true)` no longer renders its own bar
+(the non-standalone mode was BestToDo's Music Player tool, removed in 0.2.98 — §10.6n).
 `MusicResumeService` (`music_resume_service.dart`) persists `{queue: [track ids], index, positionMs,
 current: Track json}` to `music_resume.json` in the app documents dir (survives restarts, reboots
 and app updates). `MusicAudioHandler` saves it on every track change, pause, shuffle/reorder and
@@ -4538,6 +4538,34 @@ driving a slim "Importing the rest of your tasks from Todoist…" banner atop th
 page's tab view. A failed *first* connection (bad token) blocks with an inline error
 and keeps the dialog open; once connected, a background-phase failure only shows up
 in App Logs → Todoist — onboarding has already finished by then.
+
+### 10.6n Music & MP3 download live only in Best Music (0.2.98)
+
+BestToDo no longer ships the Music Player or the MP3 Downloader; both exist only in the Best
+Music app (§10.6f, entry point `lib/main_music.dart`). The shared code under `lib/` is
+unchanged — only BestToDo's wiring to it is gone:
+
+- `Config.startToolOptions`/`featureKeys` (and their label/description arrays) no longer list
+  `mp3_downloader` or `music_player`; `home_page.dart` has no `_ToolEntry` or `_buildToolPage`
+  case for them. A saved `startTool` of either key fails `startToolOptions.contains` on load
+  and falls back to `tasks`; stale `features` entries for them are ignored.
+- Settings drops its MP3 Downloader and Music Player sections (old indexes 15/16, with their
+  search entries and Subsonic controllers); Claude Routine is now section 15 (16 sections).
+- `main.dart` boots no music services (`MusicLibraryService`/`MusicPlaylistService`/
+  `MusicPlayerService.init`, the deferred `ensurePermissions`), and a shared Spotify/YouTube/
+  Shazam link opens the normal quick-add screen like any other share — `detectMusicShareLink`
+  routing to `Mp3DownloaderPage` is Best Music only. The `besttodomusic://` widget-tap branch
+  of `_handleWidgetClick` is gone.
+- The two music home-screen widgets (`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`)
+  are declared in `android/app/src/music/AndroidManifest.xml` instead of `src/main`, so only
+  Best Music offers them; the Kotlin classes stay in `src/main` (one shared source set).
+  Widget Previews no longer mocks them.
+- The `audio_service` service/receiver and `MANAGE_EXTERNAL_STORAGE` stay in the shared
+  manifest (the latter is also used by the shared Wishlist store).
+
+Earlier sections (§8 music widgets, §10.6d, §10.6e, "Settings → Music Player") describe the
+code as it still runs inside Best Music; their "Tools ▸ …" / BestToDo-Settings wiring is
+historical.
 
 ## 11. Build, versioning, CI
 

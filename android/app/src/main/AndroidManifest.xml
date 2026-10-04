@@ -206,26 +206,6 @@
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/food_diary_button_widget_info" />
         </receiver>
-        <receiver
-            android:name=".MusicMiniWidgetProvider"
-            android:exported="true"
-            android:label="@string/music_mini_widget_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data android:name="android.appwidget.provider"
-                android:resource="@xml/music_mini_widget_info" />
-        </receiver>
-        <receiver
-            android:name=".MusicControlsWidgetProvider"
-            android:exported="true"
-            android:label="@string/music_controls_widget_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data android:name="android.appwidget.provider"
-                android:resource="@xml/music_controls_widget_info" />
-        </receiver>
         <!-- Receives background taps (alarm toggles) from the home-screen widget -->
         <receiver
             android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"

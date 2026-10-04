@@ -135,8 +135,6 @@ class Config {
     'test_results',
     'weekly_hours_planner',
     'worklist',
-    'mp3_downloader',
-    'music_player',
     'f1_reminder',
   ];
 
@@ -156,8 +154,6 @@ class Config {
     'Test Results',
     'Weekly Hours Planner',
     'Worklist',
-    'MP3 Downloader',
-    'Music Player',
     'F1 Reminder',
   ];
 
@@ -197,8 +193,6 @@ class Config {
     'test_results',
     'weekly_hours_planner',
     'worklist',
-    'mp3_downloader',
-    'music_player',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -226,8 +220,6 @@ class Config {
     'Test Results',
     'Weekly Hours Planner',
     'Worklist',
-    'MP3 Downloader',
-    'Music Player',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -255,8 +247,6 @@ class Config {
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
     'The home screen, showing only tasks tagged "mlr" (hidden everywhere else)',
-    'Search a YouTube video by title or URL and save its audio as an .mp3',
-    'Play music from your device folder or a self-hosted server, with swipe-to-favorite/dislike',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',

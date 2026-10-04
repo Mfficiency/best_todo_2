@@ -15,13 +15,11 @@ import '../models/view_filter_rules.dart';
 import '../services/auto_backup_service.dart';
 import '../services/github_wishlist_service.dart';
 import '../services/google_calendar_service.dart';
-import '../services/music_library_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
 import '../services/sms_report_service.dart';
 import '../services/streak_flame_display.dart';
 import '../services/streak_service.dart';
-import '../services/subsonic_client.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
@@ -59,7 +57,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    18,
+    16,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -78,8 +76,6 @@ class _SettingsPageState extends State<SettingsPage> {
     'Backup',
     'Weekly Hours Planner',
     'Wishlist build',
-    'MP3 Downloader',
-    'Music Player',
     'Claude Routine',
   ];
 
@@ -101,10 +97,6 @@ class _SettingsPageState extends State<SettingsPage> {
         return Config.isFeatureEnabled('sms_report');
       case 13:
         return Config.isFeatureEnabled('weekly_hours_planner');
-      case 15:
-        return Config.isFeatureEnabled('mp3_downloader');
-      case 16:
-        return Config.isFeatureEnabled('music_player');
       default:
         return true;
     }
@@ -245,20 +237,9 @@ class _SettingsPageState extends State<SettingsPage> {
         'grid hour range day end flexitime'),
     _SettingsSearchEntry('GitHub token', 14,
         'wishlist build automation issue pat personal access token next build'),
-    _SettingsSearchEntry('MP3 download folder', 15,
-        'mp3 downloader youtube audio music save folder directory location m4a'),
-    _SettingsSearchEntry('MP3 downloader compare folder', 15,
-        'mp3 downloader already downloaded duplicate check music folder subfolders'),
-    _SettingsSearchEntry('Music folder', 16,
-        'music player mp3 library scan folder directory subfolders exclude'),
-    _SettingsSearchEntry('Excluded subfolders', 16,
-        'music player library scan exclude subfolder ignore'),
-    _SettingsSearchEntry('Subsonic server', 16,
-        'music player self hosted navidrome airsonic gonic opensubsonic server '
-        'username password'),
-    _SettingsSearchEntry('Routine fire URL', 17,
+    _SettingsSearchEntry('Routine fire URL', 15,
         'claude code routine send to claude session cloud trigger api'),
-    _SettingsSearchEntry('Routine token', 17,
+    _SettingsSearchEntry('Routine token', 15,
         'claude code routine send to claude session cloud trigger api key'),
   ];
 
@@ -342,16 +323,6 @@ class _SettingsPageState extends State<SettingsPage> {
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
 
-  final TextEditingController _subsonicServerUrlController =
-      TextEditingController(text: Config.subsonicServerUrl);
-  final TextEditingController _subsonicUsernameController =
-      TextEditingController(text: Config.subsonicUsername);
-  final TextEditingController _subsonicPasswordController =
-      TextEditingController(text: Config.subsonicPassword);
-  bool _subsonicPasswordObscured = true;
-  bool _subsonicTesting = false;
-  String? _subsonicTestResult;
-  bool _subsonicTestSucceeded = false;
 
   /// One text field per view/kind combo in the Filtering rules section,
   /// keyed `'$viewId:$kind'` (`kind` is `exclude` or `include`).
@@ -402,9 +373,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _weeklyHoursStartHour = Config.weeklyHoursStartHour;
     _weeklyHoursEndHour = Config.weeklyHoursEndHour;
     _googleCalendarUrlController.text = Config.googleCalendarUrl;
-    _subsonicServerUrlController.text = Config.subsonicServerUrl;
-    _subsonicUsernameController.text = Config.subsonicUsername;
-    _subsonicPasswordController.text = Config.subsonicPassword;
   }
 
   @override
@@ -2232,348 +2200,6 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Settings → MP3 Downloader: where Tools → MP3 Downloader saves audio.
   /// The tool asks for this folder the first time it downloads something and
   /// then never prompts again, so this is the only place to change it.
-  Future<void> _pickMp3DownloadFolder() async {
-    String? initial;
-    try {
-      initial = (await getDownloadsDirectory())?.path;
-    } catch (_) {
-      initial = null;
-    }
-    final directory = await getDirectoryPath(
-      initialDirectory: Config.mp3DownloadFolder.isNotEmpty
-          ? Config.mp3DownloadFolder
-          : initial,
-    );
-    if (directory == null) return;
-    setState(() => Config.mp3DownloadFolder = directory);
-    await Config.save();
-    widget.onSettingsChanged?.call();
-  }
-
-  Future<void> _clearMp3DownloadFolder() async {
-    setState(() => Config.mp3DownloadFolder = '');
-    await Config.save();
-    widget.onSettingsChanged?.call();
-  }
-
-  /// Settings → MP3 Downloader: where the "already downloaded" check for a
-  /// pasted playlist looks for existing tracks, when the automatic guess
-  /// (the download folder itself, plus the phone's standard Music folder if
-  /// one exists) picks the wrong place — e.g. the real library lives
-  /// somewhere non-standard, or scoped storage hides the standard Music
-  /// folder from a plain path check.
-  Future<void> _pickMp3CompareFolder() async {
-    final directory = await getDirectoryPath(
-      initialDirectory: Config.mp3CompareFolder.isNotEmpty
-          ? Config.mp3CompareFolder
-          : Config.mp3DownloadFolder.isNotEmpty
-              ? Config.mp3DownloadFolder
-              : null,
-    );
-    if (directory == null) return;
-    setState(() => Config.mp3CompareFolder = directory);
-    await Config.save();
-    widget.onSettingsChanged?.call();
-  }
-
-  Future<void> _clearMp3CompareFolder() async {
-    setState(() => Config.mp3CompareFolder = '');
-    await Config.save();
-    widget.onSettingsChanged?.call();
-  }
-
-  Widget _buildMp3DownloaderSection() {
-    final chosen = Config.mp3DownloadFolder.isNotEmpty;
-    final compareChosen = Config.mp3CompareFolder.isNotEmpty;
-    return _buildSection(
-      index: 15,
-      title: 'MP3 Downloader',
-      children: [
-        ListTile(
-          title: const Text('Download folder'),
-          subtitle: Text(
-            chosen
-                ? Config.mp3DownloadFolder
-                : 'Not set — the downloader asks the first time you use it',
-          ),
-          trailing: const Icon(Icons.folder_open),
-          onTap: _pickMp3DownloadFolder,
-        ),
-        if (chosen)
-          ListTile(
-            leading: const Icon(Icons.clear),
-            title: const Text('Forget this folder'),
-            subtitle: const Text('The downloader will ask again next time'),
-            onTap: _clearMp3DownloadFolder,
-          ),
-        ListTile(
-          title: const Text('Check for existing tracks in'),
-          subtitle: Text(
-            compareChosen
-                ? Config.mp3CompareFolder
-                : "Not set — automatically checks the download folder and "
-                    "the phone's Music folder",
-          ),
-          trailing: const Icon(Icons.folder_open),
-          onTap: _pickMp3CompareFolder,
-        ),
-        if (compareChosen)
-          ListTile(
-            leading: const Icon(Icons.clear),
-            title: const Text('Use automatic detection'),
-            subtitle: const Text(
-              "Back to checking the download folder and the phone's Music "
-              'folder',
-            ),
-            onTap: _clearMp3CompareFolder,
-          ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Text(
-            'Audio is saved in the format YouTube serves it in — .m4a (AAC) '
-            'or .webm (Opus) — without re-encoding. A pasted playlist checks '
-            'both folders above (and all their subfolders) by title to skip '
-            'tracks already saved.',
-            style: TextStyle(fontSize: 12),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Settings → Music Player: the folder the Music Player scans for tracks
-  /// (recursively, every subfolder included unless excluded below).
-  Future<void> _pickMusicFolder() async {
-    await MusicLibraryService.instance.ensureFolderPermission();
-    final directory = await getDirectoryPath(
-      initialDirectory:
-          Config.musicFolder.isNotEmpty ? Config.musicFolder : null,
-    );
-    if (directory == null) return;
-    setState(() {
-      Config.musicFolder = directory;
-      Config.musicExcludedSubfolders = [];
-    });
-    await Config.save();
-    widget.onSettingsChanged?.call();
-    unawaited(MusicLibraryService.instance.rescan());
-  }
-
-  Future<void> _clearMusicFolder() async {
-    setState(() {
-      Config.musicFolder = '';
-      Config.musicExcludedSubfolders = [];
-    });
-    await Config.save();
-    widget.onSettingsChanged?.call();
-    unawaited(MusicLibraryService.instance.rescan());
-  }
-
-  Future<void> _openMusicExclusionsDialog() async {
-    final subfolders = await MusicLibraryService.instance.listSubfolders();
-    if (!mounted) return;
-    if (subfolders.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('No subfolders found under the music folder'),
-      ));
-      return;
-    }
-    final excluded = {...Config.musicExcludedSubfolders};
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Excluded subfolders'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final folder in subfolders)
-                      CheckboxListTile(
-                        value: excluded.contains(folder),
-                        title: Text(folder),
-                        onChanged: (checked) {
-                          setDialogState(() {
-                            if (checked == true) {
-                              excluded.add(folder);
-                            } else {
-                              excluded.remove(folder);
-                            }
-                          });
-                        },
-                      ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    setState(() {
-                      Config.musicExcludedSubfolders = excluded.toList();
-                    });
-                    await Config.save();
-                    widget.onSettingsChanged?.call();
-                    unawaited(MusicLibraryService.instance.rescan());
-                    if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _saveSubsonicSettings() async {
-    setState(() {
-      Config.subsonicServerUrl = _subsonicServerUrlController.text.trim();
-      Config.subsonicUsername = _subsonicUsernameController.text.trim();
-      Config.subsonicPassword = _subsonicPasswordController.text;
-      _subsonicTestResult = null;
-    });
-    await Config.save();
-    widget.onSettingsChanged?.call();
-  }
-
-  Future<void> _testSubsonicConnection() async {
-    await _saveSubsonicSettings();
-    setState(() => _subsonicTesting = true);
-    final ok = await SubsonicClient.instance.ping();
-    if (!mounted) return;
-    setState(() {
-      _subsonicTesting = false;
-      _subsonicTestSucceeded = ok;
-      _subsonicTestResult =
-          ok ? 'Connected' : 'Could not connect — check the URL and credentials';
-    });
-  }
-
-  Widget _buildMusicPlayerSection() {
-    final chosen = Config.musicFolder.isNotEmpty;
-    return _buildSection(
-      index: 16,
-      title: 'Music Player',
-      children: [
-        ListTile(
-          title: const Text('Music folder'),
-          subtitle: Text(chosen
-              ? Config.musicFolder
-              : 'Not set — choose a folder from the Music Player tool, or here'),
-          trailing: const Icon(Icons.folder_open),
-          onTap: _pickMusicFolder,
-        ),
-        if (chosen) ...[
-          ListTile(
-            leading: const Icon(Icons.clear),
-            title: const Text('Forget this folder'),
-            onTap: _clearMusicFolder,
-          ),
-          ListTile(
-            leading: const Icon(Icons.rule_folder_outlined),
-            title: const Text('Excluded subfolders'),
-            subtitle: Text(Config.musicExcludedSubfolders.isEmpty
-                ? 'None — every subfolder is included'
-                : Config.musicExcludedSubfolders.join(', ')),
-            onTap: _openMusicExclusionsDialog,
-          ),
-        ],
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text(
-            'Self-hosted server (Subsonic/OpenSubsonic — Navidrome, Airsonic, '
-            'Gonic, …)',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: TextField(
-            controller: _subsonicServerUrlController,
-            decoration: const InputDecoration(
-              labelText: 'Server URL',
-              hintText: 'https://music.example.com',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: TextField(
-            controller: _subsonicUsernameController,
-            decoration: const InputDecoration(
-              labelText: 'Username',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: TextField(
-            controller: _subsonicPasswordController,
-            obscureText: _subsonicPasswordObscured,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                tooltip: _subsonicPasswordObscured ? 'Show password' : 'Hide password',
-                icon: Icon(_subsonicPasswordObscured
-                    ? Icons.visibility
-                    : Icons.visibility_off),
-                onPressed: () => setState(
-                    () => _subsonicPasswordObscured = !_subsonicPasswordObscured),
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: _saveSubsonicSettings,
-                icon: const Icon(Icons.save),
-                label: const Text('Save'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _subsonicTesting ? null : _testSubsonicConnection,
-                icon: _subsonicTesting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.wifi_tethering),
-                label: const Text('Test connection'),
-              ),
-            ],
-          ),
-        ),
-        if (_subsonicTestResult != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              _subsonicTestResult!,
-              style: TextStyle(
-                color: _subsonicTestSucceeded
-                    ? Colors.green
-                    : Theme.of(context).colorScheme.error,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
   Widget _buildWishlistBuildSection() {
     return _buildSection(
       index: 14,
@@ -2659,7 +2285,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// generated URL and token here.
   Widget _buildClaudeRoutineSection() {
     return _buildSection(
-      index: 17,
+      index: 15,
       title: 'Claude Routine',
       children: [
         const Padding(
@@ -3099,9 +2725,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _claudeRoutineTokenController.dispose();
     _jevApiKeyController.dispose();
     _googleCalendarUrlController.dispose();
-    _subsonicServerUrlController.dispose();
-    _subsonicUsernameController.dispose();
-    _subsonicPasswordController.dispose();
     for (final controller in _filterTagControllers.values) {
       controller.dispose();
     }
@@ -3625,8 +3248,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         if (_isSectionVisible(13))
                           _buildWeeklyHoursPlannerSection(),
                         _buildWishlistBuildSection(),
-                        if (_isSectionVisible(15)) _buildMp3DownloaderSection(),
-                        if (_isSectionVisible(16)) _buildMusicPlayerSection(),
                         _buildClaudeRoutineSection(),
                       ],
               ),

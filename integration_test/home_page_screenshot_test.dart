@@ -405,11 +405,6 @@ void main() {
     await captureTool('Weekly Hours Planner', 'weekly_hours_planner_page');
     await captureTool('Research', 'research_page');
     await captureTool('Fitness Activity', 'fitness_activity_page');
-    // Same shared pages Best Music ships standalone — captured again here
-    // embedded in BestToDo's own Tools menu (no music folder seeded, so
-    // Music Player shows its empty state, same as Best Music's own test).
-    await captureTool('MP3 Downloader', 'todo_mp3_downloader_page');
-    await captureTool('Music Player', 'todo_music_player_page');
 
     // Drawer items outside the Tools submenu that don't have their own
     // screenshot yet.
