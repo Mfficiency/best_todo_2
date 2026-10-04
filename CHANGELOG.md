@@ -4,6 +4,9 @@
 - Music Player and MP3 Downloader removed from BestToDo — they now live only in the Best Music app (shared music links open the regular quick-add screen, and the music home-screen widgets are Best Music only)
 - Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first (Settings → Updates → "Automatically update", switched back on for everyone)
 - Changelog now shows when the version you're running was installed (e.g. "Installed v0.2.98+399 · 2026-10-04 18:40 (2 hours ago)"), so you can see when an update came through
+- CI build: 2026-10-04 20:43 UTC
+- Build duration (apk, CI): 7m 57s
+- APK size: 63.9 MB
 
 ## [0.2.97] - 2026-10-04
 - Update downloads now show which app and version are downloading in the notification (e.g. "BestToDo update 0.2.97+398")
