@@ -2180,6 +2180,8 @@ downloads via DownloadManager" below), which hand the APK transfer to Android's
 `DownloadManager` instead of a Dart-side socket: it is enqueued into the app's
 `getExternalFilesDir(null)/updates/` (DownloadManager runs as a separate system process and
 cannot write into the app's *internal* `filesDir`, only its external one), with
+a notification titled `"<appDisplayName> update <x.y.z+build>"` (e.g. "Best Music update
+0.3.1+397", passed as the channel's `title` arg so the two apps' downloads are distinguishable),
 `VISIBILITY_VISIBLE_NOTIFY_COMPLETED` and both `NETWORK_WIFI`/`NETWORK_MOBILE` allowed so it
 keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
 cursor back into a status/progress map.
