@@ -1,9 +1,12 @@
 # Changelog
 
+## [0.2.97] - 2026-10-04
+- Update downloads now show which app and version are downloading in the notification (e.g. "BestToDo update 0.2.97+398")
+
 ## [0.2.96] - 2026-10-03
 - Music Player: progress bars while songs load and while searching YouTube
-- CI build: 2026-10-03 22:25 UTC
-- Build duration (apk, CI): 8m 23s
+- CI build: 2026-10-04 06:58 UTC
+- Build duration (apk, CI): 8m 43s
 - APK size: 69.7 MB
 
 ## [0.2.95] - 2026-10-03

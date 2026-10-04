@@ -285,6 +285,9 @@ class MainActivity : AudioServiceFragmentActivity() {
                 "startBackgroundDownload" -> {
                     val url = call.argument<String>("url")
                     val fileName = call.argument<String>("fileName")
+                    // Notification title naming the app + version being
+                    // downloaded ("Best Music update 0.1.12+30").
+                    val title = call.argument<String>("title") ?: "BestToDo update"
                     if (url == null || fileName == null) {
                         result.error("bad-args", "url/fileName missing", null)
                         return@setMethodCallHandler
@@ -313,7 +316,7 @@ class MainActivity : AudioServiceFragmentActivity() {
                         val downloadManager =
                             getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                         val request = DownloadManager.Request(Uri.parse(url))
-                            .setTitle("BestToDo update")
+                            .setTitle(title)
                             .setDestinationUri(Uri.fromFile(destFile))
                             .setNotificationVisibility(
                                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
