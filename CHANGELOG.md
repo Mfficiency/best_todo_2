@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.99] - 2026-10-05
+- The Worklist now shows its name at the top (in the search box), so you can tell it apart from your normal task list
+- The Move/Delete options that appear when you swipe a task now shrink to fit the row instead of being cut off with large system font sizes
+- If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason (e.g. "Update download failed: This release has no APK to download") instead of showing a few seconds later
+
 ## [0.2.98] - 2026-10-04
 - Music Player and MP3 Downloader removed from BestToDo — they now live only in the Best Music app (shared music links open the regular quick-add screen, and the music home-screen widgets are Best Music only)
 - Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first (Settings → Updates → "Automatically update", switched back on for everyone)

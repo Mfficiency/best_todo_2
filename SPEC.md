@@ -3032,6 +3032,9 @@ instance*: `_buildToolPage`'s `'worklist'` case returns
 `const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
 `HomePage` gained two optional constructor fields, `tagFilter`/`toolTitle` (both
 null for the regular home page):
+- `toolTitle` is the app-bar title — and, when the search feature is on (the app bar
+  is then the search field), the search field's hint instead of "Search tasks"
+  (0.2.99), so a tool instance always shows its name.
 - `_tasksForTab` folds `tagFilter` into its `where` predicate alongside search
   (`labelHasToken(task.label, tagFilter)`), but — like search — only when
   `applySearch` is true; the `applySearch: false` callers (`_saveTasks`'s

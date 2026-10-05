@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.10] - 2026-10-05
+- If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason instead of showing a few seconds later
+
 ## [0.3.9] - 2026-10-05
 - Videos now have a Transcript button: read the full transcript of a Subscriptions video, with timestamps — taken from YouTube's captions, or from backup sites (Invidious) when YouTube won't give them
 - New "Quick summary" button on videos: a short summary of the video, its key points and the conclusion it reaches. Add a Claude API key in Settings → Transcripts & summaries for a summary written by Claude; without one, the phone picks the key sentences itself

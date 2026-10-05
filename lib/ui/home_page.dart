@@ -3407,7 +3407,9 @@ class _HomePageState extends State<HomePage>
                 controller: _searchController,
                 focusNode: _searchFocusNode,
                 decoration: InputDecoration(
-                  hintText: 'Search tasks',
+                  // A tool instance (e.g. Worklist) shows its name here, or
+                  // the search field would hide which list this is.
+                  hintText: widget.toolTitle ?? 'Search tasks',
                   border: InputBorder.none,
                   suffixIcon: _searchQuery.isEmpty
                       ? const Icon(Icons.search)

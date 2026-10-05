@@ -28,6 +28,8 @@ Future<bool> downloadUpdateInBackground(
         await updateService.installApk(progress.localPath!);
         return true;
       } else if (progress.status == DownloadStatus.failed) {
+        // Replace "Downloading…" rather than queueing behind it.
+        messenger?.hideCurrentSnackBar();
         messenger?.showSnackBar(SnackBar(
           content: Text('Update download failed${progress.reason != null ? ' (${progress.reason})' : ''}.'),
         ));
@@ -35,7 +37,12 @@ Future<bool> downloadUpdateInBackground(
       }
     }
   } catch (e) {
-    messenger?.showSnackBar(SnackBar(content: Text('Update download failed: $e')));
+    messenger?.hideCurrentSnackBar();
+    // A StateError's own message ("This release has no APK to download")
+    // reads better without Dart's "Bad state:" prefix.
+    final reason = e is StateError ? e.message : '$e';
+    messenger?.showSnackBar(
+        SnackBar(content: Text('Update download failed: $reason')));
   }
   return false;
 }
