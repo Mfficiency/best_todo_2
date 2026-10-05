@@ -11,6 +11,9 @@ nothing has been copied over here.
 - Shows how long the search has left ("Looking up song info online… 120/1954 · about 1 h 40 min left"), also for on-device BPM detection
 - New "Restart" button next to that line on Metadata Scan: searches again right away, including songs where nothing was found before
 - Keeps working while you use other apps: a quiet "Best Music · filling in song info" notification shows the progress and goes away when it's done
+- CI build: 2026-10-05 20:31 UTC
+- Build duration (apk, CI): 9m 09s
+- APK size: 63.0 MB
 
 ## [0.3.11] - 2026-10-05
 - Song info fills itself in, in the background: songs missing an artist, album, genre, year or BPM are looked up online (Deezer, iTunes and MusicBrainz, trying several spellings of the title until one matches) and only the blanks are filled — your own tags and edits are never overwritten
