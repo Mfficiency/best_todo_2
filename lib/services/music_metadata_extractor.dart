@@ -37,7 +37,21 @@ ExtractedTags decodeMp3Tags(Uint8List headBytes) {
   try {
     final tagMap = <String, dynamic>{};
     for (final info in ID3Decoder(headBytes).decodeSync()) {
-      tagMap.addAll(info.toTagMap());
+      final map = info.toTagMap();
+      // id3_codec 1.0.x reports ID3v2 frames as a `Frames` list of
+      // `{Frame ID, Content: {Information}}` maps; index them as
+      // `Frame[<id>]` (first one wins, so v2 beats a trailing v1 tag).
+      final frames = map['Frames'];
+      if (frames is List) {
+        for (final frame in frames) {
+          if (frame is! Map) continue;
+          final id = frame['Frame ID'];
+          if (id is String) tagMap.putIfAbsent('Frame[$id]', () => frame['Content']);
+        }
+      }
+      map.forEach((key, value) {
+        if (key != 'Frames') tagMap.putIfAbsent(key, () => value);
+      });
     }
     return ExtractedTags(
       title: _frameInfo(tagMap, 'TIT2') ?? tagMap['Title'] as String?,

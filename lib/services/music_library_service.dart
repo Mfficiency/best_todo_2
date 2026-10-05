@@ -224,16 +224,19 @@ class MusicLibraryService {
         var track = await _buildTrack(entity.path, ext);
         final deviceDate = await _deviceDateOf(entity);
         final previous = previousById[track.id];
+        // The earlier of the two: writing tags into a file (the metadata
+        // enricher does) bumps its change time, but not when it arrived.
+        final arrived = _earlier(deviceDate, previous?.deviceDate);
         track = (previous != null && previous.metadataEdited)
             ? previous.copyWith(
                 durationMs: track.durationMs ?? previous.durationMs,
-                deviceDate: deviceDate,
+                deviceDate: arrived,
                 // A BPM typed in by hand wins; a tag added later fills a gap.
                 bpm: previous.bpm ?? track.bpm,
               )
             : track.copyWith(
                 dateAdded: previous?.dateAdded ?? now,
-                deviceDate: deviceDate ?? previous?.deviceDate,
+                deviceDate: arrived,
                 playCount: previous?.playCount ?? 0,
               );
         found.add(track);
@@ -257,6 +260,12 @@ class MusicLibraryService {
       scanning = false;
     }
     return tracks.value;
+  }
+
+  static DateTime? _earlier(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isBefore(b) ? a : b;
   }
 
   /// When [file] arrived on this device — see [Track.deviceDate]. Null if

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/track.dart';
 import 'audio_pcm_decoder.dart';
 import 'bpm_detector.dart';
+import 'id3_tag_writer.dart';
 import 'log_service.dart';
 import 'music_library_service.dart';
 import 'music_online_metadata.dart';
@@ -15,7 +16,14 @@ import 'music_online_metadata.dart';
 /// What the enricher has already done for one track, persisted so a song
 /// is looked up / analyzed once, not on every launch.
 class EnrichmentEntry {
-  EnrichmentEntry({this.onlineAt, this.found, this.detectedAt, this.detectedBpm});
+  EnrichmentEntry({
+    this.onlineAt,
+    this.found,
+    this.detectedAt,
+    this.detectedBpm,
+    this.taggedAt,
+    this.tagFailures = 0,
+  });
 
   /// When the online lookup ran (ms since epoch); null = not yet.
   int? onlineAt;
@@ -27,11 +35,24 @@ class EnrichmentEntry {
   int? detectedAt;
   int? detectedBpm;
 
+  /// When what's known was written into the file's own tags (or found not
+  /// writable, e.g. not an mp3); null = still to do. Reset whenever new
+  /// data arrives.
+  int? taggedAt;
+
+  /// Failed write attempts (I/O errors) — given up after
+  /// [MusicMetadataEnricher.maxTagFailures].
+  int tagFailures;
+
+  bool get hasData => (found != null && !found!.isEmpty) || detectedBpm != null;
+
   Map<String, dynamic> toJson() => {
         if (onlineAt != null) 'onlineAt': onlineAt,
         if (found != null && !found!.isEmpty) 'found': found!.toJson(),
         if (detectedAt != null) 'detectedAt': detectedAt,
         if (detectedBpm != null) 'detectedBpm': detectedBpm,
+        if (taggedAt != null) 'taggedAt': taggedAt,
+        if (tagFailures != 0) 'tagFailures': tagFailures,
       };
 
   factory EnrichmentEntry.fromJson(Map<String, dynamic> json) => EnrichmentEntry(
@@ -42,6 +63,8 @@ class EnrichmentEntry {
             : null,
         detectedAt: (json['detectedAt'] as num?)?.round(),
         detectedBpm: (json['detectedBpm'] as num?)?.round(),
+        taggedAt: (json['taggedAt'] as num?)?.round(),
+        tagFailures: (json['tagFailures'] as num?)?.round() ?? 0,
       );
 
   /// Everything this entry knows, as one gap-fill for
@@ -80,13 +103,17 @@ class MusicMetadataEnricher {
     MusicLibraryService? library,
     MusicOnlineMetadataLookup? lookup,
     Future<int?> Function(Track track)? detectBpm,
+    Future<Id3WriteResult> Function(String path, Id3Fields fields)? writeTags,
     Future<Directory> Function()? storageDir,
+    Future<void> Function()? initialRescan,
     this.debounce = const Duration(seconds: 3),
     this.offlineRetry = const Duration(minutes: 15),
   })  : _library = library ?? MusicLibraryService.instance,
         _lookupOverride = lookup,
         _detectBpm = detectBpm ?? _defaultDetectBpm,
-        _storageDir = storageDir ?? getApplicationDocumentsDirectory;
+        _writeTags = writeTags ?? Id3TagWriter.addMissing,
+        _storageDir = storageDir ?? getApplicationDocumentsDirectory,
+        _initialRescan = initialRescan;
 
   static final MusicMetadataEnricher instance = MusicMetadataEnricher();
 
@@ -100,7 +127,15 @@ class MusicMetadataEnricher {
   MusicOnlineMetadataLookup get _lookup =>
       _lookupOverride ?? (_defaultLookup ??= MusicOnlineMetadataLookup());
   final Future<int?> Function(Track track) _detectBpm;
+  final Future<Id3WriteResult> Function(String path, Id3Fields fields)
+      _writeTags;
+  static const int maxTagFailures = 3;
   final Future<Directory> Function() _storageDir;
+  final Future<void> Function()? _initialRescan;
+
+  /// Marker file: the one-time rescan after 0.3.9's ID3 read fix (before
+  /// it, every cached track was missing its tags) has been done.
+  static const String rescanMarker = 'music_enrichment_rescan_v1';
   final Duration debounce;
   final Duration offlineRetry;
 
@@ -123,6 +158,7 @@ class MusicMetadataEnricher {
     if (_started) return;
     _started = true;
     await _load();
+    await _rescanOnceAfterTagFix();
     await _applyCache();
     _library.tracks.addListener(_onLibraryChanged);
     _schedule(Duration.zero);
@@ -202,6 +238,8 @@ class MusicMetadataEnricher {
         paused = !await _onlinePass();
         if (paused || !_started) break;
         await _bpmPass();
+        if (!_started) break;
+        await _tagPass();
       } while (_rerun && _started);
       // Keep the "paused" line up until the retry.
       if (!paused) _updateSummary();
@@ -251,6 +289,7 @@ class MusicMetadataEnricher {
       final entry = _entries.putIfAbsent(track.id, EnrichmentEntry.new);
       entry.onlineAt = DateTime.now().millisecondsSinceEpoch;
       entry.found = result.isEmpty ? null : result;
+      entry.taggedAt = null;
       if (!result.isEmpty) {
         found++;
         pending[track.id] = entry.fill;
@@ -290,6 +329,7 @@ class MusicMetadataEnricher {
       final entry = _entries.putIfAbsent(track.id, EnrichmentEntry.new);
       entry.detectedAt = DateTime.now().millisecondsSinceEpoch;
       entry.detectedBpm = bpm;
+      entry.taggedAt = null;
       if (bpm != null) {
         detected++;
         pending[track.id] = entry.fill;
@@ -299,6 +339,52 @@ class MusicMetadataEnricher {
     await _flush(pending);
     LogService.add('Music',
         'enricher: BPM detected on device for $detected of ${todo.length}');
+  }
+
+  /// Writes what was found into each file's own tags (fill-only — see
+  /// [Id3TagWriter]), using the library's current value for every field
+  /// the enricher supplied, so the file agrees with what the app shows.
+  Future<void> _tagPass() async {
+    var written = 0;
+    var dirty = false;
+    for (final track in List<Track>.of(_library.tracks.value)) {
+      if (!_started) break;
+      final entry = _entries[track.id];
+      final path = track.filePath;
+      if (entry == null ||
+          path == null ||
+          !_eligible(track) ||
+          !entry.hasData ||
+          entry.taggedAt != null ||
+          entry.tagFailures >= maxTagFailures) {
+        continue;
+      }
+      final fill = entry.fill;
+      final result = await _writeTags(
+        path,
+        Id3Fields(
+          title: fill.title != null && track.title == fill.title
+              ? track.title
+              : null,
+          artist: fill.artist != null ? track.artist : null,
+          album: fill.album != null ? track.album : null,
+          genre: fill.genre != null ? track.genre : null,
+          year: fill.year != null ? track.year : null,
+          bpm: fill.bpm != null ? track.bpm : null,
+        ),
+      );
+      dirty = true;
+      if (result == Id3WriteResult.failed) {
+        entry.tagFailures++;
+      } else {
+        entry.taggedAt = DateTime.now().millisecondsSinceEpoch;
+        if (result == Id3WriteResult.written) written++;
+      }
+    }
+    if (dirty) await _save();
+    if (written > 0) {
+      LogService.add('Music', 'enricher: wrote tags into $written file(s)');
+    }
   }
 
   void _updateSummary() {
@@ -341,6 +427,19 @@ class MusicMetadataEnricher {
     } finally {
       _applying = false;
     }
+  }
+
+  /// Libraries scanned before 0.3.9 never had their tags read; rescan once
+  /// so the files' own tags are used before anything is looked up online.
+  Future<void> _rescanOnceAfterTagFix() async {
+    try {
+      final marker = File('${(await _storageDir()).path}/$rescanMarker');
+      if (await marker.exists()) return;
+      await marker.writeAsString('1', flush: true);
+      if (_library.tracks.value.isEmpty || _library.scanning) return;
+      LogService.add('Music', 'enricher: one-time rescan to read ID3 tags');
+      await (_initialRescan ?? _library.rescan)();
+    } catch (_) {}
   }
 
   Future<File> _file() async => File('${(await _storageDir()).path}/$fileName');

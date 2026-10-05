@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/models/track.dart';
+import 'package:besttodo/services/id3_tag_writer.dart';
 import 'package:besttodo/services/music_library_service.dart';
 import 'package:besttodo/services/music_metadata_enricher.dart';
 import 'package:besttodo/services/music_online_metadata.dart';
@@ -47,12 +48,14 @@ Track _track(String name,
 
 void main() {
   late Directory dir;
+  var rescans = 0;
   final library = MusicLibraryService.instance;
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('besttodo_enricher_');
     PathProviderPlatform.instance = _FakePathProvider(dir.path);
     library.resetForTest();
+    rescans = 0;
   });
 
   tearDown(() async {
@@ -60,12 +63,15 @@ void main() {
   });
 
   MusicMetadataEnricher enricher(_FakeLookup lookup,
-          {Future<int?> Function(Track)? detect}) =>
+          {Future<int?> Function(Track)? detect,
+          Future<Id3WriteResult> Function(String, Id3Fields)? writeTags}) =>
       MusicMetadataEnricher(
         library: library,
         lookup: lookup,
         detectBpm: detect ?? (_) async => null,
+        writeTags: writeTags ?? (_, __) async => Id3WriteResult.written,
         storageDir: () async => dir,
+        initialRescan: () async => rescans++,
         debounce: const Duration(milliseconds: 10),
       );
 
@@ -202,5 +208,67 @@ void main() {
         'Get Lucky');
     expect(library.byId('local:/music/x.mp3')!.title, 'Real Title');
     expect(library.byId('local:/music/x.mp3')!.artist, 'Me');
+  });
+
+  test('writes what it found into the file, once, using the app\'s values',
+      () async {
+    library.tracks.value = [_track('A', genre: 'Rock')];
+    final lookup = _FakeLookup({
+      'A': const OnlineTrackMetadata(genre: 'Pop', year: 1999, bpm: 120),
+    });
+    final writes = <String, Id3Fields>{};
+    final e = enricher(lookup, writeTags: (path, fields) async {
+      writes[path] = fields;
+      return Id3WriteResult.written;
+    });
+    await e.start();
+    await e.whenIdle();
+    final fields = writes['/music/A.mp3']!;
+    expect(fields.genre, 'Rock', reason: 'the value the app shows');
+    expect(fields.year, 1999);
+    expect(fields.bpm, 120);
+    expect(fields.title, isNull, reason: 'nothing found for the title');
+    expect(fields.artist, isNull);
+
+    writes.clear();
+    library.tracks.value = List.of(library.tracks.value);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    await e.whenIdle();
+    expect(writes, isEmpty, reason: 'already written');
+    e.stop();
+  });
+
+  test('a failed tag write is retried, then given up on', () async {
+    library.tracks.value = [_track('A')];
+    var attempts = 0;
+    final e = enricher(
+        _FakeLookup({'A': const OnlineTrackMetadata(bpm: 120)}),
+        writeTags: (_, __) async {
+      attempts++;
+      return Id3WriteResult.failed;
+    });
+    await e.start();
+    await e.whenIdle();
+    for (var i = 0; i < 5; i++) {
+      library.tracks.value = List.of(library.tracks.value);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await e.whenIdle();
+    }
+    expect(attempts, MusicMetadataEnricher.maxTagFailures);
+    e.stop();
+  });
+
+  test('rescans once (ever) so pre-0.3.9 libraries get their tags read',
+      () async {
+    library.tracks.value = [_track('A', genre: 'Rock', year: 1, bpm: 1)];
+    var e = enricher(_FakeLookup({}));
+    await e.start();
+    await e.whenIdle();
+    e.stop();
+    e = enricher(_FakeLookup({}));
+    await e.start();
+    await e.whenIdle();
+    e.stop();
+    expect(rescans, 1);
   });
 }

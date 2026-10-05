@@ -4594,6 +4594,30 @@ enricher's `status` line ("Looking up song info online… 3/40", "Detecting BPM 
 shows under the Metadata Scan page's counts and on Songs by BPM while songs lack a BPM.
 App Logs ("Music") record each pass's counts.
 
+3. **Into the files** — after the two passes, every mp3 whose entry has data and no
+   `taggedAt` gets it written into its own ID3v2 tag (`Id3TagWriter.addMissing`,
+   `lib/services/id3_tag_writer.dart`), using the library's *current* value for each field
+   the enricher supplied (so a manual in-app edit is what lands in the file; the title only
+   when the online one was applied). Fill-only: a TIT2/TPE1/TALB/TCON/TYER (v2.3) or TDRC
+   (v2.4)/TBPM frame that already has text is never changed (TYER and TDRC count for each
+   other); empty ones are replaced; every other frame is copied byte for byte. No tag →
+   a new v2.3 one (Latin-1, or UTF-16 with BOM when needed; v2.4 writes UTF-8). Bails with
+   `unsupported` on non-mp3, v2.2, or any of the unsync/extended-header/experimental/footer
+   flags, or if `decodeMp3Tags` can't read the new artist/BPM back. When the frames fit in
+   the old tag (its padding) only the tag bytes are overwritten in place; otherwise
+   tag + 2048 bytes padding + the audio stream into `<file>.besttodo-tag.tmp`, its length is
+   checked, and it is renamed over the original. The modified time is restored. Result →
+   `taggedAt` set (written/nothingToAdd/unsupported) or `tagFailures++` (I/O error; given up
+   after 3). New online/detected data resets `taggedAt`. Because writing bumps a file's
+   change time, `rescan` now keeps the *earlier* of the previous and fresh `deviceDate`.
+
+**ID3 read fix (0.3.9)** — `decodeMp3Tags` had never actually read a frame: id3_codec 1.0.x
+reports ID3v2 frames as a `Frames` list of `{Frame ID, Content: {Information}}` maps, not the
+`Frame[<id>]` keys it looked up, so every mp3 scanned as untagged (filename title, no
+artist/album/genre/year/BPM). Frames are now indexed as `Frame[<id>]` (first wins). On its first `start()` the enricher rescans the library
+once (marker file `music_enrichment_rescan_v1`; skipped for an empty library) so existing
+installs pick their tags up before anything is looked up online.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
