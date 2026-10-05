@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.7] - 2026-10-05
+- The Now Playing screen (songs and videos) has just the menu button at the top — every other button (speed, volume, sleep timer, shuffle, queue, info and "Back to music/videos") now sits at the bottom, within reach of your thumb
+
 ## [0.3.6] - 2026-10-04
 - Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first
 - Changelog now shows when the version you're running was installed (e.g. "Installed v0.3.6+403 · 2026-10-04 18:40 (2 hours ago)"), so you can see when an update came through

@@ -23,13 +23,25 @@ void main() {
     }
   });
 
-  testWidgets('shows shuffle and queue buttons in the app bar',
+  testWidgets('only the menu button is at the top; the rest is at the bottom',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: NowPlayingPage()));
     await tester.pumpAndSettle();
 
+    final appBar = find.byType(AppBar);
+    expect(
+        find.descendant(of: appBar, matching: find.byType(IconButton)),
+        findsOneWidget);
+    expect(find.descendant(of: appBar, matching: find.byTooltip('Menu')),
+        findsOneWidget);
+
     expect(find.byTooltip('Shuffle off'), findsOneWidget);
     expect(find.byTooltip('Queue'), findsOneWidget);
+    expect(find.byTooltip('Music volume'), findsOneWidget);
+    expect(find.byTooltip('Sleep timer'), findsOneWidget);
+    final screenHeight = tester.getSize(find.byType(Scaffold)).height;
+    expect(tester.getCenter(find.byTooltip('Queue')).dy,
+        greaterThan(screenHeight * 0.75));
   });
 
   testWidgets('shows a Track info button, disabled while nothing is playing',

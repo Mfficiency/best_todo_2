@@ -84,70 +84,21 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
   Widget build(BuildContext context) {
     final handler = MusicPlayerService.handler;
     return Scaffold(
-      appBar: buildSubpageAppBar(
-        context,
-        title: 'Now Playing',
-        actions: [
-          // Feed videos only: speed is a podcast/talk thing, not a
-          // local-music one.
-          StreamBuilder<MediaItem?>(
-            stream: handler.mediaItem,
-            builder: (context, _) => PlaybackSpeedButton(
-              visible: handler.currentTrack?.isFeedVideo ?? false,
-            ),
-          ),
-          // The phone's volume, remembered separately for music and videos.
-          StreamBuilder<MediaItem?>(
-            stream: handler.mediaItem,
-            builder: (context, _) {
-              final video = handler.currentTrack?.isFeedVideo ?? false;
-              return IconButton(
-                icon: const Icon(Icons.volume_up_outlined),
-                tooltip: video ? 'Video volume' : 'Music volume',
-                onPressed: () => showVolumeSheet(context, video: video),
-              );
-            },
-          ),
-          const SleepTimerButton(),
-          ValueListenableBuilder<bool>(
-            valueListenable: handler.shuffleEnabled,
-            builder: (context, shuffleOn, _) => IconButton(
-              icon: const Icon(Icons.shuffle),
-              tooltip: shuffleOn ? 'Shuffle on' : 'Shuffle off',
-              color: shuffleOn ? Theme.of(context).colorScheme.primary : null,
-              onPressed: () => handler.toggleShuffle(),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.queue_music),
-            tooltip: 'Queue',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const QueuePage()),
-            ),
-          ),
-          StreamBuilder<MediaItem?>(
-            stream: handler.mediaItem,
-            builder: (context, _) {
-              final track = handler.currentTrack;
-              return IconButton(
-                icon: const Icon(Icons.info_outline),
-                tooltip: 'Track info',
-                onPressed: track == null
-                    ? null
-                    : () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => TrackMetadataPage(trackId: track.id),
-                        )),
-              );
-            },
-          ),
-        ],
-      ),
+      // Only the menu button up here: every control sits at the bottom,
+      // within thumb reach (_ToolsRow, _Transport).
+      appBar: buildSubpageAppBar(context, title: 'Now Playing', showBack: false),
       body: StreamBuilder<MediaItem?>(
         stream: handler.mediaItem,
         builder: (context, itemSnapshot) {
           final item = itemSnapshot.data;
           if (item == null) {
-            return const Center(child: Text('Nothing playing'));
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(children: [
+                const Expanded(child: Center(child: Text('Nothing playing'))),
+                _ToolsRow(handler: handler),
+              ]),
+            );
           }
           final track = handler.currentTrack;
           final isFavorite = track != null &&
@@ -172,26 +123,6 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
                         active: state == AudioProcessingState.loading ||
                             state == AudioProcessingState.buffering,
                         expected: const Duration(seconds: 5),
-                      );
-                    },
-                  ),
-                  // One tap back to the last song / last video.
-                  ValueListenableBuilder<PlaybackSession?>(
-                    valueListenable: handler.otherSession,
-                    builder: (context, other, _) {
-                      if (other == null) return const SizedBox.shrink();
-                      return Align(
-                        alignment: Alignment.centerLeft,
-                        child: ActionChip(
-                          key: const ValueKey('nowPlayingSwitchSession'),
-                          avatar: Icon(other.isVideo
-                              ? Icons.smart_display_outlined
-                              : Icons.library_music_outlined),
-                          label: Text(SwitchSessionButton.labelFor(other),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                          onPressed: () => switchSessionAndShow(
-                              handler, Navigator.of(context)),
-                        ),
                       );
                     },
                   ),
@@ -281,16 +212,91 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
                     'Swipe up to favorite • swipe down to skip & dislike',
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+                  // One tap back to the last song / last video.
+                  ValueListenableBuilder<PlaybackSession?>(
+                    valueListenable: handler.otherSession,
+                    builder: (context, other, _) {
+                      if (other == null) return const SizedBox.shrink();
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: ActionChip(
+                          key: const ValueKey('nowPlayingSwitchSession'),
+                          avatar: Icon(other.isVideo
+                              ? Icons.smart_display_outlined
+                              : Icons.library_music_outlined),
+                          label: Text(SwitchSessionButton.labelFor(other),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          onPressed: () => switchSessionAndShow(
+                              handler, Navigator.of(context)),
+                        ),
+                      );
+                    },
+                  ),
                   _ProgressBar(handler: handler),
                   const SizedBox(height: 8),
                   _Transport(handler: handler, isFavorite: isFavorite),
+                  _ToolsRow(handler: handler),
                 ],
               ),
             ),
           );
         },
       ),
+    );
+  }
+}
+
+/// The rest of the controls, under the transport: speed (videos), volume,
+/// sleep timer, shuffle, queue and track info.
+class _ToolsRow extends StatelessWidget {
+  const _ToolsRow({required this.handler});
+
+  final MusicAudioHandler handler;
+
+  @override
+  Widget build(BuildContext context) {
+    final track = handler.currentTrack;
+    final video = track?.isFeedVideo ?? false;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        // Feed videos only: speed is a podcast/talk thing, not a
+        // local-music one.
+        PlaybackSpeedButton(visible: video),
+        // The phone's volume, remembered separately for music and videos.
+        IconButton(
+          icon: const Icon(Icons.volume_up_outlined),
+          tooltip: video ? 'Video volume' : 'Music volume',
+          onPressed: () => showVolumeSheet(context, video: video),
+        ),
+        const SleepTimerButton(),
+        ValueListenableBuilder<bool>(
+          valueListenable: handler.shuffleEnabled,
+          builder: (context, shuffleOn, _) => IconButton(
+            icon: const Icon(Icons.shuffle),
+            tooltip: shuffleOn ? 'Shuffle on' : 'Shuffle off',
+            color: shuffleOn ? Theme.of(context).colorScheme.primary : null,
+            onPressed: () => handler.toggleShuffle(),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.queue_music),
+          tooltip: 'Queue',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const QueuePage()),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.info_outline),
+          tooltip: 'Track info',
+          onPressed: track == null
+              ? null
+              : () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => TrackMetadataPage(trackId: track.id),
+                  )),
+        ),
+      ],
     );
   }
 }

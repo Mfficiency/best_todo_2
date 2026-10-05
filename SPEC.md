@@ -3536,7 +3536,7 @@ exclusive on a track (favoriting clears a dislike and vice versa).
 
 **Shuffle toggle and queue reordering** (0.2.65 — `MusicAudioHandler.toggleShuffle`/
 `reorderQueue`, `lib/ui/queue_page.dart`'s `QueuePage`): a shuffle icon button in Now
-Playing's app bar (`ValueNotifier<bool> shuffleEnabled`) shuffles only the not-yet-played
+Playing's bottom tools row (`ValueNotifier<bool> shuffleEnabled`) shuffles only the not-yet-played
 tail of `_queue`, leaving playback history and the current track's position untouched;
 toggling it back off restores the tail's pre-shuffle order (captured in `_preShuffleOrder`
 when shuffle turns on). A "Queue" icon button next to it opens `QueuePage`, a
@@ -3831,7 +3831,7 @@ a `LinearProgressIndicator` plus a running count while scanning, then a
 found/with-genre/with-year summary, with each row showing a green check (both genre and year
 known), orange (one of the two) or red (neither) icon. Tapping a row opens
 `lib/ui/track_metadata_page.dart` (`TrackMetadataPage`), also reachable via a new "Track info"
-(ⓘ) button on Now Playing's app bar (disabled — `onPressed: null` — while nothing is playing):
+(ⓘ) button on Now Playing's bottom tools row (disabled — `onPressed: null` — while nothing is playing):
 editable title/artist/album/genre/year fields pre-filled from `MusicLibraryService.byId`, plus
 read-only duration/play count/date added/source/file path, and a note when the track was already
 manually edited. Saving calls `updateTrackMetadata`; an unparsable year shows an inline error
@@ -4331,7 +4331,7 @@ clamped 0.5–3.0) is the default for feed videos; local/Subsonic tracks always 
 `MusicAudioHandler._applySpeed` sets it after each track loads, using
 `_videoSpeedOverride` when set; `setVideoSpeed` (Now Playing) sets that override and applies
 it at once, and `setQueueAndPlay` clears it, so a quick change lasts for the rest of that
-queue only. `handler.videoSpeed` (ValueNotifier) drives Now Playing's app-bar
+queue only. `handler.videoSpeed` (ValueNotifier) drives Now Playing's bottom-row
 `PlaybackSpeedButton` (`lib/ui/playback_speed_sheet.dart`), shown only while the current
 track is a feed video (`isFeedVideo`), labelled e.g. "1.5×" (tooltip "Playback speed"). Its sheet
 has preset chips (0.75–3x), a 0.05-step slider with Slower/Faster buttons, and "Make … the
@@ -4370,6 +4370,13 @@ playing, else the remembered one). Opened from Now Playing's volume button (tool
 volume" or "Video volume" by the current track), Settings → Subscriptions feed → "Video
 volume" and Settings → Playback → "Music volume" (both show the remembered level, or "Not
 remembered yet").
+
+**Now Playing layout (Best Music 0.3.7).** The app bar holds only the menu button
+(`buildSubpageAppBar(..., showBack: false)`; the system back gesture still pops) and the
+title. Every control is at the bottom, top to bottom: the swipe hint, the "Back to music/
+videos" chip, the progress slider, the transport row (`_Transport`) and a tools row
+(`_ToolsRow`): playback speed (feed videos only), volume ("Music volume"/"Video volume"),
+sleep timer, shuffle, queue and track info. The tools row also shows under "Nothing playing".
 
 **Back/forward 10 seconds (Best Music 0.3.5).** While a feed video is the current track,
 `MusicAudioHandler.notificationControls` is `[previous, replay10, play/pause, forward10,
