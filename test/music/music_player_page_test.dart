@@ -286,6 +286,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Playlists'));
       await tester.pumpAndSettle();
+      // Below the New/Rule/Songs by BPM rows and the smart playlists.
+      await tester.dragUntilVisible(find.text('Road trip'),
+          find.byType(ListView).last, const Offset(0, -200));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Road trip'));
       await tester.pumpAndSettle();
 
@@ -346,6 +350,10 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Playlists'));
+      await tester.pumpAndSettle();
+      // Below the New/Rule/Songs by BPM rows and the smart playlists.
+      await tester.dragUntilVisible(find.text('Road trip'),
+          find.byType(ListView).last, const Offset(0, -200));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Road trip'));
       await tester.pumpAndSettle();
