@@ -98,7 +98,7 @@ final List<SuiteRule> suiteRules = [
     'lib/models/track.dart', 'lib/models/music_playlist.dart', 'lib/services/music_library_service.dart',
     'lib/services/music_playlist_service.dart', 'lib/services/music_audio_handler.dart', 'lib/services/music_player_service.dart',
     'lib/services/music_widget_service.dart', 'lib/services/m3u_playlist_service.dart', 'lib/services/subsonic_client.dart',
-    'lib/utils/artist_utils.dart', 'lib/ui/music_player_page.dart', 'lib/ui/now_playing_page.dart',
+    'lib/utils/artist_utils.dart', 'lib/ui/music_player_page.dart', 'lib/ui/now_playing_page.dart', 'lib/ui/bpm_range_page.dart', 'lib/models/bpm_preset.dart',
     'lib/ui/music_wishlist_page.dart', 'lib/services/music_download_library_sync.dart', 'lib/services/speaker_play_guard.dart', 'lib/services/music_youtube_fallback.dart', 'lib/services/youtube_search_api.dart',
   ], {'music', 'home'}),
   SuiteRule([

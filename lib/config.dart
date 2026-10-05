@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'models/bpm_preset.dart';
 import 'models/streak_goal.dart';
 import 'models/streak_reminder.dart';
 import 'models/view_filter_rules.dart';
@@ -661,6 +662,9 @@ class Config {
   static String musicTrackSortField = 'deviceDate';
   static bool musicTrackSortAscending = false;
 
+  /// Saved ranges on Best Music's BPM page, in the order they were saved.
+  static List<BpmPreset> musicBpmPresets = [];
+
   /// Music Player: ask "Play out loud?" before starting playback from a
   /// standstill while the phone's own speaker is the only audio output (no
   /// Bluetooth/wired headphones or speaker) — see `SpeakerPlayGuard`.
@@ -793,6 +797,7 @@ class Config {
       'musicExcludedSubfolders': musicExcludedSubfolders,
       'musicTrackSortField': musicTrackSortField,
       'musicTrackSortAscending': musicTrackSortAscending,
+      'musicBpmPresets': [for (final p in musicBpmPresets) p.toJson()],
       'musicConfirmSpeakerPlay': musicConfirmSpeakerPlay,
       'musicPhoneVolume': musicPhoneVolume,
       'videoPhoneVolume': videoPhoneVolume,
@@ -957,6 +962,13 @@ class Config {
         data['musicTrackSortField'] as String? ?? musicTrackSortField;
     musicTrackSortAscending =
         data['musicTrackSortAscending'] as bool? ?? musicTrackSortAscending;
+    final bpmPresets = data['musicBpmPresets'];
+    if (bpmPresets is List) {
+      musicBpmPresets = [
+        for (final p in bpmPresets)
+          if (BpmPreset.fromJson(p) case final preset?) preset,
+      ];
+    }
     musicConfirmSpeakerPlay =
         data['musicConfirmSpeakerPlay'] as bool? ?? musicConfirmSpeakerPlay;
     musicPhoneVolume = (data['musicPhoneVolume'] as num?)

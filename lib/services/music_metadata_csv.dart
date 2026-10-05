@@ -1,4 +1,5 @@
 import '../models/track.dart';
+import 'music_metadata_extractor.dart' show parseBpm;
 import 'usage_data_service.dart';
 
 /// One row of edits parsed back from a re-imported metadata CSV — see
@@ -11,6 +12,7 @@ class ParsedMetadataRow {
     required this.album,
     required this.genre,
     required this.year,
+    this.bpm,
     this.tags = const [],
   });
 
@@ -30,6 +32,7 @@ class ParsedMetadataRow {
   final String album;
   final String genre;
   final int? year;
+  final int? bpm;
   final List<String> tags;
 }
 
@@ -56,6 +59,7 @@ class MusicMetadataCsv {
     'album',
     'genre',
     'year',
+    'bpm',
     'tags',
   ];
 
@@ -70,6 +74,7 @@ class MusicMetadataCsv {
         track.album,
         track.genre,
         track.year,
+        track.bpm,
         track.tags.join('; '),
       ]);
     }
@@ -91,6 +96,7 @@ class MusicMetadataCsv {
     final albumIndex = header.indexOf('album');
     final genreIndex = header.indexOf('genre');
     final yearIndex = header.indexOf('year');
+    final bpmIndex = header.indexOf('bpm');
     final tagsIndex = header.indexOf('tags');
 
     String cell(List<String> row, int index) =>
@@ -109,6 +115,7 @@ class MusicMetadataCsv {
         album: cell(row, albumIndex),
         genre: cell(row, genreIndex),
         year: yearText.isEmpty ? null : int.tryParse(yearText),
+        bpm: parseBpm(cell(row, bpmIndex)),
         tags: tagsText.isEmpty
             ? const []
             : tagsText

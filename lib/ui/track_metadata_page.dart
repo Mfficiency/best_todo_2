@@ -28,6 +28,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
   late final TextEditingController _albumController;
   late final TextEditingController _genreController;
   late final TextEditingController _yearController;
+  late final TextEditingController _bpmController;
   late final TextEditingController _tagsController;
 
   @override
@@ -39,6 +40,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
     _albumController = TextEditingController(text: track?.album ?? '');
     _genreController = TextEditingController(text: track?.genre ?? '');
     _yearController = TextEditingController(text: track?.year?.toString() ?? '');
+    _bpmController = TextEditingController(text: track?.bpm?.toString() ?? '');
     _tagsController = TextEditingController(text: (track?.tags ?? const []).join(', '));
   }
 
@@ -49,6 +51,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
     _albumController.dispose();
     _genreController.dispose();
     _yearController.dispose();
+    _bpmController.dispose();
     _tagsController.dispose();
     super.dispose();
   }
@@ -60,6 +63,13 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
     if (yearText.isNotEmpty && year == null) {
       messenger.showSnackBar(
           const SnackBar(content: Text('Year must be a number, e.g. 2021')));
+      return;
+    }
+    final bpmText = _bpmController.text.trim();
+    final bpm = bpmText.isEmpty ? null : int.tryParse(bpmText);
+    if (bpmText.isNotEmpty && (bpm == null || bpm < 1 || bpm > 999)) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('BPM must be a number, e.g. 120')));
       return;
     }
     final tags = _tagsController.text
@@ -74,6 +84,7 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
       album: _albumController.text.trim(),
       genre: _genreController.text.trim(),
       year: year,
+      bpm: bpm,
       tags: tags,
     );
     if (mounted) Navigator.of(context).pop();
@@ -125,6 +136,13 @@ class _TrackMetadataPageState extends State<TrackMetadataPage> {
                     TextField(
                       controller: _yearController,
                       decoration: const InputDecoration(labelText: 'Year'),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _bpmController,
+                      decoration: const InputDecoration(
+                          labelText: 'BPM (beats per minute)'),
                       keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 12),

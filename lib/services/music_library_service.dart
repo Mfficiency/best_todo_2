@@ -227,6 +227,8 @@ class MusicLibraryService {
             ? previous.copyWith(
                 durationMs: track.durationMs ?? previous.durationMs,
                 deviceDate: deviceDate,
+                // A BPM typed in by hand wins; a tag added later fills a gap.
+                bpm: previous.bpm ?? track.bpm,
               )
             : track.copyWith(
                 dateAdded: previous?.dateAdded ?? now,
@@ -288,6 +290,7 @@ class MusicLibraryService {
         album: (tags.album ?? '').trim(),
         genre: (tags.genre ?? '').trim(),
         year: tags.year,
+        bpm: tags.bpm,
       );
     } catch (_) {
       return Track.local(filePath: filePath, title: fallbackTitle);
@@ -307,6 +310,7 @@ class MusicLibraryService {
     required String album,
     required String genre,
     int? year,
+    int? bpm,
     List<String> tags = const [],
   }) async {
     final index = tracks.value.indexWhere((t) => t.id == trackId);
@@ -323,6 +327,7 @@ class MusicLibraryService {
       durationMs: existing.durationMs,
       genre: genre,
       year: year,
+      bpm: bpm,
       dateAdded: existing.dateAdded,
       deviceDate: existing.deviceDate,
       playCount: existing.playCount,
@@ -361,6 +366,7 @@ class MusicLibraryService {
         durationMs: existing.durationMs,
         genre: row.genre.isNotEmpty ? row.genre : existing.genre,
         year: row.year ?? existing.year,
+        bpm: row.bpm ?? existing.bpm,
         dateAdded: existing.dateAdded,
         deviceDate: existing.deviceDate,
         playCount: existing.playCount,

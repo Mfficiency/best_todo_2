@@ -80,6 +80,8 @@ void main() {
     expect(find.text('My Album'), findsOneWidget);
     expect(find.text('Rock'), findsOneWidget);
     expect(find.text('2020'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('3'), 100,
+        scrollable: find.byType(Scrollable).first);
     expect(find.text('3'), findsOneWidget); // play count
     expect(find.text('2:05'), findsOneWidget); // duration
     // Both dates: when the file arrived on the device, and in the app.

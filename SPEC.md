@@ -4519,6 +4519,32 @@ search results as the queue. Paging older weeks and the footer are off while sea
 Not done yet (deliberately out of the MVP): in-app video playback, background
 new-upload notifications, feed groups.
 
+### 10.6n Songs by BPM (Best Music 0.3.8)
+**BPM per track** — `Track.bpm` (int?, JSON `bpm`, omitted when null; kept by `copyWith`).
+Sources: an mp3's ID3 `TBPM` frame (`decodeMp3Tags` → `ExtractedTags.bpm` via `parseBpm`:
+first number in the text, `,`/`.` decimals rounded, 1–999 else null); an OpenSubsonic
+server's `bpm` (0 = unknown → null, `Track.subsonic(bpm:)`); the Track info page's "BPM (beats
+per minute)" field (validated 1–999, passed to `updateTrackMetadata(bpm:)` — which sets
+exactly the given values, so the page must always pass it); and the metadata CSV's `bpm`
+column (between `year` and `tags`; blank cell = keep, like the other columns). A rescan of a
+`metadataEdited` track keeps the hand-set BPM but fills a missing one from the tag
+(`previous.bpm ?? track.bpm`).
+
+**Page** — `lib/ui/bpm_range_page.dart` (`BpmRangePage`), from Best Music's drawer ("Songs by
+BPM") and the Playlists tab's third row (also in BestToDo's Music Player). With no song
+having a BPM it explains the three ways to add one. Otherwise: a row of preset `InputChip`s
+("<name> · min–max"; tap applies the range — with a snackbar if it reaches past the
+library's range — delete icon removes it with Undo), a big "min – max BPM" label, a
+`RangeSlider` over `bpmBounds(library)` (lowest..highest BPM in the library, 1-BPM steps,
+both handles draggable; the range starts as the full span and is clamped when the library
+changes), "N songs · M without a BPM aren't shown", and the list `tracksInBpmRange` (BPM
+ascending, then title; trailing "128 BPM"; tap = play the list from that song). Bottom
+buttons: "Play as queue" (`MusicPlayerService.playQueue` of the list), "Save as playlist"
+(name dialog suggesting "min–max BPM" → `MusicPlaylistService.createPlaylist` with the listed
+ids — a fixed snapshot), "Save preset" (name dialog → `Config.musicBpmPresets`, a list of
+`BpmPreset {name, min, max}` (`lib/models/bpm_preset.dart`, tolerant `fromJson`: swapped
+ends reordered, missing ends dropped); saving under an existing name replaces it).
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line

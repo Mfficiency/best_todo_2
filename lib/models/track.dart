@@ -53,6 +53,11 @@ class Track {
   /// Release year, when known (from an mp3's `TDRC`/`TYER`/`TDOR` ID3 tag).
   final int? year;
 
+  /// Tempo in beats per minute, when known — from an mp3's `TBPM` ID3
+  /// tag, a metadata CSV import or the Track info page. Backs the BPM
+  /// range page.
+  final int? bpm;
+
   /// When this track was first seen by a library scan. Preserved across
   /// later rescans (a file that's still there doesn't get a new "added"
   /// date just because the library was refreshed) — backs the "Last Added"
@@ -100,6 +105,7 @@ class Track {
     this.durationMs,
     this.genre = '',
     this.year,
+    this.bpm,
     this.dateAdded,
     this.deviceDate,
     this.playCount = 0,
@@ -115,6 +121,7 @@ class Track {
     int? durationMs,
     String genre = '',
     int? year,
+    int? bpm,
     DateTime? dateAdded,
     DateTime? deviceDate,
     int playCount = 0,
@@ -131,6 +138,7 @@ class Track {
       durationMs: durationMs,
       genre: genre,
       year: year,
+      bpm: bpm,
       dateAdded: dateAdded,
       deviceDate: deviceDate,
       playCount: playCount,
@@ -145,6 +153,7 @@ class Track {
     String artist = '',
     String album = '',
     int? durationMs,
+    int? bpm,
   }) {
     return Track(
       id: 'subsonic:$remoteId',
@@ -154,6 +163,7 @@ class Track {
       artist: artist,
       album: album,
       durationMs: durationMs,
+      bpm: bpm,
     );
   }
 
@@ -201,6 +211,7 @@ class Track {
     int? durationMs,
     String? genre,
     int? year,
+    int? bpm,
     DateTime? dateAdded,
     DateTime? deviceDate,
     int? playCount,
@@ -220,6 +231,7 @@ class Track {
       durationMs: durationMs ?? this.durationMs,
       genre: genre ?? this.genre,
       year: year ?? this.year,
+      bpm: bpm ?? this.bpm,
       dateAdded: dateAdded ?? this.dateAdded,
       deviceDate: deviceDate ?? this.deviceDate,
       playCount: playCount ?? this.playCount,
@@ -241,6 +253,7 @@ class Track {
         if (durationMs != null) 'durationMs': durationMs,
         if (genre.isNotEmpty) 'genre': genre,
         if (year != null) 'year': year,
+        if (bpm != null) 'bpm': bpm,
         if (dateAdded != null) 'dateAdded': dateAdded!.millisecondsSinceEpoch,
         if (deviceDate != null)
           'deviceDate': deviceDate!.millisecondsSinceEpoch,
@@ -270,6 +283,7 @@ class Track {
       durationMs: (json['durationMs'] as num?)?.round(),
       genre: json['genre'] as String? ?? '',
       year: (json['year'] as num?)?.round(),
+      bpm: (json['bpm'] as num?)?.round(),
       dateAdded: dateAddedMs is num
           ? DateTime.fromMillisecondsSinceEpoch(dateAddedMs.round())
           : null,

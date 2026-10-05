@@ -8,7 +8,8 @@ import 'package:id3_codec/id3_codec.dart';
 /// `tool/scan_music_metadata.dart` script, runnable with plain `dart run`
 /// without booting the Flutter engine.
 class ExtractedTags {
-  const ExtractedTags({this.title, this.artist, this.album, this.genre, this.year});
+  const ExtractedTags(
+      {this.title, this.artist, this.album, this.genre, this.year, this.bpm});
 
   final String? title;
   final String? artist;
@@ -18,6 +19,9 @@ class ExtractedTags {
   /// Release year, pulled out of whichever of `TDRC`/`TYER`/`TDOR` is
   /// present.
   final int? year;
+
+  /// Tempo from the `TBPM` frame (`"128"`, sometimes `"127.5"`), rounded.
+  final int? bpm;
 }
 
 /// How many bytes of a file's head to read when looking for an ID3v2 tag.
@@ -27,7 +31,7 @@ class ExtractedTags {
 const int id3ReadCap = 1024 * 1024;
 
 /// Decodes the ID3v2 text frames this app cares about (title/artist/album/
-/// genre/year) out of an mp3's head bytes. Returns an all-null
+/// genre/year/BPM) out of an mp3's head bytes. Returns an all-null
 /// [ExtractedTags] when nothing decodes — never throws.
 ExtractedTags decodeMp3Tags(Uint8List headBytes) {
   try {
@@ -43,6 +47,7 @@ ExtractedTags decodeMp3Tags(Uint8List headBytes) {
       year: _parseYear(_frameInfo(tagMap, 'TDRC') ??
           _frameInfo(tagMap, 'TYER') ??
           _frameInfo(tagMap, 'TDOR')),
+      bpm: parseBpm(_frameInfo(tagMap, 'TBPM')),
     );
   } catch (_) {
     return const ExtractedTags();
@@ -74,6 +79,17 @@ String? _cleanGenre(String? raw) {
     return name.isNotEmpty ? name : trimmed;
   }
   return trimmed;
+}
+
+/// A BPM tag value as a whole number; null when missing, zero or not a
+/// plausible tempo.
+int? parseBpm(String? raw) {
+  if (raw == null) return null;
+  final match = RegExp(r'\d+(?:[.,]\d+)?').firstMatch(raw);
+  if (match == null) return null;
+  final value = double.tryParse(match.group(0)!.replaceAll(',', '.'));
+  if (value == null || value < 1 || value > 999) return null;
+  return value.round();
 }
 
 /// Pulls a 4-digit year out of a `TYER` (`"2020"`) or `TDRC`/`TDOR`

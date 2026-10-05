@@ -17,8 +17,8 @@ void main() {
       ]);
 
       final lines = csv.split('\r\n');
-      expect(lines[0], 'id,filename,title,artist,album,genre,year,tags');
-      expect(lines[1], 'local:/music/song.mp3,song,Song,Artist,Album,Rock,2021,');
+      expect(lines[0], 'id,filename,title,artist,album,genre,year,bpm,tags');
+      expect(lines[1], 'local:/music/song.mp3,song,Song,Artist,Album,Rock,2021,,');
     });
 
     test('leaves genre/year/tags empty for a track with no known value', () {
@@ -27,7 +27,7 @@ void main() {
       ]);
 
       final lines = csv.split('\r\n');
-      expect(lines[1], 'local:/music/untagged.mp3,untagged,untagged,,,,,');
+      expect(lines[1], 'local:/music/untagged.mp3,untagged,untagged,,,,,,');
     });
 
     test('joins multiple tags with "; " in one cell', () {
@@ -42,7 +42,7 @@ void main() {
       final lines = csv.split('\r\n');
       expect(
           lines[1],
-          'local:/music/song.mp3,song,Song,,,,,'
+          'local:/music/song.mp3,song,Song,,,,,,'
           'Wedding songs; Belgian Top Charts');
     });
 
@@ -60,7 +60,7 @@ void main() {
 
     test('an empty track list still writes just the header row', () {
       final csv = MusicMetadataCsv.encode(const []);
-      expect(csv.trim(), 'id,filename,title,artist,album,genre,year,tags');
+      expect(csv.trim(), 'id,filename,title,artist,album,genre,year,bpm,tags');
     });
   });
 
