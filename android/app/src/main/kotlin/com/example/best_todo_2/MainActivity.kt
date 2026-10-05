@@ -8,6 +8,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -233,6 +234,32 @@ class MainActivity : FlutterFragmentActivity() {
                 "vibrate" -> result.success(startVibration())
                 "stopVibrate" -> {
                     stopVibration()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/media_scanner",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                // Files this app writes with plain File I/O (the MP3
+                // downloader saving straight into a user-picked folder)
+                // never pass through MediaStore, so OEM media apps —
+                // Samsung's Music/My Files/Gallery included — don't know
+                // they exist until the next full device media scan, which
+                // on some OEMs only happens on reboot. Scanning the file
+                // right after it's written gets it indexed immediately.
+                "scanFile" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.error("bad-args", "path missing", null)
+                        return@setMethodCallHandler
+                    }
+                    MediaScannerConnection.scanFile(
+                        applicationContext, arrayOf(path), null, null
+                    )
                     result.success(null)
                 }
                 else -> result.notImplemented()

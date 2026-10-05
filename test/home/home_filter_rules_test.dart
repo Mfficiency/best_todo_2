@@ -5,6 +5,7 @@ import 'package:besttodo/models/task.dart';
 import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
+import 'package:besttodo/utils/label_utils.dart';
 import 'package:besttodo/ui/home_page.dart';
 import 'package:besttodo/ui/settings_page.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +33,8 @@ void main() {
 
   tearDown(() {
     Config.viewFilterRules = {};
+    Config.startInScheduleView = false;
+    Config.resetHideDemoItemsForTest();
   });
 
   Future<void> pumpHome(
@@ -74,6 +77,53 @@ void main() {
 
     expect(find.text('Visible task'), findsOneWidget);
     expect(find.text('Blocked task'), findsNothing);
+  });
+
+  testWidgets(
+      'the schedule view applies the same Home exclude-tag rule as the tabs',
+      (tester) async {
+    // Regression: the schedule view used to filter on the structural gate
+    // only, so a phone that starts in that view showed everything the Home
+    // rules hide — including demo items.
+    final today = DateTime.now();
+    Config.startInScheduleView = true;
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules(excludeTags: ['later']);
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Visible task', dueDate: today),
+        Task(title: 'Hidden task', dueDate: today, label: 'later'),
+      ],
+      marker: 'Visible task',
+    );
+
+    expect(find.text('Hidden task'), findsNothing);
+  });
+
+  testWidgets('the schedule view hides demo items like the tabs do',
+      (tester) async {
+    final today = DateTime.now();
+    Config.startInScheduleView = true;
+    Config.hideDemoItems = true;
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Real task', dueDate: today),
+        Task(title: 'Seeded sample', dueDate: today, label: demoToken),
+        Task(
+          title: 'Legacy seeded sample',
+          dueDate: today,
+          description: 'Seeded dev future task',
+        ),
+      ],
+      marker: 'Real task',
+    );
+
+    expect(find.text('Seeded sample'), findsNothing);
+    expect(find.text('Legacy seeded sample'), findsNothing);
   });
 
   testWidgets('clearing the rule brings the task back', (tester) async {
@@ -143,6 +193,38 @@ void main() {
       Config.viewFilterRules[ViewFilterRules.home]?.excludeTags,
       isEmpty,
     );
+  });
+
+  testWidgets(
+      'Settings → Filtering rules: the demo filter switch is shown and '
+      'toggles Config.hideDemoItems', (tester) async {
+    Config.hideDemoItems = true;
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+
+    final filteringChip = find.widgetWithText(ChoiceChip, 'Filtering rules');
+    await tester.ensureVisible(filteringChip);
+    await tester.pumpAndSettle();
+    await tester.tap(filteringChip);
+    await tester.pumpAndSettle();
+
+    final demoSwitch =
+        find.widgetWithText(SwitchListTile, 'Hide demo and sample items');
+    expect(demoSwitch, findsOneWidget);
+    expect(tester.widget<SwitchListTile>(demoSwitch).value, isTrue);
+
+    await tester.tap(demoSwitch);
+    // The tap awaits Config.save() before the rebuild settles.
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    expect(Config.hideDemoItems, isFalse);
   });
 
   testWidgets(

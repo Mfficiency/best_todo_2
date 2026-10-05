@@ -82,6 +82,42 @@ online refresh) and by `sync_test_report.dart` (build packaging).
    `dart run tool/publish_apk.dart` after any release build).
 5. Promote by merging dev → staging → main when asked.
 
+## Wishlist build automation (0.2.35)
+
+Tools → Wishlist's "Build" swipe action (see SPEC §10.6 "Send to build")
+opens a `wishlist-build`-labeled GitHub issue via `GithubWishlistService`.
+A Claude Code Remote Routine, created from a Claude Code Remote session with
+`create_trigger`, watches for those issues:
+
+- **Schedule:** daily at 17:00 (local time the routine was created in —
+  confirm/adjust if the owner's timezone changes), plus fireable on demand
+  via `fire_trigger` from a Claude Code Remote session.
+- **Per firing:** list open issues labeled `wishlist-build` on
+  `Mfficiency/best_todo_2`. For each: read the `Wishlist item uid: <uid>`
+  trailer line the issue body carries (`wishlistIssueUidPrefix` in
+  `wishlist_page.dart`) — that's the item's `Task.uid`, needed below since
+  the issue's title/description alone carry no client-side id. Implement the
+  item per this file's own conventions (bump version + CHANGELOG, add/update
+  the matching test suite, add a `ShippedWish(uid, newVersion, note)` entry
+  in `wishlist_shipped.dart` keyed on that uid so the item self-ticks once
+  the new version lands on the device that created it), commit, and push
+  straight to
+  `dev` — no PR/approval step, matching the "bump, sync and build" workflow's
+  own direct-to-dev habit and the owner's explicit preference (they build/
+  review locally). Close the issue with a comment naming what shipped once
+  pushed.
+- **Delivery:** nothing new — `build-apk.yml` already builds/tests/publishes
+  a GitHub release APK on every `dev` push (see above), and the About page's
+  "Check for updates" already downloads it.
+- **Credential split:** the app's own GitHub token (Settings → Wishlist
+  build, `Config.githubWishlistToken`) is scoped to Issues-only on this repo
+  and is used solely to open the issue from the device. It is unrelated to
+  whatever push access the Claude Code Remote session/routine itself uses to
+  commit to `dev`.
+
+An ambiguous or clearly large wishlist item should get a clarifying comment
+on its issue instead of a blind implementation attempt.
+
 ## In-app automation (runs on the user's device)
 
 For completeness — the app itself automates: self-re-arming SMS report chain,

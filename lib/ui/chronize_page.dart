@@ -7,6 +7,7 @@ import 'package:flutter/physics.dart';
 
 import '../config.dart';
 import '../models/task.dart';
+import '../utils/date_time_format.dart';
 import '../utils/linkified_text.dart';
 import 'subpage_app_bar.dart';
 
@@ -1139,10 +1140,7 @@ class _TaskEditDialogState extends State<_TaskEditDialog> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_due),
-    );
+    final picked = await pickTimeOfDay(context, TimeOfDay.fromDateTime(_due));
     if (picked != null) {
       setState(() => _due = DateTime(
           _due.year, _due.month, _due.day, picked.hour, picked.minute));

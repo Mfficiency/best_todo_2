@@ -67,6 +67,7 @@ class FoodDiaryWidgetService {
   static int computeEntryCount(List<Task> tasks, DateTime day) {
     var count = 0;
     for (final entry in ItemViews.foodDiary(tasks)) {
+      if (entry.isStomachIssue) continue;
       final due = entry.dueDate;
       if (due == null) continue;
       if (!_isSameDay(due, day)) continue;
@@ -82,6 +83,7 @@ class FoodDiaryWidgetService {
   static List<Task?> latestEntryPerMealWindow(List<Task> tasks, DateTime day) {
     final latest = List<Task?>.filled(mealNames.length, null);
     for (final entry in ItemViews.foodDiary(tasks)) {
+      if (entry.isStomachIssue) continue;
       final due = entry.dueDate;
       if (due == null) continue;
       if (!_isSameDay(due, day)) continue;

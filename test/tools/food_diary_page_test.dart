@@ -256,6 +256,42 @@ void main() {
     expect(cardFor('Evening meal').color, const Color(0xFFF3E1E6));
   });
 
+  testWidgets(
+      'stomach-issue entries are never tinted by time of day, unlike meals',
+      (tester) async {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Morning meal',
+          dueDate: day.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+        ),
+        Task(
+          title: 'Gas · Start',
+          dueDate: day.add(const Duration(hours: 8)),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+          isStomachIssue: true,
+          stomachEventType: 'start',
+          stomachSymptomTypes: const ['gas'],
+        ),
+      ],
+      marker: 'Morning meal',
+    );
+
+    final morningCard = tester.widget<Card>(
+        find.ancestor(of: find.text('Morning meal'), matching: find.byType(Card)));
+    final stomachCard = tester.widget<Card>(find.ancestor(
+        of: find.text('Gas · Start'), matching: find.byType(Card)));
+
+    expect(morningCard.color, const Color(0xFFE3F2FD));
+    expect(stomachCard.color, isNull);
+  });
+
   testWidgets('add dialog creates a tagged entry with a title and time',
       (tester) async {
     await pumpFoodDiary(
@@ -555,5 +591,148 @@ void main() {
     final button = tester.widget<IconButton>(
         find.ancestor(of: breakfastButton, matching: find.byType(IconButton)));
     expect(button.onPressed, isNull);
+  });
+
+  testWidgets(
+      'add dialog can log a stomach issue entry with type, event and '
+      'intensity', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [Task(title: 'Greek yogurt', isEatingHabit: true)],
+      marker: 'Greek yogurt',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    // Nothing logged today yet, so the toggle defaults to Start.
+    expect(find.text('Intensity: 5/10'), findsOneWidget);
+
+    // Gas is preselected by default; swap it for Liquid. Add Liquid before
+    // removing Gas — the segmented button never allows the selection to go
+    // empty, so removing the sole selected type first would be a no-op.
+    await tester.tap(find.text('Liquid'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gas'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Liquid · Start'), findsOneWidget);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final added = saved
+        .cast<Map<String, dynamic>>()
+        .firstWhere((t) => t['isStomachIssue'] == true);
+    expect(added['stomachEventType'], 'start');
+    expect(added['stomachSymptomTypes'], ['liquid']);
+    expect(added['stomachIntensity'], 5);
+    expect(added['isEatingHabit'], isTrue);
+  });
+
+  testWidgets(
+      'the type toggle is multi-select: gas, liquid and discomfort can all '
+      'be chosen at once', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [Task(title: 'Greek yogurt', isEatingHabit: true)],
+      marker: 'Greek yogurt',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    // Gas is preselected by default; add the other two on top of it.
+    await tester.tap(find.text('Liquid'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discomfort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Gas, Liquid, Discomfort · Start'), findsOneWidget);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final added = saved
+        .cast<Map<String, dynamic>>()
+        .firstWhere((t) => t['isStomachIssue'] == true);
+    expect((added['stomachSymptomTypes'] as List).toSet(),
+        {'gas', 'liquid', 'discomfort'});
+  });
+
+  testWidgets(
+      'stomach start/stop toggle prefills to stop when an earlier start is '
+      'still open today', (tester) async {
+    final now = DateTime.now();
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Gas · Start',
+          dueDate: DateTime(now.year, now.month, now.day, 9),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+          isStomachIssue: true,
+          stomachEventType: 'start',
+          stomachSymptomTypes: const ['gas'],
+          stomachIntensity: 4,
+        ),
+      ],
+      marker: 'Gas · Start',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final stopped = saved
+        .cast<Map<String, dynamic>>()
+        .where((t) => t['stomachEventType'] == 'stop')
+        .toList();
+    expect(stopped, hasLength(1));
+  });
+
+  testWidgets(
+      'tapping the already-selected Start/Stop segment clears it to no '
+      'selection', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [Task(title: 'Greek yogurt', isEatingHabit: true)],
+      marker: 'Greek yogurt',
+    );
+
+    await tester.tap(find.byTooltip('Add food diary entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stomach'));
+    await tester.pumpAndSettle();
+
+    // Nothing logged today yet, so the toggle defaults to Start selected.
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    // With neither Start nor Stop set, the headline drops the suffix.
+    expect(find.text('Gas'), findsOneWidget);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    final added = saved
+        .cast<Map<String, dynamic>>()
+        .firstWhere((t) => t['isStomachIssue'] == true);
+    expect(added['stomachEventType'], isNull);
   });
 }

@@ -14,6 +14,42 @@ const String legacyImportToken = 'old';
 /// because the feature behind it shipped (see `wishlist_shipped.dart`).
 const String autoCompletedToken = 'autocompleted';
 
+/// Label token stamped on every task/alarm/timer the app generates for
+/// itself rather than the user: the first-run starter tasks
+/// (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
+/// seed (`home_page.dart`'s `_buildDev*`/`_seedDev*` methods,
+/// `AlarmService._buildDevSeed`, `CountdownTimerPage._devSeedTimers`,
+/// `FoodDiaryPage._buildDevSeed`, `WishlistPage._load`'s dev fallback). Once
+/// one of these is saved to disk it is a normal record indistinguishable
+/// from anything the user typed, and outlives whatever produced it —
+/// including `Config.isDev` going back to false on a later release build —
+/// so this token is how a Settings → Filtering rules exclude rule can still
+/// hide it everywhere.
+const String demoToken = 'demo';
+
+/// Description prefixes every dev-mode filler seed writes into the item it
+/// creates ("Seeded dev future task", "Dev seed: a wishlist item", ...).
+/// Machine-written strings no human types, so they identify a seeded demo
+/// item even when it carries no [demoToken] at all — which is the case for
+/// everything seeded to disk before 0.2.31 stamped that token (a debug build
+/// run once on a real phone leaves 20+ such tasks behind, and they outlive
+/// every later release install). `ItemViews.stateTags` turns a match into a
+/// synthetic [demoToken] tag, so the production demo gate
+/// (`Config.hideDemoItems`) and a hand-written `demo` Hide rule both catch
+/// those legacy items too.
+const List<String> demoSeedDescriptionPrefixes = <String>[
+  'Seeded dev',
+  'Dev seed:',
+];
+
+/// Whether [description] is one of the dev-seed markers above.
+bool isDemoSeedDescription(String description) {
+  final text = description.trimLeft().toLowerCase();
+  if (text.isEmpty) return false;
+  return demoSeedDescriptionPrefixes
+      .any((p) => text.startsWith(p.toLowerCase()));
+}
+
 /// Label token stamped on every task newly pulled in from Todoist (see
 /// `TodoistSyncService._taskFromRemote`). Keeps it out of every list —
 /// home tabs, wishlist, project boards — until a human approves or denies
@@ -92,6 +128,16 @@ bool isProtectedToken(String token) {
       protectedStateTokens.any((t) => t.toLowerCase() == lower);
 }
 
+/// Label token identifying a Worklist item (`home_page.dart`'s
+/// `tagFilter: 'mlr'`). Like [waitingApprovalToken], this gates the task out
+/// of every other view — home tabs, schedule view, wishlist, project boards,
+/// the home-screen widget — so it only ever appears inside the Worklist tool
+/// itself (see [ItemViews.isVisibleInMainViews]).
+const String worklistToken = 'mlr';
+
+/// Whether [label] carries the Worklist gate.
+bool hasWorklistToken(String label) => labelHasToken(label, worklistToken);
+
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[
   'priority-low',
@@ -109,6 +155,14 @@ const List<String> releaseGroupTokens = <String>[
   releaseNextToken,
   releaseSoonToken,
 ];
+
+/// Marks a wishlist item as dispatched to the build automation — the "Send
+/// to build" swipe action opens a `wishlist-build`-labeled GitHub issue and
+/// stamps this token so the item won't be sent twice. Deliberately separate
+/// from [releaseGroupTokens]: those name a human's release-planning intent,
+/// this one names an already-taken automation action. See
+/// `.claude/notes/automation.md`.
+const String nextBuildToken = 'next-build';
 
 /// Splits a task's label string into its distinct tokens, order-preserving.
 List<String> splitLabelTokens(String label) {
@@ -131,6 +185,7 @@ String labelKindFor(String token) {
   if (priorityTokens.contains(lower)) return Label.kindPriority;
   if (lower == legacyImportToken ||
       lower == autoCompletedToken ||
+      lower == demoToken ||
       isProtectedToken(token)) {
     return Label.kindSystem;
   }

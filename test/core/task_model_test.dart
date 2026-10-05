@@ -116,6 +116,38 @@ void main() {
     expect(Task.fromJson(task.toJson()).isEatingHabit, isTrue);
   });
 
+  test('isStomachIssue and its fields default to unset and serialize', () {
+    final task = Task(title: 'Plain');
+    expect(task.isStomachIssue, isFalse);
+    expect(task.stomachEventType, isNull);
+    expect(task.stomachSymptomTypes, isEmpty);
+    expect(task.stomachIntensity, isNull);
+    final legacy = Task.fromJson(<String, dynamic>{'title': 'legacy'});
+    expect(legacy.isStomachIssue, isFalse);
+    expect(legacy.stomachEventType, isNull);
+    expect(legacy.stomachSymptomTypes, isEmpty);
+
+    task.isStomachIssue = true;
+    task.stomachEventType = 'start';
+    task.stomachSymptomTypes = ['gas', 'discomfort'];
+    task.stomachIntensity = 6;
+    final decoded = Task.fromJson(task.toJson());
+    expect(decoded.isStomachIssue, isTrue);
+    expect(decoded.stomachEventType, 'start');
+    expect(decoded.stomachSymptomTypes, ['gas', 'discomfort']);
+    expect(decoded.stomachIntensity, 6);
+  });
+
+  test('a legacy single stomachSymptomType string loads as a one-item list',
+      () {
+    final legacy = Task.fromJson(<String, dynamic>{
+      'title': 'Old stomach entry',
+      'isStomachIssue': true,
+      'stomachSymptomType': 'liquid',
+    });
+    expect(legacy.stomachSymptomTypes, ['liquid']);
+  });
+
   test('isResearch defaults to false and serializes', () {
     final task = Task(title: 'Plain');
     expect(task.isResearch, isFalse);

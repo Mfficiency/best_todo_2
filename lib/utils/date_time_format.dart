@@ -272,16 +272,11 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
       return;
     }
 
-    final pos = (ang / (2 * math.pi) * 12).round() % 12; // 0..11, 0 = top
     int h;
     if (_use24) {
-      final inner = v.distance < _dialSize / 2 * 0.66;
-      if (inner) {
-        h = pos == 0 ? 0 : pos + 12; // 00, 13..23
-      } else {
-        h = pos == 0 ? 12 : pos; // 12, 1..11
-      }
+      h = (ang / (2 * math.pi) * 24).round() % 24; // single ring, 0..23
     } else {
+      final pos = (ang / (2 * math.pi) * 12).round() % 12; // 0..11, 0 = top
       final h12 = pos == 0 ? 12 : pos;
       h = (h12 % 12) + (_hour >= 12 ? 12 : 0);
     }
@@ -433,7 +428,6 @@ class _ClockPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     final outerR = radius - 18;
-    final innerR = radius - 54;
 
     canvas.drawCircle(
         center, radius, Paint()..color = scheme.surfaceContainerHighest);
@@ -462,18 +456,15 @@ class _ClockPainter extends CustomPainter {
           (i) => (i * 5).toString().padLeft(2, '0'),
           (i) => minute % 5 == 0 && minute ~/ 5 == i);
     } else if (use24) {
-      _drawRing(canvas, center, outerR, 12, (i) => (i == 0 ? 12 : i).toString(),
-          (i) {
-        final val = i == 0 ? 12 : i;
-        final outer = !(hour == 0 || hour >= 13);
-        return outer && val == hour;
-      });
-      _drawRing(canvas, center, innerR, 12,
-          (i) => (i == 0 ? '00' : (i + 12).toString()), (i) {
-        final val = i == 0 ? 0 : i + 12;
-        final inner = hour == 0 || hour >= 13;
-        return inner && val == hour;
-      });
+      // A single ring with all 24 hours (no inner/outer AM-PM-style split).
+      _drawRing(
+          canvas,
+          center,
+          outerR,
+          24,
+          (i) => i.toString().padLeft(2, '0'),
+          (i) => i == hour,
+          fontScale: 0.72);
     } else {
       final curH12 = hour % 12 == 0 ? 12 : hour % 12;
       _drawRing(canvas, center, outerR, 12, (i) => (i == 0 ? 12 : i).toString(),
@@ -483,22 +474,21 @@ class _ClockPainter extends CustomPainter {
 
   ({double angle, double radius}) _selectedAngleRadius(double radius) {
     final outerR = radius - 18;
-    final innerR = radius - 54;
     if (step == _TimePickStep.minute) {
       return (angle: minute / 60 * 2 * math.pi, radius: outerR);
     }
     if (use24) {
-      final inner = hour == 0 || hour >= 13;
-      final pos = inner ? (hour == 0 ? 0 : hour - 12) : (hour == 12 ? 0 : hour);
-      return (angle: pos / 12 * 2 * math.pi, radius: inner ? innerR : outerR);
+      return (angle: hour / 24 * 2 * math.pi, radius: outerR);
     }
     final curH12 = hour % 12 == 0 ? 12 : hour % 12;
     final pos = curH12 == 12 ? 0 : curH12;
     return (angle: pos / 12 * 2 * math.pi, radius: outerR);
   }
 
-  void _drawRing(Canvas canvas, Offset center, double r, int count,
-      String Function(int) labelFor, bool Function(int) isSelected) {
+  void _drawRing(
+      Canvas canvas, Offset center, double r, int count,
+      String Function(int) labelFor, bool Function(int) isSelected,
+      {double fontScale = 1}) {
     for (var i = 0; i < count; i++) {
       final ang = i / count * 2 * math.pi;
       final pos = center + Offset(math.sin(ang) * r, -math.cos(ang) * r);
@@ -507,6 +497,7 @@ class _ClockPainter extends CustomPainter {
         text: TextSpan(
           text: labelFor(i),
           style: textStyle.copyWith(
+            fontSize: (textStyle.fontSize ?? 14) * fontScale,
             color: selected ? scheme.onPrimary : scheme.onSurface,
             fontWeight: selected ? FontWeight.bold : FontWeight.normal,
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/alarm.dart';
 import '../services/alarm_sound.dart';
+import '../utils/date_time_format.dart';
 import 'label_picker.dart';
 import 'subpage_app_bar.dart';
 
@@ -102,9 +103,9 @@ class _AlarmEditPageState extends State<AlarmEditPage> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: _draft.hour, minute: _draft.minute),
+    final picked = await pickTimeOfDay(
+      context,
+      TimeOfDay(hour: _draft.hour, minute: _draft.minute),
     );
     if (picked != null) {
       setState(() {

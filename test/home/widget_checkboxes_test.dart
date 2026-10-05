@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/streak_service.dart';
 import 'package:besttodo/services/task_widget_service.dart';
@@ -90,6 +91,31 @@ void main() {
       denied,
       pending,
       taskDue('open today', today, ranking: 3),
+    ];
+
+    final rows = TaskWidgetService.todayTasks(tasks, now: now);
+
+    expect(rows.map((t) => t.title).toList(), ['open today']);
+  });
+
+  test('todayTasks applies the Home view filter rules and the demo gate', () {
+    // The widget is the Today tab on the launcher: a task Home hides must
+    // not reappear there.
+    final now = DateTime(2026, 8, 5, 10);
+    final today = DateTime(2026, 8, 5);
+    Config.hideDemoItems = true;
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules(excludeTags: ['later']);
+    addTearDown(() {
+      Config.viewFilterRules = {};
+      Config.resetHideDemoItemsForTest();
+    });
+    final tasks = [
+      taskDue('open today', today, ranking: 1),
+      taskDue('hidden by rule', today, ranking: 2)..label = 'later',
+      taskDue('seeded sample', today, ranking: 3)..label = demoToken,
+      taskDue('legacy sample', today, ranking: 4)
+        ..description = 'Seeded dev future task',
     ];
 
     final rows = TaskWidgetService.todayTasks(tasks, now: now);

@@ -3,6 +3,7 @@ import 'package:home_widget/home_widget.dart';
 import '../config.dart';
 import '../models/streak_kind.dart';
 import '../models/task.dart';
+import '../models/view_filter_rules.dart';
 import 'item_views.dart';
 import 'storage_service.dart';
 import 'streak_service.dart';
@@ -50,11 +51,23 @@ class TaskWidgetService {
   /// Deleted tasks (denying one in the Waiting for Approval page
   /// soft-deletes it) and tasks still waiting for approval belong to no
   /// list, so they never reach the widget either.
-  static List<Task> todayTasks(List<Task> tasks, {DateTime? now}) {
+  ///
+  /// The widget is the Today tab on the launcher, so it filters through the
+  /// same Home view rules (Settings → Filtering rules) the tab itself uses —
+  /// a task hidden from Home must not reappear on the home screen. [rules]
+  /// overrides them for tests; otherwise they are read from [Config].
+  static List<Task> todayTasks(
+    List<Task> tasks, {
+    DateTime? now,
+    ViewFilterRules? rules,
+  }) {
     final current = now ?? DateTime.now();
     final today = DateTime(current.year, current.month, current.day);
+    final homeRules = rules ?? Config.viewFilterRules[ViewFilterRules.home];
     final due = tasks.where((t) {
-      if (t.deletedAt != null || !ItemViews.isVisibleInMainViews(t)) {
+      if (t.deletedAt != null ||
+          !ItemViews.isVisibleInMainViews(t) ||
+          !ItemViews.passesFilterRules(t, homeRules)) {
         return false;
       }
       if (t.dueDate == null) return false;

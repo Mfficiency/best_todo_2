@@ -13,6 +13,7 @@ import '../models/streak_reminder.dart';
 import '../models/sync_log_entry.dart';
 import '../models/view_filter_rules.dart';
 import '../services/auto_backup_service.dart';
+import '../services/github_wishlist_service.dart';
 import '../services/google_calendar_service.dart';
 import '../services/sms_report_config_service.dart';
 import '../services/sms_report_scheduler.dart';
@@ -22,6 +23,7 @@ import '../services/streak_service.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import '../utils/date_time_format.dart';
 import 'approval_quick_tags_page.dart';
 import 'auto_tag_rules_page.dart';
 import 'dice_timer_settings.dart';
@@ -53,7 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    14,
+    16,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -71,6 +73,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'Sync & export',
     'Backup',
     'Weekly Hours Planner',
+    'Wishlist build',
+    'MP3 Downloader',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -91,6 +95,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return Config.isFeatureEnabled('sms_report');
       case 13:
         return Config.isFeatureEnabled('weekly_hours_planner');
+      case 15:
+        return Config.isFeatureEnabled('mp3_downloader');
       default:
         return true;
     }
@@ -113,8 +119,8 @@ class _SettingsPageState extends State<SettingsPage> {
   /// section starts collapsed so the page opens as a short list of headings
   /// instead of a wall of switches; the chip row and the settings search both
   /// expand the section they jump to.
-  final Set<int> _collapsedSections = {
-    for (var i = 0; i < 14; i++) i,
+  late final Set<int> _collapsedSections = {
+    for (var i = 0; i < _sectionTitles.length; i++) i,
   };
 
   static const double _tabsHeaderHeight = 60;
@@ -227,6 +233,10 @@ class _SettingsPageState extends State<SettingsPage> {
         'grid hour range day begin flexitime'),
     _SettingsSearchEntry('Weekly Hours Planner end hour', 13,
         'grid hour range day end flexitime'),
+    _SettingsSearchEntry('GitHub token', 14,
+        'wishlist build automation issue pat personal access token next build'),
+    _SettingsSearchEntry('MP3 download folder', 15,
+        'mp3 downloader youtube audio music save folder directory location m4a'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -282,6 +292,12 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _todoistTesting = false;
   String? _todoistTestResult;
   bool _todoistTestSucceeded = false;
+  final TextEditingController _githubTokenController =
+      TextEditingController(text: Config.githubWishlistToken);
+  bool _githubTokenObscured = true;
+  bool _githubTesting = false;
+  String? _githubTestResult;
+  bool _githubTestSucceeded = false;
   int _weeklyHoursStartHour = Config.weeklyHoursStartHour;
   int _weeklyHoursEndHour = Config.weeklyHoursEndHour;
   final TextEditingController _googleCalendarUrlController =
@@ -333,6 +349,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _syncFolderPath = Config.syncFolderPath;
     _todoistSyncEnabled = Config.todoistSyncEnabled;
     _todoistTokenController.text = Config.todoistApiToken;
+    _githubTokenController.text = Config.githubWishlistToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
     _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
     _weeklyHoursStartHour = Config.weeklyHoursStartHour;
@@ -436,9 +453,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _pickSmsTime() async {
     final cfg = _smsConfig;
     if (cfg == null) return;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: cfg.hour, minute: cfg.minute),
+    final picked = await pickTimeOfDay(
+      context,
+      TimeOfDay(hour: cfg.hour, minute: cfg.minute),
     );
     if (picked == null) return;
     setState(() {
@@ -586,9 +603,9 @@ class _SettingsPageState extends State<SettingsPage> {
     required bool isStart,
   }) async {
     final current = isStart ? _quietHoursStartMinutes : _quietHoursEndMinutes;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
+    final picked = await pickTimeOfDay(
+      context,
+      TimeOfDay(
         hour: current ~/ 60,
         minute: current % 60,
       ),
@@ -658,8 +675,24 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  /// Whether section [index] sits above everything currently laid out, so
+  /// [_jumpToSection]'s walk has to go up rather than down. Read off the
+  /// sections that actually have a RenderObject right now — the sliver keeps
+  /// only those around — instead of trusting [_activeSectionIndex], which
+  /// lags behind whenever something scrolled the list without the scroll
+  /// listener settling on the new position (it left a chip tap walking down
+  /// from a viewport that was already past the target, so the jump ran to
+  /// the bottom of the list and the section it had just expanded was never
+  /// shown — the three Filtering-rules tests that failed on CI).
+  bool _sectionIsAboveViewport(int index) {
+    for (var i = 0; i < _sectionKeys.length; i++) {
+      if (_sectionKeys[i].currentContext != null) return i > index;
+    }
+    return index < _activeSectionIndex;
+  }
+
   Future<void> _jumpToSection(int index) async {
-    final from = _activeSectionIndex;
+    final goingUp = _sectionIsAboveViewport(index);
     // Jumping to a collapsed section would land on a title with nothing under
     // it, so open it on the way.
     setState(() {
@@ -678,13 +711,13 @@ class _SettingsPageState extends State<SettingsPage> {
     // Two things the walk has to respect:
     //  • it must follow the direction of the target — walking only downwards
     //    left "Appearance" (and every earlier section) unreachable whenever
-    //    the list already sat further down;
+    //    the list already sat further down (which way that is comes from
+    //    what is laid out, see [_sectionIsAboveViewport]);
     //  • `maxScrollExtent` is an estimate that grows as each hop lays out more
     //    children, so stopping at "we reached the bottom" strands the jump
     //    halfway. Only a hop that moves neither the offset nor the estimate
     //    means there is really nothing left.
     if (_scrollController.hasClients) {
-      final goingUp = index < from;
       var attempts = 0;
       var lastOffset = -1.0;
       var lastMaxExtent = -1.0;
@@ -895,9 +928,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _pickStreakReminderTime(int index) async {
     if (index < 0 || index >= Config.streakReminders.length) return;
     final reminder = Config.streakReminders[index];
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
+    final picked = await pickTimeOfDay(
+      context,
+      TimeOfDay(
         hour: reminder.minutes ~/ 60,
         minute: reminder.minutes % 60,
       ),
@@ -2081,6 +2114,200 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _persistGithubToken() async {
+    Config.githubWishlistToken = _githubTokenController.text.trim();
+    await Config.save();
+  }
+
+  Future<void> _saveGithubToken() async {
+    await _persistGithubToken();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('GitHub token saved')),
+    );
+  }
+
+  Future<void> _testGithubConnection() async {
+    final token = _githubTokenController.text.trim();
+    if (token.isEmpty) {
+      setState(() {
+        _githubTestResult = 'Enter a token first';
+        _githubTestSucceeded = false;
+      });
+      return;
+    }
+    setState(() {
+      _githubTesting = true;
+      _githubTestResult = null;
+    });
+    try {
+      await GithubWishlistService.instance.testConnection(token);
+      if (!mounted) return;
+      setState(() {
+        _githubTestResult = 'Connected';
+        _githubTestSucceeded = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _githubTestResult = e is GithubApiException
+            ? (e.statusCode == 401
+                ? 'Invalid token'
+                : e.statusCode == 404
+                    ? 'Token can\'t see the repo — check the Issues permission'
+                    : e.message)
+            : e.toString();
+        _githubTestSucceeded = false;
+      });
+    } finally {
+      if (mounted) setState(() => _githubTesting = false);
+    }
+  }
+
+  /// Settings → Wishlist build: the GitHub token used by Tools → Wishlist's
+  /// "Send to build" swipe action to open a `wishlist-build`-labeled issue.
+  /// A daily Claude Code Remote routine (5pm, plus on demand) picks those up,
+  /// implements the item and pushes straight to `dev` — see
+  /// `.claude/notes/automation.md`.
+  /// Settings → MP3 Downloader: where Tools → MP3 Downloader saves audio.
+  /// The tool asks for this folder the first time it downloads something and
+  /// then never prompts again, so this is the only place to change it.
+  Future<void> _pickMp3DownloadFolder() async {
+    String? initial;
+    try {
+      initial = (await getDownloadsDirectory())?.path;
+    } catch (_) {
+      initial = null;
+    }
+    final directory = await getDirectoryPath(
+      initialDirectory: Config.mp3DownloadFolder.isNotEmpty
+          ? Config.mp3DownloadFolder
+          : initial,
+    );
+    if (directory == null) return;
+    setState(() => Config.mp3DownloadFolder = directory);
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _clearMp3DownloadFolder() async {
+    setState(() => Config.mp3DownloadFolder = '');
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
+  Widget _buildMp3DownloaderSection() {
+    final chosen = Config.mp3DownloadFolder.isNotEmpty;
+    return _buildSection(
+      index: 15,
+      title: 'MP3 Downloader',
+      children: [
+        ListTile(
+          title: const Text('Download folder'),
+          subtitle: Text(
+            chosen
+                ? Config.mp3DownloadFolder
+                : 'Not set — the downloader asks the first time you use it',
+          ),
+          trailing: const Icon(Icons.folder_open),
+          onTap: _pickMp3DownloadFolder,
+        ),
+        if (chosen)
+          ListTile(
+            leading: const Icon(Icons.clear),
+            title: const Text('Forget this folder'),
+            subtitle: const Text('The downloader will ask again next time'),
+            onTap: _clearMp3DownloadFolder,
+          ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text(
+            'Audio is saved in the format YouTube serves it in — .m4a (AAC) '
+            'or .webm (Opus) — without re-encoding.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWishlistBuildSection() {
+    return _buildSection(
+      index: 14,
+      title: 'Wishlist build',
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Text(
+            'Lets Tools → Wishlist\'s "Send to build" action open a GitHub '
+            'issue for a wishlist item, which the daily build automation '
+            'picks up, implements and pushes to dev. Create a fine-grained '
+            'personal access token at github.com/settings/tokens, scoped to '
+            'the ${GithubWishlistService.owner}/${GithubWishlistService.repo} '
+            'repository only with "Issues" set to Read and write — no other '
+            'permissions needed.',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _githubTokenController,
+            obscureText: _githubTokenObscured,
+            decoration: InputDecoration(
+              labelText: 'GitHub token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip: _githubTokenObscured ? 'Show token' : 'Hide token',
+                icon: Icon(_githubTokenObscured
+                    ? Icons.visibility
+                    : Icons.visibility_off),
+                onPressed: () => setState(
+                    () => _githubTokenObscured = !_githubTokenObscured),
+              ),
+            ),
+            onSubmitted: (_) => _saveGithubToken(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _saveGithubToken,
+                icon: const Icon(Icons.save),
+                label: const Text('Save token'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _githubTesting ? null : _testGithubConnection,
+                icon: _githubTesting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.wifi_tethering),
+                label: const Text('Test connection'),
+              ),
+            ],
+          ),
+        ),
+        if (_githubTestResult != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              _githubTestResult!,
+              style: TextStyle(
+                color: _githubTestSucceeded
+                    ? Colors.green
+                    : Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Future<void> _setAutoUpdateCheckEnabled(bool value) async {
     setState(() => _autoUpdateCheckEnabled = value);
     Config.autoUpdateCheckEnabled = value;
@@ -2194,6 +2421,16 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// The always-on demo filter ([Config.hideDemoItems]) — the one rule that
+  /// is not per-view: it hides every sample/demo item the app seeded for
+  /// itself from all of them at once, and is on by default on a normal
+  /// (release) install.
+  Future<void> _setHideDemoItems(bool value) async {
+    setState(() => Config.hideDemoItems = value);
+    await Config.save();
+    widget.onSettingsChanged?.call();
+  }
+
   /// Per-view tag filters: hide tasks carrying a tag, or restrict a view to
   /// only tasks carrying one. Layers on top of each view's own structural
   /// rule (e.g. the wishlist still only ever shows [Task.isWish] items) —
@@ -2205,6 +2442,17 @@ class _SettingsPageState extends State<SettingsPage> {
       index: 2,
       title: 'Filtering rules',
       children: [
+        SwitchListTile(
+          title: const Text('Hide demo and sample items'),
+          subtitle: const Text(
+              'Hides every item the app seeded for itself — the starter '
+              'tasks, the sample alarms and timers, and any leftover demo '
+              'data from a development build — from every view at once, '
+              'whatever the per-view rules below say. On by default.'),
+          value: Config.hideDemoItems,
+          onChanged: _setHideDemoItems,
+        ),
+        const Divider(height: 24),
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(
@@ -2436,6 +2684,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _smsTemplateController.dispose();
     _searchController.dispose();
     _todoistTokenController.dispose();
+    _githubTokenController.dispose();
     _googleCalendarUrlController.dispose();
     for (final controller in _filterTagControllers.values) {
       controller.dispose();
@@ -2915,6 +3164,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         _buildBackupSection(),
                         if (_isSectionVisible(13))
                           _buildWeeklyHoursPlannerSection(),
+                        _buildWishlistBuildSection(),
+                        if (_isSectionVisible(15)) _buildMp3DownloaderSection(),
                       ],
               ),
             ),

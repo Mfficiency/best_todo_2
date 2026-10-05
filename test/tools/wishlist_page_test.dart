@@ -3,12 +3,16 @@ import 'dart:io';
 
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/services/github_wishlist_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/wishlist_shipped.dart';
+import 'package:besttodo/ui/settings_page.dart';
 import 'package:besttodo/ui/wishlist_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:url_launcher_platform_interface/link.dart';
@@ -35,6 +39,24 @@ class _FakeUrlLauncher extends UrlLauncherPlatform {
   }
 }
 
+class _FakeGithubWishlistService extends GithubWishlistService {
+  _FakeGithubWishlistService({this.shouldFail = false});
+
+  final bool shouldFail;
+  final List<Map<String, String>> created = <Map<String, String>>[];
+
+  @override
+  Future<String> createWishlistIssue({
+    required String token,
+    required String title,
+    required String body,
+  }) async {
+    if (shouldFail) throw GithubApiException(401, 'bad token');
+    created.add({'token': token, 'title': title, 'body': body});
+    return 'https://github.com/Mfficiency/best_todo_2/issues/1';
+  }
+}
+
 void main() {
   late Directory tempDir;
 
@@ -42,6 +64,8 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp();
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
     Config.swipeLeftDelete = true;
+    Config.githubWishlistToken = '';
+    GithubWishlistService.instance = GithubWishlistService();
     // Opt out of the one-time Todo.md import so tests only see their own
     // items.
     await File('${tempDir.path}/${StorageService.wishlistImportFlagFileName}')
@@ -596,5 +620,161 @@ void main() {
     expect(copied.single, contains('- Soon idea [release-soon]'));
     expect(copied.single, isNot(contains('Done idea')));
     expect(copied.single, isNot(contains('Shipped idea')));
+  });
+
+  testWidgets(
+      'Send to build with no GitHub token configured shows a snackbar and '
+      'does not tag the item', (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Buy a telescope', isWish: true)],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    await tester.tap(find.text('Build'));
+    await tester.pump();
+
+    expect(
+      find.text('Set a GitHub token in Settings → Wishlist build first'),
+      findsOneWidget,
+    );
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['label'], '');
+  });
+
+  testWidgets(
+      'Send to build opens a GitHub issue and tags the item next-build',
+      (tester) async {
+    Config.githubWishlistToken = 'test-token';
+    final fake = _FakeGithubWishlistService();
+    GithubWishlistService.instance = fake;
+
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'For stargazing weekends',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    await tester.tap(find.text('Build'));
+    await tester.pump();
+    await settleWrites(tester);
+
+    expect(fake.created, hasLength(1));
+    expect(fake.created.single['token'], 'test-token');
+    expect(fake.created.single['title'], 'Buy a telescope');
+    expect(fake.created.single['body'], contains('Buy a telescope'));
+    expect(fake.created.single['body'], contains('For stargazing weekends'));
+    expect(fake.created.single['body'], contains(wishlistIssueUidPrefix));
+    expect(find.text('Queued "Buy a telescope" for build'), findsOneWidget);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['label'], 'next-build');
+
+    // Reopening the swipe options shows the item as already queued.
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+    expect(find.text('Queued'), findsOneWidget);
+    expect(find.text('Build'), findsNothing);
+  });
+
+  testWidgets('Send to build on an already-queued item is a no-op button',
+      (tester) async {
+    Config.githubWishlistToken = 'test-token';
+    final fake = _FakeGithubWishlistService();
+    GithubWishlistService.instance = fake;
+
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(title: 'Buy a telescope', label: 'next-build', isWish: true),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
+    await tester.pump();
+
+    expect(find.text('Queued'), findsOneWidget);
+    expect(fake.created, isEmpty);
+  });
+
+  Future<void> openSection(WidgetTester tester, String title) async {
+    if (find.byTooltip('Collapse $title').evaluate().isNotEmpty) return;
+    final header = find.byTooltip('Expand $title');
+    await tester.scrollUntilVisible(header, 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(header);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+      'Settings → Wishlist build saves a GitHub token and persists it',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    await settleWrites(tester);
+
+    await openSection(tester, 'Wishlist build');
+    await tester.scrollUntilVisible(
+        find.widgetWithText(TextField, 'GitHub token'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'GitHub token'), 'my-github-token');
+    await tester.scrollUntilVisible(find.text('Save token'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save token'));
+    await settleWrites(tester);
+
+    expect(Config.githubWishlistToken, 'my-github-token');
+    expect(find.text('GitHub token saved'), findsOneWidget);
+
+    Config.githubWishlistToken = '';
+    await tester.runAsync(Config.load);
+    expect(Config.githubWishlistToken, 'my-github-token');
+  });
+
+  testWidgets(
+      'Settings → Wishlist build "Test connection" reports success and '
+      'failure', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    await settleWrites(tester);
+
+    await openSection(tester, 'Wishlist build');
+    await tester.scrollUntilVisible(
+        find.widgetWithText(TextField, 'GitHub token'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'GitHub token'), 'good-token');
+
+    GithubWishlistService.instance = GithubWishlistService(
+      client: MockClient((request) async => http.Response('{}', 200)),
+    );
+    await tester.scrollUntilVisible(find.text('Test connection'), 80,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Test connection'));
+    await settleWrites(tester);
+    expect(find.text('Connected'), findsOneWidget);
+
+    GithubWishlistService.instance = GithubWishlistService(
+      client: MockClient((request) async => http.Response('Bad creds', 401)),
+    );
+    await tester.tap(find.text('Test connection'));
+    await settleWrites(tester);
+    expect(find.text('Invalid token'), findsOneWidget);
   });
 }
