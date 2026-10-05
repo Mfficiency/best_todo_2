@@ -12,6 +12,9 @@ nothing has been copied over here.
 - What's found is also saved into your MP3 files' own tags, so other music apps see it too — only blank tags are filled, nothing already in the file is changed
 - Fixed: the library scan never read your MP3s' tags (artist, album, genre, year, BPM) at all — the library is rescanned once automatically after updating to pick them up
 - Metadata Scan and Songs by BPM show what it's doing ("Looking up song info online… 12/240", "Detecting BPM on device… 3/40")
+- CI build: 2026-10-05 13:06 UTC
+- Build duration (apk, CI): 7m 45s
+- APK size: 62.9 MB
 
 ## [0.3.10] - 2026-10-05
 - If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason instead of showing a few seconds later
