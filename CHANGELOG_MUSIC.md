@@ -10,6 +10,9 @@ nothing has been copied over here.
 - Videos now have a Transcript button: read the full transcript of a Subscriptions video, with timestamps — taken from YouTube's captions, or from backup sites (Invidious) when YouTube won't give them
 - New "Quick summary" button on videos: a short summary of the video, its key points and the conclusion it reaches. Add a Claude API key in Settings → Transcripts & summaries for a summary written by Claude; without one, the phone picks the key sentences itself
 - Save a summary to Obsidian with one tap — it lands as a note in your Research folder (folder and vault are set in Settings → Transcripts & summaries) — or use Share/Copy to send it anywhere
+- CI build: 2026-10-05 11:25 UTC
+- Build duration (apk, CI): 5m 58s
+- APK size: 62.7 MB
 
 ## [0.3.8] - 2026-10-05
 - New "Songs by BPM" page (menu, and at the top of Playlists): drag either end of the BPM slider to pick a tempo range, see the songs in it, then play them as your queue, save them as a playlist, or save the range as a preset to come back to
