@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
 import '../services/music_library_service.dart';
 import '../services/music_metadata_csv.dart';
+import '../services/music_metadata_enricher.dart';
 import 'subpage_app_bar.dart';
 import 'track_metadata_page.dart';
 
@@ -169,6 +170,25 @@ class _MusicMetadataScanPageState extends State<MusicMetadataScanPage> {
                       '$withYear with year',
               style: Theme.of(context).textTheme.titleSmall,
             ),
+          ),
+          // The background online lookup / BPM detection's progress.
+          ValueListenableBuilder<String>(
+            valueListenable: MusicMetadataEnricher.instance.status,
+            builder: (context, status, _) => status.isEmpty
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.auto_awesome, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(status,
+                              style: Theme.of(context).textTheme.bodySmall),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
           Expanded(
             child: _results.isEmpty

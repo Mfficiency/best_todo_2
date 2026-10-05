@@ -6,6 +6,11 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.9] - 2026-10-05
+- Song info fills itself in, in the background: songs missing an artist, album, genre, year or BPM are looked up online (Deezer, iTunes and MusicBrainz, trying several spellings of the title until one matches) and only the blanks are filled — your own tags and edits are never overwritten
+- If the internet can't find a BPM for at least 90% of your songs, Best Music works it out on your phone by listening to each remaining song — no button to press
+- Metadata Scan and Songs by BPM show what it's doing ("Looking up song info online… 12/240", "Detecting BPM on device… 3/40")
+
 ## [0.3.8] - 2026-10-05
 - New "Songs by BPM" page (menu, and at the top of Playlists): drag either end of the BPM slider to pick a tempo range, see the songs in it, then play them as your queue, save them as a playlist, or save the range as a preset to come back to
 - Songs now have a BPM: read from your MP3s' BPM tag (rescan the library to pick it up), from a Subsonic/Navidrome server, typed in on Track info, or filled in through the metadata CSV's new "bpm" column

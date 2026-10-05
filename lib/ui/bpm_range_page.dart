@@ -6,6 +6,7 @@ import '../config.dart';
 import '../models/bpm_preset.dart';
 import '../models/track.dart';
 import '../services/music_library_service.dart';
+import '../services/music_metadata_enricher.dart';
 import '../services/music_player_service.dart';
 import '../services/music_playlist_service.dart';
 import 'subpage_app_bar.dart';
@@ -215,6 +216,20 @@ class _BpmRangePageState extends State<BpmRangePage> {
                   style: theme.textTheme.bodySmall,
                 ),
               ),
+              // Songs without a BPM get one in the background (online
+              // lookup, then on-device detection) — show that it's on it.
+              ValueListenableBuilder<String>(
+                valueListenable: MusicMetadataEnricher.instance.status,
+                builder: (context, status, _) => withoutBpm == 0 ||
+                        status.isEmpty
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: Text(status,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodySmall),
+                      ),
+              ),
               const Divider(),
               Expanded(
                 child: list.isEmpty
@@ -299,7 +314,9 @@ class _NoBpmYet extends StatelessWidget {
             Text(
               'None of your songs has a BPM yet.\n\n'
               "It's read from your MP3s' BPM tag when the library is "
-              'scanned. You can also type it in on a song\'s Track info '
+              'scanned, and filled in automatically in the background — '
+              'looked up online, or detected on your phone when it can\'t '
+              'be found. You can also type it in on a song\'s Track info '
               'page, or fill in the "bpm" column of the metadata CSV '
               '(Metadata Scan → Export CSV) and import it back.',
               textAlign: TextAlign.center,

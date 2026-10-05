@@ -4545,6 +4545,55 @@ ids — a fixed snapshot), "Save preset" (name dialog → `Config.musicBpmPreset
 `BpmPreset {name, min, max}` (`lib/models/bpm_preset.dart`, tolerant `fromJson`: swapped
 ends reordered, missing ends dropped); saving under an existing name replaces it).
 
+### 10.6o Automatic metadata filling (Best Music 0.3.9)
+Hands-off, no setting: `MusicMetadataEnricher.instance.start()` runs after Best Music's
+first frame (`main_music.dart`, not on web) and listens to `MusicLibraryService.tracks`.
+Every library change (launch, rescan, finished download) first re-applies its cache, then —
+debounced 3 s — runs two passes over local tracks, one song at a time:
+1. **Online lookup** for any track missing artist/album/genre/year/BPM
+   (`MusicOnlineMetadataLookup`, `lib/services/music_online_metadata.dart`). Query
+   variants (`queryVariants`): the `cleanTitle`d title (track-number prefixes, "(Official
+   Video)"/"[Lyrics]"-style brackets, "feat." tails and underscores stripped) with the
+   artist; with `mainArtist` (first of "A feat. B"/"A & B"/"A, B"/"A x B"); without any
+   bracketed part; and, for a track with no artist tag, an "Artist - Title" filename split
+   both ways round. Services in order, each skipped once every wanted field is known:
+   **Deezer** (`/search` with `artist:"…" track:"…"`, falling back to a free query; then
+   `/track/{id}` for `bpm` (30–300, 0 = unknown) and release date, `/album/{id}` for the
+   first genre), **iTunes Search** (`entity=song`: `primaryGenreName`, album, year),
+   **MusicBrainz** (`/ws/2/recording` Lucene query, ≥1.1 s apart, `User-Agent:
+   BestMusic/1.0 (…)`; first-release year, a no-secondary-type Album release preferred,
+   most-counted tag title-cased as genre) — always asked when a year is wanted, since its
+   first-release year wins over the others' (else the earliest of Deezer/iTunes).
+   Candidates are scored by `matchScore`: 0.6 × title + 0.4 × artist word similarity
+   (`textSimilarity` — accent/punctuation-folded Dice, or 0.9 × containment), artist < 0.5
+   rejects; with no artist only a ≥0.95 title counts; length off by >30 s halves the score,
+   >10 s × 0.85, ≤3 s +0.05; accepted at ≥ 0.72. A 429/5xx/timeout/no network/Deezer
+   quota error throws `MetadataLookupUnavailable`: the pass stops without marking the song
+   done, status says "paused", and it retries in 15 min (or on the next library change).
+2. **On-device BPM** — only when, after the online pass, under 90 %
+   (`bpmCoverageTarget`) of local tracks have a BPM; then every local track still without
+   one is analyzed: `AudioPcmDecoder` decodes 45 s from 30 s in (from 0 for songs under
+   75 s; the native side slides the window back for short files) to mono 16-bit PCM at
+   11025 Hz — Android via channel `besttodo/audio_pcm` (`AudioPcmDecoder.kt`:
+   MediaExtractor + MediaCodec on a single worker thread, downmix, box-filter resample,
+   16-bit or float PCM), desktop via an `ffmpeg` on PATH, else null — and `estimateBpm`
+   (`lib/services/bpm_detector.dart`, run with `compute`): log-compressed spectral flux
+   (512-sample Hann frames, 128 hop, radix-2 FFT), minus a ±0.25 s moving mean, rectified;
+   unbiased autocorrelation over 50–220 BPM lags × a log-normal prior at 120 BPM (σ = 1
+   octave); parabolic refinement. Null when the envelope peak < 5 (no attacks), the best
+   lag's correlation < 5 % of zero-lag, or < 1.3 × the mean over the lag range (no beat).
+
+Results are cached per track id in `music_enrichment.json` (`EnrichmentEntry {onlineAt,
+found, detectedAt, detectedBpm}`); a song is looked up/analyzed once — retried only after
+30 days when nothing was found. They are applied through
+`MusicLibraryService.fillMissingMetadata`, which fills only empty fields (title only when
+it was the filename and there's no artist), never sets `metadataEdited`, so tags, manual
+edits and CSV imports always win and a rescan simply gets the cache re-applied. The
+enricher's `status` line ("Looking up song info online… 3/40", "Detecting BPM on device…",
+"Song info filled in automatically — N of M complete, K with a BPM", "…paused (offline?)")
+shows under the Metadata Scan page's counts and on Songs by BPM while songs lack a BPM.
+App Logs ("Music") record each pass's counts.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
