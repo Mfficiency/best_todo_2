@@ -8,6 +8,9 @@ nothing has been copied over here.
 
 ## [0.3.10] - 2026-10-05
 - If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason instead of showing a few seconds later
+- CI build: 2026-10-05 12:02 UTC
+- Build duration (apk, CI): 6m 41s
+- APK size: 62.7 MB
 
 ## [0.3.9] - 2026-10-05
 - Videos now have a Transcript button: read the full transcript of a Subscriptions video, with timestamps — taken from YouTube's captions, or from backup sites (Invidious) when YouTube won't give them
