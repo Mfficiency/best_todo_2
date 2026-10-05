@@ -9,6 +9,9 @@ nothing has been copied over here.
 ## [0.3.8] - 2026-10-05
 - New "Songs by BPM" page (menu, and at the top of Playlists): drag either end of the BPM slider to pick a tempo range, see the songs in it, then play them as your queue, save them as a playlist, or save the range as a preset to come back to
 - Songs now have a BPM: read from your MP3s' BPM tag (rescan the library to pick it up), from a Subsonic/Navidrome server, typed in on Track info, or filled in through the metadata CSV's new "bpm" column
+- CI build: 2026-10-05 10:51 UTC
+- Build duration (apk, CI): 6m 26s
+- APK size: 62.4 MB
 
 ## [0.3.7] - 2026-10-05
 - The Now Playing screen (songs and videos) has just the menu button at the top — every other button (speed, volume, sleep timer, shuffle, queue, info and "Back to music/videos") now sits at the bottom, within reach of your thumb
