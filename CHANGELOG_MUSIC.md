@@ -8,6 +8,9 @@ nothing has been copied over here.
 
 ## [0.3.7] - 2026-10-05
 - The Now Playing screen (songs and videos) has just the menu button at the top — every other button (speed, volume, sleep timer, shuffle, queue, info and "Back to music/videos") now sits at the bottom, within reach of your thumb
+- CI build: 2026-10-05 08:43 UTC
+- Build duration (apk, CI): 6m 53s
+- APK size: 62.2 MB
 
 ## [0.3.6] - 2026-10-04
 - Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first
