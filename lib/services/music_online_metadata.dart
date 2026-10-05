@@ -15,6 +15,7 @@ class OnlineTrackMetadata {
     this.year,
     this.bpm,
     this.sources = const [],
+    this.incomplete = false,
   });
 
   final String? title;
@@ -27,6 +28,11 @@ class OnlineTrackMetadata {
   /// Which services contributed (e.g. `['deezer', 'musicbrainz']`) — logged
   /// and kept in the enrichment cache for debugging.
   final List<String> sources;
+
+  /// A service couldn't be asked this time (rate-limited / resting), so
+  /// this may be missing what it would have added — worth asking again
+  /// later. Not persisted with the result itself.
+  final bool incomplete;
 
   bool get isEmpty =>
       title == null &&
@@ -77,8 +83,12 @@ class TrackQuery {
 /// as opposed to "reached it, no match". The enricher retries these later
 /// instead of remembering the song as unfindable.
 class MetadataLookupUnavailable implements Exception {
-  const MetadataLookupUnavailable(this.message);
+  const MetadataLookupUnavailable(this.message, {this.retryAfter});
   final String message;
+
+  /// When asking again makes sense (every service resting until then);
+  /// null = no idea (offline).
+  final DateTime? retryAfter;
   @override
   String toString() => 'MetadataLookupUnavailable: $message';
 }
@@ -101,17 +111,55 @@ class MusicOnlineMetadataLookup {
     http.Client? client,
     this.userAgent = 'BestMusic/1.0 ( https://github.com/mfficiency/best_todo_2 )',
     Duration? musicBrainzSpacing,
+    Map<String, Duration>? spacing,
     Duration? timeout,
+    Future<void> Function(Duration)? sleep,
+    DateTime Function()? clock,
   })  : _client = client ?? http.Client(),
-        _musicBrainzSpacing =
-            musicBrainzSpacing ?? const Duration(milliseconds: 1100),
-        _timeout = timeout ?? const Duration(seconds: 15);
+        _spacing = {
+          ...defaultSpacing,
+          if (musicBrainzSpacing != null) _musicBrainzHost: musicBrainzSpacing,
+          ...?spacing,
+        },
+        _timeout = timeout ?? const Duration(seconds: 15),
+        _sleep = sleep ?? ((d) => Future<void>.delayed(d)),
+        _clock = clock ?? DateTime.now;
+
+  static const String _deezerHost = 'api.deezer.com';
+  static const String _itunesHost = 'itunes.apple.com';
+  static const String _musicBrainzHost = 'musicbrainz.org';
+
+  /// Minimum gap between two requests to the same service — each one's
+  /// published (or observed) rate limit: Deezer 50 per 5 s, iTunes about
+  /// 20 per minute, MusicBrainz 1 per second. Going faster is what made
+  /// 0.3.11 stall after a handful of songs: Deezer answered "quota
+  /// exceeded" and the whole search paused.
+  static const Map<String, Duration> defaultSpacing = {
+    _deezerHost: Duration(milliseconds: 120),
+    _itunesHost: Duration(milliseconds: 3100),
+    _musicBrainzHost: Duration(milliseconds: 1100),
+  };
+
+  /// How long a service that keeps refusing (after retries) is left alone
+  /// while the others carry on.
+  static const Duration cooldown = Duration(minutes: 10);
 
   final http.Client _client;
   final String userAgent;
-  final Duration _musicBrainzSpacing;
+  final Map<String, Duration> _spacing;
   final Duration _timeout;
-  DateTime? _lastMusicBrainzCall;
+  final Future<void> Function(Duration) _sleep;
+  final DateTime Function() _clock;
+  final Map<String, DateTime> _lastCall = {};
+  final Map<String, DateTime> _coolingUntil = {};
+
+  /// Per-lookup bookkeeping: did any service answer, did any fail.
+  int _answered = 0;
+  bool _hadTrouble = false;
+
+  /// Lets every resting service be asked again right away (the "Restart
+  /// online search" button).
+  void resetCooldowns() => _coolingUntil.clear();
 
   static const double minMatchScore = 0.72;
 
@@ -125,6 +173,27 @@ class MusicOnlineMetadataLookup {
     int? deezerYear, itunesYear, mbYear;
     final sources = <String>[];
     var bestScore = 0.0;
+    var incomplete = false;
+    var skipped = 0;
+    _answered = 0;
+    _hadTrouble = false;
+
+    /// Runs one service's part; a service that can't be reached is
+    /// skipped (the song is marked [OnlineTrackMetadata.incomplete])
+    /// instead of stopping the whole search.
+    Future<void> service(String host, Future<void> Function() body) async {
+      final until = _coolingUntil[host];
+      if (until != null && until.isAfter(_clock())) {
+        incomplete = true;
+        skipped++;
+        return;
+      }
+      try {
+        await body();
+      } on _ServiceTrouble {
+        incomplete = true;
+      }
+    }
 
     bool missing(MetadataField f) => switch (f) {
           MetadataField.artist => artist == null,
@@ -148,18 +217,20 @@ class MusicOnlineMetadataLookup {
 
     // Deezer: BPM, album, genre (via the album), release date.
     if (needsAny(MetadataField.values)) {
-      final match = await _firstMatch(variants, _searchDeezer);
-      if (match != null) {
-        sources.add('deezer');
-        takeIdentity(match);
-        album ??= _nonEmpty(match.album);
-        deezerYear = match.year;
-        final details = await _deezerDetails(match.id,
-            wantGenre: wanted.contains(MetadataField.genre));
-        if (details.bpm != null) bpm = details.bpm;
-        deezerYear = details.year ?? deezerYear;
-        genre ??= details.genre;
-      }
+      await service(_deezerHost, () async {
+        final match = await _firstMatch(variants, _searchDeezer);
+        if (match != null) {
+          sources.add('deezer');
+          takeIdentity(match);
+          album ??= _nonEmpty(match.album);
+          deezerYear = match.year;
+          final details = await _deezerDetails(match.id,
+              wantGenre: wanted.contains(MetadataField.genre));
+          if (details.bpm != null) bpm = details.bpm;
+          deezerYear = details.year ?? deezerYear;
+          genre ??= details.genre;
+        }
+      });
     }
 
     // iTunes: genre, album, year.
@@ -169,14 +240,16 @@ class MusicOnlineMetadataLookup {
       MetadataField.genre,
       MetadataField.year,
     ])) {
-      final match = await _firstMatch(variants, _searchItunes);
-      if (match != null) {
-        sources.add('itunes');
-        takeIdentity(match);
-        album ??= _nonEmpty(match.album);
-        genre ??= _nonEmpty(match.genre);
-        itunesYear = match.year;
-      }
+      await service(_itunesHost, () async {
+        final match = await _firstMatch(variants, _searchItunes);
+        if (match != null) {
+          sources.add('itunes');
+          takeIdentity(match);
+          album ??= _nonEmpty(match.album);
+          genre ??= _nonEmpty(match.genre);
+          itunesYear = match.year;
+        }
+      });
     }
 
     // MusicBrainz: original release year and genre tags. Always asked when
@@ -188,14 +261,30 @@ class MusicOnlineMetadataLookup {
           MetadataField.album,
           MetadataField.genre,
         ])) {
-      final match = await _firstMatch(variants, _searchMusicBrainz);
-      if (match != null) {
-        sources.add('musicbrainz');
-        takeIdentity(match);
-        album ??= _nonEmpty(match.album);
-        genre ??= _nonEmpty(match.genre);
-        mbYear = match.year;
-      }
+      await service(_musicBrainzHost, () async {
+        final match = await _firstMatch(variants, _searchMusicBrainz);
+        if (match != null) {
+          sources.add('musicbrainz');
+          takeIdentity(match);
+          album ??= _nonEmpty(match.album);
+          genre ??= _nonEmpty(match.genre);
+          mbYear = match.year;
+        }
+      });
+    }
+
+    if (_answered == 0 && _hadTrouble) {
+      // Not one service answered anything: the phone is offline.
+      throw const MetadataLookupUnavailable('no service reachable');
+    }
+    if (_answered == 0 && skipped > 0 && sources.isEmpty) {
+      // Every service needed is resting — wait for the first to wake up.
+      final now = _clock();
+      final next = _coolingUntil.values
+          .where((t) => t.isAfter(now))
+          .fold<DateTime?>(null, (a, b) => a == null || b.isBefore(a) ? b : a);
+      throw MetadataLookupUnavailable('all services resting',
+          retryAfter: next);
     }
 
     final years = [deezerYear, itunesYear].whereType<int>().toList();
@@ -209,6 +298,7 @@ class MusicOnlineMetadataLookup {
       year: year,
       bpm: bpm,
       sources: sources,
+      incomplete: incomplete,
     );
   }
 
@@ -309,12 +399,6 @@ class MusicOnlineMetadataLookup {
   // ----------------------------------------------------------- MusicBrainz
 
   Future<List<_Candidate>> _searchMusicBrainz(TrackQuery q) async {
-    final last = _lastMusicBrainzCall;
-    if (last != null) {
-      final wait = _musicBrainzSpacing - DateTime.now().difference(last);
-      if (wait > Duration.zero) await Future<void>.delayed(wait);
-    }
-    _lastMusicBrainzCall = DateTime.now();
     String esc(String s) => s.replaceAll(RegExp(r'[\\"]'), ' ');
     final lucene = q.artist.isEmpty
         ? 'recording:"${esc(q.title)}"'
@@ -381,38 +465,83 @@ class MusicOnlineMetadataLookup {
 
   // ---------------------------------------------------------------- shared
 
+  Future<void> _throttle(String host) async {
+    final gap = _spacing[host] ?? Duration.zero;
+    final last = _lastCall[host];
+    if (last != null && gap > Duration.zero) {
+      final wait = gap - _clock().difference(last);
+      if (wait > Duration.zero) await _sleep(wait);
+    }
+    _lastCall[host] = _clock();
+  }
+
+  /// GETs [uri] as JSON, paced per service. A rate-limit answer (429,
+  /// 503/5xx, iTunes' 403, Deezer's in-body quota error) or a dropped
+  /// connection is retried twice with growing waits (honoring
+  /// `Retry-After`); after that the service rests for [cooldown] and
+  /// `_ServiceTrouble` tells [lookup] to carry on without it. Any other
+  /// non-200 is just "nothing here" (null).
   Future<Object?> _getJson(Uri uri) async {
-    final http.Response response;
-    try {
-      response = await _client
-          .get(uri, headers: {'User-Agent': userAgent, 'Accept': 'application/json'})
-          .timeout(_timeout);
-    } on TimeoutException {
-      throw MetadataLookupUnavailable('${uri.host} timed out');
-    } catch (e) {
-      throw MetadataLookupUnavailable('${uri.host}: $e');
-    }
-    if (response.statusCode == 429 || response.statusCode >= 500) {
-      throw MetadataLookupUnavailable('${uri.host} HTTP ${response.statusCode}');
-    }
-    if (response.statusCode != 200) return null;
-    try {
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      // Deezer reports quota errors inside a 200 body.
-      if (decoded is Map && decoded['error'] is Map) {
-        final code = (decoded['error'] as Map)['code'];
-        if (code == 4) throw MetadataLookupUnavailable('${uri.host} quota');
-        return null;
+    final host = uri.host;
+    const backoff = [Duration(seconds: 2), Duration(seconds: 6)];
+    var connectionOnly = true;
+    for (var attempt = 0;; attempt++) {
+      await _throttle(host);
+      Duration? wait;
+      try {
+        final response = await _client.get(uri, headers: {
+          'User-Agent': userAgent,
+          'Accept': 'application/json',
+        }).timeout(_timeout);
+        _answered++;
+        final code = response.statusCode;
+        final rateLimited = code == 429 ||
+            code >= 500 ||
+            (code == 403 && host == _itunesHost);
+        if (rateLimited) {
+          connectionOnly = false;
+          final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
+          if (retryAfter != null && retryAfter > 0 && retryAfter <= 60) {
+            wait = Duration(seconds: retryAfter);
+          }
+        } else if (code != 200) {
+          return null;
+        } else {
+          final Object? decoded;
+          try {
+            decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          } catch (_) {
+            return null;
+          }
+          // Deezer reports errors inside a 200 body; code 4 = quota.
+          if (decoded is Map && decoded['error'] is Map) {
+            if ((decoded['error'] as Map)['code'] != 4) return null;
+            connectionOnly = false;
+            wait = const Duration(seconds: 5); // its window is 5 s
+          } else {
+            return decoded;
+          }
+        }
+      } on TimeoutException {
+        // Counts as a connection problem.
+      } catch (_) {
+        // Socket/handshake/DNS failure.
       }
-      return decoded;
-    } on MetadataLookupUnavailable {
-      rethrow;
-    } catch (_) {
-      return null;
+      if (attempt >= backoff.length) {
+        _hadTrouble = true;
+        if (!connectionOnly) _coolingUntil[host] = _clock().add(cooldown);
+        throw _ServiceTrouble(host);
+      }
+      await _sleep(wait ?? backoff[attempt]);
     }
   }
 
   void close() => _client.close();
+}
+
+class _ServiceTrouble implements Exception {
+  const _ServiceTrouble(this.host);
+  final String host;
 }
 
 class _Candidate {

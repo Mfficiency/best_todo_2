@@ -171,24 +171,38 @@ class _MusicMetadataScanPageState extends State<MusicMetadataScanPage> {
               style: Theme.of(context).textTheme.titleSmall,
             ),
           ),
-          // The background online lookup / BPM detection's progress.
+          // The background online lookup / BPM detection's progress, and
+          // a way to kick the online search off again by hand.
           ValueListenableBuilder<String>(
             valueListenable: MusicMetadataEnricher.instance.status,
-            builder: (context, status, _) => status.isEmpty
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.auto_awesome, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(status,
-                              style: Theme.of(context).textTheme.bodySmall),
-                        ),
-                      ],
-                    ),
+            builder: (context, status, _) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                        status.isEmpty
+                            ? 'Missing song info is looked up online in the '
+                                'background.'
+                            : status,
+                        style: Theme.of(context).textTheme.bodySmall),
                   ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.travel_explore, size: 18),
+                    label: const Text('Restart'),
+                    onPressed: () {
+                      unawaited(MusicMetadataEnricher.instance
+                          .restartOnlineSearch());
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Searching online again for songs '
+                              'still missing info')));
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
           Expanded(
             child: _results.isEmpty

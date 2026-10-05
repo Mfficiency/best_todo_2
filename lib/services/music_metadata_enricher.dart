@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/track.dart';
 import 'audio_pcm_decoder.dart';
+import 'background_work.dart';
 import 'bpm_detector.dart';
 import 'id3_tag_writer.dart';
 import 'log_service.dart';
@@ -23,6 +24,7 @@ class EnrichmentEntry {
     this.detectedBpm,
     this.taggedAt,
     this.tagFailures = 0,
+    this.incomplete = false,
   });
 
   /// When the online lookup ran (ms since epoch); null = not yet.
@@ -30,6 +32,10 @@ class EnrichmentEntry {
 
   /// What it found (null/empty = no match).
   OnlineTrackMetadata? found;
+
+  /// A service was resting/unreachable during the lookup, so it's asked
+  /// again after [MusicMetadataEnricher.incompleteRetry].
+  bool incomplete;
 
   /// When on-device BPM detection ran; null = not yet.
   int? detectedAt;
@@ -53,6 +59,7 @@ class EnrichmentEntry {
         if (detectedBpm != null) 'detectedBpm': detectedBpm,
         if (taggedAt != null) 'taggedAt': taggedAt,
         if (tagFailures != 0) 'tagFailures': tagFailures,
+        if (incomplete) 'incomplete': true,
       };
 
   factory EnrichmentEntry.fromJson(Map<String, dynamic> json) => EnrichmentEntry(
@@ -65,6 +72,7 @@ class EnrichmentEntry {
         detectedBpm: (json['detectedBpm'] as num?)?.round(),
         taggedAt: (json['taggedAt'] as num?)?.round(),
         tagFailures: (json['tagFailures'] as num?)?.round() ?? 0,
+        incomplete: json['incomplete'] as bool? ?? false,
       );
 
   /// Everything this entry knows, as one gap-fill for
@@ -106,6 +114,7 @@ class MusicMetadataEnricher {
     Future<Id3WriteResult> Function(String path, Id3Fields fields)? writeTags,
     Future<Directory> Function()? storageDir,
     Future<void> Function()? initialRescan,
+    BackgroundWork? backgroundWork,
     this.debounce = const Duration(seconds: 3),
     this.offlineRetry = const Duration(minutes: 15),
   })  : _library = library ?? MusicLibraryService.instance,
@@ -113,13 +122,17 @@ class MusicMetadataEnricher {
         _detectBpm = detectBpm ?? _defaultDetectBpm,
         _writeTags = writeTags ?? Id3TagWriter.addMissing,
         _storageDir = storageDir ?? getApplicationDocumentsDirectory,
-        _initialRescan = initialRescan;
+        _initialRescan = initialRescan,
+        _background = backgroundWork ?? const BackgroundWork();
 
   static final MusicMetadataEnricher instance = MusicMetadataEnricher();
 
   static const String fileName = 'music_enrichment.json';
   static const double bpmCoverageTarget = 0.9;
   static const Duration retryAfter = Duration(days: 30);
+
+  /// A lookup that couldn't ask every service is retried after this.
+  static const Duration incompleteRetry = Duration(hours: 1);
 
   final MusicLibraryService _library;
   final MusicOnlineMetadataLookup? _lookupOverride;
@@ -132,6 +145,9 @@ class MusicMetadataEnricher {
   static const int maxTagFailures = 3;
   final Future<Directory> Function() _storageDir;
   final Future<void> Function()? _initialRescan;
+  final BackgroundWork _background;
+  bool _backgroundActive = false;
+  bool _restartRequested = false;
 
   /// Marker file: the one-time rescan after 0.3.11's ID3 read fix (before
   /// it, every cached track was missing its tags) has been done.
@@ -161,6 +177,46 @@ class MusicMetadataEnricher {
     await _rescanOnceAfterTagFix();
     await _applyCache();
     _library.tracks.addListener(_onLibraryChanged);
+    status.addListener(_onStatus);
+    _schedule(Duration.zero);
+  }
+
+  void _onStatus() {
+    if (_backgroundActive) unawaited(_background.update(status.value));
+  }
+
+  /// Puts up the foreground-service notification (Android) so the work
+  /// keeps going while other apps are open.
+  void _beginBackground() {
+    if (_backgroundActive) return;
+    _backgroundActive = true;
+    unawaited(_background.start('Best Music · filling in song info', status.value));
+  }
+
+  void _endBackground() {
+    if (!_backgroundActive) return;
+    _backgroundActive = false;
+    unawaited(_background.stop());
+  }
+
+  /// The "Restart online search" button: forgets every service's rest
+  /// period and every song's "already looked up / nothing found" mark for
+  /// songs still missing something, and starts searching right away
+  /// (interrupting a pass in progress).
+  Future<void> restartOnlineSearch() async {
+    if (!_started) return;
+    _defaultLookup?.resetCooldowns();
+    _lookupOverride?.resetCooldowns();
+    _retryTimer?.cancel();
+    for (final t in _library.tracks.value) {
+      if (!_eligible(t) || missingFields(t).isEmpty) continue;
+      final e = _entries[t.id];
+      if (e != null) e.onlineAt = null;
+    }
+    await _save();
+    LogService.add('Music', 'enricher: online search restarted by hand');
+    status.value = 'Restarting the online search…';
+    if (_running) _restartRequested = true;
     _schedule(Duration.zero);
   }
 
@@ -168,8 +224,10 @@ class MusicMetadataEnricher {
     if (!_started) return;
     _started = false;
     _library.tracks.removeListener(_onLibraryChanged);
+    status.removeListener(_onStatus);
     _debounceTimer?.cancel();
     _retryTimer?.cancel();
+    _endBackground();
   }
 
   /// Completes once the current (and any queued) pass is done. For tests.
@@ -215,6 +273,10 @@ class MusicMetadataEnricher {
   bool _needsOnline(Track t) {
     if (!_eligible(t) || missingFields(t).isEmpty) return false;
     final e = _entries[t.id];
+    if (e != null && e.incomplete && e.onlineAt != null) {
+      return DateTime.now().millisecondsSinceEpoch - e.onlineAt! >
+          incompleteRetry.inMilliseconds;
+    }
     return _due(e?.onlineAt, hadResult: e?.found != null);
   }
 
@@ -235,19 +297,24 @@ class MusicMetadataEnricher {
       var paused = false;
       do {
         _rerun = false;
+        _restartRequested = false;
         paused = !await _onlinePass();
-        if (paused || !_started) break;
+        if (paused || !_started || _restartRequested) continue;
         await _bpmPass();
-        if (!_started) break;
+        if (!_started || _restartRequested) continue;
         await _tagPass();
-      } while (_rerun && _started);
+      } while ((_rerun || _restartRequested) && _started);
       // Keep the "paused" line up until the retry.
       if (!paused) _updateSummary();
+      // While paused the notification stays, so the retry still runs with
+      // other apps open; otherwise the work is done.
+      if (!paused) _endBackground();
     } catch (e, st) {
       debugPrint('MusicMetadataEnricher: $e\n$st');
       LogService.add('Music', 'enricher failed: $e');
     } finally {
       _running = false;
+      if (!_started) _endBackground();
       if (!(_debounceTimer?.isActive ?? false)) {
         _idle?.complete();
         _idle = null;
@@ -255,19 +322,26 @@ class MusicMetadataEnricher {
     }
   }
 
-  /// Returns false when it had to stop early (offline / rate-limited).
+  /// Returns false when it had to stop early (offline, or every service
+  /// resting) — a retry is then scheduled.
   Future<bool> _onlinePass() async {
     final todo = _library.tracks.value.where(_needsOnline).toList();
     if (todo.isEmpty) return true;
+    _beginBackground();
     LogService.add('Music', 'enricher: looking up ${todo.length} song(s) online');
     final pending = <String, OnlineTrackMetadata>{};
+    final eta = _Eta(todo.length);
     var found = 0;
     for (var i = 0; i < todo.length; i++) {
-      if (!_started) break;
+      if (!_started || _restartRequested) break;
       // The library may have been rescanned/edited meanwhile.
       final track = _library.byId(todo[i].id);
-      if (track == null || !_needsOnline(track)) continue;
-      status.value = 'Looking up song info online… ${i + 1}/${todo.length}';
+      if (track == null || !_needsOnline(track)) {
+        eta.skip();
+        continue;
+      }
+      status.value =
+          'Looking up song info online… ${i + 1}/${todo.length}${eta.suffix}';
       final OnlineTrackMetadata result;
       try {
         result = await _lookup.lookup(
@@ -280,15 +354,29 @@ class MusicMetadataEnricher {
         );
       } on MetadataLookupUnavailable catch (e) {
         LogService.add('Music', 'enricher: paused — $e');
-        status.value = 'Song info lookup paused (offline?) — retrying soon';
+        final retryAt = e.retryAfter;
+        final Duration wait;
+        if (retryAt != null) {
+          wait = retryAt.difference(DateTime.now()) + const Duration(seconds: 5);
+          status.value = 'Song info services asked for a break — continuing '
+              'at ${_clockTime(retryAt)} (${i + 1}/${todo.length} so far)';
+        } else {
+          wait = offlineRetry;
+          status.value = 'No internet connection — trying again in '
+              '${offlineRetry.inMinutes} min (or tap Restart)';
+        }
         await _flush(pending);
         _retryTimer?.cancel();
-        _retryTimer = Timer(offlineRetry, () => _schedule(Duration.zero));
+        _retryTimer = Timer(wait.isNegative ? Duration.zero : wait,
+            () => _schedule(Duration.zero));
         return false;
       }
+      eta.done();
       final entry = _entries.putIfAbsent(track.id, EnrichmentEntry.new);
+      final merged = _merge(entry.found, result);
       entry.onlineAt = DateTime.now().millisecondsSinceEpoch;
-      entry.found = result.isEmpty ? null : result;
+      entry.found = merged.isEmpty ? null : merged;
+      entry.incomplete = result.incomplete;
       entry.taggedAt = null;
       if (!result.isEmpty) {
         found++;
@@ -302,6 +390,24 @@ class MusicMetadataEnricher {
     return true;
   }
 
+  /// A re-lookup only adds to what an earlier one found.
+  static OnlineTrackMetadata _merge(
+      OnlineTrackMetadata? old, OnlineTrackMetadata fresh) {
+    if (old == null) return fresh;
+    return OnlineTrackMetadata(
+      title: old.title ?? fresh.title,
+      artist: old.artist ?? fresh.artist,
+      album: old.album ?? fresh.album,
+      genre: old.genre ?? fresh.genre,
+      year: old.year ?? fresh.year,
+      bpm: old.bpm ?? fresh.bpm,
+      sources: {...old.sources, ...fresh.sources}.toList(),
+    );
+  }
+
+  static String _clockTime(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
   Future<void> _bpmPass() async {
     final eligible = _library.tracks.value.where(_eligible).toList();
     if (eligible.isEmpty) return;
@@ -309,6 +415,8 @@ class MusicMetadataEnricher {
     if (withBpm / eligible.length >= bpmCoverageTarget) return;
     final todo = eligible.where(_needsDetection).toList();
     if (todo.isEmpty) return;
+    _beginBackground();
+    final eta = _Eta(todo.length);
     LogService.add(
         'Music',
         'enricher: only $withBpm of ${eligible.length} songs have a BPM — '
@@ -316,16 +424,21 @@ class MusicMetadataEnricher {
     final pending = <String, OnlineTrackMetadata>{};
     var detected = 0;
     for (var i = 0; i < todo.length; i++) {
-      if (!_started) break;
+      if (!_started || _restartRequested) break;
       final track = _library.byId(todo[i].id);
-      if (track == null || !_needsDetection(track)) continue;
-      status.value = 'Detecting BPM on device… ${i + 1}/${todo.length}';
+      if (track == null || !_needsDetection(track)) {
+        eta.skip();
+        continue;
+      }
+      status.value =
+          'Detecting BPM on device… ${i + 1}/${todo.length}${eta.suffix}';
       int? bpm;
       try {
         bpm = await _detectBpm(track);
       } catch (_) {
         bpm = null;
       }
+      eta.done();
       final entry = _entries.putIfAbsent(track.id, EnrichmentEntry.new);
       entry.detectedAt = DateTime.now().millisecondsSinceEpoch;
       entry.detectedBpm = bpm;
@@ -348,7 +461,7 @@ class MusicMetadataEnricher {
     var written = 0;
     var dirty = false;
     for (final track in List<Track>.of(_library.tracks.value)) {
-      if (!_started) break;
+      if (!_started || _restartRequested) break;
       final entry = _entries[track.id];
       final path = track.filePath;
       if (entry == null ||
@@ -492,6 +605,39 @@ class MusicMetadataEnricher {
     _loaded = false;
     _running = false;
     _rerun = false;
+    _restartRequested = false;
     status.value = '';
   }
+}
+
+/// Time-left estimate for a pass: the average time per song so far times
+/// the songs still to go. Shown once a few songs are done, so one slow
+/// first request doesn't promise hours.
+class _Eta {
+  _Eta(this._total);
+
+  final int _total;
+  final Stopwatch _clock = Stopwatch()..start();
+  int _done = 0;
+  int _skipped = 0;
+
+  void done() => _done++;
+  void skip() => _skipped++;
+
+  String get suffix {
+    if (_done < 3) return '';
+    final left = _total - _done - _skipped;
+    if (left <= 0) return '';
+    final perSong = _clock.elapsedMilliseconds / _done;
+    return ' · ${formatTimeLeft(Duration(milliseconds: (perSong * left).round()))}';
+  }
+}
+
+/// "less than a minute left", "about 12 min left", "about 2 h 5 min left".
+String formatTimeLeft(Duration d) {
+  if (d.inSeconds < 60) return 'less than a minute left';
+  final minutes = (d.inSeconds / 60).ceil();
+  if (minutes < 90) return 'about $minutes min left';
+  final h = minutes ~/ 60, m = minutes % 60;
+  return m == 0 ? 'about $h h left' : 'about $h h $m min left';
 }

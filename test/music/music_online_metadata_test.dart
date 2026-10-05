@@ -36,9 +36,21 @@ MockClient _fakeServices({
   });
 }
 
-MusicOnlineMetadataLookup _lookup(http.Client client) =>
+/// No pacing and no real waiting; [sleeps] records every wait asked for.
+MusicOnlineMetadataLookup _lookup(http.Client client,
+        {List<Duration>? sleeps,
+        Map<String, Duration>? spacing,
+        DateTime Function()? clock}) =>
     MusicOnlineMetadataLookup(
-        client: client, musicBrainzSpacing: Duration.zero);
+      client: client,
+      spacing: spacing ??
+          {
+            for (final host in MusicOnlineMetadataLookup.defaultSpacing.keys)
+              host: Duration.zero,
+          },
+      sleep: (d) async => sleeps?.add(d),
+      clock: clock,
+    );
 
 const _allFields = {
   MetadataField.artist,
@@ -257,18 +269,148 @@ void main() {
       expect(result.album, 'Random Access Memories');
     });
 
-    test('server trouble is "unavailable", not "no match"', () async {
-      final lookup = _lookup(
-          MockClient((_) async => http.Response('busy', 503)));
-      expect(
-          lookup.lookup(const TrackQuery(title: 'Song', artist: 'Band'),
-              _allFields),
-          throwsA(isA<MetadataLookupUnavailable>()));
-      final offline = _lookup(MockClient((_) async => throw Exception('no net')));
+    test('offline (nothing answers) is "unavailable", not "no match"',
+        () async {
+      final offline =
+          _lookup(MockClient((_) async => throw Exception('no net')));
       expect(
           offline.lookup(const TrackQuery(title: 'Song', artist: 'Band'),
               _allFields),
-          throwsA(isA<MetadataLookupUnavailable>()));
+          throwsA(isA<MetadataLookupUnavailable>()
+              .having((e) => e.retryAfter, 'retryAfter', isNull)));
+    });
+  });
+
+  group('rate limits', () {
+    const song = TrackQuery(title: 'Song', artist: 'Band');
+    final deezerHit = {
+      'id': 1,
+      'title': 'Song',
+      'artist': {'name': 'Band'},
+      'album': {'title': 'LP'},
+    };
+    final itunesHit = {
+      'trackId': 1,
+      'trackName': 'Song',
+      'artistName': 'Band',
+      'collectionName': 'LP',
+      'primaryGenreName': 'Rock',
+      'releaseDate': '1999-01-01T00:00:00Z',
+    };
+
+    test('a Deezer quota error is waited out and retried, not a pause',
+        () async {
+      var deezerSearches = 0;
+      final sleeps = <Duration>[];
+      final lookup = _lookup(MockClient((request) async {
+        final url = request.url;
+        if (url.host == 'api.deezer.com' && url.path == '/search') {
+          deezerSearches++;
+          if (deezerSearches == 1) {
+            return _json({
+              'error': {'type': 'Exception', 'message': 'Quota limit exceeded', 'code': 4}
+            });
+          }
+          return _json({'data': [deezerHit]});
+        }
+        if (url.host == 'api.deezer.com') return _json({'bpm': 128});
+        return _json({'results': [], 'recordings': []});
+      }), sleeps: sleeps);
+      final result = await lookup.lookup(song, {MetadataField.bpm});
+      expect(result.bpm, 128);
+      expect(result.incomplete, isFalse);
+      expect(sleeps, contains(const Duration(seconds: 5)));
+    });
+
+    test('a service that keeps refusing rests; the others carry on',
+        () async {
+      var now = DateTime(2026, 10, 5, 12);
+      final calls = <String>[];
+      final lookup = _lookup(MockClient((request) async {
+        calls.add(request.url.host);
+        if (request.url.host == 'api.deezer.com') {
+          return http.Response('slow down', 429);
+        }
+        if (request.url.host == 'itunes.apple.com') {
+          return _json({'results': [itunesHit]});
+        }
+        return _json({'recordings': []});
+      }), clock: () => now);
+
+      final first = await lookup.lookup(song, _allFields);
+      expect(first.genre, 'Rock', reason: 'iTunes still answered');
+      expect(first.incomplete, isTrue);
+      expect(calls.where((h) => h == 'api.deezer.com'), hasLength(3),
+          reason: 'one try + two retries');
+
+      // Next song: Deezer is resting and not asked at all.
+      calls.clear();
+      final second = await lookup.lookup(song, _allFields);
+      expect(second.incomplete, isTrue);
+      expect(calls, isNot(contains('api.deezer.com')));
+
+      // After the rest it's asked again.
+      now = now.add(MusicOnlineMetadataLookup.cooldown);
+      calls.clear();
+      await lookup.lookup(song, _allFields);
+      expect(calls, contains('api.deezer.com'));
+
+      // resetCooldowns lifts a rest right away.
+      calls.clear();
+      await lookup.lookup(song, _allFields); // rests again
+      lookup.resetCooldowns();
+      calls.clear();
+      await lookup.lookup(song, _allFields);
+      expect(calls, contains('api.deezer.com'));
+    });
+
+    test('every service resting → unavailable with a retry time', () async {
+      final now = DateTime(2026, 10, 5, 12);
+      final lookup = _lookup(
+          MockClient((_) async => http.Response('busy', 503)),
+          clock: () => now);
+      final first = await lookup.lookup(song, _allFields);
+      expect(first.isEmpty, isTrue);
+      expect(first.incomplete, isTrue);
+      expect(
+          lookup.lookup(song, _allFields),
+          throwsA(isA<MetadataLookupUnavailable>().having((e) => e.retryAfter,
+              'retryAfter', now.add(MusicOnlineMetadataLookup.cooldown))));
+    });
+
+    test('iTunes\' 403 is its rate limit', () async {
+      final lookup = _lookup(MockClient((request) async {
+        if (request.url.host == 'itunes.apple.com') {
+          return http.Response('', 403);
+        }
+        return _json({'data': [], 'recordings': []});
+      }));
+      final result = await lookup.lookup(song, {MetadataField.genre});
+      expect(result.incomplete, isTrue);
+    });
+
+    test('requests to one service are spaced out', () async {
+      var now = DateTime(2026, 10, 5, 12);
+      final sleeps = <Duration>[];
+      final lookup = MusicOnlineMetadataLookup(
+        client: MockClient((_) async {
+          now = now.add(const Duration(milliseconds: 10));
+          return _json({'data': [], 'results': [], 'recordings': []});
+        }),
+        sleep: (d) async {
+          sleeps.add(d);
+          now = now.add(d);
+        },
+        clock: () => now,
+      );
+      await lookup.lookup(song, _allFields);
+      // Several Deezer searches (one per spelling + fallbacks) → waits.
+      expect(sleeps, isNotEmpty);
+      expect(
+          sleeps.every((d) =>
+              d <= MusicOnlineMetadataLookup.defaultSpacing.values
+                  .reduce((a, b) => a > b ? a : b)),
+          isTrue);
     });
   });
 

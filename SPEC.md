@@ -4570,9 +4570,25 @@ debounced 3 s — runs two passes over local tracks, one song at a time:
    Candidates are scored by `matchScore`: 0.6 × title + 0.4 × artist word similarity
    (`textSimilarity` — accent/punctuation-folded Dice, or 0.9 × containment), artist < 0.5
    rejects; with no artist only a ≥0.95 title counts; length off by >30 s halves the score,
-   >10 s × 0.85, ≤3 s +0.05; accepted at ≥ 0.72. A 429/5xx/timeout/no network/Deezer
-   quota error throws `MetadataLookupUnavailable`: the pass stops without marking the song
-   done, status says "paused", and it retries in 15 min (or on the next library change).
+   >10 s × 0.85, ≤3 s +0.05; accepted at ≥ 0.72.
+   **Rate limits (0.3.12)** — every request goes through `_getJson`, paced per host
+   (`defaultSpacing`: Deezer 120 ms — its limit is 50 per 5 s; iTunes 3.1 s — ~20/min;
+   MusicBrainz 1.1 s). A rate-limit answer (429, 5xx, iTunes' 403, Deezer's in-body
+   `error.code == 4`) or a connection failure/timeout is retried twice (waits: `Retry-After`
+   ≤ 60 s if given, Deezer quota 5 s, else 2 s then 6 s); after that the host *rests* for
+   `cooldown` (10 min; connection-only failures don't rest it) and the lookup carries on
+   with the other services, returning `incomplete: true`. Hosts already resting are skipped
+   (also `incomplete`). If no service answered at all and something failed →
+   `MetadataLookupUnavailable` (offline, `retryAfter` null); if every needed host was
+   resting → `MetadataLookupUnavailable(retryAfter: earliest rest end)`. `resetCooldowns()`
+   clears the rests. (0.3.11 threw on the first rate-limit answer and paused the whole
+   pass for 15 min — with ~10 unpaced Deezer requests per song it stalled after ~4 songs.)
+   The enricher marks an incomplete song `EnrichmentEntry.incomplete` (persisted), merges
+   it with any earlier result (old values win) and re-asks it after `incompleteRetry`
+   (1 h); the pass moves straight on. On `MetadataLookupUnavailable` the pass stops without
+   marking the song: status "Song info services asked for a break — continuing at HH:MM"
+   (retry then + 5 s) or "No internet connection — trying again in 15 min (or tap
+   Restart)" (`offlineRetry`).
 2. **On-device BPM** — only when, after the online pass, under 90 %
    (`bpmCoverageTarget`) of local tracks have a BPM; then every local track still without
    one is analyzed: `AudioPcmDecoder` decodes 45 s from 30 s in (from 0 for songs under
@@ -4595,6 +4611,24 @@ edits and CSV imports always win and a rescan simply gets the cache re-applied. 
 enricher's `status` line ("Looking up song info online… 3/40", "Detecting BPM on device…",
 "Song info filled in automatically — N of M complete, K with a BPM", "…paused (offline?)")
 shows under the Metadata Scan page's counts and on Songs by BPM while songs lack a BPM.
+Both passes append a time-left estimate once 3 songs are done (`_Eta`: average time per
+song so far × songs left; `formatTimeLeft` → "less than a minute left" / "about 12 min
+left" / "about 2 h 5 min left"). On Metadata Scan the row is always shown (idle text
+"Missing song info is looked up online in the background.") with a **Restart** button →
+`restartOnlineSearch()`: `resetCooldowns()`, cancels a pending retry, clears `onlineAt` on
+every entry whose track still misses a field (so no-match songs are asked again too),
+interrupts a running pass (`_restartRequested`) and runs now.
+**Background running (0.3.12)** — while a pass has work, `BackgroundWork.start`
+(`lib/services/background_work.dart`, channel `besttodo/background_work`) starts
+`BackgroundWorkService.kt`: a `specialUse` foreground service (no 6 h/day cap like
+`dataSync`; `FOREGROUND_SERVICE_SPECIAL_USE`, subtype property in the manifest) with an
+ongoing silent low-importance notification "Best Music · filling in song info" whose text
+mirrors `status` (`update` re-notifies; tap opens the app) and a partial wake lock (3 h
+timeout, released on stop). It keeps the process from being frozen while other apps are in
+front; Dart keeps running on audio_service's cached engine. Stopped when a run ends with
+nothing paused (kept up during a pause so the retry still fires) and on `stop()`. Android
+12+ refusing a start from the background is swallowed — the work then just runs while the
+app is open. No-op off Android.
 App Logs ("Music") record each pass's counts.
 
 3. **Into the files** — after the two passes, every mp3 whose entry has data and no

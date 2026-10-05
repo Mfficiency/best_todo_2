@@ -6,6 +6,12 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.12] - 2026-10-05
+- Fixed: the background song info search stopped after a few songs with "paused (offline?)" even though you were online — it went faster than Deezer allows and one "slow down" answer paused everything. It now paces each service to its own limit, waits and retries when asked to slow down, rests a service that keeps refusing while the others carry on, and only pauses when there really is no internet
+- Shows how long the search has left ("Looking up song info online… 120/1954 · about 1 h 40 min left"), also for on-device BPM detection
+- New "Restart" button next to that line on Metadata Scan: searches again right away, including songs where nothing was found before
+- Keeps working while you use other apps: a quiet "Best Music · filling in song info" notification shows the progress and goes away when it's done
+
 ## [0.3.11] - 2026-10-05
 - Song info fills itself in, in the background: songs missing an artist, album, genre, year or BPM are looked up online (Deezer, iTunes and MusicBrainz, trying several spellings of the title until one matches) and only the blanks are filled — your own tags and edits are never overwritten
 - If the internet can't find a BPM for at least 90% of your songs, Best Music works it out on your phone by listening to each remaining song — no button to press

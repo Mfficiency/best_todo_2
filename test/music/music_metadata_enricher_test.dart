@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:besttodo/models/track.dart';
+import 'package:besttodo/services/background_work.dart';
 import 'package:besttodo/services/id3_tag_writer.dart';
 import 'package:besttodo/services/music_library_service.dart';
 import 'package:besttodo/services/music_metadata_enricher.dart';
@@ -24,6 +25,10 @@ class _FakeLookup extends MusicOnlineMetadataLookup {
   final Map<String, OnlineTrackMetadata> answers;
   final List<String> queried = [];
   bool offline = false;
+  int resets = 0;
+
+  @override
+  void resetCooldowns() => resets++;
 
   @override
   Future<OnlineTrackMetadata> lookup(
@@ -32,6 +37,19 @@ class _FakeLookup extends MusicOnlineMetadataLookup {
     queried.add(query.title);
     return answers[query.title] ?? const OnlineTrackMetadata();
   }
+}
+
+class _FakeBackground extends BackgroundWork {
+  final List<String> calls = [];
+
+  @override
+  Future<void> start(String title, String text) async => calls.add('start');
+
+  @override
+  Future<void> update(String text) async => calls.add('update');
+
+  @override
+  Future<void> stop() async => calls.add('stop');
 }
 
 Track _track(String name,
@@ -64,13 +82,15 @@ void main() {
 
   MusicMetadataEnricher enricher(_FakeLookup lookup,
           {Future<int?> Function(Track)? detect,
-          Future<Id3WriteResult> Function(String, Id3Fields)? writeTags}) =>
+          Future<Id3WriteResult> Function(String, Id3Fields)? writeTags,
+          BackgroundWork? background}) =>
       MusicMetadataEnricher(
         library: library,
         lookup: lookup,
         detectBpm: detect ?? (_) async => null,
         writeTags: writeTags ?? (_, __) async => Id3WriteResult.written,
         storageDir: () async => dir,
+        backgroundWork: background ?? _FakeBackground(),
         initialRescan: () async => rescans++,
         debounce: const Duration(milliseconds: 10),
       );
@@ -180,7 +200,7 @@ void main() {
     await e.whenIdle();
     expect(e.entries, isEmpty);
     expect(detected, isEmpty);
-    expect(e.status.value, contains('paused'));
+    expect(e.status.value, contains('No internet'));
 
     // Back online: the next library change picks it up.
     lookup.offline = false;
@@ -270,5 +290,79 @@ void main() {
     await e.whenIdle();
     e.stop();
     expect(rescans, 1);
+  });
+
+  test('an incomplete lookup doesn\'t hold up the next songs', () async {
+    library.tracks.value = [_track('A'), _track('B')];
+    final lookup = _FakeLookup({
+      'A': const OnlineTrackMetadata(genre: 'Pop', incomplete: true),
+      'B': const OnlineTrackMetadata(genre: 'Jazz'),
+    });
+    final e = enricher(lookup);
+    await e.start();
+    await e.whenIdle();
+    expect(lookup.queried, ['A', 'B']);
+    expect(e.entries['local:/music/A.mp3']!.incomplete, isTrue);
+    expect(e.entries['local:/music/B.mp3']!.incomplete, isFalse);
+    expect(library.byId('local:/music/A.mp3')!.genre, 'Pop');
+    e.stop();
+  });
+
+  test('Restart searches again for songs still missing info', () async {
+    library.tracks.value = [
+      _track('A'),
+      _track('Done', genre: 'Rock', year: 2000, bpm: 100),
+    ];
+    final lookup = _FakeLookup({});
+    final e = enricher(lookup);
+    await e.start();
+    await e.whenIdle();
+    expect(lookup.queried, ['A']);
+
+    // Nothing found → normally not asked again for 30 days.
+    library.tracks.value = List.of(library.tracks.value);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    await e.whenIdle();
+    expect(lookup.queried, ['A']);
+
+    lookup.answers['A'] = const OnlineTrackMetadata(genre: 'Pop', year: 1, bpm: 90);
+    await e.restartOnlineSearch();
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    await e.whenIdle();
+    expect(lookup.queried, ['A', 'A']);
+    expect(lookup.resets, 1);
+    expect(library.byId('local:/music/A.mp3')!.genre, 'Pop');
+    e.stop();
+  });
+
+  test('the background notification is up only while there is work',
+      () async {
+    library.tracks.value = [_track('A')];
+    final background = _FakeBackground();
+    final e = enricher(
+        _FakeLookup({'A': const OnlineTrackMetadata(genre: 'Pop', year: 1, bpm: 90)}),
+        background: background);
+    await e.start();
+    await e.whenIdle();
+    expect(background.calls.first, 'start');
+    expect(background.calls.last, 'stop');
+    expect(background.calls.where((c) => c == 'start'), hasLength(1));
+
+    // Nothing left to do → never started again.
+    background.calls.clear();
+    library.tracks.value = List.of(library.tracks.value);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    await e.whenIdle();
+    expect(background.calls, isNot(contains('start')));
+    e.stop();
+  });
+
+  test('formatTimeLeft', () {
+    expect(formatTimeLeft(const Duration(seconds: 20)),
+        'less than a minute left');
+    expect(formatTimeLeft(const Duration(seconds: 61)), 'about 2 min left');
+    expect(formatTimeLeft(const Duration(minutes: 45)), 'about 45 min left');
+    expect(formatTimeLeft(const Duration(minutes: 125)), 'about 2 h 5 min left');
+    expect(formatTimeLeft(const Duration(hours: 3)), 'about 3 h left');
   });
 }

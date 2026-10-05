@@ -109,7 +109,7 @@ final List<SuiteRule> suiteRules = [
     'lib/ui/estimated_progress_bar.dart', 'lib/services/video_audio_cache.dart',
     'lib/services/bpm_detector.dart', 'lib/services/audio_pcm_decoder.dart',
     'lib/services/music_online_metadata.dart', 'lib/services/music_metadata_enricher.dart',
-    'lib/services/id3_tag_writer.dart',
+    'lib/services/id3_tag_writer.dart', 'lib/services/background_work.dart',
     'lib/services/video_transcript_service.dart', 'lib/services/video_summary_service.dart',
     'lib/services/obsidian_research_note.dart', 'lib/ui/video_transcript_page.dart',
   ], {'music'}),

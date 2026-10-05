@@ -142,6 +142,7 @@ class MainActivity : AudioServiceFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         AudioPcmDecoder.register(flutterEngine.dartExecutor.binaryMessenger)
+        BackgroundWorkService.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/digital_wellbeing",
