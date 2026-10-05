@@ -35,10 +35,15 @@ void main() {
     await musicDir.delete(recursive: true);
   });
 
-  Future<void> writeFile(String relativePath) async {
-    final file = File('${musicDir.path}/$relativePath');
-    await file.create(recursive: true);
-    await file.writeAsBytes([0, 0, 0]);
+  /// Real file I/O, so it runs outside testWidgets' fake-async zone —
+  /// awaited directly inside a testWidgets body it never completes (see
+  /// CLAUDE.md's "Real file I/O hangs inside testWidgets").
+  Future<void> writeFile(WidgetTester tester, String relativePath) async {
+    await tester.runAsync(() async {
+      final file = File('${musicDir.path}/$relativePath');
+      await file.create(recursive: true);
+      await file.writeAsBytes([0, 0, 0]);
+    });
   }
 
   /// The scan runs from `initState`, doing real file I/O — a fixed
@@ -57,8 +62,8 @@ void main() {
 
   testWidgets('scans on open and lists every track found, with a genre/year status',
       (tester) async {
-    await writeFile('untagged.mp3'); // no ID3 tags -> no genre, no year
-    await writeFile('notes.txt'); // not a supported extension
+    await writeFile(tester, 'untagged.mp3'); // no ID3 tags -> no genre, no year
+    await writeFile(tester, 'notes.txt'); // not a supported extension
 
     await tester.pumpWidget(const MaterialApp(home: MusicMetadataScanPage()));
     await pumpUntilScanDone(tester);
@@ -84,13 +89,13 @@ void main() {
   });
 
   testWidgets('the refresh action re-runs the scan', (tester) async {
-    await writeFile('a.mp3');
+    await writeFile(tester, 'a.mp3');
 
     await tester.pumpWidget(const MaterialApp(home: MusicMetadataScanPage()));
     await pumpUntilScanDone(tester);
     expect(find.textContaining('1 track(s)'), findsOneWidget);
 
-    await writeFile('b.mp3');
+    await writeFile(tester, 'b.mp3');
     await tester.tap(find.byTooltip('Scan again'));
     await pumpUntilScanDone(tester);
 

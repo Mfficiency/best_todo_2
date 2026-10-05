@@ -133,7 +133,7 @@ class MusicMetadataEnricher {
   final Future<Directory> Function() _storageDir;
   final Future<void> Function()? _initialRescan;
 
-  /// Marker file: the one-time rescan after 0.3.9's ID3 read fix (before
+  /// Marker file: the one-time rescan after 0.3.11's ID3 read fix (before
   /// it, every cached track was missing its tags) has been done.
   static const String rescanMarker = 'music_enrichment_rescan_v1';
   final Duration debounce;
@@ -429,7 +429,7 @@ class MusicMetadataEnricher {
     }
   }
 
-  /// Libraries scanned before 0.3.9 never had their tags read; rescan once
+  /// Libraries scanned before 0.3.11 never had their tags read; rescan once
   /// so the files' own tags are used before anything is looked up online.
   Future<void> _rescanOnceAfterTagFix() async {
     try {

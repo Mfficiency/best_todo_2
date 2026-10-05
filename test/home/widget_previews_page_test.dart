@@ -46,6 +46,13 @@ void main() {
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
     final widgetPreviewsEntry = find.text('Widget Previews');
+    // Last entry of a lazily built drawer list: scroll it into existence.
+    await tester.dragUntilVisible(
+        widgetPreviewsEntry,
+        find.descendant(
+            of: find.byType(Drawer), matching: find.byType(Scrollable)).first,
+        const Offset(0, -200));
+    await tester.pumpAndSettle();
     expect(widgetPreviewsEntry, findsOneWidget);
     await tester.ensureVisible(widgetPreviewsEntry);
     await tester.tap(widgetPreviewsEntry);

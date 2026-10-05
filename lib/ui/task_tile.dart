@@ -745,50 +745,56 @@ class _TaskTileState extends State<TaskTile>
             child: Container(
               color: Theme.of(context).cardColor.withOpacity(0.9),
               alignment: Alignment.centerRight,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_optionMode == _SwipeOptionMode.move)
-                        for (var i = 0; i < _destinations.length; i++)
+              // Buttons + countdown bar can be taller than the row (large
+              // system font sizes): shrink to fit instead of overflowing.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_optionMode == _SwipeOptionMode.move)
+                          for (var i = 0; i < _destinations.length; i++)
+                            TextButton(
+                              style: optionStyle(i),
+                              onPressed: () => _selectMove(_destinations[i]),
+                              child: Text(Config.tabs[_destinations[i]]),
+                            ),
+                        if (_optionMode == _SwipeOptionMode.delete) ...[
                           TextButton(
-                            style: optionStyle(i),
-                            onPressed: () => _selectMove(_destinations[i]),
-                            child: Text(Config.tabs[_destinations[i]]),
+                            style: optionStyle(0),
+                            onPressed: _selectDelete,
+                            child: const Text('Delete'),
                           ),
-                      if (_optionMode == _SwipeOptionMode.delete) ...[
-                        TextButton(
-                          style: optionStyle(0),
-                          onPressed: _selectDelete,
-                          child: const Text('Delete'),
-                        ),
-                        for (var i = 0;
-                            i < _deleteSwipeWeekdayOptions.length;
-                            i++)
-                          TextButton(
-                            style: optionStyle(i + 1),
-                            onPressed: () => _selectWeekday(
-                                _deleteSwipeWeekdayOptions[i].weekday),
-                            child: Text(_deleteSwipeWeekdayOptions[i].label),
-                          ),
+                          for (var i = 0;
+                              i < _deleteSwipeWeekdayOptions.length;
+                              i++)
+                            TextButton(
+                              style: optionStyle(i + 1),
+                              onPressed: () => _selectWeekday(
+                                  _deleteSwipeWeekdayOptions[i].weekday),
+                              child: Text(_deleteSwipeWeekdayOptions[i].label),
+                            ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: 60,
-                    child: AnimatedBuilder(
-                      animation: _progressController,
-                      builder: (context, child) {
-                        return LinearProgressIndicator(
-                            value: _progressController.value);
-                      },
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: 60,
+                      child: AnimatedBuilder(
+                        animation: _progressController,
+                        builder: (context, child) {
+                          return LinearProgressIndicator(
+                              value: _progressController.value);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

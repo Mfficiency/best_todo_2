@@ -5,6 +5,9 @@ import 'package:besttodo/services/music_playlist_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  // The handler builds a real just_audio player, which needs the binding.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUp(() {
     MusicLibraryService.instance.resetForTest();
     MusicPlaylistService.instance.resetForTest();
@@ -13,38 +16,48 @@ void main() {
   Track track(String id) =>
       Track.local(filePath: '/fake/$id.mp3', title: id);
 
-  test('reorderQueue moves a track to its new position', () async {
-    final handler = MusicAudioHandler();
-    await handler.setQueueAndPlay([track('a'), track('b'), track('c')]);
+  /// A queue of a, b, c with a current — set via [MusicAudioHandler.restore]
+  /// so no audio is loaded (there's no just_audio platform in tests; loading
+  /// would fail and hang the test).
+  MusicAudioHandler handlerWithQueue() =>
+      MusicAudioHandler()..restore([track('a'), track('b'), track('c')]);
 
-    handler.reorderQueue(0, 2);
+  List<String> ids(MusicAudioHandler h) =>
+      h.currentQueueTracks.map((t) => t.id).toList();
 
-    expect(
-      handler.currentQueueTracks.map((t) => t.id).toList(),
-      ['local:/fake/b.mp3', 'local:/fake/c.mp3', 'local:/fake/a.mp3'],
-    );
+  test('reorderQueue moves a track to its new position', () {
+    final handler = handlerWithQueue();
+
+    // ReorderableListView convention (what QueuePage passes): dropping the
+    // first row below the last one reports newIndex == length.
+    handler.reorderQueue(0, 3);
+    expect(ids(handler),
+        ['local:/fake/b.mp3', 'local:/fake/c.mp3', 'local:/fake/a.mp3']);
+    // The playing track keeps playing, now at its new position.
+    expect(handler.currentTrack!.id, 'local:/fake/a.mp3');
+
+    // Dropping the last row above the first: newIndex 0.
+    handler.reorderQueue(2, 0);
+    expect(ids(handler),
+        ['local:/fake/a.mp3', 'local:/fake/b.mp3', 'local:/fake/c.mp3']);
+    expect(handler.currentTrack!.id, 'local:/fake/a.mp3');
   });
 
   test('toggleShuffle flips shuffleEnabled and restores order on toggle off',
       () async {
-    final handler = MusicAudioHandler();
-    await handler.setQueueAndPlay([track('a'), track('b'), track('c')]);
-    // Move the currently-playing track to the front so there's an upcoming
-    // tail left for shuffle to actually reorder.
-    handler.reorderQueue(handler.currentQueueTracks.length - 1, 0);
-    final order = handler.currentQueueTracks.map((t) => t.id).toList();
+    final handler = handlerWithQueue();
+    final order = ids(handler);
 
     expect(handler.shuffleEnabled.value, isFalse);
 
     await handler.toggleShuffle();
     expect(handler.shuffleEnabled.value, isTrue);
-    expect(
-      handler.currentQueueTracks.map((t) => t.id).toSet(),
-      order.toSet(),
-    );
+    expect(ids(handler).toSet(), order.toSet());
+    // Only the upcoming tail is shuffled; the playing track stays first.
+    expect(ids(handler).first, order.first);
 
     await handler.toggleShuffle();
     expect(handler.shuffleEnabled.value, isFalse);
-    expect(handler.currentQueueTracks.map((t) => t.id).toList(), order);
+    expect(ids(handler), order);
   });
 }

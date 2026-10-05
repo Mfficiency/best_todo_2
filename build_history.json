@@ -1305,5 +1305,55 @@
     "source": "ci",
     "finishedAt": "2026-10-05T10:51:14.146242",
     "os": "linux"
+  },
+  {
+    "version": "0.3.9+406",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 358,
+    "sizeBytes": 65773412,
+    "source": "ci",
+    "finishedAt": "2026-10-05T11:25:29.997325",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.98+399",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 517,
+    "sizeBytes": 66963448,
+    "source": "ci",
+    "finishedAt": "2026-10-05T11:36:57.101916",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.10+408",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 401,
+    "sizeBytes": 65774000,
+    "source": "ci",
+    "finishedAt": "2026-10-05T12:02:06.139890",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.98+399",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 495,
+    "sizeBytes": 66963908,
+    "source": "ci",
+    "finishedAt": "2026-10-05T12:04:44.846391",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 438,
+    "sizeBytes": 66979460,
+    "source": "ci",
+    "finishedAt": "2026-10-05T12:08:34.119535",
+    "os": "linux"
   }
 ]

@@ -6,12 +6,26 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
-## [0.3.9] - 2026-10-05
+## [0.3.11] - 2026-10-05
 - Song info fills itself in, in the background: songs missing an artist, album, genre, year or BPM are looked up online (Deezer, iTunes and MusicBrainz, trying several spellings of the title until one matches) and only the blanks are filled — your own tags and edits are never overwritten
 - If the internet can't find a BPM for at least 90% of your songs, Best Music works it out on your phone by listening to each remaining song — no button to press
 - What's found is also saved into your MP3 files' own tags, so other music apps see it too — only blank tags are filled, nothing already in the file is changed
 - Fixed: the library scan never read your MP3s' tags (artist, album, genre, year, BPM) at all — the library is rescanned once automatically after updating to pick them up
 - Metadata Scan and Songs by BPM show what it's doing ("Looking up song info online… 12/240", "Detecting BPM on device… 3/40")
+
+## [0.3.10] - 2026-10-05
+- If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason instead of showing a few seconds later
+- CI build: 2026-10-05 12:02 UTC
+- Build duration (apk, CI): 6m 41s
+- APK size: 62.7 MB
+
+## [0.3.9] - 2026-10-05
+- Videos now have a Transcript button: read the full transcript of a Subscriptions video, with timestamps — taken from YouTube's captions, or from backup sites (Invidious) when YouTube won't give them
+- New "Quick summary" button on videos: a short summary of the video, its key points and the conclusion it reaches. Add a Claude API key in Settings → Transcripts & summaries for a summary written by Claude; without one, the phone picks the key sentences itself
+- Save a summary to Obsidian with one tap — it lands as a note in your Research folder (folder and vault are set in Settings → Transcripts & summaries) — or use Share/Copy to send it anywhere
+- CI build: 2026-10-05 11:25 UTC
+- Build duration (apk, CI): 5m 58s
+- APK size: 62.7 MB
 
 ## [0.3.8] - 2026-10-05
 - New "Songs by BPM" page (menu, and at the top of Playlists): drag either end of the BPM slider to pick a tempo range, see the songs in it, then play them as your queue, save them as a playlist, or save the range as a preset to come back to

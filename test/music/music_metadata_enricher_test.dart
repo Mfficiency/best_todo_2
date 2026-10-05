@@ -258,7 +258,7 @@ void main() {
     e.stop();
   });
 
-  test('rescans once (ever) so pre-0.3.9 libraries get their tags read',
+  test('rescans once (ever) so pre-0.3.11 libraries get their tags read',
       () async {
     library.tracks.value = [_track('A', genre: 'Rock', year: 1, bpm: 1)];
     var e = enricher(_FakeLookup({}));
