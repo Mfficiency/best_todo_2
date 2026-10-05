@@ -4,8 +4,8 @@
 - The Worklist now shows its name at the top (in the search box), so you can tell it apart from your normal task list
 - The Move/Delete options that appear when you swipe a task now shrink to fit the row instead of being cut off with large system font sizes
 - If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason (e.g. "Update download failed: This release has no APK to download") instead of showing a few seconds later
-- CI build: 2026-10-05 12:08 UTC
-- Build duration (apk, CI): 7m 18s
+- CI build: 2026-10-05 13:12 UTC
+- Build duration (apk, CI): 7m 31s
 - APK size: 63.9 MB
 
 ## [0.2.98] - 2026-10-04
