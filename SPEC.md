@@ -4519,7 +4519,7 @@ search results as the queue. Paging older weeks and the footer are off while sea
 Not done yet (deliberately out of the MVP): in-app video playback, background
 new-upload notifications, feed groups.
 
-### 10.6n Songs by BPM (Best Music 0.3.8)
+### 10.6n Songs by BPM (Best Music 0.3.9)
 **BPM per track** — `Track.bpm` (int?, JSON `bpm`, omitted when null; kept by `copyWith`).
 Sources: an mp3's ID3 `TBPM` frame (`decodeMp3Tags` → `ExtractedTags.bpm` via `parseBpm`:
 first number in the text, `,`/`.` decimals rounded, 1–999 else null); an OpenSubsonic
@@ -4615,6 +4615,46 @@ unchanged — only BestToDo's wiring to it is gone:
 Earlier sections (§8 music widgets, §10.6d, §10.6e, "Settings → Music Player") describe the
 code as it still runs inside Best Music; their "Tools ▸ …" / BestToDo-Settings wiring is
 historical.
+
+### 10.6o Video transcripts & Quick summary (Best Music 0.3.9)
+
+A Subscriptions video's page (`YoutubeVideoPage`) has **Transcript** and **Quick summary**
+buttons (`lib/ui/video_transcript_page.dart`, both take a `VideoRef` of id/title/channel/
+published).
+
+- **Transcript source** — `VideoTranscriptService` (`lib/services/video_transcript_service.dart`,
+  singleton, per-session in-memory cache by video id): first YouTube's own caption tracks via
+  youtube_explode (`videos.closedCaptions.getManifest` → `get`), then, if that throws or has no
+  tracks, the public Invidious instances in `invidiousInstances` (`/api/v1/captions/<id>` →
+  the chosen track's WebVTT, parsed by `parseVtt`). Track choice (`pickTrack`): manual English
+  → auto English → any manual → first. `cleanSegments` strips tags/entities, drops the
+  repeated lines of YouTube's rolling auto-captions and `[Music]`-style cues. All sources
+  failing throws `TranscriptUnavailableException` listing each attempt (shown on the page).
+  `paragraphs()` groups segments into ~45 s timestamped paragraphs (forced break at 90 s for
+  unpunctuated auto-captions). The transcript page shows source/language/auto/word count,
+  Copy and Share (Markdown) and a Quick summary button.
+- **Summary** — `VideoSummaryService.summarize` (`lib/services/video_summary_service.dart`):
+  with `Config.claudeApiKey` set it POSTs to `https://api.anthropic.com/v1/messages`
+  (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-beta:
+  server-side-fallback-2026-07-01`; model `claude-opus-5-5`, `fallbacks: "default"`,
+  `output_config.effort: low` + a JSON-schema format `{overview, key_points[], conclusion}`;
+  the whole transcript is sent, never truncated). Non-200, network errors and
+  `stop_reason: refusal` throw `VideoSummaryException`; the page then shows the on-device
+  summary with the error. Without a key: `extractiveSummary` — sentences (or 25-word chunks for
+  unpunctuated captions) scored by content-word frequency, best five in order as key points,
+  the last 1–2 as the conclusion, an overview naming length/word count/top words. A banner
+  on an on-device summary links to Settings → Transcripts & summaries.
+- **Obsidian** — `ObsidianResearchNote.markdown` builds the note (frontmatter: title, source,
+  channel, published, created, tags research+video; then `## Summary`/`## Key points`/
+  `## Conclusion`). **Save to Obsidian** opens `obsidian://new?vault=…&file=<folder>/<title>&content=…`
+  (`saveUri`, percent-encoded by hand since Obsidian keeps `+`; vault omitted when empty =
+  the open vault; file name sanitized, ≤100 chars); Share/Copy send the same Markdown.
+- **Settings** — Best Music Settings gains a "Transcripts & summaries" section
+  (`MusicSettingsSection.summaries`, before Updates): Claude API key (obscured),
+  Obsidian research folder (`Config.obsidianResearchFolder`, default `Research`) and vault
+  (`Config.obsidianVault`), edited in `_TextSettingDialog`. All three persist in
+  `settings.json`.
+- Tests: `test/music/video_transcript_test.dart`.
 
 ## 11. Build, versioning, CI
 

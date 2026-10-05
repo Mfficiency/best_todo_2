@@ -14,6 +14,7 @@ import 'mp3_downloader_page.dart';
 import 'estimated_progress_bar.dart';
 import 'music_settings_page.dart';
 import 'subpage_app_bar.dart';
+import 'video_transcript_page.dart';
 import 'youtube_channels_page.dart';
 
 /// "3h ago" / "2d ago" / "5w ago" — compact enough for a phone row.
@@ -658,6 +659,13 @@ class YoutubeVideoPage extends StatefulWidget {
 }
 
 class _YoutubeVideoPageState extends State<YoutubeVideoPage> {
+  static VideoRef _ref(FeedVideo video) => VideoRef(
+        videoId: video.videoId,
+        title: video.title,
+        channel: video.channelName,
+        published: video.published,
+      );
+
   late final YoutubeFeedService _service =
       widget.service ?? YoutubeFeedService.instance;
   late String _description = widget.video.description;
@@ -731,6 +739,22 @@ class _YoutubeVideoPageState extends State<YoutubeVideoPage> {
                                 initialQuery: video.watchUrl))),
                     icon: const Icon(Icons.download_outlined),
                     label: const Text('Download'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                VideoTranscriptPage(video: _ref(video)))),
+                    icon: const Icon(Icons.subtitles_outlined),
+                    label: const Text('Transcript'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                VideoSummaryPage(video: _ref(video)))),
+                    icon: const Icon(Icons.summarize_outlined),
+                    label: const Text('Quick summary'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => _service.setPlayed(video.videoId, !played),
