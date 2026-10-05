@@ -23,6 +23,7 @@ import '../services/streak_service.dart';
 import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import '../services/update_service.dart';
 import '../utils/date_time_format.dart';
 import 'approval_quick_tags_page.dart';
 import 'auto_tag_rules_page.dart';
@@ -31,6 +32,7 @@ import 'fitness_activity_page.dart';
 import 'sms_report_log_page.dart';
 import 'streak_goal_dialog.dart';
 import 'subpage_app_bar.dart';
+import 'update_downloads_folder_tile.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
@@ -74,7 +76,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Backup',
     'Weekly Hours Planner',
     'Wishlist build',
-    'MP3 Downloader',
+    'Claude Routine',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -95,8 +97,6 @@ class _SettingsPageState extends State<SettingsPage> {
         return Config.isFeatureEnabled('sms_report');
       case 13:
         return Config.isFeatureEnabled('weekly_hours_planner');
-      case 15:
-        return Config.isFeatureEnabled('mp3_downloader');
       default:
         return true;
     }
@@ -222,8 +222,10 @@ class _SettingsPageState extends State<SettingsPage> {
         'Enable Todoist sync', 10, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
-    _SettingsSearchEntry('Automatically check for updates', 9,
+    _SettingsSearchEntry('Automatically update', 9,
         'auto update version release new build startup prompt install about'),
+    _SettingsSearchEntry('Update downloads folder', 9,
+        'apk download path location directory storage temporary'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
         'deleted bin hide show tag exclude include only filter built in'),
@@ -235,8 +237,10 @@ class _SettingsPageState extends State<SettingsPage> {
         'grid hour range day end flexitime'),
     _SettingsSearchEntry('GitHub token', 14,
         'wishlist build automation issue pat personal access token next build'),
-    _SettingsSearchEntry('MP3 download folder', 15,
-        'mp3 downloader youtube audio music save folder directory location m4a'),
+    _SettingsSearchEntry('Routine fire URL', 15,
+        'claude code routine send to claude session cloud trigger api'),
+    _SettingsSearchEntry('Routine token', 15,
+        'claude code routine send to claude session cloud trigger api key'),
   ];
 
   /// The feature switches of the Mode & features section are searchable too,
@@ -260,6 +264,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _widgetCheckboxes = Config.widgetCheckboxes;
   bool _addNewTasksToTop = Config.addNewTasksToTop;
   bool _autoTagEnabled = Config.autoTagEnabled;
+  bool _smartAutoTagEnabled = Config.smartAutoTagEnabled;
+  final TextEditingController _jevApiKeyController =
+      TextEditingController(text: Config.jevApiKey);
+  bool _jevApiKeyObscured = true;
   bool _enterSavesNewTask = Config.enterSavesNewTask;
   int _defaultAddTabIndex = Config.defaultAddTabIndex;
   bool _use24HourFormat = Config.use24HourFormat;
@@ -298,6 +306,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _githubTesting = false;
   String? _githubTestResult;
   bool _githubTestSucceeded = false;
+  final TextEditingController _claudeRoutineUrlController =
+      TextEditingController(text: Config.claudeRoutineUrl);
+  final TextEditingController _claudeRoutineTokenController =
+      TextEditingController(text: Config.claudeRoutineToken);
+  bool _claudeRoutineTokenObscured = true;
   int _weeklyHoursStartHour = Config.weeklyHoursStartHour;
   int _weeklyHoursEndHour = Config.weeklyHoursEndHour;
   final TextEditingController _googleCalendarUrlController =
@@ -309,6 +322,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   SmsReportConfig? _smsConfig;
   final TextEditingController _smsTemplateController = TextEditingController();
+
 
   /// One text field per view/kind combo in the Filtering rules section,
   /// keyed `'$viewId:$kind'` (`kind` is `exclude` or `include`).
@@ -325,6 +339,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _widgetCheckboxes = Config.widgetCheckboxes;
     _addNewTasksToTop = Config.addNewTasksToTop;
     _autoTagEnabled = Config.autoTagEnabled;
+    _smartAutoTagEnabled = Config.smartAutoTagEnabled;
+    _jevApiKeyController.text = Config.jevApiKey;
     _enterSavesNewTask = Config.enterSavesNewTask;
     _defaultAddTabIndex = Config.defaultAddTabIndex;
     _use24HourFormat = Config.use24HourFormat;
@@ -350,6 +366,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _todoistSyncEnabled = Config.todoistSyncEnabled;
     _todoistTokenController.text = Config.todoistApiToken;
     _githubTokenController.text = Config.githubWishlistToken;
+    _claudeRoutineUrlController.text = Config.claudeRoutineUrl;
+    _claudeRoutineTokenController.text = Config.claudeRoutineToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
     _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
     _weeklyHoursStartHour = Config.weeklyHoursStartHour;
@@ -2164,6 +2182,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _saveClaudeRoutine() async {
+    Config.claudeRoutineUrl = _claudeRoutineUrlController.text.trim();
+    Config.claudeRoutineToken = _claudeRoutineTokenController.text.trim();
+    await Config.save();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Claude Routine settings saved')),
+    );
+  }
+
   /// Settings → Wishlist build: the GitHub token used by Tools → Wishlist's
   /// "Send to build" swipe action to open a `wishlist-build`-labeled issue.
   /// A daily Claude Code Remote routine (5pm, plus on demand) picks those up,
@@ -2172,65 +2200,6 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Settings → MP3 Downloader: where Tools → MP3 Downloader saves audio.
   /// The tool asks for this folder the first time it downloads something and
   /// then never prompts again, so this is the only place to change it.
-  Future<void> _pickMp3DownloadFolder() async {
-    String? initial;
-    try {
-      initial = (await getDownloadsDirectory())?.path;
-    } catch (_) {
-      initial = null;
-    }
-    final directory = await getDirectoryPath(
-      initialDirectory: Config.mp3DownloadFolder.isNotEmpty
-          ? Config.mp3DownloadFolder
-          : initial,
-    );
-    if (directory == null) return;
-    setState(() => Config.mp3DownloadFolder = directory);
-    await Config.save();
-    widget.onSettingsChanged?.call();
-  }
-
-  Future<void> _clearMp3DownloadFolder() async {
-    setState(() => Config.mp3DownloadFolder = '');
-    await Config.save();
-    widget.onSettingsChanged?.call();
-  }
-
-  Widget _buildMp3DownloaderSection() {
-    final chosen = Config.mp3DownloadFolder.isNotEmpty;
-    return _buildSection(
-      index: 15,
-      title: 'MP3 Downloader',
-      children: [
-        ListTile(
-          title: const Text('Download folder'),
-          subtitle: Text(
-            chosen
-                ? Config.mp3DownloadFolder
-                : 'Not set — the downloader asks the first time you use it',
-          ),
-          trailing: const Icon(Icons.folder_open),
-          onTap: _pickMp3DownloadFolder,
-        ),
-        if (chosen)
-          ListTile(
-            leading: const Icon(Icons.clear),
-            title: const Text('Forget this folder'),
-            subtitle: const Text('The downloader will ask again next time'),
-            onTap: _clearMp3DownloadFolder,
-          ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Text(
-            'Audio is saved in the format YouTube serves it in — .m4a (AAC) '
-            'or .webm (Opus) — without re-encoding.',
-            style: TextStyle(fontSize: 12),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildWishlistBuildSection() {
     return _buildSection(
       index: 14,
@@ -2308,6 +2277,72 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// Settings → Claude Routine: the fire URL + bearer token for a Claude Code
+  /// Routine's API trigger, used by a task's "Send to Claude" action to start
+  /// a cloud coding session from that task. See
+  /// https://code.claude.com/docs/en/routines#add-an-api-trigger — create the
+  /// routine at claude.ai/code/routines, add an API trigger, and paste the
+  /// generated URL and token here.
+  Widget _buildClaudeRoutineSection() {
+    return _buildSection(
+      index: 15,
+      title: 'Claude Routine',
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Text(
+            'Lets a task\'s "Send to Claude" action start a Claude Code cloud '
+            'session from that task. Create a routine at '
+            'claude.ai/code/routines, add an API trigger, and paste the '
+            'generated fire URL and token here. There\'s no side-effect-free '
+            'way to test these — an invalid URL or token only shows up when '
+            'you actually send a task.',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _claudeRoutineUrlController,
+            decoration: const InputDecoration(
+              labelText: 'Routine fire URL',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _claudeRoutineTokenController,
+            obscureText: _claudeRoutineTokenObscured,
+            decoration: InputDecoration(
+              labelText: 'Routine token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip:
+                    _claudeRoutineTokenObscured ? 'Show token' : 'Hide token',
+                icon: Icon(_claudeRoutineTokenObscured
+                    ? Icons.visibility
+                    : Icons.visibility_off),
+                onPressed: () => setState(() =>
+                    _claudeRoutineTokenObscured = !_claudeRoutineTokenObscured),
+              ),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: FilledButton.icon(
+            onPressed: _saveClaudeRoutine,
+            icon: const Icon(Icons.save),
+            label: const Text('Save'),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _setAutoUpdateCheckEnabled(bool value) async {
     setState(() => _autoUpdateCheckEnabled = value);
     Config.autoUpdateCheckEnabled = value;
@@ -2321,15 +2356,16 @@ class _SettingsPageState extends State<SettingsPage> {
       title: 'Updates',
       children: [
         SwitchListTile(
-          title: const Text('Automatically check for updates'),
+          title: const Text('Automatically update'),
           subtitle: const Text(
-              'Polls for a newer version every minute while the app is open '
-              'and asks whether to download and install it the moment one '
-              'appears. Manual checks on the About page always work '
-              'regardless of this setting.'),
+              'Checks for a newer version every minute while the app is open '
+              'and downloads and installs it as soon as one appears — only '
+              'Android\'s own install screen asks to confirm. Manual checks '
+              'on the About page always work regardless of this setting.'),
           value: _autoUpdateCheckEnabled,
           onChanged: _setAutoUpdateCheckEnabled,
         ),
+        UpdateDownloadsFolderTile(updateService: UpdateService.instance),
       ],
     );
   }
@@ -2685,6 +2721,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _searchController.dispose();
     _todoistTokenController.dispose();
     _githubTokenController.dispose();
+    _claudeRoutineUrlController.dispose();
+    _claudeRoutineTokenController.dispose();
+    _jevApiKeyController.dispose();
     _googleCalendarUrlController.dispose();
     for (final controller in _filterTagControllers.values) {
       controller.dispose();
@@ -3096,6 +3135,50 @@ class _SettingsPageState extends State<SettingsPage> {
                                 widget.onSettingsChanged?.call();
                               },
                             ),
+                            SwitchListTile(
+                              title: const Text('Smart auto-tag (Jev)'),
+                              subtitle: const Text(
+                                  'When no keyword matches, ask the Jev decision '
+                                  'model to pick one of your tags (needs a '
+                                  'TypeSafe API key; ~\$0.04 per million tokens)'),
+                              value: _smartAutoTagEnabled,
+                              onChanged: _autoTagEnabled
+                                  ? (val) async {
+                                      setState(
+                                          () => _smartAutoTagEnabled = val);
+                                      Config.smartAutoTagEnabled = val;
+                                      await Config.save();
+                                    }
+                                  : null,
+                            ),
+                            if (_autoTagEnabled && _smartAutoTagEnabled)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                child: TextField(
+                                  controller: _jevApiKeyController,
+                                  obscureText: _jevApiKeyObscured,
+                                  decoration: InputDecoration(
+                                    labelText: 'TypeSafe API key',
+                                    border: const OutlineInputBorder(),
+                                    suffixIcon: IconButton(
+                                      tooltip: _jevApiKeyObscured
+                                          ? 'Show key'
+                                          : 'Hide key',
+                                      icon: Icon(_jevApiKeyObscured
+                                          ? Icons.visibility
+                                          : Icons.visibility_off),
+                                      onPressed: () => setState(() =>
+                                          _jevApiKeyObscured =
+                                              !_jevApiKeyObscured),
+                                    ),
+                                  ),
+                                  onChanged: (val) {
+                                    Config.jevApiKey = val.trim();
+                                    Config.save();
+                                  },
+                                ),
+                              ),
                             ListTile(
                               leading: const Icon(Icons.sell_outlined),
                               title: const Text('Auto-tag rules'),
@@ -3165,7 +3248,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         if (_isSectionVisible(13))
                           _buildWeeklyHoursPlannerSection(),
                         _buildWishlistBuildSection(),
-                        if (_isSectionVisible(15)) _buildMp3DownloaderSection(),
+                        _buildClaudeRoutineSection(),
                       ],
               ),
             ),

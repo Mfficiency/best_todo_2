@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -8,19 +9,37 @@ import '../config.dart';
 import '../services/log_service.dart';
 import '../services/mp3_download_manager.dart';
 import '../services/mp3_downloader_service.dart';
+import '../services/music_share_link.dart';
+import '../services/share_intent_service.dart';
+import '../services/track_title.dart';
+import 'estimated_progress_bar.dart';
 import 'mp3_downloads_page.dart';
 import 'subpage_app_bar.dart';
 
-/// Tools → MP3 Downloader: paste a YouTube URL, or type a title to search,
-/// and save the video's audio. A pasted URL downloads straight away; a text
-/// query shows up to 5 candidates (title, channel, duration, play count) so
-/// the ambiguous case — "which video did they mean?" — is the user's call,
-/// not a guess. Play count is usually the quickest way to tell the real
-/// upload from a reupload.
+/// Tools → MP3 Downloader: paste a YouTube URL, a playlist link, or type a
+/// title to search, and save audio. A pasted video URL downloads straight
+/// away; a text query shows up to 5 candidates (title, channel, duration,
+/// play count) so the ambiguous case — "which video did they mean?" — is
+/// the user's call, not a guess. Play count is usually the quickest way to
+/// tell the real upload from a reupload.
+///
+/// A pasted playlist link instead shows every track with a checkbox, all
+/// pre-selected except ones already sitting — under the same
+/// "Artist - Title" name a fresh download would use — in the download
+/// folder, the phone's standard Music folder (or, if Settings → MP3
+/// Downloader has one configured instead, that folder), or any of their
+/// subfolders — so re-pasting a list you've partly downloaded before only
+/// offers to fetch what's missing.
 ///
 /// The page only *queues* work: [Mp3DownloadManager] owns the transfer, so
 /// leaving this page or backgrounding the app doesn't interrupt it, and the
 /// download button in the app bar shows what is still running.
+///
+/// Also the destination for a Spotify, YouTube or Shazam link shared into
+/// BestToDo (see [MusicShareLink]/`main.dart`): [sharedLink] feeds this same
+/// search box automatically, so a shared YouTube link downloads immediately
+/// and a Spotify/Shazam link (resolved to a search query via
+/// [MusicLinkResolverService]) lands straight on the candidate picker below.
 ///
 /// Saves the audio-only stream as delivered (`.m4a`/AAC or `.webm`/Opus)
 /// rather than transcoding to a literal `.mp3` — see
@@ -31,18 +50,45 @@ class Mp3DownloaderPage extends StatefulWidget {
     Key? key,
     Mp3DownloaderService? service,
     Mp3DownloadManager? manager,
+    MusicLinkResolverService? resolver,
+    this.sharedLink,
+    this.autoDownloadTopMatch = false,
+    this.initialQuery,
   })  : _service = service,
         _manager = manager,
+        _resolver = resolver,
         super(key: key);
 
   final Mp3DownloaderService? _service;
   final Mp3DownloadManager? _manager;
+  final MusicLinkResolverService? _resolver;
+
+  /// Set when this page was opened from the Android share sheet (a Spotify,
+  /// YouTube or Shazam link shared into BestToDo — see `main.dart`) rather
+  /// than from Tools. Drives the search box straight from the link instead
+  /// of waiting for the user to type, and swaps the app bar for one that can
+  /// hand control back to the sharing app.
+  final MusicShareLink? sharedLink;
+
+  /// Best Music's share flow (see `main_music.dart`): a shared link or song
+  /// name that resolves to a *search* (anything but a direct YouTube link,
+  /// which already downloads immediately) queues the top match straight
+  /// away instead of waiting on the candidate picker. The other candidates
+  /// stay listed, so a wrong guess is one tap to swap — tapping another
+  /// candidate cancels the auto-picked download if it's still running.
+  /// Off for BestToDo, whose share flow keeps the plain picker.
+  final bool autoDownloadTopMatch;
+
+  /// Submitted as soon as the page opens, as if typed — the Subscriptions
+  /// feed's "Download" button passes a video URL here, which queues it
+  /// straight away through the usual folder checks.
+  final String? initialQuery;
 
   @override
   State<Mp3DownloaderPage> createState() => _Mp3DownloaderPageState();
 }
 
-enum _Stage { idle, searching, picking, error }
+enum _Stage { idle, searching, picking, playlist, error }
 
 enum _UnwritableFolderChoice { grantPermission, useFallback }
 
@@ -51,22 +97,82 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       widget._service ?? Mp3DownloaderService.instance;
   late final Mp3DownloadManager _manager =
       widget._manager ?? Mp3DownloadManager.instance;
+  late final MusicLinkResolverService _resolver =
+      widget._resolver ?? MusicLinkResolverService.instance;
   final TextEditingController _controller = TextEditingController();
 
   _Stage _stage = _Stage.idle;
   List<Mp3SearchResult> _results = <Mp3SearchResult>[];
   String? _errorMessage;
 
+  Mp3PlaylistInfo? _playlistInfo;
+  String? _playlistFolder;
+  Set<String> _selectedVideoIds = <String>{};
+  Set<String> _alreadyDownloadedVideoIds = <String>{};
+
+  // Whether _finishShare() already ran — dispose() uses this to also return
+  // to the sharing app on a bare back-gesture dismissal, without
+  // double-firing the platform call. Mirrors QuickAddSharePage.
+  bool _shareFinished = false;
+
+  // The download [Mp3DownloaderPage.autoDownloadTopMatch] queued on its own,
+  // until the user picks a candidate themselves.
+  Mp3DownloadJob? _autoJob;
+
   @override
   void initState() {
     super.initState();
     _manager.load();
+    final sharedLink = widget.sharedLink;
+    if (sharedLink != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _handleSharedLink(sharedLink));
+    } else if ((widget.initialQuery ?? '').trim().isNotEmpty) {
+      _controller.text = widget.initialQuery!.trim();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _submit());
+    }
   }
 
   @override
   void dispose() {
+    if (widget.sharedLink != null && !_shareFinished) {
+      unawaited(ShareIntentService.instance.returnToPreviousApp());
+    }
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Resolves the shared link into a search query (straight through for a
+  /// YouTube link, a page-title lookup for Spotify/Shazam — see
+  /// [MusicLinkResolverService]) and feeds it into the same [_submit] path a
+  /// typed query uses, so a YouTube link downloads immediately and a
+  /// Spotify/Shazam link lands on the usual candidate picker.
+  Future<void> _handleSharedLink(MusicShareLink link) async {
+    setState(() {
+      _stage = _Stage.searching;
+      _errorMessage = null;
+    });
+    try {
+      final query = await _resolver.resolveSearchQuery(link);
+      if (!mounted) return;
+      _controller.text = query;
+      await _submit(
+        autoPickTop: widget.autoDownloadTopMatch &&
+            link.source != MusicLinkSource.youtube,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stage = _Stage.error;
+        _errorMessage = "Couldn't use the shared link: $e";
+      });
+    }
+  }
+
+  void _finishShare() {
+    _shareFinished = true;
+    unawaited(ShareIntentService.instance.returnToPreviousApp());
+    if (mounted) Navigator.of(context).maybePop();
   }
 
   String _formatDuration(Duration? duration) {
@@ -208,7 +314,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     );
   }
 
-  Future<void> _submit() async {
+  /// [autoPickTop]: queue the first search result right away (see
+  /// [Mp3DownloaderPage.autoDownloadTopMatch]) while still listing every
+  /// candidate.
+  Future<void> _submit({bool autoPickTop = false}) async {
     final input = _controller.text.trim();
     if (input.isEmpty) return;
     FocusScope.of(context).unfocus();
@@ -218,6 +327,10 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       _results = <Mp3SearchResult>[];
     });
     try {
+      if (looksLikeYoutubePlaylistUrl(input)) {
+        await _resolvePlaylistInput(input);
+        return;
+      }
       if (looksLikeYoutubeUrl(input)) {
         final result = await _service.resolve(input);
         if (!mounted) return;
@@ -237,10 +350,19 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       setState(() {
         _stage = _Stage.picking;
         _results = results;
+        _autoJob = null;
       });
+      if (autoPickTop) {
+        final job = await _queueDownload(results.first);
+        if (mounted && job != null) setState(() => _autoJob = job);
+      }
     } catch (e) {
       if (!mounted) return;
-      final verb = looksLikeYoutubeUrl(input) ? 'Lookup' : 'Search';
+      final verb = looksLikeYoutubePlaylistUrl(input)
+          ? 'Playlist lookup'
+          : looksLikeYoutubeUrl(input)
+              ? 'Lookup'
+              : 'Search';
       setState(() {
         _stage = _Stage.error;
         _errorMessage = '$verb failed: $e';
@@ -248,10 +370,79 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
     }
   }
 
-  Future<void> _queueDownload(Mp3SearchResult result) async {
+  /// Resolves a playlist link into its track list, then asks for (or
+  /// reuses) the download folder to work out which tracks are already
+  /// saved there — those start out unchecked rather than being hidden, so
+  /// picking one back up is still one tap away.
+  ///
+  /// "Already saved" is checked against the download folder itself plus the
+  /// phone's actual Music folder (or whatever folder Settings → MP3
+  /// Downloader has been told to compare against instead) — see
+  /// [compareFoldersFor] — since tracks this app downloaded may not be the
+  /// only place a title already exists on the phone.
+  Future<void> _resolvePlaylistInput(String input) async {
+    final info = await _service.resolvePlaylist(input);
+    if (!mounted) return;
     final folder = await _ensureDownloadFolder();
-    if (!mounted || folder == null) return;
-    _manager.enqueue(result, folder);
+    if (!mounted) return;
+    if (folder == null) {
+      setState(() => _stage = _Stage.idle);
+      return;
+    }
+    final compareFolders = await compareFoldersFor(
+      folder,
+      configuredCompareFolder: Config.mp3CompareFolder,
+    );
+    if (!mounted) return;
+    final existing = await existingTrackBaseNamesAcross(compareFolders);
+    if (!mounted) return;
+    final alreadyDownloaded = <String>{};
+    final toSelect = <String>{};
+    for (final track in info.tracks) {
+      final baseName =
+          parseTrackTitle(track.title, track.channel).fileBaseName.toLowerCase();
+      if (existing.contains(baseName)) {
+        alreadyDownloaded.add(track.videoId);
+      } else {
+        toSelect.add(track.videoId);
+      }
+    }
+    setState(() {
+      _stage = _Stage.playlist;
+      _playlistInfo = info;
+      _playlistFolder = folder;
+      _alreadyDownloadedVideoIds = alreadyDownloaded;
+      _selectedVideoIds = toSelect;
+    });
+  }
+
+  Future<void> _queueSelectedPlaylistTracks() async {
+    final info = _playlistInfo;
+    final folder = _playlistFolder;
+    if (info == null || folder == null) return;
+    final selected =
+        info.tracks.where((t) => _selectedVideoIds.contains(t.videoId)).toList();
+    for (final track in selected) {
+      _manager.enqueue(track, folder);
+    }
+    if (!mounted) return;
+    _reset();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Downloading ${selected.length} '
+          '${selected.length == 1 ? 'track' : 'tracks'}',
+        ),
+        action: SnackBarAction(label: 'Show', onPressed: _openDownloads),
+      ),
+    );
+  }
+
+  Future<Mp3DownloadJob?> _queueDownload(Mp3SearchResult result) async {
+    final folder = await _ensureDownloadFolder();
+    if (!mounted || folder == null) return null;
+    final job = _manager.enqueue(result, folder);
+    _controller.clear();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Downloading "${result.title}"'),
@@ -261,6 +452,20 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
         ),
       ),
     );
+    return job;
+  }
+
+  /// A candidate tapped in the picker. If it isn't the one
+  /// [Mp3DownloaderPage.autoDownloadTopMatch] already started, that guess
+  /// was wrong: stop it (if it's still running) before queuing this one.
+  Future<void> _pickCandidate(Mp3SearchResult result) async {
+    final auto = _autoJob;
+    if (auto != null) {
+      if (auto.videoId == result.videoId) return;
+      _manager.cancel(auto.id);
+      setState(() => _autoJob = null);
+    }
+    await _queueDownload(result);
   }
 
   void _openDownloads() {
@@ -276,6 +481,11 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       _stage = _Stage.idle;
       _results = <Mp3SearchResult>[];
       _errorMessage = null;
+      _playlistInfo = null;
+      _playlistFolder = null;
+      _selectedVideoIds = <String>{};
+      _alreadyDownloadedVideoIds = <String>{};
+      _autoJob = null;
     });
   }
 
@@ -295,12 +505,26 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
         ),
       );
     }
+    final fromShare = widget.sharedLink != null;
     return Scaffold(
-      appBar: buildSubpageAppBar(
-        context,
-        title: 'MP3 Downloader',
-        actions: [_buildDownloadsButton()],
-      ),
+      appBar: fromShare
+          ? AppBar(
+              automaticallyImplyLeading: false,
+              title: const Text('Find & Download Song'),
+              actions: [
+                _buildDownloadsButton(),
+                IconButton(
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close),
+                  onPressed: _finishShare,
+                ),
+              ],
+            )
+          : buildSubpageAppBar(
+              context,
+              title: 'MP3 Downloader',
+              actions: [_buildDownloadsButton()],
+            ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -310,7 +534,7 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
               controller: _controller,
               enabled: _stage != _Stage.searching,
               decoration: const InputDecoration(
-                labelText: 'YouTube URL or video title',
+                labelText: 'YouTube URL, playlist link, or video title',
                 border: OutlineInputBorder(),
               ),
               onSubmitted: (_) => _submit(),
@@ -461,8 +685,103 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
         title: job.title,
         channel: job.channel,
         duration: null,
+        uploadDate: job.uploadDate,
       ),
       job.destinationDir,
+    );
+  }
+
+  /// The playlist stage: every track with a checkbox, "All"/"None" to bulk
+  /// (re)select, and a "Download N" button that queues whatever's checked.
+  Widget _buildPlaylistPicker(BuildContext context) {
+    final info = _playlistInfo!;
+    final tracks = info.tracks;
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${info.title} · ${_selectedVideoIds.length} of '
+                '${tracks.length} selected',
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(
+                () => _selectedVideoIds =
+                    tracks.map((t) => t.videoId).toSet(),
+              ),
+              child: const Text('All'),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _selectedVideoIds = <String>{}),
+              child: const Text('None'),
+            ),
+          ],
+        ),
+        Expanded(
+          child: ListView.separated(
+            itemCount: tracks.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final track = tracks[index];
+              final alreadyDownloaded =
+                  _alreadyDownloadedVideoIds.contains(track.videoId);
+              final plays = formatViewCount(track.viewCount);
+              return CheckboxListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _selectedVideoIds.contains(track.videoId),
+                onChanged: (checked) => setState(() {
+                  if (checked ?? false) {
+                    _selectedVideoIds.add(track.videoId);
+                  } else {
+                    _selectedVideoIds.remove(track.videoId);
+                  }
+                }),
+                title: Text(track.title,
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  alreadyDownloaded
+                      ? 'Already downloaded'
+                      : '${track.channel} · ${_formatDuration(track.duration)}'
+                          '${plays.isEmpty ? '' : ' · $plays plays'}',
+                  style: alreadyDownloaded
+                      ? theme.textTheme.bodySmall
+                          ?.copyWith(fontStyle: FontStyle.italic)
+                      : null,
+                ),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _reset,
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _selectedVideoIds.isEmpty
+                      ? null
+                      : _queueSelectedPlaylistTracks,
+                  child: Text('Download ${_selectedVideoIds.length}'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -489,26 +808,49 @@ class _Mp3DownloaderPageState extends State<Mp3DownloaderPage> {
       case _Stage.idle:
         return const SizedBox.shrink();
       case _Stage.searching:
-        return const Center(child: CircularProgressIndicator());
+        return const Align(
+          alignment: Alignment.topCenter,
+          child: EstimatedProgressBar(active: true),
+        );
       case _Stage.picking:
-        return ListView.separated(
+        final autoVideoId = _autoJob?.videoId;
+        final list = ListView.separated(
           itemCount: _results.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final result = _results[index];
             final plays = formatViewCount(result.viewCount);
+            final isAuto = result.videoId == autoVideoId;
             return ListTile(
+              selected: isAuto,
               title: Text(result.title,
                   maxLines: 2, overflow: TextOverflow.ellipsis),
               subtitle: Text(
                 '${result.channel} · ${_formatDuration(result.duration)}'
                 '${plays.isEmpty ? '' : ' · $plays plays'}',
               ),
-              trailing: const Icon(Icons.download),
-              onTap: () => _queueDownload(result),
+              trailing: Icon(isAuto ? Icons.downloading : Icons.download),
+              onTap: () => _pickCandidate(result),
             );
           },
         );
+        if (autoVideoId == null) return list;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Downloading the top match. Wrong song? Tap the right one '
+                'below instead.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            Expanded(child: list),
+          ],
+        );
+      case _Stage.playlist:
+        return _buildPlaylistPicker(context);
       case _Stage.error:
         return Center(
           child: Column(

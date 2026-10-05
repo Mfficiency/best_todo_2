@@ -276,6 +276,69 @@ void main() {
     });
   });
 
+  /// Best Music (SPEC.md §10.6f) is built from this same repo and shares the
+  /// `github_releases/` folder with BestToDo — `UpdateService.forApp` scopes
+  /// an instance to its own file-name prefix so the two apps never offer
+  /// each other's builds as an "update".
+  group('forApp (a second app sharing the folder)', () {
+    late UpdateService music;
+
+    setUp(() {
+      music = UpdateService.forApp(
+        appDisplayName: 'Best Music',
+        apkPrefix: 'best_music',
+      );
+    });
+
+    test('only sees its own prefix in the shared folder listing', () async {
+      music.fetchOverride = (url) async => jsonEncode([
+            {'name': 'README.md', 'download_url': 'https://x/README.md'},
+            {
+              'name': 'best_todo_0.2.66+357.apk',
+              'download_url': 'https://x/best_todo_0.2.66%2B357.apk',
+              'size': 1,
+            },
+            {
+              'name': 'best_music_0.2.66+357.apk',
+              'download_url': 'https://x/best_music_0.2.66%2B357.apk',
+              'size': 2,
+            },
+          ]);
+      final releases = await music.fetchFolderReleases();
+      expect(releases.map((r) => r.version), ['0.2.66+357']);
+      expect(releases.single.releaseName, 'Best Music 0.2.66+357');
+      expect(releases.single.apkUrl, 'https://x/best_music_0.2.66%2B357.apk');
+    });
+
+    test('BestToDo (the default instance) never sees a Best Music build',
+        () async {
+      UpdateService.instance.fetchOverride = (url) async => jsonEncode([
+            {
+              'name': 'best_music_0.2.66+357.apk',
+              'download_url': 'https://x/best_music_0.2.66%2B357.apk',
+              'size': 1,
+            },
+          ]);
+      expect(await UpdateService.instance.fetchFolderReleases(), isEmpty);
+    });
+
+    test(
+        'an empty folder reports no update instead of falling back to the '
+        "repo-wide latest release (which could be the other app's)",
+        () async {
+      final requested = <String>[];
+      music.fetchOverride = (url) async {
+        requested.add(url.toString());
+        return jsonEncode([]);
+      };
+      final check = await music.checkReleases(currentVersion: '0.1.0+1');
+      expect(check.latest, isNull);
+      expect(check.hasUpdate, isFalse);
+      expect(requested.length, 1);
+      expect(requested.single, contains('/contents/github_releases'));
+    });
+  });
+
   /// Downloads are handed off to Android's `DownloadManager` (native side —
   /// see `MainActivity.kt`), which is what makes them survive the app being
   /// backgrounded and a Wi-Fi/mobile handover mid-download. Here that native
@@ -306,7 +369,21 @@ void main() {
       expect(method, 'startBackgroundDownload');
       expect(args!['url'], 'https://example.com/BestToDo.apk');
       expect(args!['fileName'], 'BestToDo-update-0.1.150-120.apk');
+      expect(args!['title'], 'BestToDo update 0.1.150+120');
       expect(id, 42);
+    });
+
+    test('notification title names the app and version being downloaded',
+        () async {
+      Map<String, dynamic>? args;
+      final music = UpdateService.forApp(
+          appDisplayName: 'Best Music', apkPrefix: 'best_music');
+      music.downloadChannelOverride = (m, a) async {
+        args = a;
+        return {'downloadId': 3};
+      };
+      await music.startBackgroundDownload(makeInfo());
+      expect(args!['title'], 'Best Music update 0.1.150+120');
     });
 
     test('throws instead of calling the channel when the release has no APK',
@@ -480,6 +557,32 @@ void main() {
       expect(iterator.current.status, DownloadStatus.successful);
       expect(await iterator.moveNext(), isFalse);
       expect(await UpdateService.instance.pendingDownload(), isNull);
+    });
+  });
+
+  group('updateDownloadsDirectory', () {
+    test('returns the folder the native side reports', () async {
+      String? method;
+      UpdateService.instance.downloadChannelOverride = (m, a) async {
+        method = m;
+        return '/storage/emulated/0/Android/data/x/files/updates';
+      };
+      expect(await UpdateService.instance.updateDownloadsDirectory(),
+          '/storage/emulated/0/Android/data/x/files/updates');
+      expect(method, 'updateDownloadsDir');
+    });
+
+    test('is null when the native side has no folder or fails', () async {
+      UpdateService.instance.downloadChannelOverride = (m, a) async => null;
+      expect(await UpdateService.instance.updateDownloadsDirectory(), isNull);
+      UpdateService.instance.downloadChannelOverride =
+          (m, a) async => throw StateError('no storage');
+      expect(await UpdateService.instance.updateDownloadsDirectory(), isNull);
+    });
+
+    test('is null off Android without touching the channel', () async {
+      // The test host is never Android, and no override is installed.
+      expect(await UpdateService.instance.updateDownloadsDirectory(), isNull);
     });
   });
 }

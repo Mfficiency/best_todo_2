@@ -348,7 +348,10 @@ class StorageService {
   /// (labelled [legacyTodoImportLabel]). Existing items are never modified or
   /// removed; entries whose normalized title is already present are skipped.
   /// Guarded by [wishlistImportFlagFileName] so user deletions stick.
+  /// [legacyTodoWishlistItems] is BestToDo's own historical feature backlog —
+  /// meaningless in Best Music's Wishlist, so it never runs there.
   Future<void> _maybeImportLegacyTodoItems(List<Task> items) async {
+    if (Config.isBestMusic) return;
     try {
       final dir = await getApplicationDocumentsDirectory();
       final flag = File('${dir.path}/$wishlistImportFlagFileName');

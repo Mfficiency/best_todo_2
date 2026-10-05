@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/shared_payload.dart';
 import '../models/task.dart';
+import '../models/task_change_source.dart';
 import '../services/auto_tag_service.dart';
 import '../services/share_intent_service.dart';
 
@@ -68,6 +69,7 @@ class _QuickAddSharePageState extends State<QuickAddSharePage> {
       label: AutoTagService.instance
           .withAutoTags(title, ShareIntentService.sharedLabel),
       createdAt: now,
+      origin: TaskChangeSource.share,
       dueDate: bucket == ShareBucket.today
           ? DateTime(now.year, now.month, now.day)
           : Task.futureBucketMarker,

@@ -18,6 +18,18 @@ class Config {
   /// Uses the `dart.vm.product` flag to detect production builds.
   static const bool isDev = !bool.fromEnvironment('dart.vm.product');
 
+  /// True only in the Best Music build (set once, at the very top of
+  /// `main_music.dart`'s `main()`, before anything else runs). Both apps
+  /// share this codebase and its generic storage/services layer, but a
+  /// handful of behaviors are specific to one app's users — e.g.
+  /// `StorageService`'s one-time Todo.md backlog import, which makes sense
+  /// for BestToDo's own history and none at all for a music player's
+  /// wishlist. Runtime-only, never persisted (which app is running isn't a
+  /// user setting), so it's just a plain static default of `false` that
+  /// tests never need to touch unless they're specifically exercising
+  /// Best-Music-only behavior.
+  static bool isBestMusic = false;
+
   /// Whether every demo/dev-seed item (see `demoToken` in `label_utils.dart`)
   /// is hidden from every view, ahead of and independent from any Settings →
   /// Filtering rules configuration. Defaults to hidden outside dev builds —
@@ -123,7 +135,7 @@ class Config {
     'test_results',
     'weekly_hours_planner',
     'worklist',
-    'mp3_downloader',
+    'f1_reminder',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -142,7 +154,7 @@ class Config {
     'Test Results',
     'Weekly Hours Planner',
     'Worklist',
-    'MP3 Downloader',
+    'F1 Reminder',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -181,7 +193,6 @@ class Config {
     'test_results',
     'weekly_hours_planner',
     'worklist',
-    'mp3_downloader',
     'streak',
     'dice_timer',
     'schedule_view',
@@ -191,6 +202,7 @@ class Config {
     'app_logs',
     'startup_times',
     'sms_report',
+    'f1_reminder',
   ];
 
   /// Human-readable labels for [featureKeys], index-aligned.
@@ -208,7 +220,6 @@ class Config {
     'Test Results',
     'Weekly Hours Planner',
     'Worklist',
-    'MP3 Downloader',
     'Streak',
     'Dice timer',
     'Schedule view',
@@ -218,6 +229,7 @@ class Config {
     'App logs',
     'Startup times',
     'Daily SMS report',
+    'F1 Reminder',
   ];
 
   /// One-line explanations for [featureKeys], index-aligned.
@@ -235,7 +247,6 @@ class Config {
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
     'The home screen, showing only tasks tagged "mlr" (hidden everywhere else)',
-    'Search a YouTube video by title or URL and save its audio as an .mp3',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
@@ -245,6 +256,7 @@ class Config {
     'Diagnostic log of what the app did',
     'How fast the app started, over time',
     'Daily SMS with your completion rate',
+    'Texts a phone number 4 hours before every F1 race',
   ];
 
   /// Per-feature switches used in full mode. Missing keys count as enabled.
@@ -318,6 +330,15 @@ class Config {
 
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
+
+  /// If true, BestToDo's Wishlist tool's "Connect with Best Music" banner
+  /// ([WishlistSyncBanner]) has been dismissed and stays hidden — set only
+  /// by tapping "Not now", never by connecting (a successful connect
+  /// removes the banner because it's no longer needed, not because it was
+  /// dismissed). Best Music's own Wishlist doesn't show this banner at all
+  /// (its list is local-only; see `music_wishlist_page.dart`). See
+  /// `shared_wishlist_store.dart`.
+  static bool wishlistSyncBannerDismissed = false;
 
   /// Default delay before sending a manual notification from a task bell.
   /// Dev builds use 00:03 for faster testing, production defaults to 05:00.
@@ -464,6 +485,14 @@ class Config {
   /// rules and any matched tags are appended to their label on creation.
   static bool autoTagEnabled = true;
 
+  /// Smart auto-tag: when the keyword rules find no tag for a new task, ask
+  /// TypeSafe's Jev decision model (one `choice` question over the existing
+  /// tag groups) and apply its pick if it's confident enough. Off by default
+  /// and a no-op without [jevApiKey]. Stored in plain text like
+  /// [todoistApiToken] — same no-secret-storage caveat applies.
+  static bool smartAutoTagEnabled = false;
+  static String jevApiKey = '';
+
   /// If true, Enter saves the add-task field. When false, the add-task field
   /// accepts multiple lines and Ctrl+Enter saves it.
   static bool enterSavesNewTask = true;
@@ -588,16 +617,86 @@ class Config {
   /// caveat applies.
   static String githubWishlistToken = '';
 
+  /// Fire URL for a Claude Code Routine's API trigger
+  /// (`https://api.anthropic.com/v1/claude_code/routines/<id>/fire`), and its
+  /// bearer token. Used by `ClaudeRoutineService` for "Send to Claude" on a
+  /// task, which POSTs the task as the routine's `text` payload and returns a
+  /// claude.ai/code session URL. Stored in plain text like [todoistApiToken]
+  /// — same no-secret-storage caveat applies.
+  static String claudeRoutineUrl = '';
+  static String claudeRoutineToken = '';
+
   /// Folder the MP3 Downloader saves audio into. Empty means "not chosen
   /// yet" — the tool asks once, stores the answer here, and never prompts
   /// again unless the user changes it in Settings → MP3 Downloader.
   static String mp3DownloadFolder = '';
 
+  /// Folder the MP3 Downloader checks for tracks already downloaded (in
+  /// addition to [mp3DownloadFolder] itself), searched recursively through
+  /// every subfolder. Empty means "figure it out automatically" — the
+  /// downloader falls back to the phone's standard Music folder when one
+  /// exists, then to [mp3DownloadFolder] alone. Set explicitly in
+  /// Settings → MP3 Downloader when auto-detection picks the wrong place
+  /// (e.g. music actually lives somewhere the OS doesn't advertise).
+  static String mp3CompareFolder = '';
+
+  /// Root folder the Music Player scans for playable tracks (mp3/m4a/flac/
+  /// wav/ogg), including every subfolder recursively. Empty means "not
+  /// chosen yet". Defaults to [mp3DownloadFolder] on first use if that is
+  /// already set, since downloaded tracks are the common case, but is a
+  /// fully independent setting once picked.
+  static String musicFolder = '';
+
+  /// Subfolder paths (relative to [musicFolder], forward-slash separated)
+  /// excluded from the Music Player's scan — e.g. a ringtones or podcast
+  /// subfolder the user doesn't want mixed into shuffle. Set from Settings
+  /// → Music Player, where each subfolder found under [musicFolder] gets a
+  /// checkbox.
+  static List<String> musicExcludedSubfolders = [];
+
+  /// Music Player track-list sort field (`TrackSortField.name`:
+  /// deviceDate, dateAdded, title, artist or duration) and direction,
+  /// remembered across restarts so the Tracks tab reopens the way it was
+  /// left. Defaults to when files arrived on the device, newest first.
+  static String musicTrackSortField = 'deviceDate';
+  static bool musicTrackSortAscending = false;
+
+  /// Music Player: ask "Play out loud?" before starting playback from a
+  /// standstill while the phone's own speaker is the only audio output (no
+  /// Bluetooth/wired headphones or speaker) — see `SpeakerPlayGuard`.
+  static bool musicConfirmSpeakerPlay = true;
+
+  /// The phone's media volume (0..1) last used for music — local/Subsonic
+  /// songs and songs streamed from the library search's YouTube fallback —
+  /// and for Subscriptions videos. There is no app-specific volume:
+  /// switching between music and videos saves the phone's level for the
+  /// kind that was playing and puts back the other's (`MediaVolume`).
+  /// Null until known.
+  static double? musicPhoneVolume;
+  static double? videoPhoneVolume;
+
+  /// Which of those was playing last: 'music', 'video' or '' (nothing yet).
+  static String phoneVolumeKind = '';
+
+  /// Base URL of a self-hosted Subsonic/OpenSubsonic-compatible server
+  /// (Navidrome, Airsonic, Gonic, …), e.g. `https://music.example.com`.
+  /// Empty means the Music Player only plays from [musicFolder].
+  static String subsonicServerUrl = '';
+
+  /// Subsonic server username.
+  static String subsonicUsername = '';
+
+  /// Subsonic server password, stored in plain text like [todoistApiToken] —
+  /// same no-secret-storage caveat applies (local device storage only).
+  static String subsonicPassword = '';
+
   /// If true, the app polls GitHub for a newer build every minute while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
-  /// appears, asks whether to download and install it — see Settings →
-  /// Updates. On by default; a manual check from the About page always works
-  /// regardless of this setting.
+  /// appears, downloads it and opens Android's installer with no question
+  /// first — see Settings → Updates. On by default, and switched back on
+  /// once for everyone when auto-updating became the default (0.2.98, see
+  /// `autoUpdateEnabledOnce` in [load]); a manual check from the About page
+  /// always works regardless of this setting.
   static bool autoUpdateCheckEnabled = true;
 
   /// How many days a task stays in the real Deleted bin (`deleted_bin.json`)
@@ -635,6 +734,7 @@ class Config {
       'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
       'enableNotifications': enableNotifications,
+      'wishlistSyncBannerDismissed': wishlistSyncBannerDismissed,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
       'startTabIndex': startTabIndex,
       'quietHoursEnabled': quietHoursEnabled,
@@ -645,6 +745,8 @@ class Config {
       'widgetCheckboxes': widgetCheckboxes,
       'addNewTasksToTop': addNewTasksToTop,
       'autoTagEnabled': autoTagEnabled,
+      'smartAutoTagEnabled': smartAutoTagEnabled,
+      'jevApiKey': jevApiKey,
       'enterSavesNewTask': enterSavesNewTask,
       'defaultAddTabIndex': defaultAddTabIndex,
       'use24HourFormat': use24HourFormat,
@@ -665,7 +767,8 @@ class Config {
       ],
       'streakKindEnabled': Map<String, bool>.from(streakKindEnabled),
       'streakGoals': {
-        for (final entry in streakGoals.entries) entry.key: entry.value.toJson(),
+        for (final entry in streakGoals.entries)
+          entry.key: entry.value.toJson(),
       },
       'streakCompletionAnimation': streakCompletionAnimation,
       'simpleMode': simpleMode,
@@ -682,8 +785,23 @@ class Config {
       'todoistSyncEnabled': todoistSyncEnabled,
       'todoistApiToken': todoistApiToken,
       'githubWishlistToken': githubWishlistToken,
+      'claudeRoutineUrl': claudeRoutineUrl,
+      'claudeRoutineToken': claudeRoutineToken,
       'mp3DownloadFolder': mp3DownloadFolder,
+      'mp3CompareFolder': mp3CompareFolder,
+      'musicFolder': musicFolder,
+      'musicExcludedSubfolders': musicExcludedSubfolders,
+      'musicTrackSortField': musicTrackSortField,
+      'musicTrackSortAscending': musicTrackSortAscending,
+      'musicConfirmSpeakerPlay': musicConfirmSpeakerPlay,
+      'musicPhoneVolume': musicPhoneVolume,
+      'videoPhoneVolume': videoPhoneVolume,
+      'phoneVolumeKind': phoneVolumeKind,
+      'subsonicServerUrl': subsonicServerUrl,
+      'subsonicUsername': subsonicUsername,
+      'subsonicPassword': subsonicPassword,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
+      'autoUpdateEnabledOnce': true,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
       'features': Map<String, bool>.from(featureEnabled),
       'viewFilterRules': {
@@ -701,6 +819,8 @@ class Config {
     showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
+    wishlistSyncBannerDismissed =
+        data['wishlistSyncBannerDismissed'] ?? wishlistSyncBannerDismissed;
     defaultNotificationDelaySeconds =
         (data['defaultNotificationDelaySeconds'] as num?)?.round() ??
             defaultNotificationDelaySeconds;
@@ -720,6 +840,9 @@ class Config {
     widgetCheckboxes = data['widgetCheckboxes'] ?? widgetCheckboxes;
     addNewTasksToTop = data['addNewTasksToTop'] ?? addNewTasksToTop;
     autoTagEnabled = data['autoTagEnabled'] ?? autoTagEnabled;
+    smartAutoTagEnabled =
+        data['smartAutoTagEnabled'] as bool? ?? smartAutoTagEnabled;
+    jevApiKey = data['jevApiKey'] as String? ?? jevApiKey;
     enterSavesNewTask = data['enterSavesNewTask'] ?? enterSavesNewTask;
     defaultAddTabIndex = (data['defaultAddTabIndex'] as num?)
             ?.round()
@@ -818,12 +941,47 @@ class Config {
     todoistApiToken = data['todoistApiToken'] as String? ?? todoistApiToken;
     githubWishlistToken =
         data['githubWishlistToken'] as String? ?? githubWishlistToken;
+    claudeRoutineUrl = data['claudeRoutineUrl'] as String? ?? claudeRoutineUrl;
+    claudeRoutineToken =
+        data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
     mp3DownloadFolder =
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
+    mp3CompareFolder = data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
+    musicFolder = data['musicFolder'] as String? ?? musicFolder;
+    final savedExcludedSubfolders = data['musicExcludedSubfolders'];
+    if (savedExcludedSubfolders is List) {
+      musicExcludedSubfolders =
+          savedExcludedSubfolders.whereType<String>().toList();
+    }
+    musicTrackSortField =
+        data['musicTrackSortField'] as String? ?? musicTrackSortField;
+    musicTrackSortAscending =
+        data['musicTrackSortAscending'] as bool? ?? musicTrackSortAscending;
+    musicConfirmSpeakerPlay =
+        data['musicConfirmSpeakerPlay'] as bool? ?? musicConfirmSpeakerPlay;
+    musicPhoneVolume = (data['musicPhoneVolume'] as num?)
+            ?.toDouble()
+            .clamp(0.0, 1.0)
+            .toDouble() ??
+        musicPhoneVolume;
+    videoPhoneVolume = (data['videoPhoneVolume'] as num?)
+            ?.toDouble()
+            .clamp(0.0, 1.0)
+            .toDouble() ??
+        videoPhoneVolume;
+    phoneVolumeKind = data['phoneVolumeKind'] as String? ?? phoneVolumeKind;
+    subsonicServerUrl =
+        data['subsonicServerUrl'] as String? ?? subsonicServerUrl;
+    subsonicUsername = data['subsonicUsername'] as String? ?? subsonicUsername;
+    subsonicPassword = data['subsonicPassword'] as String? ?? subsonicPassword;
     // Settings files from before automatic checks existed have no key. Use
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.
     autoUpdateCheckEnabled = data['autoUpdateCheckEnabled'] as bool? ?? true;
+    // 0.2.98 made updates install automatically and turned the switch back
+    // on once for installs that had it off; after that the user's choice
+    // sticks again.
+    if (data['autoUpdateEnabledOnce'] != true) autoUpdateCheckEnabled = true;
     deletedItemsRetentionDays =
         (data['deletedItemsRetentionDays'] as num?)?.round().clamp(1, 3650) ??
             deletedItemsRetentionDays;

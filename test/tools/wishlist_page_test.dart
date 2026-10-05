@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/services/claude_routine_service.dart';
 import 'package:besttodo/services/github_wishlist_service.dart';
+import 'package:besttodo/services/shared_wishlist_store.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/wishlist_shipped.dart';
 import 'package:besttodo/ui/settings_page.dart';
@@ -65,7 +67,10 @@ void main() {
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
     Config.swipeLeftDelete = true;
     Config.githubWishlistToken = '';
+    Config.claudeRoutineUrl = '';
+    Config.claudeRoutineToken = '';
     GithubWishlistService.instance = GithubWishlistService();
+    ClaudeRoutineService.instance = ClaudeRoutineService();
     // Opt out of the one-time Todo.md import so tests only see their own
     // items.
     await File('${tempDir.path}/${StorageService.wishlistImportFlagFileName}')
@@ -137,6 +142,53 @@ void main() {
     expect(find.byType(Checkbox), findsOneWidget);
     // ...but never surface anything date-related.
     expect(find.textContaining('Due'), findsNothing);
+  });
+
+  testWidgets(
+      'tapping a wishlist item folds it open for inline editing, like the '
+      'home list', (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'For stargazing weekends',
+          label: 'gift',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    // Collapsed: no inline fields, no robot button — just like a home-list
+    // task tile before it's tapped.
+    expect(find.widgetWithText(TextField, 'Title'), findsNothing);
+    expect(find.byTooltip('Send to Claude'), findsNothing);
+
+    await tester.tap(find.text('Buy a telescope'));
+    await tester.pump();
+
+    // Folded open in place: editable fields and the robot button appear —
+    // no dialog, no swipe needed.
+    expect(find.widgetWithText(TextField, 'Title'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Description'), findsOneWidget);
+    expect(find.byTooltip('Send to Claude'), findsOneWidget);
+    expect(find.byTooltip('Collapse'), findsOneWidget);
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Title'), 'Buy a better telescope');
+    // Losing focus (not collapsing yet) is what triggers the save — mirrors
+    // the home list's own tiles.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await settleWrites(tester);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['title'], 'Buy a better telescope');
+
+    await tester.tap(find.byTooltip('Collapse'));
+    await tester.pump();
+    expect(find.widgetWithText(TextField, 'Title'), findsNothing);
   });
 
   testWidgets('the swipe Copy shortcut puts the item on the clipboard',
@@ -384,7 +436,8 @@ void main() {
     expect(quickY, lessThan(descriptionY));
   });
 
-  testWidgets('a URL in the description opens externally, not the edit dialog',
+  testWidgets(
+      'a URL in the description opens externally, not the fold-open toggle',
       (tester) async {
     final launcher = _FakeUrlLauncher();
     UrlLauncherPlatform.instance = launcher;
@@ -411,12 +464,12 @@ void main() {
 
     // The link's recognizer wins the gesture arena over the tile's onTap.
     expect(launcher.launched, ['https://example.com/scopes']);
-    expect(find.text('Edit wishlist item'), findsNothing);
+    expect(find.widgetWithText(TextField, 'Title'), findsNothing);
 
-    // A tap elsewhere on the tile still opens the edit dialog.
+    // A tap elsewhere on the tile still folds it open for inline editing.
     await tester.tap(find.text('Buy a telescope'));
-    await tester.pumpAndSettle();
-    expect(find.text('Edit wishlist item'), findsOneWidget);
+    await tester.pump();
+    expect(find.widgetWithText(TextField, 'Title'), findsOneWidget);
   });
 
   testWidgets('wishes are ordered by priority', (tester) async {
@@ -708,6 +761,82 @@ void main() {
     expect(fake.created, isEmpty);
   });
 
+  testWidgets(
+      'Send to Claude with no routine configured shows a snackbar',
+      (tester) async {
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Buy a telescope', isWish: true)],
+      marker: 'Buy a telescope',
+    );
+
+    // Tapping the tile folds it open, revealing the robot button — no swipe
+    // needed.
+    await tester.tap(find.text('Buy a telescope'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send to Claude'));
+    await tester.pump();
+
+    expect(
+      find.text('Set up Claude Routine in Settings first'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'Send to Claude fires the configured routine with the item as context '
+      'and offers to open the session', (tester) async {
+    Config.claudeRoutineUrl = 'https://example.com/fire';
+    Config.claudeRoutineToken = 'routine-token';
+    http.Request? captured;
+    ClaudeRoutineService.instance = ClaudeRoutineService(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'claude_code_session_id': 'sess_1',
+            'claude_code_session_url': 'https://claude.ai/code/session_1',
+          }),
+          200,
+        );
+      }),
+    );
+    final launcher = _FakeUrlLauncher();
+    UrlLauncherPlatform.instance = launcher;
+
+    await pumpWishlist(
+      tester,
+      tasks: [
+        Task(
+          title: 'Buy a telescope',
+          description: 'For stargazing weekends',
+          isWish: true,
+        ),
+      ],
+      marker: 'Buy a telescope',
+    );
+
+    // Tapping the tile folds it open, revealing the robot button — no swipe
+    // needed.
+    await tester.tap(find.text('Buy a telescope'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send to Claude'));
+    await settleWrites(tester);
+
+    expect(captured, isNotNull);
+    expect(captured!.headers['Authorization'], 'Bearer routine-token');
+    final body = jsonDecode(captured!.body) as Map<String, dynamic>;
+    expect(body['text'], contains('Buy a telescope'));
+    expect(body['text'], contains('For stargazing weekends'));
+    expect(find.text('Claude session started'), findsOneWidget);
+
+    // Let the snackbar finish animating in so the Open action is tappable.
+    await tester.pump(const Duration(milliseconds: 750));
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    expect(launcher.launched, ['https://claude.ai/code/session_1']);
+  });
+
   Future<void> openSection(WidgetTester tester, String title) async {
     if (find.byTooltip('Collapse $title').evaluate().isNotEmpty) return;
     final header = find.byTooltip('Expand $title');
@@ -776,5 +905,33 @@ void main() {
     await tester.tap(find.text('Test connection'));
     await settleWrites(tester);
     expect(find.text('Invalid token'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Connect banner pushes wish items to the shared external-storage file '
+      '(Best Music no longer reads it, but BestToDo\'s own connect flow is '
+      'unchanged)', (tester) async {
+    final sharedDir = await Directory.systemTemp.createTemp('shared_');
+    SharedWishlistStore.sharedDirectoryOverride = sharedDir;
+    SharedWishlistStore.connectionOverride = false;
+    Config.wishlistSyncBannerDismissed = false;
+    addTearDown(() {
+      SharedWishlistStore.sharedDirectoryOverride = null;
+      SharedWishlistStore.connectionOverride = null;
+      Config.wishlistSyncBannerDismissed = false;
+    });
+
+    await pumpWishlist(
+      tester,
+      tasks: [Task(title: 'Placeholder', isWish: true)],
+      marker: 'Placeholder',
+    );
+
+    expect(find.text('Connect'), findsOneWidget);
+    await tester.tap(find.text('Connect'));
+    await settleWrites(tester);
+
+    final shared = await tester.runAsync(() => SharedWishlistStore.instance.load());
+    expect(shared!.items.single.title, 'Placeholder');
   });
 }

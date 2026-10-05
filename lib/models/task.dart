@@ -31,6 +31,20 @@ class Task {
   /// (in-app, or Todoist's own Inbox) just leaves this null. Never pushed
   /// back to Todoist — purely local display metadata.
   String? pendingSourceTitle;
+
+  /// How this task came into existence — one of [TaskChangeSource]'s
+  /// constants: `user` (typed in the app), `sync` (pulled in from Todoist,
+  /// i.e. the Waiting for Approval path), `share` (Android share sheet) or
+  /// `automation` (a generated recurring occurrence). Stamped once at
+  /// creation and never changed. Null on tasks created before origin
+  /// tracking (0.2.88) or by an in-app path that doesn't stamp it — the
+  /// task info dialog then infers it (see `resolveTaskOrigin`).
+  String? origin;
+
+  /// When this task was approved on the Waiting for Approval page (the
+  /// moment its [waitingApprovalToken] was removed). Null for tasks that
+  /// never went through approval, or were approved before 0.2.88.
+  DateTime? approvedAt;
   DateTime? completedAt;
   DateTime? movedAt;
   DateTime? rescheduledAt;
@@ -44,6 +58,7 @@ class Task {
   DateTime? deletedAt;
   bool autoDeleted;
   bool isDone;
+
   /// When true, the schedule's time-of-day was set deliberately (e.g. placed
   /// on the Chronize timeline) and must not be overwritten by the default
   /// 18:00 deadline normalization.
@@ -65,9 +80,8 @@ class Task {
   bool get allDay => !hasExplicitTime;
 
   /// The scheduled length; zero for deadline-style tasks, null when undated.
-  Duration? get duration => (startAt == null || endAt == null)
-      ? null
-      : endAt!.difference(startAt!);
+  Duration? get duration =>
+      (startAt == null || endAt == null) ? null : endAt!.difference(startAt!);
   int? listRanking;
   bool isRecurring;
   DateTime? recurrenceEndDate;
@@ -193,6 +207,8 @@ class Task {
     this.label = '',
     this.createdAt,
     this.pendingSourceTitle,
+    this.origin,
+    this.approvedAt,
     this.completedAt,
     this.movedAt,
     this.rescheduledAt,
@@ -274,6 +290,8 @@ class Task {
           ? DateTime.parse(json['createdAt'] as String)
           : null,
       pendingSourceTitle: json['pendingSourceTitle'] as String?,
+      origin: json['origin'] as String?,
+      approvedAt: DateTime.tryParse(json['approvedAt'] as String? ?? ''),
       completedAt: json['completedAt'] != null
           ? DateTime.parse(json['completedAt'] as String)
           : null,
@@ -298,9 +316,8 @@ class Task {
       recurrenceFrequency: json['recurrenceFrequency'] as String? ?? 'daily',
       recurrenceInterval: json['recurrenceInterval'] as int? ??
           (hasNewRecurrenceFields ? 1 : legacyIntervalDays),
-      recurrenceWeekdays: (json['recurrenceWeekdays'] as List?)
-          ?.map((e) => e as int)
-          .toList(),
+      recurrenceWeekdays:
+          (json['recurrenceWeekdays'] as List?)?.map((e) => e as int).toList(),
       recurrenceEndType: json['recurrenceEndType'] as String? ??
           (recurrenceEndDate != null ? 'date' : 'never'),
       recurrenceOccurrenceCount: json['recurrenceOccurrenceCount'] as int?,
@@ -343,6 +360,8 @@ class Task {
         'createdAt': createdAt?.toIso8601String(),
         if (pendingSourceTitle != null)
           'pendingSourceTitle': pendingSourceTitle,
+        if (origin != null) 'origin': origin,
+        if (approvedAt != null) 'approvedAt': approvedAt!.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
         'movedAt': movedAt?.toIso8601String(),
         'rescheduledAt': rescheduledAt?.toIso8601String(),

@@ -7,10 +7,13 @@ AppBar buildSubpageAppBar(
   required String title,
   PreferredSizeWidget? bottom,
   List<Widget>? actions,
+  // False: just the menu button (the system back gesture still works) —
+  // Now Playing keeps every other control at the bottom of the screen.
+  bool showBack = true,
 }) {
   return AppBar(
     automaticallyImplyLeading: false,
-    leadingWidth: 96,
+    leadingWidth: showBack ? 96 : 56,
     leading: Row(
       children: [
         IconButton(
@@ -23,7 +26,7 @@ AppBar buildSubpageAppBar(
             });
           },
         ),
-        IconButton(
+        if (showBack) IconButton(
           icon: const Icon(Icons.arrow_back), // not sure which one to choose home_outlined),
           tooltip: 'Back to Home',
           onPressed: () => Navigator.of(context).maybePop(),

@@ -36,12 +36,17 @@ class AutoUpdateChecker {
   /// timer with the (possibly new) callback. Also runs one check right away
   /// — `Timer.periodic` only fires after the first full interval elapses, so
   /// without this, opening the app would never check until a minute later.
-  void start(UpdateFoundCallback onUpdateFound, {Duration? testInterval}) {
+  ///
+  /// [service] defaults to [UpdateService.instance] (BestToDo's own build);
+  /// Best Music passes its [UpdateService.forApp] instance instead, so the
+  /// two apps' background polls never cross-report each other's builds.
+  void start(UpdateFoundCallback onUpdateFound,
+      {Duration? testInterval, UpdateService? service}) {
     stop();
-    unawaited(checkOnce(onUpdateFound));
+    unawaited(checkOnce(onUpdateFound, service: service));
     _timer = Timer.periodic(
       testInterval ?? interval,
-      (_) => checkOnce(onUpdateFound),
+      (_) => checkOnce(onUpdateFound, service: service),
     );
   }
 
@@ -59,11 +64,12 @@ class AutoUpdateChecker {
   /// Runs one check; calls [onUpdateFound] when a newer, installable build
   /// exists that has not already been dismissed. Swallows network/parse
   /// errors — this is a silent background poll, retried on the next tick.
-  Future<void> checkOnce(UpdateFoundCallback onUpdateFound) async {
+  Future<void> checkOnce(UpdateFoundCallback onUpdateFound,
+      {UpdateService? service}) async {
     if (_checking) return;
     _checking = true;
     try {
-      final update = await UpdateService.instance.checkForUpdate();
+      final update = await (service ?? UpdateService.instance).checkForUpdate();
       if (update != null &&
           update.apkUrl != null &&
           update.version != _dismissedVersion) {

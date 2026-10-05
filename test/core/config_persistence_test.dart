@@ -108,6 +108,20 @@ void main() {
     expect(Config.autoUpdateCheckEnabled, isTrue);
   });
 
+  test('auto-update is switched back on once, then the choice sticks', () {
+    // Saved before 0.2.98 with the switch off: turned back on once.
+    Config.applyMap({'autoUpdateCheckEnabled': false});
+    expect(Config.autoUpdateCheckEnabled, isTrue);
+
+    // Saved after that with the switch off again: stays off.
+    Config.applyMap(
+        {'autoUpdateCheckEnabled': false, 'autoUpdateEnabledOnce': true});
+    expect(Config.autoUpdateCheckEnabled, isFalse);
+
+    // Restore the default so other tests see a clean config.
+    Config.autoUpdateCheckEnabled = true;
+  });
+
   test('deletedItemsRetentionDays is clamped on load', () {
     Config.applyMap({'deletedItemsRetentionDays': 0});
     expect(Config.deletedItemsRetentionDays, 1);

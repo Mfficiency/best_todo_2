@@ -20,6 +20,7 @@ import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'attachments_field.dart';
 import 'subpage_app_bar.dart';
+import 'task_info_dialog.dart';
 
 class TaskDetailPage extends StatelessWidget {
   final Task task;
@@ -95,6 +96,8 @@ class TaskDetailPage extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           Text('Completed: ${task.isDone ? 'Yes' : 'No'}'),
+          const SizedBox(height: 8),
+          TaskInfoView(task: task, showHistory: false),
           if (task.attachments.isNotEmpty) ...[
             const SizedBox(height: 8),
             AttachmentsField(
@@ -279,7 +282,8 @@ class _TaskCountdownSectionState extends State<TaskCountdownSection> {
   }
 
   Future<void> _load() async {
-    final loaded = await _storage.loadCountdownTimers() ?? <CountdownTimerItem>[];
+    final loaded =
+        await _storage.loadCountdownTimers() ?? <CountdownTimerItem>[];
     if (!mounted) return;
     setState(() => _timers = loaded);
   }
@@ -482,6 +486,15 @@ String _describeItemEventBase(ItemEvent event) {
       return 'Project or stage changed${suffix()}';
     case ItemEvent.typeLabeled:
       final label = changeTo('label');
+      final previous = event.patch
+          .where((c) => c.field == 'label')
+          .map((c) => c.from)
+          .firstOrNull;
+      if (previous is String &&
+          hasWaitingApprovalToken(previous) &&
+          !(label is String && hasWaitingApprovalToken(label))) {
+        return 'Approved${suffix()}';
+      }
       return (label is String && label.isNotEmpty
               ? 'Labels changed to "$label"'
               : 'Labels cleared') +

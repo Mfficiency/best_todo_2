@@ -238,6 +238,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   void _approve(Task task) {
     setState(() {
       task.label = removeWaitingApprovalToken(task.label);
+      task.approvedAt = DateTime.now();
     });
     _save();
     LogService.add('WaitingApprovalPage._approve', 'Approved "${task.title}"');
@@ -248,6 +249,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   void _approveWithDate(Task task, int tabIndex) {
     setState(() {
       task.label = removeWaitingApprovalToken(task.label);
+      task.approvedAt = DateTime.now();
       task.dueDate = _dueDateForTab(tabIndex);
       final now = DateTime.now();
       task.movedAt = now;
@@ -263,6 +265,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     if (weekday < DateTime.monday || weekday > DateTime.sunday) return;
     setState(() {
       task.label = removeWaitingApprovalToken(task.label);
+      task.approvedAt = DateTime.now();
       task.dueDate = _nextWeekdayDate(weekday);
       final now = DateTime.now();
       task.movedAt = now;
@@ -282,6 +285,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   void _approveWithQuickTag(Task task, ApprovalQuickTag tag) {
     setState(() {
       task.label = removeWaitingApprovalToken(task.label);
+      task.approvedAt = DateTime.now();
       switch (tag.target) {
         case ApprovalQuickTag.wishlistTarget:
           task.isWish = true;
@@ -395,6 +399,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     setState(() {
       for (final task in targets) {
         task.label = removeWaitingApprovalToken(task.label);
+        task.approvedAt = DateTime.now();
       }
       _selectedUids.clear();
     });

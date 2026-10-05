@@ -8,6 +8,8 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -18,16 +20,19 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterFragmentActivity
+import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import android.content.pm.ApplicationInfo
 
-// FlutterFragmentActivity (not the plain FlutterActivity) because the
-// health plugin's Health Connect permission flow needs a FragmentActivity
-// to launch its Activity Result contract on Android 14+.
-class MainActivity : FlutterFragmentActivity() {
+// AudioServiceFragmentActivity (not the plain FlutterFragmentActivity)
+// because the Music Player's background playback service (audio_service)
+// needs the activity to hand it the shared FlutterEngine it manages; it is
+// itself a FlutterFragmentActivity, so the health plugin's Health Connect
+// permission flow (which needs a FragmentActivity for its Activity Result
+// contract on Android 14+) keeps working unchanged.
+class MainActivity : AudioServiceFragmentActivity() {
 
     // Content shared into the app (see ShareActivity), waiting for the Dart
     // side to collect it. On a cold start the queue fills before the Flutter
@@ -168,6 +173,41 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+        // The phone's own media volume (STREAM_MUSIC) as 0..1. Best Music
+        // remembers one level for music and one for videos and switches the
+        // phone between them (lib/services/media_volume.dart).
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/media_volume",
+        ).setMethodCallHandler { call, result ->
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            when (call.method) {
+                "get" -> result.success(
+                    if (max <= 0) null
+                    else audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        .toDouble() / max
+                )
+                "set" -> {
+                    val volume = (call.argument<Double>("volume") ?: 0.0)
+                        .coerceIn(0.0, 1.0)
+                    val showUi = call.argument<Boolean>("showUi") ?: false
+                    try {
+                        if (max > 0 && !audioManager.isVolumeFixed) {
+                            audioManager.setStreamVolume(
+                                AudioManager.STREAM_MUSIC,
+                                Math.round(volume * max).toInt(),
+                                if (showUi) AudioManager.FLAG_SHOW_UI else 0,
+                            )
+                        }
+                    } catch (_: SecurityException) {
+                        // Do Not Disturb can refuse volume changes.
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/health",
@@ -270,6 +310,17 @@ class MainActivity : FlutterFragmentActivity() {
             "besttodo/update",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                // When Android last installed/updated this app (epoch ms) —
+                // the Changelog's "Installed …" line, so the user can see
+                // when an automatic update came through.
+                "lastUpdateTime" -> {
+                    try {
+                        val info = packageManager.getPackageInfo(packageName, 0)
+                        result.success(info.lastUpdateTime)
+                    } catch (e: Exception) {
+                        result.success(null)
+                    }
+                }
                 // Hands the update APK to Android's DownloadManager instead
                 // of downloading it on the Dart side: the transfer then runs
                 // as a system service, so it survives the app being
@@ -280,6 +331,9 @@ class MainActivity : FlutterFragmentActivity() {
                 "startBackgroundDownload" -> {
                     val url = call.argument<String>("url")
                     val fileName = call.argument<String>("fileName")
+                    // Notification title naming the app + version being
+                    // downloaded ("Best Music update 0.1.12+30").
+                    val title = call.argument<String>("title") ?: "BestToDo update"
                     if (url == null || fileName == null) {
                         result.error("bad-args", "url/fileName missing", null)
                         return@setMethodCallHandler
@@ -308,7 +362,7 @@ class MainActivity : FlutterFragmentActivity() {
                         val downloadManager =
                             getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                         val request = DownloadManager.Request(Uri.parse(url))
-                            .setTitle("BestToDo update")
+                            .setTitle(title)
                             .setDestinationUri(Uri.fromFile(destFile))
                             .setNotificationVisibility(
                                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
@@ -387,6 +441,14 @@ class MainActivity : FlutterFragmentActivity() {
                         )
                     }
                 }
+                // Absolute path of the folder startBackgroundDownload writes
+                // update APKs into (shown in Settings), or null when external
+                // storage is unavailable. Must stay in sync with the
+                // destDir computed there.
+                "updateDownloadsDir" -> {
+                    val baseDir = getExternalFilesDir(null)
+                    result.success(baseDir?.let { File(it, "updates").absolutePath })
+                }
                 // Cancels a download and deletes its partial file.
                 "cancelDownload" -> {
                     val id = call.argument<Number>("downloadId")?.toLong()
@@ -445,6 +507,18 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+        // Music Player's "play out loud?" check (SpeakerPlayGuard): is any
+        // audio output besides the phone's own speaker/earpiece connected —
+        // Bluetooth, wired/USB headphones, a car, HDMI, ...?
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/audio_output",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isExternalOutputConnected" -> result.success(isExternalAudioOutputConnected())
+                else -> result.notImplemented()
+            }
+        }
         shareChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/share",
@@ -472,6 +546,20 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
         }
+    }
+
+    private fun isExternalAudioOutputConnected(): Boolean {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val builtIn = setOf(
+            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+            AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+            AudioDeviceInfo.TYPE_TELEPHONY,
+            AudioDeviceInfo.TYPE_UNKNOWN,
+            AudioDeviceInfo.TYPE_REMOTE_SUBMIX,
+        ) + (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE) else emptySet())
+        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .any { it.type !in builtIn }
     }
 
     private fun openHealthDataSources(): Boolean {

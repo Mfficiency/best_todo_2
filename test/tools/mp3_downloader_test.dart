@@ -1,10 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:besttodo/config.dart';
 import 'package:besttodo/services/media_scanner_service.dart';
 import 'package:besttodo/services/mp3_download_manager.dart';
 import 'package:besttodo/services/mp3_downloader_service.dart';
+import 'package:besttodo/services/music_share_link.dart';
+import 'package:besttodo/services/share_intent_service.dart';
 import 'package:besttodo/ui/mp3_downloader_page.dart';
 import 'package:besttodo/ui/mp3_downloads_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 /// The real end-to-end download (live YouTube, real bytes on disk) is
 /// `tool/check_mp3_download.dart`, run by hand — see its header. These tests
@@ -73,6 +83,146 @@ void main() {
 
     test('renders nothing when YouTube reported no count', () {
       expect(formatViewCount(null), '');
+    });
+  });
+
+  group('looksLikeYoutubePlaylistUrl', () {
+    test('matches a playlist URL', () {
+      expect(
+        looksLikeYoutubePlaylistUrl(
+            'https://www.youtube.com/playlist?list=PLabc123'),
+        true,
+      );
+    });
+
+    test('matches a video URL that also carries a list param', () {
+      expect(
+        looksLikeYoutubePlaylistUrl(
+          'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLabc123',
+        ),
+        true,
+      );
+    });
+
+    test('does not match a plain video URL', () {
+      expect(looksLikeYoutubePlaylistUrl('https://youtu.be/dQw4w9WgXcQ'),
+          false);
+    });
+
+    test('does not misfire on an ordinary single-word search query', () {
+      // youtube_explode_dart's own PlaylistId parser would treat either of
+      // these as "a valid raw playlist id" — this has its own domain-anchored
+      // check specifically so a search query never gets routed as a playlist.
+      expect(looksLikeYoutubePlaylistUrl('lofi'), false);
+      expect(looksLikeYoutubePlaylistUrl('workoutmix2024'), false);
+    });
+  });
+
+  group('existingTrackBaseNames', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('mp3_dedup_test');
+    });
+
+    tearDown(() async {
+      if (await tempDir.exists()) await tempDir.delete(recursive: true);
+    });
+
+    test('finds audio files recursively, case-insensitively, by base name',
+        () async {
+      await File('${tempDir.path}/Artist - Song.m4a').writeAsBytes([0]);
+      final sub = Directory('${tempDir.path}/sub')..createSync();
+      await File('${sub.path}/Other Artist - Other Song.webm')
+          .writeAsBytes([0]);
+      await File('${tempDir.path}/not audio.txt').writeAsBytes([0]);
+
+      final names = await existingTrackBaseNames(tempDir.path);
+      expect(names, contains('artist - song'));
+      expect(names, contains('other artist - other song'));
+      expect(names, hasLength(2));
+    });
+
+    test('a missing folder yields an empty set rather than an error',
+        () async {
+      final names = await existingTrackBaseNames('${tempDir.path}/missing');
+      expect(names, isEmpty);
+    });
+  });
+
+  group('existingTrackBaseNamesAcross', () {
+    test('unions base names from every folder, skipping duplicate paths',
+        () async {
+      final a = await Directory.systemTemp.createTemp('mp3_across_a');
+      final b = await Directory.systemTemp.createTemp('mp3_across_b');
+      addTearDown(() async {
+        await a.delete(recursive: true);
+        await b.delete(recursive: true);
+      });
+      await File('${a.path}/Artist - One.m4a').writeAsBytes([0]);
+      await File('${b.path}/Artist - Two.m4a').writeAsBytes([0]);
+
+      final names =
+          await existingTrackBaseNamesAcross([a.path, b.path, a.path]);
+      expect(names, {'artist - one', 'artist - two'});
+    });
+
+    test('a missing folder in the list just contributes nothing', () async {
+      final a = await Directory.systemTemp.createTemp('mp3_across_missing');
+      addTearDown(() => a.delete(recursive: true));
+      await File('${a.path}/Artist - One.m4a').writeAsBytes([0]);
+
+      final names =
+          await existingTrackBaseNamesAcross([a.path, '${a.path}/missing']);
+      expect(names, {'artist - one'});
+    });
+  });
+
+  group('defaultPhoneMusicFolder / compareFoldersFor', () {
+    test('defaultPhoneMusicFolder is null off Android', () async {
+      // These tests run on the host platform, never Android.
+      expect(await defaultPhoneMusicFolder(), isNull);
+    });
+
+    test(
+        'compareFoldersFor scans just the download folder with no override '
+        'and no phone Music folder', () async {
+      final folders = await compareFoldersFor(
+        '/downloads',
+        configuredCompareFolder: '',
+      );
+      expect(folders, ['/downloads']);
+    });
+
+    test('compareFoldersFor adds an explicit Settings override', () async {
+      final folders = await compareFoldersFor(
+        '/downloads',
+        configuredCompareFolder: '  /music-library  ',
+      );
+      expect(folders, ['/downloads', '/music-library']);
+    });
+  });
+
+  group('Mp3DownloaderService.resolvePlaylist', () {
+    tearDown(() => Mp3DownloaderService.instance.playlistOverride = null);
+
+    test('maps playlist tracks the same way search/resolve do', () async {
+      Mp3DownloaderService.instance.playlistOverride = (input) async {
+        expect(input, 'https://www.youtube.com/playlist?list=PLtest');
+        return const Mp3PlaylistInfo(title: 'My Mix', tracks: [
+          Mp3SearchResult(
+            videoId: 'a',
+            title: 'Artist - One',
+            channel: 'Artist',
+            duration: Duration(minutes: 3),
+          ),
+        ]);
+      };
+      final info = await Mp3DownloaderService.instance
+          .resolvePlaylist('https://www.youtube.com/playlist?list=PLtest');
+      expect(info.title, 'My Mix');
+      expect(info.tracks, hasLength(1));
+      expect(info.tracks.first.videoId, 'a');
     });
   });
 
@@ -301,8 +451,11 @@ void main() {
       Mp3DownloaderService.instance
         ..searchOverride = null
         ..resolveOverride = null
+        ..playlistOverride = null
         ..downloadOverride = null;
       Mp3DownloadManager.instance.resetForTest();
+      Config.mp3DownloadFolder = '';
+      Config.mp3CompareFolder = '';
     });
 
     testWidgets('a text query shows up to 5 candidates with plays',
@@ -330,6 +483,32 @@ void main() {
       expect(find.text('Channel 0 · 1:00 · 1.0M plays'), findsOneWidget);
       expect(find.text('Channel 4 · 5:00 · 5.0M plays'), findsOneWidget);
       expect(find.text('Track 5'), findsNothing);
+    });
+
+    testWidgets('tapping a candidate to download it clears the search bar',
+        (tester) async {
+      Config.mp3DownloadFolder = '/tmp/music';
+      Mp3DownloaderService.instance.searchOverride = (query, limit) async => [
+            const Mp3SearchResult(
+              videoId: 'id0',
+              title: 'Track 0',
+              channel: 'Channel 0',
+              duration: Duration(minutes: 1),
+            ),
+          ];
+      Mp3DownloaderService.instance.downloadOverride =
+          (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+      await tester.pumpWidget(const MaterialApp(home: Mp3DownloaderPage()));
+      await tester.enterText(find.byType(TextField), 'lofi beats');
+      await tester.tap(find.text('Find & download'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Track 0'));
+      await tester.pump();
+
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty);
     });
 
     testWidgets('a result without a play count just omits it', (tester) async {
@@ -389,6 +568,175 @@ void main() {
       expect(find.text('Direct video'), findsNothing);
     });
 
+    testWidgets(
+        'a playlist link shows every track, pre-unselecting ones already '
+        'downloaded', (tester) async {
+      late Directory tempDir;
+      // Real file I/O must run on the real event loop via runAsync, not the
+      // fake-async test zone — see test/README.md.
+      await tester.runAsync(() async {
+        tempDir = await Directory.systemTemp.createTemp('mp3_playlist_a');
+        Config.mp3DownloadFolder = tempDir.path;
+        // Already sitting in the (fake) music folder under the exact name a
+        // fresh download of the first track would use.
+        await File('${tempDir.path}/Artist - Already Have This.m4a')
+            .writeAsBytes([0]);
+      });
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      Mp3DownloaderService.instance.playlistOverride = (input) async {
+        expect(input, contains('list=PLtest'));
+        return const Mp3PlaylistInfo(title: 'My Mix', tracks: [
+          Mp3SearchResult(
+            videoId: 'a',
+            title: 'Artist - Already Have This',
+            channel: 'Artist',
+            duration: Duration(minutes: 3),
+          ),
+          Mp3SearchResult(
+            videoId: 'b',
+            title: 'Artist - New Track',
+            channel: 'Artist',
+            duration: Duration(minutes: 4),
+          ),
+        ]);
+      };
+
+      await tester.pumpWidget(const MaterialApp(home: Mp3DownloaderPage()));
+      await tester.enterText(
+        find.byType(TextField),
+        'https://www.youtube.com/playlist?list=PLtest',
+      );
+      await tester.tap(find.text('Find & download'));
+      // Real folder-scanning I/O (existingTrackBaseNames) runs off the tap,
+      // outside the fake-async zone — poll until the resolved stage renders.
+      final marker = find.text('My Mix · 1 of 2 selected');
+      for (var i = 0; i < 60 && marker.evaluate().isEmpty; i++) {
+        await tester
+            .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      expect(marker, findsOneWidget);
+      expect(find.text('Already downloaded'), findsOneWidget);
+      expect(find.text('Download 1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'a track already sitting in the configured compare folder (not the '
+        'download folder) is also pre-unselected', (tester) async {
+      late Directory downloadDir;
+      late Directory compareDir;
+      await tester.runAsync(() async {
+        downloadDir = await Directory.systemTemp.createTemp('mp3_dl_c');
+        compareDir = await Directory.systemTemp.createTemp('mp3_cmp_c');
+        Config.mp3DownloadFolder = downloadDir.path;
+        Config.mp3CompareFolder = compareDir.path;
+        // Sitting only in the library folder, e.g. synced from a PC — never
+        // downloaded by this app, so it's not in the download folder at all.
+        final sub = Directory('${compareDir.path}/Album')..createSync();
+        await File('${sub.path}/Artist - Library Track.m4a')
+            .writeAsBytes([0]);
+      });
+      addTearDown(() async {
+        await downloadDir.delete(recursive: true);
+        await compareDir.delete(recursive: true);
+      });
+
+      Mp3DownloaderService.instance.playlistOverride = (input) async =>
+          const Mp3PlaylistInfo(title: 'Lib Mix', tracks: [
+            Mp3SearchResult(
+              videoId: 'a',
+              title: 'Artist - Library Track',
+              channel: 'Artist',
+              duration: Duration(minutes: 3),
+            ),
+            Mp3SearchResult(
+              videoId: 'b',
+              title: 'Artist - New Track',
+              channel: 'Artist',
+              duration: Duration(minutes: 4),
+            ),
+          ]);
+
+      await tester.pumpWidget(const MaterialApp(home: Mp3DownloaderPage()));
+      await tester.enterText(
+        find.byType(TextField),
+        'https://www.youtube.com/playlist?list=PLlib',
+      );
+      await tester.tap(find.text('Find & download'));
+      final marker = find.text('Lib Mix · 1 of 2 selected');
+      for (var i = 0; i < 60 && marker.evaluate().isEmpty; i++) {
+        await tester
+            .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      expect(marker, findsOneWidget);
+      expect(find.text('Already downloaded'), findsOneWidget);
+      expect(find.text('Download 1'), findsOneWidget);
+    });
+
+    testWidgets('All/None bulk-select, then Download N queues the checked '
+        'tracks', (tester) async {
+      late Directory tempDir;
+      await tester.runAsync(() async {
+        tempDir = await Directory.systemTemp.createTemp('mp3_playlist_b');
+        Config.mp3DownloadFolder = tempDir.path;
+      });
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      Mp3DownloaderService.instance.playlistOverride = (input) async =>
+          const Mp3PlaylistInfo(title: 'Mix', tracks: [
+            Mp3SearchResult(
+                videoId: 'a', title: 'A - One', channel: 'A', duration: null),
+            Mp3SearchResult(
+                videoId: 'b', title: 'B - Two', channel: 'B', duration: null),
+          ]);
+      final queued = <String>[];
+      Mp3DownloaderService.instance.downloadOverride =
+          (result, dir, onProgress) async {
+        queued.add(result.videoId);
+        return '$dir/${result.title}.m4a';
+      };
+
+      await tester.pumpWidget(const MaterialApp(home: Mp3DownloaderPage()));
+      await tester.enterText(
+        find.byType(TextField),
+        'https://www.youtube.com/playlist?list=PLx',
+      );
+      await tester.tap(find.text('Find & download'));
+      final marker = find.text('Mix · 2 of 2 selected');
+      for (var i = 0; i < 60 && marker.evaluate().isEmpty; i++) {
+        await tester
+            .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      expect(marker, findsOneWidget);
+
+      await tester.tap(find.text('None'));
+      await tester.pump();
+      expect(find.text('Mix · 0 of 2 selected'), findsOneWidget);
+
+      await tester.tap(find.text('All'));
+      await tester.pump();
+      expect(find.text('Mix · 2 of 2 selected'), findsOneWidget);
+
+      await tester.tap(find.text('Download 2'));
+      // Downloads run one at a time (Mp3DownloadManager._drain) and each one
+      // saves history via path_provider, real I/O that needs the real event
+      // loop like any other dart:io call — poll with runAsync rather than
+      // trusting pumpAndSettle to catch a frame scheduled only once that
+      // resolves.
+      for (var i = 0; i < 60 && queued.length < 2; i++) {
+        await tester
+            .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      expect(queued, containsAll(<String>['a', 'b']));
+      // Queuing resets the page back to idle rather than leaving the
+      // just-downloaded checklist on screen.
+      expect(find.text('Mix · 2 of 2 selected'), findsNothing);
+    });
+
     testWidgets('the downloads button badges whatever is still running',
         (tester) async {
       final manager = Mp3DownloadManager.instance;
@@ -411,6 +759,292 @@ void main() {
       ];
       await tester.pump();
       expect(find.text('1'), findsOneWidget);
+    });
+
+    group('opened from a share (sharedLink)', () {
+      const shareChannel = MethodChannel('besttodo/share');
+
+      tearDown(() {
+        ShareIntentService.instance.resetForTest();
+      });
+
+      testWidgets(
+          'a shared YouTube link resolves and downloads immediately, no '
+          'picker', (tester) async {
+        Config.mp3DownloadFolder = '/tmp/music';
+        var resolved = false;
+        Mp3DownloaderService.instance.resolveOverride = (id) async {
+          resolved = true;
+          return Mp3SearchResult(
+            videoId: id,
+            title: 'Shared video',
+            channel: 'Some channel',
+            duration: const Duration(minutes: 3),
+          );
+        };
+        Mp3DownloaderService.instance.downloadOverride =
+            (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+        await tester.pumpWidget(const MaterialApp(
+          home: Mp3DownloaderPage(
+            sharedLink: MusicShareLink(
+              url: 'https://youtu.be/dQw4w9WgXcQ',
+              source: MusicLinkSource.youtube,
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(resolved, true);
+        expect(find.text('Find & Download Song'), findsOneWidget);
+        expect(find.byTooltip('Close'), findsOneWidget);
+        expect(Mp3DownloadManager.instance.jobs.value, isNotEmpty);
+        expect(
+            Mp3DownloadManager.instance.jobs.value.first.title, 'Shared video');
+      });
+
+      testWidgets(
+          'a shared Spotify link is resolved to a search query, then shows '
+          'the candidate picker', (tester) async {
+        Mp3DownloaderService.instance.searchOverride = (query, limit) async {
+          expect(query, 'Yellow Coldplay');
+          return const [
+            Mp3SearchResult(
+              videoId: 'yid',
+              title: 'Coldplay - Yellow',
+              channel: 'Coldplay',
+              duration: Duration(minutes: 4),
+            ),
+          ];
+        };
+        final resolver = MusicLinkResolverService(
+          client: MockClient((request) async => http.Response(
+                jsonEncode({'title': 'Yellow', 'author_name': 'Coldplay'}),
+                200,
+              )),
+        );
+
+        await tester.pumpWidget(MaterialApp(
+          home: Mp3DownloaderPage(
+            resolver: resolver,
+            sharedLink: const MusicShareLink(
+              url: 'https://open.spotify.com/track/abc123',
+              source: MusicLinkSource.spotify,
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Coldplay - Yellow'), findsOneWidget);
+      });
+
+      group('autoDownloadTopMatch (Best Music)', () {
+        const candidates = [
+          Mp3SearchResult(
+            videoId: 'right',
+            title: 'Coldplay - Yellow',
+            channel: 'Coldplay',
+            duration: Duration(minutes: 4),
+          ),
+          Mp3SearchResult(
+            videoId: 'other',
+            title: 'Coldplay - Yellow (Live)',
+            channel: 'Coldplay',
+            duration: Duration(minutes: 5),
+          ),
+        ];
+
+        testWidgets(
+            'a shared Shazam link downloads the top match straight away and '
+            'keeps the other candidates listed', (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async {
+            expect(query, 'Yellow by Coldplay');
+            return candidates;
+          };
+          Mp3DownloaderService.instance.downloadOverride =
+              (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              autoDownloadTopMatch: true,
+              sharedLink: MusicShareLink(
+                url: 'https://www.shazam.com/track/52323911/yellow',
+                source: MusicLinkSource.shazam,
+                textHint: 'I used Shazam to discover Yellow by Coldplay.',
+              ),
+            ),
+          ));
+          await tester.pumpAndSettle();
+
+          final jobs = Mp3DownloadManager.instance.jobs.value;
+          expect(jobs, hasLength(1));
+          expect(jobs.first.videoId, 'right');
+          expect(find.textContaining('Downloading the top match'),
+              findsOneWidget);
+          expect(find.text('Coldplay - Yellow (Live)'), findsOneWidget);
+        });
+
+        testWidgets('tapping a different candidate swaps the download',
+            (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async => candidates;
+          // The auto-picked download is still running when the other
+          // candidate is tapped; it only ends once [stopRight] fires, the way
+          // a real download ends at the next chunk after a cancel request.
+          final stopRight = Completer<String>();
+          Mp3DownloaderService.instance.downloadOverride =
+              (result, dir, onProgress) => result.videoId == 'right'
+                  ? stopRight.future
+                  : Completer<String>().future;
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              autoDownloadTopMatch: true,
+              sharedLink: MusicShareLink(
+                url: '',
+                source: MusicLinkSource.text,
+                textHint: 'Yellow Coldplay',
+              ),
+            ),
+          ));
+          // A running download shows an endless progress spinner, so pump a
+          // fixed number of frames rather than pumpAndSettle.
+          Future<void> pumpFrames() async {
+            for (var i = 0; i < 10; i++) {
+              await tester.pump(const Duration(milliseconds: 50));
+            }
+          }
+
+          await pumpFrames();
+          expect(Mp3DownloadManager.instance.jobs.value.single.videoId,
+              'right');
+
+          await tester.tap(find.text('Coldplay - Yellow (Live)'));
+          await pumpFrames();
+          stopRight.completeError(Exception('stopped'));
+          await pumpFrames();
+
+          final jobs = Mp3DownloadManager.instance.jobs.value;
+          expect(jobs.firstWhere((j) => j.videoId == 'right').status,
+              Mp3DownloadStatus.cancelled);
+          expect(jobs.map((j) => j.videoId), contains('other'));
+          expect(find.textContaining('Downloading the top match'),
+              findsNothing);
+        });
+
+        testWidgets('a shared YouTube link still downloads directly',
+            (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          var searched = false;
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async {
+            searched = true;
+            return candidates;
+          };
+          Mp3DownloaderService.instance.resolveOverride = (id) async =>
+              Mp3SearchResult(
+                videoId: id,
+                title: 'Shared video',
+                channel: 'Some channel',
+                duration: const Duration(minutes: 3),
+              );
+          Mp3DownloaderService.instance.downloadOverride =
+              (result, dir, onProgress) async => '$dir/${result.title}.m4a';
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              autoDownloadTopMatch: true,
+              sharedLink: MusicShareLink(
+                url: 'https://youtu.be/dQw4w9WgXcQ',
+                source: MusicLinkSource.youtube,
+              ),
+            ),
+          ));
+          await tester.pumpAndSettle();
+
+          expect(searched, isFalse);
+          expect(Mp3DownloadManager.instance.jobs.value.single.title,
+              'Shared video');
+        });
+
+        testWidgets('without the flag a Shazam share still waits on the picker',
+            (tester) async {
+          Config.mp3DownloadFolder = '/tmp/music';
+          Mp3DownloaderService.instance.searchOverride =
+              (query, limit) async => candidates;
+
+          await tester.pumpWidget(const MaterialApp(
+            home: Mp3DownloaderPage(
+              sharedLink: MusicShareLink(
+                url: 'https://www.shazam.com/track/52323911/yellow',
+                source: MusicLinkSource.shazam,
+                textHint: 'Yellow by Coldplay',
+              ),
+            ),
+          ));
+          await tester.pumpAndSettle();
+
+          expect(Mp3DownloadManager.instance.jobs.value, isEmpty);
+          expect(find.text('Coldplay - Yellow'), findsOneWidget);
+        });
+      });
+
+      testWidgets('the Close button returns to the previous sharing app',
+          (tester) async {
+        final channelCalls = <String>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(shareChannel, (call) async {
+          channelCalls.add(call.method);
+          return null;
+        });
+        addTearDown(() => TestDefaultBinaryMessengerBinding
+            .instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(shareChannel, null));
+
+        Mp3DownloaderService.instance.searchOverride =
+            (query, limit) async => <Mp3SearchResult>[];
+
+        await tester.pumpWidget(const MaterialApp(
+          home: Mp3DownloaderPage(
+            sharedLink: MusicShareLink(
+              url: 'https://open.spotify.com/track/abc123',
+              source: MusicLinkSource.spotify,
+              textHint: 'Some Song',
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+
+        expect(channelCalls, contains('returnToPreviousApp'));
+      });
+
+      testWidgets(
+          'a resolver failure surfaces as an error instead of hanging',
+          (tester) async {
+        final resolver = MusicLinkResolverService(
+          client: MockClient((request) async => http.Response('', 500)),
+        );
+
+        await tester.pumpWidget(MaterialApp(
+          home: Mp3DownloaderPage(
+            resolver: resolver,
+            sharedLink: const MusicShareLink(
+              url: 'https://open.spotify.com/track/abc123',
+              source: MusicLinkSource.spotify,
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining("Couldn't use the shared link"),
+            findsOneWidget);
+      });
     });
   });
 

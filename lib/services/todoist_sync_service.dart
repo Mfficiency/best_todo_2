@@ -965,6 +965,7 @@ class TodoistSyncService {
       note: meta?['note'] as String? ?? '',
       label: addLabelToken(_labelsFromRemote(remoteTask), waitingApprovalToken),
       createdAt: _remoteCreatedAt(remoteTask) ?? DateTime.now(),
+      origin: TaskChangeSource.sync,
       pendingSourceTitle: markerSourceTitle ??
           (remoteProjectId == null ? null : remoteProjectNames[remoteProjectId]),
       projectId: (mapped == _wishlistProjectKey || mapped == _futureProjectKey)

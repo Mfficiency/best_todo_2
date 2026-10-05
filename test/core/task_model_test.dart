@@ -162,8 +162,7 @@ void main() {
     final task = Task(title: 'Plain');
     expect(task.attachments, isEmpty);
     expect(task.toJson().containsKey('attachments'), isFalse);
-    expect(
-        Task.fromJson(<String, dynamic>{'title': 'legacy'}).attachments,
+    expect(Task.fromJson(<String, dynamic>{'title': 'legacy'}).attachments,
         isEmpty);
   });
 
@@ -196,5 +195,27 @@ void main() {
     for (var i = 0; i < 3; i++) {
       expect(decoded.attachments[i].uid, task.attachments[i].uid);
     }
+  });
+
+  test('origin and approvedAt round-trip and stay absent when unset', () {
+    final approved = DateTime.utc(2026, 9, 30, 8, 15);
+    final task = Task(
+      title: 'From Todoist',
+      origin: 'sync',
+      approvedAt: approved,
+    );
+
+    final json = task.toJson();
+    final decoded = Task.fromJson(json);
+
+    expect(decoded.origin, 'sync');
+    expect(decoded.approvedAt, approved);
+
+    final plain = Task(title: 'Legacy').toJson();
+    expect(plain.containsKey('origin'), isFalse);
+    expect(plain.containsKey('approvedAt'), isFalse);
+    final legacy = Task.fromJson(plain);
+    expect(legacy.origin, isNull);
+    expect(legacy.approvedAt, isNull);
   });
 }

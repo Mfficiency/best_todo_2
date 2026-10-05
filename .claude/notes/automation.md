@@ -11,6 +11,37 @@ Feature branches (`claude/*`, historically `codex/*`) → `dev` → `staging` �
 `main`. Releases are built from dev after a version bump. dev is the working
 branch; staging/main promote by merge.
 
+### Branch hygiene (two workflows, both deleting)
+
+| Workflow | Triggers | Deletes |
+|---|---|---|
+| `delete-merged-branch.yml` | PR closed+merged with base `dev` | That PR's head branch. The precise case: a feature branch whose PR landed. |
+| `prune-old-branches.yml` | push on `dev`, manual | The backstop. Once the repo holds more than **8** branches, deletes the ones whose tip commit is oldest until it's back under the cap (`tool/ci/prune_old_branches.mjs`). |
+
+Why both: the PR workflow only fires on PR merges, and plenty of branches
+never get one - abandoned experiments, and merges that reach dev by direct
+push (`tool/build.sh` pushes dev itself). The cap catches those.
+
+The pruner **never** deletes `dev`, `staging`, `main`, `master`,
+[`ci-reports`](#the-ci-reports-orphan-branch), the repo's default branch,
+anything GitHub marks protected, or anything with an open PR. The cap counts
+*every* branch including those, so 8 with four long-lived branches leaves room
+for four feature branches.
+
+It will delete **unmerged** work once the repo is over the cap - that is what a
+cap means, but it is irreversible in practice. Two ways to check first:
+
+```sh
+# what would go, without touching anything
+GITHUB_TOKEN=$(gh auth token) node tool/ci/prune_old_branches.mjs --dry-run
+# only ever delete branches already fully merged into dev
+GITHUB_TOKEN=$(gh auth token) node tool/ci/prune_old_branches.mjs --merged-only
+```
+
+Add `--merged-only` to the workflow's `run:` step to make that the standing
+behaviour; the cap then simply isn't met while unmerged branches are the
+oldest, which the script says out loud.
+
 ## The three workflows (`.github/workflows/`)
 
 | Workflow | Triggers | Runner | Does |
