@@ -103,8 +103,10 @@ void main() {
     await tester.tap(find.byTooltip('Metadata scan'));
     // Not pumpAndSettle(): the scan page shows an indeterminate
     // LinearProgressIndicator while its own (real-I/O) scan runs, which
-    // never settles — just confirm the navigation happened.
+    // never settles — just confirm the navigation happened. A few frames:
+    // the route is built on the frame after the push is scheduled.
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Metadata Scan'), findsOneWidget);
   });
