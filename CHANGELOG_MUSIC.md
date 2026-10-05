@@ -6,6 +6,11 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.8] - 2026-10-05
+- Videos now have a Transcript button: read the full transcript of a Subscriptions video, with timestamps — taken from YouTube's captions, or from backup sites (Invidious) when YouTube won't give them
+- New "Quick summary" button on videos: a short summary of the video, its key points and the conclusion it reaches. Add a Claude API key in Settings → Transcripts & summaries for a summary written by Claude; without one, the phone picks the key sentences itself
+- Save a summary to Obsidian with one tap — it lands as a note in your Research folder (folder and vault are set in Settings → Transcripts & summaries) — or use Share/Copy to send it anywhere
+
 ## [0.3.7] - 2026-10-05
 - The Now Playing screen (songs and videos) has just the menu button at the top — every other button (speed, volume, sleep timer, shuffle, queue, info and "Back to music/videos") now sits at the bottom, within reach of your thumb
 - CI build: 2026-10-05 08:43 UTC

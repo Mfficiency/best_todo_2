@@ -24,6 +24,7 @@ enum MusicSettingsSection {
   appearance('Appearance'),
   feed('Subscriptions feed'),
   sponsorBlock('SponsorBlock'),
+  summaries('Transcripts & summaries'),
   updates('Updates');
 
   const MusicSettingsSection(this.title);
@@ -439,6 +440,8 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                         ],
                       ),
                     ),
+                    _buildSection(
+                        MusicSettingsSection.summaries, _summaryTiles()),
                     _buildSection(MusicSettingsSection.updates, [
                       UpdateDownloadsFolderTile(
                           updateService: MusicAboutPage.updateService),
@@ -505,6 +508,75 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
     ];
   }
 
+  /// A video's Quick summary: the Claude API key and where "Save to
+  /// Obsidian" puts the research note.
+  List<Widget> _summaryTiles() {
+    Future<void> edit({
+      required String title,
+      required String initial,
+      required String hint,
+      bool secret = false,
+      required void Function(String) apply,
+    }) async {
+      final value = await showDialog<String>(
+        context: context,
+        builder: (_) => _TextSettingDialog(
+            title: title, initial: initial, hint: hint, secret: secret),
+      );
+      if (value == null || !mounted) return;
+      setState(() => apply(value.trim()));
+      unawaited(Config.save());
+    }
+
+    final key = Config.claudeApiKey.trim();
+    return [
+      ListTile(
+        leading: const Icon(Icons.key_outlined),
+        title: const Text('Claude API key'),
+        subtitle: Text(key.isEmpty
+            ? 'Not set — Quick summary picks key sentences on the phone. '
+                'Add a key from console.anthropic.com for a summary Claude '
+                'writes'
+            : 'Set (…${key.length > 4 ? key.substring(key.length - 4) : key}) '
+                '— Claude writes Quick summaries'),
+        onTap: () => edit(
+          title: 'Claude API key',
+          initial: Config.claudeApiKey,
+          hint: 'sk-ant-…',
+          secret: true,
+          apply: (v) => Config.claudeApiKey = v,
+        ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.folder_special_outlined),
+        title: const Text('Obsidian research folder'),
+        subtitle: Text(Config.obsidianResearchFolder.trim().isEmpty
+            ? 'Vault root — Save to Obsidian puts notes here'
+            : '${Config.obsidianResearchFolder} — Save to Obsidian puts '
+                'video summaries here'),
+        onTap: () => edit(
+          title: 'Obsidian research folder',
+          initial: Config.obsidianResearchFolder,
+          hint: 'Research',
+          apply: (v) => Config.obsidianResearchFolder = v,
+        ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.inventory_2_outlined),
+        title: const Text('Obsidian vault'),
+        subtitle: Text(Config.obsidianVault.trim().isEmpty
+            ? 'Whichever vault Obsidian has open'
+            : Config.obsidianVault),
+        onTap: () => edit(
+          title: 'Obsidian vault name',
+          initial: Config.obsidianVault,
+          hint: 'Leave empty for the open vault',
+          apply: (v) => Config.obsidianVault = v,
+        ),
+      ),
+    ];
+  }
+
   List<Widget> _sponsorBlockTiles(YoutubeFeedSettings settings) {
     void update(YoutubeFeedSettings value) => _feed.updateSettings(value);
     return [
@@ -533,5 +605,60 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
             },
           ),
     ];
+  }
+}
+
+/// A one-field settings dialog that owns its controller (disposing one
+/// right after `showDialog` returns breaks the exit animation).
+class _TextSettingDialog extends StatefulWidget {
+  const _TextSettingDialog({
+    required this.title,
+    required this.initial,
+    required this.hint,
+    this.secret = false,
+  });
+
+  final String title;
+  final String initial;
+  final String hint;
+  final bool secret;
+
+  @override
+  State<_TextSettingDialog> createState() => _TextSettingDialogState();
+}
+
+class _TextSettingDialogState extends State<_TextSettingDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        obscureText: widget.secret,
+        autocorrect: !widget.secret,
+        decoration: InputDecoration(hintText: widget.hint),
+        onSubmitted: (v) => Navigator.of(context).pop(v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
   }
 }

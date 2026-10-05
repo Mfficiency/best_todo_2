@@ -626,6 +626,17 @@ class Config {
   static String claudeRoutineUrl = '';
   static String claudeRoutineToken = '';
 
+  /// Best Music: Anthropic API key (console.anthropic.com) used for a
+  /// video's "Quick summary" (`VideoSummaryService`). Empty means summaries
+  /// are made on-device. Stored in plain text like [todoistApiToken].
+  static String claudeApiKey = '';
+
+  /// Best Music: the Obsidian vault "Save to Obsidian" writes research
+  /// notes into (empty = whichever vault Obsidian has open) and the folder
+  /// inside it.
+  static String obsidianVault = '';
+  static String obsidianResearchFolder = 'Research';
+
   /// Folder the MP3 Downloader saves audio into. Empty means "not chosen
   /// yet" — the tool asks once, stores the answer here, and never prompts
   /// again unless the user changes it in Settings → MP3 Downloader.
@@ -787,6 +798,9 @@ class Config {
       'githubWishlistToken': githubWishlistToken,
       'claudeRoutineUrl': claudeRoutineUrl,
       'claudeRoutineToken': claudeRoutineToken,
+      'claudeApiKey': claudeApiKey,
+      'obsidianVault': obsidianVault,
+      'obsidianResearchFolder': obsidianResearchFolder,
       'mp3DownloadFolder': mp3DownloadFolder,
       'mp3CompareFolder': mp3CompareFolder,
       'musicFolder': musicFolder,
@@ -944,6 +958,10 @@ class Config {
     claudeRoutineUrl = data['claudeRoutineUrl'] as String? ?? claudeRoutineUrl;
     claudeRoutineToken =
         data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
+    claudeApiKey = data['claudeApiKey'] as String? ?? claudeApiKey;
+    obsidianVault = data['obsidianVault'] as String? ?? obsidianVault;
+    obsidianResearchFolder =
+        data['obsidianResearchFolder'] as String? ?? obsidianResearchFolder;
     mp3DownloadFolder =
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
     mp3CompareFolder = data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
