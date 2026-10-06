@@ -9,8 +9,8 @@ nothing has been copied over here.
 ## [0.3.14] - 2026-10-06
 - Subscriptions: a channel's new videos didn't show up? Each channel on the Channels page now has a "Check for new videos" button that fetches just that channel again (trying up to three times), and the feed's "Couldn't refresh …" line has a Retry button
 - Fixed: a channel was sometimes left out of a refresh entirely when YouTube's feed for it had a hiccup, even though its videos could still be read another way
-- CI build: 2026-10-06 04:53 UTC
-- Build duration (apk, CI): 8m 28s
+- CI build: 2026-10-06 05:40 UTC
+- Build duration (apk, CI): 8m 00s
 - APK size: 63.0 MB
 
 ## [0.3.13] - 2026-10-06
