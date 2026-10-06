@@ -1415,5 +1415,25 @@
     "source": "ci",
     "finishedAt": "2026-10-06T04:28:35.868740",
     "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 548,
+    "sizeBytes": 66998236,
+    "source": "ci",
+    "finishedAt": "2026-10-06T04:38:29.512915",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.13+411",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 510,
+    "sizeBytes": 66093823,
+    "source": "ci",
+    "finishedAt": "2026-10-06T04:39:31.080326",
+    "os": "linux"
   }
 ]
