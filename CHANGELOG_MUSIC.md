@@ -14,8 +14,8 @@ nothing has been copied over here.
 - Shows how long the search has left ("Looking up song info online… 120/1954 · about 1 h 40 min left"), also for on-device BPM detection
 - New "Restart" button next to that line on Metadata Scan: searches again right away, including songs where nothing was found before
 - Keeps working while you use other apps: a quiet "Best Music · filling in song info" notification shows the progress and goes away when it's done
-- CI build: 2026-10-05 20:31 UTC
-- Build duration (apk, CI): 9m 09s
+- CI build: 2026-10-06 04:28 UTC
+- Build duration (apk, CI): 5m 45s
 - APK size: 63.0 MB
 
 ## [0.3.11] - 2026-10-05
