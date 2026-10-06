@@ -18,6 +18,8 @@ nothing has been copied over here.
 - CI build: 2026-10-06 04:39 UTC
 - Build duration (apk, CI): 8m 30s
 - APK size: 63.0 MB
+- Local build: 2026-10-06 06:38
+- Build duration (apk): 4m 07s
 
 ## [0.3.12] - 2026-10-05
 - Fixed: the background song info search stopped after a few songs with "paused (offline?)" even though you were online — it went faster than Deezer allows and one "slow down" answer paused everything. It now paces each service to its own limit, waits and retries when asked to slow down, rests a service that keeps refusing while the others carry on, and only pauses when there really is no internet

@@ -7,10 +7,10 @@
 - CI build: 2026-10-06 05:01 UTC
 - Build duration (apk, CI): 8m 48s
 - APK size: 63.9 MB
-- Local build: 2026-10-06 06:21
+- Local build: 2026-10-06 06:39
 - Build duration (apk): 19m 13s
-- Build duration (windows): 2m 28s
-- Build size (windows): 128.6 MB
+- Build duration (windows): 1m 09s
+- Build size (windows): 128.7 MB
 
 ## [0.2.98] - 2026-10-04
 - Music Player and MP3 Downloader removed from BestToDo — they now live only in the Best Music app (shared music links open the regular quick-add screen, and the music home-screen widgets are Best Music only)
