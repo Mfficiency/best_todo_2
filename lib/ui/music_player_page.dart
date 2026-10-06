@@ -17,6 +17,7 @@ import '../services/music_sleep_timer.dart';
 import '../services/music_youtube_fallback.dart';
 import '../utils/artist_utils.dart';
 import 'app_logs_page.dart';
+import 'best_music_logo.dart';
 import 'bpm_range_page.dart';
 import 'changelog_page.dart';
 import 'estimated_progress_bar.dart';
@@ -161,12 +162,20 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               return Container(
                 padding: const EdgeInsets.all(16),
                 color: Theme.of(context).colorScheme.primary,
-                child: Text(
-                  'Best Music v${Config.version}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                    fontSize: 18,
-                  ),
+                child: Row(
+                  children: [
+                    const BestMusicLogo(size: 40),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Best Music v${Config.version}',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               );
             },

@@ -3668,9 +3668,22 @@ could otherwise delete the wrong app's build purely by version-number coincidenc
 for why that's true even though the two apps no longer share one version).
 
 **Branding, not a fork**: app label (`res/values/strings.xml` `app_name`, overridden per flavor
-in `src/music/res/values/strings.xml`) and launcher icon (`src/music/res/mipmap-*/ic_launcher.png`
-— a flat black eighth note on white, generated at each mipmap density) are the only
-flavor-specific Android resources; everything else (permissions, receivers/services, signing)
+in `src/music/res/values/strings.xml`) and Best Music's icon set are the flavor-specific
+Android resources (the music flavor's own manifest additions — share filter, widgets — aside).
+**Icon (Best Music 0.3.13)**: a black eighth note with a motion blur trailing left, on white
+(the user's artwork; generated from one 1254 px source by a one-off PIL script — ink alpha =
+(250 − luminance) scaled to 0–255, background forced to pure white):
+`mipmap-*/ic_launcher.png` (48–192 px full tiles, legacy launchers);
+`mipmap-anydpi-v26/ic_launcher.xml` adaptive icon — `@color/ic_launcher_background` (#FFFFFF,
+`src/music/res/values/colors.xml`), foreground `mipmap-*/ic_launcher_foreground.png`
+(108–432 px, transparent, the source square scaled to 76 of the 108 dp so the note keeps its
+framing inside the 66 dp safe zone; also the Android 12+ splash icon) and the same file as the
+`<monochrome>` layer for Android 13 themed icons; `drawable-{m..xxx}hdpi/ic_stat_music_note.png`
+(24–96 px white-on-transparent silhouette cropped to the note) overriding main's vector
+`ic_stat_music_note` for the media and background-work notifications; and the Flutter asset
+`assets/branding/best_music_icon.png` (512 px) shown by `BestMusicLogo`
+(`lib/ui/best_music_logo.dart`, rounded tile) in the drawer header (40 px, beside "Best Music
+vX") and at the top of the About page (96 px). BestToDo keeps its own icons; everything else (permissions, receivers/services, signing)
 stays the single shared manifest, unused permissions in the Best Music APK included — a
 deliberate simplification since it is sideloaded, not Play-Store-distributed.
 

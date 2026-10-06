@@ -72,7 +72,8 @@ Pick suites by what you touched, always including core:
 - `lib/services/music_download_library_sync.dart`, `lib/services/speaker_play_guard.dart`, `lib/services/music_youtube_fallback.dart`, `lib/services/youtube_search_api.dart`,
   `lib/services/bpm_detector.dart`, `lib/services/audio_pcm_decoder.dart`,
   `lib/services/music_online_metadata.dart`, `lib/services/music_metadata_enricher.dart`,
-  `lib/services/id3_tag_writer.dart`, `lib/services/background_work.dart` → core + **music**
+  `lib/services/id3_tag_writer.dart`, `lib/services/background_work.dart`,
+  `lib/ui/best_music_logo.dart` → core + **music**
 - `lib/models/youtube_feed.dart`, `lib/services/youtube_feed_service.dart`,
   `lib/services/youtube_audio_source.dart`, `lib/services/sponsorblock_service.dart`,
   `lib/ui/youtube_feed_page.dart`, `lib/ui/youtube_channels_page.dart`,

@@ -52,4 +52,5 @@ flutter:
     - CHANGELOG.md
     - CHANGELOG_MUSIC.md
     - assets/icons/
+    - assets/branding/
     - assets/test_report.json

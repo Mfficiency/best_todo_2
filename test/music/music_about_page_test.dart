@@ -1,5 +1,7 @@
 import 'package:besttodo/config.dart';
+import 'package:besttodo/ui/best_music_logo.dart';
 import 'package:besttodo/ui/music_about_page.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -24,6 +26,17 @@ void main() {
 
     expect(find.textContaining('Best Music v'), findsOneWidget);
     expect(find.text('Check for updates'), findsOneWidget);
+  });
+
+  testWidgets('shows the app icon, and the icon asset is bundled',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: MusicAboutPage()));
+    await tester.pump();
+    expect(find.byType(BestMusicLogo), findsOneWidget);
+    expect(find.bySemanticsLabel('Best Music'), findsOneWidget);
+    final bytes = await tester.runAsync(
+        () => rootBundle.load(BestMusicLogo.assetPath));
+    expect(bytes!.lengthInBytes, greaterThan(1000));
   });
 
   testWidgets(
