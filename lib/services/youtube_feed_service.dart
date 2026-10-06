@@ -86,6 +86,17 @@ class YoutubeFeedService {
   /// Channels whose last refresh failed, for the feed's error banner.
   final ValueNotifier<List<String>> failedChannels = ValueNotifier(const []);
 
+  /// Channel ids being force-checked right now ([forceRefreshChannel]),
+  /// so their row can show a spinner.
+  final ValueNotifier<Set<String>> forceRefreshing = ValueNotifier(const {});
+
+  /// Waits between [forceRefreshChannel]'s attempts.
+  @visibleForTesting
+  List<Duration> forceRetryDelays = const [
+    Duration(seconds: 2),
+    Duration(seconds: 5),
+  ];
+
   static const int _maxProgressEntries = 2000;
   static const int _parallelFetches = 6;
 
@@ -122,6 +133,8 @@ class YoutubeFeedService {
     refreshing.value = false;
     window.value = backgroundWindow;
     failedChannels.value = const [];
+    forceRefreshing.value = const {};
+    forceRetryDelays = const [Duration(seconds: 2), Duration(seconds: 5)];
     lastRefresh = null;
     _loaded = false;
     _refreshInFlight = null;
@@ -455,6 +468,73 @@ class YoutubeFeedService {
     }
   }
 
+  /// The "Check for new videos" button (Channels page) and the feed's
+  /// "Retry" on its "Couldn't refresh" line: fetches just [channel] again,
+  /// trying up to three times ([forceRetryDelays] apart) since YouTube's
+  /// RSS feed and Videos tab both fail now and then for a single channel.
+  /// On success its videos replace what was cached for it, it leaves
+  /// [failedChannels], and the result says how many videos are new to the
+  /// feed; null when every attempt failed (it then stays/goes into
+  /// [failedChannels]).
+  Future<int?> forceRefreshChannel(YoutubeChannel channel) async {
+    if (forceRefreshing.value.contains(channel.id)) return null;
+    forceRefreshing.value = {...forceRefreshing.value, channel.id};
+    try {
+      List<FeedVideo>? fresh;
+      Object? lastError;
+      for (var attempt = 0; attempt <= forceRetryDelays.length; attempt++) {
+        if (attempt > 0) {
+          await Future<void>.delayed(forceRetryDelays[attempt - 1]);
+        }
+        try {
+          fresh = (await fetchChannel(channel)).videos;
+          break;
+        } catch (e) {
+          lastError = e;
+          _log('Force-checking ${channel.name} (try ${attempt + 1}) '
+              'failed: $e');
+        }
+      }
+      if (fresh == null) {
+        if (!failedChannels.value.contains(channel.name)) {
+          failedChannels.value = [...failedChannels.value, channel.name];
+        }
+        _log('Force-checking ${channel.name} gave up: $lastError');
+        return null;
+      }
+      final known = {for (final v in videos.value) v.videoId};
+      final added = fresh.where((v) => !known.contains(v.videoId)).length;
+      videos.value = _merged({channel.id: fresh});
+      failedChannels.value = [
+        for (final name in failedChannels.value)
+          if (name != channel.name) name,
+      ];
+      _log('Force-checked ${channel.name}: ${fresh.length} video(s), '
+          '$added new');
+      await _save();
+      unawaited(fillMissingDetails());
+      return added;
+    } finally {
+      forceRefreshing.value = {
+        for (final id in forceRefreshing.value)
+          if (id != channel.id) id,
+      };
+    }
+  }
+
+  /// Force-checks every channel in [failedChannels] (the feed's "Retry").
+  /// Returns how many of them loaded this time.
+  Future<int> retryFailedChannels() async {
+    final names = failedChannels.value.toSet();
+    final channels = [
+      for (final c in subscriptions.value)
+        if (names.contains(c.name)) c,
+    ];
+    final results =
+        await Future.wait([for (final c in channels) forceRefreshChannel(c)]);
+    return results.where((r) => r != null).length;
+  }
+
   /// [videos] with each channel in [fetched] replaced by its fresh list,
   /// newest first. Keeps what was cached for a channel not (yet) fetched or
   /// that failed, and anything already known about a video (a description
@@ -611,7 +691,10 @@ class YoutubeFeedService {
     } catch (e) {
       tabError = e;
     }
-    if (tab == null) {
+    // The JSON tab has no titles, so without RSS the page scraper is
+    // needed for them even when the JSON tab answered — skipping it used
+    // to drop the whole channel whenever its RSS feed hiccuped.
+    if (tab == null || rss == null) {
       final client = yt.YoutubeExplode();
       try {
         final page = (await client.channels
@@ -619,7 +702,9 @@ class YoutubeFeedService {
                 .timeout(const Duration(seconds: 30)))
             .toList();
         if (page.isNotEmpty) {
-          tab = [
+          // Keep the JSON tab's (better) durations/views when it answered;
+          // the scraped page then only supplies titles.
+          tab ??= [
             for (final v in page)
               ChannelTabVideo(
                 videoId: v.id.value,
@@ -652,16 +737,17 @@ class YoutubeFeedService {
       }
       return ChannelFetchResult([
         for (final v in tab!)
-          FeedVideo(
-            videoId: v.videoId,
-            title: tabTitles[v.videoId] ?? '',
-            channelId: channel.id,
-            channelName: channel.name,
-            published: v.published,
-            publishedApprox: v.published != null,
-            duration: v.duration,
-            viewCount: v.views,
-          ),
+          if ((tabTitles[v.videoId] ?? '').isNotEmpty)
+            FeedVideo(
+              videoId: v.videoId,
+              title: tabTitles[v.videoId]!,
+              channelId: channel.id,
+              channelName: channel.name,
+              published: v.published,
+              publishedApprox: v.published != null,
+              duration: v.duration,
+              viewCount: v.views,
+            ),
       ]);
     }
     return ChannelFetchResult(mergeVideosTab(rss, tab == null

@@ -97,6 +97,21 @@ class _YoutubeChannelsPageState extends State<YoutubeChannelsPage> {
     ));
   }
 
+  /// Fetches just this channel again, trying harder than a normal refresh
+  /// — for a channel whose new videos didn't show up.
+  Future<void> _forceRefresh(YoutubeChannel channel) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final added = await _service.forceRefreshChannel(channel);
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(added == null
+          ? "Couldn't reach ${channel.name} — try again in a bit"
+          : added == 0
+              ? '${channel.name}: no new videos'
+              : '${channel.name}: $added new video${added == 1 ? '' : 's'}'),
+    ));
+  }
+
   Widget _avatar(YoutubeChannel channel) {
     final url = channel.avatarUrl;
     return CircleAvatar(
@@ -203,10 +218,35 @@ class _YoutubeChannelsPageState extends State<YoutubeChannelsPage> {
                     ListTile(
                       leading: _avatar(channel),
                       title: Text(channel.name),
-                      trailing: IconButton(
-                        tooltip: 'Unsubscribe',
-                        icon: const Icon(Icons.remove_circle_outline),
-                        onPressed: () => _unsubscribe(channel),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ValueListenableBuilder<Set<String>>(
+                            valueListenable: _service.forceRefreshing,
+                            builder: (context, busy, _) =>
+                                busy.contains(channel.id)
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        ),
+                                      )
+                                    : IconButton(
+                                        tooltip: 'Check for new videos',
+                                        icon: const Icon(Icons.refresh),
+                                        onPressed: () =>
+                                            _forceRefresh(channel),
+                                      ),
+                          ),
+                          IconButton(
+                            tooltip: 'Unsubscribe',
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: () => _unsubscribe(channel),
+                          ),
+                        ],
                       ),
                     ),
                 ]);

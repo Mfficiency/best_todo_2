@@ -4477,7 +4477,11 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   `lockupViewModel` cards, collecting each card's texts (`simpleText`/`runs`/`text`/
   `content`) and recognising the clock (`12:34`), views (`parseViewCount`: "1,234 views",
   "1.2K views", "No views"; "watching" = live, ignored) and "N units ago". `fetchChannel`
-  tries it first and falls back to `getUploadsFromPage` with 0 → null. `mergeVideosTab`
+  tries it first and falls back to `getUploadsFromPage` with 0 → null — and (0.3.14) also
+  runs `getUploadsFromPage` whenever RSS failed, even if the JSON tab answered, because the
+  JSON tab has no titles: before, a channel whose RSS feed hiccuped was dropped from that
+  refresh. The scraped page then only fills titles (`tab ??=` keeps the JSON tab's
+  durations/views); without RSS only videos with a title are listed. `mergeVideosTab`
   takes the higher of the RSS/tab view counts, a null never erases the other.
   `_merged` runs every fresh video through `keepKnownDetails(fresh, known)` so a refresh that
   missed duration/views/description/exact date keeps the cached ones. After each refresh,
@@ -4487,6 +4491,19 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
   `fetchOverride` is set without one). A video whose page gives a duration is no longer
   flagged `isLivestream`.
+- *Force-checking one channel (Best Music 0.3.14)*: `forceRefreshChannel(channel)` fetches
+  just that channel, up to 3 tries `forceRetryDelays` apart (2 s, 5 s); success → its videos
+  replace its cached ones via `_merged({id: fresh})`, it leaves `failedChannels`, saves,
+  `fillMissingDetails()`, and returns how many video ids are new to the feed; all tries failed
+  → null and its name is (kept) in `failedChannels`. `forceRefreshing` (`Set` of channel ids)
+  drives spinners; a second call for a channel already being checked returns null at once.
+  `retryFailedChannels()` force-checks every subscription whose name is in `failedChannels`
+  (in parallel) and returns how many loaded. UI: each row under "Subscribed (N)" on the
+  Channels page has a refresh button ("Check for new videos"; spinner while checking) next to
+  Unsubscribe → snackbar "<name>: N new videos" / "<name>: no new videos" / "Couldn't reach
+  <name> — try again in a bit"; the feed's "Couldn't refresh N channels: …" line gets a
+  trailing **Retry** (spinner while any check runs) → "All N channels loaded" / "Loaded X of
+  N — the rest still don't answer".
 
 **Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
 (`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:

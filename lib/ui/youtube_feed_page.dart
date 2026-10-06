@@ -175,6 +175,20 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
         ),
       ));
 
+  /// The "Couldn't refresh" line's Retry: force-checks just the failed
+  /// channels (each tried up to three times).
+  Future<void> _retryFailed() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final total = _service.failedChannels.value.length;
+    final loaded = await _service.retryFailedChannels();
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(loaded == total
+          ? 'All $total channel${total == 1 ? '' : 's'} loaded'
+          : 'Loaded $loaded of $total — the rest still don\'t answer'),
+    ));
+  }
+
   void _openChannels() => Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => YoutubeChannelsPage(service: _service)));
 
@@ -327,6 +341,20 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
                               "channel${failed.length == 1 ? '' : 's'}: "
                               '${failed.take(3).join(', ')}'
                               '${failed.length > 3 ? ', ...' : ''}'),
+                          trailing: ValueListenableBuilder<Set<String>>(
+                            valueListenable: _service.forceRefreshing,
+                            builder: (context, busy, _) => busy.isNotEmpty
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : TextButton(
+                                    onPressed: _retryFailed,
+                                    child: const Text('Retry'),
+                                  ),
+                          ),
                         ),
                       if (searching && list.isEmpty)
                         const Padding(

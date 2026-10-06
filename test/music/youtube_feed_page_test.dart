@@ -265,6 +265,51 @@ void main() {
     expect(service.subscriptions.value, isEmpty);
   });
 
+  testWidgets('a channel\'s "Check for new videos" fetches just that channel',
+      (tester) async {
+    service.subscriptions.value = [_channel];
+    service.forceRetryDelays = const [Duration.zero, Duration.zero];
+    var calls = 0;
+    service.fetchOverride = (_) async {
+      if (++calls == 1) throw Exception('RSS hiccup');
+      return ChannelFetchResult([_video('new1')]);
+    };
+    await tester.pumpWidget(const MaterialApp(home: YoutubeChannelsPage()));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Check for new videos'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(calls, 2, reason: 'retried after the first failure');
+    expect(find.text('Chan: 1 new video'), findsOneWidget);
+    expect(service.videos.value.map((v) => v.videoId), ['new1']);
+  });
+
+  testWidgets('the feed\'s "Couldn\'t refresh" line has a Retry button',
+      (tester) async {
+    _ignoreThumbnailErrors();
+    service.subscriptions.value = [_channel];
+    service.forceRetryDelays = const [Duration.zero, Duration.zero];
+    var failing = true;
+    service.fetchOverride = (_) async {
+      if (failing) throw Exception('down');
+      return ChannelFetchResult([_video('back1')]);
+    };
+    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedPage()));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining("Couldn't refresh 1 channel"), findsOneWidget);
+
+    failing = false;
+    await tester.tap(find.text('Retry'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(find.textContaining("Couldn't refresh"), findsNothing);
+    expect(find.text('All 1 channel loaded'), findsOneWidget);
+    expect(find.text('Title back1'), findsOneWidget);
+  });
+
   testWidgets('feed settings toggle Shorts and SponsorBlock categories',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(

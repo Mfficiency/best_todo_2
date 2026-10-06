@@ -494,6 +494,69 @@ void main() {
     });
   });
 
+  group('force-checking one channel', () {
+    const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+    const b = YoutubeChannel(id: 'UCbbbbbbbbbbbbbbbbbbbbbb', name: 'B');
+
+    setUp(() {
+      service.forceRetryDelays = const [Duration.zero, Duration.zero];
+      service.subscriptions.value = [a, b];
+    });
+
+    test('retries a flaky channel and reports its new videos', () async {
+      service.videos.value = [
+        _video('a1', a.id, DateTime(2026, 9, 1)),
+        _video('b1', b.id, DateTime(2026, 8, 1)),
+      ];
+      service.failedChannels.value = ['A'];
+      var calls = 0;
+      service.fetchOverride = (channel) async {
+        expect(channel.id, a.id, reason: 'only the asked channel');
+        if (++calls < 3) throw Exception('RSS 500');
+        return ChannelFetchResult([
+          _video('a2', a.id, DateTime(2026, 9, 3)),
+          _video('a1', a.id, DateTime(2026, 9, 1)),
+        ]);
+      };
+      final busy = <Set<String>>[];
+      service.forceRefreshing.addListener(
+          () => busy.add(service.forceRefreshing.value));
+      final added = await service.forceRefreshChannel(a);
+      expect(calls, 3);
+      expect(added, 1);
+      expect(service.videos.value.map((v) => v.videoId),
+          ['a2', 'a1', 'b1'], reason: 'B kept as cached');
+      expect(service.failedChannels.value, isEmpty);
+      expect(busy.first, {a.id});
+      expect(service.forceRefreshing.value, isEmpty);
+    });
+
+    test('gives up after three tries and lists the channel as failed',
+        () async {
+      var calls = 0;
+      service.fetchOverride = (_) async {
+        calls++;
+        throw Exception('down');
+      };
+      expect(await service.forceRefreshChannel(b), isNull);
+      expect(calls, 3);
+      expect(service.failedChannels.value, ['B']);
+    });
+
+    test('retryFailedChannels checks only the failed ones', () async {
+      service.failedChannels.value = ['B'];
+      final asked = <String>[];
+      service.fetchOverride = (channel) async {
+        asked.add(channel.name);
+        return ChannelFetchResult(
+            [_video('b9', channel.id, DateTime(2026, 9, 9))]);
+      };
+      expect(await service.retryFailedChannels(), 1);
+      expect(asked, ['B']);
+      expect(service.failedChannels.value, isEmpty);
+    });
+  });
+
   test('each channel shows up as soon as it is fetched', () async {
     const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
     const b = YoutubeChannel(id: 'UCbbbbbbbbbbbbbbbbbbbbbb', name: 'B');
