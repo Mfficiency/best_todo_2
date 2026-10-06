@@ -6,7 +6,11 @@
 - If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason (e.g. "Update download failed: This release has no APK to download") instead of showing a few seconds later
 - CI build: 2026-10-05 13:12 UTC
 - Build duration (apk, CI): 7m 31s
-- APK size: 63.9 MB
+- APK size: 64.6 MB
+- Local build: 2026-10-06 06:21
+- Build duration (apk): 19m 13s
+- Build duration (windows): 2m 28s
+- Build size (windows): 128.6 MB
 
 ## [0.2.98] - 2026-10-04
 - Music Player and MP3 Downloader removed from BestToDo — they now live only in the Best Music app (shared music links open the regular quick-add screen, and the music home-screen widgets are Best Music only)
