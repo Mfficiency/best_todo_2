@@ -1295,5 +1295,315 @@
     "source": "ci",
     "finishedAt": "2026-10-05T09:24:34.322346",
     "os": "linux"
+  },
+  {
+    "version": "0.3.8+405",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 386,
+    "sizeBytes": 65412128,
+    "source": "ci",
+    "finishedAt": "2026-10-05T10:51:14.146242",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.9+406",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 358,
+    "sizeBytes": 65773412,
+    "source": "ci",
+    "finishedAt": "2026-10-05T11:25:29.997325",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.98+399",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 517,
+    "sizeBytes": 66963448,
+    "source": "ci",
+    "finishedAt": "2026-10-05T11:36:57.101916",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.10+408",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 401,
+    "sizeBytes": 65774000,
+    "source": "ci",
+    "finishedAt": "2026-10-05T12:02:06.139890",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.98+399",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 495,
+    "sizeBytes": 66963908,
+    "source": "ci",
+    "finishedAt": "2026-10-05T12:04:44.846391",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 438,
+    "sizeBytes": 66979460,
+    "source": "ci",
+    "finishedAt": "2026-10-05T12:08:34.119535",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.11+409",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 465,
+    "sizeBytes": 66003004,
+    "source": "ci",
+    "finishedAt": "2026-10-05T13:06:46.867304",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 451,
+    "sizeBytes": 66997416,
+    "source": "ci",
+    "finishedAt": "2026-10-05T13:12:39.870722",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.12+410",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 549,
+    "sizeBytes": 66037960,
+    "source": "ci",
+    "finishedAt": "2026-10-05T20:31:38.875698",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 1153,
+    "sizeBytes": 67699327,
+    "source": "local",
+    "finishedAt": "2026-10-06T06:18:42.576245",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "windows",
+    "durationSeconds": 148,
+    "sizeBytes": 134810996,
+    "source": "local",
+    "finishedAt": "2026-10-06T06:21:15.311043",
+    "os": "windows"
+  },
+  {
+    "version": "0.3.12+410",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 345,
+    "sizeBytes": 66038020,
+    "source": "ci",
+    "finishedAt": "2026-10-06T04:28:35.868740",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 548,
+    "sizeBytes": 66998236,
+    "source": "ci",
+    "finishedAt": "2026-10-06T04:38:29.512915",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.13+411",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 510,
+    "sizeBytes": 66093823,
+    "source": "ci",
+    "finishedAt": "2026-10-06T04:39:31.080326",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 515,
+    "sizeBytes": 67018343,
+    "source": "ci",
+    "finishedAt": "2026-10-06T04:46:11.472306",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.14+412",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 508,
+    "sizeBytes": 66094187,
+    "source": "ci",
+    "finishedAt": "2026-10-06T04:53:59.037149",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 528,
+    "sizeBytes": 67018495,
+    "source": "ci",
+    "finishedAt": "2026-10-06T05:01:21.021151",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.13+411",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 247,
+    "sizeBytes": 66811618,
+    "source": "local",
+    "finishedAt": "2026-10-06T06:38:39.699619",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "windows",
+    "durationSeconds": 69,
+    "sizeBytes": 134919690,
+    "source": "local",
+    "finishedAt": "2026-10-06T06:39:53.594248",
+    "os": "windows"
+  },
+  {
+    "version": "0.3.14+412",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 480,
+    "sizeBytes": 66094395,
+    "source": "ci",
+    "finishedAt": "2026-10-06T05:40:06.535839",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 546,
+    "sizeBytes": 67018631,
+    "source": "ci",
+    "finishedAt": "2026-10-06T05:47:50.536765",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.15+413",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 400,
+    "sizeBytes": 66094447,
+    "source": "ci",
+    "finishedAt": "2026-10-07T04:28:29.997282",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 563,
+    "sizeBytes": 67018835,
+    "source": "ci",
+    "finishedAt": "2026-10-07T04:40:30.497188",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.16+414",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 511,
+    "sizeBytes": 66094395,
+    "source": "ci",
+    "finishedAt": "2026-10-07T05:06:24.620788",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 526,
+    "sizeBytes": 67019119,
+    "source": "ci",
+    "finishedAt": "2026-10-07T05:13:23.808327",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.15+413",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 253,
+    "sizeBytes": 66812038,
+    "source": "local",
+    "finishedAt": "2026-10-07T06:28:38.124157",
+    "os": "windows"
+  },
+  {
+    "version": "0.3.16+414",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 491,
+    "sizeBytes": 66094919,
+    "source": "ci",
+    "finishedAt": "2026-10-07T05:39:53.310697",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 578,
+    "sizeBytes": 67019227,
+    "source": "ci",
+    "finishedAt": "2026-10-07T05:48:03.836399",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.17+415",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 388,
+    "sizeBytes": 66455951,
+    "source": "ci",
+    "finishedAt": "2026-10-07T09:19:01.054005",
+    "os": "linux"
+  },
+  {
+    "version": "0.2.99+407",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 557,
+    "sizeBytes": 67019659,
+    "source": "ci",
+    "finishedAt": "2026-10-07T09:28:41.792882",
+    "os": "linux"
+  },
+  {
+    "version": "0.3.17+415",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 295,
+    "sizeBytes": 67157146,
+    "source": "local",
+    "finishedAt": "2026-10-07T11:19:19.808304",
+    "os": "windows"
   }
 ]

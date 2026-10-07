@@ -6,6 +6,89 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.17] - 2026-10-07
+- Subscriptions: swipe a video right to add it to the queue, left to mark it watched (with Undo), and long-press for all its options — Transcript, Quick summary, Download, Open in YouTube and more. Each gesture can be changed in Settings → Subscriptions
+- Videos you add to the queue are downloaded so they play without internet, and kept for 2 days (the playing video and the next two in the queue too) — change the number of days, or turn it off, in Settings → Subscriptions
+- Searching Subscriptions: when nothing in your feed matches, it searches YouTube itself and shows those videos instead
+- The Subscriptions screen no longer has a settings button at the top — its settings are in Settings
+- CI build: 2026-10-07 09:19 UTC
+- Build duration (apk, CI): 6m 28s
+- APK size: 63.4 MB
+- Local build: 2026-10-07 11:19
+- Build duration (apk): 4m 55s
+- APK size: 64.0 MB
+
+## [0.3.16] - 2026-10-07
+- Fixed: Subscriptions videos not loading — channels needed YouTube's RSS feed for their video titles, and that feed fails a lot; the titles now come from the channel's video list itself, both are asked at the same time, and the slow backup is only used when both fail
+- The feed keeps its videos: opening it shows the saved list straight away and only adds the newest videos (nothing disappears because one refresh listed fewer); saved videos stay for 30 days. Opening it again within 10 minutes doesn't reload at all — pull down to refresh anytime
+- CI build: 2026-10-07 05:39 UTC
+- Build duration (apk, CI): 8m 11s
+- APK size: 63.0 MB
+
+## [0.3.15] - 2026-10-07
+- The "Back to music" / "Back to videos" button is now a small see-through circle with just an icon, so messages that pop up at the bottom (errors, Undo) are no longer hidden behind it
+- CI build: 2026-10-07 04:28 UTC
+- Build duration (apk, CI): 6m 40s
+- APK size: 63.0 MB
+- Local build: 2026-10-07 06:28
+- Build duration (apk): 4m 13s
+- APK size: 63.7 MB
+
+## [0.3.14] - 2026-10-06
+- Subscriptions: a channel's new videos didn't show up? Each channel on the Channels page now has a "Check for new videos" button that fetches just that channel again (trying up to three times), and the feed's "Couldn't refresh …" line has a Retry button
+- Fixed: a channel was sometimes left out of a refresh entirely when YouTube's feed for it had a hiccup, even though its videos could still be read another way
+- CI build: 2026-10-06 05:40 UTC
+- Build duration (apk, CI): 8m 00s
+- APK size: 63.0 MB
+
+## [0.3.13] - 2026-10-06
+- New app icon: a music note with a motion blur — on the home screen (it follows your phone's icon shape, and themed icons on Android 13+), the startup screen, the notifications, the menu and the About page
+- CI build: 2026-10-06 04:39 UTC
+- Build duration (apk, CI): 8m 30s
+- APK size: 63.0 MB
+- Local build: 2026-10-06 06:38
+- Build duration (apk): 4m 07s
+
+## [0.3.12] - 2026-10-05
+- Fixed: the background song info search stopped after a few songs with "paused (offline?)" even though you were online — it went faster than Deezer allows and one "slow down" answer paused everything. It now paces each service to its own limit, waits and retries when asked to slow down, rests a service that keeps refusing while the others carry on, and only pauses when there really is no internet
+- Shows how long the search has left ("Looking up song info online… 120/1954 · about 1 h 40 min left"), also for on-device BPM detection
+- New "Restart" button next to that line on Metadata Scan: searches again right away, including songs where nothing was found before
+- Keeps working while you use other apps: a quiet "Best Music · filling in song info" notification shows the progress and goes away when it's done
+- CI build: 2026-10-06 04:28 UTC
+- Build duration (apk, CI): 5m 45s
+- APK size: 63.0 MB
+
+## [0.3.11] - 2026-10-05
+- Song info fills itself in, in the background: songs missing an artist, album, genre, year or BPM are looked up online (Deezer, iTunes and MusicBrainz, trying several spellings of the title until one matches) and only the blanks are filled — your own tags and edits are never overwritten
+- If the internet can't find a BPM for at least 90% of your songs, Best Music works it out on your phone by listening to each remaining song — no button to press
+- What's found is also saved into your MP3 files' own tags, so other music apps see it too — only blank tags are filled, nothing already in the file is changed
+- Fixed: the library scan never read your MP3s' tags (artist, album, genre, year, BPM) at all — the library is rescanned once automatically after updating to pick them up
+- Metadata Scan and Songs by BPM show what it's doing ("Looking up song info online… 12/240", "Detecting BPM on device… 3/40")
+- CI build: 2026-10-05 13:06 UTC
+- Build duration (apk, CI): 7m 45s
+- APK size: 62.9 MB
+
+## [0.3.10] - 2026-10-05
+- If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason instead of showing a few seconds later
+- CI build: 2026-10-05 12:02 UTC
+- Build duration (apk, CI): 6m 41s
+- APK size: 62.7 MB
+
+## [0.3.9] - 2026-10-05
+- Videos now have a Transcript button: read the full transcript of a Subscriptions video, with timestamps — taken from YouTube's captions, or from backup sites (Invidious) when YouTube won't give them
+- New "Quick summary" button on videos: a short summary of the video, its key points and the conclusion it reaches. Add a Claude API key in Settings → Transcripts & summaries for a summary written by Claude; without one, the phone picks the key sentences itself
+- Save a summary to Obsidian with one tap — it lands as a note in your Research folder (folder and vault are set in Settings → Transcripts & summaries) — or use Share/Copy to send it anywhere
+- CI build: 2026-10-05 11:25 UTC
+- Build duration (apk, CI): 5m 58s
+- APK size: 62.7 MB
+
+## [0.3.8] - 2026-10-05
+- New "Songs by BPM" page (menu, and at the top of Playlists): drag either end of the BPM slider to pick a tempo range, see the songs in it, then play them as your queue, save them as a playlist, or save the range as a preset to come back to
+- Songs now have a BPM: read from your MP3s' BPM tag (rescan the library to pick it up), from a Subsonic/Navidrome server, typed in on Track info, or filled in through the metadata CSV's new "bpm" column
+- CI build: 2026-10-05 10:51 UTC
+- Build duration (apk, CI): 6m 26s
+- APK size: 62.4 MB
+
 ## [0.3.7] - 2026-10-05
 - The Now Playing screen (songs and videos) has just the menu button at the top — every other button (speed, volume, sleep timer, shuffle, queue, info and "Back to music/videos") now sits at the bottom, within reach of your thumb
 - CI build: 2026-10-05 08:43 UTC

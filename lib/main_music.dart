@@ -16,6 +16,7 @@ import 'services/install_info_service.dart';
 import 'services/mp3_download_manager.dart';
 import 'services/music_download_library_sync.dart';
 import 'services/music_library_service.dart';
+import 'services/music_metadata_enricher.dart';
 import 'services/music_player_service.dart';
 import 'services/video_audio_cache.dart';
 import 'services/music_playlist_service.dart';
@@ -74,6 +75,10 @@ Future<void> main() async {
     // the user to pick a folder and discover it silently finds nothing —
     // see MusicPlayerService.ensurePermissions.
     unawaited(MusicPlayerService.ensurePermissions(eager: true));
+    // Fills missing artist/album/genre/year/BPM from online sources (and
+    // detects BPM on device when those come up short) in the background —
+    // nothing to tap, see MusicMetadataEnricher.
+    if (!kIsWeb) unawaited(MusicMetadataEnricher.instance.start());
   });
 }
 

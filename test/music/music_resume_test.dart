@@ -8,6 +8,7 @@ import 'package:besttodo/services/music_library_service.dart';
 import 'package:besttodo/services/music_player_service.dart';
 import 'package:besttodo/services/music_playlist_service.dart';
 import 'package:besttodo/services/music_resume_service.dart';
+import 'package:besttodo/services/video_audio_cache.dart';
 import 'package:besttodo/services/youtube_feed_service.dart';
 import 'package:besttodo/ui/music_mini_player_bar.dart';
 import 'package:besttodo/ui/now_playing_page.dart';
@@ -245,6 +246,55 @@ void main() {
     });
   });
 
+  group('add to the video queue (feed swipe)', () {
+    late List<String> cached;
+    late VideoAudioCache originalCache;
+    setUp(() {
+      cached = [];
+      originalCache = VideoAudioCache.instance;
+      VideoAudioCache.instance = VideoAudioCache(
+        root: () async => null, // nothing really downloaded
+        keepFor: () => const Duration(days: 2),
+        download: (r, _) async {
+          cached.add(r.videoId);
+          return '';
+        },
+      );
+    });
+    tearDown(() => VideoAudioCache.instance = originalCache);
+
+    Track vid(String id) => Track.youtube(videoId: id, title: 'Video $id');
+
+    test('appends to a video queue that is playing, once', () async {
+      final handler = MusicAudioHandler();
+      handler.restore([vid('v1')]);
+      expect(await handler.addToVideoQueue(vid('v2')), isTrue);
+      expect(await handler.addToVideoQueue(vid('v2')), isFalse);
+      expect(handler.queue.value.map((m) => m.title),
+          ['Video v1', 'Video v2']);
+      expect(handler.currentTrack!.remoteId, 'v1',
+          reason: 'nothing interrupted');
+    });
+
+    test('while music plays it goes into the remembered video session',
+        () async {
+      final handler = MusicAudioHandler();
+      handler.restore([track('a')]);
+      await handler.addToVideoQueue(vid('v1'));
+      await handler.addToVideoQueue(vid('v2'));
+      expect(handler.currentTrack!.id, track('a').id);
+      final other = handler.otherSession.value!;
+      expect(other.isVideo, isTrue);
+      expect(other.queue.map((t) => t.remoteId), ['v1', 'v2']);
+    });
+
+    test('with nothing loaded it becomes the (paused) queue', () async {
+      final handler = MusicAudioHandler();
+      await handler.addToVideoQueue(vid('v1'));
+      expect(handler.currentTrack!.remoteId, 'v1');
+    });
+  });
+
   group('bottom-left switch button', () {
     testWidgets('shows "Back to videos" with a remembered video session',
         (tester) async {
@@ -263,7 +313,13 @@ void main() {
         position: const Duration(minutes: 12),
       ));
       await tester.pump();
-      expect(find.text('Back to videos'), findsOneWidget);
+      // A small icon-only circle; the label is for screen readers.
+      expect(find.bySemanticsLabel('Back to videos: Talk'), findsOneWidget);
+      expect(find.byIcon(Icons.smart_display_outlined), findsOneWidget);
+      expect(find.text('Back to videos'), findsNothing);
+      expect(
+          tester.getSize(find.byKey(const ValueKey('sessionSwitchPill'))),
+          const Size(40, 40));
     });
 
     test('with no remembered video, falls back to the last played one',

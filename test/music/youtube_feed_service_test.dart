@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:besttodo/models/track.dart';
 import 'package:besttodo/models/youtube_feed.dart';
 import 'package:besttodo/services/sponsorblock_service.dart';
+import 'package:besttodo/services/youtube_channel_videos_api.dart';
 import 'package:besttodo/services/youtube_feed_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -492,6 +493,154 @@ void main() {
           ['a', 'b', 'c', 'd']);
       expect(service.hasOlderVideos, isFalse);
     });
+  });
+
+  group('force-checking one channel', () {
+    const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+    const b = YoutubeChannel(id: 'UCbbbbbbbbbbbbbbbbbbbbbb', name: 'B');
+
+    setUp(() {
+      service.forceRetryDelays = const [Duration.zero, Duration.zero];
+      service.subscriptions.value = [a, b];
+    });
+
+    test('retries a flaky channel and reports its new videos', () async {
+      service.videos.value = [
+        _video('a1', a.id, DateTime(2026, 9, 1)),
+        _video('b1', b.id, DateTime(2026, 8, 1)),
+      ];
+      service.failedChannels.value = ['A'];
+      var calls = 0;
+      service.fetchOverride = (channel) async {
+        expect(channel.id, a.id, reason: 'only the asked channel');
+        if (++calls < 3) throw Exception('RSS 500');
+        return ChannelFetchResult([
+          _video('a2', a.id, DateTime(2026, 9, 3)),
+          _video('a1', a.id, DateTime(2026, 9, 1)),
+        ]);
+      };
+      final busy = <Set<String>>[];
+      service.forceRefreshing.addListener(
+          () => busy.add(service.forceRefreshing.value));
+      final added = await service.forceRefreshChannel(a);
+      expect(calls, 3);
+      expect(added, 1);
+      expect(service.videos.value.map((v) => v.videoId),
+          ['a2', 'a1', 'b1'], reason: 'B kept as cached');
+      expect(service.failedChannels.value, isEmpty);
+      expect(busy.first, {a.id});
+      expect(service.forceRefreshing.value, isEmpty);
+    });
+
+    test('gives up after three tries and lists the channel as failed',
+        () async {
+      var calls = 0;
+      service.fetchOverride = (_) async {
+        calls++;
+        throw Exception('down');
+      };
+      expect(await service.forceRefreshChannel(b), isNull);
+      expect(calls, 3);
+      expect(service.failedChannels.value, ['B']);
+    });
+
+    test('retryFailedChannels checks only the failed ones', () async {
+      service.failedChannels.value = ['B'];
+      final asked = <String>[];
+      service.fetchOverride = (channel) async {
+        asked.add(channel.name);
+        return ChannelFetchResult(
+            [_video('b9', channel.id, DateTime(2026, 9, 9))]);
+      };
+      expect(await service.retryFailedChannels(), 1);
+      expect(asked, ['B']);
+      expect(service.failedChannels.value, isEmpty);
+    });
+  });
+
+  group('combineChannelSources', () {
+    const chan = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+    final day = DateTime(2026, 10, 5);
+
+    test('RSS down: the Videos tab alone lists the channel', () {
+      final videos = combineChannelSources(chan, tab: [
+        ChannelTabVideo(
+            videoId: 'v1', title: 'One', published: day, views: 10,
+            duration: const Duration(minutes: 3)),
+        const ChannelTabVideo(videoId: 'v2'), // no title anywhere → skipped
+        const ChannelTabVideo(videoId: 'v3'),
+      ], extraTitles: {
+        'v3': 'Three (scraped)'
+      });
+      expect(videos.map((v) => v.title), ['One', 'Three (scraped)']);
+      expect(videos.first.channelId, chan.id);
+      expect(videos.first.publishedApprox, isTrue);
+      expect(videos.first.viewCount, 10);
+    });
+
+    test('with RSS: annotated, plus tab videos RSS doesn\'t list', () {
+      final videos = combineChannelSources(chan,
+          rss: [_video('v1', chan.id, day)],
+          tab: [
+            const ChannelTabVideo(
+                videoId: 'v1', title: 'x', duration: Duration(minutes: 7)),
+            ChannelTabVideo(videoId: 'v0', title: 'Older', published: day),
+          ]);
+      expect(videos.map((v) => v.videoId), ['v1', 'v0']);
+      expect(videos.first.duration, const Duration(minutes: 7));
+    });
+  });
+
+  test('a refresh adds to the saved feed instead of replacing it', () async {
+    const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+    service.subscriptions.value = [a];
+    final now = DateTime(2026, 10, 7);
+    service.clock = () => now;
+    var listed = [
+      _video('new', a.id, DateTime(2026, 10, 6)),
+      _video('week', a.id, DateTime(2026, 10, 1)),
+    ];
+    service.fetchOverride = (_) async => ChannelFetchResult(listed);
+    service.videos.value = [
+      _video('saved', a.id, DateTime(2026, 9, 20)),
+      _video('ancient', a.id, DateTime(2026, 8, 1)),
+    ];
+    await service.refresh();
+    expect(service.videos.value.map((v) => v.videoId), ['new', 'week', 'saved'],
+        reason: 'saved videos stay; ones past keepVideosFor go');
+
+    // The next fetch lists only the newest: nothing already saved vanishes.
+    listed = [_video('newest', a.id, DateTime(2026, 10, 7))];
+    await service.refresh();
+    expect(service.videos.value.map((v) => v.videoId),
+        ['newest', 'new', 'week', 'saved']);
+  });
+
+  test('refreshIfStale skips a refresh done minutes ago', () async {
+    const a = YoutubeChannel(id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'A');
+    service.subscriptions.value = [a];
+    var now = DateTime(2026, 10, 7, 9);
+    service.clock = () => now;
+    var fetches = 0;
+    service.fetchOverride = (_) async {
+      fetches++;
+      return ChannelFetchResult([_video('v$fetches', a.id, now)]);
+    };
+    await service.refreshIfStale();
+    expect(fetches, 1, reason: 'never refreshed yet');
+    now = now.add(const Duration(minutes: 5));
+    await service.refreshIfStale();
+    expect(fetches, 1);
+    now = now.add(YoutubeFeedService.freshFor);
+    await service.refreshIfStale();
+    expect(fetches, 2);
+    await service.refresh();
+    expect(fetches, 3, reason: 'pull-to-refresh always fetches');
+
+    // A failed channel is retried on the next open even minutes later.
+    service.failedChannels.value = ['A'];
+    await service.refreshIfStale();
+    expect(fetches, 4);
   });
 
   test('each channel shows up as soon as it is fetched', () async {

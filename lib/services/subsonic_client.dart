@@ -100,6 +100,8 @@ class SubsonicClient {
 
   Track _songToTrack(Map<String, dynamic> song) {
     final durationSeconds = song['duration'] as num?;
+    // OpenSubsonic servers (Navidrome, ...) send the song's BPM; 0 = unknown.
+    final bpm = (song['bpm'] as num?)?.round();
     return Track.subsonic(
       remoteId: song['id']?.toString() ?? '',
       title: song['title'] as String? ?? '',
@@ -107,6 +109,7 @@ class SubsonicClient {
       album: song['album'] as String? ?? '',
       durationMs:
           durationSeconds != null ? (durationSeconds * 1000).round() : null,
+      bpm: bpm != null && bpm > 0 ? bpm : null,
     );
   }
 }

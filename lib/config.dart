@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'models/bpm_preset.dart';
 import 'models/streak_goal.dart';
 import 'models/streak_reminder.dart';
 import 'models/view_filter_rules.dart';
@@ -626,6 +627,17 @@ class Config {
   static String claudeRoutineUrl = '';
   static String claudeRoutineToken = '';
 
+  /// Best Music: Anthropic API key (console.anthropic.com) used for a
+  /// video's "Quick summary" (`VideoSummaryService`). Empty means summaries
+  /// are made on-device. Stored in plain text like [todoistApiToken].
+  static String claudeApiKey = '';
+
+  /// Best Music: the Obsidian vault "Save to Obsidian" writes research
+  /// notes into (empty = whichever vault Obsidian has open) and the folder
+  /// inside it.
+  static String obsidianVault = '';
+  static String obsidianResearchFolder = 'Research';
+
   /// Folder the MP3 Downloader saves audio into. Empty means "not chosen
   /// yet" — the tool asks once, stores the answer here, and never prompts
   /// again unless the user changes it in Settings → MP3 Downloader.
@@ -660,6 +672,9 @@ class Config {
   /// left. Defaults to when files arrived on the device, newest first.
   static String musicTrackSortField = 'deviceDate';
   static bool musicTrackSortAscending = false;
+
+  /// Saved ranges on Best Music's BPM page, in the order they were saved.
+  static List<BpmPreset> musicBpmPresets = [];
 
   /// Music Player: ask "Play out loud?" before starting playback from a
   /// standstill while the phone's own speaker is the only audio output (no
@@ -787,12 +802,16 @@ class Config {
       'githubWishlistToken': githubWishlistToken,
       'claudeRoutineUrl': claudeRoutineUrl,
       'claudeRoutineToken': claudeRoutineToken,
+      'claudeApiKey': claudeApiKey,
+      'obsidianVault': obsidianVault,
+      'obsidianResearchFolder': obsidianResearchFolder,
       'mp3DownloadFolder': mp3DownloadFolder,
       'mp3CompareFolder': mp3CompareFolder,
       'musicFolder': musicFolder,
       'musicExcludedSubfolders': musicExcludedSubfolders,
       'musicTrackSortField': musicTrackSortField,
       'musicTrackSortAscending': musicTrackSortAscending,
+      'musicBpmPresets': [for (final p in musicBpmPresets) p.toJson()],
       'musicConfirmSpeakerPlay': musicConfirmSpeakerPlay,
       'musicPhoneVolume': musicPhoneVolume,
       'videoPhoneVolume': videoPhoneVolume,
@@ -944,6 +963,10 @@ class Config {
     claudeRoutineUrl = data['claudeRoutineUrl'] as String? ?? claudeRoutineUrl;
     claudeRoutineToken =
         data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
+    claudeApiKey = data['claudeApiKey'] as String? ?? claudeApiKey;
+    obsidianVault = data['obsidianVault'] as String? ?? obsidianVault;
+    obsidianResearchFolder =
+        data['obsidianResearchFolder'] as String? ?? obsidianResearchFolder;
     mp3DownloadFolder =
         data['mp3DownloadFolder'] as String? ?? mp3DownloadFolder;
     mp3CompareFolder = data['mp3CompareFolder'] as String? ?? mp3CompareFolder;
@@ -957,6 +980,13 @@ class Config {
         data['musicTrackSortField'] as String? ?? musicTrackSortField;
     musicTrackSortAscending =
         data['musicTrackSortAscending'] as bool? ?? musicTrackSortAscending;
+    final bpmPresets = data['musicBpmPresets'];
+    if (bpmPresets is List) {
+      musicBpmPresets = [
+        for (final p in bpmPresets)
+          if (BpmPreset.fromJson(p) case final preset?) preset,
+      ];
+    }
     musicConfirmSpeakerPlay =
         data['musicConfirmSpeakerPlay'] as bool? ?? musicConfirmSpeakerPlay;
     musicPhoneVolume = (data['musicPhoneVolume'] as num?)

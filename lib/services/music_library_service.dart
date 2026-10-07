@@ -11,6 +11,7 @@ import '../models/track.dart';
 import 'log_service.dart';
 import 'music_metadata_csv.dart';
 import 'music_metadata_extractor.dart';
+import 'music_online_metadata.dart';
 
 /// Scans [Config.musicFolder] and every subfolder for playable audio files,
 /// skipping anything under [Config.musicExcludedSubfolders]. Reads ID3 tags
@@ -223,14 +224,19 @@ class MusicLibraryService {
         var track = await _buildTrack(entity.path, ext);
         final deviceDate = await _deviceDateOf(entity);
         final previous = previousById[track.id];
+        // The earlier of the two: writing tags into a file (the metadata
+        // enricher does) bumps its change time, but not when it arrived.
+        final arrived = _earlier(deviceDate, previous?.deviceDate);
         track = (previous != null && previous.metadataEdited)
             ? previous.copyWith(
                 durationMs: track.durationMs ?? previous.durationMs,
-                deviceDate: deviceDate,
+                deviceDate: arrived,
+                // A BPM typed in by hand wins; a tag added later fills a gap.
+                bpm: previous.bpm ?? track.bpm,
               )
             : track.copyWith(
                 dateAdded: previous?.dateAdded ?? now,
-                deviceDate: deviceDate ?? previous?.deviceDate,
+                deviceDate: arrived,
                 playCount: previous?.playCount ?? 0,
               );
         found.add(track);
@@ -254,6 +260,12 @@ class MusicLibraryService {
       scanning = false;
     }
     return tracks.value;
+  }
+
+  static DateTime? _earlier(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isBefore(b) ? a : b;
   }
 
   /// When [file] arrived on this device — see [Track.deviceDate]. Null if
@@ -288,6 +300,7 @@ class MusicLibraryService {
         album: (tags.album ?? '').trim(),
         genre: (tags.genre ?? '').trim(),
         year: tags.year,
+        bpm: tags.bpm,
       );
     } catch (_) {
       return Track.local(filePath: filePath, title: fallbackTitle);
@@ -307,6 +320,7 @@ class MusicLibraryService {
     required String album,
     required String genre,
     int? year,
+    int? bpm,
     List<String> tags = const [],
   }) async {
     final index = tracks.value.indexWhere((t) => t.id == trackId);
@@ -323,6 +337,7 @@ class MusicLibraryService {
       durationMs: existing.durationMs,
       genre: genre,
       year: year,
+      bpm: bpm,
       dateAdded: existing.dateAdded,
       deviceDate: existing.deviceDate,
       playCount: existing.playCount,
@@ -361,6 +376,7 @@ class MusicLibraryService {
         durationMs: existing.durationMs,
         genre: row.genre.isNotEmpty ? row.genre : existing.genre,
         year: row.year ?? existing.year,
+        bpm: row.bpm ?? existing.bpm,
         dateAdded: existing.dateAdded,
         deviceDate: existing.deviceDate,
         playCount: existing.playCount,
@@ -374,6 +390,51 @@ class MusicLibraryService {
       await _save();
     }
     return applied;
+  }
+
+  /// Fills in only what's *missing* on the given tracks (keyed by id) from
+  /// background-found metadata — `MusicMetadataEnricher`'s online lookups
+  /// and on-device BPM detection. Never overwrites a value the track
+  /// already has (from its tags, a manual edit or a CSV import), and
+  /// doesn't mark the track [Track.metadataEdited]: the enricher keeps its
+  /// own cache and re-applies it after every rescan, so a later tag edit
+  /// in the file still wins. The title is only replaced when it was just
+  /// the filename (no artist tag either). Returns how many tracks changed.
+  Future<int> fillMissingMetadata(Map<String, OnlineTrackMetadata> fills) async {
+    if (fills.isEmpty) return 0;
+    final list = List<Track>.of(tracks.value);
+    var changed = 0;
+    for (var i = 0; i < list.length; i++) {
+      final fill = fills[list[i].id];
+      if (fill == null) continue;
+      final t = list[i];
+      final titleFromFilename = t.artist.isEmpty &&
+          (t.title.isEmpty || t.title == t.fileBaseName);
+      final updated = t.copyWith(
+        title: titleFromFilename && fill.title != null && fill.artist != null
+            ? fill.title
+            : null,
+        artist: t.artist.isEmpty ? fill.artist : null,
+        album: t.album.isEmpty ? fill.album : null,
+        genre: t.genre.isEmpty ? fill.genre : null,
+        year: t.year == null ? fill.year : null,
+        bpm: t.bpm == null ? fill.bpm : null,
+      );
+      if (updated.title != t.title ||
+          updated.artist != t.artist ||
+          updated.album != t.album ||
+          updated.genre != t.genre ||
+          updated.year != t.year ||
+          updated.bpm != t.bpm) {
+        list[i] = updated;
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      tracks.value = list;
+      await _save();
+    }
+    return changed;
   }
 
   /// Bumps [trackId]'s play count and persists it. No-op if the track isn't

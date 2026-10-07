@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:besttodo/models/track.dart';
 import 'package:besttodo/services/video_audio_cache.dart';
+import 'package:besttodo/services/youtube_feed_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -17,6 +18,7 @@ void main() {
     cache = VideoAudioCache(
       root: () async => root,
       now: () => now,
+      keepFor: () => const Duration(days: 7),
       download: (result, dir) async {
         downloads.add(result.videoId);
         final file = File('$dir/${result.title}.m4a');
@@ -72,6 +74,36 @@ void main() {
     expect(await cache.cachedFile('v1'), isNull);
     await cache.purgeExpired();
     expect(await Directory('${root.path}/v1').exists(), isFalse);
+  });
+
+  test('the keep period comes from the feed setting (2 days by default)',
+      () async {
+    YoutubeFeedService.instance.resetForTest();
+    final fromSetting = VideoAudioCache(
+      root: () async => root,
+      now: () => now,
+      download: (result, dir) async {
+        downloads.add(result.videoId);
+        final file = File('$dir/a.m4a');
+        await file.writeAsString('audio');
+        await file.setLastModified(now);
+        return file.path;
+      },
+    );
+    expect(fromSetting.keepFor, const Duration(days: 2));
+    await fromSetting.cacheInBackground(video('v3'));
+    await fromSetting.idle;
+    now = now.add(const Duration(days: 3));
+    expect(await fromSetting.cachedFile('v3'), isNull);
+
+    // 0 days: nothing is downloaded at all.
+    await YoutubeFeedService.instance.updateSettings(YoutubeFeedService
+        .instance.settings.value
+        .copyWith(offlineDays: 0));
+    await fromSetting.cacheInBackground(video('v4'));
+    await fromSetting.idle;
+    expect(downloads, ['v3']);
+    YoutubeFeedService.instance.resetForTest();
   });
 
   test('a failed download leaves nothing behind', () async {

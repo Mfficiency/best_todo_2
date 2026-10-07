@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/update_service.dart';
 import 'about_page.dart';
+import 'best_music_logo.dart';
 import 'subpage_app_bar.dart';
 
 /// Best Music's About page — the same [UpdateSection] as BestToDo's
@@ -31,6 +32,8 @@ class MusicAboutPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              const BestMusicLogo(size: 96),
+              const SizedBox(height: 16),
               FutureBuilder<void>(
                 future: Config.ensureVersionLoaded(),
                 builder: (context, snapshot) {

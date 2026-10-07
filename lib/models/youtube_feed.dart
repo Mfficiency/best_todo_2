@@ -214,6 +214,31 @@ enum SponsorBlockCategory {
 }
 
 /// The feed's settings.
+/// What a swipe or long-press on a Subscriptions video does — each gesture
+/// is picked in Settings → Subscriptions.
+enum FeedGestureAction {
+  nothing('nothing', 'Nothing'),
+  addToQueue('queue', 'Add to queue'),
+  togglePlayed('played', 'Mark watched / unwatched'),
+  options('options', 'Show options'),
+  play('play', 'Play'),
+  transcript('transcript', 'Open transcript'),
+  summary('summary', 'Quick summary'),
+  info('info', 'Video info');
+
+  const FeedGestureAction(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  static FeedGestureAction fromKey(Object? key, FeedGestureAction fallback) {
+    for (final a in values) {
+      if (a.key == key) return a;
+    }
+    return fallback;
+  }
+}
+
 class YoutubeFeedSettings {
   const YoutubeFeedSettings({
     this.sponsorBlockEnabled = true,
@@ -223,7 +248,14 @@ class YoutubeFeedSettings {
     this.playbackSpeed = 1.0,
     this.videoBoostDb = 0.0,
     this.autoplayNext = false,
+    this.swipeRight = FeedGestureAction.addToQueue,
+    this.swipeLeft = FeedGestureAction.togglePlayed,
+    this.longPress = FeedGestureAction.options,
+    this.offlineDays = 2,
   });
+
+  /// [offlineDays] range offered in Settings (0 = don't keep copies).
+  static const int maxOfflineDays = 14;
 
   /// Upper end of the boost slider. LoudnessEnhancer starts to clip
   /// audibly much past this on already-loud material.
@@ -265,6 +297,15 @@ class YoutubeFeedSettings {
   /// default: a video plays on its own and stops at its end.
   final bool autoplayNext;
 
+  /// Swiping a feed video to the right / left, and long-pressing it.
+  final FeedGestureAction swipeRight;
+  final FeedGestureAction swipeLeft;
+  final FeedGestureAction longPress;
+
+  /// How many days a video you queued or played stays downloaded on the
+  /// phone (VideoAudioCache) — playable offline. 0 = no copies kept.
+  final int offlineDays;
+
   YoutubeFeedSettings copyWith({
     bool? sponsorBlockEnabled,
     Set<SponsorBlockCategory>? sponsorBlockCategories,
@@ -273,6 +314,10 @@ class YoutubeFeedSettings {
     double? playbackSpeed,
     double? videoBoostDb,
     bool? autoplayNext,
+    FeedGestureAction? swipeRight,
+    FeedGestureAction? swipeLeft,
+    FeedGestureAction? longPress,
+    int? offlineDays,
   }) =>
       YoutubeFeedSettings(
         sponsorBlockEnabled: sponsorBlockEnabled ?? this.sponsorBlockEnabled,
@@ -283,6 +328,10 @@ class YoutubeFeedSettings {
         playbackSpeed: playbackSpeed ?? this.playbackSpeed,
         videoBoostDb: videoBoostDb ?? this.videoBoostDb,
         autoplayNext: autoplayNext ?? this.autoplayNext,
+        swipeRight: swipeRight ?? this.swipeRight,
+        swipeLeft: swipeLeft ?? this.swipeLeft,
+        longPress: longPress ?? this.longPress,
+        offlineDays: offlineDays ?? this.offlineDays,
       );
 
   Map<String, dynamic> toJson() => {
@@ -295,6 +344,10 @@ class YoutubeFeedSettings {
         'playbackSpeed': playbackSpeed,
         'videoBoostDb': videoBoostDb,
         'autoplayNext': autoplayNext,
+        'swipeRight': swipeRight.key,
+        'swipeLeft': swipeLeft.key,
+        'longPress': longPress.key,
+        'offlineDays': offlineDays,
       };
 
   factory YoutubeFeedSettings.fromJson(Map<String, dynamic> json) {
@@ -315,6 +368,14 @@ class YoutubeFeedSettings {
       videoBoostDb: ((json['videoBoostDb'] as num?)?.toDouble() ?? 0.0)
           .clamp(0.0, maxBoostDb),
       autoplayNext: json['autoplayNext'] as bool? ?? false,
+      swipeRight: FeedGestureAction.fromKey(
+          json['swipeRight'], FeedGestureAction.addToQueue),
+      swipeLeft: FeedGestureAction.fromKey(
+          json['swipeLeft'], FeedGestureAction.togglePlayed),
+      longPress: FeedGestureAction.fromKey(
+          json['longPress'], FeedGestureAction.options),
+      offlineDays: ((json['offlineDays'] as num?)?.round() ?? 2)
+          .clamp(0, maxOfflineDays),
     );
   }
 }

@@ -11,9 +11,14 @@ class ChannelTabVideo {
     this.duration,
     this.views,
     this.published,
+    this.title,
   });
 
   final String videoId;
+
+  /// The card's title — lets the feed list a channel from this tab alone
+  /// when its RSS feed is down. Null when the card has none readable.
+  final String? title;
 
   /// Null for a live/upcoming stream (no clock badge) or when unreadable.
   final Duration? duration;
@@ -97,7 +102,8 @@ class YoutubeChannelVideosApi {
         for (final key in const ['videoRenderer', 'gridVideoRenderer']) {
           final r = node[key];
           if (r is Map && r['videoId'] is String) {
-            video = _parseCard(r['videoId'] as String, r, at);
+            video = _parseCard(r['videoId'] as String, r, at,
+                title: _runsText(r['title']));
           }
         }
         final lockup = node['lockupViewModel'];
@@ -107,7 +113,15 @@ class YoutubeChannelVideosApi {
           if (id is String &&
               id.isNotEmpty &&
               (type == null || type == 'LOCKUP_CONTENT_TYPE_VIDEO')) {
-            video = _parseCard(id, lockup, at);
+            final meta = lockup['metadata'];
+            final lockupMeta =
+                meta is Map ? meta['lockupMetadataViewModel'] : null;
+            final titleNode =
+                lockupMeta is Map ? lockupMeta['title'] : null;
+            video = _parseCard(id, lockup, at,
+                title: titleNode is Map && titleNode['content'] is String
+                    ? titleNode['content'] as String
+                    : _runsText(titleNode));
           }
         }
         if (video != null) {
@@ -130,12 +144,31 @@ class YoutubeChannelVideosApi {
 
   static final RegExp _clock = RegExp(r'^\d{1,2}(:\d{2}){1,2}$');
 
-  static ChannelTabVideo _parseCard(String id, Map card, DateTime now) {
+  /// A `{simpleText}` / `{runs: [{text}]}` node as one string.
+  static String? _runsText(Object? node) {
+    if (node is! Map) return null;
+    final simple = node['simpleText'];
+    if (simple is String && simple.trim().isNotEmpty) return simple.trim();
+    final runs = node['runs'];
+    if (runs is List) {
+      final text = runs
+          .map((r) => r is Map && r['text'] is String ? r['text'] : '')
+          .join()
+          .trim();
+      if (text.isNotEmpty) return text;
+    }
+    return null;
+  }
+
+  static ChannelTabVideo _parseCard(String id, Map card, DateTime now,
+      {String? title}) {
     Duration? duration;
     int? views;
     DateTime? published;
+    final titleText = title?.trim();
     for (final text in _texts(card)) {
       final t = text.trim();
+      if (t == titleText) continue; // "… 10 years ago" in a title isn't a date
       if (duration == null && _clock.hasMatch(t)) {
         duration = YoutubeSearchApi.parseClockDuration(t);
       } else if (views == null && parseViewCount(t) != null) {
@@ -145,7 +178,11 @@ class YoutubeChannelVideosApi {
       }
     }
     return ChannelTabVideo(
-        videoId: id, duration: duration, views: views, published: published);
+        videoId: id,
+        duration: duration,
+        views: views,
+        published: published,
+        title: titleText == null || titleText.isEmpty ? null : titleText);
   }
 
   /// Every display string in [node]: `simpleText`, `runs` joined, `text`

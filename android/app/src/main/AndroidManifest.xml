@@ -32,6 +32,9 @@
     <!-- Music Player: background playback foreground service + its media
          notification/lock-screen controls (audio_service). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Best Music: keeps the background song-info search / BPM detection
+         running while other apps are open (BackgroundWorkService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- In-app updates (About page): lets the app hand a downloaded APK to
          the system package installer. The user still confirms the install
@@ -240,6 +243,18 @@
 
         <!-- Music Player background playback: notification + lock-screen
              media controls, headset buttons (audio_service). -->
+        <!-- Best Music's background song-info search (MusicMetadataEnricher):
+             an ongoing "Filling in song info…" notification that keeps the
+             process alive while other apps are in front. specialUse because
+             no standard type fits (dataSync is capped at 6 h a day). -->
+        <service
+            android:name=".BackgroundWorkService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Looks up missing song metadata online and detects song tempo on the device, on the user's own music library" />
+        </service>
         <service
             android:name="com.ryanheise.audioservice.AudioService"
             android:foregroundServiceType="mediaPlayback"

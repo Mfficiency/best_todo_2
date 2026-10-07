@@ -17,6 +17,8 @@ import '../services/music_sleep_timer.dart';
 import '../services/music_youtube_fallback.dart';
 import '../utils/artist_utils.dart';
 import 'app_logs_page.dart';
+import 'best_music_logo.dart';
+import 'bpm_range_page.dart';
 import 'changelog_page.dart';
 import 'estimated_progress_bar.dart';
 import 'fast_scroll_list.dart';
@@ -160,12 +162,20 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               return Container(
                 padding: const EdgeInsets.all(16),
                 color: Theme.of(context).colorScheme.primary,
-                child: Text(
-                  'Best Music v${Config.version}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                    fontSize: 18,
-                  ),
+                child: Row(
+                  children: [
+                    const BestMusicLogo(size: 40),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Best Music v${Config.version}',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
@@ -183,6 +193,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               Navigator.of(context).pop(); // close the drawer
               Navigator.of(context).push(YoutubeFeedPage.route());
             },
+          ),
+          ListTile(
+            leading: const Icon(Icons.speed),
+            title: const Text('Songs by BPM'),
+            onTap: () => _pushStandalonePage(() => const BpmRangePage()),
           ),
           ListTile(
             leading: const Icon(Icons.star_border),
@@ -872,7 +887,7 @@ class _PlaylistsTab extends StatelessWidget {
               ...userPlaylists,
             ];
             return ListView.builder(
-              itemCount: playlists.length + 2,
+              itemCount: playlists.length + 3,
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return ListTile(
@@ -895,7 +910,18 @@ class _PlaylistsTab extends StatelessWidget {
                     )),
                   );
                 }
-                final playlist = playlists[index - 2];
+                if (index == 2) {
+                  return ListTile(
+                    leading: const Icon(Icons.speed),
+                    title: const Text('Songs by BPM'),
+                    subtitle: const Text(
+                        'Pick a BPM range, play it or save it as a playlist'),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const BpmRangePage(),
+                    )),
+                  );
+                }
+                final playlist = playlists[index - 3];
                 final trackCount =
                     MusicPlaylistService.instance.resolvedTracks(playlist).length;
                 return ListTile(

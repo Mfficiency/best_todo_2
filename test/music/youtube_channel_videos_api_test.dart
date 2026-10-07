@@ -133,6 +133,47 @@ void main() {
     expect(v.published, now.subtract(const Duration(hours: 5)));
   });
 
+  test('reads titles from both card shapes', () {
+    final classic = YoutubeChannelVideosApi.parseVideosTab({
+      'items': [
+        {
+          'videoRenderer': {
+            'videoId': 'CCCCCCCCCCC',
+            'title': {
+              'runs': [
+                {'text': 'Part one, '},
+                {'text': 'part two'}
+              ]
+            },
+            'publishedTimeText': {'simpleText': '1 day ago'},
+          }
+        }
+      ]
+    }, now: now).single;
+    expect(classic.title, 'Part one, part two');
+
+    final lockup = YoutubeChannelVideosApi.parseVideosTab(
+        {'items': [_lockup('AAAAAAAAAAA')]},
+        now: now).single;
+    expect(lockup.title, 'Video AAAAAAAAAAA');
+  });
+
+  test('a title ending in "ago" is not taken for the upload age', () {
+    final v = YoutubeChannelVideosApi.parseVideosTab({
+      'items': [
+        {
+          'videoRenderer': {
+            'videoId': 'DDDDDDDDDDD',
+            'title': {'simpleText': 'What we did 10 years ago'},
+            'publishedTimeText': {'simpleText': '2 days ago'},
+          }
+        }
+      ]
+    }, now: now).single;
+    expect(v.title, 'What we did 10 years ago');
+    expect(v.published, now.subtract(const Duration(days: 2)));
+  });
+
   test('parseViewCount', () {
     expect(YoutubeChannelVideosApi.parseViewCount('1,234 views'), 1234);
     expect(YoutubeChannelVideosApi.parseViewCount('1 view'), 1);

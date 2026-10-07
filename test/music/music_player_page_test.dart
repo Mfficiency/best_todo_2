@@ -103,8 +103,10 @@ void main() {
     await tester.tap(find.byTooltip('Metadata scan'));
     // Not pumpAndSettle(): the scan page shows an indeterminate
     // LinearProgressIndicator while its own (real-I/O) scan runs, which
-    // never settles — just confirm the navigation happened.
+    // never settles — just confirm the navigation happened. A few frames:
+    // the route is built on the frame after the push is scheduled.
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Metadata Scan'), findsOneWidget);
   });
@@ -286,6 +288,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Playlists'));
       await tester.pumpAndSettle();
+      // Below the New/Rule/Songs by BPM rows and the smart playlists.
+      await tester.dragUntilVisible(find.text('Road trip'),
+          find.byType(ListView).last, const Offset(0, -200));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Road trip'));
       await tester.pumpAndSettle();
 
@@ -346,6 +352,10 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: MusicPlayerPage()));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Playlists'));
+      await tester.pumpAndSettle();
+      // Below the New/Rule/Songs by BPM rows and the smart playlists.
+      await tester.dragUntilVisible(find.text('Road trip'),
+          find.byType(ListView).last, const Offset(0, -200));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Road trip'));
       await tester.pumpAndSettle();

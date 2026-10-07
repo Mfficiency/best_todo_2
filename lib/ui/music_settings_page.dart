@@ -24,6 +24,7 @@ enum MusicSettingsSection {
   appearance('Appearance'),
   feed('Subscriptions feed'),
   sponsorBlock('SponsorBlock'),
+  summaries('Transcripts & summaries'),
   updates('Updates');
 
   const MusicSettingsSection(this.title);
@@ -439,6 +440,8 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                         ],
                       ),
                     ),
+                    _buildSection(
+                        MusicSettingsSection.summaries, _summaryTiles()),
                     _buildSection(MusicSettingsSection.updates, [
                       UpdateDownloadsFolderTile(
                           updateService: MusicAboutPage.updateService),
@@ -502,6 +505,154 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
         value: settings.autoplayNext,
         onChanged: (v) => update(settings.copyWith(autoplayNext: v)),
       ),
+      _gestureTile(
+        icon: Icons.swipe_right_alt,
+        title: 'Swipe a video right',
+        value: settings.swipeRight,
+        onPicked: (a) => update(settings.copyWith(swipeRight: a)),
+      ),
+      _gestureTile(
+        icon: Icons.swipe_left_alt,
+        title: 'Swipe a video left',
+        value: settings.swipeLeft,
+        onPicked: (a) => update(settings.copyWith(swipeLeft: a)),
+      ),
+      _gestureTile(
+        icon: Icons.touch_app_outlined,
+        title: 'Long-press a video',
+        value: settings.longPress,
+        onPicked: (a) => update(settings.copyWith(longPress: a)),
+      ),
+      ListTile(
+        leading: const Icon(Icons.download_for_offline_outlined),
+        title: const Text('Keep queued videos offline'),
+        subtitle: Text(settings.offlineDays == 0
+            ? "Off — videos you queue or play aren't kept on the phone"
+            : 'For ${settings.offlineDays} day${settings.offlineDays == 1 ? '' : 's'} '
+                '— videos you queue (and the one playing, plus the next '
+                'two) are downloaded and play without internet'),
+        onTap: () async {
+          final days = await showDialog<int>(
+            context: context,
+            builder: (dialogContext) => SimpleDialog(
+              title: const Text('Keep queued videos offline'),
+              children: [
+                for (final d in const [0, 1, 2, 3, 5, 7, 14])
+                  RadioListTile<int>(
+                    value: d,
+                    groupValue: settings.offlineDays,
+                    title: Text(d == 0
+                        ? "Off (don't download)"
+                        : '$d day${d == 1 ? '' : 's'}'),
+                    onChanged: (v) => Navigator.of(dialogContext).pop(v),
+                  ),
+              ],
+            ),
+          );
+          if (days != null) update(settings.copyWith(offlineDays: days));
+        },
+      ),
+    ];
+  }
+
+  /// Picks what a feed gesture does.
+  Widget _gestureTile({
+    required IconData icon,
+    required String title,
+    required FeedGestureAction value,
+    required void Function(FeedGestureAction) onPicked,
+  }) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(value.label),
+      onTap: () async {
+        final picked = await showDialog<FeedGestureAction>(
+          context: context,
+          builder: (dialogContext) => SimpleDialog(
+            title: Text(title),
+            children: [
+              for (final a in FeedGestureAction.values)
+                RadioListTile<FeedGestureAction>(
+                  value: a,
+                  groupValue: value,
+                  title: Text(a.label),
+                  onChanged: (v) => Navigator.of(dialogContext).pop(v),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) onPicked(picked);
+      },
+    );
+  }
+
+  /// A video's Quick summary: the Claude API key and where "Save to
+  /// Obsidian" puts the research note.
+  List<Widget> _summaryTiles() {
+    Future<void> edit({
+      required String title,
+      required String initial,
+      required String hint,
+      bool secret = false,
+      required void Function(String) apply,
+    }) async {
+      final value = await showDialog<String>(
+        context: context,
+        builder: (_) => _TextSettingDialog(
+            title: title, initial: initial, hint: hint, secret: secret),
+      );
+      if (value == null || !mounted) return;
+      setState(() => apply(value.trim()));
+      unawaited(Config.save());
+    }
+
+    final key = Config.claudeApiKey.trim();
+    return [
+      ListTile(
+        leading: const Icon(Icons.key_outlined),
+        title: const Text('Claude API key'),
+        subtitle: Text(key.isEmpty
+            ? 'Not set — Quick summary picks key sentences on the phone. '
+                'Add a key from console.anthropic.com for a summary Claude '
+                'writes'
+            : 'Set (…${key.length > 4 ? key.substring(key.length - 4) : key}) '
+                '— Claude writes Quick summaries'),
+        onTap: () => edit(
+          title: 'Claude API key',
+          initial: Config.claudeApiKey,
+          hint: 'sk-ant-…',
+          secret: true,
+          apply: (v) => Config.claudeApiKey = v,
+        ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.folder_special_outlined),
+        title: const Text('Obsidian research folder'),
+        subtitle: Text(Config.obsidianResearchFolder.trim().isEmpty
+            ? 'Vault root — Save to Obsidian puts notes here'
+            : '${Config.obsidianResearchFolder} — Save to Obsidian puts '
+                'video summaries here'),
+        onTap: () => edit(
+          title: 'Obsidian research folder',
+          initial: Config.obsidianResearchFolder,
+          hint: 'Research',
+          apply: (v) => Config.obsidianResearchFolder = v,
+        ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.inventory_2_outlined),
+        title: const Text('Obsidian vault'),
+        subtitle: Text(Config.obsidianVault.trim().isEmpty
+            ? 'Whichever vault Obsidian has open'
+            : Config.obsidianVault),
+        onTap: () => edit(
+          title: 'Obsidian vault name',
+          initial: Config.obsidianVault,
+          hint: 'Leave empty for the open vault',
+          apply: (v) => Config.obsidianVault = v,
+        ),
+      ),
     ];
   }
 
@@ -533,5 +684,60 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
             },
           ),
     ];
+  }
+}
+
+/// A one-field settings dialog that owns its controller (disposing one
+/// right after `showDialog` returns breaks the exit animation).
+class _TextSettingDialog extends StatefulWidget {
+  const _TextSettingDialog({
+    required this.title,
+    required this.initial,
+    required this.hint,
+    this.secret = false,
+  });
+
+  final String title;
+  final String initial;
+  final String hint;
+  final bool secret;
+
+  @override
+  State<_TextSettingDialog> createState() => _TextSettingDialogState();
+}
+
+class _TextSettingDialogState extends State<_TextSettingDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        obscureText: widget.secret,
+        autocorrect: !widget.secret,
+        decoration: InputDecoration(hintText: widget.hint),
+        onSubmitted: (v) => Navigator.of(context).pop(v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
   }
 }

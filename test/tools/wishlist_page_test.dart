@@ -911,7 +911,9 @@ void main() {
       'Connect banner pushes wish items to the shared external-storage file '
       '(Best Music no longer reads it, but BestToDo\'s own connect flow is '
       'unchanged)', (tester) async {
-    final sharedDir = await Directory.systemTemp.createTemp('shared_');
+    // Real I/O: outside the fake-async zone, or it never completes.
+    final sharedDir = (await tester
+        .runAsync(() => Directory.systemTemp.createTemp('shared_')))!;
     SharedWishlistStore.sharedDirectoryOverride = sharedDir;
     SharedWishlistStore.connectionOverride = false;
     Config.wishlistSyncBannerDismissed = false;

@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:besttodo/models/track.dart';
 import 'package:besttodo/models/youtube_feed.dart';
+import 'package:besttodo/services/mp3_downloader_service.dart';
 import 'package:besttodo/services/youtube_feed_service.dart';
 import 'package:besttodo/ui/music_settings_page.dart';
 import 'package:besttodo/ui/playback_speed_sheet.dart';
@@ -134,7 +136,18 @@ void main() {
               channelName: 'Chan',
               published: DateTime.now().subtract(const Duration(days: 40))),
         ]);
-    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedPage()));
+    final searched = <String>[];
+    await tester.pumpWidget(MaterialApp(
+        home: YoutubeFeedPage(onlineSearch: (q) async {
+      searched.add(q);
+      return [
+        const Mp3SearchResult(
+            videoId: 'yt1',
+            title: 'Found on YouTube',
+            channel: 'Someone',
+            duration: Duration(minutes: 4)),
+      ];
+    })));
     await tester.pump();
     await tester.pump();
     // 40 days old: outside the week the feed opens on.
@@ -159,12 +172,101 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Title'));
     await tester.pump();
     expect(find.text('Lofi beats to study to'), findsNothing);
-    expect(find.text('No videos in your feed match.'), findsOneWidget);
+    // Nothing in the feed: YouTube is searched instead (debounced).
+    expect(find.text('Nothing in your feed — searching YouTube…'),
+        findsOneWidget);
+    expect(searched, isEmpty);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump();
+    expect(searched, ['chan']);
+    expect(find.text('Found on YouTube'), findsOneWidget);
+    expect(find.text('Nothing in your feed — results from YouTube'),
+        findsOneWidget);
 
     await tester.tap(find.byTooltip('Close search'));
     await tester.pump();
     expect(find.text('Lofi beats to study to'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets('the feed has no settings button', (tester) async {
+    service.subscriptions.value = [_channel];
+    service.fetchOverride = (_) async => const ChannelFetchResult([]);
+    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedPage()));
+    await tester.pump();
+    expect(find.byTooltip('Feed settings'), findsNothing);
+    expect(find.byIcon(Icons.tune), findsNothing);
+  });
+
+  group('swipes and long-press', () {
+    Future<List<Track>> pumpFeed(WidgetTester tester) async {
+      _ignoreThumbnailErrors();
+      service.subscriptions.value = [_channel];
+      service.fetchOverride =
+          (_) async => ChannelFetchResult([_video('vid1')]);
+      final queued = <Track>[];
+      await tester.pumpWidget(MaterialApp(
+          home: YoutubeFeedPage(
+              playQueue: (_) async {},
+              addToQueue: (t) async {
+                queued.add(t);
+                return true;
+              })));
+      await tester.pump();
+      await tester.pump();
+      return queued;
+    }
+
+    testWidgets('swipe right adds to the queue, the row stays',
+        (tester) async {
+      final queued = await pumpFeed(tester);
+      await tester.drag(find.text('Title vid1'), const Offset(500, 0));
+      await tester.pumpAndSettle();
+      expect(queued.map((t) => t.remoteId), ['vid1']);
+      expect(find.text('Title vid1'), findsOneWidget);
+      expect(find.text('Added to the queue — downloading it for offline play'),
+          findsOneWidget);
+    });
+
+    testWidgets('swipe left marks watched, with Undo', (tester) async {
+      await pumpFeed(tester);
+      await tester.drag(find.text('Title vid1'), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      expect(service.isPlayed('vid1'), isTrue);
+      expect(find.text('Marked watched'), findsOneWidget);
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      expect(service.isPlayed('vid1'), isFalse);
+    });
+
+    testWidgets('long-press shows the options, Transcript among them',
+        (tester) async {
+      final queued = await pumpFeed(tester);
+      await tester.longPress(find.text('Title vid1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Transcript'), findsOneWidget);
+      expect(find.text('Quick summary'), findsOneWidget);
+      expect(find.text('Mark watched'), findsOneWidget);
+      await tester.tap(find.text('Add to queue'));
+      await tester.pumpAndSettle();
+      expect(queued, hasLength(1));
+    });
+
+    testWidgets('gestures follow the settings', (tester) async {
+      await service.updateSettings(service.settings.value.copyWith(
+        swipeRight: FeedGestureAction.togglePlayed,
+        swipeLeft: FeedGestureAction.nothing,
+        longPress: FeedGestureAction.nothing,
+      ));
+      final queued = await pumpFeed(tester);
+      await tester.drag(find.text('Title vid1'), const Offset(500, 0));
+      await tester.pumpAndSettle();
+      expect(service.isPlayed('vid1'), isTrue);
+      expect(queued, isEmpty);
+      await tester.longPress(find.text('Title vid1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Transcript'), findsNothing);
+    });
   });
 
   testWidgets('tapping a video plays just that video', (tester) async {
@@ -265,6 +367,51 @@ void main() {
     expect(service.subscriptions.value, isEmpty);
   });
 
+  testWidgets('a channel\'s "Check for new videos" fetches just that channel',
+      (tester) async {
+    service.subscriptions.value = [_channel];
+    service.forceRetryDelays = const [Duration.zero, Duration.zero];
+    var calls = 0;
+    service.fetchOverride = (_) async {
+      if (++calls == 1) throw Exception('RSS hiccup');
+      return ChannelFetchResult([_video('new1')]);
+    };
+    await tester.pumpWidget(const MaterialApp(home: YoutubeChannelsPage()));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Check for new videos'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(calls, 2, reason: 'retried after the first failure');
+    expect(find.text('Chan: 1 new video'), findsOneWidget);
+    expect(service.videos.value.map((v) => v.videoId), ['new1']);
+  });
+
+  testWidgets('the feed\'s "Couldn\'t refresh" line has a Retry button',
+      (tester) async {
+    _ignoreThumbnailErrors();
+    service.subscriptions.value = [_channel];
+    service.forceRetryDelays = const [Duration.zero, Duration.zero];
+    var failing = true;
+    service.fetchOverride = (_) async {
+      if (failing) throw Exception('down');
+      return ChannelFetchResult([_video('back1')]);
+    };
+    await tester.pumpWidget(const MaterialApp(home: YoutubeFeedPage()));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining("Couldn't refresh 1 channel"), findsOneWidget);
+
+    failing = false;
+    await tester.tap(find.text('Retry'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(find.textContaining("Couldn't refresh"), findsNothing);
+    expect(find.text('All 1 channel loaded'), findsOneWidget);
+    expect(find.text('Title back1'), findsOneWidget);
+  });
+
   testWidgets('feed settings toggle Shorts and SponsorBlock categories',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(
@@ -292,6 +439,52 @@ void main() {
     await tester.pump();
     expect(service.settings.value.sponsorBlockEnabled, isFalse);
     expect(find.text('Filler tangent/jokes'), findsNothing);
+  });
+
+  testWidgets('feed settings pick the swipe/long-press actions and offline days',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+        home: MusicSettingsPage(initialSection: MusicSettingsSection.feed)));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Swipe a video left'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mark watched / unwatched'), findsOneWidget);
+    await tester.tap(find.text('Swipe a video left'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(RadioListTile<FeedGestureAction>,
+        'Quick summary'));
+    await tester.pumpAndSettle();
+    expect(service.settings.value.swipeLeft, FeedGestureAction.summary);
+
+    await tester.ensureVisible(find.text('Keep queued videos offline'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('For 2 days'), findsOneWidget);
+    await tester.tap(find.text('Keep queued videos offline'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('7 days'));
+    await tester.pumpAndSettle();
+    expect(service.settings.value.offlineDays, 7);
+  });
+
+  test('gesture settings round-trip through JSON, unknown keys fall back',
+      () {
+    const s = YoutubeFeedSettings(
+        swipeRight: FeedGestureAction.transcript,
+        swipeLeft: FeedGestureAction.nothing,
+        longPress: FeedGestureAction.info,
+        offlineDays: 5);
+    final back = YoutubeFeedSettings.fromJson(s.toJson());
+    expect(back.swipeRight, FeedGestureAction.transcript);
+    expect(back.swipeLeft, FeedGestureAction.nothing);
+    expect(back.longPress, FeedGestureAction.info);
+    expect(back.offlineDays, 5);
+    final old = YoutubeFeedSettings.fromJson(
+        {'swipeRight': 'bogus', 'offlineDays': 99});
+    expect(old.swipeRight, FeedGestureAction.addToQueue);
+    expect(old.swipeLeft, FeedGestureAction.togglePlayed);
+    expect(old.longPress, FeedGestureAction.options);
+    expect(old.offlineDays, YoutubeFeedSettings.maxOfflineDays);
   });
 
   testWidgets('feed settings set the video speed', (tester) async {

@@ -1,11 +1,23 @@
 # Changelog
 
+## [0.2.99] - 2026-10-05
+- The Worklist now shows its name at the top (in the search box), so you can tell it apart from your normal task list
+- The Move/Delete options that appear when you swipe a task now shrink to fit the row instead of being cut off with large system font sizes
+- If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason (e.g. "Update download failed: This release has no APK to download") instead of showing a few seconds later
+- CI build: 2026-10-07 09:28 UTC
+- Build duration (apk, CI): 9m 17s
+- APK size: 63.9 MB
+- Local build: 2026-10-06 06:39
+- Build duration (apk): 19m 13s
+- Build duration (windows): 1m 09s
+- Build size (windows): 128.7 MB
+
 ## [0.2.98] - 2026-10-04
 - Music Player and MP3 Downloader removed from BestToDo — they now live only in the Best Music app (shared music links open the regular quick-add screen, and the music home-screen widgets are Best Music only)
 - Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first (Settings → Updates → "Automatically update", switched back on for everyone)
 - Changelog now shows when the version you're running was installed (e.g. "Installed v0.2.98+399 · 2026-10-04 18:40 (2 hours ago)"), so you can see when an update came through
-- CI build: 2026-10-05 09:24 UTC
-- Build duration (apk, CI): 8m 44s
+- CI build: 2026-10-05 12:04 UTC
+- Build duration (apk, CI): 8m 15s
 - APK size: 63.9 MB
 
 ## [0.2.97] - 2026-10-04

@@ -64,7 +64,11 @@ void main() {
     await settleWrites(tester);
 
     expect(find.text('72.5 kg'), findsOneWidget);
-    expect(await File('${tempDir.path}/weight_log.json').exists(), isTrue);
+    // Real I/O: outside the fake-async zone, or it never completes.
+    expect(
+        await tester.runAsync(
+            () => File('${tempDir.path}/weight_log.json').exists()),
+        isTrue);
   });
 
   testWidgets('adding a personal best shows it and persists', (tester) async {
@@ -84,7 +88,11 @@ void main() {
 
     expect(find.text('Bench press'), findsOneWidget);
     expect(find.textContaining('80 kg'), findsOneWidget);
-    expect(await File('${tempDir.path}/personal_bests.json').exists(), isTrue);
+    // Real I/O: outside the fake-async zone, or it never completes.
+    expect(
+        await tester.runAsync(
+            () => File('${tempDir.path}/personal_bests.json').exists()),
+        isTrue);
   });
 
   testWidgets('deleting a weight entry removes it from the list',

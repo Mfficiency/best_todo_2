@@ -3032,6 +3032,9 @@ instance*: `_buildToolPage`'s `'worklist'` case returns
 `const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
 `HomePage` gained two optional constructor fields, `tagFilter`/`toolTitle` (both
 null for the regular home page):
+- `toolTitle` is the app-bar title — and, when the search feature is on (the app bar
+  is then the search field), the search field's hint instead of "Search tasks"
+  (0.2.99), so a tool instance always shows its name.
 - `_tasksForTab` folds `tagFilter` into its `where` predicate alongside search
   (`labelHasToken(task.label, tagFilter)`), but — like search — only when
   `applySearch` is true; the `applySearch: false` callers (`_saveTasks`'s
@@ -3665,9 +3668,22 @@ could otherwise delete the wrong app's build purely by version-number coincidenc
 for why that's true even though the two apps no longer share one version).
 
 **Branding, not a fork**: app label (`res/values/strings.xml` `app_name`, overridden per flavor
-in `src/music/res/values/strings.xml`) and launcher icon (`src/music/res/mipmap-*/ic_launcher.png`
-— a flat black eighth note on white, generated at each mipmap density) are the only
-flavor-specific Android resources; everything else (permissions, receivers/services, signing)
+in `src/music/res/values/strings.xml`) and Best Music's icon set are the flavor-specific
+Android resources (the music flavor's own manifest additions — share filter, widgets — aside).
+**Icon (Best Music 0.3.13)**: a black eighth note with a motion blur trailing left, on white
+(the user's artwork; generated from one 1254 px source by a one-off PIL script — ink alpha =
+(250 − luminance) scaled to 0–255, background forced to pure white):
+`mipmap-*/ic_launcher.png` (48–192 px full tiles, legacy launchers);
+`mipmap-anydpi-v26/ic_launcher.xml` adaptive icon — `@color/ic_launcher_background` (#FFFFFF,
+`src/music/res/values/colors.xml`), foreground `mipmap-*/ic_launcher_foreground.png`
+(108–432 px, transparent, the source square scaled to 76 of the 108 dp so the note keeps its
+framing inside the 66 dp safe zone; also the Android 12+ splash icon) and the same file as the
+`<monochrome>` layer for Android 13 themed icons; `drawable-{m..xxx}hdpi/ic_stat_music_note.png`
+(24–96 px white-on-transparent silhouette cropped to the note) overriding main's vector
+`ic_stat_music_note` for the media and background-work notifications; and the Flutter asset
+`assets/branding/best_music_icon.png` (512 px) shown by `BestMusicLogo`
+(`lib/ui/best_music_logo.dart`, rounded tile) in the drawer header (40 px, beside "Best Music
+vX") and at the top of the About page (96 px). BestToDo keeps its own icons; everything else (permissions, receivers/services, signing)
 stays the single shared manifest, unused permissions in the Best Music APK included — a
 deliberate simplification since it is sideloaded, not Play-Store-distributed.
 
@@ -4428,8 +4444,11 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   the handler's feed-settings listener re-applies speed and volume to the playing track.
 - *Switch pill*: `SessionSwitchPill` (`music_mini_player_bar.dart`) floats bottom-left just
   above the song bar on every Best Music screen (a `Stack` in `main_music.dart`'s builder),
-  hidden while Now Playing is open or there's nothing to switch to. Label "Back to videos" /
-  "Back to music"; tap → `switchToOtherSession()`, which now resumes `switchTarget()`: the
+  hidden while Now Playing is open or there's nothing to switch to. Since Best Music 0.3.15 it
+  is a 40 px icon-only circle (`CircleBorder`, `secondaryContainer` at 60 % alpha, no
+  elevation; `smart_display_outlined` to go to videos, `library_music_outlined` to go to
+  music, icon at 85 % alpha) so snackbars behind it stay readable — the label "Back to
+  videos: <title>" / "Back to music: <title>" is only its `Semantics`; tap → `switchToOtherSession()`, which now resumes `switchTarget()`: the
   remembered `otherSession`, else (music or nothing playing) the feed's
   `lastPlayedVideo()` (most recently updated progress entry still in the feed), else (a video
   playing) a fresh weighted shuffle of the library. Volume and speed follow the track's kind
@@ -4461,7 +4480,11 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   `lockupViewModel` cards, collecting each card's texts (`simpleText`/`runs`/`text`/
   `content`) and recognising the clock (`12:34`), views (`parseViewCount`: "1,234 views",
   "1.2K views", "No views"; "watching" = live, ignored) and "N units ago". `fetchChannel`
-  tries it first and falls back to `getUploadsFromPage` with 0 → null. `mergeVideosTab`
+  tries it first and falls back to `getUploadsFromPage` with 0 → null — and (0.3.14) also
+  runs `getUploadsFromPage` whenever RSS failed, even if the JSON tab answered, because the
+  JSON tab has no titles: before, a channel whose RSS feed hiccuped was dropped from that
+  refresh. The scraped page then only fills titles (`tab ??=` keeps the JSON tab's
+  durations/views); without RSS only videos with a title are listed. `mergeVideosTab`
   takes the higher of the RSS/tab view counts, a null never erases the other.
   `_merged` runs every fresh video through `keepKnownDetails(fresh, known)` so a refresh that
   missed duration/views/description/exact date keeps the cached ones. After each refresh,
@@ -4471,6 +4494,65 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
   `fetchOverride` is set without one). A video whose page gives a duration is no longer
   flagged `isLivestream`.
+- *Gestures, options sheet, online search, offline queue (Best Music 0.3.17)*:
+  `YoutubeFeedSettings` gains `swipeRight` (default `addToQueue`), `swipeLeft`
+  (`togglePlayed`), `longPress` (`options`) — `FeedGestureAction` {nothing, addToQueue,
+  togglePlayed, options, play, transcript, summary, info}, JSON by `key`, unknown → default —
+  and `offlineDays` (default 2, 0–`maxOfflineDays` 14). Each feed row is a `_SwipeableVideo`
+  (`Dismissible` whose `confirmDismiss` runs the action and returns false, so the row springs
+  back; a direction set to Nothing doesn't swipe; colored background with the action's icon
+  and label — "Mark watched"/"Mark unwatched" by state); `FeedVideoTile.onLongPress` runs the
+  long-press action. Actions: Add to queue → `MusicAudioHandler.addToVideoQueue(trackFor(v))`
+  (snackbar "Added to the queue — downloading it for offline play" / "Already in the queue");
+  Mark watched/unwatched → `setPlayed` with an Undo snackbar; Show options → bottom sheet
+  (title, Play, Add to queue, Mark watched/unwatched, Transcript, Quick summary, Download as
+  MP3, Open in YouTube, Video info). The app bar's "Feed settings" (tune) button is gone —
+  feed settings live in Settings → Subscriptions, which gets "Swipe a video right/left",
+  "Long-press a video" (radio dialogs over every action) and "Keep queued videos offline"
+  (0 = off, 1, 2, 3, 5, 7, 14 days). `addToVideoQueue`: with a video playing/paused → appended
+  to `_queue` (and `_preShuffleOrder`) unless already there; with music current → appended to
+  the video `otherSession` (or a new one), so "Back to videos" resumes into it; with nothing
+  loaded → `restore([track])`. Every add starts `VideoAudioCache.cacheInBackground`; playing a
+  feed video also caches the next `_videosAhead` (2) queued feed videos. `VideoAudioCache.keepFor`
+  is now an instance getter = `offlineDays` days (was a fixed 7); 0 → nothing is cached.
+  **Online fallback of the feed search**: when the local search (`_localMatches`) has no match
+  and the query is ≥ 2 characters, YouTube is searched after `onlineSearchDelay` (600 ms; a
+  newer query wins via `_onlineSeq`) with `YoutubeSearchApi.search(q, limit: 15)`; results
+  (`feedVideoFromSearch`: channelId '', `publishedApprox`) show as normal rows — same tap,
+  swipes and long-press — under "Nothing in your feed — searching YouTube…" / "— results from
+  YouTube" / "…couldn't be searched (offline?)" / "Nothing in your feed or on YouTube".
+- *Loading without RSS + a saved, growing feed (Best Music 0.3.16)*: `fetchChannel` asks the
+  RSS feed (`_fetchRss`, 12 s timeout) and the Videos tab (`YoutubeChannelVideosApi.fetch`)
+  **in parallel**; `ChannelTabVideo.title` is now parsed (`videoRenderer`/`gridVideoRenderer`
+  `title` runs/simpleText; `lockupViewModel` `metadata.lockupMetadataViewModel.title.content`;
+  the title text is excluded from the age/views/clock scan so "… 10 years ago" in a title
+  isn't a date), so the tab alone can list a channel. `getUploadsFromPage` (20 s) only runs
+  when the tab didn't answer, or RSS failed and no tab card had a title (titles then come from
+  it via `extraTitles`). `combineChannelSources(channel, rss:, tab:, extraTitles:)`: with RSS →
+  `mergeVideosTab` plus every titled tab video RSS doesn't list (RSS carries only the newest
+  15); without → every titled tab video (`publishedApprox` when dated); untitled ones are
+  skipped; no RSS and nothing titled → throws. Why: YouTube's RSS fails often, and needing it
+  for titles made channels — at times the whole feed — not load (0.3.14 then waited 30 s per
+  channel on the scraper). `_merged` now **adds** instead of replacing a fetched channel's
+  videos: fresh ones are added/updated (`keepKnownDetails`), saved ones stay unless the
+  channel was fetched and they were published more than `keepVideosFor` (30 days, `clock()`)
+  ago or are undated and no longer listed; unsubscribed channels' videos go. Opening the feed
+  calls `refreshIfStale()`: skipped when `lastRefresh` is under `freshFor` (10 min) old, the
+  feed isn't empty and no channel failed; pull-to-refresh calls `refresh()` directly. The saved
+  feed (`youtube_feed.json`) shows at once either way.
+- *Force-checking one channel (Best Music 0.3.14)*: `forceRefreshChannel(channel)` fetches
+  just that channel, up to 3 tries `forceRetryDelays` apart (2 s, 5 s); success → its videos
+  replace its cached ones via `_merged({id: fresh})`, it leaves `failedChannels`, saves,
+  `fillMissingDetails()`, and returns how many video ids are new to the feed; all tries failed
+  → null and its name is (kept) in `failedChannels`. `forceRefreshing` (`Set` of channel ids)
+  drives spinners; a second call for a channel already being checked returns null at once.
+  `retryFailedChannels()` force-checks every subscription whose name is in `failedChannels`
+  (in parallel) and returns how many loaded. UI: each row under "Subscribed (N)" on the
+  Channels page has a refresh button ("Check for new videos"; spinner while checking) next to
+  Unsubscribe → snackbar "<name>: N new videos" / "<name>: no new videos" / "Couldn't reach
+  <name> — try again in a bit"; the feed's "Couldn't refresh N channels: …" line gets a
+  trailing **Retry** (spinner while any check runs) → "All N channels loaded" / "Loaded X of
+  N — the rest still don't answer".
 
 **Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
 (`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
@@ -4518,6 +4600,139 @@ search results as the queue. Paging older weeks and the footer are off while sea
 
 Not done yet (deliberately out of the MVP): in-app video playback, background
 new-upload notifications, feed groups.
+
+### 10.6n Songs by BPM (Best Music 0.3.9)
+**BPM per track** — `Track.bpm` (int?, JSON `bpm`, omitted when null; kept by `copyWith`).
+Sources: an mp3's ID3 `TBPM` frame (`decodeMp3Tags` → `ExtractedTags.bpm` via `parseBpm`:
+first number in the text, `,`/`.` decimals rounded, 1–999 else null); an OpenSubsonic
+server's `bpm` (0 = unknown → null, `Track.subsonic(bpm:)`); the Track info page's "BPM (beats
+per minute)" field (validated 1–999, passed to `updateTrackMetadata(bpm:)` — which sets
+exactly the given values, so the page must always pass it); and the metadata CSV's `bpm`
+column (between `year` and `tags`; blank cell = keep, like the other columns). A rescan of a
+`metadataEdited` track keeps the hand-set BPM but fills a missing one from the tag
+(`previous.bpm ?? track.bpm`).
+
+**Page** — `lib/ui/bpm_range_page.dart` (`BpmRangePage`), from Best Music's drawer ("Songs by
+BPM") and the Playlists tab's third row (also in BestToDo's Music Player). With no song
+having a BPM it explains the three ways to add one. Otherwise: a row of preset `InputChip`s
+("<name> · min–max"; tap applies the range — with a snackbar if it reaches past the
+library's range — delete icon removes it with Undo), a big "min – max BPM" label, a
+`RangeSlider` over `bpmBounds(library)` (lowest..highest BPM in the library, 1-BPM steps,
+both handles draggable; the range starts as the full span and is clamped when the library
+changes), "N songs · M without a BPM aren't shown", and the list `tracksInBpmRange` (BPM
+ascending, then title; trailing "128 BPM"; tap = play the list from that song). Bottom
+buttons: "Play as queue" (`MusicPlayerService.playQueue` of the list), "Save as playlist"
+(name dialog suggesting "min–max BPM" → `MusicPlaylistService.createPlaylist` with the listed
+ids — a fixed snapshot), "Save preset" (name dialog → `Config.musicBpmPresets`, a list of
+`BpmPreset {name, min, max}` (`lib/models/bpm_preset.dart`, tolerant `fromJson`: swapped
+ends reordered, missing ends dropped); saving under an existing name replaces it).
+
+### 10.6p Automatic metadata filling (Best Music 0.3.11)
+Hands-off, no setting: `MusicMetadataEnricher.instance.start()` runs after Best Music's
+first frame (`main_music.dart`, not on web) and listens to `MusicLibraryService.tracks`.
+Every library change (launch, rescan, finished download) first re-applies its cache, then —
+debounced 3 s — runs two passes over local tracks, one song at a time:
+1. **Online lookup** for any track missing artist/album/genre/year/BPM
+   (`MusicOnlineMetadataLookup`, `lib/services/music_online_metadata.dart`). Query
+   variants (`queryVariants`): the `cleanTitle`d title (track-number prefixes, "(Official
+   Video)"/"[Lyrics]"-style brackets, "feat." tails and underscores stripped) with the
+   artist; with `mainArtist` (first of "A feat. B"/"A & B"/"A, B"/"A x B"); without any
+   bracketed part; and, for a track with no artist tag, an "Artist - Title" filename split
+   both ways round. Services in order, each skipped once every wanted field is known:
+   **Deezer** (`/search` with `artist:"…" track:"…"`, falling back to a free query; then
+   `/track/{id}` for `bpm` (30–300, 0 = unknown) and release date, `/album/{id}` for the
+   first genre), **iTunes Search** (`entity=song`: `primaryGenreName`, album, year),
+   **MusicBrainz** (`/ws/2/recording` Lucene query, ≥1.1 s apart, `User-Agent:
+   BestMusic/1.0 (…)`; first-release year, a no-secondary-type Album release preferred,
+   most-counted tag title-cased as genre) — always asked when a year is wanted, since its
+   first-release year wins over the others' (else the earliest of Deezer/iTunes).
+   Candidates are scored by `matchScore`: 0.6 × title + 0.4 × artist word similarity
+   (`textSimilarity` — accent/punctuation-folded Dice, or 0.9 × containment), artist < 0.5
+   rejects; with no artist only a ≥0.95 title counts; length off by >30 s halves the score,
+   >10 s × 0.85, ≤3 s +0.05; accepted at ≥ 0.72.
+   **Rate limits (0.3.12)** — every request goes through `_getJson`, paced per host
+   (`defaultSpacing`: Deezer 120 ms — its limit is 50 per 5 s; iTunes 3.1 s — ~20/min;
+   MusicBrainz 1.1 s). A rate-limit answer (429, 5xx, iTunes' 403, Deezer's in-body
+   `error.code == 4`) or a connection failure/timeout is retried twice (waits: `Retry-After`
+   ≤ 60 s if given, Deezer quota 5 s, else 2 s then 6 s); after that the host *rests* for
+   `cooldown` (10 min; connection-only failures don't rest it) and the lookup carries on
+   with the other services, returning `incomplete: true`. Hosts already resting are skipped
+   (also `incomplete`). If no service answered at all and something failed →
+   `MetadataLookupUnavailable` (offline, `retryAfter` null); if every needed host was
+   resting → `MetadataLookupUnavailable(retryAfter: earliest rest end)`. `resetCooldowns()`
+   clears the rests. (0.3.11 threw on the first rate-limit answer and paused the whole
+   pass for 15 min — with ~10 unpaced Deezer requests per song it stalled after ~4 songs.)
+   The enricher marks an incomplete song `EnrichmentEntry.incomplete` (persisted), merges
+   it with any earlier result (old values win) and re-asks it after `incompleteRetry`
+   (1 h); the pass moves straight on. On `MetadataLookupUnavailable` the pass stops without
+   marking the song: status "Song info services asked for a break — continuing at HH:MM"
+   (retry then + 5 s) or "No internet connection — trying again in 15 min (or tap
+   Restart)" (`offlineRetry`).
+2. **On-device BPM** — only when, after the online pass, under 90 %
+   (`bpmCoverageTarget`) of local tracks have a BPM; then every local track still without
+   one is analyzed: `AudioPcmDecoder` decodes 45 s from 30 s in (from 0 for songs under
+   75 s; the native side slides the window back for short files) to mono 16-bit PCM at
+   11025 Hz — Android via channel `besttodo/audio_pcm` (`AudioPcmDecoder.kt`:
+   MediaExtractor + MediaCodec on a single worker thread, downmix, box-filter resample,
+   16-bit or float PCM), desktop via an `ffmpeg` on PATH, else null — and `estimateBpm`
+   (`lib/services/bpm_detector.dart`, run with `compute`): log-compressed spectral flux
+   (512-sample Hann frames, 128 hop, radix-2 FFT), minus a ±0.25 s moving mean, rectified;
+   unbiased autocorrelation over 50–220 BPM lags × a log-normal prior at 120 BPM (σ = 1
+   octave); parabolic refinement. Null when the envelope peak < 5 (no attacks), the best
+   lag's correlation < 5 % of zero-lag, or < 1.3 × the mean over the lag range (no beat).
+
+Results are cached per track id in `music_enrichment.json` (`EnrichmentEntry {onlineAt,
+found, detectedAt, detectedBpm}`); a song is looked up/analyzed once — retried only after
+30 days when nothing was found. They are applied through
+`MusicLibraryService.fillMissingMetadata`, which fills only empty fields (title only when
+it was the filename and there's no artist), never sets `metadataEdited`, so tags, manual
+edits and CSV imports always win and a rescan simply gets the cache re-applied. The
+enricher's `status` line ("Looking up song info online… 3/40", "Detecting BPM on device…",
+"Song info filled in automatically — N of M complete, K with a BPM", "…paused (offline?)")
+shows under the Metadata Scan page's counts and on Songs by BPM while songs lack a BPM.
+Both passes append a time-left estimate once 3 songs are done (`_Eta`: average time per
+song so far × songs left; `formatTimeLeft` → "less than a minute left" / "about 12 min
+left" / "about 2 h 5 min left"). On Metadata Scan the row is always shown (idle text
+"Missing song info is looked up online in the background.") with a **Restart** button →
+`restartOnlineSearch()`: `resetCooldowns()`, cancels a pending retry, clears `onlineAt` on
+every entry whose track still misses a field (so no-match songs are asked again too),
+interrupts a running pass (`_restartRequested`) and runs now.
+**Background running (0.3.12)** — while a pass has work, `BackgroundWork.start`
+(`lib/services/background_work.dart`, channel `besttodo/background_work`) starts
+`BackgroundWorkService.kt`: a `specialUse` foreground service (no 6 h/day cap like
+`dataSync`; `FOREGROUND_SERVICE_SPECIAL_USE`, subtype property in the manifest) with an
+ongoing silent low-importance notification "Best Music · filling in song info" whose text
+mirrors `status` (`update` re-notifies; tap opens the app) and a partial wake lock (3 h
+timeout, released on stop). It keeps the process from being frozen while other apps are in
+front; Dart keeps running on audio_service's cached engine. Stopped when a run ends with
+nothing paused (kept up during a pause so the retry still fires) and on `stop()`. Android
+12+ refusing a start from the background is swallowed — the work then just runs while the
+app is open. No-op off Android.
+App Logs ("Music") record each pass's counts.
+
+3. **Into the files** — after the two passes, every mp3 whose entry has data and no
+   `taggedAt` gets it written into its own ID3v2 tag (`Id3TagWriter.addMissing`,
+   `lib/services/id3_tag_writer.dart`), using the library's *current* value for each field
+   the enricher supplied (so a manual in-app edit is what lands in the file; the title only
+   when the online one was applied). Fill-only: a TIT2/TPE1/TALB/TCON/TYER (v2.3) or TDRC
+   (v2.4)/TBPM frame that already has text is never changed (TYER and TDRC count for each
+   other); empty ones are replaced; every other frame is copied byte for byte. No tag →
+   a new v2.3 one (Latin-1, or UTF-16 with BOM when needed; v2.4 writes UTF-8). Bails with
+   `unsupported` on non-mp3, v2.2, or any of the unsync/extended-header/experimental/footer
+   flags, or if `decodeMp3Tags` can't read the new artist/BPM back. When the frames fit in
+   the old tag (its padding) only the tag bytes are overwritten in place; otherwise
+   tag + 2048 bytes padding + the audio stream into `<file>.besttodo-tag.tmp`, its length is
+   checked, and it is renamed over the original. The modified time is restored. Result →
+   `taggedAt` set (written/nothingToAdd/unsupported) or `tagFailures++` (I/O error; given up
+   after 3). New online/detected data resets `taggedAt`. Because writing bumps a file's
+   change time, `rescan` now keeps the *earlier* of the previous and fresh `deviceDate`.
+
+**ID3 read fix (0.3.11)** — `decodeMp3Tags` had never actually read a frame: id3_codec 1.0.x
+reports ID3v2 frames as a `Frames` list of `{Frame ID, Content: {Information}}` maps, not the
+`Frame[<id>]` keys it looked up, so every mp3 scanned as untagged (filename title, no
+artist/album/genre/year/BPM). Frames are now indexed as `Frame[<id>]` (first wins). On its first `start()` the enricher rescans the library
+once (marker file `music_enrichment_rescan_v1`; skipped for an empty library) so existing
+installs pick their tags up before anything is looked up online.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
@@ -4589,6 +4804,46 @@ unchanged — only BestToDo's wiring to it is gone:
 Earlier sections (§8 music widgets, §10.6d, §10.6e, "Settings → Music Player") describe the
 code as it still runs inside Best Music; their "Tools ▸ …" / BestToDo-Settings wiring is
 historical.
+
+### 10.6o Video transcripts & Quick summary (Best Music 0.3.9)
+
+A Subscriptions video's page (`YoutubeVideoPage`) has **Transcript** and **Quick summary**
+buttons (`lib/ui/video_transcript_page.dart`, both take a `VideoRef` of id/title/channel/
+published).
+
+- **Transcript source** — `VideoTranscriptService` (`lib/services/video_transcript_service.dart`,
+  singleton, per-session in-memory cache by video id): first YouTube's own caption tracks via
+  youtube_explode (`videos.closedCaptions.getManifest` → `get`), then, if that throws or has no
+  tracks, the public Invidious instances in `invidiousInstances` (`/api/v1/captions/<id>` →
+  the chosen track's WebVTT, parsed by `parseVtt`). Track choice (`pickTrack`): manual English
+  → auto English → any manual → first. `cleanSegments` strips tags/entities, drops the
+  repeated lines of YouTube's rolling auto-captions and `[Music]`-style cues. All sources
+  failing throws `TranscriptUnavailableException` listing each attempt (shown on the page).
+  `paragraphs()` groups segments into ~45 s timestamped paragraphs (forced break at 90 s for
+  unpunctuated auto-captions). The transcript page shows source/language/auto/word count,
+  Copy and Share (Markdown) and a Quick summary button.
+- **Summary** — `VideoSummaryService.summarize` (`lib/services/video_summary_service.dart`):
+  with `Config.claudeApiKey` set it POSTs to `https://api.anthropic.com/v1/messages`
+  (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-beta:
+  server-side-fallback-2026-07-01`; model `claude-opus-5-5`, `fallbacks: "default"`,
+  `output_config.effort: low` + a JSON-schema format `{overview, key_points[], conclusion}`;
+  the whole transcript is sent, never truncated). Non-200, network errors and
+  `stop_reason: refusal` throw `VideoSummaryException`; the page then shows the on-device
+  summary with the error. Without a key: `extractiveSummary` — sentences (or 25-word chunks for
+  unpunctuated captions) scored by content-word frequency, best five in order as key points,
+  the last 1–2 as the conclusion, an overview naming length/word count/top words. A banner
+  on an on-device summary links to Settings → Transcripts & summaries.
+- **Obsidian** — `ObsidianResearchNote.markdown` builds the note (frontmatter: title, source,
+  channel, published, created, tags research+video; then `## Summary`/`## Key points`/
+  `## Conclusion`). **Save to Obsidian** opens `obsidian://new?vault=…&file=<folder>/<title>&content=…`
+  (`saveUri`, percent-encoded by hand since Obsidian keeps `+`; vault omitted when empty =
+  the open vault; file name sanitized, ≤100 chars); Share/Copy send the same Markdown.
+- **Settings** — Best Music Settings gains a "Transcripts & summaries" section
+  (`MusicSettingsSection.summaries`, before Updates): Claude API key (obscured),
+  Obsidian research folder (`Config.obsidianResearchFolder`, default `Research`) and vault
+  (`Config.obsidianVault`), edited in `_TextSettingDialog`. All three persist in
+  `settings.json`.
+- Tests: `test/music/video_transcript_test.dart`.
 
 ## 11. Build, versioning, CI
 

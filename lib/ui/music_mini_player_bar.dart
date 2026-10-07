@@ -277,7 +277,9 @@ class _SleepTimerBadge extends StatelessWidget {
   }
 }
 
-/// The bottom-left "Back to music" / "Back to videos" button floating just
+/// The bottom-left "Back to music" / "Back to videos" button — a small
+/// translucent circle with just a music/video icon (0.3.15; it used to be
+/// a labelled pill that hid snackbars behind it) — floating just
 /// above the song bar on every Best Music screen (`main_music.dart`). One
 /// tap opens the other kind's screen (the feed / Now Playing) and resumes
 /// it where it was left
@@ -315,40 +317,32 @@ class SessionSwitchPill extends StatelessWidget {
               if (target == null) return const SizedBox.shrink();
               final scheme = Theme.of(context).colorScheme;
               final label = target.isVideo ? 'Back to videos' : 'Back to music';
+              // A small see-through circle rather than a labelled pill, so
+              // a snackbar (an error message, an Undo) showing behind it
+              // stays readable.
               return Semantics(
                 button: true,
                 label: '$label: ${target.current.title}',
                 child: Material(
                   key: const ValueKey('sessionSwitchPill'),
-                  color: scheme.secondaryContainer,
-                  elevation: 3,
-                  shape: const StadiumBorder(),
+                  color: scheme.secondaryContainer.withValues(alpha: 0.6),
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    customBorder: const StadiumBorder(),
+                    customBorder: const CircleBorder(),
                     onTap: () => switchSessionAndShow(audio,
                         navigatorKey?.currentState ??
                             Navigator.maybeOf(context)),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            target.isVideo
-                                ? Icons.smart_display_outlined
-                                : Icons.library_music_outlined,
-                            size: 18,
-                            color: scheme.onSecondaryContainer,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            style: TextStyle(
-                                color: scheme.onSecondaryContainer,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
+                    child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Icon(
+                        target.isVideo
+                            ? Icons.smart_display_outlined
+                            : Icons.library_music_outlined,
+                        size: 20,
+                        color: scheme.onSecondaryContainer
+                            .withValues(alpha: 0.85),
                       ),
                     ),
                   ),
