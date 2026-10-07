@@ -11,8 +11,8 @@ nothing has been copied over here.
 - Videos you add to the queue are downloaded so they play without internet, and kept for 2 days (the playing video and the next two in the queue too) — change the number of days, or turn it off, in Settings → Subscriptions
 - Searching Subscriptions: when nothing in your feed matches, it searches YouTube itself and shows those videos instead
 - The Subscriptions screen no longer has a settings button at the top — its settings are in Settings
-- CI build: 2026-10-07 20:17 UTC
-- Build duration (apk, CI): 7m 48s
+- CI build: 2026-10-07 20:40 UTC
+- Build duration (apk, CI): 7m 13s
 - APK size: 63.4 MB
 - Local build: 2026-10-07 11:19
 - Build duration (apk): 4m 55s
