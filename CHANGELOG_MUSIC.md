@@ -11,6 +11,9 @@ nothing has been copied over here.
 - Videos you add to the queue are downloaded so they play without internet, and kept for 2 days (the playing video and the next two in the queue too) — change the number of days, or turn it off, in Settings → Subscriptions
 - Searching Subscriptions: when nothing in your feed matches, it searches YouTube itself and shows those videos instead
 - The Subscriptions screen no longer has a settings button at the top — its settings are in Settings
+- CI build: 2026-10-07 09:19 UTC
+- Build duration (apk, CI): 6m 28s
+- APK size: 63.4 MB
 
 ## [0.3.16] - 2026-10-07
 - Fixed: Subscriptions videos not loading — channels needed YouTube's RSS feed for their video titles, and that feed fails a lot; the titles now come from the channel's video list itself, both are asked at the same time, and the slow backup is only used when both fail
