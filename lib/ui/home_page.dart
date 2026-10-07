@@ -38,8 +38,6 @@ import '../services/todoist_sync_service.dart';
 import '../services/food_diary_widget_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/test_report_service.dart';
-import '../services/wishlist_migration.dart';
-import '../services/wishlist_shipped.dart';
 import '../utils/date_utils.dart';
 import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
@@ -51,6 +49,7 @@ import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
+import 'f1_reminder_page.dart';
 import 'recurrence_editor.dart';
 import 'recurrence_scope_dialog.dart';
 import 'deleted_bin_page.dart';
@@ -58,7 +57,6 @@ import 'dice_timer_page.dart';
 import 'food_diary_page.dart';
 import 'fitness_activity_page.dart';
 import 'home_scaffold_key.dart';
-import 'mp3_downloader_page.dart';
 import 'startup_times_page.dart';
 import 'projects_page.dart';
 import 'research_page.dart';
@@ -399,27 +397,6 @@ class _HomePageState extends State<HomePage>
     return seeded;
   }
 
-  /// Dev-only wishlist seed. The real backlog import
-  /// ([StorageService] via `wishlist_migration`) is a one-time, flag-guarded
-  /// event, so dev machines that already spent the flag come up with an empty
-  /// wishlist. This rebuilds the [legacyTodoWishlistItems] backlog as wish
-  /// tasks. Callers only invoke it when the list holds no wishes, so it never
-  /// duplicates existing ones.
-  List<Task> _buildDevWishlistSeed() {
-    final now = DateTime.now();
-    return [
-      for (final legacy in legacyTodoWishlistItems)
-        Task(
-          uid: legacy.uid,
-          title: legacy.title,
-          description: legacy.description,
-          label: addLabelToken(legacyTodoImportLabel, demoToken),
-          createdAt: now,
-          isWish: true,
-        ),
-    ];
-  }
-
   /// Spreads the dev-seeded future tasks across the seed projects (one task
   /// per Kanban column in each project) so dev builds — including desktop
   /// and web, where the Projects tool is exercised with a mouse — open with
@@ -441,19 +418,6 @@ class _HomePageState extends State<HomePage>
       projectId: ProjectService.instance.list.isNotEmpty
           ? ProjectService.instance.list.first.id
           : null,
-    ));
-  }
-
-  /// Dev-only: one wishlist item, so the Wishlist tool and the wish rows on
-  /// the Future tab have data on platforms where the one-time Todo.md import
-  /// cannot run (the browser has no files to import from).
-  void _seedDevWishItem() {
-    _tasks.add(Task(
-      title: 'Learn to sail',
-      description: 'Dev seed: a wishlist item',
-      label: addLabelToken('priority-medium', demoToken),
-      createdAt: DateTime.now(),
-      isWish: true,
     ));
   }
 
@@ -729,17 +693,6 @@ class _HomePageState extends State<HomePage>
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
     }
-    // Backfill the wishlist for dev installs whose one-time backlog import
-    // flag is already spent (so nothing else repopulates it). Runs only when
-    // no wishes exist, keeping it idempotent across loads.
-    if (Config.isDev && !_tasks.any((t) => t.isWish)) {
-      final seeded = _buildDevWishlistSeed();
-      // The seed lands after loadTaskList already ran its shipped-wish pass,
-      // so apply it here too — otherwise a dev install shows the backlog
-      // untagged until the next launch.
-      applyShippedWishes(seeded);
-      _tasks.addAll(seeded);
-    }
     // Backfill a demo text attachment for dev installs so the task-detail
     // "with attachment" state (AttachmentsField, expanded task tile) is
     // visible without manual setup — and, symmetrically, the other starter
@@ -770,7 +723,6 @@ class _HomePageState extends State<HomePage>
       // be tested immediately: Tools → Projects → open a board → tap a card.
       if (isFirstLaunch) {
         _seedDevRangeTask();
-        _seedDevWishItem();
         _seedDevItemHistory();
         _seedDevLinkedReminder();
       }
@@ -1269,8 +1221,8 @@ class _HomePageState extends State<HomePage>
         // search and interactions, just a second HomePage instance with its
         // own in-memory copy of the (shared, on-disk) task list.
         return const HomePage(tagFilter: worklistToken, toolTitle: 'Worklist');
-      case 'mp3_downloader':
-        return const Mp3DownloaderPage();
+      case 'f1_reminder':
+        return const F1ReminderPage();
     }
     return null;
   }
@@ -1430,27 +1382,51 @@ class _HomePageState extends State<HomePage>
     int newIndex,
   ) {
     if (sectionTasks.isEmpty) return;
-    // See _reorderTask: reordering is disabled whenever a tab is narrowed.
-    if (_tabNarrowed) return;
     final pageIndex = _tabIndexForTask(sectionTasks.first);
-    final fullList = _tasksForTab(pageIndex);
+    final moved =
+        _reorderSliceOfTab(pageIndex, sectionTasks, oldIndex, newIndex);
+    if (moved == null) return;
+    LogService.add(
+      'HomePage._reorderTaskInSection',
+      'Reordered "${moved.title}" within day section of tab $pageIndex',
+    );
+  }
 
-    final sectionSet = Set<Task>.identity()..addAll(sectionTasks);
-    final sectionPositions = <int>[];
+  /// Moves `slice[oldIndex]` to [newIndex] (ReorderableListView semantics:
+  /// [newIndex] counts the moved item still in place) and renumbers
+  /// [Task.listRanking] across the WHOLE tab [pageIndex] — unfiltered by
+  /// search, [widget.tagFilter] or the Home filter rules. [slice] is what the
+  /// user actually sees and drags (the visible tab, or one schedule-view day
+  /// section); its tasks are permuted only among the rank slots they already
+  /// occupy, so every task hidden by a filter keeps its exact position
+  /// relative to everything else. This is why reordering never needs to be
+  /// disabled while something is filtered out: Home ships with a non-empty
+  /// default rule (it hides every other view's reserved tag — Wish,
+  /// Project, ...), so a single such task due today used to make every drag
+  /// on that tab silently spring back. Returns the moved task, or null when
+  /// the drop was a no-op / out of range.
+  Task? _reorderSliceOfTab(
+    int pageIndex,
+    List<Task> slice,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (oldIndex < 0 || oldIndex >= slice.length) return null;
+    if (newIndex < 0 || newIndex > slice.length) return null;
+    final fullList = _tasksForTab(pageIndex, applySearch: false);
+    final sliceSet = Set<Task>.identity()..addAll(slice);
+    final slots = <int>[];
     for (var i = 0; i < fullList.length; i++) {
-      if (sectionSet.contains(fullList[i])) sectionPositions.add(i);
+      if (sliceSet.contains(fullList[i])) slots.add(i);
     }
-    if (sectionPositions.length != sectionTasks.length) return;
-    if (oldIndex < 0 || oldIndex >= sectionTasks.length) return;
-    if (newIndex < 0 || newIndex > sectionTasks.length) return;
+    if (slots.length != slice.length) return null;
 
-    final reordered = List<Task>.from(sectionTasks);
+    final reordered = List<Task>.from(slice);
     if (newIndex > oldIndex) newIndex -= 1;
     final moved = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, moved);
-
-    for (var k = 0; k < sectionPositions.length; k++) {
-      fullList[sectionPositions[k]] = reordered[k];
+    for (var k = 0; k < slots.length; k++) {
+      fullList[slots[k]] = reordered[k];
     }
 
     setState(() {
@@ -1459,10 +1435,7 @@ class _HomePageState extends State<HomePage>
       }
     });
     _saveTasks();
-    LogService.add(
-      'HomePage._reorderTaskInSection',
-      'Reordered "${moved.title}" within day section of tab $pageIndex',
-    );
+    return moved;
   }
 
   void _scrollToScheduleAnchor(int tabIndex) {
@@ -1510,6 +1483,7 @@ class _HomePageState extends State<HomePage>
       title: title,
       label: label,
       createdAt: DateTime.now(),
+      origin: TaskChangeSource.user,
       dueDate: dueDate,
       isRecurring: recurrence != null,
       listRanking: _listRankingForNewTask(
@@ -1526,7 +1500,21 @@ class _HomePageState extends State<HomePage>
     _trackTaskCreated(task);
     _controller.clear();
     _saveTasks();
+    _applySmartTagInBackground(task);
     LogService.add('HomePage._addTask', 'Added task: $title');
+  }
+
+  /// Smart auto-tag fallback (Jev decision model): runs after the task is
+  /// already added and saved, so a slow or failed call never delays it. A
+  /// no-op unless Smart auto-tag is on with an API key and the keyword rules
+  /// found nothing.
+  Future<void> _applySmartTagInBackground(Task task) async {
+    final tag = await AutoTagService.instance.smartTagFor(task.title);
+    if (tag == null || !mounted || !_tasks.contains(task)) return;
+    setState(() => task.label = addLabelToken(task.label, tag));
+    _saveTasks();
+    LogService.add('HomePage._applySmartTagInBackground',
+        'Smart-tagged "${task.title}" as $tag');
   }
 
   /// Opens the "Repeat" picker for the add-task row: a Calendar-style quick
@@ -1922,6 +1910,7 @@ class _HomePageState extends State<HomePage>
       title: trimmedTitle,
       label: AutoTagService.instance.withAutoTags(trimmedTitle, ''),
       createdAt: DateTime.now(),
+      origin: TaskChangeSource.user,
       dueDate: dueDate,
       hasExplicitTime: true,
       listRanking: 1 << 30,
@@ -1931,6 +1920,7 @@ class _HomePageState extends State<HomePage>
     });
     _trackTaskCreated(task);
     _saveTasks();
+    _applySmartTagInBackground(task);
     LogService.add('HomePage._addTaskFromChronize',
         'Added "$title" due ${dueDate.toIso8601String()}');
   }
@@ -2175,23 +2165,13 @@ class _HomePageState extends State<HomePage>
   }
 
   void _reorderTask(int pageIndex, int oldIndex, int newIndex) {
-    // Reordering a narrowed list would renumber only the visible subset and
-    // scramble the hidden tasks' order, so it is disabled while narrowed —
-    // see _tabNarrowed.
-    if (_tabNarrowed) return;
-    final tasks = _tasksForTab(pageIndex);
-    if (oldIndex >= tasks.length || newIndex > tasks.length) return;
-    setState(() {
-      if (newIndex > oldIndex) newIndex -= 1;
-      final task = tasks.removeAt(oldIndex);
-      tasks.insert(newIndex, task);
-      for (var i = 0; i < tasks.length; i++) {
-        tasks[i].listRanking = i + 1;
-      }
-    });
-    _saveTasks();
+    // Only the visible tasks are permuted, within the slots they hold in the
+    // full tab — see _reorderSliceOfTab.
+    final moved = _reorderSliceOfTab(
+        pageIndex, _tasksForTab(pageIndex), oldIndex, newIndex);
+    if (moved == null) return;
     LogService.add('HomePage._reorderTask',
-        'Reordered task to position ${newIndex + 1} on page $pageIndex');
+        'Reordered "${moved.title}" on page $pageIndex');
   }
 
   void _deleteTask(int pageIndex, int index) {
@@ -2890,27 +2870,13 @@ class _HomePageState extends State<HomePage>
   ViewFilterRules? get _homeFilterRules =>
       Config.viewFilterRules[ViewFilterRules.home];
 
-  /// Whether the Home view's configured filter rules currently hide
-  /// anything.
-  bool get _homeFilterRulesActive => !(_homeFilterRules?.isEmpty ?? true);
-
-  /// Whether any tab is currently showing a narrowed subset — a search
-  /// query, configured Home filter rules, or [widget.tagFilter] (Worklist).
-  /// Reordering is disabled whenever this is true: renumbering only the
-  /// visible subset would scramble the hidden tasks' [Task.listRanking] —
-  /// see [_reorderTask].
-  bool get _tabNarrowed =>
-      _searchQuery.trim().isNotEmpty ||
-      _homeFilterRulesActive ||
-      widget.tagFilter != null;
-
   /// Tasks shown on [pageIndex]. While a search query is active the list is
   /// narrowed to matching tasks, [widget.tagFilter] (Worklist) narrows it to
   /// one tag, and the configured Home filter rules (if any) are always
   /// applied on top; pass [applySearch] false for logic that must see the
   /// full tab regardless of any of these (e.g. renumbering [Task.listRanking]
-  /// on save — see [_reorderTask]'s doc on why a narrowed list must never
-  /// drive that renumbering).
+  /// on save or on a drag — see [_reorderSliceOfTab] on why a narrowed list
+  /// must never drive that renumbering on its own).
   List<Task> _tasksForTab(int pageIndex, {bool applySearch = true}) {
     // Tab membership is a query over the one list (ItemViews); only the
     // search predicate and the tag filter are home-page state.
@@ -3186,7 +3152,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('fitness_activity', 'Fitness Activity', Icons.directions_run),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
     _ToolEntry('worklist', 'Worklist', Icons.checklist),
-    _ToolEntry('mp3_downloader', 'MP3 Downloader', Icons.music_note),
+    _ToolEntry('f1_reminder', 'F1 Reminder', Icons.sports_score),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —
@@ -3441,7 +3407,9 @@ class _HomePageState extends State<HomePage>
                 controller: _searchController,
                 focusNode: _searchFocusNode,
                 decoration: InputDecoration(
-                  hintText: 'Search tasks',
+                  // A tool instance (e.g. Worklist) shows its name here, or
+                  // the search field would hide which list this is.
+                  hintText: widget.toolTitle ?? 'Search tasks',
                   border: InputBorder.none,
                   suffixIcon: _searchQuery.isEmpty
                       ? const Icon(Icons.search)

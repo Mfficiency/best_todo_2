@@ -189,12 +189,146 @@ void main() {
       expect(history[1]['target'], 'windows');
     });
 
+    test('records the APK size in the changelog and history', () {
+      final apk = File('${temp.path}/app.apk')
+        ..writeAsBytesSync(List.filled(3 * 1024 * 1024 + 300 * 1024, 0));
+      tool.main(
+          ['--duration', '102', '--target', 'apk', '--artifact', apk.path]);
+
+      final changelog = File('${temp.path}/CHANGELOG.md').readAsStringSync();
+      expect(changelog, contains('- APK size: 3.3 MB'));
+      final history = jsonDecode(
+          File('${temp.path}/build_history.json').readAsStringSync()) as List;
+      expect(history.single['sizeBytes'], apk.lengthSync());
+      expect(history.single['source'], 'local');
+    });
+
+    test('a folder artifact (Windows build) is sized by its total', () {
+      final dir = Directory('${temp.path}/Release')..createSync();
+      File('${dir.path}/a.exe').writeAsBytesSync(List.filled(2048, 0));
+      Directory('${dir.path}/data').createSync();
+      File('${dir.path}/data/b.dat').writeAsBytesSync(List.filled(1024, 0));
+      tool.main(
+          ['--duration', '60', '--target', 'windows', '--artifact', dir.path]);
+
+      final changelog = File('${temp.path}/CHANGELOG.md').readAsStringSync();
+      expect(changelog, contains('- Build size (windows): 3 KB'));
+    });
+
+    test('a CI build gets its own notes, marked CI and UTC', () {
+      tool.main(['--duration', '330', '--target', 'apk', '--source', 'ci']);
+
+      final changelog = File('${temp.path}/CHANGELOG.md').readAsStringSync();
+      expect(changelog, contains('- CI build: '));
+      expect(changelog, contains(' UTC'));
+      expect(changelog, contains('- Build duration (apk, CI): 5m 30s'));
+      expect(changelog, isNot(contains('Local build')));
+      final history = jsonDecode(
+          File('${temp.path}/build_history.json').readAsStringSync()) as List;
+      expect(history.single['source'], 'ci');
+    });
+
+    test('notes go into the built version\'s section, not a newer one', () {
+      File('${temp.path}/CHANGELOG.md').writeAsStringSync('# Changelog\n\n'
+          '## [0.2.3] - 2026-08-28\n- Newer, not built yet\n\n'
+          '## [0.2.2] - 2026-08-27\n- Did a thing\n');
+      tool.main(['--duration', '102', '--target', 'apk']);
+
+      final changelog = File('${temp.path}/CHANGELOG.md').readAsStringSync();
+      final built = changelog.indexOf('## [0.2.2]');
+      expect(changelog.indexOf('- Local build: '), greaterThan(built));
+      expect(changelog.indexOf('- Build duration (apk)'), greaterThan(built));
+    });
+
+    test('--version names the built version when pubspec moved on', () {
+      File('${temp.path}/pubspec.yaml')
+          .writeAsStringSync('name: besttodo\nversion: 0.2.3+294\n');
+      File('${temp.path}/CHANGELOG.md').writeAsStringSync('# Changelog\n\n'
+          '## [0.2.3] - 2026-08-28\n- Newer\n\n'
+          '## [0.2.2] - 2026-08-27\n- Did a thing\n');
+      tool.main([
+        '--duration', '102', '--target', 'apk', '--source', 'ci',
+        '--version', '0.2.2+293',
+      ]);
+
+      final changelog = File('${temp.path}/CHANGELOG.md').readAsStringSync();
+      expect(changelog.indexOf('- CI build: '),
+          greaterThan(changelog.indexOf('## [0.2.2]')));
+      final history = jsonDecode(
+          File('${temp.path}/build_history.json').readAsStringSync()) as List;
+      expect(history.single['version'], '0.2.2+293');
+    });
+
     test('a dry run reports without touching either file', () {
       tool.main(['--duration', '102', '--target', 'apk', '--dry-run']);
 
       final changelog = File('${temp.path}/CHANGELOG.md').readAsStringSync();
       expect(changelog, isNot(contains('Local build')));
       expect(File('${temp.path}/build_history.json').existsSync(), isFalse);
+    });
+
+    test('tags a BestToDo history record with app: todo', () {
+      tool.main(['--duration', '102', '--target', 'apk']);
+
+      final history = jsonDecode(
+          File('${temp.path}/build_history.json').readAsStringSync()) as List;
+      expect(history.single['app'], 'todo');
+    });
+  });
+
+  // Best Music versions and changelogs independently of BestToDo (its own
+  // MUSIC_VERSION file and CHANGELOG_MUSIC.md, CLAUDE.md/SPEC.md §10.6f);
+  // `--app music` points this tool at those instead.
+  group('--app music', () {
+    late Directory temp;
+    late String previousCwd;
+
+    setUp(() {
+      temp = Directory.systemTemp.createTempSync('append_build_time_music_test');
+      previousCwd = Directory.current.path;
+      Directory.current = temp;
+      File('${temp.path}/MUSIC_VERSION')
+          .writeAsStringSync('version: 0.2.80+371\n');
+      File('${temp.path}/CHANGELOG_MUSIC.md').writeAsStringSync(
+          '# Best Music Changelog\n\n## [0.2.80] - 2026-09-18\n- Did a thing\n');
+      // A music run must never touch BestToDo's own files.
+      File('${temp.path}/pubspec.yaml')
+          .writeAsStringSync('name: besttodo\nversion: 0.2.2+293\n');
+      File('${temp.path}/CHANGELOG.md').writeAsStringSync(
+          '# Changelog\n\n## [0.2.2] - 2026-08-27\n- Did a thing\n');
+    });
+
+    tearDown(() {
+      Directory.current = previousCwd;
+      try {
+        temp.deleteSync(recursive: true);
+      } catch (_) {
+        // Windows can hold the handle briefly; the temp dir is disposable.
+      }
+    });
+
+    test('notes the build in CHANGELOG_MUSIC.md, not CHANGELOG.md', () {
+      tool.main(['--app', 'music']);
+
+      final musicChangelog =
+          File('${temp.path}/CHANGELOG_MUSIC.md').readAsStringSync();
+      expect(musicChangelog, contains('- Local build: '));
+
+      final todoChangelog =
+          File('${temp.path}/CHANGELOG.md').readAsStringSync();
+      expect(todoChangelog, isNot(contains('Local build')));
+    });
+
+    test('records history with the MUSIC_VERSION version and app: music',
+        () {
+      tool.main(['--app', 'music', '--duration', '102', '--target', 'apk']);
+
+      final history = jsonDecode(
+          File('${temp.path}/build_history.json').readAsStringSync()) as List;
+      expect(history, hasLength(1));
+      expect(history.single['version'], '0.2.80+371');
+      expect(history.single['app'], 'music');
+      expect(history.single['target'], 'apk');
     });
   });
 }

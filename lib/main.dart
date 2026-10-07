@@ -26,6 +26,7 @@ import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/food_diary_widget_service.dart';
 import 'services/auto_update_checker.dart';
+import 'services/install_info_service.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
@@ -34,6 +35,7 @@ import 'services/sync_service.dart';
 import 'services/todoist_sync_service.dart';
 import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
+import 'services/f1_reminder_service.dart';
 import 'services/sms_report_scheduler.dart';
 import 'services/update_service.dart';
 
@@ -153,6 +155,7 @@ Future<void> main() async {
   await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
     await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
+    await _initStep('f1 reminder', F1ReminderService.applyFromConfig);
   }
   await _initStep('alarms', AlarmService.instance.load);
   // Snapshot the device/permission state into the alarm log on every launch,
@@ -191,6 +194,9 @@ Future<void> main() async {
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
+    // Fallback install time for the Changelog's "Installed …" line where
+    // Android's own lastUpdateTime isn't available.
+    unawaited(InstallInfoService.recordLaunch());
     // One-time backfill of the item-history journal from pre-journal data.
     // Deliberately a few seconds after the first frame so it never competes
     // with startup or the home page's initial load; once seeded it is a
@@ -237,9 +243,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final List<SharedPayload> _pendingShares = [];
   bool _shareScreenOpen = false;
 
-  /// The version currently prompted or being downloaded/installed, so a
-  /// later tick of the background update poll (still finding the same
-  /// build) does not stack a second dialog on top.
+  /// The version currently being downloaded/installed, so a later tick of
+  /// the background update poll (still finding the same build) does not
+  /// start a second download of it.
   String? _pendingUpdateVersion;
 
   @override
@@ -279,9 +285,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // whatever was shared. See _queueSharedPayload.
       ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
-      // Settings → Updates → "Automatically check for updates" (on by
-      // default): poll GitHub for a newer build every minute while the app
-      // is open. Platform.isAndroid is false under `flutter test`'s host
+      // Settings → Updates → "Automatically update" (on by default): poll
+      // GitHub for a newer build every minute while the app is open and
+      // download + install it as soon as one appears. Platform.isAndroid is false under `flutter test`'s host
       // runner, so this never starts a real timer in the test suite.
       if (Config.autoUpdateCheckEnabled) {
         AutoUpdateChecker.instance.start(_onUpdateFound);
@@ -306,16 +312,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // Don't collide with the intro/mode picker/startup chooser.
     if (_showIntro || _showModePicker || _showStartupChoice) return;
     if (_pendingUpdateVersion == info.version) return;
-    unawaited(_maybePromptUpdate(info));
+    unawaited(_maybeStartAutoUpdate(info));
   }
 
-  /// Prompts for [info], unless it is already downloading (an earlier run's
-  /// background download resumed by [_resumePendingUpdateDownload]) or was
-  /// already downloaded — either way there is nothing to ask the user again,
-  /// since `_pendingUpdateVersion` alone can't catch this on a fresh launch:
-  /// it starts out null every time the process restarts, while the download
-  /// itself, run by Android's `DownloadManager`, survives across restarts.
-  Future<void> _maybePromptUpdate(UpdateInfo info) async {
+  /// Auto-updates to [info]: downloads it and opens Android's installer
+  /// straight away, with no "New version available" question first —
+  /// Android's own install prompt is the only confirmation. Skipped when the
+  /// build is already downloading (an earlier run's background download
+  /// resumed by [_resumePendingUpdateDownload]) or was already downloaded
+  /// and handed to the installer — `_pendingUpdateVersion` alone can't catch
+  /// this on a fresh launch: it starts out null every time the process
+  /// restarts, while the download itself, run by Android's
+  /// `DownloadManager`, survives across restarts.
+  Future<void> _maybeStartAutoUpdate(UpdateInfo info) async {
     if (await UpdateService.instance.wasDownloaded(info.version)) {
       _pendingUpdateVersion = info.version;
       return;
@@ -323,28 +332,24 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (_pendingUpdateVersion == info.version) return;
     _pendingUpdateVersion = info.version;
     WidgetsBinding.instance.scheduleFrame();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _promptUpdate(info));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startAutoUpdate(info));
   }
 
-  Future<void> _promptUpdate(UpdateInfo info) async {
+  void _startAutoUpdate(UpdateInfo info) {
     final navigator = appNavigatorKey.currentState;
     if (navigator == null) {
       _pendingUpdateVersion = null;
       return;
     }
-    final accepted = await showUpdateAvailableDialog(navigator.context, info);
-    if (accepted != true) {
-      AutoUpdateChecker.instance.dismiss(info.version);
-      _pendingUpdateVersion = null;
-      return;
-    }
-    // The download runs in the background (Android's DownloadManager, not
-    // this dialog), so don't await it here — but keep _pendingUpdateVersion
-    // set for its whole duration, so a poll tick that lands mid-download
-    // doesn't pop the "New version available" dialog again for the same
-    // build.
+    // The download runs in the background (Android's DownloadManager), so
+    // don't await it here — but keep _pendingUpdateVersion set for its
+    // whole duration, so a poll tick that lands mid-download doesn't start
+    // the same build again. A failed download is not retried every minute:
+    // the version is dismissed for this run and tried again on next launch.
     unawaited(
-      downloadUpdateInBackground(navigator.context, info).whenComplete(() {
+      downloadUpdateInBackground(navigator.context, info).then((ok) {
+        if (!ok) AutoUpdateChecker.instance.dismiss(info.version);
+      }).whenComplete(() {
         if (_pendingUpdateVersion == info.version) {
           _pendingUpdateVersion = null;
         }

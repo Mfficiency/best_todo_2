@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -139,14 +140,31 @@ class DownloadProgress {
 /// The repo is public, so both the lookup and the download are plain
 /// unauthenticated HTTPS.
 class UpdateService {
-  UpdateService._();
+  UpdateService._({this.appDisplayName = 'BestToDo', this.apkPrefix = 'best_todo'});
 
   static UpdateService instance = UpdateService._();
+
+  /// A second app built from this same repo (Best Music) gets its own
+  /// instance rather than reusing [instance], so its `appDisplayName` and
+  /// `apkPrefix` never leak into BestToDo's own update check.
+  static UpdateService forApp(
+          {required String appDisplayName, required String apkPrefix}) =>
+      UpdateService._(appDisplayName: appDisplayName, apkPrefix: apkPrefix);
 
   /// Fresh instance per test, dropping any injected [fetchOverride].
   static void resetForTest() {
     instance = UpdateService._();
   }
+
+  /// Shown in release names and the background-download file name, e.g.
+  /// "BestToDo 0.1.132+104" / "BestToDo-update-0.1.132-104.apk".
+  final String appDisplayName;
+
+  /// Only [releasesFolder] entries whose file name starts with this (plus an
+  /// underscore) are treated as this app's own builds — the folder holds
+  /// both apps' APKs, and a bare version regex would otherwise happily match
+  /// the other app's file name too.
+  final String apkPrefix;
 
   static const String owner = 'Mfficiency';
   static const String repo = 'best_todo_2';
@@ -246,7 +264,13 @@ class UpdateService {
 
   /// Maps a GitHub contents-API directory listing to installable builds,
   /// newest first. Non-APK entries (the folder's README) are skipped.
-  static List<UpdateInfo> folderReleases(List<dynamic> contents) {
+  ///
+  /// [appDisplayName] only affects the [UpdateInfo.releaseName] shown to the
+  /// user; filtering entries down to one app's own APKs (the folder holds
+  /// both BestToDo's and Best Music's builds) is [fetchFolderReleases]'s job,
+  /// since it alone knows [apkPrefix].
+  static List<UpdateInfo> folderReleases(List<dynamic> contents,
+      {String appDisplayName = 'BestToDo'}) {
     final builds = <UpdateInfo>[];
     for (final entry in contents) {
       if (entry is! Map) continue;
@@ -256,7 +280,7 @@ class UpdateService {
       if (version == null || url.isEmpty) continue;
       builds.add(UpdateInfo(
         version: version,
-        releaseName: 'BestToDo $version',
+        releaseName: '$appDisplayName $version',
         htmlUrl: entry['html_url'] as String? ??
             'https://github.com/$owner/$repo/tree/$releasesRef/$releasesFolder',
         apkUrl: url,
@@ -268,18 +292,31 @@ class UpdateService {
     return builds;
   }
 
-  /// The APKs currently kept in the repo folder, newest first. Empty when the
-  /// folder holds no versioned APK; throws when the listing can't be fetched.
+  /// The APKs currently kept in the repo folder that belong to this app (file
+  /// name starting with [apkPrefix]), newest first. Empty when the folder
+  /// holds none of this app's builds; throws when the listing can't be
+  /// fetched.
   Future<List<UpdateInfo>> fetchFolderReleases() async {
     final decoded = jsonDecode(await _fetch(Uri.parse(folderContentsUrl)));
     if (decoded is! List) return const [];
-    return folderReleases(decoded);
+    final mine = decoded.where((entry) {
+      if (entry is! Map) return false;
+      final name = (entry['name'] as String? ?? '').toLowerCase();
+      return name.startsWith('${apkPrefix.toLowerCase()}_');
+    }).toList();
+    return folderReleases(mine, appDisplayName: appDisplayName);
   }
 
   /// Looks up the installable builds: the repo folder first (newest + one
   /// version back), the newest published release as a fallback. Throws on
   /// network/parse failures of the fallback — the caller shows the error, this
   /// is a user-initiated check.
+  ///
+  /// The release fallback only ever applies to the default app
+  /// ([apkPrefix] `best_todo`): GitHub's "latest release" endpoint is
+  /// repo-wide, not per-app, so for any other app it would misreport
+  /// BestToDo's latest release as an update. A non-default app with an empty
+  /// folder simply reports no update available.
   Future<UpdateCheck> checkReleases({String? currentVersion}) async {
     var current = currentVersion;
     if (current == null) {
@@ -299,6 +336,9 @@ class UpdateService {
         latest: folder.first,
         previous: folder.length > 1 ? folder[1] : null,
       );
+    }
+    if (apkPrefix != 'best_todo') {
+      return UpdateCheck(currentVersion: current);
     }
     final body = await _fetch(Uri.parse(latestReleaseUrl));
     final release = jsonDecode(body);
@@ -375,6 +415,12 @@ class UpdateService {
   /// newer than the running app.
   static const String _downloadedVersionPrefsKey = 'update_downloaded_version';
 
+  /// Title of the system download notification, e.g.
+  /// "Best Music update 0.1.12+30" — names the app and the exact version so
+  /// a BestToDo and a Best Music download can't be told apart only by guesswork.
+  String downloadNotificationTitle(UpdateInfo info) =>
+      '$appDisplayName update ${info.version}';
+
   /// Hands [info]'s APK to Android's `DownloadManager` and returns its
   /// download id. The transfer then runs as a system service, independent of
   /// the app process — it keeps going if the app is backgrounded and rides
@@ -386,9 +432,12 @@ class UpdateService {
       throw StateError('This release has no APK to download');
     }
     final fileName =
-        'BestToDo-update-${info.version.replaceAll('+', '-')}.apk';
-    final result = await _invokeDownloadChannel(
-        'startBackgroundDownload', {'url': url, 'fileName': fileName});
+        '$appDisplayName-update-${info.version.replaceAll('+', '-')}.apk';
+    final result = await _invokeDownloadChannel('startBackgroundDownload', {
+      'url': url,
+      'fileName': fileName,
+      'title': downloadNotificationTitle(info),
+    });
     return (result as Map)['downloadId'] as int;
   }
 
@@ -405,6 +454,23 @@ class UpdateService {
       localPath: map['localPath'] as String?,
       reason: map['reason']?.toString(),
     );
+  }
+
+  /// Absolute path of the folder update APKs are downloaded into (the app's
+  /// external files dir + `updates/`, e.g.
+  /// `/storage/emulated/0/Android/data/<app id>/files/updates`), shown in
+  /// Settings. Null off Android — no in-app downloads happen there — or when
+  /// the native side can't resolve it (external storage unavailable).
+  Future<String?> updateDownloadsDirectory() async {
+    if (downloadChannelOverride == null && (kIsWeb || !Platform.isAndroid)) {
+      return null;
+    }
+    try {
+      final result = await _invokeDownloadChannel('updateDownloadsDir', {});
+      return result is String && result.isNotEmpty ? result : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Removes a download from `DownloadManager` (and its partial file).

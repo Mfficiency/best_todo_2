@@ -2,16 +2,16 @@ import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 
 import '../models/project.dart';
 import '../models/recurrence_config.dart';
 import '../models/task.dart';
-import '../models/todoist_sync_map_entry.dart';
 import '../config.dart';
+import '../services/claude_routine_service.dart';
 import '../services/notification_service.dart';
 import '../services/project_service.dart';
-import '../services/todoist_sync_service.dart';
 import '../utils/description_disclosure.dart';
 import '../utils/label_style.dart';
 import '../utils/label_utils.dart';
@@ -20,6 +20,7 @@ import 'attachments_field.dart';
 import 'label_picker.dart';
 import 'recurrence_editor.dart';
 import 'recurrence_scope_dialog.dart';
+import 'task_info_dialog.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -162,6 +163,7 @@ class _TaskTileState extends State<TaskTile>
   bool _dragging = false;
   int _optionSelectionIndex = 0;
   bool _optionStartedFromKeyboard = false;
+  bool _sendingToClaude = false;
 
   /// A generated occurrence that's been hand-edited stops being an
   /// interchangeable copy of the master: flagging it as an override keeps
@@ -183,7 +185,12 @@ class _TaskTileState extends State<TaskTile>
       vsync: this,
       duration: Config.delayDuration,
     );
-    _destinations = List<int>.generate(Config.tabs.length, (i) => i)
+    // Ordered starting from the immediate next tab (wrapping), so the
+    // auto-committed default (index 0) always matches _moveTaskToNextPage's
+    // "move forward one tab" behavior, whatever the current tab is.
+    final tabCount = Config.tabs.length;
+    _destinations = List<int>.generate(
+        tabCount, (i) => (widget.pageIndex + 1 + i) % tabCount)
       ..remove(widget.pageIndex);
     widget.controller?._attach(this);
     _checkEmulator();
@@ -217,47 +224,15 @@ class _TaskTileState extends State<TaskTile>
     if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
-  /// A small info button shown next to the Note field for a task linked to
-  /// Todoist, so the sync id/date live in one tap-away place instead of
-  /// cluttering the free-text description. Null (no icon) for a task that
-  /// has never been synced.
-  Widget? _todoistSyncInfoIcon() {
-    final entry =
-        TodoistSyncService.instance.entryForLocalUid(widget.task.uid);
-    if (entry == null) return null;
+  /// A small info button shown next to the Note field: opens the task info
+  /// dialog — when the task was created, whether it was typed in the app or
+  /// came in via Todoist / the approval path, Todoist sync details and the
+  /// full history timeline (see [showTaskInfoDialog]).
+  Widget _taskInfoIcon() {
     return IconButton(
       icon: const Icon(Icons.info_outline),
-      tooltip: 'Todoist sync info',
-      onPressed: () => _showTodoistSyncInfo(entry),
-    );
-  }
-
-  void _showTodoistSyncInfo(TodoistSyncMapEntry entry) {
-    final synced = entry.syncedAt.toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
-    final syncedLabel =
-        '${synced.year}-${two(synced.month)}-${two(synced.day)} '
-        '${two(synced.hour)}:${two(synced.minute)}';
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Todoist sync info'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Source: Todoist'),
-            Text('Synced: $syncedLabel'),
-            Text('Todoist ID: ${entry.todoistId}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+      tooltip: 'Task info',
+      onPressed: () => showTaskInfoDialog(context, widget.task),
     );
   }
 
@@ -539,6 +514,61 @@ class _TaskTileState extends State<TaskTile>
     }
   }
 
+  /// Fires the routine configured in Settings → Claude Routine with this
+  /// task as context, starting a real Claude Code cloud session. On success,
+  /// offers to open the session (browser on desktop/web, or the claude.ai app
+  /// via its universal link on Android).
+  Future<void> _sendToClaude() async {
+    final url = Config.claudeRoutineUrl.trim();
+    final token = Config.claudeRoutineToken.trim();
+    if (url.isEmpty || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set up Claude Routine in Settings first'),
+        ),
+      );
+      return;
+    }
+    setState(() => _sendingToClaude = true);
+    try {
+      final result = await ClaudeRoutineService.instance.fire(
+        fireUrl: url,
+        token: token,
+        text: ClaudeRoutineService.instance.buildPayload(widget.task),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Claude session started'),
+          duration: const Duration(seconds: 8),
+          action: result.sessionUrl.isEmpty
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => launchUrl(
+                    Uri.parse(result.sessionUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is ClaudeRoutineException
+              ? (e.statusCode == 401
+                  ? 'Invalid Claude Routine token'
+                  : 'Failed to start session: ${e.message}')
+              : 'Failed to start session: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingToClaude = false);
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -587,7 +617,20 @@ class _TaskTileState extends State<TaskTile>
         .map((label) => label.trim())
         .where((label) => label.isNotEmpty)
         .toList();
-    if (task.projectId == null && !task.isWish && labels.isEmpty) return null;
+    // A Research item isn't bucketed into a dated tab, so its due date (if
+    // any) is shown on the tile itself, and — like a wish — its description
+    // is shown collapsed under the title.
+    final researchDue = task.isResearch && !Task.isFutureBucketDue(task.dueDate)
+        ? task.dueDate
+        : null;
+    final researchDescription = task.isResearch && task.description.isNotEmpty;
+    if (task.projectId == null &&
+        !task.isWish &&
+        researchDue == null &&
+        !researchDescription &&
+        labels.isEmpty) {
+      return null;
+    }
     return ValueListenableBuilder<List<Project>>(
       valueListenable: ProjectService.instance.projects,
       builder: (context, _, __) => Padding(
@@ -604,11 +647,14 @@ class _TaskTileState extends State<TaskTile>
                   _tag(ProjectService.stageLabel(task.kanbanStatus)),
                 ],
                 if (task.isWish) _tag('wish', protected: true),
+                if (researchDue != null)
+                  _tag('Due ${researchDue.toLocal().toString().split(' ')[0]}'),
                 for (final label in labels)
                   _tag(label, protected: isProtectedToken(label)),
               ],
             ),
-            if (task.isWish && task.description.isNotEmpty)
+            if ((task.isWish && task.description.isNotEmpty) ||
+                researchDescription)
               DescriptionDisclosure(description: task.description),
           ],
         ),
@@ -641,6 +687,17 @@ class _TaskTileState extends State<TaskTile>
             icon: const Icon(Icons.notifications_none),
             tooltip: 'Notify',
             onPressed: _sendTaskNotification,
+          ),
+        if (_expanded)
+          IconButton(
+            icon: _sendingToClaude
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.smart_toy_outlined),
+            tooltip: 'Send to Claude',
+            onPressed: _sendingToClaude ? null : _sendToClaude,
           ),
         if (_expanded)
           IconButton(
@@ -688,50 +745,56 @@ class _TaskTileState extends State<TaskTile>
             child: Container(
               color: Theme.of(context).cardColor.withOpacity(0.9),
               alignment: Alignment.centerRight,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_optionMode == _SwipeOptionMode.move)
-                        for (var i = 0; i < _destinations.length; i++)
+              // Buttons + countdown bar can be taller than the row (large
+              // system font sizes): shrink to fit instead of overflowing.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_optionMode == _SwipeOptionMode.move)
+                          for (var i = 0; i < _destinations.length; i++)
+                            TextButton(
+                              style: optionStyle(i),
+                              onPressed: () => _selectMove(_destinations[i]),
+                              child: Text(Config.tabs[_destinations[i]]),
+                            ),
+                        if (_optionMode == _SwipeOptionMode.delete) ...[
                           TextButton(
-                            style: optionStyle(i),
-                            onPressed: () => _selectMove(_destinations[i]),
-                            child: Text(Config.tabs[_destinations[i]]),
+                            style: optionStyle(0),
+                            onPressed: _selectDelete,
+                            child: const Text('Delete'),
                           ),
-                      if (_optionMode == _SwipeOptionMode.delete) ...[
-                        TextButton(
-                          style: optionStyle(0),
-                          onPressed: _selectDelete,
-                          child: const Text('Delete'),
-                        ),
-                        for (var i = 0;
-                            i < _deleteSwipeWeekdayOptions.length;
-                            i++)
-                          TextButton(
-                            style: optionStyle(i + 1),
-                            onPressed: () => _selectWeekday(
-                                _deleteSwipeWeekdayOptions[i].weekday),
-                            child: Text(_deleteSwipeWeekdayOptions[i].label),
-                          ),
+                          for (var i = 0;
+                              i < _deleteSwipeWeekdayOptions.length;
+                              i++)
+                            TextButton(
+                              style: optionStyle(i + 1),
+                              onPressed: () => _selectWeekday(
+                                  _deleteSwipeWeekdayOptions[i].weekday),
+                              child: Text(_deleteSwipeWeekdayOptions[i].label),
+                            ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: 60,
-                    child: AnimatedBuilder(
-                      animation: _progressController,
-                      builder: (context, child) {
-                        return LinearProgressIndicator(
-                            value: _progressController.value);
-                      },
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: 60,
+                      child: AnimatedBuilder(
+                        animation: _progressController,
+                        builder: (context, child) {
+                          return LinearProgressIndicator(
+                              value: _progressController.value);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -785,7 +848,7 @@ class _TaskTileState extends State<TaskTile>
                       controller: _noteController,
                       decoration: InputDecoration(
                         labelText: 'Note',
-                        suffixIcon: _todoistSyncInfoIcon(),
+                        suffixIcon: _taskInfoIcon(),
                       ),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,

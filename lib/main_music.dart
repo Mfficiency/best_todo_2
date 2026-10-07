@@ -1,0 +1,271 @@
+// Entry point for the `music` build flavor: Best Music, a standalone app
+// built from this same codebase (`flutter build apk --flavor music -t
+// lib/main_music.dart`, or `sh tool/build.sh music-apk --release`). Unlike
+// `main.dart` it boots none of BestToDo's task/alarm/sync machinery — only
+// what the Music Player and MP3 Downloader tools need.
+import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+
+import 'config.dart';
+import 'models/shared_payload.dart';
+import 'services/auto_update_checker.dart';
+import 'services/install_info_service.dart';
+import 'services/mp3_download_manager.dart';
+import 'services/music_download_library_sync.dart';
+import 'services/music_library_service.dart';
+import 'services/music_metadata_enricher.dart';
+import 'services/music_player_service.dart';
+import 'services/video_audio_cache.dart';
+import 'services/music_playlist_service.dart';
+import 'services/music_share_link.dart';
+import 'services/share_intent_service.dart';
+import 'services/startup_time_service.dart';
+import 'services/update_service.dart';
+import 'services/youtube_feed_service.dart';
+import 'ui/auto_update_dialog.dart';
+import 'ui/mp3_downloader_page.dart';
+import 'ui/music_about_page.dart';
+import 'ui/music_mini_player_bar.dart';
+import 'ui/music_player_page.dart';
+import 'ui/music_theme.dart';
+
+/// Best Music's own navigator, so the background update poll can show its
+/// "New version available" dialog without a [BuildContext] on hand — same
+/// pattern as BestToDo's `appNavigatorKey` in `main.dart`.
+final GlobalKey<NavigatorState> musicNavigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> _initStep(String label, Future<void> Function() step) async {
+  try {
+    await step();
+  } catch (e) {
+    debugPrint('Startup step "$label" failed: $e');
+  }
+}
+
+Future<void> main() async {
+  // Set before anything else runs (and never persisted): the generic
+  // storage layer this app shares with BestToDo reads it to skip
+  // BestToDo-only behavior, e.g. the Wishlist's one-time Todo.md backlog
+  // import (see StorageService._maybeImportLegacyTodoItems).
+  Config.isBestMusic = true;
+  StartupTimeService.start();
+  WidgetsFlutterBinding.ensureInitialized();
+  await _initStep('config', Config.load);
+  MusicTheme.darkMode.value = Config.darkMode;
+  await _initStep('music library', MusicLibraryService.instance.load);
+  await _initStep('music playlists', MusicPlaylistService.instance.load);
+  // Before the player: feed playback reads its settings (SponsorBlock)
+  // and resume positions.
+  await _initStep('subscriptions feed', YoutubeFeedService.instance.load);
+  await _initStep('music player', MusicPlayerService.init);
+  await _initStep('last played', MusicPlayerService.restoreLastSession);
+  // Cached Subscriptions videos are kept a week after last play.
+  unawaited(VideoAudioCache.instance.purgeExpired());
+  runApp(const BestMusicApp());
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    StartupTimeService.record();
+    // Fallback install time for the Changelog's "Installed …" line where
+    // Android's own lastUpdateTime isn't available.
+    unawaited(InstallInfoService.recordLaunch());
+    // Local playback is this app's whole purpose, so ask for "All files
+    // access" up front like other music apps do, rather than waiting for
+    // the user to pick a folder and discover it silently finds nothing —
+    // see MusicPlayerService.ensurePermissions.
+    unawaited(MusicPlayerService.ensurePermissions(eager: true));
+    // Fills missing artist/album/genre/year/BPM from online sources (and
+    // detects BPM on device when those come up short) in the background —
+    // nothing to tap, see MusicMetadataEnricher.
+    if (!kIsWeb) unawaited(MusicMetadataEnricher.instance.start());
+  });
+}
+
+class BestMusicApp extends StatefulWidget {
+  const BestMusicApp({super.key});
+
+  @override
+  State<BestMusicApp> createState() => _BestMusicAppState();
+}
+
+class _BestMusicAppState extends State<BestMusicApp> {
+  /// Version currently auto-updating (downloading), so a poll tick that
+  /// lands mid-download doesn't start the same build a second time. Mirrors `_MyAppState._pendingUpdateVersion` in `main.dart`,
+  /// without that file's task/alarm/sync-specific resume logic Best Music
+  /// doesn't need.
+  String? _pendingUpdateVersion;
+
+  /// Shares waiting for the downloader screen, shown one at a time — same
+  /// queue as `_MyAppState._pendingShares` in `main.dart`.
+  final List<SharedPayload> _pendingShares = [];
+  bool _shareScreenOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // A finished download lands in the library without a manual rescan.
+    unawaited(Mp3DownloadManager.instance
+        .load()
+        .then((_) => MusicDownloadLibrarySync.instance.attach())
+        .catchError((_) {}));
+    if (!kIsWeb && Platform.isAndroid) {
+      // A song shared from Spotify, Shazam, YouTube (or any other app — a
+      // link or just "Song - Artist") goes straight to the MP3 Downloader,
+      // which starts downloading the best match right away. Same native
+      // ShareActivity → MainActivity → `besttodo/share` channel as BestToDo.
+      ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
+      unawaited(ShareIntentService.instance.init().catchError((_) {}));
+    }
+    // Settings → Updates → "Automatically update" applies to
+    // BestToDo's own build; Best Music has no such toggle yet, so this
+    // background poll (mirroring main.dart's) always runs. Points at
+    // MusicAboutPage's own UpdateService.forApp instance so it only ever
+    // offers Best Music's builds, never BestToDo's.
+    if (!kIsWeb && Platform.isAndroid) {
+      AutoUpdateChecker.instance
+          .start(_onUpdateFound, service: MusicAboutPage.updateService);
+    }
+  }
+
+  @override
+  void dispose() {
+    AutoUpdateChecker.instance.stop();
+    ShareIntentService.instance.setOnSharedPayload(null);
+    MusicDownloadLibrarySync.instance.detach();
+    super.dispose();
+  }
+
+  void _queueSharedPayload(SharedPayload payload) {
+    _pendingShares.add(payload);
+    if (!_shareScreenOpen) _presentNextSharedPayload();
+  }
+
+  void _presentNextSharedPayload() {
+    if (_pendingShares.isEmpty) return;
+    final payload = _pendingShares.removeAt(0);
+    final link = detectBestMusicShare(
+      payload.text.isNotEmpty ? payload.text : payload.subject,
+    );
+    if (link == null) {
+      // A file-only share (Best Music's share target only takes text, but
+      // be safe): nothing to search for, so hand control straight back.
+      unawaited(ShareIntentService.instance.returnToPreviousApp());
+      _presentNextSharedPayload();
+      return;
+    }
+    // Wait for the first frame so the navigator exists on a cold start.
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = musicNavigatorKey.currentState;
+      if (navigator == null) return;
+      _shareScreenOpen = true;
+      navigator
+          .push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => Mp3DownloaderPage(
+              sharedLink: link,
+              autoDownloadTopMatch: true,
+            ),
+          ))
+          .whenComplete(() {
+        _shareScreenOpen = false;
+        _presentNextSharedPayload();
+      });
+    });
+  }
+
+  void _onUpdateFound(UpdateInfo info) {
+    if (_pendingUpdateVersion == info.version) return;
+    unawaited(_maybeStartAutoUpdate(info));
+  }
+
+  /// Auto-updates to [info] with no "New version available" question —
+  /// Android's own install prompt is the only confirmation. Same as
+  /// `_MyAppState._maybeStartAutoUpdate` in `main.dart`: skipped when the
+  /// build is already downloading or was already handed to the installer
+  /// (e.g. the user backed out of Android's install screen), so the
+  /// minute-by-minute poll doesn't download it over and over.
+  Future<void> _maybeStartAutoUpdate(UpdateInfo info) async {
+    if (await MusicAboutPage.updateService.wasDownloaded(info.version)) {
+      _pendingUpdateVersion = info.version;
+      return;
+    }
+    if (_pendingUpdateVersion == info.version) return;
+    _pendingUpdateVersion = info.version;
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startAutoUpdate(info));
+  }
+
+  void _startAutoUpdate(UpdateInfo info) {
+    final navigator = musicNavigatorKey.currentState;
+    if (navigator == null) {
+      _pendingUpdateVersion = null;
+      return;
+    }
+    // The download runs in the background (Android's DownloadManager), so
+    // don't await it here — but keep _pendingUpdateVersion set for its
+    // whole duration so a poll tick mid-download doesn't start it again. A
+    // failed download is dismissed for this run and retried on next launch.
+    unawaited(downloadUpdateInBackground(
+      navigator.context,
+      info,
+      service: MusicAboutPage.updateService,
+    ).then((ok) {
+      if (!ok) AutoUpdateChecker.instance.dismiss(info.version);
+    }).whenComplete(() {
+      if (_pendingUpdateVersion == info.version) {
+        _pendingUpdateVersion = null;
+      }
+    }));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Rebuilt when Settings → Appearance → Dark mode flips.
+    return ValueListenableBuilder<bool>(
+      valueListenable: MusicTheme.darkMode,
+      builder: (context, darkMode, _) => MaterialApp(
+        navigatorKey: musicNavigatorKey,
+        title: 'Best Music',
+        // Same as BestToDo's main.dart: Android draws edge-to-edge, so keep
+        // every page (lists, Track info, the mini player) clear of the system
+        // navigation bar instead of underneath it.
+        builder: (context, child) {
+          return SafeArea(
+            top: false,
+            left: false,
+            right: false,
+            bottom: true,
+            // The mini player lives here, below the navigator, so the current
+            // (or last-played) song is at the bottom of every screen.
+            child: Column(
+              children: [
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(child: child ?? const SizedBox.shrink()),
+                      // Bottom left, just above the song bar: one tap
+                      // between the last song and the last video.
+                      Positioned(
+                        left: 12,
+                        bottom: 12,
+                        child: SessionSwitchPill(
+                            navigatorKey: musicNavigatorKey),
+                      ),
+                    ],
+                  ),
+                ),
+                MusicMiniPlayerBar(navigatorKey: musicNavigatorKey),
+              ],
+            ),
+          );
+        },
+        theme: buildMusicTheme(Brightness.light),
+        darkTheme: buildMusicTheme(Brightness.dark),
+        themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
+        home: const MusicPlayerPage(standalone: true),
+      ),
+    );
+  }
+}

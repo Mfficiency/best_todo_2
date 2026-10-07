@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+
+import '../services/install_info_service.dart';
 import 'subpage_app_bar.dart';
 
 /// One `## [version] - date` block of CHANGELOG.md.
@@ -175,8 +177,37 @@ List<ChangelogRelease> parseChangelogReleases(String markdown) {
   return releases;
 }
 
+/// Drops everything before the first `## ` heading (title + intro). Returns
+/// [markdown] unchanged when it has no such heading.
+String stripChangelogPreamble(String markdown) {
+  final match = RegExp(r'^## ', multiLine: true).firstMatch(markdown);
+  return match == null ? markdown : markdown.substring(match.start);
+}
+
 class ChangelogPage extends StatefulWidget {
-  const ChangelogPage({Key? key}) : super(key: key);
+  const ChangelogPage({
+    Key? key,
+    this.assetPath = 'CHANGELOG.md',
+    this.showStoryPoster = true,
+    this.hidePreamble = false,
+  }) : super(key: key);
+
+  /// Bundled asset to render — BestToDo's own `CHANGELOG.md` by default, or
+  /// Best Music's `CHANGELOG_MUSIC.md` from [MusicPlayerPage]'s drawer (the
+  /// two apps changelog independently since the split, CLAUDE.md/SPEC.md
+  /// §10.6i).
+  final String assetPath;
+
+  /// Whether the "development story" poster toggle is offered. Off for Best
+  /// Music: [changelogMilestones] is BestToDo's own curated history and
+  /// would be wrong to show under Best Music's changelog.
+  final bool showStoryPoster;
+
+  /// Whether the text view drops everything above the first `## ` release
+  /// heading (the file's `# Title` and intro paragraph). On for Best Music,
+  /// whose `CHANGELOG_MUSIC.md` keeps an explanatory preamble for developers
+  /// that users don't need to see.
+  final bool hidePreamble;
 
   @override
   State<ChangelogPage> createState() => _ChangelogPageState();
@@ -193,6 +224,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
 
   final ScrollController _heatmapScrollController = ScrollController();
   Future<String>? _changelog;
+  Future<InstallInfo?>? _installInfo;
   _ChangelogView _view = _ChangelogView.text;
   DateTime? _selectedDay;
 
@@ -200,7 +232,8 @@ class _ChangelogPageState extends State<ChangelogPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // DefaultAssetBundle falls back to rootBundle in the app; tests can swap it.
-    _changelog ??= DefaultAssetBundle.of(context).loadString('CHANGELOG.md');
+    _changelog ??= DefaultAssetBundle.of(context).loadString(widget.assetPath);
+    _installInfo ??= InstallInfoService.load();
   }
 
   @override
@@ -295,17 +328,18 @@ class _ChangelogPageState extends State<ChangelogPage> {
         context,
         title: 'Changelog',
         actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_awesome_rounded),
-            tooltip: _view == _ChangelogView.poster
-                ? 'Show changelog text'
-                : 'Show development story',
-            onPressed: () {
-              setState(() => _view = _view == _ChangelogView.poster
-                  ? _ChangelogView.text
-                  : _ChangelogView.poster);
-            },
-          ),
+          if (widget.showStoryPoster)
+            IconButton(
+              icon: const Icon(Icons.auto_awesome_rounded),
+              tooltip: _view == _ChangelogView.poster
+                  ? 'Show changelog text'
+                  : 'Show development story',
+              onPressed: () {
+                setState(() => _view = _view == _ChangelogView.poster
+                    ? _ChangelogView.text
+                    : _ChangelogView.poster);
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.calendar_view_month),
             tooltip: _view == _ChangelogView.heatmap
@@ -327,12 +361,54 @@ class _ChangelogPageState extends State<ChangelogPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (_view == _ChangelogView.text) {
-            return Markdown(data: snapshot.data!, selectable: true);
+            final text = widget.hidePreamble
+                ? stripChangelogPreamble(snapshot.data!)
+                : snapshot.data!;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildInstalledBanner(),
+                Expanded(child: Markdown(data: text, selectable: true)),
+              ],
+            );
           }
           if (_view == _ChangelogView.poster) return _buildStoryPoster();
           return _buildHeatmapView(parseChangelogReleases(snapshot.data!));
         },
       ),
+    );
+  }
+
+  /// "Installed v0.2.98+399 · 2026-10-04 18:40 (2 hours ago)" above the
+  /// changelog text, so it's clear when the latest (often automatic) update
+  /// came through. Hidden while loading or when the time isn't known.
+  Widget _buildInstalledBanner() {
+    return FutureBuilder<InstallInfo?>(
+      future: _installInfo,
+      builder: (context, snapshot) {
+        final info = snapshot.data;
+        if (info == null) return const SizedBox.shrink();
+        final scheme = Theme.of(context).colorScheme;
+        return Container(
+          key: const Key('changelog-installed-since'),
+          color: scheme.secondaryContainer,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Icon(Icons.system_update_alt,
+                  size: 18, color: scheme.onSecondaryContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Installed v${info.version} · '
+                  '${formatInstalledAt(info.installedAt)}',
+                  style: TextStyle(color: scheme.onSecondaryContainer),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Overrides the `app_name` in src/main/res/values/strings.xml for the
+         `music` product flavor only — see android/app/build.gradle.kts. -->
+    <string name="app_name">Best Music</string>
+</resources>

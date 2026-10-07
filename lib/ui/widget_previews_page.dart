@@ -387,7 +387,7 @@ class _WidgetPreviewsPageState extends State<WidgetPreviewsPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 const Text(
-                  'Mocks of the four Android home-screen widgets, drawn from '
+                  'Mocks of the Android home-screen widgets, drawn from '
                   'the same data the real widgets show. Dev/debug only — not '
                   'part of the release build\'s navigation.',
                 ),

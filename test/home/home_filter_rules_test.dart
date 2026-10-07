@@ -55,8 +55,7 @@ void main() {
         reason: 'HomePage never loaded the tasks');
   }
 
-  testWidgets(
-      'a Home exclude-tag rule hides matching tasks from the Today tab',
+  testWidgets('a Home exclude-tag rule hides matching tasks from the Today tab',
       (tester) async {
     final today = DateTime.now();
     Config.viewFilterRules[ViewFilterRules.home] =
@@ -77,6 +76,102 @@ void main() {
 
     expect(find.text('Visible task'), findsOneWidget);
     expect(find.text('Blocked task'), findsNothing);
+  });
+
+  Future<void> dragFirstItemDown(WidgetTester tester, String title) async {
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text(title)));
+    await tester.pump(const Duration(milliseconds: 600));
+    for (var i = 0; i < 8; i++) {
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    // The reorder's save is real file I/O kicked off from inside the
+    // fake-async pump zone (see test/README.md): give it real event-loop
+    // turns so it actually flushes before reading it back.
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+  }
+
+  testWidgets(
+      'Home ships with non-empty default filter rules, but they must not '
+      'block drag-reorder on a tab they do not actually narrow',
+      (tester) async {
+    final today = DateTime.now();
+    // Same defaults Config.load() seeds on every real app start.
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules.defaultsFor(ViewFilterRules.home)!;
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Alpha task', dueDate: today, listRanking: 1),
+        Task(title: 'Beta task', dueDate: today, listRanking: 2),
+        Task(title: 'Gamma task', dueDate: today, listRanking: 3),
+      ],
+      marker: 'Alpha task',
+    );
+    // Nothing in this tab carries a reserved tag, so the default rule isn't
+    // hiding anything here.
+    expect(find.text('Beta task'), findsOneWidget);
+    expect(find.text('Gamma task'), findsOneWidget);
+
+    await dragFirstItemDown(tester, 'Alpha task');
+
+    final saved = await tester.runAsync(() => StorageService().loadTaskList());
+    const titles = {'Alpha task', 'Beta task', 'Gamma task'};
+    final order = saved!.where((t) => titles.contains(t.title)).toList()
+      ..sort((a, b) => (a.listRanking ?? 0).compareTo(b.listRanking ?? 0));
+    expect(order.first.title, isNot('Alpha task'),
+        reason: 'dragging the top task down should have moved it, not '
+            'sprung back to its original position');
+  });
+
+  testWidgets(
+      'a Home filter rule that hides a task in this tab does not block '
+      'drag-reorder, and the hidden task keeps its rank slot', (tester) async {
+    // Regression: any hidden task in a tab (e.g. a Wish/Project-tagged one
+    // under Home's default rule) used to disable reordering the whole tab,
+    // so every drag sprang back.
+    final today = DateTime.now();
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules(excludeTags: ['workstuff']);
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Alpha task', dueDate: today, listRanking: 1),
+        Task(
+          title: 'Blocked task',
+          dueDate: today,
+          listRanking: 2,
+          label: 'workstuff',
+        ),
+        Task(title: 'Beta task', dueDate: today, listRanking: 3),
+        Task(title: 'Gamma task', dueDate: today, listRanking: 4),
+      ],
+      marker: 'Alpha task',
+    );
+    expect(find.text('Blocked task'), findsNothing);
+
+    await dragFirstItemDown(tester, 'Alpha task');
+
+    final saved = await tester.runAsync(() => StorageService().loadTaskList());
+    const titles = {'Alpha task', 'Blocked task', 'Beta task', 'Gamma task'};
+    final order = saved!.where((t) => titles.contains(t.title)).toList()
+      ..sort((a, b) => (a.listRanking ?? 0).compareTo(b.listRanking ?? 0));
+    expect(order.first.title, isNot('Alpha task'),
+        reason: 'dragging the top visible task down should have moved it, '
+            'not sprung back because a rule hides another task in the tab');
+    expect(order[1].title, 'Blocked task',
+        reason: 'only the visible tasks are permuted, among the slots they '
+            'already hold — the hidden task keeps its rank position');
+    expect(order.map((t) => t.listRanking), [1, 2, 3, 4]);
   });
 
   testWidgets(
@@ -165,9 +260,8 @@ void main() {
 
     final homeExcludeField = find.descendant(
       of: find.byType(SettingsPage),
-      matching: find.byWidgetPredicate((w) =>
-          w is TextField &&
-          w.decoration?.hintText == 'Tag name'),
+      matching: find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Tag name'),
     );
     expect(homeExcludeField, findsWidgets);
 

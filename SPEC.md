@@ -569,8 +569,18 @@ isApproved`, and `ItemViews.isVisibleInMainViews` excludes research items from e
 view (home tabs, schedule view, wishlist, projects, Todoist sync), so an item only shows up
 here (or, once deleted, Archived Items) — never on the home tabs. Items arrive either
 quick-tag-approved from Waiting for Approval, or typed directly with the page's own FAB
-(title, description, `LabelPickerField` tags — no due date, no checkbox, just a log line
-like a Food Diary entry). `researchToken` (`'Research'`) is a `protectedStateTokens` entry
+(title, `LabelPickerField` tags, description, note and an optional due date). Since 0.2.84
+a research item has every field a normal item has: each entry is rendered with the home
+tabs' own `TaskTile` (done checkbox, tap to fold open for inline Title/Description/Note/
+labels/attachments/due date/Recurring editing, Notify and Send to Claude), and the collapsed
+tile shows its due date (a `Due yyyy-mm-dd` tag — research items aren't bucketed into dated
+tabs) and a collapsed description disclosure, like a wish. Swiping works exactly as on the
+home tabs: the reschedule options only change the item's due date (it stays in Research,
+`_ResearchPageState._rescheduleEntry`), and delete archives it with an undo snackbar,
+including the "this event / this and following / all events" scope dialog for a recurring
+item (`_requestDelete`, a port of `HomePage._requestDeleteTask`).
+`RecurrenceService.buildOccurrence` copies `isResearch` onto generated occurrences (like
+`isWish`), so a recurring research item's series never leaks onto the home tabs. `researchToken` (`'Research'`) is a `protectedStateTokens` entry
 and a full `ViewFilterRules` view id (`ViewFilterRules.research`), threaded through every
 other view's default Hide list the same way `fooddiaryToken` is — bumped
 `_currentViewFilterRulesSeedVersion` to 3 so existing installs re-sync their Filtering
@@ -631,7 +641,8 @@ tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name
 
 **Label picker (0.1.255):** `LabelPickerField` (`lib/ui/label_picker.dart`) replaces the
 raw comma-separated label text field everywhere a task's `label` is edited (task-tile
-inline editor, wishlist add/edit dialog). Current tokens render as removable `InputChip`s;
+inline editor, wishlist add dialog and its own inline editor). Current tokens render as
+removable `InputChip`s;
 an "Add label" chip opens a dialog with a search/create field over every known label
 (`LabelService.instance.labels`, checkbox-toggled) — typing a name that isn't already a
 label offers "Add "<name>"" to create and select it in one tap. Selection is staged in
@@ -660,9 +671,28 @@ every load/save) merges any groups sharing a tag and dedupes their keywords, so 
 and hand-edited duplicates both collapse into one clean group per tag. Settings → Tasks
 has the on/off switch ("Auto-tag new items") and an "Auto-tag rules" entry point
 (`AutoTagRulesPage`) to add/rename/delete a tag and edit its whole word group (comma/space
-separated) in one dialog. Deliberately dumb today (a fixed dictionary, no real NLP); the
-plan is to later swap the matching in `tagsFor` for an on-device LLM without touching
-callers, which only ever see the resulting tag list.
+separated) in one dialog. Deliberately dumb (a fixed dictionary, no real NLP), so it's
+cheap and predictable.
+
+**Smart auto-tag (0.2.91).** Optional fallback for titles the dictionary misses, using a
+*decision model* rather than an LLM: TypeSafe's Jev (`lib/services/jev_decision_service.dart`,
+`POST https://api.typesafe.ai/v1/systemone`, `model: jev-latest`, Bearer key). Decision
+models (Jev, Fastino's GLiDE / open-weight GLiNER2.5-Decide) take a `state` plus typed
+questions (`choice`/`score`/`noul`) and return a bounded answer with probabilities — no
+generated text, output tokens free, ~$0.04 per million input tokens. Picking a tag is
+exactly that shape. `AutoTagService.smartTagFor(title)` returns null unless
+`Config.autoTagEnabled` && `Config.smartAutoTagEnabled` (default **false**) && a non-empty
+`Config.jevApiKey`, *and* `tagsFor` found nothing (so the network is never hit for titles
+the dictionary already handles). It asks one `choice` question whose criteria are every
+tag group (`tag` → "Things related to: <keywords>") plus `AutoTagService.noTagOption`
+(`__none__`), and accepts the pick only if it's a real tag with confidence ≥
+`smartTagMinConfidence` (0.6). Any error (401/422/429/529, timeout after 10 s) → null.
+`HomePage._applySmartTagInBackground` runs it *after* `_addTask`/`_addTaskFromChronize`
+have added and saved the task, then adds the tag via `addLabelToken` and saves again if the
+task still exists — adding a task never waits on the network. Settings > Tasks: "Smart
+auto-tag (Jev)" switch (disabled while auto-tag is off) and, when on, a "TypeSafe API key"
+field (plain text in config, same caveat as the Todoist token). Tests:
+`test/home/smart_auto_tag_test.dart` (MockClient).
 
 ### 4.2h Change sources & global Undo (0.1.281)
 
@@ -922,8 +952,9 @@ clears the memoized version future so widget tests reload it per async zone.
 non-empty query narrows every tab and the schedule view to tasks whose title,
 description, note, label or assigned project name contains it (case-insensitive
 substring); a clear (×) suffix button resets it. Index-based handlers (move/delete)
-recompute the same filtered list so they act on the right task, but reorder is a no-op
-while searching and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
+recompute the same filtered list so they act on the right task; a drag-reorder while
+searching permutes only the matching tasks among the rank slots they already hold (see
+§Filtering rules, `_reorderSliceOfTab`), and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
 (`_tasksForTab(i, applySearch: false)`) — otherwise a save during search would scramble
 hidden tasks' order.
 
@@ -1157,12 +1188,19 @@ by is visible even though (being unconditional, not itself one of the `excludeTa
 rules" section (index 2, right after Mode & features) lists all nine views with the built-in
 line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
 ×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
-Home rule can hide tasks mid-tab, drag-reorder on the home list is disabled whenever one is
-active (`_homeFilterRulesActive`), exactly like it already is while a search query is active —
-reordering a narrowed list would renumber only the visible subset and scramble the hidden
-tasks' rank order; renumbering on save (`_saveTasks`, `applySearch: false`) always sees the
-true unfiltered tab so ranks never drift. Countdown applies the same disable-reorder-while-
-filtered rule to its own manual drag order (`_CountdownTimerPageState._onReorder`).
+Home rule can hide tasks mid-tab, drag-reorder on the home list (`_reorderTask`, and the
+schedule view's per-day `_reorderTaskInSection`) goes through `_reorderSliceOfTab`: the
+visible slice the user dragged is permuted only among the rank slots those same tasks already
+occupy in the full, UNfiltered tab (`_tasksForTab(i, applySearch: false)`), then the whole tab
+is renumbered `1..n`. Every task hidden by search, `widget.tagFilter` (Worklist) or a Home rule
+therefore keeps its exact rank position, so reordering never needs to be disabled. (0.2.87:
+until then reorder was refused whenever the tab was narrowed at all — and since Home ships with
+a non-empty default rule hiding every other view's reserved tag (Wish, Project, ...), a single
+such task due today made every drag on that tab silently spring back.) Renumbering on save
+(`_saveTasks`, `applySearch: false`) likewise always sees the true unfiltered tab so ranks never
+drift. Countdown (which has no such default rule) still applies a disable-reorder-while-filtered
+rule to its own manual drag order
+(`_CountdownTimerPageState._onReorder`).
 
 *Matching, including a task's synthetic state.* Matching (`ItemViews.passesTagRules`) is
 case-insensitive against a *combined* token set: a task's real `Task.label` tokens
@@ -1196,10 +1234,11 @@ mechanism (§4.2e).
 stamped onto every task/alarm/timer the app ever generates for itself instead of the user: the
 first-run starter tasks (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
 seed — `home_page.dart`'s `_buildDevDeletedSeed`/`_buildDevAutoDeletedBackfill`/
-`_buildDevFutureTasksSeed`/`_buildDevWishlistSeed`/`_seedDevRangeTask`/`_seedDevWishItem`/
-`_seedDevLinkedReminder`'s reminder alarm, `AlarmService._buildDevSeed`,
-`CountdownTimerPage._devSeedTimers`, `FoodDiaryPage._buildDevSeed` and `WishlistPage._load`'s
-dev fallback. Existing tokens on those items (`old`, `priority-medium`, …) are kept —
+`_buildDevFutureTasksSeed`/`_seedDevRangeTask`/`_seedDevLinkedReminder`'s reminder alarm,
+`AlarmService._buildDevSeed`, `CountdownTimerPage._devSeedTimers` and `FoodDiaryPage._buildDevSeed`
+(the Wishlist tool's own dev seeding — `home_page.dart`'s `_seedDevWishItem`/`_buildDevWishlistSeed`
+and `WishlistPage._load`'s dev fallback — was removed in 0.2.77: the Wishlist starts empty even
+in dev builds now, see §10.6). Existing tokens on those items (`old`, `priority-medium`, …) are kept —
 `addLabelToken` appends `demo` alongside them rather than replacing the label. The point: once
 one of these seeded items is saved to disk it is a normal record indistinguishable from
 anything the user typed, and outlives whatever produced it — including `Config.isDev` going
@@ -1729,12 +1768,32 @@ is picked up. Label fingerprints (both push- and pull-side) compare the token *s
 case-insensitively, order-independent, so re-ordering labels on either side isn't treated
 as a change.
 
-**Sync info in the UI, not the description** (0.1.263): `TodoistSyncService.entryForLocalUid`
-looks up a task's `TodoistSyncMapEntry` by `Task.uid`. `TaskTile`'s expanded edit view shows
-an info icon (`Icons.info_outline`) as the Note field's `suffixIcon` when a mapping exists —
-tapping it opens a dialog with the sync source ("Todoist"), the entry's `syncedAt` (local
-time) and its `todoistId`. `Task.description` never carries any of this — it round-trips only
-the free text on both sides, unlike the note/label/project/Kanban trailer above.
+**Sync info in the UI, not the description** (0.1.263; widened to every task as the Task
+info dialog in 0.2.88): `TodoistSyncService.entryForLocalUid` looks up a task's
+`TodoistSyncMapEntry` by `Task.uid`. `TaskTile`'s expanded edit view shows an info icon
+(`Icons.info_outline`, tooltip "Task info") as the Note field's `suffixIcon` on **every**
+task. Tapping it opens `showTaskInfoDialog` (`lib/ui/task_info_dialog.dart`): Created
+(`Task.createdAt`), Origin, the Todoist source (`pendingSourceTitle`), Approved
+(`Task.approvedAt`) or "Waiting for approval", Completed/Deleted times, the Todoist id and
+last `syncedAt` when a mapping exists, and the full History timeline from the item journal
+(same `describeItemEvent` wording as Task Details; a label change that drops the
+`Waiting_for_approval` token reads "Approved"). `TaskDetailPage` shows the same
+Created/Origin/approval rows (`TaskInfoView(showHistory: false)`) above its own History
+section. `Task.description` never carries any of this — it round-trips only the free text
+on both sides, unlike the note/label/project/Kanban trailer above.
+
+**Task origin** (0.2.88): `Task.origin` (JSON `origin`, omitted when null) is one of
+`TaskChangeSource`'s constants, stamped once at creation — `sync` by
+`TodoistSyncService._taskFromRemote` (every Todoist pull goes through Waiting for Approval),
+`share` by the share-sheet quick-add screen, `automation` by
+`RecurrenceService.buildOccurrence`, `user` by the home add row, Chronize, Wishlist and
+Research add paths. `Task.approvedAt` (JSON `approvedAt`, omitted when null) is stamped by
+every approve action on the Waiting for Approval page (single, dated, weekday, quick-tag and
+bulk). Neither is pushed to Todoist. `resolveTaskOrigin` infers an origin for unstamped
+(pre-0.2.88) tasks, shown with "(inferred)": approval traces (`pendingSourceTitle`,
+`approvedAt`, the waiting token) → Todoist; else the journal's live (non-seeded) `created`
+event's source; else `recurrenceParentUid` → automation; else "Unknown — created before
+origin tracking".
 
 **Algorithm** (`TodoistSyncService._runSync`, six passes over one fetch of Todoist's
 active tasks + projects): (0) every Kanban project already mapped in `_projectMap` has its
@@ -1942,7 +2001,7 @@ clue for the missing-receiver bug.
 
 ## 8. Home-screen widgets (Android)
 
-Four widgets via `home_widget` (app group `group.homeScreenApp`):
+Six widgets via `home_widget` (app group `group.homeScreenApp`):
 
 - **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
   progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
@@ -2003,6 +2062,20 @@ Four widgets via `home_widget` (app group `group.homeScreenApp`):
   target. Since 0.2.12 it redraws every 30 minutes and pulses red on the same running-count
   schedule as the full widget (0.2.25, pulsing since 0.2.32); tapping it remains an immediate
   shortcut to the add-entry dialog.
+- **Music mini widget** (`MusicMiniWidgetProvider.kt`, 0.2.61): a single play/pause button plus
+  a one-line title, nothing else. **Music controls widget** (`MusicControlsWidgetProvider.kt`,
+  0.2.61): the same, plus skip-previous and (0.2.63) skip-next buttons. Both differ from every
+  other widget here: their buttons don't call into Dart at all (there is no in-memory
+  `MusicAudioHandler` a separate background isolate could reach — unlike the on-disk task/alarm
+  lists, playback state lives in the running foreground service). Instead `MusicWidgetIntents.kt`
+  builds an explicit `ACTION_MEDIA_BUTTON` broadcast (`KEYCODE_MEDIA_PLAY_PAUSE`/
+  `KEYCODE_MEDIA_PREVIOUS`/`KEYCODE_MEDIA_NEXT`) targeted straight at `audio_service`'s own
+  `MediaButtonReceiver` — the same path a Bluetooth headset or wired remote uses — so the buttons
+  work whenever the Music Player's playback service is alive, in the foreground or not.
+  `MusicWidgetService` (`lib/services/music_widget_service.dart`) only pushes the display data
+  (title/artist/playing) by subscribing to the audio handler's `mediaItem`/`playbackState`
+  streams; tapping the title opens the app (`besttodomusic://open`). Best Music only since
+  0.2.98 (receivers declared in the `music` flavor manifest) — see §10.6e/§10.6n.
 
 *Pulsing red, not flat red (0.2.32).* `FoodDiaryAlert.kt` (shared by both providers) alternates
 the background between a bright and a dim red every 900ms (`pulseColor`, `pulseIntervalMs`) so a
@@ -2026,7 +2099,7 @@ mock exists to keep the *data* in sync with the Kotlin providers, not to fully r
 `RemoteViews` animation loop outside the Flutter tree.
 
 **Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
-`Config.isDev`, next to App Logs/Startup Times): the four widgets above are drawn by
+`Config.isDev`, next to App Logs/Startup Times): the widgets above are drawn by
 `RemoteViews` on the Android home screen, entirely outside the Flutter tree, so they cannot
 be captured by the desktop screenshot integration test (`integration_test/
 home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
@@ -2045,10 +2118,14 @@ without any status text, matching what the Kotlin provider actually draws.
 `SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
 `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
-`FOREGROUND_SERVICE`, `VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (0.2.61 — the Music Player's
+background playback service, required alongside `FOREGROUND_SERVICE` when targeting SDK 34),
+`VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
 About page; the user still confirms every install) and `INTERNET` (0.1.139 — debug builds
 get it implicitly, so "Check for updates" worked in development and failed on every release
-APK until it was declared in the main manifest). An `androidx.core.content.FileProvider`
+APK until it was declared in the main manifest). Music folder access reuses the existing
+`MANAGE_EXTERNAL_STORAGE` grant (§10.6d) rather than adding `READ_MEDIA_AUDIO`. An
+`androidx.core.content.FileProvider`
 (authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
 + external-files dirs) shares the downloaded update APK with the system installer as a
 `content://` URI.
@@ -2059,7 +2136,10 @@ the plugin ships an empty manifest and its PendingIntent targets this class) +
 `RebootBroadcastReceiver`; flutter_local_notifications `ScheduledNotificationReceiver` +
 `ScheduledNotificationBootReceiver` (BOOT/PACKAGE_REPLACED/quickboot) +
 `ActionBroadcastReceiver` (snooze/dismiss); home_widget background receiver/service; the
-four widget providers.
+six widget providers; `audio_service`'s own `AudioService` foreground service
+(`foregroundServiceType="mediaPlayback"`) and `MediaButtonReceiver` (0.2.61 — the Music
+Player's background playback, notification and lock-screen controls, and the target the two
+music widgets' buttons send real media-button broadcasts to — see §8).
 
 **Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
 `max(26, flutter.minSdkVersion)` (androidx.work via home_widget needs 23; the
@@ -2083,7 +2163,11 @@ releases could not hand a single alarm to the OS (only the watchdog backup rang,
 late). Do not remove.
 
 **MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
-`FlutterActivity`: it sets show-when-locked/turn-screen-on when launched by an alarm's
+`FlutterActivity` — since 0.2.61 it extends `AudioServiceFragmentActivity` (not plain
+`FlutterFragmentActivity`) so the Music Player's background playback service can hand it
+the `FlutterEngine` it manages; the health plugin's Health Connect flow (which needs a
+`FragmentActivity`) is unaffected, since `AudioServiceFragmentActivity` is itself one. It
+sets show-when-locked/turn-screen-on when launched by an alarm's
 full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
 (`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
 the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
@@ -2096,9 +2180,21 @@ downloads via DownloadManager" below), which hand the APK transfer to Android's
 `DownloadManager` instead of a Dart-side socket: it is enqueued into the app's
 `getExternalFilesDir(null)/updates/` (DownloadManager runs as a separate system process and
 cannot write into the app's *internal* `filesDir`, only its external one), with
+a notification titled `"<appDisplayName> update <x.y.z+build>"` (e.g. "Best Music update
+0.3.1+397", passed as the channel's `title` arg so the two apps' downloads are distinguishable),
 `VISIBILITY_VISIBLE_NOTIFY_COMPLETED` and both `NETWORK_WIFI`/`NETWORK_MOBILE` allowed so it
 keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
 cursor back into a status/progress map.
+
+**Single instance** (BestToDo 0.2.89, Best Music 0.2.90): only one copy of either
+app ever runs. Android: `MainActivity` is `launchMode="singleTask"` with the default task affinity
+(the app's package, so BestToDo and Best Music stay separate apps) — previously `singleTop` +
+`taskAffinity=""` (Flutter template default), which let a launch from the media notification, a
+widget or a link start a second `MainActivity`/Flutter engine in a new task. Every launch now
+re-fronts the one instance and arrives via `onNewIntent` (already handled for alarms and shares).
+Windows: `windows/runner/main.cpp` takes the named mutex `Local\BestToDo.SingleInstance`; a second
+launch finds it taken, restores + foregrounds the existing "BestToDo" window and exits. Guarded by
+`test/share/single_instance_wiring_test.dart`.
 
 **Share-sheet task capture** (0.1.145; quick-add screen, images/PDFs, Today/Inbox
 choice, redelivery dedup added later): BestToDo appears in Android's share sheet for
@@ -2152,6 +2248,70 @@ other add via `_tabIndexForDueDate`); without one it is persisted directly throu
 whatever app the share came from — the standard "quick capture" pattern, since this
 activity was launched fresh by that app's share sheet; a bare back-gesture dismissal
 (no button tapped) does the same from `dispose()`. Tests: `test/share/`.
+
+**Song-link share routing** (0.2.60): before presenting `QuickAddSharePage`, `main.dart`
+runs the share's text (or subject) through `detectMusicShareLink`
+(`lib/services/music_share_link.dart`) looking for a Spotify track link
+(`open.spotify.com/track/...`), a Shazam track link (`shazam.com/track|song/...`), or a
+YouTube video/playlist link (the same patterns `Mp3DownloaderService` already
+recognizes). A match routes straight into `Mp3DownloaderPage(sharedLink: ...)` instead of
+the task editor, skipping the quick-add flow entirely — the share's caption text (with
+the link itself removed, and boilerplate like "I used Shazam to discover" stripped) is
+kept as a `textHint`. On open, the page resolves the link into a search query via
+`MusicLinkResolverService.resolveSearchQuery`: a YouTube link passes through unchanged
+(the downloader's existing direct-URL path resolves and downloads it immediately, no
+picker); a Spotify/Shazam link uses the caption `textHint` when there is one, otherwise
+fetches Spotify's public `open.spotify.com/oembed` endpoint (`title` + `author_name`, no
+API key) or parses the Shazam page's `og:title`/`<title>` (via the `html` package,
+stripping the trailing " | Shazam") — either way the resolved text feeds the same
+`_submit()` a typed query uses, landing on the usual up-to-5-candidate picker. A failed
+lookup with no caption to fall back on shows an error (`MusicLinkResolveException`)
+rather than hanging. `Mp3DownloaderPage` swaps its normal Tools app bar for one with a
+"Find & Download Song" title and a Close button (`_finishShare`) that calls
+`ShareIntentService.returnToPreviousApp` and pops, same as `QuickAddSharePage`'s
+Save/Discard; a bare back-gesture dismissal does the same from `dispose()`. Tests:
+`test/tools/music_share_link_test.dart`,
+`test/tools/mp3_downloader_test.dart` ("opened from a share (sharedLink)").
+
+**"Play out loud?" confirmation** (Best Music 0.2.91):
+`SpeakerPlayGuard.confirmPlay` (`lib/services/speaker_play_guard.dart`) runs before every
+UI play entry point — `MusicPlayerPage` Shuffle play and `_play` (tap a song / Play / play a
+playlist), the mini player's and Now Playing's play button. It shows a "Play out loud?"
+Cancel/Play dialog only when `Config.musicConfirmSpeakerPlay` (default on; Music Settings →
+"Ask before playing out loud") is set, nothing is playing right now, and the
+`besttodo/audio_output` channel's `isExternalOutputConnected` (MainActivity:
+`AudioManager.getDevices(GET_DEVICES_OUTPUTS)` has any type besides built-in speaker/
+earpiece/speaker-safe/telephony/remote-submix/unknown — i.e. no Bluetooth, wired/USB
+headset, car, HDMI) returns false. Off Android or on a channel error it never asks.
+Hardware media buttons, the notification and home-screen widgets are untouched (no UI to
+ask in; a headset button implies a headset anyway). Tests:
+`test/music/speaker_play_guard_test.dart`.
+
+**Best Music share-to-download** (Best Music 0.2.91): Best Music uses the same native path
+(`ShareActivity` → `MainActivity` → `besttodo/share` → `ShareIntentService`), hooked up in
+`lib/main_music.dart`'s `_BestMusicAppState` with the same one-at-a-time share queue as
+`main.dart`. Since everything shared into a music app is a song to find, it routes through
+`detectBestMusicShare` instead: Spotify/Shazam/YouTube exactly as above, plus any *other*
+link (`MusicLinkSource.otherLink` — Apple Music, Deezer, SoundCloud, ...; caption first,
+else the page's `og:title`/`<title>` minus a short trailing "| Site") and plain text such
+as "Song - Artist" (`MusicLinkSource.text`, searched as-is). Only a blank (file-only)
+share is dropped, straight back to the sharing app. Best Music opens
+`Mp3DownloaderPage(sharedLink: ..., autoDownloadTopMatch: true)`: a share that resolves to
+a *search* queues the top result immediately (no tap needed) and keeps the other
+candidates listed under "Downloading the top match. Wrong song? Tap the right one below
+instead." — tapping another candidate cancels the auto-picked job (`Mp3DownloadManager.
+cancel`) and queues that one. BestToDo keeps the plain picker (flag off). After a download
+lands inside the library folder (`Config.musicFolder`, defaulting to the MP3 download folder
+when unset — same rule as `MusicPlayerPage.initState`), `MusicDownloadLibrarySync`
+(`lib/services/music_download_library_sync.dart`) rescans the library once the download
+queue goes idle, so the song is playable without a manual Rescan; only completions seen
+after `attach()` count, never the persisted history. The music flavor's
+`android/app/src/music/AndroidManifest.xml` replaces `ShareActivity` (`tools:node=
+"replace"`) with a text/plain-only filter, so Best Music isn't offered for images/PDFs.
+Tests: `test/tools/music_share_link_test.dart` (`detectBestMusicShare`, other-link/text
+resolving), `test/tools/mp3_downloader_test.dart` ("autoDownloadTopMatch (Best Music)"),
+`test/music/music_download_library_sync_test.dart`, `test/update/music_build_wiring_test.dart`
+(manifest overlay).
 
 **Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
 `package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
@@ -2363,12 +2523,21 @@ items first, then by priority label (`priority-high` > `priority-medium` >
 (checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
 archived by the normal new-day rollover); the subtitle shows label tags first, then a
 `DescriptionDisclosure` chevron for the description — same order and widget as the
-Food Diary tile and `TaskTile`'s own wish subtitle. Tap opens the add/edit dialog — field order
-since 0.1.148: title, labels/tags with the quick-priority buttons right below (most
-wishes are a title plus a priority), description last (a `_WishEditDialog`
-StatefulWidget owning its controllers); edits mutate the task in place so uid/project/
-recurrence fields survive. Per-item and export-all JSON export (`{export_version: 1,
-exported_at, wishlist_items: [...]}`) remain.
+Food Diary tile and `TaskTile`'s own wish subtitle. The FAB's add dialog keeps its
+0.1.148 field order (title, labels/tags with the quick-priority buttons right below —
+most wishes are a title plus a priority, description last; a `_WishEditDialog`
+StatefulWidget owning its controllers, add-only). **Tapping an existing tile no
+longer opens a dialog (0.2.80):** it folds open in place exactly like a home-list
+`TaskTile` — title/labels-and-quick-priority/description become editable `TextField`s/
+`LabelPickerField` right below the tile (`_WishTileState._buildExpandedFields`,
+toggled by `_expanded`), and the trailing row gains the "Send to Claude" robot button
+(see below) plus a collapse chevron while open. Free-text fields (title/description)
+save on blur (`Focus.onFocusChange`, like `TaskTile`); label/quick-priority taps save
+immediately — both call `widget.onFieldsChanged` (`_WishlistPageState._persistFieldEdit`),
+which also re-sorts/re-groups the page so a priority or release-tag change moves the
+item right away. Edits mutate the task in place so uid/project/recurrence fields
+survive. Per-item and export-all JSON export (`{export_version: 1, exported_at,
+wishlist_items: [...]}`) remain.
 
 **Copy to clipboard (0.1.236, moved behind the swipe panel 0.1.259):** "Copy" puts the
 plain-text item on the clipboard via `_WishlistPageState.clipboardText` — title, then
@@ -2399,8 +2568,10 @@ skipped entirely; "Next release" always renders (even at 0) since it carries the
 Every tile except a "Newly implemented" one carries a "Move to release group" icon
 button (`Icons.drive_file_move_outline`, a `PopupMenuButton`) offering Next release /
 Soon / Backlog with a checkmark on the current group — same shape as the sort menu.
-Since 0.1.259 it is the tile's *only* trailing control (see Swipes below): the swipe
-default only steps an item back one group, so an explicit picker has no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
+Since 0.1.259 it was the tile's only trailing control; since 0.2.80 a folded-open tile
+also shows the "Send to Claude" robot button and a collapse chevron alongside it (see
+above). The swipe default still only steps an item back one group, so the picker has
+no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
 native labels (§ Sync), tagging an item `release-next` in Todoist (by hand, or via
 "Propose for next" below) moves it here on the next sync, with no extra plumbing.
 
@@ -2446,6 +2617,26 @@ PR/approval step by design, matching the "bump, sync and build" workflow's
 own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
 itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
 does for any other `dev` push — no separate delivery mechanism was needed.
+
+**Send to Claude (0.2.74, moved to the tile's trailing row 0.2.80):** a robot
+icon button (`Icons.smart_toy_outlined`, tooltip "Send to Claude") in the
+tile's trailing row, shown only while the tile is folded open — the same
+"Send to Claude" action the main task list's expanded tile already offers
+(`_TaskTileState._sendToClaude` in `lib/ui/task_tile.dart`), so an idea can
+be built with AI directly without first routing it through the GitHub build
+queue above. It briefly lived in the options-swipe panel instead (0.2.74);
+that made it too easy to miss, so it moved next to "Move to release group"
+where expanding the tile already puts it in view. Fires the routine
+configured in Settings → Claude Routine (`Config.claudeRoutineUrl`/
+`claudeRoutineToken`) via `ClaudeRoutineService.fire` with
+`ClaudeRoutineService.buildPayload(item)` (title/description/note/label) as
+the `text` context, starting a real Claude Code cloud session; the icon
+swaps for a small spinner while in flight, and a snackbar confirms with an
+"Open" action (`url_launcher`, external application) once the fire call
+returns a session URL. Unlike "Build", this action carries no tagging/dedup
+state of its own — it's a one-shot fire-and-forget, so it can be pressed
+again freely. With no routine configured, or on any API failure (bad/expired
+token, network error), a snackbar explains why.
 
 **Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
 numbers in descriptions are auto-linkified by `LinkifiedText`
@@ -2841,6 +3032,9 @@ instance*: `_buildToolPage`'s `'worklist'` case returns
 `const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
 `HomePage` gained two optional constructor fields, `tagFilter`/`toolTitle` (both
 null for the regular home page):
+- `toolTitle` is the app-bar title — and, when the search feature is on (the app bar
+  is then the search field), the search field's hint instead of "Search tasks"
+  (0.2.99), so a tool instance always shows its name.
 - `_tasksForTab` folds `tagFilter` into its `where` predicate alongside search
   (`labelHasToken(task.label, tagFilter)`), but — like search — only when
   `applySearch` is true; the `applySearch: false` callers (`_saveTasks`'s
@@ -2859,8 +3053,15 @@ null for the regular home page):
 - Drag-reorder (`_reorderTask`/`_reorderTaskInSection`) already refused to run
   while a search query or a Home filter rule narrowed the tab (renumbering a
   subset would scramble the rest); the same guard, factored into a
-  `_tabNarrowed` getter, now also covers `tagFilter != null` — reordering is
-  simply off inside Worklist.
+  `_tabNarrowed` getter, now also covered `tagFilter != null` — reordering
+  simply off inside Worklist. That getter was since replaced by
+  `_tabNarrowedByFilters(pageIndex)` (see §Filtering rules below), which
+  compares the tab's filtered vs. unfiltered task count instead of checking
+  each condition (search/tagFilter/rules) for being merely *set* — Home's
+  non-empty default rule made the old getter true for nearly every install
+  even when nothing in the tab was actually hidden. Since 0.2.87 there is no
+  guard at all: `_reorderSliceOfTab` reorders the visible slice within its
+  own rank slots, leaving hidden tasks untouched (see §Filtering rules).
 - `_addTask` stamps `tagFilter` onto a task typed directly into a filtered
   instance's add row (`addLabelToken`), so it shows up immediately.
 - Two pieces of state are process-wide singletons the real home page owns —
@@ -2920,8 +3121,8 @@ list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
 `ViewFilterRules` view id — a filtered `HomePage` still applies
 `ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
 
-### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51)
-Tools ▸ MP3 Downloader (`lib/ui/mp3_downloader_page.dart`,
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56, schema-agnostic playlist-item search 0.2.57, lockupViewModel support 0.2.58)
+Tools ▸ MP3 Downloader — Best Music only since 0.2.98, see §10.6n (`lib/ui/mp3_downloader_page.dart`,
 `lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
 title to search, and save the video's audio. A pasted URL
 (`looksLikeYoutubeUrl`/`extractYoutubeVideoId` match `youtube.com/watch`,
@@ -3022,11 +3223,213 @@ at a stuck 0%. Everything also goes to `LogService` under the `MP3` source
 (App logs page): the search, the client chosen, byte counts, throughput, and
 every failure.
 
+#### Filename formatting and metadata tagging (0.2.54)
+
+`downloadMp3` no longer saves the raw YouTube title verbatim.
+`parseTrackTitle`/`formatTrackFileBaseName` (`lib/services/track_title.dart`)
+split the title on the first `Artist - Title` separator (en/em dash also
+match), falling back to the channel name (stripping a trailing `- Topic`,
+the suffix YouTube Music's auto-generated artist channels carry) as the
+artist when the title has none. Promotional annotations in `(...)`/`[...]`
+are stripped from both — but only when *every* word inside reduces to one
+from a curated filler list (`official`, `video`, `lyrics`, `hd`, `original`,
+`mix`, `remaster`, …), so "(Official Video)"/"(Lyrics)"/"(HD)" go while
+"(Live at Wembley)" or "(feat. Other Artist)" are left alone. The result is
+saved as `Artist - Title.<ext>`.
+
+An `.m4a` result (not `.webm` — Matroska/Opus tagging is a different format,
+not attempted) is then tagged in place by `Mp4MetadataWriter`
+(`lib/services/mp4_metadata_writer.dart`) with title, artist (also written
+as album artist), the source URL as a comment, the upload year
+(`Mp3SearchResult.uploadDate`, from `youtube_explode_dart`'s `Video.
+uploadDate`), and the video's thumbnail (`ThumbnailSet.highResUrl`, fetched
+best-effort) as cover art. This is real MP4 box surgery, not a transcode:
+it locates (or builds) `moov/udta/meta/ilst`, splices in the new atom, and —
+only if that changes `moov`'s size *and* `moov` sits before `mdat` in the
+file — patches every `stco`/`co64` chunk-offset table found inside `moov`
+by the size delta, since those offsets point at absolute byte positions in
+`mdat` that just moved. Getting this wrong would corrupt playable audio, so
+it is deliberately conservative: a fragmented file (`moof`/`sidx` present),
+more than one `mdat`, or an offset table that fails an internal consistency
+check aborts tagging entirely, and even a successful rewrite is written to a
+sibling `.tag.tmp` file and structurally re-validated before it replaces the
+original — a track missing metadata is fine, a corrupted one never ships.
+This is the pure-Dart alternative flagged as future work when ffmpeg was
+dropped in 0.2.49 (see above): no native encoder, no APK size cost.
+
+#### Downloads-list actions (0.2.54)
+
+Every row in `Mp3DownloadsPage` (queued, running, or finished) now also has
+an "Open original video" icon (`launchUrl` on
+`https://www.youtube.com/watch?v=<videoId>`, `LaunchMode.externalApplication`)
+and a "Share YouTube link" icon (`SharePlus.instance.share`, same pattern as
+Wishlist's share action), alongside the existing cancel/remove icon —
+`Mp3DownloadJob.videoId` was already stored, so no new persisted state was
+needed.
+
+#### Playlist import (0.2.54)
+
+Pasting (or sharing) a playlist link — `youtube.com/playlist?list=...`, or a
+video URL that also carries `&list=...` — instead of a single video or a
+search query is detected by `looksLikeYoutubePlaylistUrl`
+(`mp3_downloader_service.dart`), checked *before* `looksLikeYoutubeUrl` so a
+video-within-a-playlist link is treated as the playlist. It's a
+domain-anchored regex (`(youtube.com|youtu.be)/…[?&]list=…`) rather than
+`youtube_explode_dart`'s own `PlaylistId.parsePlaylistId`, which treats any
+short alphanumeric string as a "valid" bare playlist id and would misfire on
+an ordinary one-word search query.
+
+`Mp3DownloaderService.resolvePlaylist` fetches the playlist's title
+(`client.playlists.get`) and every video in it (`client.playlists.
+getVideos`, a `Stream<Video>` drained to a list, in playlist order), mapped
+to the same `Mp3SearchResult` shape search/resolve produce
+(`Mp3PlaylistInfo(title, tracks)`) so the rest of the pipeline doesn't need
+to know a track came from a playlist.
+
+**Fallback for `getVideos()` coming back empty (0.2.55).** Reported against
+a real, fully public 3-track playlist: it resolved a title ("MUZ_03") but
+zero tracks. `PlaylistClient.getVideos` (`youtube_explode_dart` 3.1.0)
+silently *skips* a playlist entry whose uploader channel id it can't parse
+off the page — it tries three JSON paths (`ownerText`/`shortBylineText` →
+`browseId`, two variants), and a playlist whose byline layout misses all
+three loses every single track this way, not just the odd one. When
+`getVideos()` returns empty, `resolvePlaylist` falls back to
+`fetchPlaylistVideoIdsFromPage` (`lib/services/playlist_video_ids.dart`):
+fetches the same playlist page HTML via a plain `yt_explode.
+YoutubeHttpClient`, extracts `ytInitialData` from its `<script>` tags the
+same way the library's own `YoutubePage` does (`var ytInitialData = ` /
+`window["ytInitialData"] =`, JSON-decoded), and walks the identical
+`contents.twoColumnBrowseResultsRenderer.tabs[]…playlistVideoListRenderer.
+contents` path `PlaylistPage._videoItems` uses — but only ever pulls
+`videoId` out of each `playlistVideoRenderer` (direct or
+`richItemRenderer`-wrapped), so it isn't tripped by an unparseable byline.
+Each id found is then resolved individually via the already-proven
+`client.videos.get`, skipping (and logging) any single video that fails
+rather than failing the whole playlist. Single page only — no
+`continuation` follow-up — so a playlist beyond YouTube's first batch (a
+few hundred entries) is only partially covered by the fallback; the normal
+`getVideos()` path already paginates and is tried first regardless.
+
+**A second, independent gap — and full logging (0.2.56).** The 0.2.55
+fallback alone still didn't fix the reported playlist. A separate reason
+`getVideos()` can come back empty: some playlists don't embed their video
+list in the initial HTML page's `ytInitialData` at all —
+`youtube_explode_dart`'s own `PlaylistPage.get()` already anticipates this
+("Needed for Mixes and YT Music playlists whose initial HTML page doesn't
+embed the video list") and internally retries via an innertube `browse`
+POST call, but that call's *outcome* isn't exposed through
+`PlaylistClient.get`/`getVideos`'s public API, so this can't just reuse it.
+`fetchPlaylistVideoIdsFromPage` now repeats that retry itself when the page
+parse alone finds nothing: `YoutubeHttpClient.sendPost('browse', {
+'browseId': 'VL<playlistId>'})` (`VL`-prefixing a playlist id is the
+standard way to address its video list as a "browse id" on YouTube's
+internal API — the same convention yt-dlp and other scrapers use), then
+runs the same `extractPlaylistVideoIdsFromData` walk against that response
+too (an initial, non-continuation `browse` response for a playlist has the
+same overall shape as the HTML-embedded data).
+
+Every step of resolving a playlist — `playlists.get()`'s metadata,
+`getVideos()`'s track count, entering the fallback, the page fetch and its
+byte count, ytInitialData found/not-found, items found, ids found, the
+browse-API attempt and its id count, and each individual video resolved or
+skipped — is now written to `LogService` under the `MP3` source (App Logs
+page, reachable from the drawer). Both gaps are easy to reproduce from a
+bug report but were hard to diagnose blind with no live YouTube access to
+test against.
+
+**The actual root cause, found from those logs (0.2.57).** The 0.2.56
+build still came back with zero tracks on the reported playlist — and the
+new logs showed exactly why: `playlists.get()` confirmed the playlist
+genuinely has videos (`videoCount=3`, a real title), the page fetch
+succeeded (840 KB), but both the page-parse *and* the browse-API attempt
+hit "tabs found but no playlistVideoListRenderer inside". That path —
+`contents.twoColumnBrowseResultsRenderer.tabs[].tabRenderer.content.
+sectionListRenderer.contents[].itemSectionRenderer.contents[].
+playlistVideoListRenderer.contents` — is the *exact same hardcoded path*
+`youtube_explode_dart`'s own `PlaylistPage._videoItems` getter uses, which
+is exactly why `getVideos()` returned nothing in the first place: YouTube's
+current response no longer nests the video list where that path (0.2.55's
+fallback included, since it copied the same path for maximum fidelity)
+expects it. Not a filter, not a missing byline — the container structure
+itself had moved.
+
+`extractPlaylistVideoIdsFromData` (now in `_findPlaylistVideoIds`)
+no longer walks any hardcoded path at all: it recursively searches the
+*entire* decoded response for a `playlistVideoRenderer` (direct, or
+wrapped in `richItemRenderer.content`) wherever it lives, in document
+order (a `jsonDecode`d object preserves source key/array order, so a
+depth-first walk visits entries in playlist order without needing to know
+the surrounding containers). `playlistVideoRenderer` is otherwise a
+stable, specific type name — it only ever represents a video in a
+playlist's own listing — so this is robust to exactly the kind of path
+drift that broke both the library and the exact-path fallback, without
+needing to know or guess the current container structure. If even this
+finds nothing, it logs a census of every key anywhere in the response
+ending in `Renderer` or `ViewModel` — e.g. if YouTube has since moved
+playlist items to some other type name entirely, this names it directly
+instead of costing another guess-and-report round trip.
+
+**And that census immediately paid off (0.2.58).** The 0.2.57 build still
+found nothing on the reported playlist — but this time the census named
+the answer directly: `playlistVideoRenderer`/`playlistVideoListRenderer`
+were entirely absent from the response, while `lockupViewModel`,
+`lockupMetadataViewModel` and `contentMetadataViewModel` were all present.
+This playlist's page has migrated to YouTube's newer unified "lockup"
+component system (the same one search results and related videos have
+been moving to), which represents a playlist entry as a `lockupViewModel`
+with `contentId` (the video id) and a `contentType` field — a `lockupViewModel`
+also represents playlists, channels and podcast episodes elsewhere on
+YouTube, so `_findPlaylistVideoIds` only trusts `contentId` as a video id
+when `contentType` names a video (a substring check for `VIDEO`, since the
+exact enum string isn't confirmed and a substring match is robust to any
+suffix variant). It now recognises both the older `playlistVideoRenderer`
+shape and this one, in the same single recursive pass. No guessing was
+needed for this one specifically *because* the 0.2.57 census logged every
+candidate type name up front — validating that adding it was worth doing
+even though it added no fix of its own that round.
+
+`Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
+`picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"
+bulk-select row, and a "Download N" button that enqueues whatever is
+checked, one `Mp3DownloadManager.enqueue` call per track, then resets to
+idle. Before showing the list, it asks for (or reuses) the download folder,
+works out which folder(s) to check for tracks already downloaded via
+`compareFoldersFor(folder, configuredCompareFolder: Config.mp3CompareFolder)`,
+and calls `existingTrackBaseNamesAcross(folders)` — a recursive,
+case-insensitive scan of every `.m4a`/`.webm`/`.mp3` file already under any
+of those folders or their subfolders, matched by filename (without
+extension) rather than video id, since a pre-tagging download carries no
+reliable back-reference to its source video. Any playlist track whose
+would-be filename (`parseTrackTitle(...).fileBaseName`) is already in that
+set starts **unchecked** (shown as "Already downloaded", not hidden) so
+re-pasting a partially-downloaded list only offers to fetch what's missing,
+while still leaving a re-download one tap away.
+
+`compareFoldersFor` always includes the download folder itself, plus
+either `Config.mp3CompareFolder` (an explicit override) when set, or —
+auto-detected, no permission prompt needed since it's just an `exists()`
+check — Android's standard shared Music folder
+(`defaultPhoneMusicFolder`, `/storage/emulated/0/Music`) when that folder
+is actually there. This matters because `Config.mp3DownloadFolder` is
+picked for *writability* (often the app's own sandboxed folder when the
+user hasn't granted "All files access" — see below), which is rarely where
+a phone's real music library lives; without also checking the phone's
+Music folder, a track already sitting there (synced from a PC, or
+downloaded before scoped storage pushed the save location into the
+sandbox) would be re-offered as new. When auto-detection guesses wrong —
+the library lives somewhere non-standard, or scoped storage hides the
+standard folder from a plain path check — Settings ▸ MP3 Downloader's
+"Check for existing tracks in" tile lets the user point it at the right
+folder directly.
+
 The save location is asked for **once** — `Config.mp3DownloadFolder`, set on
 the first download via `file_selector`'s `getDirectoryPath` (defaulting to
 `getDownloadsDirectory()`) and reused silently afterwards. It is editable at
-Settings ▸ MP3 Downloader (section index 15, gated on the `mp3_downloader`
-feature switch), which can also forget it so the next download asks again.
+Settings ▸ MP3 Downloader (BestToDo section index 15 until 0.2.98, §10.6n; gated on the
+`mp3_downloader` feature switch — Best Music's own settings since), which can also forget it so the next download asks again.
+The same section's "Check for existing tracks in" tile sets
+`Config.mp3CompareFolder` (empty = automatic, as above) and can be cleared
+back to automatic detection.
 `youtube_explode_dart`'s scraping doesn't work from a browser sandbox, so
 `Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page to a "not
 supported on this platform" message there; every other platform
@@ -3044,16 +3447,1305 @@ tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and in
 `Config.featureKeys`/`Config.startToolOptions` (feature switch + default
 start page).
 
+### 10.6e Music Player (0.2.61)
+
+Tools ▸ Music Player — Best Music only since 0.2.98, see §10.6n (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`,
+`lib/ui/queue_page.dart`):
+a full local MP3/audio player with background playback, home-screen widgets, notification
+and lock-screen controls, an M3U/M3U8 playlist import (Samsung Music's share-out format),
+and a "Tinder for songs" swipe gesture on Now Playing — swipe up favorites the current
+track, swipe down marks it disliked and skips it, so disliked tracks come up far less (not
+never) in future shuffles. Separate from and does not replace §10.6d's MP3 Downloader, which
+only fetches audio; the two default to sharing a folder — opening Music Player with
+`Config.musicFolder` unset auto-adopts `Config.mp3DownloadFolder` when that is already set
+(and persists the choice), since downloaded tracks are the common case, but the two settings
+are fully independent once either is picked explicitly.
+
+**Library scanning** (`lib/services/music_library_service.dart`, singleton
+`MusicLibraryService.instance`, `ValueNotifier<List<Track>> tracks`): recursively scans
+`Config.musicFolder` for `mp3`/`m4a`/`flac`/`wav`/`ogg`/`aac`/`wma` files via `dart:io`
+`Directory.list(recursive: true)` — not `on_audio_query`/`MediaStore`, so it works on any
+folder the user picks, not just the device's indexed media. `Config.musicExcludedSubfolders`
+(relative, forward-slash paths) excludes a subfolder and everything nested under it
+(`isExcludedRelativeDir`); Settings → Music Player lists every subfolder found so far as a
+checkbox (`MusicLibraryService.listSubfolders`). Each mp3's ID3 tags are read best-effort via
+the pure-Dart `id3_codec` package — only the file's first 1 MiB is read (`_id3ReadCap`, covers
+the common ID3v2-at-the-front case without reading every file whole for a folder that could
+hold thousands of tracks); a file with no/unreadable tag, or any non-mp3 format, falls back to
+its filename as the title. Results cache to `music_library.json` (same
+singleton/`ValueNotifier`/`flush: true`/swallowed-errors pattern as `ProjectService`, §4.2) so
+the library shows up instantly on the next launch; a failed or partial rescan (folder deleted,
+permission revoked) leaves the previous cache in place rather than clearing it (0.2.68 —
+`rescan` no longer swallows the failure silently: every step — permission status, folder
+existence, files seen/skipped/kept, any thrown error — is written to `LogService` under source
+`Music`, viewable in App Logs, since a scan that quietly finds nothing was previously
+undiagnosable from the UI). Rescans are manual (Music Player's refresh button, or automatically
+once on first open when the folder is set but the cache is empty) — there is no filesystem
+watcher. All three folder pickers (Music Player's own, and Settings → Music Player in both
+BestToDo and Best Music) call `MusicLibraryService.ensureFolderPermission()` before opening the
+picker (0.2.68): on Android this checks/requests `MANAGE_EXTERNAL_STORAGE`, the same "All files
+access" grant §10.6d's MP3 Downloader already prompts for — the music folder pick flow was the
+one place in the app that scanned an arbitrary folder without ever asking for it, so a folder
+picked before granting it anywhere else scanned as empty with no error shown.
+
+`MusicPlayerService.ensurePermissions` (0.2.69, called from both `main.dart` and
+`main_music.dart` shortly after first frame) covers the case where the folder was configured
+before the permission existed (e.g. restored from a backup) rather than through the picker:
+Best Music requests `MANAGE_EXTERNAL_STORAGE` unconditionally (`eager: true` — local playback is
+its whole purpose, so it asks up front like other music apps); BestToDo only asks once
+`Config.musicFolder` is already set, so the far larger group of BestToDo users who never open
+Music Player aren't interrupted at launch for a permission a tool they don't use needs. Either
+way it also requests notification access (for the playback controls notification) and, if
+`MANAGE_EXTERNAL_STORAGE` had just been denied and is now granted, immediately re-runs `rescan`
+rather than leaving the already-configured folder empty until the user notices and retriggers
+one themselves.
+
+**Playback engine** (`lib/services/music_audio_handler.dart`'s `MusicAudioHandler`, a
+`BaseAudioHandler` from `audio_service` wrapping a single `just_audio` `AudioPlayer`):
+one track is loaded at a time via `setAudioSource` rather than a gapless
+`ConcatenatingAudioSource` — simpler to keep in sync with a queue that swipe actions mutate
+mid-playback, at the cost of a small gap between tracks. The queue
+(`List<Track> _queue`/`_queueIndex`) advances on `ProcessingState.completed` or a manual
+skip; running off the end reshuffles the whole scanned library fresh
+(`MusicPlaylistService.weightedShuffle`) rather than stopping, so playback continues
+indefinitely, radio-style. `MusicPlayerService` (`lib/services/music_player_service.dart`) is
+the facade the UI actually calls (`playLibraryShuffled`, `playQueue(tracks, startIndex:)`) and
+owns startup: `AudioService.init` registers the handler with the OS notification/lock-screen
+integration on Android/iOS/macOS; on a platform `audio_service` doesn't cover for this app
+(Windows, used for tests/screenshots per the top of this doc) it falls back to a bare
+`MusicAudioHandler()` — playback still works through `just_audio` directly, just without the
+system media surfaces. `favoriteCurrent()`/`dislikeCurrentAndSkip()` on the handler are what
+Now Playing's swipe gestures and the notification/widget controls ultimately call.
+`just_audio`'s `playbackEventStream` only fires on discrete state changes (buffering, track
+load, pause/play), not once a second, so `MusicAudioHandler` also runs a one-second
+`Timer.periodic` (started/stopped off `playingStream`) that re-broadcasts `playbackState` while
+playing — otherwise Now Playing's progress bar/position text sits frozen between events instead
+of ticking (0.2.63). It also listens to `durationStream` and patches the current `MediaItem`'s
+`duration` once the player itself reports it, since a track's tag-derived `durationMs` (from
+library scanning) isn't reliably populated and was leaving the progress bar's total time at
+0:00.
+
+**Favorites, "Don't really like" and the weighted shuffle**
+(`lib/services/music_playlist_service.dart`, singleton `MusicPlaylistService.instance`,
+persisted to `music_playlists.json`): two fixed system playlists
+(`MusicPlaylist.favoritesId`/`dislikedId`) plus any number of user/imported ones
+(`MusicPlaylist` model: id/name/`trackIds`/`isSystem`). `weightedShuffle` builds a shuffled
+play order using Efraimidis–Spirakis weighted random sampling without replacement: each track
+gets a key of `random()^(1/weight)` and the result sorts descending by key — favorited tracks
+(weight 3.0) tend to land earlier, disliked tracks (weight 0.05, a 60x ratio) tend to land much
+later, ordinary tracks (weight 1.0) fall in between, and every track can still appear (nothing
+is ever hard-excluded, since a mood can change). `toggleFavorite`/`markDisliked` are mutually
+exclusive on a track (favoriting clears a dislike and vice versa).
+
+**Shuffle toggle and queue reordering** (0.2.65 — `MusicAudioHandler.toggleShuffle`/
+`reorderQueue`, `lib/ui/queue_page.dart`'s `QueuePage`): a shuffle icon button in Now
+Playing's bottom tools row (`ValueNotifier<bool> shuffleEnabled`) shuffles only the not-yet-played
+tail of `_queue`, leaving playback history and the current track's position untouched;
+toggling it back off restores the tail's pre-shuffle order (captured in `_preShuffleOrder`
+when shuffle turns on). A "Queue" icon button next to it opens `QueuePage`, a
+`ReorderableListView.builder` (same drag-handle pattern as the task list, `home_page.dart`'s
+`_reorderTask`) over `MusicAudioHandler.currentQueueTracks`; dragging calls `reorderQueue`,
+which moves the track and keeps `_queueIndex` pointing at whichever track is actually
+playing even if its position shifted, then clears `_preShuffleOrder` (a manual drag is a
+new baseline order, not something a later shuffle-off should undo). This is separate from
+the existing `weightedShuffle`-driven "radio" reshuffle that happens when the queue runs
+off the end (**Playback engine**, above) — that automatic reshuffle from the full library is
+unaffected by the shuffle toggle.
+
+**Now Playing swipe gesture** (`lib/ui/now_playing_page.dart`): a `GestureDetector` on the
+artwork/title column tracks vertical drag distance and velocity; crossing a distance or
+velocity threshold upward calls `favoriteCurrent()`, downward calls
+`dislikeCurrentAndSkip()` (marks disliked, then immediately skips) — both also available as
+plain buttons in the transport row for a non-swipe fallback. A brief toast-style label flashes
+to confirm which action fired.
+
+**M3U/M3U8 import** (`lib/services/m3u_playlist_service.dart`): Samsung Music has no public
+API or an easily-parsed database without root, but it (like most music apps) can export/share
+a playlist as `.m3u`/`.m3u8`. `M3uPlaylistService.parseEntries` strips `#EXT...`
+directives/comments/blank lines and decodes `file://` URIs; `importFile` matches each
+remaining entry against the scanned library first by exact normalized path, then by file
+basename (case/extension-insensitive — the common case, since a playlist made on another
+device/app rarely carries this app's exact folder path), and reports what didn't match rather
+than silently dropping it. A match creates an ordinary (non-system) `MusicPlaylist`.
+
+**Self-hosted server prep** (`lib/services/subsonic_client.dart`'s `SubsonicClient`,
+`lib/models/track.dart`'s `TrackSource.subsonic`): a small Subsonic/OpenSubsonic API client
+(Navidrome, Airsonic, Gonic, … — the most widely supported self-hosted music protocol) for
+when a server is configured in Settings → Music Player (`Config.subsonicServerUrl/Username/
+Password`). Auth follows the Subsonic token scheme — `token = md5(password + fresh salt)` sent
+with every request, so the plaintext password never goes on the wire (it is still stored in
+plaintext on-device, same caveat as `Config.todoistApiToken`). Implemented so far: `ping()`
+(Settings' "Test connection"), `search()` (`search3`, full-text), and `streamUri(songId)` (the
+URL `MusicAudioHandler._resolveUri` streams a `TrackSource.subsonic` track from). A remote
+track is just another `Track` in the same queue/favorites/shuffle machinery as a local one —
+there is no separate "remote mode". Not yet wired into a server-browsing UI (artists/albums);
+that is the natural next step once a server is actually connected.
+
+**Home-screen widgets and notification/lock screen:** see §8 for the two widgets
+(`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`) and §9 for the `audio_service`
+manifest wiring. The system media notification and lock-screen controls (previous, play/pause,
+next — no Stop button, by request) come from `audio_service` itself once `AudioService.init` registers the handler — no
+custom notification code needed, unlike the alarm subsystem's hand-built full-screen
+notification (§5, §6).
+
+**YouTube fallback in search (Best Music 0.2.93 / BestToDo 0.2.92).** When the library search (`_MusicSearchDelegate`)
+finds no track for a non-empty query, it shows `YoutubeSearchFallback` (not on web, where
+`Mp3DownloaderService.isSupported` is false), which searches YouTube **automatically**
+(Best Music 0.2.98; before that it waited for a "Search on YouTube" tap) once typing pauses
+for `YoutubeSearchFallback.debounce` (600 ms — the widget is keyed by the query, so each
+keystroke disposes the old one and cancels its timer), via
+`Mp3DownloaderService.search(q, limit: 10)`. Results sit under a "Not in your library" banner
+card ("Results from YouTube, not songs on your phone...", spinner while searching); each row
+has a video icon, a "YouTube · channel · duration" subtitle and a cloud-download icon, so it
+can't be mistaken for a local song. Errors show the real message plus "Try again". Tapping a result goes through `SpeakerPlayGuard.confirmPlay`, then
+`MusicYoutubeFallback.playAndDownload` (`lib/services/music_youtube_fallback.dart`) does two
+things at once: (1) silently queues the video on `Mp3DownloadManager` — no folder prompt; the
+folder is `Config.mp3DownloadFolder` if set, else `Config.musicFolder` if writable, else
+`defaultDownloadFolder()`; skipped if a job for the same video id is already active or
+completed with its file still present — so `MusicDownloadLibrarySync` rescans it into the
+library when it lands there; (2) plays a one-track queue of `Track.youtube(videoId, ...)`
+(`TrackSource.youtube`, id `youtube:<videoId>`, `remoteId` = video id, `artUrl` = the
+`hqdefault.jpg` thumbnail, title/artist from
+`parseTrackTitle` so it matches the downloaded file's tags), then opens Now Playing.
+The YouTube track plays through the same `YoutubeAudioSource` path the Subscriptions feed
+uses (thumbnail as cover art), so a restored "last played" YouTube track still works after a
+restart.
+
+**YouTube search goes through the JSON API (Best Music 0.2.95 / BestToDo 0.2.93).** `Mp3DownloaderService.search` (used by
+the search fallback above and the MP3 Downloader) first calls `YoutubeSearchApi.search`
+(`lib/services/youtube_search_api.dart`): a POST to `youtube.com/youtubei/v1/search` with a WEB
+client context and the "videos only" `params` (`EgIQAQ==`), parsing every `videoRenderer` in
+page order (title, channel, `lengthText` clock → duration, view count, "N years ago" →
+approximate upload date for the year tag). Only if that fails or returns nothing does it fall
+back to `youtube_explode_dart`'s `search.search`, which scrapes the HTML results page with the
+legacy `CONSENT=YES+cb` cookie — in the EU that page can be Google's consent interstitial, so
+every search failed on a working connection (reported as "YouTube search failed. Check your
+connection"). A failure now throws `Mp3DownloadException('YouTube search failed: <cause>')`
+and the search fallback shows that message instead of a generic connection hint.
+
+**Settings → Music Player** (removed from BestToDo in 0.2.98, §10.6n; was `lib/ui/settings_page.dart`, section 16): folder picker (shares
+the `file_selector` `getDirectoryPath` pattern §4.4/§10.6d use), an "Excluded subfolders"
+dialog populated from `MusicLibraryService.listSubfolders`, and the Subsonic server
+URL/username/password fields with Save/Test connection. `Config.featureKeys`/
+`startToolOptions` gained a `music_player` entry (`_ToolEntry` in `home_page.dart`, case in
+`_buildToolPage`), same wiring pattern as every other tool.
+
+**Known gaps, honestly stated:** this shipped from a single development session without
+access to a physical Android device, an emulator, a real Subsonic server, or Samsung Music
+itself — `flutter analyze`/`flutter test` are clean and the pure-Dart logic (library scan,
+exclusions, weighted shuffle, M3U parsing/matching, Subsonic URL/auth shape) is unit-tested
+(`test/music/`), but the native Android side (the two widgets' `RemoteViews`, the
+`MediaButtonReceiver` broadcast wiring, the actual system notification/lock-screen chrome, and
+playback itself) has not been run on-device and needs manual verification on a real phone
+before relying on it. The M3U importer is built against the general-purpose M3U/M3U8 spec,
+not a Samsung Music export sample, on the assumption documented in this section (a plain path
+list, possibly `file://`, matched by basename when the exact path doesn't line up) — worth
+confirming against a real Samsung Music export.
+
+### 10.6f Best Music — a second app from the same codebase (0.2.66, drawer + Settings + About 0.2.67)
+`lib/main_music.dart` is a second entry point, built as its own Android app rather than a
+BestToDo tool: no task list, alarms, sync, or any other to-do feature — just §10.6e's Music
+Player as the home page, with a proper drawer menu (MP3 Downloader, Wishlist, Settings,
+Changelog, Startup Times, App Logs, About — see §10.6h for Wishlist) mirroring BestToDo's own
+home page. Installs side by side with
+BestToDo on the same device (separate `applicationId`, so Android sandboxes its storage
+independently — no data collision with BestToDo's own `Config`/library files).
+
+**Build**: `android/app/build.gradle.kts` defines two product flavors under a single `app`
+flavor dimension — `todo` (BestToDo, `applicationId` unchanged, still the default: `flutter
+build apk` now requires an explicit `--flavor`, so `tool/build.sh` injects `--flavor todo`
+when a caller doesn't pass one) and `music` (`applicationId com.mfficiency.best_music`).
+`sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass -File
+tool\build.ps1 music-apk --release`) is shorthand for `flutter build apk --release --flavor
+music -t lib/main_music.dart`; Gradle's `createVersioned<Flavor>ReleaseApk` task — **one task
+per flavor**, each finalizing only its own `assemble<Flavor>Release` — renames that flavor's
+output to `best_todo_<version>.apk` or `best_music_<version>.apk`, matching what
+`tool/stage_local_release.dart --prefix
+best_music` stages into `github_releases/` alongside BestToDo's own APKs — both apps' last two
+builds live in that one folder, pruned independently by prefix (`namesToPrune` is prefix-blind;
+`main()` filters `present` to the caller's own prefix before pruning, since a prefix-blind prune
+could otherwise delete the wrong app's build purely by version-number coincidence — see §10.6i
+for why that's true even though the two apps no longer share one version).
+
+**Branding, not a fork**: app label (`res/values/strings.xml` `app_name`, overridden per flavor
+in `src/music/res/values/strings.xml`) and Best Music's icon set are the flavor-specific
+Android resources (the music flavor's own manifest additions — share filter, widgets — aside).
+**Icon (Best Music 0.3.13)**: a black eighth note with a motion blur trailing left, on white
+(the user's artwork; generated from one 1254 px source by a one-off PIL script — ink alpha =
+(250 − luminance) scaled to 0–255, background forced to pure white):
+`mipmap-*/ic_launcher.png` (48–192 px full tiles, legacy launchers);
+`mipmap-anydpi-v26/ic_launcher.xml` adaptive icon — `@color/ic_launcher_background` (#FFFFFF,
+`src/music/res/values/colors.xml`), foreground `mipmap-*/ic_launcher_foreground.png`
+(108–432 px, transparent, the source square scaled to 76 of the 108 dp so the note keeps its
+framing inside the 66 dp safe zone; also the Android 12+ splash icon) and the same file as the
+`<monochrome>` layer for Android 13 themed icons; `drawable-{m..xxx}hdpi/ic_stat_music_note.png`
+(24–96 px white-on-transparent silhouette cropped to the note) overriding main's vector
+`ic_stat_music_note` for the media and background-work notifications; and the Flutter asset
+`assets/branding/best_music_icon.png` (512 px) shown by `BestMusicLogo`
+(`lib/ui/best_music_logo.dart`, rounded tile) in the drawer header (40 px, beside "Best Music
+vX") and at the top of the About page (96 px). BestToDo keeps its own icons; everything else (permissions, receivers/services, signing)
+stays the single shared manifest, unused permissions in the Best Music APK included — a
+deliberate simplification since it is sideloaded, not Play-Store-distributed.
+
+**In-app updates**: `UpdateService` gained per-app instance config (`appDisplayName`,
+`apkPrefix`, via `UpdateService.forApp(...)`; `UpdateService.instance` stays BestToDo's own
+`best_todo`/`BestToDo` default) so each app's folder/release lookup only ever considers its own
+prefix — a bare version-number regex over the whole `github_releases/` listing would otherwise
+happily match the other app's file name too. A non-default app's `checkReleases` skips the
+repo-wide "latest release" fallback entirely (GitHub's `releases/latest` endpoint isn't
+per-app), reporting no update rather than risking BestToDo's release.
+
+**The drawer/menu (0.2.67)**: `MusicPlayerPage` gained a `standalone` flag (true only from
+`main_music.dart`). Standalone, its `Scaffold` carries `key: homeScaffoldKey` and a real
+`Drawer` — the same key `home_page.dart` uses for its own — so it is the Best Music app's home
+page in the same sense BestToDo's home page is: `buildSubpageAppBar`'s "Menu" button (used by
+every page the drawer pushes: MP3 Downloader, Wishlist, Settings, Changelog, Startup Times, App
+Logs, About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
+root route it has no "Back to Home" to offer) gets Flutter's automatic drawer-hamburger button
+for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a
+standalone settings page — the music folder picker and excluded-subfolders dialog are
+reimplemented from BestToDo's Settings → Music Player section (`settings_page.dart`) since that
+page is one monolithic widget tightly coupled to BestToDo's full settings list. Since Best
+Music 0.3.3 it is laid out like BestToDo's Settings: a pinned row of `ChoiceChip` section
+buttons (tap = open that section and scroll to it; the chip of the section at the top of the
+viewport is highlighted and kept on screen), collapsible `Card` sections that all start
+closed (header tap toggles; tooltip "Expand <title>"/"Collapse <title>") and a Collapse
+all/Expand all button. Sections (`MusicSettingsSection`): Library (music folder, forget,
+excluded subfolders), Playback (ask before playing out loud, music volume, sleep timer),
+Appearance (dark mode), Subscriptions feed and SponsorBlock (§10.6m), Updates (downloads
+folder). `initialSection` opens one section on arrival; the body is a
+`SingleChildScrollView` so every section's context exists for `Scrollable.ensureVisible`.
+`lib/ui/music_about_page.dart` mirrors `AboutPage` (Best Music branding + an
+`UpdateService.forApp` instance, exposed as `MusicAboutPage.updateService` for tests) — the
+`UpdateSection` widget (`about_page.dart`, made public and given optional `service`/`appName`
+params for this) is shared between the two About pages rather than duplicated. Reusable as-is,
+unmodified: `ChangelogPage` (pure CHANGELOG.md rendering, no BestToDo-coupled service),
+`StartupTimesPage` (`StartupTimeService.start()`/`.record()` added to `main_music.dart`,
+mirroring `main.dart`, so it has real data) and `AppLogsPage` (its Sync/Todoist tabs just stay
+empty for Best Music, which never touches those services — a known, harmless simplification
+rather than forking the page to hide them).
+
+**CI**: `.github/workflows/build-apk.yml`'s `build_music_apk` job builds the `music` flavor on
+every push to main/staging/dev, uploads it as a workflow artifact, and — mirroring what a local
+`sh tool/build.sh music-apk --release` does — stages it into `github_releases/` (`--prefix
+best_music`) and commits+pushes (rebase-and-retry against the `build` job's own same-branch
+push, same pattern `screenshot_changelog.yml` uses). Deliberately does *not* also publish to a
+GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateService.checkReleases`'s
+doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
+this repo — the folder stays each app's only update-check source.
+
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74, CSV bulk metadata export/import 0.2.77)
+**Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
+(`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
+of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
+minimal-JSON convention as the rest of the model). `Track` stays immutable (`final` fields); a
+new `copyWith` is how the library scan/audio handler update just the fields that changed.
+`dateAdded`/`playCount` are scan-preserved, not scan-derived: `MusicLibraryService.rescan()`
+merges each freshly-scanned `Track` with the previous library entry of the same `id` (falling
+back to `DateTime.now()`/`0` for a track seen for the first time) — a rescan refreshes tags, it
+must never reset "when was this added" or "how many times has this been played".
+
+**Metadata extraction moved to `lib/services/music_metadata_extractor.dart`** — pure Dart (only
+`dart:typed_data` + `package:id3_codec`, no Flutter import), decoding `TIT2`/`TPE1`/`TALB` (as
+before) plus `TCON` (genre, stripping an old ID3v1 `"(17)Rock"`-style numeric-code wrapper down
+to the trailing name) and `TDRC`/`TYER`/`TDOR` (year, first 4-digit run). `MusicLibraryService`
+calls this from `_buildTrack` instead of decoding tags itself; still mp3-only, still capped to
+the first `id3ReadCap` (1 MiB) bytes — m4a/flac/etc. still fall back to filename-as-title with
+no metadata, unchanged from §10.6e. Never throws — an unreadable/absent tag yields an
+all-null `ExtractedTags`, same fallback-to-filename behavior as before.
+
+**`tool/scan_music_metadata.dart`** — a standalone `dart run` script (no Flutter engine, no
+`flutter test` harness) sharing that same extractor module, so it reports exactly what the app
+itself would see. Walks a folder recursively and prints (or `--out file.json` writes) a JSON
+array of `{path, title, artist?, album?, genre?, year?}` per supported audio file, plus a
+scanned/tagged-count summary on stderr. For sanity-checking a whole collection's metadata
+coverage (which files actually have a readable genre/year) before relying on it for rule
+playlists — independent of the app, the music folder setting, or a device.
+
+**Play count**: `MusicLibraryService.incrementPlayCount(trackId)` bumps and persists one
+track's count. Called from `MusicAudioHandler`'s `processingStateStream` listener only on
+`ja.ProcessingState.completed` (a track that played to the end) — a manual `skipToNext`/
+`skipToPrevious` never reaches that stream state, so skipping doesn't count as a play.
+
+**Smart (computed) playlists** — `MusicPlaylist` gained a `kind` (`PlaylistKind`: `list` — the
+existing stored-`trackIds` behavior, now the explicit default; `lastAdded`; `mostPlayed`; `rule`)
+plus `genreFilter` (scopes `mostPlayed`) and `ruleSet` (drives `rule`), all JSON round-tripped.
+`MusicPlaylistService.smartPlaylists` computes "Last Added" and "Most Played" (overall, plus one
+per distinct `Track.genre` present in the library) fresh from `MusicLibraryService.instance.tracks`
+on every read — never persisted, never deletable, empty entirely when the library itself is
+empty. Both cap at `smartPlaylistLimit` (50) tracks. `MusicPlaylistService.resolvedTracks(playlist)`
+is the one place that turns any `MusicPlaylist` (whatever its `kind`) into an actual `List<Track>`
+— `MusicPlaylistDetailPage`/the Playlists tab's track-count subtitle both go through it instead of
+reading `trackIds` directly, so they work uniformly across stored and computed playlists.
+
+**Rule-based ("smart" in the iTunes/Plex sense) playlists** — `lib/models/playlist_rule.dart`:
+`RuleCondition` (a `RuleField` — title/artist/album/genre/year — a `RuleOperator`, and a
+`values` list) plus `PlaylistRuleSet` (a `RuleCombinator.all`/`any` over a list of conditions).
+Deliberately a **flat** model, not a nested AND/OR/NOT expression tree: NOT lives per-condition
+(`notEquals`/`notContains`/`notInList`), OR lives inside one `inList` condition's value list
+("Artist A or Artist B"), and AND is `RuleCombinator.all` across conditions ("genre X and
+released last year, excluding Artist C" is three conditions ANDed together). This covers every
+case actually asked for with a UI and evaluator an order of magnitude simpler than a real
+boolean-tree editor, at the cost of not supporting an arbitrary nested expression (e.g. "(A or B)
+and not (C and D)") — acceptable for a personal playlist-building tool. `year` is the only
+numeric field (`greaterOrEqual`/`lessOrEqual` besides the text operators); an empty rule set
+matches nothing (not "everything") so a freshly created empty rule playlist reads as empty
+rather than the whole library. `lib/ui/rule_playlist_editor_page.dart` is the builder: a name
+field, an all/any selector, and a dynamic list of field/operator/value rows (comma-separated
+values for `inList`/`notInList`) — reachable from the Playlists tab's "New rule playlist" row,
+or an existing rule playlist's edit icon (`MusicPlaylistService.createRulePlaylist`/
+`updateRulePlaylist`). Rule playlists are ordinary (non-system) playlists — deletable like any
+hand-built one.
+
+**Best Music's own background update poll**: `AutoUpdateChecker.start`/`checkOnce` gained an
+optional `service` parameter (defaults to `UpdateService.instance`, so BestToDo's own wiring in
+`main.dart` is unchanged) so the same checker class can drive a second app's update instance.
+`main_music.dart`'s `BestMusicApp` became a `StatefulWidget` that starts it (Android only,
+pointed at `MusicAboutPage.updateService`) in `initState`, showing the same "New version
+available" dialog (`showUpdateAvailableDialog`, removed in 0.2.98 — updates now install with no
+dialog, see §11) and background download
+(`downloadUpdateInBackground`) BestToDo's own poll uses, via a dedicated `musicNavigatorKey`
+(mirrors `appNavigatorKey`) since there is no `BuildContext` on hand outside the widget tree.
+Best Music has no Settings toggle for this yet (unlike BestToDo's "Automatically check for
+updates" switch) — it simply always polls; the manual "Check for updates" button on
+`MusicAboutPage` (§10.6f) is unaffected either way.
+
+**Hand-built playlists (0.2.71)** — the plain, add-songs-yourself kind Samsung Music and every
+other player offer, previously only reachable via M3U import: the Playlists tab's "New playlist"
+row prompts for a name (`promptPlaylistName`/`_PlaylistNameDialog` in `music_player_page.dart` —
+its own `StatefulWidget` owning the `TextEditingController`, per the "never dispose right after
+`showDialog` returns" convention) and creates an empty `PlaylistKind.list` playlist via the
+existing `MusicPlaylistService.createPlaylist`. Every song row (`TrackListView`, shared by the
+Library tab and every playlist detail page) gained an "Add to playlist" button
+(`showAddToPlaylistSheet`) opening a bottom sheet: a `CheckboxListTile` per hand-built,
+non-system playlist (`kind == list && !isSystem` — this excludes Favorites/"Don't really like"
+and every smart/rule playlist, which aren't a plain track list to add to) checked when the track
+is already in it, toggling `addTo`/`removeFrom` immediately on tap, plus a "New playlist" row at
+the top that creates one pre-filled with the current track without leaving the sheet. Removing a
+song again happens on the playlist itself: `MusicPlaylistDetailPage` now passes `TrackListView`
+an `onRemove` callback (a "Remove from playlist" icon per row) only when the playlist being
+viewed is itself a hand-built, non-system one — Favorites/disliked stay swipe-gesture-only, and a
+smart/rule playlist's tracks aren't stored to remove from in the first place.
+
+**In-app metadata scan + editor (0.2.74)** — `Track` gained `metadataEdited` (`bool`, default
+false, omitted from JSON when false). `MusicLibraryService.rescan` now takes an optional
+`onTrackScanned(int scanned, Track track)` callback, fired once per supported file found (with
+that file's already-merged final `Track` — dateAdded/playCount preserved as before, and, new
+here, its title/artist/album/genre/year preserved too when the previous entry had
+`metadataEdited: true`, instead of being overwritten by a fresh — possibly still empty — tag
+read); the per-file merge/callback logic that used to run as a separate pass after the whole
+folder was walked was folded into the main scan loop so the callback sees final values without a
+second pass. `MusicLibraryService.updateTrackMetadata(trackId, {title, artist, album, genre,
+year})` sets those fields to exactly the given values (required, not merged via `copyWith`'s
+`?? this.field` pattern — an editor needs to be able to clear a field, which that pattern can't
+express) and sets `metadataEdited: true`.
+
+`lib/ui/music_metadata_scan_page.dart` (`MusicMetadataScanPage`, opened from
+`MusicPlayerPage`'s app bar, "Metadata scan" icon next to "Rescan library") runs `rescan` on
+open (and again on its refresh action) and renders every track live as `onTrackScanned` fires —
+a `LinearProgressIndicator` plus a running count while scanning, then a
+found/with-genre/with-year summary, with each row showing a green check (both genre and year
+known), orange (one of the two) or red (neither) icon. Tapping a row opens
+`lib/ui/track_metadata_page.dart` (`TrackMetadataPage`), also reachable via a new "Track info"
+(ⓘ) button on Now Playing's bottom tools row (disabled — `onPressed: null` — while nothing is playing):
+editable title/artist/album/genre/year fields pre-filled from `MusicLibraryService.byId`, plus
+read-only duration/play count/date added/source/file path, and a note when the track was already
+manually edited. Saving calls `updateTrackMetadata`; an unparsable year shows an inline error
+instead of saving. This only ever changes this app's own cached record (`music_library.json`) —
+it does not write ID3 tags back into the file itself, which stays a possible future addition, not
+something either page does today.
+
+Widget tests that pump a page whose `initState` triggers `rescan` (`MusicMetadataScanPage`) poll
+with real delays (`tester.runAsync(delay) + pump()`, condition-driven on the progress indicator
+disappearing) rather than `pumpAndSettle()`, which both never resolves the real dart:io Future
+inside `testWidgets`' fake-async zone and would hang forever on the indeterminate
+`LinearProgressIndicator` even if it did (see CLAUDE.md's "Real file I/O hangs inside
+testWidgets" note) — and set the page's initial "scanning" field directly in `initState` rather
+than via `setState` (illegal before `initState` returns), letting only the later, async-gap
+`setState` calls do the rebuilding.
+
+**CSV bulk metadata export/import (0.2.77)** — a way to fill in metadata for a whole collection
+at once outside the app (e.g. hand it to an AI), for when editing one track at a time via
+`TrackMetadataPage` doesn't scale. `lib/services/music_metadata_csv.dart` (`MusicMetadataCsv`):
+`encode(tracks)` writes one CSV row per track — `id, filename, title, artist, album, genre,
+year` — reusing `UsageDataService.csvField`/`toCsv` for RFC-4180-style quoting rather than
+duplicating that escaping logic (`UsageDataService`'s CSV primitives are public statics
+precisely so other export features can share them). `decode(csvText)` is a hand-rolled decoder
+(no `csv` package dependency; none existed in the codebase and none was added) — a small
+state-machine parser handling quoted fields, doubled-quote escaping, CRLF/bare-LF line endings,
+and a missing trailing newline, then looking columns up **by header name** (case-insensitive,
+tolerant of reordering/missing/extra columns) rather than by position, so a spreadsheet round
+-trip that reorders columns still imports correctly. A row's `id` is the match key (the export's
+`filename` column is read-only context for an AI when a file has no tags to go on at all —
+title/artist/album are also empty in that case); a row with a blank `id` is skipped, and a file
+with no `id` column at all decodes to zero rows rather than guessing.
+
+`MusicLibraryService.applyMetadataRows(List<ParsedMetadataRow>)` matches each row's `id` against
+the library and, for every match, sets `title`/`artist`/`album`/`genre`/`year` — but **only the
+non-empty fields**: a blank cell leaves that track's existing value untouched, so a spreadsheet
+edit that accidentally clears a cell (or an AI that only filled in the columns it was asked to)
+can't silently erase data the app already had. Every matched row gets `metadataEdited: true`,
+same as a manual `TrackMetadataPage` edit — so it also survives a later rescan (§ above). Returns
+how many rows matched, for the caller's "Updated N of M" summary.
+
+The UI lives on `MusicMetadataScanPage`, alongside the scan itself: "Export metadata CSV" writes
+the current library (`MusicLibraryService.instance.tracks.value`, not just what's scanned into
+the page's own live list — so it works even without running a fresh scan first) to a file in
+`getTemporaryDirectory()` and hands it straight to the OS share sheet
+(`SharePlus.instance.share(ShareParams(files: [XFile(path)]))` — the same pattern
+`attachments_field.dart` uses to share an attachment) rather than a folder-picker write like
+`UsageDataPage`'s CSV export — simpler for "get this file into another app" than picking a save
+folder first. "Import filled-in CSV" uses `file_selector`'s `openFile` (same pattern as the M3U
+import in `music_player_page.dart`), reads and decodes the file, applies it, and refreshes the
+scan page's already-displayed rows in place (looked back up by id) so their status icons update
+without a full rescan. Neither the export/import buttons themselves nor the M3U import they
+mirror are exercised in `testWidgets` — both go through a real OS file picker/share sheet with no
+test seam in this codebase, so only the pure `MusicMetadataCsv`/`applyMetadataRows` logic
+underneath is unit tested.
+
+### 10.6h Best Music Wishlist (0.2.75, briefly shared across both apps 0.2.78-0.2.83, reverted to
+local-only Best Music 0.2.84 — see §10.6i for the version split)
+Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
+BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
+records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
+Wishlist reads and writes (`tasks.json`, unchanged JSON shape). Priority (`0..3`, stored as one
+of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared code too:
+`lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/`setWishPriority`/
+`bumpWishPriority`) is the single source both `wishlist_page.dart` and `music_wishlist_page.dart`
+import, rather than each keeping its own copy.
+
+Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
+(release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
+multi-select) — those are specific to BestToDo's own development workflow, not something Best
+Music's users need. Each row is just a leading `Checkbox` (toggles `isDone`/`completedAt` and
+saves immediately, no editor needed — Best Music 0.2.83; the original "no icons at all" design
+was amended once actually asked for) and the title (struck through once done) — no priority/tag chips, no
+trailing icon. Tapping the title itself pushes a full-page editor for everything else: a "Done"
+switch (kept there too, alongside the list's own checkbox), priority as three `ChoiceChip`s, tags
+via the shared `LabelPickerField`, and a multi-line description field. The app bar's check icon
+saves; a delete icon (edit mode only) confirms then removes the item. Adding is the same editor
+with no item, reached via the page's `+` FAB. Sorting mirrors BestToDo's default: open items
+before done ones, then by priority, otherwise list order. `ItemViews.wishlist` (the same shared
+query BestToDo's Wishlist filters through) is the visibility gate, so demo-seed hiding and the
+isWish/isVisibleInMainViews rules apply identically in both apps.
+
+**No inherited BestToDo backlog (Best Music 0.2.83)**: `ItemRepository.loadItems()`/`StorageService.
+loadTaskList()` is shared code, and it unconditionally ran a one-time migration
+(`_maybeImportLegacyTodoItems`, `lib/services/wishlist_migration.dart`'s `legacyTodoWishlistItems`
+— 61 items straight from BestToDo's own historical `Todo.md` backlog) into whichever app's own
+`tasks.json` was empty and had never run it before — including a genuinely fresh Best Music
+install, which has its own separate app-private storage and so had never spent that one-time flag
+either. `Config.isBestMusic` (`lib/config.dart`, default `false`) is set once, first line of
+`main_music.dart`'s `main()`, before anything else runs; `_maybeImportLegacyTodoItems` returns
+immediately when it's true, so Best Music's Wishlist now starts genuinely empty on a fresh
+install, same as its dev-build behavior (see "Empty by default" below) — the migration itself,
+and BestToDo's own behavior, are untouched.
+
+**Cross-app sync, added 0.2.78 then reverted to BestToDo-only 0.2.84**: BestToDo and Best Music
+are two separately-sandboxed Android apps (different `applicationId`, §10.6f) —
+`getApplicationDocumentsDirectory()` (what `StorageService`/`ItemRepository` use for
+`tasks.json`) is invisible across that sandbox boundary, so each app's Wishlist really is its own
+local database, matching on JSON shape alone but never actually shared. 0.2.78 added
+`lib/services/shared_wishlist_store.dart` (`SharedWishlistStore`) to bridge that: it reads/writes
+one file — a fixed path under public external storage
+(`/storage/emulated/0/BestToDo/wishlist_shared.json`) both apps can reach because both already
+hold `MANAGE_EXTERNAL_STORAGE` (the shared `AndroidManifest.xml`; `MusicLibraryService.
+ensureFolderPermission` already requests the same permission for the music folder, and Best Music
+already asks for it eagerly at startup, §10.6e/f) — via `SafeFile`, the same atomic-write/
+corruption-recovery helper `StorageService` itself uses.
+
+Both Wishlist pages treated the shared file as authoritative once it existed: on load,
+`reconcileWishlist(local, shared)` replaced the local wish-item subset with the shared file's
+content whenever that file already existed (so a deletion or edit made in the other app took
+effect here too — the whole set was replaced, not merged item-by-item, since there is no
+per-field "last modified" timestamp on `Task` to arbitrate a real conflict), and only fell back
+to seeding the shared file from local data the first time, before it existed at all. Every save
+(add/edit/delete/toggle) re-pushed the page's current wish-item set out to the shared file.
+**0.2.84 reverted this for Best Music**: `music_wishlist_page.dart` no longer imports
+`SharedWishlistStore`/`WishlistSyncBanner` at all — it reads and writes only its own
+app-private `tasks.json` via `ItemRepository`, exactly like every other Best Music list, so
+checking an item off there can never mark it done in BestToDo (users had not asked for the two
+lists to be the same list, and being checked in an app they weren't using was surprising). Best
+Music's Wishlist drawer entry no longer shows a connect banner or offers to sync at all.
+BestToDo's own Wishlist (`wishlist_page.dart`) is untouched: `SharedWishlistStore`, the dismissible
+`WishlistSyncBanner` (`lib/ui/wishlist_sync_banner.dart`) and its "Connect" flow
+(`Config.wishlistSyncBannerDismissed`, `SharedWishlistStore.requestConnection()` showing
+Android's "All files access" settings screen) still exist there exactly as before — connecting
+now just means nothing else reads the file it writes to.
+`SharedWishlistStore.sharedDirectoryOverride`/`connectionOverride` (test-only) redirect this to a
+temp directory and force a connected/not-connected state without the real `permission_handler`
+plugin, which `flutter test`'s host platform can't provide —
+`test/core/shared_wishlist_store_test.dart` covers the store directly (save/load round-trip,
+deletion visibility, `reconcileWishlist`); the former `test/tools/wishlist_cross_app_sync_test.dart`,
+which proved an item added/deleted in one app's Wishlist showed up in the other's, was removed
+along with that behavior.
+
+**Empty by default, even in dev builds (0.2.77)**: both Wishlist tools used to seed demo content
+on an empty list — `WishlistPage._load`'s "Learn to sail" fallback, `home_page.dart`'s
+`_seedDevWishItem` (same item, seeded on first launch) and `_buildDevWishlistSeed` (the
+`legacyTodoWishlistItems` backlog, re-backfilled on *every* dev launch once no wishes remain,
+independent of first-launch) — all gated on `Config.isDev`. That backfill in particular meant a
+developer who cleared the Wishlist to test an empty state saw it silently repopulate on the next
+launch. All three are removed; the Wishlist starts (and stays) genuinely empty in dev builds
+exactly like production, so testing the cross-app sync feature above from a clean slate doesn't
+require fighting demo data first. The production one-time Todo.md-backlog import
+(`StorageService`/`wishlist_migration.dart`, §10.6, unconditional on `Config.isDev`) is untouched
+— that is a real, flag-guarded, one-time migration for actual installs, not a dev convenience.
+
+### 10.6i Independent versioning and changelogs (0.2.81)
+Through 0.2.80, Best Music's every build shared BestToDo's own `pubspec.yaml` `version:` line
+(via Flutter's `flutter.versionCode`/`flutter.versionName`, injected into both Gradle product
+flavors alike) and its Android APK's release notes came from BestToDo's own CHANGELOG.md — so a
+Todo-only release always bumped Music's version number too, and Music's own Changelog tool
+showed BestToDo's whole history mixed in with the entries actually about Music. The two apps now
+version and changelog fully independently, seeded from 0.2.80+371 (the last build number they
+shared) going forward — nothing before the split was rewritten or copied over; BestToDo's own
+history stays in CHANGELOG.md.
+
+**Best Music's own version file**: `MUSIC_VERSION` at the repo root holds a single `version:
+x.y.z+build` line, the same shape as `pubspec.yaml`'s. `android/app/build.gradle.kts` reads it
+(`rootProject.file("../MUSIC_VERSION")`, mirroring how `key.properties` is already read) and
+overrides `versionCode`/`versionName` on the `music` product flavor only — `todo` keeps coming
+from `flutter.versionCode`/`flutter.versionName` (i.e. `pubspec.yaml`) exactly as before. The
+`createVersionedReleaseApk` task's `fullVersion` (used to name `best_todo_<version>.apk` /
+`best_music_<version>.apk`) now branches on which flavor's APK it actually found rather than
+always reading `flutter.*`. `PackageInfo.fromPlatform()` (what `Config.versionWithBuild` and
+`MusicAboutPage` read) then reports each installed app's own real version for free, since it
+reads the running APK's own `versionCode`/`versionName` — no Dart-side change needed there.
+`versionCode` only ever moves forward from 371 (Android refuses an "update" with a lower
+versionCode than what's installed), so bumping `MUSIC_VERSION` always increments the existing
+build number rather than resetting it, even though its `x.y.z` name can change freely.
+
+**Best Music's own changelog**: `CHANGELOG_MUSIC.md` at the repo root, bundled as an app asset
+alongside `CHANGELOG.md` (`pubspec.yaml`'s `assets:`). `ChangelogPage` (§10.7) gained `assetPath`
+(default `CHANGELOG.md`) and `showStoryPoster` (default `true`) constructor params;
+`MusicPlayerPage`'s drawer entry passes `assetPath: 'CHANGELOG_MUSIC.md', showStoryPoster:
+false, hidePreamble: true` (the text view starts at the first `## ` release, hiding the file's
+title + developer intro via `stripChangelogPreamble`) — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
+would be wrong to show under Best Music.
+
+**Tooling, both apps share the same scripts with a flag rather than forking them**:
+- `dart run tool/bump_version.dart <version> "<entry>" --music` bumps `MUSIC_VERSION` +
+  `CHANGELOG_MUSIC.md` instead of `pubspec.yaml` + `CHANGELOG.md`; the changelog-insertion logic
+  now finds the first `## [...]` heading and inserts the new section right above it rather than
+  assuming a single-line header, so `CHANGELOG_MUSIC.md`'s explanatory preamble paragraph (above
+  its first release) survives every bump untouched.
+- `dart run tool/append_build_time.dart --app music` (default: BestToDo) notes a local build in
+  `CHANGELOG_MUSIC.md` and reads `MUSIC_VERSION` for its `build_history.json` record, which now
+  also carries an `app` field (`'todo'`/`'music'`).
+- `dart run tool/stage_local_release.dart --version <x.y.z+build>` names the staged file
+  explicitly instead of the tool re-reading `pubspec.yaml` — without it, staging a
+  `--prefix best_music` build would silently tag it with BestToDo's version once the two
+  diverged. `tool/build.sh`/CI always pass it now.
+- `tool/build.sh`: `VERSION` is read from `MUSIC_VERSION` instead of `pubspec.yaml` whenever
+  `FLAVOR=music` (i.e. every `music-apk` build), and `--app music`/`--version "$VERSION"` are
+  passed through to `append_build_time.dart`/`stage_local_release.dart` accordingly.
+  `tool/publish_apk.dart` stays BestToDo-only (Best Music's update check never looks at GitHub
+  releases — see §10.6f's "In-app updates" paragraph), so `PUBLISH_APK=1` is now a no-op for a
+  music build rather than publishing a GitHub release mislabeled "BestToDo" from Music's bytes.
+- `.github/workflows/build-apk.yml`'s `build_music_apk` job reads its "app version" step from
+  `MUSIC_VERSION` and passes `--version` to `stage_local_release.dart` the same way.
+- `tool/build_all.sh`/`tool/build.ps1` (the gap this change originally left open, closed since):
+  `all` now builds the Best Music APK as its own step between the BestToDo APK and the Windows
+  exe — "everything this project ships" includes Best Music — skippable with `MUSIC=0`, and the
+  sync step also stages `CHANGELOG_MUSIC.md`. `tool/build.ps1` has full flavor parity with
+  `tool/build.sh`: a `music-apk` shorthand, `--flavor todo` injected when an `apk` build doesn't
+  name one, `MUSIC_VERSION` as the version source and `best_music_` as the artifact prefix for a
+  music build, `--app music`/`--version`/`--prefix` passed through to
+  `append_build_time.dart`/`stage_local_release.dart`, and the same BestToDo-only `PUBLISH_APK`
+  guard.
+
+**Why the rename task is per-flavor** (regression fixed after the split): a single shared
+`createVersionedReleaseApk` used to decide which app it had just built by scanning
+`build/app/outputs/flutter-apk/` for the first existing `app-<flavor>-release.apk`, `todo`
+first. That directory is never cleaned between builds, so on any machine that had built
+BestToDo at least once, every subsequent `--flavor music` build matched the leftover
+`app-todo-release.apk`, re-copied that stale BestToDo APK as `best_todo_<pubspec version>.apk`
+and produced **no** `best_music_<MUSIC_VERSION>.apk` at all. The music build exited 0, so the
+failure was silent — `stage_local_release.dart` then staged nothing (or the wrong app). CI never
+saw it because each job starts from a clean checkout. Deciding the flavor from the task that
+triggered the rename, rather than from whatever files happen to be on disk, is what makes a
+local music build correct.
+
+Not split by this change: `SCREENSHOT_CHANGELOG.md` (`tool/update_screenshot_changelog.dart`)
+stays one shared file for both apps' screenshot-capture audit trail, and still labels every
+entry with BestToDo's `pubspec.yaml` version regardless of which app's screenshots it's
+recording — a known, low-stakes inconsistency (it's an audit log, not a user-facing changelog)
+left for a future pass if it's ever worth the tooling churn.
+
+### 10.6j Samsung-Music-style redesign: Favourites/Artists/Folders tabs, search, sort, "+" add-songs (Best Music 0.2.81)
+`MusicPlayerPage`'s `TabController` grew from 2 tabs (Library/Playlists) to 5, matching Samsung
+Music's own layout: Favourites, Playlists, **Tracks** (renamed from Library), Artists, Folders —
+`TabBar(isScrollable: true)` since five labels don't all fit on a phone width, same as Samsung's.
+Favourites (`_FavouritesTab`) is a shortcut straight to the Favorites system playlist's resolved
+tracks — the same list already reachable via Playlists → Favorites, just one tap away. Artists
+(`_ArtistsTab`) and Folders (`_FoldersTab`) are new grouping views computed live from
+`MusicLibraryService.instance.tracks` (never persisted): Artists groups by `Track.artist`
+(`Unknown artist` for a blank tag, sorted last); Folders groups by each local track's folder
+relative to `Config.musicFolder` (`folderLabelOf`, a top-level function in
+`music_player_page.dart` — tracks right under the music folder itself land in `(Music folder)`,
+whose leading `(` sorts it ahead of any real subfolder name; a Subsonic track with no
+`Track.filePath` groups under `Other`). Tapping a row in either tab pushes `_FilteredTracksPage`,
+a plain `TrackListView` over that artist's/folder's tracks.
+
+**Search** (app bar search icon, `_MusicSearchDelegate extends SearchDelegate<void>`): filters
+the whole library by title/artist (falling back to the filename), reusing `TrackListView` for
+results so a search hit is playable and carries the same "more options" menu as everywhere else.
+Plain `showSearch(context:, delegate:)` — no separate search page/route to maintain.
+
+**Quick sort + shuffle/play-all header** (`TrackListView`, a `StatefulWidget` owning its own
+`TrackSortField` + direction): every track list — Tracks/Favourites tabs, an artist/folder
+drill-down, search results, and any playlist detail page — gets a header row with a
+`PopupMenuButton<TrackSortField>` (Added to device [default] / Added to app / Title / Artist /
+Duration, checkmark plus
+an up/down arrow on the active choice), a direction `TextButton` (key `sortDirectionButton`,
+labelled per field: Newest/Oldest first, A–Z/Z–A, Longest/Shortest first) that flips ascending ↔
+descending, plus shuffle and play-all icon buttons that queue the *currently sorted* list.
+Re-picking the active field also flips its direction; picking a new field starts in its natural
+direction (`trackSortDefaultAscending`: A–Z for text, newest/longest first otherwise). Ties fall
+back to title; tracks with no date added always sink to the bottom. The choice is persisted in
+`Config.musicTrackSortField`/`musicTrackSortAscending` (0.2.85) so every list and the next launch
+follow it.
+
+**Two "date added"s** (0.2.87): `Track.deviceDate` is when the *file* arrived on the
+phone/computer — `FileStat.changed` (creation time on Windows, inode change time on Android/Linux,
+i.e. when it was copied/downloaded there), re-read on every rescan, persisted as `deviceDate`
+(ms), null for Subsonic tracks. `Track.dateAdded` stays "first seen by a Best Music scan" (backs the
+Last Added smart playlist, unchanged). Sorting offers both ("Added to device" — the default — and
+"Added to app"); Track info shows both rows ("Added to device", "Added to app").
+
+**Fast scroll** (`lib/ui/fast_scroll_list.dart`, `FastScrollList`, 0.2.85): track rows are a
+fixed two-line height (`prototypeItem`; title/artist ellipsize to one line, a missing artist reads
+"Unknown artist") so a drag position maps exactly onto a row. Lists of 30+ tracks get a draggable
+handle on the right edge (key `fastScrollHandle`; tap or drag to jump) with a bubble showing the
+top row's `trackSectionLabel` — initial letter (digits → `#`) for Title/Artist, "Sep 2026" for
+Date added, "3 min" for Duration.
+
+**Blue theme + dark mode** (0.2.89): Best Music's theme comes from `lib/ui/music_theme.dart` —
+`buildMusicTheme(brightness)` seeds `ColorScheme.fromSeed` with `musicSeedColor` (0xFF005FDD, the
+same blue as BestToDo's `_seedColor`) and pins `primary` to it, light and dark. Settings →
+"Dark mode" (`SwitchListTile`) calls `MusicTheme.setDarkMode`, which persists `Config.darkMode` (Best
+Music's own settings file) and flips the `MusicTheme.darkMode` notifier that `BestMusicApp` wraps its
+`MaterialApp` in, so the switch applies instantly.
+
+**Sleep timer** (0.2.89): `MusicSleepTimer.instance` (`lib/services/music_sleep_timer.dart`) holds a
+`ValueNotifier<SleepTimerState>` — off, timed (`endsAt`, a Dart `Timer` that pauses playback when
+it fires) or end-of-song (`MusicAudioHandler`'s completion listener calls `consumeEndOfTrack()` and,
+when set, pauses and rewinds instead of advancing). `extend()` adds time, `cancel()` turns it off.
+One picker, `showSleepTimerSheet` (`lib/ui/sleep_timer_sheet.dart`: 5/10/15/30/45/60/90 min, End of
+current song, Custom… minutes, plus Add 10 minutes / Turn off while active), opened from: Now
+Playing's app bar (`SleepTimerButton`, tooltip "Sleep timer" / "Sleep timer: 23 min"), the Best
+Music drawer ("Sleep timer" with time left), Settings ("Sleep timer" row), and the mini player
+(a bedtime + time-left badge while running, and long-press on the bar). The timer is in-memory —
+not restored after the app process is killed.
+
+**Always-visible mini player + resume after restart** (0.2.88): `MusicMiniPlayerBar`
+(`lib/ui/music_mini_player_bar.dart`) is mounted once in `BestMusicApp`'s `MaterialApp.builder`
+(a `Column` of the navigator + the bar, inside the bottom `SafeArea`), so the current song — title,
+artist, play/pause, tap → `NowPlayingPage` via `musicNavigatorKey` — is at the bottom of every Best
+Music screen. That spot has no Overlay, so the bar uses no tooltips (play/pause has key
+`musicMiniPlayerPlayPause` + a Semantics label). It hides while Now Playing is open
+(`NowPlayingPage.openCount`, bumped in a microtask from initState/dispose) and when there is no
+current or remembered song. `MusicPlayerPage(standalone: true)` no longer renders its own bar
+(the non-standalone mode was BestToDo's Music Player tool, removed in 0.2.98 — §10.6n).
+`MusicResumeService` (`music_resume_service.dart`) persists `{queue: [track ids], index, positionMs,
+current: Track json}` to `music_resume.json` in the app documents dir (survives restarts, reboots
+and app updates). `MusicAudioHandler` saves it on every track change, pause, shuffle/reorder and
+every 15 s while playing (writes chained so they never interleave). At startup `main_music.dart`
+calls `MusicPlayerService.restoreLastSession()` after the library loads: queue ids are mapped
+through the library (missing ones dropped, the current track falling back to its saved copy) and
+`handler.restore()` shows it paused (mediaItem + paused playbackState at the saved position)
+without loading audio; the first `play()` loads it with `initialPosition`. Skipping before
+playing drops the saved position.
+
+**Navigation-bar inset** (0.2.86): `BestMusicApp` (`lib/main_music.dart`) wraps every route in
+`MaterialApp.builder: SafeArea(bottom: true)` exactly like BestToDo's `main.dart`, so no page (track
+lists, Track info, the mini player) draws under Android's edge-to-edge navigation bar. 0.2.85's
+attempt (mini player as the Scaffold's `bottomNavigationBar`) only covered the home page and let
+the mini player's `Column` stretch to the full screen height — reverted; the mini player is back
+as the last child of the home body `Column` (its text `Column` now `MainAxisSize.min`).
+
+**Per-track "more options" menu**: the row's separate Favorite/"Add to playlist"/"Remove from
+playlist" icon buttons were folded into one `PopupMenuButton<String>` (`Icons.more_vert`, tooltip
+"More options") per Samsung Music's own ⋮ button — Favorite/Unfavorite (dynamic label + heart
+icon), Add to playlist (still `showAddToPlaylistSheet`), Remove from playlist (only when
+`TrackListView.onRemove` is set — i.e. inside a hand-built, non-system playlist, unchanged
+condition), and a new Track info entry (`TrackMetadataPage`, previously only reachable from Now
+Playing's info button). Tapping the row itself still plays the (sorted) list from that track,
+unchanged.
+
+**"+" add-songs-to-playlist (`AddSongsToPlaylistPage`)**: `MusicPlaylistDetailPage` gained an
+"Add songs" app bar button, shown under the same `editable` condition as its existing "Remove
+from playlist" wiring (`kind == list && !isSystem` — a hand-built playlist only; Favorites/
+disliked/smart/rule playlists don't get one). It opens a full-screen multi-select checkbox list
+of every library track not already in the playlist; "Add selected" (enabled once at least one is
+checked) calls the new `MusicPlaylistService.addAllTo(playlistId, trackIds)` — one save/notify
+for the whole batch rather than one per track (`addTo` in a loop). Complements the existing
+one-track-at-a-time flow from a track row's own "Add to playlist" menu entry, for adding several
+songs into a playlist at once instead.
+
+### 10.6k Artists tab groups "feat." credits, free-form Tags (Best Music 0.2.82)
+**Artists tab merges featuring credits.** A library ripped from Samsung Music (or similarly
+tagged) often has one artist appear as several distinct `Track.artist` strings — "49th & Main",
+"49th & Main feat. SKYLAR", "50 Cent feat. Justin Timberlake" — because the ID3 `TPE1` tag
+folds the featured artist into the same field. `lib/utils/artist_utils.dart`'s
+`splitArtistCredit(artist)` splits that on the first `feat.`/`feat`/`ft.`/`ft`/`featuring`
+marker (case-insensitive, tolerant of surrounding whitespace) into `mainArtist` + `featuring`,
+returning an empty `featuring` when there's no such marker. `_ArtistsTab` groups by
+`mainArtist` instead of the raw `Track.artist` (an empty main artist still falls back to
+"Unknown artist", sorted last) — so "49th & Main" and "49th & Main feat. SKYLAR" land under one
+row, its track count covering both. When any of a main artist's tracks carry a featuring
+credit, the row's `trailing` shows "feat. <names>" (deduped via a `Set`, comma-joined, ellipsized
+past two lines) so that information isn't lost, just moved out of the grouping key. This only
+affects grouping in the Artists tab — `Track.artist` itself, and every other view/search/sort
+that reads it, is untouched.
+
+**Free-form tags.** `Track` gained `tags` (`List<String>`, default `const []`, omitted from
+`toJson` when empty, tolerant of a missing/non-list key in `fromJson`) — unlike every other
+metadata field, never read from a file's ID3 tags; purely a user-assigned label for grouping
+tracks the way genre/artist/folder can't (occasion, a personal chart, "songs for a specific
+playlist elsewhere"), e.g. "Belgian Top Charts", "Wedding songs". Editable on
+`TrackMetadataPage` (a comma-separated "Tags" text field alongside title/artist/album/genre/
+year, `helperText` showing the format) — saving goes through the same
+`MusicLibraryService.updateTrackMetadata(..., tags: [...])` call as every other field (now
+taking an optional `tags` parameter, default `const []`) and sets `metadataEdited: true`, so
+tags survive a rescan exactly like a manually-fixed genre does (§10.6g). `applyMetadataRows`
+gained the same blank-means-leave-alone semantics for tags as every other field: a row's empty
+`tags` list keeps the track's existing tags. `MusicMetadataCsv` round-trips tags as an eighth
+`tags` column, multiple tags in one cell `; `-joined (not `,`-joined, since the CSV's own field
+separator is a comma) and split back the same way on import.
+
+A new **Tags tab** (`_TagsTab`, `TabController` grown from 5 to 6, `TabBar` labels Favourites/
+Playlists/Tracks/Artists/Tags/Folders) groups the library by tag the same way Artists/Folders
+do, computed live from `MusicLibraryService.instance.tracks` — but unlike those two (each track
+belongs to exactly one artist/folder), a tag grouping is many-to-many: a track with several tags
+appears once under each one, and a track with none groups under "Untagged" (sorted last, same
+pattern as "Unknown artist"). Tapping a tag row pushes the same `_FilteredTracksPage` Artists/
+Folders already use.
+
+### 10.6l F1 Reminder (0.2.85)
+Tools → **F1 Reminder** (feature/start-tool key `f1_reminder`, `Icons.sports_score`) texts one
+phone number 4 hours (`kF1ReminderLead`) before every remaining race of the season.
+- **Calendar**: `kF1Races` in `lib/models/f1_reminder.dart` — hard-coded `F1Race(name, start)`
+  entries in the phone's local clock time (entered as CET/CEST): Singapore GP Sprint Sat 10 Oct
+  11:00, Singapore GP Sun 11 Oct 14:00, United States 25 Oct 21:00, Mexico City 1 Nov 21:00,
+  Brazil 8 Nov 18:00, Las Vegas 22 Nov 05:00, Qatar 29 Nov 17:00, Abu Dhabi 6 Dec 14:00 (all
+  2026). `F1Race.key` = the start's ISO string.
+- **Config** (`f1_reminder.json`, `F1ReminderConfig`): `enabled`, `phoneNumber`, `template`,
+  `handledRaces` (race keys already sent *or attempted* — a failed send is not retried so a bad
+  number can't loop), `history` (`F1SendRecord`, newest last, capped at 50). Tolerant `fromJson`;
+  an empty template falls back to `kDefaultF1Template`.
+- **Template tokens**: `{race}`, `{time}` (HH:mm), `{date}` ("Sunday 8 November"), `{countdown}`
+  (time left at the moment of sending — "4 hours" normally, "2 hours 20 minutes" for a late send).
+- **Scheduling** (`F1ReminderService`): `nextPending` = earliest non-handled race still more than
+  `kF1LateSendCutoff` (30 min) away; its send time may be in the past (missed alarm → sent ASAP).
+  `applyFromConfig` (also a startup step in `main.dart`, after the SMS report scheduler) cancels
+  alarm id `0xF1F1` and, when the feature is enabled, the switch is on and a number is set, arms a
+  one-shot `AndroidAlarmManager.oneShotAt(exact, wakeup, allowWhileIdle, rescheduleOnReboot)` at
+  `max(sendAt, now+10 s)`. The background `f1ReminderAlarmCallback` → `runDue`: if a reminder is
+  due (send time ≤ now+1 min) it marks the race handled and saves, re-arms for the next race,
+  THEN sends (invariant 10) and appends the result to `history`.
+- **Page** (`lib/ui/f1_reminder_page.dart`): next-text card ("Next text: <date>, <time>" + race +
+  relative time, or "Reminders are off" / "Add a phone number" / "No more races this season"),
+  "Send race reminders" switch (switching on requests SMS/exact-alarm/battery/notification
+  permissions via `SmsReportScheduler.ensureBackgroundPermissions`), phone field, message field
+  (reset button + live preview for the next race), "Send welcome message" button
+  (`sendWelcome`: fixed `kDefaultF1WelcomeTemplate` naming the next race), the race list with a
+  per-race status (Text sent / Finished / Next / Text at HH:mm), and "Recent texts". Save
+  (app-bar, tooltip "Save") persists the fields and re-arms the alarm; the switch saves too.
+  Sending uses `another_telephony` directly (`F1ReminderService.sendSms`, test seam
+  `sendOverride`); the daily SMS report's send path is untouched.
+- **Editable race times (0.2.86)**: `F1ReminderConfig.startOverrides` (`{raceKey: ISO start}`,
+  tolerant `fromJson`) moves a calendar race; `config.races` is `kF1Races` with overrides applied
+  (`F1Race.withStart` keeps the original `key`, so handled flags/overrides stay attached), sorted by
+  start — every scheduling path (`nextPending`, `nextRace`, the page list) reads it.
+  `setStart(race, start)` stores the override (or drops it when set back to the calendar time) and
+  un-handles the race, so an already-sent reminder goes out again for the new time. On the page,
+  tapping a race (or its "Edit time" button) opens a date picker then a 24-hour time picker;
+  edited races show "(edited)" and a "Reset time" button; each change saves and re-arms the alarm.
+
+### 10.6m Subscriptions feed — YouTube channels in Best Music (Best Music 0.2.92)
+A Tubular/NewPipe-style feed built in Dart on the existing `youtube_explode_dart` + player
+stack rather than by forking Tubular (a native Java app, GPL-3.0 — embedding it would mean
+two UIs and two media sessions, and would make the APK GPL). Drawer entry **Subscriptions**
+in Best Music (`MusicPlayerPage._buildDrawer`) → `YoutubeFeedPage`
+(`lib/ui/youtube_feed_page.dart`).
+
+**State** — `YoutubeFeedService` (`lib/services/youtube_feed_service.dart`, singleton) owns
+`ValueNotifier`s for `subscriptions` (`YoutubeChannel`: `UC...` id, name, avatar URL),
+`videos` (`FeedVideo`, newest first, unfiltered), `settings` (`YoutubeFeedSettings`),
+`progress` (`videoId → WatchProgress`: position, duration, completed, updated; capped at the
+2000 most recently updated) and `refreshing`/`failedChannels`, all persisted to one
+`youtube_feed.json` in the app documents dir (models in `lib/models/youtube_feed.dart`,
+tolerant `fromJson`). `main_music.dart` loads it before `MusicPlayerService.init` so feed
+playback has its settings and resume positions.
+
+**Refresh** — on opening the feed (when there are subscriptions), pull-to-refresh, after a
+Tubular import, and for just the new channel on subscribe. Up to 6 channels in parallel; per
+channel `fetchChannel` reads:
+1. the RSS feed `youtube.com/feeds/videos.xml?channel_id=UC...` (`parseYoutubeRss`, package
+   `xml`): the 15 newest uploads of every kind, exact `published`, full `media:description`,
+   view count; a `/shorts/<id>` link sets `isShort`;
+2. the Videos tab (`channels.getUploadsFromPage`): durations and view counts. Livestreams sit
+   on the separate Live tab, so `mergeVideosTab` flags a non-Short RSS entry missing from a
+   *successfully read, non-empty* Videos tab as `isLivestream`.
+If RSS fails the Videos tab is used alone (approximate "3 days ago" dates, no descriptions —
+the video page fetches one on demand via `videos.get`); if the tab fails nothing is flagged
+live; only both failing fails the channel. A failed channel keeps its cached videos and is
+named in the feed's error row; descriptions fetched on demand survive later refreshes.
+`filterFeed` applies the settings at display time (`visibleVideos`), so toggles need no
+refetch.
+
+**Feed UI** — rows: 16:9 thumbnail (`i.ytimg.com/vi/<id>/mqdefault.jpg`) with duration badge
+and red progress bar, title, "channel · 2d ago · 1.2K views", a Play button (tooltip "Play").
+Played videos are dimmed with a check icon. The app bar has **Channels** and **Feed
+settings**. Empty state → "Add channels". Tapping a row opens `YoutubeVideoPage`: large
+thumbnail, title, meta line, **Play**/"Resume at m:ss", **Open in YouTube**
+(`launchUrl(watchUrl, externalApplication)` → the YouTube app), **Download** (pushes
+`Mp3DownloaderPage(initialQuery: watchUrl)`, which submits it like a typed URL → queued
+through the usual folder checks, §10.6d), **Mark played/unplayed**, and the description as
+`LinkifiedText`.
+
+**Channels** (`YoutubeChannelsPage`) — search by name → Subscribe/Subscribed per result.
+`searchChannels` posts to InnerTube's `search` endpoint (`YoutubeHttpClient.sendPost`,
+`params: EgIQAg==` = channels only) and walks the whole response for `channelRenderer`s
+(`parseChannelSearchResults`); it does **not** use `youtube_explode_dart`'s `searchContent`,
+whose 3.1.0 channel parser calls the `getT` extension on a `dynamic` (`videoCountText/runs
+.first`) and throws `NoSuchMethodError` for every channel with a video count (Best Music
+0.2.94 fix). A typed/pasted `/channel/UC...` URL, `@handle` or `/user/` URL resolves to that
+channel directly; the subscribed list with
+Unsubscribe (+ Undo snackbar); app-bar "Import from Tubular/NewPipe" opens a `.json` export
+(`{"subscriptions":[{"service_id":0,"url":...,"name":...}]}`, `parseNewPipeSubscriptions`):
+non-YouTube services are dropped, `/channel/UC...` URLs map directly, `@handle`/`/user/` URLs
+are resolved through `youtube_explode_dart`, anything else counts as skipped; already
+subscribed channels are counted, not duplicated.
+
+**Playback** — `TrackSource.youtube` (`Track.youtube`: id `youtube:<videoId>`, `remoteId` =
+video id, `artist` = channel, new `Track.artUrl` = `hqdefault.jpg`, also sent as the
+`MediaItem.artUri` for the notification/lock screen and drawn on Now Playing instead of the
+note icon). Play builds the queue with `queueFrom`: the tapped video, then up to 50 *unplayed*
+videos below it. The end of a YouTube queue pauses instead of reshuffling the local library.
+Audio comes from `YoutubeAudioSource` (`lib/services/youtube_audio_source.dart`, a just_audio
+`StreamAudioSource`): it resolves the stream with `Mp3DownloaderService.resolveAudioStream`
+(the downloader's visionOS-first client walk + PoToken-wall probe) and serves just_audio's
+local proxy from 1 MiB range requests, because YouTube throttles one open response to
+~31 KiB/s and 403s most clients past 1 MiB. Each request bumps a generation counter so the
+stream abandoned by a seek stops at its next chunk, and reads stay at most 6 MiB ahead of
+estimated real-time consumption (the proxy has no back-pressure).
+**Progress**: `MusicAudioHandler._persist` (every ~15 s and on pause) records the position
+of a YouTube track once its own audio is loaded (`_loadedTrackId`); within the last 30 s or
+95 % counts as played, as does reaching the end. `_playCurrent` resumes a feed video at its
+saved position minus 3 s unless it was played or under 10 s in.
+**SponsorBlock**: on loading a YouTube track the handler fetches
+`sponsor.ajay.app/api/skipSegments?videoID=..&categories=[..]` (`SponsorBlockService`; 404/
+errors = nothing to skip; only `actionType: skip`) and, on `positionStream`, seeks to a
+segment's end when the playhead is within its first 2 s — so seeking into the middle of a
+segment on purpose still plays it.
+
+**Playback speed** (Best Music 0.2.96): `YoutubeFeedSettings.playbackSpeed` (default 1.0,
+clamped 0.5–3.0) is the default for feed videos; local/Subsonic tracks always play at 1x.
+`MusicAudioHandler._applySpeed` sets it after each track loads, using
+`_videoSpeedOverride` when set; `setVideoSpeed` (Now Playing) sets that override and applies
+it at once, and `setQueueAndPlay` clears it, so a quick change lasts for the rest of that
+queue only. `handler.videoSpeed` (ValueNotifier) drives Now Playing's bottom-row
+`PlaybackSpeedButton` (`lib/ui/playback_speed_sheet.dart`), shown only while the current
+track is a feed video (`isFeedVideo`), labelled e.g. "1.5×" (tooltip "Playback speed"). Its sheet
+has preset chips (0.75–3x), a 0.05-step slider with Slower/Faster buttons, and "Make … the
+default". Feed settings has a "Default playback speed" row opening the same sheet in
+default-only mode.
+
+**Music vs. video playback rules (Best Music 0.2.98).** `Track.isFeedVideo` (=
+`TrackSource.youtube && !youtubeSong`) is what every feed-only behaviour keys on — speed,
+volume/boost, SponsorBlock, resume position/`recordProgress`, "played" marks, and stopping at
+the end of the queue. Songs streamed from the library search's YouTube fallback are
+`Track.youtube(..., song: true)` (`youtubeSong`, persisted as `"youtubeSong": true`), so they
+follow music rules: always 1x, music's phone volume, no feed bookkeeping; the speed button is
+hidden for them. **Volume** (Best Music 0.3.4: no app volume any more) is the phone's own
+media volume (Android `STREAM_MUSIC`), remembered per kind and switched automatically.
+`MediaVolume` (`lib/services/media_volume.dart`) talks to the `besttodo/media_volume`
+channel in `MainActivity.kt` (`get` → current index / max as 0..1, null when unreadable;
+`set {volume, showUi}` → `setStreamVolume`, skipped on fixed-volume devices, a Do Not
+Disturb `SecurityException` swallowed; non-Android: no-ops). State lives in `Config`:
+`musicPhoneVolume`/`videoPhoneVolume` (0..1, null until known) and `phoneVolumeKind`
+(`'music'`/`'video'`/`''`, survives restarts). `MusicAudioHandler._applyVolume` runs for every
+track that loads: the player volume is always 1.0, then `MediaVolume.onPlaying(kind)` — when
+the kind differs from `phoneVolumeKind`, the phone's current level is saved for the kind that
+was playing (so volume-button changes are kept) and the new kind's remembered level, if any,
+is set with `showUi: true` (the phone's own volume bar appears); the very first track, or a
+kind with nothing remembered yet, leaves the phone alone. The old app volumes
+(`Config.musicVolume`, `YoutubeFeedSettings.videoVolume`) are gone; their JSON keys are
+ignored. `YoutubeFeedSettings.videoBoostDb` (0–12 dB, default 0) is the only in-app level: it
+drives an `AndroidLoudnessEnhancer` in the player's `AudioPipeline` (Android only; enabled
+only while a feed video plays with boost > 0, gain 0/disabled for music). UI:
+`lib/ui/volume_sheet.dart` — a 5%-step slider for the kind's phone volume
+(`MediaVolume.choose`: for the kind playing — or when nothing has played yet — it moves the
+phone volume live while dragging; for the other kind it only sets the level it gets on the
+next switch; saved on release) and, for videos on Android, a "Boost for quiet videos" slider
+("Off"/"+N dB"). The sheet opens on `MediaVolume.current` (the phone's level for the kind
+playing, else the remembered one). Opened from Now Playing's volume button (tooltip "Music
+volume" or "Video volume" by the current track), Settings → Subscriptions feed → "Video
+volume" and Settings → Playback → "Music volume" (both show the remembered level, or "Not
+remembered yet").
+
+**Now Playing layout (Best Music 0.3.7).** The app bar holds only the menu button
+(`buildSubpageAppBar(..., showBack: false)`; the system back gesture still pops) and the
+title. Every control is at the bottom, top to bottom: the swipe hint, the "Back to music/
+videos" chip, the progress slider, the transport row (`_Transport`) and a tools row
+(`_ToolsRow`): playback speed (feed videos only), volume ("Music volume"/"Video volume"),
+sleep timer, shuffle, queue and track info. The tools row also shows under "Nothing playing".
+
+**Back/forward 10 seconds (Best Music 0.3.5).** While a feed video is the current track,
+`MusicAudioHandler.notificationControls` is `[previous, replay10, play/pause, forward10,
+next]` (songs keep `[previous, play/pause, next]`) with `androidCompactActionIndices`
+`[1, 2, 3]` so the collapsed notification shows back 10 / play / forward 10. The two controls
+are `MediaAction.rewind`/`fastForward` with the app's own icons
+(`res/drawable/ic_replay_10.xml`/`ic_forward_10.xml`: Material's replay arrow, mirrored for
+forward, around a "10"); audio_service also exposes them as custom actions, so Android 13+'s
+media controls and the lock screen show them, and `systemActions` adds rewind/fastForward for
+headsets and Bluetooth. `rewind()`/`fastForward()` call `seekBy(∓/±seekStep)` (10 s), clamped
+to 0..duration; a restored track that isn't loaded yet moves its resume point instead (and
+`_broadcastState` reports that resume point as the position until it loads). In the app: Now
+Playing's transport row swaps Favorite/"Don't really like" for "Back 10 seconds"/"Forward 10
+seconds" (`Icons.replay_10`/`forward_10`) on a video, and the mini player shows the same two
+around its play button for a video only.
+
+**Last song ↔ last video (Best Music 0.2.99).** `MusicAudioHandler.otherSession`
+(`ValueNotifier<PlaybackSession?>`; `PlaybackSession` = queue, index, position) holds the
+paused queue of the *other* kind. `setQueueAndPlay` snapshots the current queue into it
+(after a `_persist()` so a feed video records its resume point) whenever the new queue's
+first track differs in `isFeedVideo` from the current one; `switchToOtherSession()` swaps the
+two — the current queue becomes `otherSession`, the saved one is resumed at its position
+(`_resumePosition`; speed override cleared, shuffle off). `MusicResumeService.save(state,
+other:)` writes it under `"other"` in `music_resume.json` (`loadOther()` reads it back);
+video sessions — active or other — also store full `tracks` copies since feed videos aren't
+in the library. `MusicPlayerService.restoreLastSession` resolves both
+(`_resolve`: `tracks` if present, else library ids + saved `current`) and calls
+`restoreOtherSession`. UI: `SwitchSessionButton` in the mini player (icon only, labelled via
+`Semantics` "Back to video: <title>"/"Back to music: <title>" — the bar has no Overlay for
+tooltips) and an `ActionChip` with the same label at the top of Now Playing.
+
+**Feed loading, tap-to-play, switch pill (Best Music 0.3.0).**
+- *Staged window*: `YoutubeFeedService.window` (`ValueNotifier<Duration>`). Opening the feed
+  calls `startSession()` (window = `initialWindow`, 2 days) so cached videos of the last two days
+  show at once; the refresh now publishes `videos` after **each** channel finishes (`_merged`),
+  so fresh ones join as they arrive; when the refresh ends (or fails) the page calls
+  `widenToBackgroundWindow()` (7 days). `visibleVideos` = `windowFeed(filterFeed(...), window)`
+  — newest first; undated videos only once nothing dated is hidden. Older weeks only on
+  demand: scrolling within 400 px of the end (once the week is shown) or the footer's "Show
+  older videos" calls `showOlder()` — `windowStep` (7 days) further, or straight to the next
+  older video across a quiet stretch. Footer: "Loading the rest of the week..." /
+  "Show older videos" / "No older videos".
+- *Rows*: tapping a `FeedVideoTile` plays it; its trailing info button (tooltip "Video info",
+  was a play button) opens `YoutubeVideoPage`.
+- *No auto-play*: `YoutubeFeedSettings.autoplayNext` (default **false**): `queueFrom` returns
+  just the tapped video unless it's on (Feed settings → "Play the next video automatically").
+- *Speed remembered*: the Now Playing speed sheet now writes
+  `YoutubeFeedSettings.playbackSpeed` directly (no per-queue override, no "Make default");
+  the handler's feed-settings listener re-applies speed and volume to the playing track.
+- *Switch pill*: `SessionSwitchPill` (`music_mini_player_bar.dart`) floats bottom-left just
+  above the song bar on every Best Music screen (a `Stack` in `main_music.dart`'s builder),
+  hidden while Now Playing is open or there's nothing to switch to. Since Best Music 0.3.15 it
+  is a 40 px icon-only circle (`CircleBorder`, `secondaryContainer` at 60 % alpha, no
+  elevation; `smart_display_outlined` to go to videos, `library_music_outlined` to go to
+  music, icon at 85 % alpha) so snackbars behind it stay readable — the label "Back to
+  videos: <title>" / "Back to music: <title>" is only its `Semantics`; tap → `switchToOtherSession()`, which now resumes `switchTarget()`: the
+  remembered `otherSession`, else (music or nothing playing) the feed's
+  `lastPlayedVideo()` (most recently updated progress entry still in the feed), else (a video
+  playing) a fresh weighted shuffle of the library. Volume and speed follow the track's kind
+  (`_applyVolume`/`_applySpeed` in `_playCurrent`).
+
+**Switching brings its screen, reliable duration/views/upload time in rows (Best Music 0.3.2).**
+- Every "Back to music"/"Back to video(s)" control (the pill, the mini player's
+  `SwitchSessionButton`, Now Playing's chip) calls `switchSessionAndShow(handler, navigator)`:
+  it reads `switchTarget()`, starts `switchToOtherSession()` and calls
+  `showSessionScreen(navigator, video: target.isVideo)` — a video opens the Subscriptions feed,
+  a song opens Now Playing. `showSessionScreen` `popUntil`s a route named
+  `YoutubeFeedPage.routeName` (`/subscriptions`) / `NowPlayingPage.routeName`
+  (`/now-playing`) or the root; if it didn't find one it pushes `YoutubeFeedPage.route()` /
+  `NowPlayingPage.route()`. Every push of those pages uses `route()` so the names are always
+  set. The pill and mini player sit outside the navigator, so `main_music.dart` hands them
+  `musicNavigatorKey`.
+- `FeedVideoTile`: title, channel (1 line), then `_MetaRow`s — play icon + "12:34 · 1.2K
+  views" (key `feedVideoStats`) and clock icon + "Today 14:05 (3h ago)" (key
+  `feedVideoUploadTime`). `formatFeedUploadTime` (local time): "Today 14:05", "Yesterday 09:12",
+  "Mon 18:30" within the week, "3 Oct, 14:05" this year, "3 Oct 2025" before; with
+  `approx: true` (`FeedVideo.publishedApprox`, a date read off "3 days ago") no clock time.
+  The video page's meta line has all of it.
+- *Reliable duration/views/date*: `youtube_explode`'s `getUploadsFromPage` reads YouTube's newer
+  `lockupViewModel` cards from dead paths (duration 0, views 0), and `mergeVideosTab` used to
+  overwrite the RSS view count with that 0. Now:
+  `YoutubeChannelVideosApi` (`lib/services/youtube_channel_videos_api.dart`) POSTs
+  `youtubei/v1/browse` (browseId = channel id, params `EgZ2aWRlb3PyBgQKAjoA` = Videos tab)
+  and `parseVideosTab` walks the tree for `videoRenderer`/`gridVideoRenderer`/
+  `lockupViewModel` cards, collecting each card's texts (`simpleText`/`runs`/`text`/
+  `content`) and recognising the clock (`12:34`), views (`parseViewCount`: "1,234 views",
+  "1.2K views", "No views"; "watching" = live, ignored) and "N units ago". `fetchChannel`
+  tries it first and falls back to `getUploadsFromPage` with 0 → null — and (0.3.14) also
+  runs `getUploadsFromPage` whenever RSS failed, even if the JSON tab answered, because the
+  JSON tab has no titles: before, a channel whose RSS feed hiccuped was dropped from that
+  refresh. The scraped page then only fills titles (`tab ??=` keeps the JSON tab's
+  durations/views); without RSS only videos with a title are listed. `mergeVideosTab`
+  takes the higher of the RSS/tab view counts, a null never erases the other.
+  `_merged` runs every fresh video through `keepKnownDetails(fresh, known)` so a refresh that
+  missed duration/views/description/exact date keeps the cached ones. After each refresh,
+  `fillMissingDetails()` (unawaited; also callable) looks up, newest first, up to
+  `maxDetailLookups` (15) non-Short filtered videos still missing duration, views or an exact
+  date on their own page (`youtube_explode` `videos.get`, 3 at a time, each video once per app
+  run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
+  `fetchOverride` is set without one). A video whose page gives a duration is no longer
+  flagged `isLivestream`.
+- *Gestures, options sheet, online search, offline queue (Best Music 0.3.17)*:
+  `YoutubeFeedSettings` gains `swipeRight` (default `addToQueue`), `swipeLeft`
+  (`togglePlayed`), `longPress` (`options`) — `FeedGestureAction` {nothing, addToQueue,
+  togglePlayed, options, play, transcript, summary, info}, JSON by `key`, unknown → default —
+  and `offlineDays` (default 2, 0–`maxOfflineDays` 14). Each feed row is a `_SwipeableVideo`
+  (`Dismissible` whose `confirmDismiss` runs the action and returns false, so the row springs
+  back; a direction set to Nothing doesn't swipe; colored background with the action's icon
+  and label — "Mark watched"/"Mark unwatched" by state); `FeedVideoTile.onLongPress` runs the
+  long-press action. Actions: Add to queue → `MusicAudioHandler.addToVideoQueue(trackFor(v))`
+  (snackbar "Added to the queue — downloading it for offline play" / "Already in the queue");
+  Mark watched/unwatched → `setPlayed` with an Undo snackbar; Show options → bottom sheet
+  (title, Play, Add to queue, Mark watched/unwatched, Transcript, Quick summary, Download as
+  MP3, Open in YouTube, Video info). The app bar's "Feed settings" (tune) button is gone —
+  feed settings live in Settings → Subscriptions, which gets "Swipe a video right/left",
+  "Long-press a video" (radio dialogs over every action) and "Keep queued videos offline"
+  (0 = off, 1, 2, 3, 5, 7, 14 days). `addToVideoQueue`: with a video playing/paused → appended
+  to `_queue` (and `_preShuffleOrder`) unless already there; with music current → appended to
+  the video `otherSession` (or a new one), so "Back to videos" resumes into it; with nothing
+  loaded → `restore([track])`. Every add starts `VideoAudioCache.cacheInBackground`; playing a
+  feed video also caches the next `_videosAhead` (2) queued feed videos. `VideoAudioCache.keepFor`
+  is now an instance getter = `offlineDays` days (was a fixed 7); 0 → nothing is cached.
+  **Online fallback of the feed search**: when the local search (`_localMatches`) has no match
+  and the query is ≥ 2 characters, YouTube is searched after `onlineSearchDelay` (600 ms; a
+  newer query wins via `_onlineSeq`) with `YoutubeSearchApi.search(q, limit: 15)`; results
+  (`feedVideoFromSearch`: channelId '', `publishedApprox`) show as normal rows — same tap,
+  swipes and long-press — under "Nothing in your feed — searching YouTube…" / "— results from
+  YouTube" / "…couldn't be searched (offline?)" / "Nothing in your feed or on YouTube".
+- *Loading without RSS + a saved, growing feed (Best Music 0.3.16)*: `fetchChannel` asks the
+  RSS feed (`_fetchRss`, 12 s timeout) and the Videos tab (`YoutubeChannelVideosApi.fetch`)
+  **in parallel**; `ChannelTabVideo.title` is now parsed (`videoRenderer`/`gridVideoRenderer`
+  `title` runs/simpleText; `lockupViewModel` `metadata.lockupMetadataViewModel.title.content`;
+  the title text is excluded from the age/views/clock scan so "… 10 years ago" in a title
+  isn't a date), so the tab alone can list a channel. `getUploadsFromPage` (20 s) only runs
+  when the tab didn't answer, or RSS failed and no tab card had a title (titles then come from
+  it via `extraTitles`). `combineChannelSources(channel, rss:, tab:, extraTitles:)`: with RSS →
+  `mergeVideosTab` plus every titled tab video RSS doesn't list (RSS carries only the newest
+  15); without → every titled tab video (`publishedApprox` when dated); untitled ones are
+  skipped; no RSS and nothing titled → throws. Why: YouTube's RSS fails often, and needing it
+  for titles made channels — at times the whole feed — not load (0.3.14 then waited 30 s per
+  channel on the scraper). `_merged` now **adds** instead of replacing a fetched channel's
+  videos: fresh ones are added/updated (`keepKnownDetails`), saved ones stay unless the
+  channel was fetched and they were published more than `keepVideosFor` (30 days, `clock()`)
+  ago or are undated and no longer listed; unsubscribed channels' videos go. Opening the feed
+  calls `refreshIfStale()`: skipped when `lastRefresh` is under `freshFor` (10 min) old, the
+  feed isn't empty and no channel failed; pull-to-refresh calls `refresh()` directly. The saved
+  feed (`youtube_feed.json`) shows at once either way.
+- *Force-checking one channel (Best Music 0.3.14)*: `forceRefreshChannel(channel)` fetches
+  just that channel, up to 3 tries `forceRetryDelays` apart (2 s, 5 s); success → its videos
+  replace its cached ones via `_merged({id: fresh})`, it leaves `failedChannels`, saves,
+  `fillMissingDetails()`, and returns how many video ids are new to the feed; all tries failed
+  → null and its name is (kept) in `failedChannels`. `forceRefreshing` (`Set` of channel ids)
+  drives spinners; a second call for a channel already being checked returns null at once.
+  `retryFailedChannels()` force-checks every subscription whose name is in `failedChannels`
+  (in parallel) and returns how many loaded. UI: each row under "Subscribed (N)" on the
+  Channels page has a refresh button ("Check for new videos"; spinner while checking) next to
+  Unsubscribe → snackbar "<name>: N new videos" / "<name>: no new videos" / "Couldn't reach
+  <name> — try again in a bit"; the feed's "Couldn't refresh N channels: …" line gets a
+  trailing **Retry** (spinner while any check runs) → "All N channels loaded" / "Loaded X of
+  N — the rest still don't answer".
+
+**Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
+(`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
+`_playCurrent` calls `cacheInBackground(track)` for `isFeedVideo` tracks once loaded; it
+downloads one at a time with `Mp3DownloaderService.downloadMp3` into
+`<app support>/video_cache/<videoId>/` (not the library, not the MP3 downloads list; a failed
+download deletes its folder). `_audioSourceFor` plays a feed video from `cachedFile(id)` when
+present and `touch`es it. A file's mtime = last played; `keepFor` = 7 days — `cachedFile`
+ignores older files and `purgeExpired` (after each download batch and at Best Music startup)
+deletes folders not played within 7 days.
+
+**Loading progress (Best Music 0.2.99).** `EstimatedProgressBar`
+(`lib/ui/estimated_progress_bar.dart`): a thin `LinearProgressIndicator` that shows a real
+`value` when known, otherwise an estimate `0.95·(1−e^(−t/τ))`, τ = `expected`/2.5, so it
+always visibly fills; it jumps to 100% for 300 ms when `active` turns false, then hides.
+Used for track loading/buffering (mini player top edge, Now Playing), the feed refresh (real
+fraction: `YoutubeFeedService.refreshProgress` = channels fetched / total), a feed video's
+description, channel search/import, the library search's YouTube lookup and the MP3
+Downloader's search.
+
+**Settings** (Best Music 0.3.3: no separate page any more — two sections of Best Music's own
+Settings, `MusicSettingsPage`; the feed's tune icon "Feed settings" opens it with
+`initialSection: MusicSettingsSection.feed`, i.e. that section open and scrolled to):
+*Subscriptions feed* — Hide Shorts (default on), Hide livestreams (default on), Video speed
+(above), Video volume, Play the next video automatically; *SponsorBlock* — "Skip sponsored
+segments" on/off (default on) and per-category checkboxes (default sponsor, selfpromo,
+interaction, music_offtopic). Log lines go to App Logs under "Feed".
+
+**Search** (Best Music 0.3.3): the feed's search icon ("Search feed") puts a text field and
+All/Title/Channel/Date chips under the app bar. It searches every fetched video
+(`filterFeed(videos, settings)` — Shorts/livestream hiding still applies, but not the
+2-day/week window, so older videos are found too) with `searchFeed`
+(`lib/services/feed_search.dart`): every query word must match the title, channel name or
+upload date (only the chosen field when a chip other than All is picked). A word matches a
+text best when a word there starts with it (1), then when it's contained (0.85), then within
+1 edit — 2 for words of 7+ letters — of a word or a word's prefix (Levenshtein with adjacent
+swaps: 0.7/0.55), then as letters in order within a word at most twice its length (0.4);
+words under 3 letters only match exactly. Words with digits match whole numbers only
+(`3` finds `3/10/2026`, not `30`). The date text (`feedDateSearchText`) spells the upload day
+as `2026-10-03`, `3/10/2026`, `10/3/2026`, `03.10.2026`, the month name and its 3-letter
+abbreviation, the weekday and its abbreviation, and `today`/`yesterday`. Results sort by the
+average word score (bucketed to tenths) and then newest first; tapping one plays it with the
+search results as the queue. Paging older weeks and the footer are off while searching;
+"No videos in your feed match." when nothing does. The close button clears the search.
+
+Not done yet (deliberately out of the MVP): in-app video playback, background
+new-upload notifications, feed groups.
+
+### 10.6n Songs by BPM (Best Music 0.3.9)
+**BPM per track** — `Track.bpm` (int?, JSON `bpm`, omitted when null; kept by `copyWith`).
+Sources: an mp3's ID3 `TBPM` frame (`decodeMp3Tags` → `ExtractedTags.bpm` via `parseBpm`:
+first number in the text, `,`/`.` decimals rounded, 1–999 else null); an OpenSubsonic
+server's `bpm` (0 = unknown → null, `Track.subsonic(bpm:)`); the Track info page's "BPM (beats
+per minute)" field (validated 1–999, passed to `updateTrackMetadata(bpm:)` — which sets
+exactly the given values, so the page must always pass it); and the metadata CSV's `bpm`
+column (between `year` and `tags`; blank cell = keep, like the other columns). A rescan of a
+`metadataEdited` track keeps the hand-set BPM but fills a missing one from the tag
+(`previous.bpm ?? track.bpm`).
+
+**Page** — `lib/ui/bpm_range_page.dart` (`BpmRangePage`), from Best Music's drawer ("Songs by
+BPM") and the Playlists tab's third row (also in BestToDo's Music Player). With no song
+having a BPM it explains the three ways to add one. Otherwise: a row of preset `InputChip`s
+("<name> · min–max"; tap applies the range — with a snackbar if it reaches past the
+library's range — delete icon removes it with Undo), a big "min – max BPM" label, a
+`RangeSlider` over `bpmBounds(library)` (lowest..highest BPM in the library, 1-BPM steps,
+both handles draggable; the range starts as the full span and is clamped when the library
+changes), "N songs · M without a BPM aren't shown", and the list `tracksInBpmRange` (BPM
+ascending, then title; trailing "128 BPM"; tap = play the list from that song). Bottom
+buttons: "Play as queue" (`MusicPlayerService.playQueue` of the list), "Save as playlist"
+(name dialog suggesting "min–max BPM" → `MusicPlaylistService.createPlaylist` with the listed
+ids — a fixed snapshot), "Save preset" (name dialog → `Config.musicBpmPresets`, a list of
+`BpmPreset {name, min, max}` (`lib/models/bpm_preset.dart`, tolerant `fromJson`: swapped
+ends reordered, missing ends dropped); saving under an existing name replaces it).
+
+### 10.6p Automatic metadata filling (Best Music 0.3.11)
+Hands-off, no setting: `MusicMetadataEnricher.instance.start()` runs after Best Music's
+first frame (`main_music.dart`, not on web) and listens to `MusicLibraryService.tracks`.
+Every library change (launch, rescan, finished download) first re-applies its cache, then —
+debounced 3 s — runs two passes over local tracks, one song at a time:
+1. **Online lookup** for any track missing artist/album/genre/year/BPM
+   (`MusicOnlineMetadataLookup`, `lib/services/music_online_metadata.dart`). Query
+   variants (`queryVariants`): the `cleanTitle`d title (track-number prefixes, "(Official
+   Video)"/"[Lyrics]"-style brackets, "feat." tails and underscores stripped) with the
+   artist; with `mainArtist` (first of "A feat. B"/"A & B"/"A, B"/"A x B"); without any
+   bracketed part; and, for a track with no artist tag, an "Artist - Title" filename split
+   both ways round. Services in order, each skipped once every wanted field is known:
+   **Deezer** (`/search` with `artist:"…" track:"…"`, falling back to a free query; then
+   `/track/{id}` for `bpm` (30–300, 0 = unknown) and release date, `/album/{id}` for the
+   first genre), **iTunes Search** (`entity=song`: `primaryGenreName`, album, year),
+   **MusicBrainz** (`/ws/2/recording` Lucene query, ≥1.1 s apart, `User-Agent:
+   BestMusic/1.0 (…)`; first-release year, a no-secondary-type Album release preferred,
+   most-counted tag title-cased as genre) — always asked when a year is wanted, since its
+   first-release year wins over the others' (else the earliest of Deezer/iTunes).
+   Candidates are scored by `matchScore`: 0.6 × title + 0.4 × artist word similarity
+   (`textSimilarity` — accent/punctuation-folded Dice, or 0.9 × containment), artist < 0.5
+   rejects; with no artist only a ≥0.95 title counts; length off by >30 s halves the score,
+   >10 s × 0.85, ≤3 s +0.05; accepted at ≥ 0.72.
+   **Rate limits (0.3.12)** — every request goes through `_getJson`, paced per host
+   (`defaultSpacing`: Deezer 120 ms — its limit is 50 per 5 s; iTunes 3.1 s — ~20/min;
+   MusicBrainz 1.1 s). A rate-limit answer (429, 5xx, iTunes' 403, Deezer's in-body
+   `error.code == 4`) or a connection failure/timeout is retried twice (waits: `Retry-After`
+   ≤ 60 s if given, Deezer quota 5 s, else 2 s then 6 s); after that the host *rests* for
+   `cooldown` (10 min; connection-only failures don't rest it) and the lookup carries on
+   with the other services, returning `incomplete: true`. Hosts already resting are skipped
+   (also `incomplete`). If no service answered at all and something failed →
+   `MetadataLookupUnavailable` (offline, `retryAfter` null); if every needed host was
+   resting → `MetadataLookupUnavailable(retryAfter: earliest rest end)`. `resetCooldowns()`
+   clears the rests. (0.3.11 threw on the first rate-limit answer and paused the whole
+   pass for 15 min — with ~10 unpaced Deezer requests per song it stalled after ~4 songs.)
+   The enricher marks an incomplete song `EnrichmentEntry.incomplete` (persisted), merges
+   it with any earlier result (old values win) and re-asks it after `incompleteRetry`
+   (1 h); the pass moves straight on. On `MetadataLookupUnavailable` the pass stops without
+   marking the song: status "Song info services asked for a break — continuing at HH:MM"
+   (retry then + 5 s) or "No internet connection — trying again in 15 min (or tap
+   Restart)" (`offlineRetry`).
+2. **On-device BPM** — only when, after the online pass, under 90 %
+   (`bpmCoverageTarget`) of local tracks have a BPM; then every local track still without
+   one is analyzed: `AudioPcmDecoder` decodes 45 s from 30 s in (from 0 for songs under
+   75 s; the native side slides the window back for short files) to mono 16-bit PCM at
+   11025 Hz — Android via channel `besttodo/audio_pcm` (`AudioPcmDecoder.kt`:
+   MediaExtractor + MediaCodec on a single worker thread, downmix, box-filter resample,
+   16-bit or float PCM), desktop via an `ffmpeg` on PATH, else null — and `estimateBpm`
+   (`lib/services/bpm_detector.dart`, run with `compute`): log-compressed spectral flux
+   (512-sample Hann frames, 128 hop, radix-2 FFT), minus a ±0.25 s moving mean, rectified;
+   unbiased autocorrelation over 50–220 BPM lags × a log-normal prior at 120 BPM (σ = 1
+   octave); parabolic refinement. Null when the envelope peak < 5 (no attacks), the best
+   lag's correlation < 5 % of zero-lag, or < 1.3 × the mean over the lag range (no beat).
+
+Results are cached per track id in `music_enrichment.json` (`EnrichmentEntry {onlineAt,
+found, detectedAt, detectedBpm}`); a song is looked up/analyzed once — retried only after
+30 days when nothing was found. They are applied through
+`MusicLibraryService.fillMissingMetadata`, which fills only empty fields (title only when
+it was the filename and there's no artist), never sets `metadataEdited`, so tags, manual
+edits and CSV imports always win and a rescan simply gets the cache re-applied. The
+enricher's `status` line ("Looking up song info online… 3/40", "Detecting BPM on device…",
+"Song info filled in automatically — N of M complete, K with a BPM", "…paused (offline?)")
+shows under the Metadata Scan page's counts and on Songs by BPM while songs lack a BPM.
+Both passes append a time-left estimate once 3 songs are done (`_Eta`: average time per
+song so far × songs left; `formatTimeLeft` → "less than a minute left" / "about 12 min
+left" / "about 2 h 5 min left"). On Metadata Scan the row is always shown (idle text
+"Missing song info is looked up online in the background.") with a **Restart** button →
+`restartOnlineSearch()`: `resetCooldowns()`, cancels a pending retry, clears `onlineAt` on
+every entry whose track still misses a field (so no-match songs are asked again too),
+interrupts a running pass (`_restartRequested`) and runs now.
+**Background running (0.3.12)** — while a pass has work, `BackgroundWork.start`
+(`lib/services/background_work.dart`, channel `besttodo/background_work`) starts
+`BackgroundWorkService.kt`: a `specialUse` foreground service (no 6 h/day cap like
+`dataSync`; `FOREGROUND_SERVICE_SPECIAL_USE`, subtype property in the manifest) with an
+ongoing silent low-importance notification "Best Music · filling in song info" whose text
+mirrors `status` (`update` re-notifies; tap opens the app) and a partial wake lock (3 h
+timeout, released on stop). It keeps the process from being frozen while other apps are in
+front; Dart keeps running on audio_service's cached engine. Stopped when a run ends with
+nothing paused (kept up during a pause so the retry still fires) and on `stop()`. Android
+12+ refusing a start from the background is swallowed — the work then just runs while the
+app is open. No-op off Android.
+App Logs ("Music") record each pass's counts.
+
+3. **Into the files** — after the two passes, every mp3 whose entry has data and no
+   `taggedAt` gets it written into its own ID3v2 tag (`Id3TagWriter.addMissing`,
+   `lib/services/id3_tag_writer.dart`), using the library's *current* value for each field
+   the enricher supplied (so a manual in-app edit is what lands in the file; the title only
+   when the online one was applied). Fill-only: a TIT2/TPE1/TALB/TCON/TYER (v2.3) or TDRC
+   (v2.4)/TBPM frame that already has text is never changed (TYER and TDRC count for each
+   other); empty ones are replaced; every other frame is copied byte for byte. No tag →
+   a new v2.3 one (Latin-1, or UTF-16 with BOM when needed; v2.4 writes UTF-8). Bails with
+   `unsupported` on non-mp3, v2.2, or any of the unsync/extended-header/experimental/footer
+   flags, or if `decodeMp3Tags` can't read the new artist/BPM back. When the frames fit in
+   the old tag (its padding) only the tag bytes are overwritten in place; otherwise
+   tag + 2048 bytes padding + the audio stream into `<file>.besttodo-tag.tmp`, its length is
+   checked, and it is renamed over the original. The modified time is restored. Result →
+   `taggedAt` set (written/nothingToAdd/unsupported) or `tagFailures++` (I/O error; given up
+   after 3). New online/detected data resets `taggedAt`. Because writing bumps a file's
+   change time, `rescan` now keeps the *earlier* of the previous and fresh `deviceDate`.
+
+**ID3 read fix (0.3.11)** — `decodeMp3Tags` had never actually read a frame: id3_codec 1.0.x
+reports ID3v2 frames as a `Frames` list of `{Frame ID, Content: {Information}}` maps, not the
+`Frame[<id>]` keys it looked up, so every mp3 scanned as untagged (filename title, no
+artist/album/genre/year/BPM). Frames are now indexed as `Frame[<id>]` (first wins). On its first `start()` the enricher rescans the library
+once (marker file `music_enrichment_rescan_v1`; skipped for an empty library) so existing
+installs pick their tags up before anything is looked up online.
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
 chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
 tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer
 trend, share of slow starts, outlier callout, first-launch-of-day cold-start comparison;
-uses timestamped history with legacy fallback. **Changelog**: renders CHANGELOG.md
-(markdown, bundled asset); an app-bar button toggles an update heatmap — the file is
-parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd` headings +
-their bullets, wrapped lines joined, undated headings skipped) and drawn as a
+uses timestamped history with legacy fallback. **Changelog**: `ChangelogPage` renders a
+bundled markdown asset — CHANGELOG.md by default, or Best Music's own CHANGELOG_MUSIC.md
+via `assetPath`/`showStoryPoster` (`false` for Music: `changelogMilestones` below is
+BestToDo's own curated history — see §10.6i); an app-bar button toggles an update heatmap
+— the file is parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd`
+headings + their bullets, wrapped lines joined, undated headings skipped) and drawn as a
 GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri labels, month label
 above the week where the month changes — with the year appended on the first column and
 at every year switch, e.g. "Jan 2026", drawn in an `OverflowBox` so it can run past its
@@ -3085,6 +4777,74 @@ page's tab view. A failed *first* connection (bad token) blocks with an inline e
 and keeps the dialog open; once connected, a background-phase failure only shows up
 in App Logs → Todoist — onboarding has already finished by then.
 
+### 10.6n Music & MP3 download live only in Best Music (0.2.98)
+
+BestToDo no longer ships the Music Player or the MP3 Downloader; both exist only in the Best
+Music app (§10.6f, entry point `lib/main_music.dart`). The shared code under `lib/` is
+unchanged — only BestToDo's wiring to it is gone:
+
+- `Config.startToolOptions`/`featureKeys` (and their label/description arrays) no longer list
+  `mp3_downloader` or `music_player`; `home_page.dart` has no `_ToolEntry` or `_buildToolPage`
+  case for them. A saved `startTool` of either key fails `startToolOptions.contains` on load
+  and falls back to `tasks`; stale `features` entries for them are ignored.
+- Settings drops its MP3 Downloader and Music Player sections (old indexes 15/16, with their
+  search entries and Subsonic controllers); Claude Routine is now section 15 (16 sections).
+- `main.dart` boots no music services (`MusicLibraryService`/`MusicPlaylistService`/
+  `MusicPlayerService.init`, the deferred `ensurePermissions`), and a shared Spotify/YouTube/
+  Shazam link opens the normal quick-add screen like any other share — `detectMusicShareLink`
+  routing to `Mp3DownloaderPage` is Best Music only. The `besttodomusic://` widget-tap branch
+  of `_handleWidgetClick` is gone.
+- The two music home-screen widgets (`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`)
+  are declared in `android/app/src/music/AndroidManifest.xml` instead of `src/main`, so only
+  Best Music offers them; the Kotlin classes stay in `src/main` (one shared source set).
+  Widget Previews no longer mocks them.
+- The `audio_service` service/receiver and `MANAGE_EXTERNAL_STORAGE` stay in the shared
+  manifest (the latter is also used by the shared Wishlist store).
+
+Earlier sections (§8 music widgets, §10.6d, §10.6e, "Settings → Music Player") describe the
+code as it still runs inside Best Music; their "Tools ▸ …" / BestToDo-Settings wiring is
+historical.
+
+### 10.6o Video transcripts & Quick summary (Best Music 0.3.9)
+
+A Subscriptions video's page (`YoutubeVideoPage`) has **Transcript** and **Quick summary**
+buttons (`lib/ui/video_transcript_page.dart`, both take a `VideoRef` of id/title/channel/
+published).
+
+- **Transcript source** — `VideoTranscriptService` (`lib/services/video_transcript_service.dart`,
+  singleton, per-session in-memory cache by video id): first YouTube's own caption tracks via
+  youtube_explode (`videos.closedCaptions.getManifest` → `get`), then, if that throws or has no
+  tracks, the public Invidious instances in `invidiousInstances` (`/api/v1/captions/<id>` →
+  the chosen track's WebVTT, parsed by `parseVtt`). Track choice (`pickTrack`): manual English
+  → auto English → any manual → first. `cleanSegments` strips tags/entities, drops the
+  repeated lines of YouTube's rolling auto-captions and `[Music]`-style cues. All sources
+  failing throws `TranscriptUnavailableException` listing each attempt (shown on the page).
+  `paragraphs()` groups segments into ~45 s timestamped paragraphs (forced break at 90 s for
+  unpunctuated auto-captions). The transcript page shows source/language/auto/word count,
+  Copy and Share (Markdown) and a Quick summary button.
+- **Summary** — `VideoSummaryService.summarize` (`lib/services/video_summary_service.dart`):
+  with `Config.claudeApiKey` set it POSTs to `https://api.anthropic.com/v1/messages`
+  (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-beta:
+  server-side-fallback-2026-07-01`; model `claude-opus-5-5`, `fallbacks: "default"`,
+  `output_config.effort: low` + a JSON-schema format `{overview, key_points[], conclusion}`;
+  the whole transcript is sent, never truncated). Non-200, network errors and
+  `stop_reason: refusal` throw `VideoSummaryException`; the page then shows the on-device
+  summary with the error. Without a key: `extractiveSummary` — sentences (or 25-word chunks for
+  unpunctuated captions) scored by content-word frequency, best five in order as key points,
+  the last 1–2 as the conclusion, an overview naming length/word count/top words. A banner
+  on an on-device summary links to Settings → Transcripts & summaries.
+- **Obsidian** — `ObsidianResearchNote.markdown` builds the note (frontmatter: title, source,
+  channel, published, created, tags research+video; then `## Summary`/`## Key points`/
+  `## Conclusion`). **Save to Obsidian** opens `obsidian://new?vault=…&file=<folder>/<title>&content=…`
+  (`saveUri`, percent-encoded by hand since Obsidian keeps `+`; vault omitted when empty =
+  the open vault; file name sanitized, ≤100 chars); Share/Copy send the same Markdown.
+- **Settings** — Best Music Settings gains a "Transcripts & summaries" section
+  (`MusicSettingsSection.summaries`, before Updates): Claude API key (obscured),
+  Obsidian research folder (`Config.obsidianResearchFolder`, default `Research`) and vault
+  (`Config.obsidianVault`), edited in `_TextSettingDialog`. All three persist in
+  `settings.json`.
+- Tests: `test/music/video_transcript_test.dart`.
+
 ## 11. Build, versioning, CI
 
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z[+build]> ["changelog entry"]`
@@ -3097,7 +4857,8 @@ in App Logs → Todoist — onboarding has already finished by then.
   --target $1` → rename artifacts with the version (`best_todo_<VERSION>.apk`,
   `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart` for an APK build →
   optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`. `tool/build.ps1` mirrors
-  this with `[System.Diagnostics.Stopwatch]` for the timing.
+  this (including the flavor/`music-apk` handling — §10.6i) with
+  `[System.Diagnostics.Stopwatch]` for the timing.
 - **Local build time & duration (0.1.240; duration + build_history.json added later):**
   `tool/append_build_time.dart` writes/updates a `- Local build: yyyy-mm-dd HH:MM` bullet
   inside the *newest* CHANGELOG.md section (`withBuildTimeNote`: replaces the existing line
@@ -3181,6 +4942,35 @@ in App Logs → Todoist — onboarding has already finished by then.
   straight from download into install before this and is unchanged (the
   `AboutPage(autoCheckForUpdate: ...)` pre-trigger the old flow used is gone,
   since nothing navigates there automatically anymore).
+- **Silent auto-update, both apps (0.2.98 / Best Music 0.3.6):** the
+  "New version available" dialog and `showUpdateAvailableDialog` are gone.
+  When the poll reports a build, `_maybeStartAutoUpdate` (in `main.dart` and,
+  identically, `main_music.dart` against `MusicAboutPage.updateService`) skips
+  it if `wasDownloaded(version)` (already downloading or already handed to the
+  installer — e.g. the user backed out of Android's install screen, so the
+  minute poll doesn't re-download it), otherwise calls
+  `downloadUpdateInBackground` straight away; Android's own install prompt is
+  the only confirmation left. `downloadUpdateInBackground` now returns
+  `Future<bool>` (true once the APK reached `installApk`); on false the caller
+  `AutoUpdateChecker.dismiss`es the version, so a failing download isn't
+  retried every minute — the next launch tries again. Settings → Updates'
+  switch is renamed "Automatically update" (same `autoUpdateCheckEnabled`
+  key). `Config.applyMap` turns it back on once for settings saved before this
+  (no `autoUpdateEnabledOnce: true` key — `toMap` always writes it), after which
+  a user's "off" sticks again. Best Music still has no toggle; its poll always
+  runs on Android.
+- **"Installed …" line on the Changelog (0.2.98 / Best Music 0.3.6):** the
+  text view of `ChangelogPage` (both apps) starts with a banner
+  (`Key('changelog-installed-since')`): "Installed v<versionWithBuild> ·
+  yyyy-MM-dd HH:mm (<n> min/hours/days ago)" (`formatInstalledAt`), so the user
+  can see when an automatic update landed. `InstallInfoService.load()`
+  (`lib/services/install_info_service.dart`) asks the native side first —
+  `lastUpdateTime` on the `besttodo/update` channel returns
+  `PackageInfo.lastUpdateTime` (epoch ms) from `MainActivity` — and falls back
+  to the first time this version was seen running, which both `main()`s record
+  after the first frame (`recordLaunch`, `shared_preferences` key
+  `install_info_first_seen` = `{version, at}`, replaced when the version
+  changes). Hidden when neither source knows (e.g. version 'unknown').
 - **Background downloads via DownloadManager (0.2.x):** both download paths —
   the auto-update Yes and the About page's "Download & install"/rollback
   buttons — go through `UpdateService.downloadInBackground()` instead of a
@@ -3202,6 +4992,19 @@ in App Logs → Todoist — onboarding has already finished by then.
   foreground at all. `UpdateService.downloadChannelOverride` is the test seam
   for the three new channel methods, mirroring `fetchOverride` for the
   release-JSON lookup.
+- **Update downloads folder in Settings (BestToDo 0.2.94, Best Music 0.2.97):**
+  both apps' Settings (BestToDo: Settings → Updates; Best Music: the bottom of
+  its Settings page) show an "Update downloads folder" row
+  (`lib/ui/update_downloads_folder_tile.dart`, `UpdateDownloadsFolderTile`,
+  given the app's own `UpdateService` — `UpdateService.instance` /
+  `MusicAboutPage.updateService`) with the absolute path the update APKs land
+  in and a "Copy path" button. The path comes from
+  `UpdateService.updateDownloadsDirectory()`, which asks the native side via
+  the `besttodo/update` channel's `updateDownloadsDir` method (the same
+  `getExternalFilesDir(null)/updates` that `startBackgroundDownload` writes
+  to, e.g. `/storage/emulated/0/Android/data/<applicationId>/files/updates`);
+  it returns null off Android (no in-app downloads there) or when external
+  storage is unavailable, and the row then says "Not available".
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a

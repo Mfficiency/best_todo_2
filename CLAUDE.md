@@ -10,32 +10,63 @@ file is the short operational guide.
 - Tests: `flutter test` runs everything (CI does this). Locally, run only the
   suites your change touches — `test/core/` always, plus the matching silo:
   `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
-  `home`, `share`, `sync`, `update`, `tools` or `recurrence`. See `test/README.md` for the file→suite map. Cross-cutting
+  `home`, `share`, `sync`, `update`, `tools`, `recurrence` or `music`. See `test/README.md` for the file→suite map. Cross-cutting
   changes (theme, navigation, pubspec) → full `flutter test`.
+- Smart test runner: `dart run tool/smart_test.dart` figures the above out for
+  you — it looks at what's changed (working tree, or the last commit if
+  nothing's pending) and runs only the matching `test/<area>` suite(s), per
+  the same map as `test/README.md`. A change it can't confidently map (a new
+  file, `pubspec.yaml`, ...) falls back to a full `flutter test`; so does
+  every 10th targeted run and anything past 7 days since the last full run,
+  so the shortcut can't silently drift out of sync with the real suite.
+  `--dry-run` prints the decision without running anything; `--full` forces a
+  full run now. State (mods since the last full run) lives in the gitignored
+  `.smart_test_state.json`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
-  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main)
-- Release APK: `flutter build apk --release` (signed with the committed debug keystore)
+  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main). Best Music has its own
+  suite: `flutter test integration_test/music_home_page_screenshot_test.dart -d windows`
+  → `build/e2e_screenshots_music/`, archived to `docs/screenshots/music/` the same way.
+- Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
+  keystore). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
+  (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
+  separate standalone app from this same codebase (Music Player + MP3 Downloader only, no
+  to-do features — `lib/main_music.dart`, SPEC.md §10.6f). Build it with
+  `sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass
+  -File tool\build.ps1 music-apk --release`). CI also builds and stages it
+  automatically on every push to main/staging/dev (`build_music_apk` job in
+  `build-apk.yml`). The per-flavor rename to `best_<flavor>_<version>.apk` is done
+  by Gradle's `createVersioned<Flavor>ReleaseApk` task — one task per flavor, wired
+  to that flavor's own `assemble<Flavor>Release`, because
+  `build/app/outputs/flutter-apk/` is never cleaned between builds and anything
+  that infers the flavor by looking for an existing `app-<flavor>-release.apk`
+  picks up the *previous* app's leftover.
 - Build everything + ship: `sh tool/build.sh all --release` (alias for
   `sh tool/build_all.sh --release`), or on Windows without Git Bash/WSL:
   `powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release`.
-  Builds the APK **and** the Windows exe, stages the APK into `github_releases/`,
-  then commits and pushes the current branch so the app can download it.
+  Builds the BestToDo APK, the Best Music APK **and** the Windows exe, stages both
+  APKs into `github_releases/`, then commits and pushes the current branch so the
+  apps can download them.
   Switches: `SYNC=0` (no git), `PUSH=0` (commit only), `WINDOWS=0`/`ANDROID=0`
-  (one target), `REQUIRE_WINDOWS=1` (a failing Windows build aborts instead of
-  warning).
+  (one target), `MUSIC=0` (skip the Best Music APK), `REQUIRE_WINDOWS=1` (a failing
+  Windows build aborts instead of warning).
 - Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
   `github_releases/` and deletes the older ones; commit the folder — the app's About page
   downloads the newest from there ("Download & install") and the other one for
   "Go back to <version>" (`UpdateService.releasesRef` = the `dev` branch)
-- Local build time & duration: `tool/build.sh`/`tool/build.ps1` time the
+- Build time, duration & size: `tool/build.sh`/`tool/build.ps1` time the
   `flutter build` call and, on success, run
-  `dart run tool/append_build_time.dart --duration <secs> --target <apk|windows|...>`,
-  writing/updating a "Local build: <time>" line plus a per-target
-  "Build duration (<target>): <time>" line in the newest CHANGELOG.md entry, and
-  appending `{version, target, durationSeconds, finishedAt, os}` to `build_history.json`
-  (committed, capped at the newest 1000 entries) so build times are tracked over time.
+  `dart run tool/append_build_time.dart --duration <secs> --target <apk|windows|...> --artifact <apk or Release dir>`,
+  writing/updating a "Local build: <time>" line, a per-target
+  "Build duration (<target>): <time>" line and an "APK size: <MB>" line (or
+  "Build size (<target>)") in that version's CHANGELOG.md entry, and appending
+  `{version, app, target, durationSeconds, sizeBytes, source, finishedAt, os}` to
+  `build_history.json` (committed, capped at the newest 1000 entries) so build times and
+  app size are tracked over time. CI does the same for every push to `dev`
+  (`build-apk.yml`, both apps): `--source ci` writes "CI build: <UTC time>" and
+  "Build duration (apk, CI)" instead, commits and pushes — so a version that's only ever
+  built by CI still gets its notes.
   Since CHANGELOG.md is bundled as an asset by that same build, the Changelog page
   only ever shows the *previous* build's time/duration — expected, not a bug.
 - Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
@@ -50,7 +81,9 @@ file is the short operational guide.
   `flutter test --machine > build/ci/machine.jsonl` then
   `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
-  or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`
+  or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`.
+  Best Music versions and changelogs independently of BestToDo (SPEC.md §10.6i) — add
+  `--music` to bump `MUSIC_VERSION` + `CHANGELOG_MUSIC.md` instead
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 

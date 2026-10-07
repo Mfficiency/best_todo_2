@@ -386,4 +386,15 @@ void main() {
       expect(jan7.dueDate, DateTime(2026, 1, 20));
     });
   });
+
+  group('buildOccurrence', () {
+    test('keeps a Research master\'s occurrences in Research', () {
+      // Without this, a recurring research item's generated occurrences
+      // would lose the flag and leak onto the regular home tabs.
+      final master = _master(dueDate: DateTime(2026, 1, 1))..isResearch = true;
+      final occurrence = RecurrenceService.buildOccurrence(
+          master, DateTime(2026, 1, 2), '2026-01-02');
+      expect(occurrence.isResearch, isTrue);
+    });
+  });
 }

@@ -252,6 +252,8 @@ void main() {
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['label'], isNot(contains('approval')));
     expect(saved.single['dueDate'], isNull);
+    // Stamped so the task info dialog can say when it was approved.
+    expect(DateTime.tryParse(saved.single['approvedAt'] as String), isNotNull);
   });
 
   testWidgets('the plain Deny button sends the item straight to the bin',

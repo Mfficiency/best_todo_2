@@ -23,7 +23,7 @@ import java.util.UUID
  * sheet starts its target inside the *sharing* app's task, and a second
  * MainActivity there would mean a second Flutter engine. Launching
  * MainActivity explicitly with NEW_TASK re-fronts the one existing app task
- * (or cold-starts it) instead, and singleTop delivers the content via
+ * (or cold-starts it) instead, and singleTask delivers the content via
  * onNewIntent.
  */
 class ShareActivity : Activity() {

@@ -433,7 +433,9 @@ void main() {
           isEatingHabit: true,
         ),
       ],
-      marker: 'Oatmeal',
+      // Past days start collapsed, so wait for yesterday's section title
+      // rather than the entry inside it.
+      marker: '${formatWeekdayShort(yesterday)}, ${formatTimerDate(yesterday)}',
     );
 
     await tester.tap(find.byTooltip('Add food diary entry'));
@@ -557,12 +559,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Copy days as text'), findsOneWidget);
-    // Both days start checked, one entry apiece.
-    expect(find.text('1 entry'), findsNWidgets(2));
+    // Both days start checked, one entry apiece (counted inside the dialog:
+    // the collapsed yesterday card behind it says "1 entry" too).
+    expect(
+        find.descendant(
+            of: find.byType(AlertDialog), matching: find.text('1 entry')),
+        findsNWidgets(2));
 
     // Uncheck yesterday, leaving only today selected.
-    await tester.tap(find.text(
-        '${formatWeekdayShort(yesterday)}, ${formatTimerDate(yesterday)}'));
+    await tester.tap(find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(
+            '${formatWeekdayShort(yesterday)}, ${formatTimerDate(yesterday)}')));
     await tester.pump();
     await tester.tap(find.text('Copy'));
     await tester.pumpAndSettle();

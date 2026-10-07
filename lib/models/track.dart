@@ -1,0 +1,305 @@
+/// Where a [Track]'s audio bytes come from.
+enum TrackSource { local, subsonic, youtube }
+
+/// A single playable song, either a file under the user's configured music
+/// folder ([TrackSource.local]), a song on a connected Subsonic/
+/// OpenSubsonic server ([TrackSource.subsonic]), or a YouTube video's audio
+/// streamed from the Subscriptions feed ([TrackSource.youtube]).
+///
+/// [id] is stable and unique across all sources: `local:<absolute path>`
+/// for local files, `subsonic:<server song id>` for Subsonic ones,
+/// `youtube:<video id>` for YouTube videos — used as
+/// the key everywhere a track needs to be referenced (favorites, disliked,
+/// playlists, the now-playing queue) without holding the whole object.
+class Track {
+  final String id;
+  final TrackSource source;
+
+  /// Absolute file path. Only set for [TrackSource.local].
+  final String? filePath;
+
+  /// Subsonic song id on the configured server ([TrackSource.subsonic]),
+  /// or the 11-character YouTube video id ([TrackSource.youtube]).
+  final String? remoteId;
+
+  /// Cover art URL (the video thumbnail for [TrackSource.youtube]); shown
+  /// on Now Playing and handed to the system media notification. Null for
+  /// local/Subsonic tracks, whose art isn't surfaced yet.
+  final String? artUrl;
+
+  /// A [TrackSource.youtube] track that is a *song* (picked from the
+  /// library search's YouTube fallback) rather than a Subscriptions-feed
+  /// video. Songs follow music playback rules — always 1x speed, the music
+  /// volume, no feed resume/played bookkeeping — see [isFeedVideo].
+  final bool youtubeSong;
+
+  /// True for a Subscriptions-feed video: plays at the feed's speed and
+  /// volume (with optional boost), resumes where it stopped, gets marked
+  /// played. Everything else — local, Subsonic, YouTube songs — is music.
+  bool get isFeedVideo => source == TrackSource.youtube && !youtubeSong;
+
+  final String title;
+  final String artist;
+  final String album;
+
+  /// Track length in milliseconds, when known (from ID3 tags or the server).
+  final int? durationMs;
+
+  /// Genre, when known (from an mp3's `TCON` ID3 tag). Empty when unknown —
+  /// used to build "most played per genre" smart playlists and genre rule
+  /// conditions.
+  final String genre;
+
+  /// Release year, when known (from an mp3's `TDRC`/`TYER`/`TDOR` ID3 tag).
+  final int? year;
+
+  /// Tempo in beats per minute, when known — from an mp3's `TBPM` ID3
+  /// tag, a metadata CSV import or the Track info page. Backs the BPM
+  /// range page.
+  final int? bpm;
+
+  /// When this track was first seen by a library scan. Preserved across
+  /// later rescans (a file that's still there doesn't get a new "added"
+  /// date just because the library was refreshed) — backs the "Last Added"
+  /// smart playlist.
+  final DateTime? dateAdded;
+
+  /// When the file itself arrived on this phone/computer, read from the
+  /// file system on every scan (`FileStat.changed`: the creation time on
+  /// Windows, the inode change time on Android/Linux — set when the file
+  /// was copied/downloaded there). Unlike [dateAdded] it is independent of
+  /// when Best Music first scanned it. Null for Subsonic tracks and for
+  /// libraries not rescanned since 0.2.87.
+  final DateTime? deviceDate;
+
+  /// How many times this track has been played to completion. Backs the
+  /// "Most Played" smart playlists; bumped by [MusicAudioHandler], not by a
+  /// manual skip.
+  final int playCount;
+
+  /// True once title/artist/album/genre/year were set by hand (the Track
+  /// info page's "fill in missing metadata"), rather than read from the
+  /// file's tags. A later [MusicLibraryService.rescan] keeps those fields
+  /// as-is instead of overwriting them with a fresh (possibly still empty)
+  /// tag read.
+  final bool metadataEdited;
+
+  /// Free-form labels the user assigns by hand (e.g. "Belgian Top Charts",
+  /// "Wedding songs") to group tracks by occasion/playlist-worthiness in
+  /// ways artist/genre/folder don't capture — see the Tags tab. Never read
+  /// from a file's tags; always set via [MusicLibraryService.updateTrackMetadata]
+  /// or a metadata CSV import, so it survives a rescan the same way other
+  /// manually-edited fields do.
+  final List<String> tags;
+
+  const Track({
+    required this.id,
+    required this.source,
+    this.filePath,
+    this.remoteId,
+    this.artUrl,
+    this.youtubeSong = false,
+    required this.title,
+    this.artist = '',
+    this.album = '',
+    this.durationMs,
+    this.genre = '',
+    this.year,
+    this.bpm,
+    this.dateAdded,
+    this.deviceDate,
+    this.playCount = 0,
+    this.metadataEdited = false,
+    this.tags = const [],
+  });
+
+  factory Track.local({
+    required String filePath,
+    required String title,
+    String artist = '',
+    String album = '',
+    int? durationMs,
+    String genre = '',
+    int? year,
+    int? bpm,
+    DateTime? dateAdded,
+    DateTime? deviceDate,
+    int playCount = 0,
+    bool metadataEdited = false,
+    List<String> tags = const [],
+  }) {
+    return Track(
+      id: 'local:$filePath',
+      source: TrackSource.local,
+      filePath: filePath,
+      title: title,
+      artist: artist,
+      album: album,
+      durationMs: durationMs,
+      genre: genre,
+      year: year,
+      bpm: bpm,
+      dateAdded: dateAdded,
+      deviceDate: deviceDate,
+      playCount: playCount,
+      metadataEdited: metadataEdited,
+      tags: tags,
+    );
+  }
+
+  factory Track.subsonic({
+    required String remoteId,
+    required String title,
+    String artist = '',
+    String album = '',
+    int? durationMs,
+    int? bpm,
+  }) {
+    return Track(
+      id: 'subsonic:$remoteId',
+      source: TrackSource.subsonic,
+      remoteId: remoteId,
+      title: title,
+      artist: artist,
+      album: album,
+      durationMs: durationMs,
+      bpm: bpm,
+    );
+  }
+
+  /// A YouTube video's audio, played from the Subscriptions feed. [artist]
+  /// is the channel name; [artUrl] the video thumbnail. [song]: a song
+  /// streamed from the library search's YouTube fallback instead
+  /// ([youtubeSong]).
+  factory Track.youtube({
+    required String videoId,
+    required String title,
+    String artist = '',
+    int? durationMs,
+    String? artUrl,
+    bool song = false,
+  }) {
+    return Track(
+      id: 'youtube:$videoId',
+      source: TrackSource.youtube,
+      remoteId: videoId,
+      artUrl: artUrl,
+      youtubeSong: song,
+      title: title,
+      artist: artist,
+      durationMs: durationMs,
+    );
+  }
+
+  /// The file's base name without extension, used as a fallback title and
+  /// for fuzzy-matching M3U playlist entries.
+  String get fileBaseName {
+    final path = filePath ?? '';
+    final slash = path.lastIndexOf(RegExp(r'[\\/]'));
+    final name = slash >= 0 ? path.substring(slash + 1) : path;
+    final dot = name.lastIndexOf('.');
+    return dot > 0 ? name.substring(0, dot) : name;
+  }
+
+  /// Returns a copy with the given fields replaced. Used to update
+  /// per-scan metadata while preserving [dateAdded]/[playCount] across a
+  /// rescan, and to bump [playCount] on playback.
+  Track copyWith({
+    String? title,
+    String? artist,
+    String? album,
+    int? durationMs,
+    String? genre,
+    int? year,
+    int? bpm,
+    DateTime? dateAdded,
+    DateTime? deviceDate,
+    int? playCount,
+    bool? metadataEdited,
+    List<String>? tags,
+  }) {
+    return Track(
+      id: id,
+      source: source,
+      filePath: filePath,
+      remoteId: remoteId,
+      artUrl: artUrl,
+      youtubeSong: youtubeSong,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      durationMs: durationMs ?? this.durationMs,
+      genre: genre ?? this.genre,
+      year: year ?? this.year,
+      bpm: bpm ?? this.bpm,
+      dateAdded: dateAdded ?? this.dateAdded,
+      deviceDate: deviceDate ?? this.deviceDate,
+      playCount: playCount ?? this.playCount,
+      metadataEdited: metadataEdited ?? this.metadataEdited,
+      tags: tags ?? this.tags,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'source': source.name,
+        if (filePath != null) 'filePath': filePath,
+        if (remoteId != null) 'remoteId': remoteId,
+        if (artUrl != null) 'artUrl': artUrl,
+        if (youtubeSong) 'youtubeSong': true,
+        'title': title,
+        'artist': artist,
+        'album': album,
+        if (durationMs != null) 'durationMs': durationMs,
+        if (genre.isNotEmpty) 'genre': genre,
+        if (year != null) 'year': year,
+        if (bpm != null) 'bpm': bpm,
+        if (dateAdded != null) 'dateAdded': dateAdded!.millisecondsSinceEpoch,
+        if (deviceDate != null)
+          'deviceDate': deviceDate!.millisecondsSinceEpoch,
+        if (playCount != 0) 'playCount': playCount,
+        if (metadataEdited) 'metadataEdited': metadataEdited,
+        if (tags.isNotEmpty) 'tags': tags,
+      };
+
+  factory Track.fromJson(Map<String, dynamic> json) {
+    final sourceName = json['source'] as String?;
+    final source = TrackSource.values.firstWhere(
+      (s) => s.name == sourceName,
+      orElse: () => TrackSource.local,
+    );
+    final dateAddedMs = json['dateAdded'];
+    final deviceDateMs = json['deviceDate'];
+    return Track(
+      id: json['id'] as String? ?? '',
+      source: source,
+      filePath: json['filePath'] as String?,
+      remoteId: json['remoteId'] as String?,
+      artUrl: json['artUrl'] as String?,
+      youtubeSong: json['youtubeSong'] as bool? ?? false,
+      title: json['title'] as String? ?? '',
+      artist: json['artist'] as String? ?? '',
+      album: json['album'] as String? ?? '',
+      durationMs: (json['durationMs'] as num?)?.round(),
+      genre: json['genre'] as String? ?? '',
+      year: (json['year'] as num?)?.round(),
+      bpm: (json['bpm'] as num?)?.round(),
+      dateAdded: dateAddedMs is num
+          ? DateTime.fromMillisecondsSinceEpoch(dateAddedMs.round())
+          : null,
+      deviceDate: deviceDateMs is num
+          ? DateTime.fromMillisecondsSinceEpoch(deviceDateMs.round())
+          : null,
+      playCount: (json['playCount'] as num?)?.round() ?? 0,
+      metadataEdited: json['metadataEdited'] as bool? ?? false,
+      tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ??
+          const [],
+    );
+  }
+
+  @override
+  bool operator ==(Object other) => other is Track && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+}

@@ -1,7 +1,268 @@
 # Changelog
 
+## [0.2.99] - 2026-10-05
+- The Worklist now shows its name at the top (in the search box), so you can tell it apart from your normal task list
+- The Move/Delete options that appear when you swipe a task now shrink to fit the row instead of being cut off with large system font sizes
+- If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason (e.g. "Update download failed: This release has no APK to download") instead of showing a few seconds later
+- CI build: 2026-10-07 09:28 UTC
+- Build duration (apk, CI): 9m 17s
+- APK size: 63.9 MB
+- Local build: 2026-10-06 06:39
+- Build duration (apk): 19m 13s
+- Build duration (windows): 1m 09s
+- Build size (windows): 128.7 MB
+
+## [0.2.98] - 2026-10-04
+- Music Player and MP3 Downloader removed from BestToDo — they now live only in the Best Music app (shared music links open the regular quick-add screen, and the music home-screen widgets are Best Music only)
+- Updates now install automatically: a new version is downloaded as soon as it appears and Android's install screen opens, with no "Do you want to download?" question first (Settings → Updates → "Automatically update", switched back on for everyone)
+- Changelog now shows when the version you're running was installed (e.g. "Installed v0.2.98+399 · 2026-10-04 18:40 (2 hours ago)"), so you can see when an update came through
+- CI build: 2026-10-05 12:04 UTC
+- Build duration (apk, CI): 8m 15s
+- APK size: 63.9 MB
+
+## [0.2.97] - 2026-10-04
+- Update downloads now show which app and version are downloading in the notification (e.g. "BestToDo update 0.2.97+398")
+- CI build: 2026-10-04 20:42 UTC
+- Build duration (apk, CI): 9m 08s
+- APK size: 70.3 MB
+
+## [0.2.96] - 2026-10-03
+- Music Player: progress bars while songs load and while searching YouTube
+- CI build: 2026-10-04 06:58 UTC
+- Build duration (apk, CI): 8m 43s
+- APK size: 69.7 MB
+
+## [0.2.95] - 2026-10-03
+- Music Player: when a song isn't in your library, YouTube is searched automatically and the results are clearly marked "Not in your library"; songs streamed from YouTube always play at 1× and use the music volume
+- Local build: 2026-10-03 21:14
+- Build duration (apk): 8m 51s
+- Build duration (windows): 2m 22s
+
+## [0.2.94] - 2026-10-03
+- Settings > Updates now shows the folder where update downloads are saved, with a button to copy its path
+- Local build: 2026-10-03 20:12
+- Build duration (apk): 5m 28s
+- Build duration (windows): 1m 58s
+- APK size: 70.3 MB
+
+## [0.2.93] - 2026-10-03
+- Fixed "YouTube search failed" on a working connection in the Music Player and MP3 Downloader; a real failure now says what went wrong
+- Local build: 2026-10-03 19:30
+- Build duration (apk): 7m 19s
+- Build duration (windows): 2m 14s
+- APK size: 70.3 MB
+
+## [0.2.92] - 2026-10-03
+- Music Player: when a search finds nothing in your library, tap "Search on YouTube" — picking a song plays it immediately and silently downloads it in the background
+- Local build: 2026-10-03 19:07
+- Build duration (apk): 8m 52s
+- Build duration (windows): 2m 07s
+
+## [0.2.91] - 2026-10-03
+- Smart auto-tag (optional): when none of your auto-tag keywords match a new task, the app can ask the Jev decision model to pick one of your existing tags instead. It only applies a tag when it's confident, never slows down adding a task, and costs a tiny fraction of a cent per task. Turn it on in Settings > Tasks and paste a TypeSafe API key
+- Local build: 2026-10-03 07:56
+- Build duration (apk): 10m 10s
+- Build duration (windows): 1m 34s
+
+## [0.2.89] - 2026-10-02
+- Only one copy of the app can be open at a time: opening it again from the home screen, a notification, a widget or a shared link brings back the copy that's already running instead of starting a second one (on Windows too)
+- Local build: 2026-10-02 19:18
+- Build duration (apk): 6m 58s
+- Build duration (windows): 2m 41s
+
+## [0.2.88] - 2026-10-01
+- Task info: tap a task and press the info icon beside Note to see when it was created, whether you added it in the app or it came in automatically via Todoist (the Waiting for Approval path) or the share sheet, when it was approved, its Todoist sync details and its full change history. The icon now shows on every task, not just Todoist-synced ones; Task Details shows the created time and origin too
+- Local build: 2026-10-01 07:52
+- Build duration (apk): 5m 13s
+- Build duration (windows): 1m 36s
+
+## [0.2.87] - 2026-09-29
+- Long-press drag to reorder tasks on the home screen works again: a drag no longer springs back to where it started when the tab also holds a task hidden by a Home filtering rule (for example a Wish- or Project-tagged task, hidden by default). Only the tasks you can see are reordered; hidden ones keep their place
+- Local build: 2026-09-29 17:48
+- Build duration (apk): 11m 39s
+- Build duration (windows): 1m 49s
+
+## [0.2.86] - 2026-09-27
+- F1 Reminder: race times are now editable — tap a race (or its calendar icon) to pick a new date and start time; the reminder text moves with it (and goes out again if it was already sent for the old time). Edited races are marked "(edited)" with a button to reset them to the calendar time
+- Local build: 2026-09-27 23:20
+- Build duration (apk): 3m 58s
+- Build duration (windows): 1m 18s
+
+## [0.2.85] - 2026-09-27
+- New tool: F1 Reminder (Tools → F1 Reminder). Enter a phone number and it texts "Lights out in 4 hours!" before every remaining race of the season — Singapore through Abu Dhabi. Shows when the next text goes out and every race date with its status, has an on/off switch, an editable message with a live preview ({race}, {time}, {date}, {countdown}), a "Send welcome message" button and a list of recent texts. A reminder missed while the phone was off is still sent late with the real time left, up to 30 minutes before the start
+- Local build: 2026-09-27 22:55
+- Build duration (windows): 46s
+
+## [0.2.84] - 2026-09-24
+- Research items now have all the same fields as normal tasks: each one shows the same tile as the home tabs, with a done checkbox, and tapping it folds it open to edit title, description, note, labels, attachments, due date and recurrence in place (plus Notify and Send to Claude). Swipe to reschedule or delete works like the home tabs, and the add dialog also takes a note and an optional due date. A recurring research item's repeats now stay in Research instead of showing up on the home tabs
+- Local build: 2026-09-24 13:23
+- Build duration (apk): 6m 26s
+- Build duration (windows): 1m 42s
+
+## [0.2.83] - 2026-09-24
+- Fixed press-and-hold drag-reorder on the home tabs always springing back to its original position: Home's default Filtering rule (it excludes every other view's reserved tag out of the box) was disabling reorder for everyone, even when nothing in the current tab was actually hidden by it
+- Local build: 2026-09-24 12:54
+- Build duration (apk): 7m 25s
+- Build duration (windows): 1m 51s
+
+## [0.2.82] - 2026-09-18
+- Fixed the Best Music release build, which had been silently producing no Best Music APK at all on any machine that had previously built BestToDo: Gradle worked out which app it had just built by scanning the (never-cleaned) build output folder for the first `app-<flavor>-release.apk` it could find, so a music build kept matching the leftover BestToDo one and re-copying that stale APK under BestToDo's name instead. The rename is now done by a separate task per flavor, wired to that flavor's own build, so it can't be confused by leftovers. `tool/build.ps1` also gained full Best Music support (a `music-apk` shorthand, `MUSIC_VERSION`/`CHANGELOG_MUSIC.md` handling and the `best_music_` artifact prefix), and `build.sh all`/`build.ps1 all` now build and stage the Best Music APK alongside BestToDo's and the Windows exe (skip it with `MUSIC=0`)
+- Local build: 2026-09-18 23:27
+- Build duration (apk): 6m 23s
+- Build duration (windows): 1m 35s
+
+## [0.2.81] - 2026-09-18
+- BestToDo and Best Music now version and changelog independently: Best Music gets its own `MUSIC_VERSION` and `CHANGELOG_MUSIC.md` (starting from 0.2.80+371, the last build number the two apps shared) instead of piggybacking on this file/pubspec.yaml, so a Todo-only release no longer bumps Music's version or vice versa. `dart run tool/bump_version.dart <version> "<entry>" --music` bumps Best Music's own files; local `sh tool/build.sh music-apk` builds and CI's `build_music_apk` job now record their own build time/duration in CHANGELOG_MUSIC.md and stage/tag their APK with Music's own version
+- Local build: 2026-09-18 13:55
+- Build duration (windows): 59s
+
+## [0.2.80] - 2026-09-18
+- Wishlist: tapping an item now folds it open in place for editing — title, labels/quick-priority and description become editable right there, exactly like a home-list task tile — instead of popping up an edit dialog. The "Send to Claude" robot button (added a couple releases back, but easy to miss behind a swipe) now shows directly in that folded-open row next to "Move to release group", so it's visible without swiping first
+- Local build: 2026-09-18 13:17
+- Build duration (windows): 2m 53s
+
+## [0.2.79] - 2026-09-18
+- Wishlist: no more dev-only "Learn to sail" placeholder or backlog backfill — both BestToDo's and Best Music's Wishlist tools now genuinely start empty (in dev builds too), instead of quietly repopulating with demo/backlog items when the list is cleared for testing
+- Local build: 2026-09-18 12:37
+- Build duration (windows): 2m 57s
+
+## [0.2.78] - 2026-09-18
+- Wishlist: BestToDo and Best Music now actually share wishlist items instead of each keeping its own separate local copy. Since the two apps are sandboxed from each other on Android (separate `applicationId`s), items are synced through one file under shared external storage instead of each app's private storage — a "Connect" banner (only shown once, and only while not yet connected) requests the "All files access" permission both apps already use for their Music folders. Once connected, adding/editing/deleting a wishlist item in either app shows up in the other next time its Wishlist tool is opened
+- Local build: 2026-09-18 09:25
+- Build duration (windows): 52s
+
+## [0.2.77] - 2026-09-18
+- Music Player/Best Music: the Metadata Scan page can now export every scanned track's metadata to a CSV (share sheet) to hand to an AI (or edit by hand) for filling in whatever's missing, then import the filled-in file back in — matched to the right songs automatically, blank cells left alone so nothing already known gets erased
+- Local build: 2026-09-18 08:45
+- Build duration (windows): 52s
+
+## [0.2.76] - 2026-09-18
+- Wishlist items now get the "Claude" robot button too, not just the main task list: swipe a wishlist item open (same panel as Build/Share/Copy/Export/Delete) to fire your configured Claude Routine with that item's title/description/labels as context, starting a real Claude Code cloud session, exactly like "Send to Claude" already does for regular tasks
+
+## [0.2.75] - 2026-09-18
+- Best Music: added a Wishlist tool (drawer → Wishlist), reusing the same wishlist items BestToDo's own Wishlist writes — flagged tasks in the identical `tasks.json` record shape, so an item created in either app looks the same in both. Unlike BestToDo's Wishlist, the list itself shows nothing but each item's title (no icons, no checkboxes, no tags/priority chips) — tapping an item opens every field (done, priority, tags, description) in one editor
+- Local build: 2026-09-18 07:55
+- Build duration (windows): 53s
+
+## [0.2.74] - 2026-09-18
+- Music Player/Best Music: added a Metadata Scan tool (app bar icon next to Rescan) that scans your music folder on demand and shows every song live as it's found, with a status icon for whether it has a genre and a year. Now Playing has an info (ⓘ) button showing the current song's full metadata, where you can also fill in whatever's missing (genre, year, title, artist, album) — a manual fix now survives future rescans instead of getting silently overwritten
+
+## [0.2.73] - 2026-09-17
+- CI: the BestToDo release publish step (uploading the APK asset to its GitHub release, which is what the About page's "Check for updates" reads) now retries up to 3 times on a dropped connection instead of failing the whole build outright. This was silently leaving the published release behind the app's actual code for several releases in a row — the CI job built the Todo APK fine each time, but a large-upload network blip (`SocketException: Broken pipe`) kept killing the publish step, so `v0.2.71-362` stayed the newest release while several versions' worth of changes (this swipe fix included) piled up unpublished behind it. Best Music's own release path (staged into `github_releases/` instead of a GitHub release) was unaffected
+- Local build: 2026-09-17 22:55
+- Build duration (windows): 57s
+
+## [0.2.72] - 2026-09-17
+- Fixed swipe-to-move defaulting to the wrong tab on every page except Today: swiping a task always auto-committed to whichever tab happened to sort first (usually Today), so a task swiped from Tomorrow snapped back to Today instead of moving forward to Day after tomorrow. The default now always follows the intended "move forward one tab" order (Today→Tomorrow→Day after→Next week→Next month→Future→back to Today), matching the move-options row and the spec
+
+## [0.2.71] - 2026-09-17
+- Music Player/Best Music: you can now build normal playlists by hand, Samsung Music style. "New playlist" on the Playlists tab creates an empty one; every song row (Library tab or any playlist) gets an "Add to playlist" button showing which playlists it's already in, with a "New playlist" shortcut right there too. Hand-built playlists also get a "Remove from playlist" button on each song
+- Local build: 2026-09-17 19:55
+- Build duration (windows): 52s
+
+## [0.2.70] - 2026-09-17
+- Music Player/Best Music: added smart playlists ("Last Added" and "Most Played", including one per genre, computed automatically) and rule-based playlists you build yourself from AND/OR/NOT conditions over title/artist/album/genre/year (e.g. "genre Rock and year 2025, excluding Artist C") from the Playlists tab's "New rule playlist". Track scanning now also reads genre and release year (mp3 ID3 tags) to power these. A standalone `dart run tool/scan_music_metadata.dart <folder>` script reports every scanned file's metadata for checking your collection's coverage outside the app. Best Music now also checks for its own updates in the background, like BestToDo already does
+- Local build: 2026-09-17 18:45
+- Build duration (windows): 53s
+
+## [0.2.69] - 2026-09-17
+- Music Player/Best Music now proactively ask for the permissions they need instead of waiting for a scan to quietly fail: Best Music requests "All files access" on first launch (like other music apps), BestToDo asks once a music folder is already configured, and both ask for notification access for the playback controls. If the permission was the reason an already-configured folder scanned empty, granting it now re-scans right away
+- Local build: 2026-09-17 17:55
+- Build duration (windows): 52s
+
+## [0.2.68] - 2026-09-17
+- Fixed Music Player/Best Music finding no songs in any chosen folder: the folder scan needs Android's "All files access" permission, but nothing in the music folder picker ever asked for it, so a freshly picked folder silently scanned as empty. Picking a music folder now requests that permission first, and every scan step (folder existence, permission status, files seen/skipped/kept, any error) is now written to App Logs so a bad scan is diagnosable in-app instead of silent
+- Local build: 2026-09-17 17:35
+- Build duration (windows): 52s
+
+## [0.2.67] - 2026-09-17
+- Best Music now has a proper menu (drawer), matching BestToDo's own home page: MP3 Downloader, Settings, Changelog, Startup Times, App Logs and About. Settings lets you choose the music folder and exclude specific subfolders. "Check for updates" moved from the app bar into the About page (same flow as BestToDo's own About page)
+- Local build: 2026-09-17 14:35
+- Build duration (windows): 52s
+
+## [0.2.66] - 2026-09-17
+- Added Best Music, a separate app built from this same codebase (Android build flavor, applicationId `com.mfficiency.best_music`, black-music-note-on-white launcher icon): opens straight into the Music Player, with the MP3 Downloader one tap away and its own "Check for updates" — no to-do features. Build it with `sh tool/build.sh music-apk --release`; installs side by side with BestToDo. BestToDo itself is unchanged (now built as the `todo` flavor)
+- Local build: 2026-09-17 12:55
+- Build duration (windows): 57s
+
+## [0.2.65] - 2026-09-17
+- Music Player: Now Playing has a shuffle toggle (shuffles the upcoming queue, keeping the current track and playback history in place) and a Queue page reachable from the app bar to view and drag-reorder the play queue into a custom order
+- Local build: 2026-09-17 10:38
+- Build duration (apk): 2m 44s
+- Build duration (windows): 59s
+
+## [0.2.64] - 2026-09-17
+- Added "Send to Claude" on a task (expand it, tap the robot icon) to fire a Claude Code Routine's API trigger and start a real cloud coding session with that task as context, configured in Settings → Claude Routine
+- Added a smart test runner (`dart run tool/smart_test.dart`): looks at what changed and runs only the matching `test/<area>` suite(s) instead of the full suite, falling back to a full `flutter test` for anything it can't confidently map, every 10th targeted run, and once a week regardless — see `CLAUDE.md`
+- Local build: 2026-09-17 07:18
+- Build duration (apk): 2m 45s
+- Build duration (windows): 59s
+
+## [0.2.63] - 2026-09-16
+- Music Player: fixed the Now Playing progress bar getting stuck at 0:00 during playback (position now ticks every second and picks up the real track duration from the player instead of relying on missing tags), and added a Next button to the play/pause + previous home-screen widget
+- Local build: 2026-09-16 21:48
+- Build duration (apk): 2m 28s
+- Build duration (windows): 1m 05s
+
+## [0.2.62] - 2026-09-16
+- MP3 Downloader: tapping a search result to download it now clears the search bar instead of leaving the previous query sitting there
+- Local build: 2026-09-16 21:19
+- Build duration (apk): 2m 42s
+- Build duration (windows): 1m 10s
+
+## [0.2.61] - 2026-09-16
+- Added a full local Music Player: background playback (notification + lock-screen controls), two home-screen widgets (play/pause, and play/pause + previous), Settings folder scan with subfolder exclusions, M3U/M3U8 playlist import (Samsung Music export), swipe-up-to-favorite/swipe-down-to-dislike-and-skip on Now Playing with a weighted shuffle that favors favorites and buries disliked tracks, and prep for connecting a self-hosted Subsonic/OpenSubsonic server
+
+## [0.2.60] - 2026-09-16
+- Sharing a song link from Spotify, YouTube or Shazam into BestToDo now opens straight into the MP3 Downloader instead of the task editor: a YouTube link downloads immediately, a Spotify/Shazam link is looked up (via Spotify's oEmbed title / the Shazam page title, or the caption text the share already carries) and shows the usual candidate picker
+- Local build: 2026-09-16 17:17
+- Build duration (apk): 17m 56s
+- Build duration (windows): 3m 37s
+
+## [0.2.59] - 2026-09-16
+- MP3 Downloader: the playlist duplicate check now also looks in the phone's Music folder (not just the download folder), so tracks already in your library are skipped even if this app never downloaded them there. Settings → MP3 Downloader gets a new 'Check for existing tracks in' folder picker for when auto-detection guesses wrong
+- Local build: 2026-09-16 13:31
+- Build duration (apk): 23m 00s
+- Build duration (windows): 2m 53s
+
+## [0.2.58] - 2026-09-16
+- MP3 Downloader: the actual fix, found from the 0.2.57 diagnostic census — this playlist's page has migrated entirely to YouTube's newer "lockup" component system, with no trace of the older renderer type at all. Playlist import now recognises both shapes, so the reported 3-track playlist (and any other playlist YouTube has migrated the same way) resolves correctly
+- Local build: 2026-09-16 11:12
+- Build duration (apk): 14m 27s
+- Build duration (windows): 2m 35s
+
+## [0.2.57] - 2026-09-16
+- MP3 Downloader: found the actual cause of the playlist import bug from the logs added in 0.2.56 — `youtube_explode_dart`'s hardcoded path to a playlist's video list no longer matches YouTube's current page structure at all (confirmed: the playlist genuinely had its reported track count, the page fetched fine, but neither the library's own lookup nor the exact-path fallback found anything). Playlist import no longer guesses an exact nested path; it searches the whole response for the video-listing type directly, which is immune to this kind of structural drift
+- Local build: 2026-09-16 09:43
+- Build duration (apk): 15m 47s
+- Build duration (windows): 2m 36s
+
+## [0.2.56] - 2026-09-16
+- MP3 Downloader: the 0.2.55 playlist fix didn't cover every case — some playlists don't embed their video list in the page at all (needing a separate internal API call `youtube_explode_dart` already does for "Mixes" but doesn't expose the result of). Playlist import now also tries that path when page-parsing alone still finds nothing, and every step of resolving a playlist is now written to the App Logs (drawer → App Logs, source "MP3") to make the next report actionable if a playlist still comes up empty
+- Local build: 2026-09-16 08:50
+- Build duration (apk): 22m 22s
+- Build duration (windows): 2m 38s
+
+## [0.2.55] - 2026-09-16
+- MP3 Downloader: fixed a real public playlist resolving to its title but zero tracks ("0 of 0 selected"). `youtube_explode_dart` silently skips a playlist entry when it can't work out the uploader's channel id from the page, which some playlists' byline layout trips on every single track; playlist import now falls back to parsing the page's own video list directly (which doesn't need that) whenever the normal path comes back empty
+- Local build: 2026-09-16 07:41
+- Build duration (apk): 14m 08s
+- Build duration (windows): 2m 24s
+
+## [0.2.54] - 2026-09-15
+- MP3 Downloader: downloaded tracks are now saved as "Artist - Title.m4a" — the title/channel are split on an "Artist - Title" separator (or fall back to the channel name), and promotional clutter like "(Official Video)", "(Lyrics)" or "(HD)" is stripped from both, instead of saving the raw, often messy YouTube title verbatim
+- MP3 Downloader: an .m4a download is now tagged with as much metadata as YouTube provides — title, artist, the source video's upload year, its thumbnail as cover art, and the original YouTube link as a comment — without adding a native encoder to the app
+- MP3 Downloader: each entry in the Downloads list now has an "Open original video" and "Share YouTube link" icon, to jump back to the source or send the link on without leaving the app
+- MP3 Downloader: pasting a YouTube playlist link now shows every track in it with a checkbox — pick one, several, or "All" — instead of only supporting a single video or search query. Tracks already sitting in the download folder (or any of its subfolders) under the name a fresh download would use start out unchecked, so re-pasting a list you've partly downloaded before only offers to fetch what's missing
+- Local build: 2026-09-15 23:33
+- Build duration (apk): 5m 32s
+- Build duration (windows): 2m 17s
+
 ## [0.2.53] - 2026-09-15
 - MP3 Downloader: a finished download now notifies the OS media database (MediaStore) right away, so the saved track shows up immediately in Music/My Files/Gallery-style apps — previously, since the file is written directly with plain file I/O, those apps wouldn't see it until the next full device media scan, which on some phones (Samsung included) only happens on reboot
+- Local build: 2026-09-15 22:01
+- Build duration (apk): 7m 08s
+- Build duration (windows): 2m 53s
 
 ## [0.2.52] - 2026-09-15
 - MP3 Downloader: picking a shared folder (like Music) that scoped storage blocks now offers to grant "All files access" so that folder actually works, instead of only offering to redirect the download into the app's private storage

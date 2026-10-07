@@ -163,7 +163,10 @@ Future<void> main(List<String> args) async {
     final uploadUri = Uri.parse(
         '$uploadsBase/repos/$owner/$repo/releases/$releaseId/assets'
         '?name=${Uri.encodeQueryComponent(assetName)}');
-    final uploaded = await _api(client, token, 'POST', uploadUri,
+    // The multi-tens-of-MB asset upload is the flakiest call here (seen
+    // failing in CI with a bare SocketException: Broken pipe partway
+    // through) — retry it a couple of times before giving up.
+    final uploaded = await _apiWithRetry(client, token, 'POST', uploadUri,
         bodyBytes: bytes, contentType: 'application/vnd.android.package-archive');
     stdout.writeln('Done: ${uploaded['browser_download_url']}');
     stdout.writeln(
@@ -231,6 +234,35 @@ Future<Map<String, dynamic>> _findOrCreateRelease(HttpClient client,
         Uri.parse('$apiBase/repos/$owner/$repo/releases'),
         bodyBytes: utf8.encode(jsonEncode(payload)),
         contentType: 'application/json');
+  }
+}
+
+/// Like [_api], but retries a transient transport failure (a dropped
+/// connection mid-upload, not an HTTP error response from GitHub, which
+/// [_ApiException] already carries and isn't worth retrying).
+Future<Map<String, dynamic>> _apiWithRetry(
+  HttpClient client,
+  String token,
+  String method,
+  Uri url, {
+  List<int>? bodyBytes,
+  String? contentType,
+  int attempts = 3,
+}) async {
+  for (var attempt = 1;; attempt++) {
+    try {
+      return await _api(client, token, method, url,
+          bodyBytes: bodyBytes, contentType: contentType);
+    } on _ApiException {
+      rethrow;
+    } catch (e) {
+      if (attempt >= attempts) rethrow;
+      final delay = Duration(seconds: attempt * 5);
+      stdout.writeln(
+          'Upload attempt $attempt/$attempts failed ($e); retrying in '
+          '${delay.inSeconds}s …');
+      await Future<void>.delayed(delay);
+    }
   }
 }
 
