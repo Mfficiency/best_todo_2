@@ -4444,8 +4444,11 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   the handler's feed-settings listener re-applies speed and volume to the playing track.
 - *Switch pill*: `SessionSwitchPill` (`music_mini_player_bar.dart`) floats bottom-left just
   above the song bar on every Best Music screen (a `Stack` in `main_music.dart`'s builder),
-  hidden while Now Playing is open or there's nothing to switch to. Label "Back to videos" /
-  "Back to music"; tap → `switchToOtherSession()`, which now resumes `switchTarget()`: the
+  hidden while Now Playing is open or there's nothing to switch to. Since Best Music 0.3.15 it
+  is a 40 px icon-only circle (`CircleBorder`, `secondaryContainer` at 60 % alpha, no
+  elevation; `smart_display_outlined` to go to videos, `library_music_outlined` to go to
+  music, icon at 85 % alpha) so snackbars behind it stay readable — the label "Back to
+  videos: <title>" / "Back to music: <title>" is only its `Semantics`; tap → `switchToOtherSession()`, which now resumes `switchTarget()`: the
   remembered `otherSession`, else (music or nothing playing) the feed's
   `lastPlayedVideo()` (most recently updated progress entry still in the feed), else (a video
   playing) a fresh weighted shuffle of the library. Volume and speed follow the track's kind

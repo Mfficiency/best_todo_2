@@ -263,7 +263,13 @@ void main() {
         position: const Duration(minutes: 12),
       ));
       await tester.pump();
-      expect(find.text('Back to videos'), findsOneWidget);
+      // A small icon-only circle; the label is for screen readers.
+      expect(find.bySemanticsLabel('Back to videos: Talk'), findsOneWidget);
+      expect(find.byIcon(Icons.smart_display_outlined), findsOneWidget);
+      expect(find.text('Back to videos'), findsNothing);
+      expect(
+          tester.getSize(find.byKey(const ValueKey('sessionSwitchPill'))),
+          const Size(40, 40));
     });
 
     test('with no remembered video, falls back to the last played one',

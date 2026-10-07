@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.15] - 2026-10-07
+- The "Back to music" / "Back to videos" button is now a small see-through circle with just an icon, so messages that pop up at the bottom (errors, Undo) are no longer hidden behind it
+
 ## [0.3.14] - 2026-10-06
 - Subscriptions: a channel's new videos didn't show up? Each channel on the Channels page now has a "Check for new videos" button that fetches just that channel again (trying up to three times), and the feed's "Couldn't refresh …" line has a Retry button
 - Fixed: a channel was sometimes left out of a refresh entirely when YouTube's feed for it had a hiccup, even though its videos could still be read another way
