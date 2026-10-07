@@ -18,6 +18,9 @@ nothing has been copied over here.
 - CI build: 2026-10-07 04:28 UTC
 - Build duration (apk, CI): 6m 40s
 - APK size: 63.0 MB
+- Local build: 2026-10-07 06:28
+- Build duration (apk): 4m 13s
+- APK size: 63.7 MB
 
 ## [0.3.14] - 2026-10-06
 - Subscriptions: a channel's new videos didn't show up? Each channel on the Channels page now has a "Check for new videos" button that fetches just that channel again (trying up to three times), and the feed's "Couldn't refresh …" line has a Retry button
