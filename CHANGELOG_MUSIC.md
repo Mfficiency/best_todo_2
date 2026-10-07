@@ -14,6 +14,9 @@ nothing has been copied over here.
 - CI build: 2026-10-07 09:19 UTC
 - Build duration (apk, CI): 6m 28s
 - APK size: 63.4 MB
+- Local build: 2026-10-07 11:19
+- Build duration (apk): 4m 55s
+- APK size: 64.0 MB
 
 ## [0.3.16] - 2026-10-07
 - Fixed: Subscriptions videos not loading — channels needed YouTube's RSS feed for their video titles, and that feed fails a lot; the titles now come from the channel's video list itself, both are asked at the same time, and the slow backup is only used when both fail
