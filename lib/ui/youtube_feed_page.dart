@@ -140,15 +140,18 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
     unawaited(_loadAndRefresh());
   }
 
-  /// Cached videos of the last two days show at once and fresh ones join
-  /// as each channel arrives; once the refresh is done the rest of the
-  /// week fills in below.
+  /// Saved videos of the last two days show at once and new ones join as
+  /// each channel arrives (a refresh only adds — see
+  /// YoutubeFeedService._merged; skipped when the feed was refreshed in the
+  /// last few minutes); once it's done the rest of the week fills in below.
   Future<void> _loadAndRefresh() async {
     await _service.load();
     if (!mounted) return;
     setState(() {});
     try {
-      if (_service.subscriptions.value.isNotEmpty) await _service.refresh();
+      if (_service.subscriptions.value.isNotEmpty) {
+        await _service.refreshIfStale();
+      }
     } finally {
       _service.widenToBackgroundWindow();
     }

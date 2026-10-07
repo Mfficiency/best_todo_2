@@ -4494,6 +4494,25 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
   `fetchOverride` is set without one). A video whose page gives a duration is no longer
   flagged `isLivestream`.
+- *Loading without RSS + a saved, growing feed (Best Music 0.3.16)*: `fetchChannel` asks the
+  RSS feed (`_fetchRss`, 12 s timeout) and the Videos tab (`YoutubeChannelVideosApi.fetch`)
+  **in parallel**; `ChannelTabVideo.title` is now parsed (`videoRenderer`/`gridVideoRenderer`
+  `title` runs/simpleText; `lockupViewModel` `metadata.lockupMetadataViewModel.title.content`;
+  the title text is excluded from the age/views/clock scan so "… 10 years ago" in a title
+  isn't a date), so the tab alone can list a channel. `getUploadsFromPage` (20 s) only runs
+  when the tab didn't answer, or RSS failed and no tab card had a title (titles then come from
+  it via `extraTitles`). `combineChannelSources(channel, rss:, tab:, extraTitles:)`: with RSS →
+  `mergeVideosTab` plus every titled tab video RSS doesn't list (RSS carries only the newest
+  15); without → every titled tab video (`publishedApprox` when dated); untitled ones are
+  skipped; no RSS and nothing titled → throws. Why: YouTube's RSS fails often, and needing it
+  for titles made channels — at times the whole feed — not load (0.3.14 then waited 30 s per
+  channel on the scraper). `_merged` now **adds** instead of replacing a fetched channel's
+  videos: fresh ones are added/updated (`keepKnownDetails`), saved ones stay unless the
+  channel was fetched and they were published more than `keepVideosFor` (30 days, `clock()`)
+  ago or are undated and no longer listed; unsubscribed channels' videos go. Opening the feed
+  calls `refreshIfStale()`: skipped when `lastRefresh` is under `freshFor` (10 min) old, the
+  feed isn't empty and no channel failed; pull-to-refresh calls `refresh()` directly. The saved
+  feed (`youtube_feed.json`) shows at once either way.
 - *Force-checking one channel (Best Music 0.3.14)*: `forceRefreshChannel(channel)` fetches
   just that channel, up to 3 tries `forceRetryDelays` apart (2 s, 5 s); success → its videos
   replace its cached ones via `_merged({id: fresh})`, it leaves `failedChannels`, saves,

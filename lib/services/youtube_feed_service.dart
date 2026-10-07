@@ -86,6 +86,14 @@ class YoutubeFeedService {
   /// Channels whose last refresh failed, for the feed's error banner.
   final ValueNotifier<List<String>> failedChannels = ValueNotifier(const []);
 
+  /// How long a saved video stays in the feed after it was published,
+  /// even when a refresh no longer lists it (see [_merged]).
+  static const Duration keepVideosFor = Duration(days: 30);
+
+  /// "Now" for [keepVideosFor] (tests pin it).
+  @visibleForTesting
+  DateTime Function() clock = DateTime.now;
+
   /// Channel ids being force-checked right now ([forceRefreshChannel]),
   /// so their row can show a spinner.
   final ValueNotifier<Set<String>> forceRefreshing = ValueNotifier(const {});
@@ -134,6 +142,7 @@ class YoutubeFeedService {
     window.value = backgroundWindow;
     failedChannels.value = const [];
     forceRefreshing.value = const {};
+    clock = DateTime.now;
     forceRetryDelays = const [Duration(seconds: 2), Duration(seconds: 5)];
     lastRefresh = null;
     _loaded = false;
@@ -414,6 +423,24 @@ class YoutubeFeedService {
   // ---------------------------------------------------------------------
   // Refreshing
 
+  /// Opening the feed: [refresh] unless the last full refresh finished
+  /// less than [freshFor] ago and nothing failed or is missing — the saved
+  /// feed is shown either way, so
+  /// hopping in and out of the feed doesn't re-download every channel.
+  /// Pull-to-refresh calls [refresh] directly.
+  Future<void> refreshIfStale() {
+    final last = lastRefresh;
+    if (last != null &&
+        clock().difference(last) < freshFor &&
+        videos.value.isNotEmpty &&
+        failedChannels.value.isEmpty) {
+      return Future<void>.value();
+    }
+    return refresh();
+  }
+
+  static const Duration freshFor = Duration(minutes: 10);
+
   /// Re-fetches every subscribed channel. Concurrent calls share one run.
   Future<void> refresh() =>
       _refreshInFlight ??= _refreshChannels(subscriptions.value, all: true)
@@ -454,7 +481,7 @@ class YoutubeFeedService {
       final merged = _merged(fetched);
       videos.value = merged;
       if (all) {
-        lastRefresh = DateTime.now();
+        lastRefresh = clock();
         failedChannels.value = failed;
       }
       _log('Refreshed ${fetched.length}/${channels.length} channel(s), '
@@ -535,15 +562,33 @@ class YoutubeFeedService {
     return results.where((r) => r != null).length;
   }
 
-  /// [videos] with each channel in [fetched] replaced by its fresh list,
-  /// newest first. Keeps what was cached for a channel not (yet) fetched or
-  /// that failed, and anything already known about a video (a description
-  /// fetched on demand) that this fetch didn't include.
+  /// [videos] with each channel in [fetched] *added to*, newest first:
+  /// fresh videos are added or updated (keeping anything already known
+  /// about them that this fetch didn't include, like a description fetched
+  /// on demand), and the saved ones stay — a refresh only brings in what's
+  /// new, so the saved feed shows at once and nothing vanishes because one
+  /// fetch listed fewer videos. Saved videos of a fetched channel are let go
+  /// once published more than [keepVideosFor] ago (an undated one once it's
+  /// no longer listed); unsubscribed channels' videos go right away.
   List<FeedVideo> _merged(Map<String, List<FeedVideo>> fetched) {
     final previous = {for (final v in videos.value) v.videoId: v};
+    final fresh = {
+      for (final list in fetched.values)
+        for (final v in list) v.videoId,
+    };
+    final cutoff = clock().subtract(keepVideosFor);
+    bool stillKept(FeedVideo v) {
+      if (!fetched.containsKey(v.channelId)) return true;
+      final p = v.published;
+      return p != null && p.isAfter(cutoff);
+    }
+
     return <FeedVideo>[
       for (final v in videos.value)
-        if (!fetched.containsKey(v.channelId) && isSubscribed(v.channelId)) v,
+        if (isSubscribed(v.channelId) &&
+            !fresh.contains(v.videoId) &&
+            stillKept(v))
+          v,
       for (final list in fetched.values)
         for (final v in list) keepKnownDetails(v, previous[v.videoId]),
     ]..sort(_newestFirst);
@@ -657,49 +702,42 @@ class YoutubeFeedService {
     return pb.compareTo(pa);
   }
 
-  /// Fetches one channel's latest videos (RSS + Videos tab, see the class
-  /// doc). Throws only when both sources fail.
+  /// Fetches one channel's latest videos (see the class doc). The RSS feed
+  /// and the Videos tab (JSON) are asked at the same time; either one is
+  /// enough on its own now that the Videos tab carries titles — YouTube's
+  /// RSS feeds fail often, and needing RSS for the titles is what made
+  /// channels (and at times the whole feed) not load. youtube_explode's
+  /// page scraper is only the last resort, when neither gave titles.
+  /// Throws only when every source failed.
   Future<ChannelFetchResult> fetchChannel(YoutubeChannel channel) async {
     final override = fetchOverride;
     if (override != null) return override(channel);
 
-    List<FeedVideo>? rss;
     Object? rssError;
-    try {
-      final response = await http
-          .get(Uri.parse(
-              'https://www.youtube.com/feeds/videos.xml?channel_id=${channel.id}'))
-          .timeout(const Duration(seconds: 20));
-      if (response.statusCode != 200) {
-        throw HttpException('RSS feed answered HTTP ${response.statusCode}');
-      }
-      rss = parseYoutubeRss(utf8.decode(response.bodyBytes),
-          channelId: channel.id, channelName: channel.name);
-    } catch (e) {
-      rssError = e;
-    }
-
-    // The Videos tab: YouTube's JSON API first; youtube_explode's page
-    // scraper only as a fallback (its parser misses the duration and views
-    // on YouTube's newer video cards, so its zeros count as "unknown").
-    List<ChannelTabVideo>? tab;
-    Map<String, String>? tabTitles;
     Object? tabError;
-    try {
-      tab = await YoutubeChannelVideosApi.fetch(channel.id);
-      if (tab.isEmpty) tab = null; // unreadable page, not an empty channel
-    } catch (e) {
+    final rssFuture = _fetchRss(channel).then<List<FeedVideo>?>((v) => v,
+        onError: (Object e) {
+      rssError = e;
+      return null;
+    });
+    final tabFuture = YoutubeChannelVideosApi.fetch(channel.id)
+        .then<List<ChannelTabVideo>?>(
+            // An empty list is an unreadable page, not an empty channel.
+            (v) => v.isEmpty ? null : v, onError: (Object e) {
       tabError = e;
-    }
-    // The JSON tab has no titles, so without RSS the page scraper is
-    // needed for them even when the JSON tab answered — skipping it used
-    // to drop the whole channel whenever its RSS feed hiccuped.
-    if (tab == null || rss == null) {
+      return null;
+    });
+    final rss = await rssFuture;
+    var tab = await tabFuture;
+
+    Map<String, String>? scrapedTitles;
+    final tabHasTitles = tab != null && tab.any((v) => v.title != null);
+    if (tab == null || (rss == null && !tabHasTitles)) {
       final client = yt.YoutubeExplode();
       try {
         final page = (await client.channels
                 .getUploadsFromPage(channel.id)
-                .timeout(const Duration(seconds: 30)))
+                .timeout(const Duration(seconds: 20)))
             .toList();
         if (page.isNotEmpty) {
           // Keep the JSON tab's (better) durations/views when it answered;
@@ -717,7 +755,7 @@ class YoutubeFeedService {
                 published: v.uploadDate,
               ),
           ];
-          tabTitles = {for (final v in page) v.id.value: v.title};
+          scrapedTitles = {for (final v in page) v.id.value: v.title};
         }
       } catch (e) {
         tabError = '$tabError; $e';
@@ -728,34 +766,24 @@ class YoutubeFeedService {
     if (rss == null && tab == null) {
       throw Exception('RSS: $rssError; Videos tab: $tabError');
     }
-
-    if (rss == null) {
-      // Titles only come with youtube_explode's page; without RSS or that,
-      // the JSON tab alone isn't enough to list videos.
-      if (tabTitles == null) {
-        throw Exception('RSS: $rssError; Videos tab has no titles');
-      }
-      return ChannelFetchResult([
-        for (final v in tab!)
-          if ((tabTitles[v.videoId] ?? '').isNotEmpty)
-            FeedVideo(
-              videoId: v.videoId,
-              title: tabTitles[v.videoId]!,
-              channelId: channel.id,
-              channelName: channel.name,
-              published: v.published,
-              publishedApprox: v.published != null,
-              duration: v.duration,
-              viewCount: v.views,
-            ),
-      ]);
+    final videos = combineChannelSources(channel,
+        rss: rss, tab: tab, extraTitles: scrapedTitles);
+    if (rss == null && videos.isEmpty) {
+      throw Exception('RSS: $rssError; Videos tab has no titles');
     }
-    return ChannelFetchResult(mergeVideosTab(rss, tab == null
-        ? null
-        : {
-            for (final v in tab)
-              v.videoId: (duration: v.duration, views: v.views),
-          }));
+    return ChannelFetchResult(videos);
+  }
+
+  Future<List<FeedVideo>> _fetchRss(YoutubeChannel channel) async {
+    final response = await http
+        .get(Uri.parse(
+            'https://www.youtube.com/feeds/videos.xml?channel_id=${channel.id}'))
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) {
+      throw HttpException('RSS feed answered HTTP ${response.statusCode}');
+    }
+    return parseYoutubeRss(utf8.decode(response.bodyBytes),
+        channelId: channel.id, channelName: channel.name);
   }
 
   /// The full description of a video the feed only has a stub for.
@@ -975,6 +1003,52 @@ List<FeedVideo> filterFeed(List<FeedVideo> all, YoutubeFeedSettings settings) =>
             !(settings.hideLivestreams && v.isLivestream))
           v,
     ];
+
+/// One channel's videos from whatever its sources gave: the RSS entries
+/// annotated by the Videos tab ([mergeVideosTab]) plus any Videos-tab video
+/// RSS doesn't list (it only carries the newest 15) — or, with no RSS,
+/// every Videos-tab video that has a title (its own, else from
+/// [extraTitles], the scraped page). Videos without a title are skipped.
+List<FeedVideo> combineChannelSources(
+  YoutubeChannel channel, {
+  List<FeedVideo>? rss,
+  List<ChannelTabVideo>? tab,
+  Map<String, String>? extraTitles,
+}) {
+  FeedVideo? fromTab(ChannelTabVideo v) {
+    final title = v.title ?? extraTitles?[v.videoId];
+    if (title == null || title.trim().isEmpty) return null;
+    return FeedVideo(
+      videoId: v.videoId,
+      title: title,
+      channelId: channel.id,
+      channelName: channel.name,
+      published: v.published,
+      publishedApprox: v.published != null,
+      duration: v.duration,
+      viewCount: v.views,
+    );
+  }
+
+  if (rss == null) {
+    return [
+      for (final v in tab ?? const <ChannelTabVideo>[])
+        if (fromTab(v) case final video?) video,
+    ];
+  }
+  final merged = mergeVideosTab(rss, tab == null
+      ? null
+      : {
+          for (final v in tab) v.videoId: (duration: v.duration, views: v.views),
+        });
+  final inRss = {for (final v in rss) v.videoId};
+  return [
+    ...merged,
+    for (final v in tab ?? const <ChannelTabVideo>[])
+      if (!inRss.contains(v.videoId))
+        if (fromTab(v) case final video?) video,
+  ];
+}
 
 /// Annotates RSS entries with what the channel's Videos tab knows
 /// ([tab]: video id → duration/views; null when the tab couldn't be read).
