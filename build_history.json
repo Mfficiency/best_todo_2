@@ -1645,5 +1645,25 @@
     "source": "ci",
     "finishedAt": "2026-10-07T20:26:16.307428",
     "os": "linux"
+  },
+  {
+    "version": "0.2.100+408",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 1131,
+    "sizeBytes": 67721034,
+    "source": "local",
+    "finishedAt": "2026-10-07T22:28:24.754428",
+    "os": "windows"
+  },
+  {
+    "version": "0.2.100+408",
+    "app": "todo",
+    "target": "windows",
+    "durationSeconds": 143,
+    "sizeBytes": 135044317,
+    "source": "local",
+    "finishedAt": "2026-10-07T22:30:58.570227",
+    "os": "windows"
   }
 ]

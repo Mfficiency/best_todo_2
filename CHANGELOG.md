@@ -4,7 +4,11 @@
 - Running the app in Chrome (flutter run -d chrome) now asks first whether to use the demo data or load your real tasks from Todoist
 - CI build: 2026-10-07 20:26 UTC
 - Build duration (apk, CI): 9m 16s
-- APK size: 63.9 MB
+- APK size: 64.6 MB
+- Local build: 2026-10-07 22:30
+- Build duration (apk): 18m 51s
+- Build duration (windows): 2m 23s
+- Build size (windows): 128.8 MB
 
 ## [0.2.99] - 2026-10-05
 - The Worklist now shows its name at the top (in the search box), so you can tell it apart from your normal task list
