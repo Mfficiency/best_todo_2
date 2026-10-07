@@ -9,6 +9,9 @@ nothing has been copied over here.
 ## [0.3.16] - 2026-10-07
 - Fixed: Subscriptions videos not loading — channels needed YouTube's RSS feed for their video titles, and that feed fails a lot; the titles now come from the channel's video list itself, both are asked at the same time, and the slow backup is only used when both fail
 - The feed keeps its videos: opening it shows the saved list straight away and only adds the newest videos (nothing disappears because one refresh listed fewer); saved videos stay for 30 days. Opening it again within 10 minutes doesn't reload at all — pull down to refresh anytime
+- CI build: 2026-10-07 05:06 UTC
+- Build duration (apk, CI): 8m 31s
+- APK size: 63.0 MB
 
 ## [0.3.15] - 2026-10-07
 - The "Back to music" / "Back to videos" button is now a small see-through circle with just an icon, so messages that pop up at the bottom (errors, Undo) are no longer hidden behind it
