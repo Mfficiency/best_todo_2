@@ -681,14 +681,14 @@ class _HomePageState extends State<HomePage>
       // The imported wishes follow the starter tasks, so the Today list opens
       // on them instead of on the old backlog.
       _tasks.addAll(loaded);
-      if (Config.isDev) {
+      if (Config.seedDevData) {
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
     } else {
       _tasks.addAll(loaded);
       // Backfill the spread-out dev seed for existing dev installs so the
       // schedule view and the next-week / next-month tabs always have data.
-      if (Config.isDev &&
+      if (Config.seedDevData &&
           !_tasks.any((t) => t.description == _devFutureTaskMarker)) {
         _tasks.addAll(_buildDevFutureTasksSeed(_currentDate));
       }
@@ -698,7 +698,7 @@ class _HomePageState extends State<HomePage>
     // visible without manual setup — and, symmetrically, the other starter
     // tasks stay attachment-free so both states are on screen at once.
     // Idempotent: only runs once, keyed on no task carrying an attachment yet.
-    if (Config.isDev &&
+    if (Config.seedDevData &&
         _tasks.isNotEmpty &&
         !_tasks.any((t) => t.attachments.isNotEmpty)) {
       final demoTarget = _tasks.firstWhere(
@@ -716,7 +716,7 @@ class _HomePageState extends State<HomePage>
     }
     // Prepopulate the Projects tool in dev builds so the cards/boards have
     // data to drag around right away.
-    if (Config.isDev) {
+    if (Config.seedDevData) {
       _applyDevProjectSeed();
       // Fresh dev installs (and every web run, where nothing persists) also
       // get a visible item history, so the task-detail History timeline can
@@ -732,7 +732,7 @@ class _HomePageState extends State<HomePage>
       // Backfill auto-deleted seed items for dev users whose persisted
       // deleted list pre-dates the autoDeleted flag, so the new restore
       // path is visible without clearing storage.
-      if (Config.isDev && !_deletedTasks.any((t) => t.autoDeleted)) {
+      if (Config.seedDevData && !_deletedTasks.any((t) => t.autoDeleted)) {
         _deletedTasks.insertAll(0, _buildDevAutoDeletedBackfill(_currentDate));
         _deletedTasks.sort((a, b) {
           final ad = a.deletedAt;
@@ -747,7 +747,7 @@ class _HomePageState extends State<HomePage>
         }
         _saveDeletedTasks();
       }
-    } else if (Config.isDev) {
+    } else if (Config.seedDevData) {
       _deletedTasks.addAll(_buildDevDeletedSeed(_currentDate));
       _saveDeletedTasks();
     }
@@ -758,7 +758,7 @@ class _HomePageState extends State<HomePage>
     _refreshAllRecurringTasks();
     if (loadedDailyStats.isNotEmpty) {
       _dailyStatsByDay.addAll(loadedDailyStats);
-    } else if (Config.isDev) {
+    } else if (Config.seedDevData) {
       _dailyStatsByDay.addAll(_buildDevDailyStatsSeed(_currentDate));
       _saveDailyStats();
     }
@@ -774,7 +774,7 @@ class _HomePageState extends State<HomePage>
       // Dev/demo builds (Chrome above all, where nothing persists between
       // runs) get a longer streak than the 14 days of seeded stats, so the
       // flame and the streak page have something to show off.
-      if (Config.isDev) {
+      if (Config.seedDevData) {
         StreakService.instance.seedDevStreak(now: _currentDate);
       }
     }
@@ -1255,8 +1255,9 @@ class _HomePageState extends State<HomePage>
   Future<void> _reloadTasksFromStorage() async {
     // On the web nothing can have been persisted by the tool we're returning
     // from (no documents dir), so reloading would only wipe the in-memory
-    // dev seeds. Keep the current list there.
-    if (kIsWeb) return;
+    // dev seeds. Keep the current list there — unless this is a "Real data"
+    // Chrome session, whose list lives in StorageService's in-memory store.
+    if (kIsWeb && !Config.webRealData) return;
     final loaded = await _repository.loadItems();
     if (!mounted) return;
     setState(() {

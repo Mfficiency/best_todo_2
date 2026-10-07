@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.100] - 2026-10-07
+- Running the app in Chrome (flutter run -d chrome) now asks first whether to use the demo data or load your real tasks from Todoist
+
 ## [0.2.99] - 2026-10-05
 - The Worklist now shows its name at the top (in the search box), so you can tell it apart from your normal task list
 - The Move/Delete options that appear when you swipe a task now shrink to fit the row instead of being cut off with large system font sizes

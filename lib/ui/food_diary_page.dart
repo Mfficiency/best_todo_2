@@ -260,7 +260,7 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
     // otherwise it never fires. Dev builds seed a few entries spread across
     // the day so the tool is testable in Chrome and its screenshots always
     // show a populated log.
-    if (!tasks.any((t) => t.isEatingHabit) && Config.isDev) {
+    if (!tasks.any((t) => t.isEatingHabit) && Config.seedDevData) {
       tasks.addAll(_buildDevSeed());
     }
     if (!mounted) return;

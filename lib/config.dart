@@ -31,6 +31,17 @@ class Config {
   /// Best-Music-only behavior.
   static bool isBestMusic = false;
 
+  /// True when a `flutter run -d chrome` session chose "Real data" on the
+  /// web start chooser (`WebDataChoicePage`): the task list was pulled from
+  /// the user's Todoist account instead of the dev seeds. Runtime-only, never
+  /// persisted — every browser run asks again.
+  static bool webRealData = false;
+
+  /// Whether the dev/demo sample data (tasks, projects, stats, timers, food
+  /// diary...) gets seeded: dev builds only, and never on top of a Chrome
+  /// session that loaded the real Todoist data.
+  static bool get seedDevData => isDev && !webRealData;
+
   /// Whether every demo/dev-seed item (see `demoToken` in `label_utils.dart`)
   /// is hidden from every view, ahead of and independent from any Settings →
   /// Filtering rules configuration. Defaults to hidden outside dev builds —

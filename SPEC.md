@@ -125,6 +125,20 @@ Dependencies and why they exist:
     `MyApp.home`: intro (slides + mode choice) → startup choice (fresh
     install only) → `_initialPage()`. The standalone `ModeSelectPage` is only
     for asking the mode question again (Settings → Mode & features, §4.6).
+    **Web dev runs** (`kIsWeb && Config.isDev`, i.e. `flutter run -d chrome`,
+    0.2.100) open `WebDataChoicePage` before all of that: "Demo data" (the
+    dev seeds, as before) or "Real data from Todoist". Real data takes the
+    token from `--dart-define=TODOIST_TOKEN=...`, a token remembered in the
+    browser (SharedPreferences key `web_todoist_token`), or the text field;
+    validates it, sets `Config.webRealData = true` (runtime-only), runs
+    `TodoistSyncService.startFirstLaunchImport` and awaits its background
+    phase too, then opens the app. While `webRealData` is set,
+    `StorageService` keeps the task list in an in-memory string instead of
+    `tasks.json` (the web has no documents dir), `HomePage` reloads from it
+    like on a phone, and every dev seed gated on `Config.seedDevData`
+    (`isDev && !webRealData`: home tasks/projects/stats/streak, countdown
+    timers, food diary) is skipped. Two-way sync stays on, so edits made in
+    the browser sync back to Todoist. Nothing survives a page reload.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,

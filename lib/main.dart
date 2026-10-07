@@ -18,6 +18,7 @@ import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
+import 'ui/web_data_choice_page.dart';
 import 'ui/auto_update_dialog.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
@@ -191,6 +192,8 @@ Future<void> main() async {
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
     showStartupChoice: showStartupChoice,
+    // `flutter run -d chrome`: ask demo seeds vs real Todoist data first.
+    showWebDataChoice: kIsWeb && Config.isDev,
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
@@ -221,11 +224,16 @@ class MyApp extends StatefulWidget {
   /// intro and mode picker, on a brand-new install only. Tests and
   /// screenshot runs pass false.
   final bool showStartupChoice;
+
+  /// Whether the demo-vs-real-data chooser ([WebDataChoicePage]) opens
+  /// first. Only for dev runs in a browser (`flutter run -d chrome`).
+  final bool showWebDataChoice;
   const MyApp({
     Key? key,
     required this.showIntro,
     this.showModePicker = false,
     this.showStartupChoice = false,
+    this.showWebDataChoice = false,
   }) : super(key: key);
 
   static _MyAppState? of(BuildContext context) =>
@@ -239,6 +247,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late bool _showIntro = widget.showIntro;
   late bool _showModePicker = widget.showModePicker;
   late bool _showStartupChoice = widget.showStartupChoice;
+  late bool _showWebDataChoice = widget.showWebDataChoice;
   bool _alarmRingOpen = false;
   final List<SharedPayload> _pendingShares = [];
   bool _shareScreenOpen = false;
@@ -601,16 +610,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               useMaterial3: true,
             ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: _showIntro
-          ? IntroPage(onFinished: _finishIntro)
-          : _showModePicker
-              ? ModeSelectPage(
-                  onModeSelected: () =>
-                      setState(() => _showModePicker = false),
-                )
-              : _showStartupChoice
-                  ? StartupChoicePage(onFinished: _finishStartupChoice)
-                  : _initialPage(),
+      home: _showWebDataChoice
+          ? WebDataChoicePage(
+              onFinished: () => setState(() => _showWebDataChoice = false),
+            )
+          : _showIntro
+              ? IntroPage(onFinished: _finishIntro)
+              : _showModePicker
+                  ? ModeSelectPage(
+                      onModeSelected: () =>
+                          setState(() => _showModePicker = false),
+                    )
+                  : _showStartupChoice
+                      ? StartupChoicePage(onFinished: _finishStartupChoice)
+                      : _initialPage(),
     );
   }
 }
