@@ -7,11 +7,14 @@ import 'package:path_provider/path_provider.dart';
 import '../models/track.dart';
 import 'log_service.dart';
 import 'mp3_downloader_service.dart';
+import 'youtube_feed_service.dart';
 
 /// Keeps a full local copy of every Subscriptions video you start
-/// listening to, for [keepFor] after you last played it — so going back
-/// into a video you stopped halfway plays instantly from disk (no
-/// resolving, no buffering, works offline) instead of streaming again.
+/// listening to or add to the queue, for [keepFor] after you last played
+/// (or queued) it — so it plays instantly from disk (no resolving, no
+/// buffering, works offline) instead of streaming again. [keepFor] is the
+/// feed setting "Keep queued videos offline" (2 days by default; 0 keeps
+/// none).
 ///
 /// Files live in `<app support>/video_cache/<videoId>/` (one audio file
 /// each, saved by [Mp3DownloaderService.downloadMp3]); a file's
@@ -24,13 +27,21 @@ class VideoAudioCache {
     Future<Directory?> Function()? root,
     Future<String> Function(Mp3SearchResult result, String dir)? download,
     DateTime Function()? now,
+    Duration Function()? keepFor,
   })  : _rootOverride = root,
         _downloadOverride = download,
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _keepFor = keepFor ?? _settingKeepFor;
 
   static VideoAudioCache instance = VideoAudioCache();
 
-  static const Duration keepFor = Duration(days: 7);
+  static Duration _settingKeepFor() => Duration(
+      days: YoutubeFeedService.instance.settings.value.offlineDays);
+
+  final Duration Function() _keepFor;
+
+  /// How long a copy stays after it was last played or queued.
+  Duration get keepFor => _keepFor();
 
   final Future<Directory?> Function()? _rootOverride;
   final Future<String> Function(Mp3SearchResult, String)? _downloadOverride;
@@ -91,6 +102,7 @@ class VideoAudioCache {
   Future<void> cacheInBackground(Track track) async {
     final id = track.remoteId;
     if (!track.isFeedVideo || id == null || _inFlight.contains(id)) return;
+    if (keepFor <= Duration.zero) return; // "keep 0 days": no copies
     final existing = await cachedFile(id);
     if (existing != null) {
       await touch(existing);

@@ -4494,6 +4494,33 @@ tooltips) and an `ActionChip` with the same label at the top of Now Playing.
   run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
   `fetchOverride` is set without one). A video whose page gives a duration is no longer
   flagged `isLivestream`.
+- *Gestures, options sheet, online search, offline queue (Best Music 0.3.17)*:
+  `YoutubeFeedSettings` gains `swipeRight` (default `addToQueue`), `swipeLeft`
+  (`togglePlayed`), `longPress` (`options`) — `FeedGestureAction` {nothing, addToQueue,
+  togglePlayed, options, play, transcript, summary, info}, JSON by `key`, unknown → default —
+  and `offlineDays` (default 2, 0–`maxOfflineDays` 14). Each feed row is a `_SwipeableVideo`
+  (`Dismissible` whose `confirmDismiss` runs the action and returns false, so the row springs
+  back; a direction set to Nothing doesn't swipe; colored background with the action's icon
+  and label — "Mark watched"/"Mark unwatched" by state); `FeedVideoTile.onLongPress` runs the
+  long-press action. Actions: Add to queue → `MusicAudioHandler.addToVideoQueue(trackFor(v))`
+  (snackbar "Added to the queue — downloading it for offline play" / "Already in the queue");
+  Mark watched/unwatched → `setPlayed` with an Undo snackbar; Show options → bottom sheet
+  (title, Play, Add to queue, Mark watched/unwatched, Transcript, Quick summary, Download as
+  MP3, Open in YouTube, Video info). The app bar's "Feed settings" (tune) button is gone —
+  feed settings live in Settings → Subscriptions, which gets "Swipe a video right/left",
+  "Long-press a video" (radio dialogs over every action) and "Keep queued videos offline"
+  (0 = off, 1, 2, 3, 5, 7, 14 days). `addToVideoQueue`: with a video playing/paused → appended
+  to `_queue` (and `_preShuffleOrder`) unless already there; with music current → appended to
+  the video `otherSession` (or a new one), so "Back to videos" resumes into it; with nothing
+  loaded → `restore([track])`. Every add starts `VideoAudioCache.cacheInBackground`; playing a
+  feed video also caches the next `_videosAhead` (2) queued feed videos. `VideoAudioCache.keepFor`
+  is now an instance getter = `offlineDays` days (was a fixed 7); 0 → nothing is cached.
+  **Online fallback of the feed search**: when the local search (`_localMatches`) has no match
+  and the query is ≥ 2 characters, YouTube is searched after `onlineSearchDelay` (600 ms; a
+  newer query wins via `_onlineSeq`) with `YoutubeSearchApi.search(q, limit: 15)`; results
+  (`feedVideoFromSearch`: channelId '', `publishedApprox`) show as normal rows — same tap,
+  swipes and long-press — under "Nothing in your feed — searching YouTube…" / "— results from
+  YouTube" / "…couldn't be searched (offline?)" / "Nothing in your feed or on YouTube".
 - *Loading without RSS + a saved, growing feed (Best Music 0.3.16)*: `fetchChannel` asks the
   RSS feed (`_fetchRss`, 12 s timeout) and the Videos tab (`YoutubeChannelVideosApi.fetch`)
   **in parallel**; `ChannelTabVideo.title` is now parsed (`videoRenderer`/`gridVideoRenderer`

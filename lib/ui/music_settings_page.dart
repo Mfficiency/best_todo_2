@@ -505,7 +505,86 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
         value: settings.autoplayNext,
         onChanged: (v) => update(settings.copyWith(autoplayNext: v)),
       ),
+      _gestureTile(
+        icon: Icons.swipe_right_alt,
+        title: 'Swipe a video right',
+        value: settings.swipeRight,
+        onPicked: (a) => update(settings.copyWith(swipeRight: a)),
+      ),
+      _gestureTile(
+        icon: Icons.swipe_left_alt,
+        title: 'Swipe a video left',
+        value: settings.swipeLeft,
+        onPicked: (a) => update(settings.copyWith(swipeLeft: a)),
+      ),
+      _gestureTile(
+        icon: Icons.touch_app_outlined,
+        title: 'Long-press a video',
+        value: settings.longPress,
+        onPicked: (a) => update(settings.copyWith(longPress: a)),
+      ),
+      ListTile(
+        leading: const Icon(Icons.download_for_offline_outlined),
+        title: const Text('Keep queued videos offline'),
+        subtitle: Text(settings.offlineDays == 0
+            ? "Off — videos you queue or play aren't kept on the phone"
+            : 'For ${settings.offlineDays} day${settings.offlineDays == 1 ? '' : 's'} '
+                '— videos you queue (and the one playing, plus the next '
+                'two) are downloaded and play without internet'),
+        onTap: () async {
+          final days = await showDialog<int>(
+            context: context,
+            builder: (dialogContext) => SimpleDialog(
+              title: const Text('Keep queued videos offline'),
+              children: [
+                for (final d in const [0, 1, 2, 3, 5, 7, 14])
+                  RadioListTile<int>(
+                    value: d,
+                    groupValue: settings.offlineDays,
+                    title: Text(d == 0
+                        ? "Off (don't download)"
+                        : '$d day${d == 1 ? '' : 's'}'),
+                    onChanged: (v) => Navigator.of(dialogContext).pop(v),
+                  ),
+              ],
+            ),
+          );
+          if (days != null) update(settings.copyWith(offlineDays: days));
+        },
+      ),
     ];
+  }
+
+  /// Picks what a feed gesture does.
+  Widget _gestureTile({
+    required IconData icon,
+    required String title,
+    required FeedGestureAction value,
+    required void Function(FeedGestureAction) onPicked,
+  }) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(value.label),
+      onTap: () async {
+        final picked = await showDialog<FeedGestureAction>(
+          context: context,
+          builder: (dialogContext) => SimpleDialog(
+            title: Text(title),
+            children: [
+              for (final a in FeedGestureAction.values)
+                RadioListTile<FeedGestureAction>(
+                  value: a,
+                  groupValue: value,
+                  title: Text(a.label),
+                  onChanged: (v) => Navigator.of(dialogContext).pop(v),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) onPicked(picked);
+      },
+    );
   }
 
   /// A video's Quick summary: the Claude API key and where "Save to

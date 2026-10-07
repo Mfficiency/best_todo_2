@@ -6,6 +6,12 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.17] - 2026-10-07
+- Subscriptions: swipe a video right to add it to the queue, left to mark it watched (with Undo), and long-press for all its options — Transcript, Quick summary, Download, Open in YouTube and more. Each gesture can be changed in Settings → Subscriptions
+- Videos you add to the queue are downloaded so they play without internet, and kept for 2 days (the playing video and the next two in the queue too) — change the number of days, or turn it off, in Settings → Subscriptions
+- Searching Subscriptions: when nothing in your feed matches, it searches YouTube itself and shows those videos instead
+- The Subscriptions screen no longer has a settings button at the top — its settings are in Settings
+
 ## [0.3.16] - 2026-10-07
 - Fixed: Subscriptions videos not loading — channels needed YouTube's RSS feed for their video titles, and that feed fails a lot; the titles now come from the channel's video list itself, both are asked at the same time, and the slow backup is only used when both fail
 - The feed keeps its videos: opening it shows the saved list straight away and only adds the newest videos (nothing disappears because one refresh listed fewer); saved videos stay for 30 days. Opening it again within 10 minutes doesn't reload at all — pull down to refresh anytime

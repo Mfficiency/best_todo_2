@@ -374,6 +374,51 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     await _playCurrent();
   }
 
+  /// Swipe-to-queue on a Subscriptions video: appends [track] to the
+  /// *video* queue without interrupting anything — the playing queue when
+  /// a video is playing (or paused), else the remembered video session
+  /// ("Back to videos" then resumes into it), else a new paused one. A
+  /// video already in that queue isn't added twice. Either way it starts
+  /// downloading for offline play (VideoAudioCache). Returns false when it
+  /// was already queued.
+  Future<bool> addToVideoQueue(Track track) async {
+    unawaited(VideoAudioCache.instance.cacheInBackground(track));
+    final current = currentTrack;
+    if (current == null) {
+      restore([track]);
+      _persist();
+      return true;
+    }
+    if (current.isFeedVideo) {
+      if (_queue.any((t) => t.id == track.id)) return false;
+      _queue = [..._queue, track];
+      if (_preShuffleOrder != null) {
+        _preShuffleOrder = [..._preShuffleOrder!, track];
+      }
+      queue.add(_queue.map(_toMediaItem).toList());
+      _persist();
+      return true;
+    }
+    final other = otherSession.value;
+    if (other != null && other.isVideo) {
+      if (other.queue.any((t) => t.id == track.id)) return false;
+      otherSession.value = PlaybackSession(
+        queue: [...other.queue, track],
+        index: other.index,
+        position: other.position,
+      );
+    } else {
+      otherSession.value = PlaybackSession(
+          queue: [track], index: 0, position: Duration.zero);
+    }
+    _persist();
+    return true;
+  }
+
+  /// How many videos after the playing one are downloaded ahead, so a
+  /// queue keeps playing offline.
+  static const int _videosAhead = 2;
+
   /// Saves queue/track/position for [restore] after a restart.
   void _persist() {
     _ticksSinceSave = 0;
@@ -467,6 +512,12 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       // coming back later (even offline) is instant.
       if (track.isFeedVideo) {
         unawaited(VideoAudioCache.instance.cacheInBackground(track));
+        // …and the next few in the queue, so it keeps going offline.
+        for (final next in _queue.skip(_queueIndex + 1).take(_videosAhead)) {
+          if (next.isFeedVideo) {
+            unawaited(VideoAudioCache.instance.cacheInBackground(next));
+          }
+        }
       }
       await _player.play();
     } catch (_) {
