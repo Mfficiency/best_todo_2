@@ -3198,6 +3198,27 @@ Android's `DownloadManager` the way an APK download is (§5 of the update
 flow): `DownloadManager` only knows how to fetch one URL straight through,
 which is exactly the 31 KiB/s path.
 
+**Network routes (Best Music 0.3.18)** — on some networks (typically home Wi-Fi, dual-stack)
+YouTube blocks the address ("Sign in to confirm you're not a bot") or the player request and
+the audio leave on different address families, and stream URLs only work from the address
+that resolved them, so video/song audio failed on Wi-Fi but worked on mobile data. Resolving
+(`_resolveStream`, used by streaming *and* downloads) now walks `YoutubeRoute.tryOrder()`
+(`lib/services/youtube_network_route.dart`): `system` (phone default), `ipv4`, `ipv6` —
+each the full `_streamClients` walk (`_resolveViaClients`) over `httpClientForRoute(route)`,
+an `HttpClient` whose `connectionFactory` looks the host up for that family only and, for a
+direct https connection, does TLS itself (`SecureSocket.secure(socket, host:)`), passed to
+youtube_explode as `YoutubeHttpClient(IOClient(http))` and used for the range probe — then
+`invidious` (`_resolveViaInvidious`: each of `VideoTranscriptService.invidiousInstances`'
+`/api/v1/videos/<id>?local=true&fields=adaptiveFormats`, `pickInvidiousAudio` = best
+`audio/mp4` by bitrate (else any audio), URL resolved against the instance, size from
+`clen`, then the same end-of-file probe) so YouTube only sees the relay's address. The route
+that works becomes `YoutubeRoute.lastWorking` (in memory) and is tried first next time;
+`ResolvedAudioStream.route` / `_ResolvedStream.route` make `YoutubeAudioSource` and
+`downloadMp3` fetch the bytes over that same route. All routes failing → one
+`Mp3DownloadException` listing each route's error. The probe now runs for any file over
+1 KiB. (How Tubular/NewPipe cope instead: a BotGuard PoToken generated in a hidden WebView
+plus client switching — not implemented here.)
+
 Every request is bounded — `kResolveTimeout`/`kChunkTimeout` (90 s each) —
 so a wedged socket surfaces as a readable error instead of a progress bar
 that never moves, which was the whole failure mode being fixed.

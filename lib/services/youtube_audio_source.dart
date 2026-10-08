@@ -10,6 +10,7 @@ import 'package:just_audio/just_audio.dart' as ja;
 
 import 'log_service.dart';
 import 'mp3_downloader_service.dart';
+import 'youtube_network_route.dart';
 
 /// Streams a YouTube video's audio for `MusicAudioHandler`.
 ///
@@ -46,8 +47,9 @@ class YoutubeAudioSource extends ja.StreamAudioSource {
   Future<ResolvedAudioStream> _resolve() => _resolved ??=
       Mp3DownloaderService.instance.resolveAudioStream(videoId).then(
         (r) {
-          LogService.add(
-              'Feed', 'Streaming $videoId (${r.contentType}, ${r.totalBytes} B)');
+          LogService.add('Feed',
+              'Streaming $videoId (${r.contentType}, ${r.totalBytes} B, '
+              '${r.route.label})');
           return r;
         },
         onError: (Object e) {
@@ -83,7 +85,9 @@ class YoutubeAudioSource extends ja.StreamAudioSource {
     // ~160 kbps when the duration is unknown.
     final bytesPerSecond =
         seconds > 0 ? math.max(1, resolved.totalBytes ~/ seconds) : 20 * 1024;
-    final http = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    // Over the same route (IPv4/IPv6/Invidious) that resolved the URL —
+    // YouTube's stream URLs only work from the address that asked.
+    final http = httpClientForRoute(resolved.route);
     final clock = Stopwatch()..start();
     var position = from;
     try {

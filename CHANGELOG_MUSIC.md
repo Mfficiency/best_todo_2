@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.18] - 2026-10-08
+- Fixed: videos (and YouTube songs) wouldn't play on some Wi-Fi networks — YouTube blocks some home internet addresses. Best Music now tries other ways in by itself: forcing IPv4, then IPv6, then letting a public Invidious server fetch the audio for you; whichever works is used straight away next time. Offline downloads of queued videos use the same fix
+
 ## [0.3.17] - 2026-10-07
 - Subscriptions: swipe a video right to add it to the queue, left to mark it watched (with Undo), and long-press for all its options — Transcript, Quick summary, Download, Open in YouTube and more. Each gesture can be changed in Settings → Subscriptions
 - Videos you add to the queue are downloaded so they play without internet, and kept for 2 days (the playing video and the next two in the queue too) — change the number of days, or turn it off, in Settings → Subscriptions
