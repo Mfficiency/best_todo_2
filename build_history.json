@@ -1685,5 +1685,15 @@
     "source": "ci",
     "finishedAt": "2026-10-07T20:49:07.012937",
     "os": "linux"
+  },
+  {
+    "version": "0.3.18+416",
+    "app": "music",
+    "target": "apk",
+    "durationSeconds": 455,
+    "sizeBytes": 66456583,
+    "source": "ci",
+    "finishedAt": "2026-10-08T04:50:34.064168",
+    "os": "linux"
   }
 ]

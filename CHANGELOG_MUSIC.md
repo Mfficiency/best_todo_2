@@ -8,6 +8,9 @@ nothing has been copied over here.
 
 ## [0.3.18] - 2026-10-08
 - Fixed: videos (and YouTube songs) wouldn't play on some Wi-Fi networks — YouTube blocks some home internet addresses. Best Music now tries other ways in by itself: forcing IPv4, then IPv6, then letting a public Invidious server fetch the audio for you; whichever works is used straight away next time. Offline downloads of queued videos use the same fix
+- CI build: 2026-10-08 04:50 UTC
+- Build duration (apk, CI): 7m 35s
+- APK size: 63.4 MB
 
 ## [0.3.17] - 2026-10-07
 - Subscriptions: swipe a video right to add it to the queue, left to mark it watched (with Undo), and long-press for all its options — Transcript, Quick summary, Download, Open in YouTube and more. Each gesture can be changed in Settings → Subscriptions
