@@ -243,6 +243,18 @@
 
         <!-- Music Player background playback: notification + lock-screen
              media controls, headset buttons (audio_service). -->
+        <!-- The Music widgets' play button: asks "Play out loud?" over the
+             home screen when nothing is connected, else just plays
+             (MusicPlayGuardActivity). See-through, its own task, never in
+             Recents. -->
+        <activity
+            android:name=".MusicPlayGuardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Best Music's background song-info search (MusicMetadataEnricher):
              an ongoing "Filling in song info…" notification that keeps the
              process alive while other apps are in front. specialUse because

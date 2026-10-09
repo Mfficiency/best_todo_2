@@ -1,14 +1,20 @@
+import 'dart:async' show unawaited;
+
 import 'package:home_widget/home_widget.dart';
 
+import '../config.dart';
 import 'music_audio_handler.dart';
 
 /// Bridges live playback state to the two Music Player home-screen widgets:
 /// a minimal play/pause-only widget and a play/pause + skip-previous one.
-/// The widgets' own buttons don't come back through here — they send real
-/// Android media-button broadcasts straight to `audio_service`'s
+/// The widgets' own buttons don't come back through here — skip buttons
+/// send real Android media-button broadcasts straight to `audio_service`'s
 /// `MediaButtonReceiver` (see the native widget providers), the same path a
-/// Bluetooth headset button uses. This service only keeps their title and
-/// play/pause icon in sync with what's actually playing.
+/// Bluetooth headset button uses; play/pause goes through the native
+/// `MusicPlayGuardActivity`, which asks "Play out loud?" first when
+/// nothing is connected. This service keeps their title and play/pause
+/// icon in sync with what's actually playing, and hands that activity the
+/// "Ask before playing out loud" setting ([pushConfirmSetting]).
 class MusicWidgetService {
   MusicWidgetService._();
 
@@ -33,8 +39,23 @@ class MusicWidgetService {
   static void attach(MusicAudioHandler handler) {
     if (_attached) return;
     _attached = true;
+    unawaited(pushConfirmSetting());
     handler.mediaItem.listen((_) => _sync(handler));
     handler.playbackState.listen((_) => _sync(handler));
+  }
+
+  /// Where the native play guard reads "Ask before playing out loud".
+  static const String confirmSpeakerKey = 'music_confirm_speaker';
+
+  /// Hands the current "Ask before playing out loud" setting to the
+  /// widgets' native play guard right away (Settings calls this when it's
+  /// toggled; [_sync] also writes it with every playback change).
+  static Future<void> pushConfirmSetting() async {
+    try {
+      await _ready();
+      await HomeWidget.saveWidgetData<bool>(
+          confirmSpeakerKey, Config.musicConfirmSpeakerPlay);
+    } catch (_) {}
   }
 
   static Future<void> _sync(MusicAudioHandler handler) async {
@@ -49,6 +70,8 @@ class MusicWidgetService {
       await HomeWidget.saveWidgetData<bool>('music_widget_playing', playing);
       await HomeWidget.saveWidgetData<bool>(
           'music_widget_has_track', item != null);
+      await HomeWidget.saveWidgetData<bool>(
+          confirmSpeakerKey, Config.musicConfirmSpeakerPlay);
       await HomeWidget.updateWidget(androidName: miniWidgetName);
       await HomeWidget.updateWidget(androidName: controlsWidgetName);
     } catch (_) {}

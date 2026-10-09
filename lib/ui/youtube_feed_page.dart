@@ -9,6 +9,7 @@ import '../services/feed_search.dart';
 import '../services/mp3_downloader_service.dart'
     show Mp3SearchResult, formatViewCount;
 import '../services/music_player_service.dart';
+import '../services/speaker_play_guard.dart';
 import '../services/youtube_search_api.dart';
 import '../services/youtube_feed_service.dart';
 import '../utils/linkified_text.dart';
@@ -390,9 +391,10 @@ class _YoutubeFeedPageState extends State<YoutubeFeedPage> {
     );
   }
 
-  Future<void> _play(List<FeedVideo> list, int index) {
+  Future<void> _play(List<FeedVideo> list, int index) async {
     final queue = _service.queueFrom(list, index);
-    return (widget.playQueue ?? MusicPlayerService.playQueue)(queue);
+    if (!await SpeakerPlayGuard.confirmPlay(context)) return;
+    await (widget.playQueue ?? MusicPlayerService.playQueue)(queue);
   }
 
   @override

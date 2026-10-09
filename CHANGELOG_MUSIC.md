@@ -6,6 +6,10 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.19] - 2026-10-09
+- Fixed: "Ask before playing out loud" didn't ask when you pressed play on the home-screen widget — it now shows the question right over your home screen (and just plays when headphones or a speaker are connected)
+- Fixed: it also didn't ask when a video was still loading and you switched to music (a loading video counted as "already listening") — and now it asks for the "Back to music/videos" button, tapping a Subscriptions video and Songs by BPM too
+
 ## [0.3.18] - 2026-10-08
 - Fixed: videos (and YouTube songs) wouldn't play on some Wi-Fi networks — YouTube blocks some home internet addresses. Best Music now tries other ways in by itself: forcing IPv4, then IPv6, then letting a public Invidious server fetch the audio for you; whichever works is used straight away next time. Offline downloads of queued videos use the same fix
 - CI build: 2026-10-08 04:50 UTC

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/youtube_feed.dart';
+import '../services/music_widget_service.dart';
 import '../services/music_library_service.dart';
 import '../services/media_volume.dart';
 import '../services/music_sleep_timer.dart';
@@ -389,6 +390,7 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                         onChanged: (value) {
                           setState(() => Config.musicConfirmSpeakerPlay = value);
                           unawaited(Config.save());
+                          unawaited(MusicWidgetService.pushConfirmSetting());
                         },
                       ),
                       ListTile(

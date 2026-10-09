@@ -8,7 +8,6 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaScannerConnection
 import android.net.Uri
@@ -550,19 +549,8 @@ class MainActivity : AudioServiceFragmentActivity() {
         }
     }
 
-    private fun isExternalAudioOutputConnected(): Boolean {
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val builtIn = setOf(
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
-            AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
-            AudioDeviceInfo.TYPE_TELEPHONY,
-            AudioDeviceInfo.TYPE_UNKNOWN,
-            AudioDeviceInfo.TYPE_REMOTE_SUBMIX,
-        ) + (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE) else emptySet())
-        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            .any { it.type !in builtIn }
-    }
+    private fun isExternalAudioOutputConnected(): Boolean =
+        AudioOutputs.isExternalConnected(this)
 
     private fun openHealthDataSources(): Boolean {
         val attempts = listOf(

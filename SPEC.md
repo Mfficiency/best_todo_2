@@ -2297,9 +2297,25 @@ Cancel/Play dialog only when `Config.musicConfirmSpeakerPlay` (default on; Music
 `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` has any type besides built-in speaker/
 earpiece/speaker-safe/telephony/remote-submix/unknown — i.e. no Bluetooth, wired/USB
 headset, car, HDMI) returns false. Off Android or on a channel error it never asks.
-Hardware media buttons, the notification and home-screen widgets are untouched (no UI to
-ask in; a headset button implies a headset anyway). Tests:
-`test/music/speaker_play_guard_test.dart`.
+Hardware media buttons and the notification are untouched (a headset button implies a
+headset anyway). Tests: `test/music/speaker_play_guard_test.dart`.
+*0.3.19 gaps closed*: "nothing is playing" now means not **audible** —
+`MusicAudioHandler.isAudible` = `_player.playing && _audibleSinceLoad`, the latter set when
+the player state is playing+ready and cleared at the start of every `_playCurrent` — because
+`playbackState.playing` is already true while a video is still being resolved/buffered, so
+switching to music then skipped the question. The guard now also runs in
+`switchSessionAndShow` ("Back to music/videos" pill, mini player and Now Playing switch;
+dialog on the navigator's context, Cancel = no switch), the Subscriptions feed's `_play`
+(tap, swipe/long-press "Play", options-sheet Play, online search results) and Songs by
+BPM's `_play`. **Home-screen widgets**: their play/pause button is now a `PendingIntent`
+for `MusicPlayGuardActivity` (translucent, `taskAffinity=""`, `noHistory`, excluded from
+Recents) instead of the bare media-button broadcast: when the widget data says playing,
+`music_confirm_speaker` (written by `MusicWidgetService` on attach, with every sync and when
+the setting is toggled) is false, or `AudioOutputs.isExternalConnected` (the shared helper
+MainActivity's channel now uses too) — it sends the play/pause broadcast
+(`MusicWidgetIntents.playPauseBroadcast`) and finishes invisibly; otherwise it shows a
+native "Play out loud?" AlertDialog over the home screen (Play → broadcast; Cancel/outside →
+nothing). Skip buttons still broadcast directly.
 
 **Best Music share-to-download** (Best Music 0.2.91): Best Music uses the same native path
 (`ShareActivity` → `MainActivity` → `besttodo/share` → `ShareIntentService`), hooked up in

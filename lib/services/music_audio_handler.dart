@@ -107,12 +107,25 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   String? _loadedTrackId;
   String? _skipSegmentsTrackId;
 
+  /// Whether sound is actually coming out: playing, *and* the current
+  /// track's audio has been ready (so not a video still being looked up /
+  /// buffered for the first time). The "Play out loud?" guard only trusts
+  /// this — `playbackState.playing` is already true while a video loads,
+  /// which let a switch to music skip the question.
+  bool get isAudible => _player.playing && _audibleSinceLoad;
+  bool _audibleSinceLoad = false;
+
   MusicAudioHandler() {
     // A volume/boost change in Feed settings (or the Now Playing volume
     // sheet) applies to the playing video right away.
     YoutubeFeedService.instance.settings.addListener(applyCurrentVolume);
     _player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {
       _broadcastState(_player.playbackEvent);
+    });
+    _player.playerStateStream.listen((state) {
+      if (state.playing && state.processingState == ja.ProcessingState.ready) {
+        _audibleSinceLoad = true;
+      }
     });
     _player.processingStateStream.listen((state) {
       if (state == ja.ProcessingState.completed) {
@@ -499,6 +512,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       startAt = YoutubeFeedService.instance.resumePosition(track.remoteId!);
     }
     _loadedTrackId = null;
+    _audibleSinceLoad = false;
     _persist();
     _loadSkipSegments(track);
     try {
