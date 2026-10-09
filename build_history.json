@@ -1715,5 +1715,15 @@
     "source": "ci",
     "finishedAt": "2026-10-09T12:34:07.599844",
     "os": "linux"
+  },
+  {
+    "version": "0.2.100+408",
+    "app": "todo",
+    "target": "apk",
+    "durationSeconds": 556,
+    "sizeBytes": 67020659,
+    "source": "ci",
+    "finishedAt": "2026-10-09T12:43:44.083890",
+    "os": "linux"
   }
 ]
