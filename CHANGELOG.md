@@ -2,8 +2,8 @@
 
 ## [0.2.100] - 2026-10-07
 - Running the app in Chrome (flutter run -d chrome) now asks first whether to use the demo data or load your real tasks from Todoist
-- CI build: 2026-10-09 12:43 UTC
-- Build duration (apk, CI): 9m 16s
+- CI build: 2026-10-10 17:13 UTC
+- Build duration (apk, CI): 9m 10s
 - APK size: 63.9 MB
 - Local build: 2026-10-07 22:30
 - Build duration (apk): 18m 51s
