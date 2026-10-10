@@ -9,8 +9,8 @@ nothing has been copied over here.
 ## [0.3.19] - 2026-10-09
 - Fixed: "Ask before playing out loud" didn't ask when you pressed play on the home-screen widget — it now shows the question right over your home screen (and just plays when headphones or a speaker are connected)
 - Fixed: it also didn't ask when a video was still loading and you switched to music (a loading video counted as "already listening") — and now it asks for the "Back to music/videos" button, tapping a Subscriptions video and Songs by BPM too
-- CI build: 2026-10-09 12:34 UTC
-- Build duration (apk, CI): 7m 10s
+- CI build: 2026-10-10 17:05 UTC
+- Build duration (apk, CI): 8m 07s
 - APK size: 63.4 MB
 
 ## [0.3.18] - 2026-10-08
