@@ -106,7 +106,7 @@ class _YourStatsPageState extends State<YourStatsPage>
 
   List<Color> _legendColors(BuildContext context) {
     return [
-      Theme.of(context).colorScheme.surfaceVariant,
+      Theme.of(context).colorScheme.surfaceContainerHighest,
       Colors.blue.shade300,
       Colors.blue.shade500,
       Colors.blue.shade700,
@@ -262,18 +262,21 @@ class _YourStatsPageState extends State<YourStatsPage>
                                 final count = countsByDay[date] ?? 0;
                                 final color = _colorForCount(count, context);
                                 return Padding(
-                                  padding: const EdgeInsets.only(bottom: _cellGap),
+                                  padding:
+                                      const EdgeInsets.only(bottom: _cellGap),
                                   child: Tooltip(
                                     message:
                                         '${date.toIso8601String().split('T').first}: $count deleted',
                                     child: GestureDetector(
-                                      onTap: () => _showHeatmapDayDetails(date, count),
+                                      onTap: () =>
+                                          _showHeatmapDayDetails(date, count),
                                       child: Container(
                                         width: _cellSize,
                                         height: _cellSize,
                                         decoration: BoxDecoration(
                                           color: color,
-                                          borderRadius: BorderRadius.circular(2),
+                                          borderRadius:
+                                              BorderRadius.circular(2),
                                         ),
                                       ),
                                     ),
@@ -318,7 +321,8 @@ class _YourStatsPageState extends State<YourStatsPage>
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Text(entry.key, style: Theme.of(context).textTheme.bodySmall),
+                    Text(entry.key,
+                        style: Theme.of(context).textTheme.bodySmall),
                   ],
                 );
               }),
@@ -383,18 +387,17 @@ class _YourStatsPageState extends State<YourStatsPage>
       final stats = widget.dailyStatsByDay[_dayKeyFromDate(date)] ??
           DailyTaskStats(dayKey: _dayKeyFromDate(date));
       final openingCount = stats.openingTaskIds.length;
-      final movedCount =
-          _intersectionCount(stats.movedFromOpeningTaskIds, stats.openingTaskIds);
+      final movedCount = _intersectionCount(
+          stats.movedFromOpeningTaskIds, stats.openingTaskIds);
       final completedFromOpeningCount = stats.completedFromOpeningTaskIds
           .where((id) =>
               stats.openingTaskIds.contains(id) &&
               !stats.movedFromOpeningTaskIds.contains(id))
           .length;
-      final openingNotCompletedCount = (openingCount -
-              movedCount -
-              completedFromOpeningCount)
-          .clamp(0, 1 << 31)
-          .toInt();
+      final openingNotCompletedCount =
+          (openingCount - movedCount - completedFromOpeningCount)
+              .clamp(0, 1 << 31)
+              .toInt();
       final createdCount = stats.createdDuringDayTaskIds.length;
       final completedFromCreatedCount = _intersectionCount(
         stats.completedFromCreatedTaskIds,
@@ -408,7 +411,8 @@ class _YourStatsPageState extends State<YourStatsPage>
           openingNotCompletedCount +
           completedFromCreatedCount +
           createdNotCompletedCount;
-      final unitHeight = total <= 0 ? 10.0 : (_barMaxHeight / total).clamp(3.0, 16.0);
+      final unitHeight =
+          total <= 0 ? 10.0 : (_barMaxHeight / total).clamp(3.0, 16.0);
       final monthChanged = previousDate == null ||
           previousDate.month != date.month ||
           previousDate.year != date.year;
@@ -441,7 +445,8 @@ class _YourStatsPageState extends State<YourStatsPage>
           _stackBlock(_openingOpenColor, unitHeight),
         for (var i = 0; i < completedFromOpeningCount; i++)
           _stackBlock(_openingDoneColor, unitHeight),
-        for (var i = 0; i < movedCount; i++) _stackBlock(_movedColor, unitHeight),
+        for (var i = 0; i < movedCount; i++)
+          _stackBlock(_movedColor, unitHeight),
       ];
 
       bars.add(
@@ -569,7 +574,8 @@ class _YourStatsPageState extends State<YourStatsPage>
     return byId.values.toList();
   }
 
-  DateTime _startOfWindow() => _dateOnly(_currentDate).subtract(const Duration(days: 30));
+  DateTime _startOfWindow() =>
+      _dateOnly(_currentDate).subtract(const Duration(days: 30));
 
   bool _isInWindow(DateTime localDateTime) {
     final day = _dateOnly(localDateTime);
@@ -579,8 +585,10 @@ class _YourStatsPageState extends State<YourStatsPage>
   }
 
   List<DateTime> _eventsForType(Task task, String type) {
-    if (type == 'Created') return task.createdAt == null ? <DateTime>[] : [task.createdAt!];
-    if (type == 'Completed') return task.completedAt == null ? <DateTime>[] : [task.completedAt!];
+    if (type == 'Created')
+      return task.createdAt == null ? <DateTime>[] : [task.createdAt!];
+    if (type == 'Completed')
+      return task.completedAt == null ? <DateTime>[] : [task.completedAt!];
     if (type == 'Moved') {
       final events = <DateTime>[];
       if (task.movedAt != null) events.add(task.movedAt!);
@@ -589,7 +597,8 @@ class _YourStatsPageState extends State<YourStatsPage>
       }
       return events;
     }
-    if (type == 'Deleted') return task.deletedAt == null ? <DateTime>[] : [task.deletedAt!];
+    if (type == 'Deleted')
+      return task.deletedAt == null ? <DateTime>[] : [task.deletedAt!];
     return <DateTime>[
       ..._eventsForType(task, 'Created'),
       ..._eventsForType(task, 'Completed'),
@@ -615,14 +624,23 @@ class _YourStatsPageState extends State<YourStatsPage>
   Color _activityCellColor(int count, int maxCount, BuildContext context) {
     final base = Theme.of(context).colorScheme.primary;
     if (count <= 0 || maxCount <= 0) {
-      return Theme.of(context).colorScheme.surfaceVariant;
+      return Theme.of(context).colorScheme.surfaceContainerHighest;
     }
     final t = count / maxCount;
-    return Color.lerp(base.withOpacity(0.18), base.withOpacity(0.92), t.clamp(0.0, 1.0))!;
+    return Color.lerp(
+        base.withOpacity(0.18), base.withOpacity(0.92), t.clamp(0.0, 1.0))!;
   }
 
   String _weekdayName(int dayIndex) {
-    const names = <String>['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const names = <String>[
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
     return names[dayIndex];
   }
 
@@ -651,7 +669,13 @@ class _YourStatsPageState extends State<YourStatsPage>
   }
 
   Widget _buildItemActivityHeatmapSection() {
-    final tabs = <String>['Created', 'Completed', 'Moved', 'Deleted', 'Combined'];
+    final tabs = <String>[
+      'Created',
+      'Completed',
+      'Moved',
+      'Deleted',
+      'Combined'
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
       child: Column(
@@ -702,7 +726,9 @@ class _YourStatsPageState extends State<YourStatsPage>
                                       alignment: Alignment.centerRight,
                                       child: Text(
                                         hour.toString().padLeft(2, '0'),
-                                        style: Theme.of(context).textTheme.bodySmall,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
                                       ),
                                     ),
                                   ),
@@ -720,7 +746,9 @@ class _YourStatsPageState extends State<YourStatsPage>
                                       child: Center(
                                         child: Text(
                                           _weekdayName(day).substring(0, 3),
-                                          style: Theme.of(context).textTheme.bodySmall,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
                                         ),
                                       ),
                                     ),
@@ -745,7 +773,8 @@ class _YourStatsPageState extends State<YourStatsPage>
                                                 maxCount,
                                                 context,
                                               ),
-                                              borderRadius: BorderRadius.circular(2),
+                                              borderRadius:
+                                                  BorderRadius.circular(2),
                                             ),
                                           ),
                                         ),

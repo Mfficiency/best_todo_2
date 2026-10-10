@@ -42,6 +42,8 @@
 
 ### DONE
 - cancel swipe, when you swiped one way you can cancel the action by swiping the other way
+- chronize tool (experimental): all tasks on a 24hr calendar view with hour/day/month rollers on the right (hour roller spans 3 days, day roller 15 days, month roller 12 months per top-to-bottom scroll).
+- default deadline time 18:00 for every task, incrementing per day (18:01, 18:02, ...) when several tasks share a day so no two collide.
 - Notification quiet hours: Suppress notifications in a time range, plus weekday/weekend override.
 - Start page: Choose which tab opens on launch (Today, Tomorrow, Future, etc.).
 - make a "future tab", that you can move away to just have the idea written down.

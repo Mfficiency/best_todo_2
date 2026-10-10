@@ -20,6 +20,7 @@ import 'app_logs_page.dart';
 import 'calendar_view_page.dart' show ScheduleView;
 import 'changelog_page.dart';
 import 'countdown_timer_page.dart';
+import 'chronize_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
 import 'deleted_items_page.dart';
@@ -186,7 +187,8 @@ class _HomePageState extends State<HomePage>
     const dayOffsets = <int>[1, 2, 4, 7, 9, 11];
     final seeded = <Task>[];
     for (var i = 0; i < titles.length; i++) {
-      final deletedAt = now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
+      final deletedAt =
+          now.subtract(Duration(days: dayOffsets[i], minutes: i * 11));
       seeded.add(
         Task(
           title: titles[i],
@@ -650,7 +652,7 @@ class _HomePageState extends State<HomePage>
         setState(() {});
       }
     });
-    HomeWidget.setAppGroupId(appGroupId).catchError((_) {});
+    HomeWidget.setAppGroupId(appGroupId).catchError((_) => null);
     _loadTasks();
     _scheduleMidnightUpdate();
   }
@@ -1054,6 +1056,9 @@ class _HomePageState extends State<HomePage>
         listTasks[j].listRanking = j + 1;
       }
     }
+    // Default every deadline time to 18:00, bumping to 18:01, 18:02, ... when
+    // multiple tasks land on the same day so no two share a time.
+    applyDefaultDeadlineTimes(_tasks);
     _storageService.saveTaskList(_tasks);
     _updateHomeWidget();
   }
@@ -1137,8 +1142,7 @@ class _HomePageState extends State<HomePage>
         deletedTasks: _deletedTasks,
         dailyStatsByDay: _dailyStatsByDay,
       ),
-      'countdown_timers':
-          (timers ?? []).map((t) => t.toJson()).toList(),
+      'countdown_timers': (timers ?? []).map((t) => t.toJson()).toList(),
     };
     final file = File(path);
     await file.writeAsString(jsonEncode(payload), flush: true);
@@ -1155,9 +1159,8 @@ class _HomePageState extends State<HomePage>
       final decoded = jsonDecode(await File(picked.path).readAsString())
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
-      final settings = settingsRaw is Map
-          ? Map<String, dynamic>.from(settingsRaw as Map)
-          : decoded;
+      final settings =
+          settingsRaw is Map ? Map<String, dynamic>.from(settingsRaw) : decoded;
       Config.applyMap(settings);
       await Config.save();
       _updateSettings();
@@ -1211,7 +1214,7 @@ class _HomePageState extends State<HomePage>
           as Map<String, dynamic>;
       final settingsRaw = decoded['settings'];
       if (settingsRaw is Map) {
-        Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+        Config.applyMap(Map<String, dynamic>.from(settingsRaw));
         await Config.save();
       }
 
@@ -1310,7 +1313,7 @@ class _HomePageState extends State<HomePage>
       if (hasEverythingBundle) {
         final settingsRaw = decoded['settings'];
         if (settingsRaw is Map) {
-          Config.applyMap(Map<String, dynamic>.from(settingsRaw as Map));
+          Config.applyMap(Map<String, dynamic>.from(settingsRaw));
           await Config.save();
         }
         final imported =
@@ -1580,6 +1583,18 @@ class _HomePageState extends State<HomePage>
                       deletedItems: _deletedTasks,
                       dailyStatsByDay: _dailyStatsByDay,
                     ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.access_time),
+              title: const Text('Chronize'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChronizePage(tasks: _tasks),
                   ),
                 );
               },

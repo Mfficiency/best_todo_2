@@ -109,9 +109,8 @@ class StorageService {
       }
       final contents = await file.readAsString();
       final List<dynamic> data = jsonDecode(contents);
-      final tasks = data
-          .map((e) => Task.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final tasks =
+          data.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
       _ensureUniqueIds(tasks);
       _trimDeletedTasks(tasks);
       return tasks;
@@ -129,9 +128,8 @@ class StorageService {
       }
       final contents = await file.readAsString();
       final List<dynamic> data = jsonDecode(contents);
-      final tasks = data
-          .map((e) => Task.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final tasks =
+          data.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
       _ensureUniqueIds(tasks);
       if (isNewDay) {
         final doneTasks = tasks.where((t) => t.isDone).toList();
@@ -274,9 +272,16 @@ class StorageService {
     required Map<String, DailyTaskStats> dailyStatsByDay,
   }) {
     final allTasks = <Task>[...tasks, ...deletedTasks];
-    final labels = allTasks.map((t) => t.label.trim()).where((v) => v.isNotEmpty).toSet().toList()..sort();
+    final labels = allTasks
+        .map((t) => t.label.trim())
+        .where((v) => v.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
     final projects = allTasks
-        .map((t) => t.dueDate == null ? 'unscheduled' : '${t.dueDate!.year}-${t.dueDate!.month.toString().padLeft(2, '0')}-${t.dueDate!.day.toString().padLeft(2, '0')}')
+        .map((t) => t.dueDate == null
+            ? 'unscheduled'
+            : '${t.dueDate!.year}-${t.dueDate!.month.toString().padLeft(2, '0')}-${t.dueDate!.day.toString().padLeft(2, '0')}')
         .toSet()
         .toList()
       ..sort();
@@ -370,9 +375,8 @@ class StorageService {
 
   TaskImportBundle importTaskDataFromDecoded(dynamic decoded) {
     if (decoded is List) {
-      final tasks = decoded
-          .map((e) => Task.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final tasks =
+          decoded.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
       _ensureUniqueIds(tasks);
       return const TaskImportBundle(
         tasks: <Task>[],
@@ -402,7 +406,8 @@ class StorageService {
       warnings.add('Export version is unsupported or newer than this app.');
     }
     final exportedAt = decoded['exported_at'];
-    if (exportedAt == null || DateTime.tryParse(exportedAt.toString()) == null) {
+    if (exportedAt == null ||
+        DateTime.tryParse(exportedAt.toString()) == null) {
       warnings.add('Missing or invalid exported_at.');
     }
 
@@ -411,7 +416,7 @@ class StorageService {
       if (value is! List) return <Task>[];
       return value
           .whereType<Map>()
-          .map((e) => Task.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) => Task.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     }
 
@@ -420,7 +425,7 @@ class StorageService {
       if (value is! List) return <String, DailyTaskStats>{};
       final stats = value
           .whereType<Map>()
-          .map((e) => DailyTaskStats.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) => DailyTaskStats.fromJson(Map<String, dynamic>.from(e)))
           .where((s) => s.dayKey.isNotEmpty)
           .toList();
       return {for (final item in stats) item.dayKey: item};
@@ -430,8 +435,8 @@ class StorageService {
     final deletedTasks = parseTasksField('deleted_tasks');
     final dailyStatsByDay = parseDailyStatsField();
     if (!decoded.containsKey('task_events')) {
-      warnings
-          .add('Missing task_events in export; some lifecycle analytics may be incomplete.');
+      warnings.add(
+          'Missing task_events in export; some lifecycle analytics may be incomplete.');
     }
 
     _ensureUniqueIds(tasks);
