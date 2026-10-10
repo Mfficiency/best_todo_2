@@ -1,0 +1,7 @@
+# Test tags. The screenshot capture is tagged so it can be included/excluded:
+#   flutter test                                   # everything
+#   flutter test --exclude-tags screenshots        # skip screenshot capture
+#   flutter test test/screenshots/                 # just the screenshots
+tags:
+  screenshots:
+    description: Renders every screen to a PNG in build/e2e_screenshots/.

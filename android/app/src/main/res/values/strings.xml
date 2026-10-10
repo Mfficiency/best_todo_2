@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Overridden per flavor (src/music/res/values/strings.xml) — see
+         android/app/build.gradle.kts productFlavors. -->
+    <string name="app_name">BestToDo</string>
     <string name="simple_widget_name">Due Tasks</string>
     <string name="no_tasks_today">No due tasks</string>
+    <string name="alarms_widget_name">Alarms</string>
+    <string name="food_diary_widget_name">Food Diary</string>
+    <string name="food_diary_button_widget_name">Log Food (button)</string>
+    <string name="music_mini_widget_name">Music (play/pause)</string>
+    <string name="music_controls_widget_name">Music (controls)</string>
 </resources>

@@ -17,6 +17,22 @@ if (keystorePropertiesFile.exists()) {
 val hasReleaseKeystore = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
     .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
 
+// Best Music versions independently of BestToDo (CLAUDE.md/SPEC.md §10.6i):
+// its own `version: x.y.z+build` line lives in MUSIC_VERSION at the repo
+// root (edited by `dart run tool/bump_version.dart <version> "<entry>"
+// --music`, mirroring pubspec.yaml's own `version:` line for BestToDo)
+// instead of piggybacking on pubspec.yaml's version like it did before the
+// split. Missing/unparseable file falls back to null, in which case the
+// `music` flavor below just keeps Flutter's own (BestToDo's) version so a
+// checkout without it still builds.
+val musicVersionFile = rootProject.file("../MUSIC_VERSION")
+val musicVersionFull = if (musicVersionFile.exists()) {
+    Regex("""^version:\s*(\S+)""", RegexOption.MULTILINE)
+        .find(musicVersionFile.readText())?.groupValues?.get(1)
+} else null
+val musicVersionName = musicVersionFull?.substringBefore("+")
+val musicVersionCode = musicVersionFull?.substringAfter("+")?.toIntOrNull()
+
 android {
     namespace = "com.mfficiency.best_todo_2"
     compileSdk = flutter.compileSdkVersion
@@ -42,11 +58,40 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // androidx.work (pulled in transitively via glance/home_widget)
-        // requires a minSdk of at least 23.
-        minSdk = maxOf(23, flutter.minSdkVersion)
+        // requires a minSdk of at least 23; the `health` plugin (Tools ->
+        // Fitness Activity) requires 26. Health Connect itself is Android 8+
+        // only, so 26 is the floor for that feature to work at all.
+        minSdk = maxOf(26, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // Two apps from one codebase, picked with `flutter build apk --flavor
+    // <name>` (default `todo` if a build script doesn't say — see
+    // tool/build.sh): `todo` is BestToDo itself (unchanged applicationId,
+    // same as before flavors existed), `music` is Best Music — the
+    // standalone music player + MP3 downloader app entered via
+    // lib/main_music.dart, installable side by side with BestToDo since it
+    // has its own applicationId. Both share every other Gradle setting
+    // (signing, minSdk, permissions, ...); only the app label
+    // (res/values/strings.xml `app_name`) and launcher icon
+    // (src/music/res/mipmap-*/ic_launcher.png) are overridden per flavor.
+    flavorDimensions += listOf("app")
+    productFlavors {
+        create("todo") {
+            dimension = "app"
+        }
+        create("music") {
+            dimension = "app"
+            applicationId = "com.mfficiency.best_music"
+            // Own versionCode/versionName, read from MUSIC_VERSION above —
+            // see that val's comment. versionCode in particular must never
+            // regress below whatever the last shipped Best Music build used,
+            // or Android refuses the install as a downgrade.
+            if (musicVersionCode != null) versionCode = musicVersionCode
+            if (musicVersionName != null) versionName = musicVersionName
+        }
     }
 
     if (hasReleaseKeystore) {
@@ -82,6 +127,13 @@ android {
             if (hasReleaseKeystore) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            // Keep rules for Gson/flutter_local_notifications — without them
+            // R8 strips generic signatures and every alarm schedule call
+            // fails at runtime with "Missing type parameter." (release only).
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
@@ -91,40 +143,103 @@ flutter {
 }
 
 afterEvaluate {
-    val createVersionedReleaseApk = tasks.register("createVersionedReleaseApk") {
-        doLast {
-            // versionName from pubspec: x.y.z+build -> keep z (e.g. 0.1.57+27 -> 57)
-            val suffix = (flutter.versionName ?: "0.0.0")
-                .substringBefore("+")
-                .substringAfterLast(".")
+    // Flutter names a flavored release APK app-<flavor>-release.apk; the
+    // renamed file's prefix is what tool/build.sh, tool/build.ps1 and
+    // UpdateService key their per-app filtering on (best_todo_/best_music_),
+    // so it must track the flavor that was actually built.
+    //
+    // There is ONE rename task per flavor, wired to that flavor's own
+    // assemble task, rather than a single task that sniffs the output
+    // directory for whichever app-<flavor>-release.apk exists. That sniffing
+    // was silently wrong: build/app/outputs/flutter-apk/ is never cleaned
+    // between builds, so once a BestToDo build had left app-todo-release.apk
+    // behind, every later `--flavor music` build matched *that* file first
+    // and re-copied the stale BestToDo APK as best_todo_<pubspec version>.apk
+    // — never producing best_music_<MUSIC_VERSION>.apk at all, which left the
+    // Best Music release build looking like it succeeded while staging
+    // nothing.
+    val flavorPrefixes = mapOf("todo" to "best_todo", "music" to "best_music")
 
-            val apkCandidates = listOf(
-                rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
-                rootProject.layout.buildDirectory.file("app/outputs/apk/release/app-release.apk").get().asFile,
-                layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile,
-            )
+    fun flutterFullVersion() =
+        "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"
 
-            val sourceApk = apkCandidates.firstOrNull { it.exists() }
-            logger.lifecycle("[apk-rename] Looking for release APK. Checked: ${apkCandidates.joinToString { it.path }}")
+    // [builtFlavor] is null for an unflavored (legacy) release build.
+    fun registerRenameTask(taskName: String, builtFlavor: String?) =
+        tasks.register(taskName) {
+            doLast {
+                val prefix = builtFlavor?.let { flavorPrefixes[it] } ?: "best_todo"
 
-            if (sourceApk == null) {
-                logger.lifecycle("[apk-rename] No release APK found, skipping rename.")
-                return@doLast
+                val sourceApk: File? = if (builtFlavor != null) {
+                    rootProject.layout.buildDirectory
+                        .file("app/outputs/flutter-apk/app-$builtFlavor-release.apk")
+                        .get().asFile.takeIf { it.exists() }
+                } else {
+                    // Unflavored fallback — shouldn't occur now that
+                    // flavorDimensions is set above, but costs nothing to keep.
+                    listOf(
+                        rootProject.layout.buildDirectory.file("app/outputs/flutter-apk/app-release.apk").get().asFile,
+                        rootProject.layout.buildDirectory.file("app/outputs/apk/release/app-release.apk").get().asFile,
+                        layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile,
+                    ).firstOrNull { it.exists() }
+                }
+
+                if (sourceApk == null) {
+                    logger.lifecycle("[apk-rename] No release APK found, skipping rename.")
+                    return@doLast
+                }
+
+                // Full version: x.y.z+build (e.g. 0.1.117+87). versionName carries
+                // x.y.z, versionCode the build number, so recombine them. Best
+                // Music versions independently (MUSIC_VERSION, see the val above)
+                // — BestToDo still comes from pubspec.yaml via `flutter.*`.
+                val fullVersion = if (builtFlavor == "music" && musicVersionFull != null) {
+                    musicVersionFull
+                } else {
+                    flutterFullVersion()
+                }
+
+                // versionCode 1 means the relevant version file lost its `+build`
+                // suffix: the APK would be rejected as a downgrade on any device
+                // holding an earlier build.
+                val effectiveVersionCode =
+                    if (builtFlavor == "music") musicVersionCode ?: flutter.versionCode
+                    else flutter.versionCode
+                if (effectiveVersionCode == 1) {
+                    val source = if (builtFlavor == "music") "MUSIC_VERSION" else "pubspec.yaml"
+                    logger.warn(
+                        "[apk-rename] WARNING: versionCode is 1 — $source's `version:` is " +
+                            "missing its +build suffix. Fix it before shipping this APK."
+                    )
+                }
+
+                val renamedApk = File(sourceApk.parentFile, "${prefix}_${fullVersion}.apk")
+                sourceApk.copyTo(renamedApk, overwrite = true)
+                logger.lifecycle("[apk-rename] Created ${renamedApk.path}")
             }
+        }
 
-            val renamedApk = File(sourceApk.parentFile, "${sourceApk.nameWithoutExtension}_${suffix}.apk")
-            sourceApk.copyTo(renamedApk, overwrite = true)
-            logger.lifecycle("[apk-rename] Created ${renamedApk.path}")
+    for ((flavor, _) in flavorPrefixes) {
+        val capitalized = flavor.replaceFirstChar { it.uppercase() }
+        val renameTask = registerRenameTask("createVersioned${capitalized}ReleaseApk", flavor)
+        tasks.matching { it.name == "assemble${capitalized}Release" }.configureEach {
+            finalizedBy(renameTask)
         }
     }
 
-    tasks.matching { it.name in setOf("assembleRelease", "copyReleaseApk", "packageRelease") }.configureEach {
+    val createVersionedReleaseApk = registerRenameTask("createVersionedReleaseApk", null)
+    tasks.matching {
+        it.name in setOf("assembleRelease", "copyReleaseApk", "packageRelease")
+    }.configureEach {
         finalizedBy(createVersionedReleaseApk)
     }
 }
 
 dependencies {
     implementation("androidx.annotation:annotation:1.7.1")
+    // FileProvider for the in-app APK update install (MainActivity's
+    // besttodo/update channel). Transitively present anyway, pinned explicitly
+    // so the manifest's <provider> never breaks on a dependency shuffle.
+    implementation("androidx.core:core:1.13.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.10.3")
@@ -134,9 +249,21 @@ dependencies {
 // home_widget 0.8.1 declares `androidx.glance:glance-appwidget:1.+`, which now
 // resolves to 1.3.0-alpha01 and demands compileSdk 37 + AGP 9.1.0. Pin to the
 // latest stable 1.1.x until we're ready to bump the Android toolchain.
+//
+// Same story one level down, and it broke the release build on 2026-08-15:
+// WorkManager came in unpinned and picked up the freshly published
+// `androidx.work:work-runtime-ktx:2.12.0-rc01`, which declares minSdk 24 —
+// the manifest merger then refused this app's minSdk 23 and every
+// `assembleRelease` failed at `:app:processReleaseMainManifest`, with no code
+// change of ours involved. Pinned to the last line that still supports 23, so
+// a new upstream pre-release can't take the build out again. (minSdk is 26 as
+// of 0.2.9+300 — see defaultConfig — so the work-runtime clash no longer bites,
+// but the pins stay put to keep the toolchain bump deliberate.)
 configurations.all {
     resolutionStrategy {
         force("androidx.glance:glance-appwidget:1.1.1")
         force("androidx.glance:glance:1.1.1")
+        force("androidx.work:work-runtime:2.10.0")
+        force("androidx.work:work-runtime-ktx:2.10.0")
     }
 }

@@ -4,10 +4,40 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../models/countdown_timer.dart';
+import '../models/view_filter_rules.dart';
+import '../services/countdown_sync_service.dart';
+import '../services/item_repository.dart';
+import '../services/item_views.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../utils/date_time_format.dart';
+import '../utils/label_style.dart';
+import '../utils/label_utils.dart';
+import 'countdown_milestones_dialog.dart';
+import 'label_picker.dart';
 import 'subpage_app_bar.dart';
+
+/// A small pill for one countdown-timer tag, tinted [protectedTagColor] when
+/// the word collides with a reserved state tag (see `label_style.dart`).
+Widget _tagChip(String text) {
+  final color = protectedChipColorFor(text);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    decoration: BoxDecoration(
+      color: color?.withValues(alpha: 0.16) ?? const Color(0x1F000000),
+      borderRadius: BorderRadius.circular(8),
+      border: color == null ? null : Border.all(color: color),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        color: color,
+        fontWeight: color == null ? null : FontWeight.w600,
+      ),
+    ),
+  );
+}
 
 /// How the timer list is ordered. [manual] is the user's drag order; the rest
 /// are sorted views that can each run ascending or descending.
@@ -26,10 +56,21 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   List<CountdownTimerItem> _timers = [];
   final Set<String> _expanded = {};
 
+  /// Title of the linked task for each item-linked timer (by timer uid), for
+  /// the small "linked" indicator on its card. Populated during [_load]; not
+  /// persisted.
+  final Map<String, String> _linkedTaskTitles = {};
+
   /// Timer uids that should not fire a zero-notification: either they have
   /// already fired this session, or they were already past when the bell was
   /// switched on. Not persisted.
   final Set<String> _notifySuppressed = {};
+
+  /// Last wall-clock instant each milestone-enabled timer was checked at. The
+  /// first observation only records a baseline (so switching the bell on or
+  /// opening the page never retro-fires for milestones already passed);
+  /// crossings are detected over the window since it. Not persisted.
+  final Map<String, DateTime> _milestoneSeen = {};
 
   Timer? _ticker;
   bool _loading = true;
@@ -57,6 +98,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     _listController.addListener(_handleListScroll);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       _checkZeroNotifications();
+      _checkMilestoneNotifications();
       if (mounted) setState(() {});
     });
   }
@@ -83,11 +125,27 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     // an empty list the same as a missing file so the demo timers also appear
     // on platforms where persistence is unavailable (e.g. Flutter web/Chrome,
     // where loading falls back to an empty list).
-    if (Config.isDev && (loaded == null || loaded.isEmpty)) {
+    if (Config.seedDevData && (loaded == null || loaded.isEmpty)) {
       timers = _devSeedTimers();
       await _storage.saveCountdownTimers(timers);
     } else {
       timers = loaded ?? <CountdownTimerItem>[];
+    }
+    // Item-linked timers follow their task's due date — resolved here rather
+    // than eagerly on every task save, since milestones are only ever
+    // checked while this page is open (see class doc on CountdownSyncService).
+    // Free when nothing is linked.
+    if (timers.any((t) => t.itemUid != null)) {
+      final tasks = await ItemRepository.instance.loadItems();
+      final byUid = {for (final t in tasks) t.uid: t};
+      if (CountdownSyncService.resolveAgainstTasks(timers, tasks)) {
+        await _storage.saveCountdownTimers(timers);
+      }
+      _linkedTaskTitles
+        ..clear()
+        ..addEntries(timers
+            .where((t) => t.itemUid != null && byUid[t.itemUid] != null)
+            .map((t) => MapEntry(t.uid, byUid[t.itemUid]!.title)));
     }
     // Past timers that have the bell on should not retroactively fire.
     final now = DateTime.now();
@@ -109,15 +167,19 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       CountdownTimerItem(
         label: 'New Year',
         target: DateTime(now.year + 1, 1, 1, 0, 0),
+        notifyRoundNumbers: true,
+        tags: demoToken,
       ),
       CountdownTimerItem(
         label: 'Project deadline',
         target: now.add(const Duration(days: 30, hours: 6)),
         notifyOnZero: true,
+        tags: demoToken,
       ),
       CountdownTimerItem(
         label: 'Coffee break',
         target: now.add(const Duration(minutes: 15)),
+        tags: demoToken,
       ),
     ];
   }
@@ -140,6 +202,27 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     }
   }
 
+  void _checkMilestoneNotifications() {
+    final now = DateTime.now();
+    for (final t in _timers) {
+      if (!t.notifyRoundNumbers || t.milestones.isEmpty) {
+        _milestoneSeen.remove(t.uid);
+        continue;
+      }
+      final previous = _milestoneSeen[t.uid];
+      _milestoneSeen[t.uid] = now;
+      // First tick for this timer only establishes the baseline.
+      if (previous == null) continue;
+      final hit = t.dueMilestone(previousNow: previous, now: now);
+      if (hit == null) continue;
+      final name = t.label.trim().isEmpty ? 'Countdown' : t.label.trim();
+      NotificationService.showTaskNotification(
+        '$name — ${hit.message}',
+        delaySeconds: 0,
+      );
+    }
+  }
+
   /// Switches the given timer's row into the inline editor (same UI as adding).
   void _editTimer(CountdownTimerItem timer) {
     setState(() => _editingUid = timer.uid);
@@ -149,17 +232,21 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     CountdownTimerItem timer,
     String label,
     DateTime target,
+    String tags,
   ) async {
     final trimmed = label.trim();
     setState(() {
       if (trimmed.isNotEmpty) timer.label = trimmed;
       timer.target = target;
+      timer.tags = CountdownTimerItem.ensureCountdownTag(tags.trim());
       timer.editedAt = DateTime.now();
       // Re-evaluate suppression against the new target.
       _notifySuppressed.remove(timer.uid);
       if (timer.notifyOnZero && !timer.target.isAfter(DateTime.now())) {
         _notifySuppressed.add(timer.uid);
       }
+      // Re-baseline milestone tracking against the new target.
+      _milestoneSeen.remove(timer.uid);
       _editingUid = null;
     });
     await _save();
@@ -180,6 +267,20 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
       }
     });
     _save();
+  }
+
+  /// Opens the milestone editor for [timer] and applies the result.
+  Future<void> _openMilestones(CountdownTimerItem timer) async {
+    final result = await showCountdownMilestonesDialog(context, timer);
+    if (result == null || !mounted) return;
+    setState(() {
+      timer.notifyRoundNumbers = result.enabled;
+      timer.milestones = result.milestones;
+      // Tracking re-baselines on the next tick, so milestones already behind us
+      // never retro-fire after an edit.
+      _milestoneSeen.remove(timer.uid);
+    });
+    await _save();
   }
 
   void _deleteTimer(CountdownTimerItem timer) {
@@ -223,9 +324,17 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     );
   }
 
+  ViewFilterRules? get _rules =>
+      Config.viewFilterRules[ViewFilterRules.countdown];
+
   Widget _buildBody(BuildContext context) {
-    final timers = _displayTimers();
-    final canReorder = _sortField == _SortField.manual;
+    final rules = _rules;
+    final timers = _displayTimers(rules);
+    // A filter-rule-narrowed list would have its hidden timers' order
+    // scrambled by a reorder computed against only the visible subset —
+    // same reasoning as the home list, see `HomePage._reorderTask`.
+    final canReorder =
+        _sortField == _SortField.manual && (rules == null || rules.isEmpty);
     return Column(
       children: [
         Padding(
@@ -257,8 +366,9 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   }
 
   /// One row in the reorderable list: the inline editor when this timer is
-  /// being edited, otherwise a swipe-to-delete card. Keyed by uid so the
-  /// reorderable list can track it.
+  /// being edited, otherwise the timer card. Keyed by uid so the reorderable
+  /// list can track it. Swipe-to-delete is intentionally not used here — it
+  /// conflicts with the long-press-to-reorder gesture the list relies on.
   Widget _buildTimerRow(
     BuildContext context,
     CountdownTimerItem timer,
@@ -269,36 +379,28 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
         key: ValueKey(timer.uid),
         initialName: timer.label,
         initialTarget: timer.target,
+        initialTags: timer.tags,
         headerLabel: 'Edit timer',
         buttonLabel: 'Save',
         onCancel: () => setState(() => _editingUid = null),
-        onSave: (label, target) => _applyEdit(timer, label, target),
+        onSave: (label, target, tags) =>
+            _applyEdit(timer, label, target, tags),
       );
     }
 
-    return Dismissible(
+    return KeyedSubtree(
       key: ValueKey(timer.uid),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      onDismissed: (_) => _deleteTimer(timer),
       child: _buildTimerCard(context, timer),
     );
   }
 
   /// The timers in their current display order: the manual (drag) order, or a
-  /// sorted copy when a sort field is active.
-  List<CountdownTimerItem> _displayTimers() {
-    if (_sortField == _SortField.manual) return _timers;
-    final sorted = [..._timers];
+  /// sorted copy when a sort field is active — narrowed by [rules] (Settings
+  /// → Filtering rules), matched against each timer's own [tags].
+  List<CountdownTimerItem> _displayTimers(ViewFilterRules? rules) {
+    final base = ItemViews.applyTagRules(_timers, rules, (t) => t.tags);
+    if (_sortField == _SortField.manual) return base;
+    final sorted = [...base];
     int compare(CountdownTimerItem a, CountdownTimerItem b) {
       switch (_sortField) {
         case _SortField.name:
@@ -323,6 +425,8 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
 
   void _onReorder(int oldIndex, int newIndex) {
     if (_sortField != _SortField.manual) return;
+    final rules = _rules;
+    if (rules != null && !rules.isEmpty) return;
     setState(() {
       if (newIndex > oldIndex) newIndex -= 1;
       final item = _timers.removeAt(oldIndex);
@@ -401,11 +505,12 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
 
   /// Commits the inline draft as a new timer and resets the composer (its key
   /// is bumped via [_draftSeq], so it rebuilds with a fresh name and date).
-  Future<void> _saveDraft(String label, DateTime target) async {
+  Future<void> _saveDraft(String label, DateTime target, String tags) async {
     final trimmed = label.trim();
     final item = CountdownTimerItem(
       label: trimmed.isEmpty ? _nextTimerName() : trimmed,
       target: target,
+      tags: tags.trim(),
     );
     setState(() {
       _timers.add(item);
@@ -434,9 +539,28 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                 }
               });
             },
-            title: Text(
-              timer.label.trim().isEmpty ? 'Untitled timer' : timer.label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    timer.label.trim().isEmpty
+                        ? 'Untitled timer'
+                        : timer.label,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (timer.itemUid != null) ...[
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: _linkedTaskTitles[timer.uid] != null
+                        ? 'Linked to task: ${_linkedTaskTitles[timer.uid]}'
+                        : 'Linked to a task',
+                    child: const Icon(Icons.link, size: 16),
+                  ),
+                ],
+              ],
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,32 +577,62 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  tooltip: 'Edit',
-                  onPressed: () => _editTimer(timer),
-                ),
-                IconButton(
-                  icon: Icon(
-                    timer.notifyOnZero
-                        ? Icons.notifications_active
-                        : Icons.notifications_none,
-                    color: timer.notifyOnZero
-                        ? Theme.of(context).colorScheme.primary
-                        : null,
+                if (timer.tags.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 2,
+                    children: [
+                      for (final tag in splitLabelTokens(timer.tags))
+                        _tagChip(tag),
+                    ],
                   ),
-                  tooltip: timer.notifyOnZero
-                      ? 'Notify at zero: on'
-                      : 'Notify at zero: off',
-                  onPressed: () => _toggleNotify(timer),
-                ),
+                ],
               ],
             ),
+            trailing: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        tooltip: 'Edit',
+                        onPressed: () => _editTimer(timer),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          timer.notifyOnZero
+                              ? Icons.notifications_active
+                              : Icons.notifications_none,
+                          color: timer.notifyOnZero
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                        ),
+                        tooltip: timer.notifyOnZero
+                            ? 'Notify at zero: on'
+                            : 'Notify at zero: off',
+                        onPressed: () => _toggleNotify(timer),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.tag,
+                          color: timer.notifyRoundNumbers
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                        ),
+                        tooltip: timer.notifyRoundNumbers
+                            ? 'Milestone notifications: ${timer.milestones.length} on'
+                            : 'Milestone notifications: off',
+                        onPressed: () => _openMilestones(timer),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        tooltip: 'Delete',
+                        onPressed: () => _deleteTimer(timer),
+                      ),
+                    ],
+                  )
+                : null,
           ),
           if (isExpanded)
             Padding(
@@ -499,6 +653,29 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     final from = isPast ? target : now;
     final to = isPast ? now : target;
     final d = _Decimals(to.difference(from));
+    // Counting down toward the target: each unit's decimal value shrinks
+    // toward its next-lower whole number. Counting up since a past target: it
+    // grows toward its next-higher one.
+    final countingDown = !isPast;
+
+    const rows = [
+      (label: 'Years', decimals: 3, unitUs: _usPerYear),
+      (label: 'Months', decimals: 3, unitUs: _usPerMonth),
+      (label: 'Weeks', decimals: 1, unitUs: _usPerWeek),
+      (label: 'Days', decimals: 1, unitUs: _usPerDay),
+      (label: 'Hours', decimals: 3, unitUs: _usPerHour),
+      (label: 'Minutes', decimals: 4, unitUs: _usPerMinute),
+      (label: 'Seconds', decimals: 6, unitUs: _usPerSecond),
+    ];
+    final values = [
+      d.years,
+      d.months,
+      d.weeks,
+      d.days,
+      d.hours,
+      d.minutes,
+      d.seconds,
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,31 +686,111 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
           style: Theme.of(context).textTheme.titleSmall,
         ),
         const SizedBox(height: 8),
-        _detailRow('Years', d.years.toStringAsFixed(3)),
-        _detailRow('Months', d.months.toStringAsFixed(3)),
-        _detailRow('Weeks', d.weeks.toStringAsFixed(3)),
-        _detailRow('Days', d.days.toStringAsFixed(3)),
-        _detailRow('Hours', d.hours.toStringAsFixed(3)),
-        _detailRow('Minutes', d.minutes.toStringAsFixed(3)),
-        _detailRow('Seconds', '${d.seconds}'),
+        Table(
+          columnWidths: const {
+            0: IntrinsicColumnWidth(),
+            1: FlexColumnWidth(),
+            2: IntrinsicColumnWidth(),
+            3: IntrinsicColumnWidth(),
+          },
+          children: [
+            _detailHeaderRow(context),
+            for (var i = 0; i < rows.length; i++)
+              _detailDataRow(
+                rows[i].label,
+                values[i],
+                rows[i].decimals,
+                rows[i].unitUs,
+                countingDown,
+              ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+  TableRow _detailHeaderRow(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        );
+    Widget cell(String text, {TextAlign align = TextAlign.end}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+          child: Text(text, style: style, textAlign: align),
+        );
+    return TableRow(children: [
+      cell('', align: TextAlign.start),
+      cell('Value'),
+      cell('Until next'),
+      cell('Next'),
+    ]);
+  }
+
+  TableRow _detailDataRow(
+    String label,
+    double value,
+    int decimals,
+    double unitMicroseconds,
+    bool countingDown,
+  ) {
+    final next = _nextRound(value, unitMicroseconds, countingDown);
+    Widget cell(String text, {TextAlign align = TextAlign.end, bool bold = true}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+          child: Text(
+            text,
+            textAlign: align,
+            style: bold ? const TextStyle(fontWeight: FontWeight.bold) : null,
           ),
-        ],
-      ),
-    );
+        );
+    return TableRow(children: [
+      cell(label, align: TextAlign.start, bold: false),
+      cell(value.toStringAsFixed(decimals)),
+      cell(_formatDdHhMm(next.until)),
+      cell('${next.round}'),
+    ]);
+  }
+
+  /// The next whole number [value] is heading toward — its floor while
+  /// [countingDown] (the remaining time is shrinking), otherwise its ceiling
+  /// — and how much longer until it gets there, as a [Duration].
+  static ({int round, Duration until}) _nextRound(
+    double value,
+    double unitMicroseconds,
+    bool countingDown,
+  ) {
+    final int round;
+    final double fractionUs;
+    if (countingDown) {
+      final floor = value.floorToDouble();
+      final frac = value - floor;
+      if (frac == 0) {
+        round = floor.toInt() - 1;
+        fractionUs = unitMicroseconds;
+      } else {
+        round = floor.toInt();
+        fractionUs = frac * unitMicroseconds;
+      }
+    } else {
+      final ceil = value.ceilToDouble();
+      final frac = ceil - value;
+      if (frac == 0) {
+        round = ceil.toInt() + 1;
+        fractionUs = unitMicroseconds;
+      } else {
+        round = ceil.toInt();
+        fractionUs = frac * unitMicroseconds;
+      }
+    }
+    return (round: round, until: Duration(microseconds: fractionUs.round()));
+  }
+
+  /// Formats [d] as "D:HH:mm" — days unpadded, hours and minutes always two
+  /// digits.
+  static String _formatDdHhMm(Duration d) {
+    final days = d.inDays;
+    final hours = (d.inHours % 24).toString().padLeft(2, '0');
+    final minutes = (d.inMinutes % 60).toString().padLeft(2, '0');
+    return '$days:$hours:$minutes';
   }
 
   /// Compact whole-unit breakdown shown on the collapsed card, with a
@@ -603,8 +860,18 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
   String _formatTarget(DateTime d) => formatTimerDateTime(d);
 }
 
-/// The same duration expressed in several units, all as decimals except
-/// seconds. e.g. 1.1 years == 13.2 months == ~57 weeks.
+/// Microseconds per unit, for converting a fractional part of one of
+/// [_Decimals]'s values back into a [Duration] (see `_nextRound`).
+const double _usPerSecond = 1000000.0;
+const double _usPerMinute = _usPerSecond * 60;
+const double _usPerHour = _usPerMinute * 60;
+const double _usPerDay = _usPerHour * 24;
+const double _usPerWeek = _usPerDay * 7;
+const double _usPerMonth = _usPerDay * 30.4375;
+const double _usPerYear = _usPerDay * 365.25;
+
+/// The same duration expressed in several units, all as decimals — e.g. 1.1
+/// years == 13.2 months == ~57 weeks.
 class _Decimals {
   final double years;
   final double months;
@@ -612,22 +879,22 @@ class _Decimals {
   final double days;
   final double hours;
   final double minutes;
-  final int seconds;
+  final double seconds;
 
   factory _Decimals(Duration duration) {
     final us = duration.inMicroseconds.abs().toDouble();
-    final totalSeconds = us / 1000000.0;
-    final totalMinutes = totalSeconds / 60.0;
-    final totalHours = totalMinutes / 60.0;
-    final totalDays = totalHours / 24.0;
+    final totalSeconds = us / _usPerSecond;
+    final totalMinutes = us / _usPerMinute;
+    final totalHours = us / _usPerHour;
+    final totalDays = us / _usPerDay;
     return _Decimals._(
-      years: totalDays / 365.25,
-      months: totalDays / 30.4375,
-      weeks: totalDays / 7.0,
+      years: us / _usPerYear,
+      months: us / _usPerMonth,
+      weeks: us / _usPerWeek,
       days: totalDays,
       hours: totalHours,
       minutes: totalMinutes,
-      seconds: totalSeconds.floor(),
+      seconds: totalSeconds,
     );
   }
 
@@ -666,7 +933,8 @@ class _Breakdown {
 class _DraftTimerComposer extends StatefulWidget {
   final String initialName;
   final DateTime initialTarget;
-  final void Function(String label, DateTime target) onSave;
+  final String initialTags;
+  final void Function(String label, DateTime target, String tags) onSave;
   final String headerLabel;
   final String buttonLabel;
   final VoidCallback? onCancel;
@@ -679,6 +947,7 @@ class _DraftTimerComposer extends StatefulWidget {
     Key? key,
     required this.initialName,
     required this.initialTarget,
+    this.initialTags = '',
     required this.onSave,
     this.headerLabel = 'New timer',
     this.buttonLabel = 'Add',
@@ -693,12 +962,14 @@ class _DraftTimerComposer extends StatefulWidget {
 class _DraftTimerComposerState extends State<_DraftTimerComposer> {
   late final TextEditingController _nameController;
   late DateTime _target;
+  late String _tags;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
     _target = widget.initialTarget;
+    _tags = widget.initialTags;
   }
 
   @override
@@ -735,7 +1006,7 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
     });
   }
 
-  void _save() => widget.onSave(_nameController.text, _target);
+  void _save() => widget.onSave(_nameController.text, _target, _tags);
 
   Widget _selectorsRow() {
     return LayoutBuilder(
@@ -821,6 +1092,11 @@ class _DraftTimerComposerState extends State<_DraftTimerComposer> {
                             onPressed: widget.onCancel,
                           ),
                       ],
+                    ),
+                    LabelPickerField(
+                      value: _tags,
+                      fieldLabel: 'Tags',
+                      onChanged: (v) => setState(() => _tags = v),
                     ),
                     const SizedBox(height: 10),
                     _selectorsRow(),

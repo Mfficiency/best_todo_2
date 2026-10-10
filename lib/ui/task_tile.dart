@@ -1,11 +1,26 @@
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 
+import '../models/project.dart';
+import '../models/recurrence_config.dart';
 import '../models/task.dart';
 import '../config.dart';
+import '../services/claude_routine_service.dart';
 import '../services/notification_service.dart';
+import '../services/project_service.dart';
+import '../utils/description_disclosure.dart';
+import '../utils/label_style.dart';
+import '../utils/label_utils.dart';
+import '../utils/linkified_text.dart';
+import 'attachments_field.dart';
+import 'label_picker.dart';
+import 'recurrence_editor.dart';
+import 'recurrence_scope_dialog.dart';
+import 'task_info_dialog.dart';
 
 enum _SwipeOptionMode { move, delete }
 
@@ -14,6 +29,42 @@ class _WeekdaySwipeOption {
   final int weekday;
 
   const _WeekdaySwipeOption(this.label, this.weekday);
+}
+
+/// One entry of the Notify bell's delay sheet. [label] doubles as the "in …"
+/// part of the confirmation snackbar.
+class _NotifyDelayOption {
+  final String label;
+  final int seconds;
+
+  const _NotifyDelayOption(this.label, this.seconds);
+}
+
+/// Quick delays offered by the Notify bell, next to the configured default.
+const _notifyDelayOptions = <_NotifyDelayOption>[
+  _NotifyDelayOption('5 minutes', 5 * 60),
+  _NotifyDelayOption('20 minutes', 20 * 60),
+  _NotifyDelayOption('1 hour', 60 * 60),
+];
+
+/// Snooze-style delays offered by the double-tap menu — the "not now, but
+/// don't let me forget" answer, without expanding the tile for the bell.
+const _doubleTapReminderOptions = <_NotifyDelayOption>[
+  _NotifyDelayOption('5 minutes', 5 * 60),
+  _NotifyDelayOption('10 minutes', 10 * 60),
+  _NotifyDelayOption('20 minutes', 20 * 60),
+];
+
+/// What the double-tap menu was asked for: the egg timer, or a reminder in
+/// [reminder]'s time from now.
+class _DoubleTapAction {
+  final _NotifyDelayOption? reminder;
+
+  const _DoubleTapAction.startTimer() : reminder = null;
+  const _DoubleTapAction.remindIn(_NotifyDelayOption option)
+      : reminder = option;
+
+  bool get isTimer => reminder == null;
 }
 
 const _deleteSwipeWeekdayOptions = <_WeekdaySwipeOption>[
@@ -31,12 +82,23 @@ class TaskTile extends StatefulWidget {
   final void Function(int weekday)? onMoveToWeekday;
   final VoidCallback onMoveNext;
   final VoidCallback onDelete;
-  final void Function(DateTime? oldDueDate, DateTime? newDueDate)?
-      onDueDateChanged;
+  final void Function(
+    DateTime? oldDueDate,
+    DateTime newDueDate,
+    RecurrenceEditScope scope,
+  )? onDueDateChanged;
   final VoidCallback? onRecurringChanged;
+
+  /// Called when "Start timer" is picked from the double-tap menu. When null
+  /// double taps do nothing (each tap just toggles the expansion).
+  final VoidCallback? onStartTimer;
   final int pageIndex;
   final bool showSwipeButton;
   final bool swipeLeftDelete;
+  final TaskTileController? controller;
+  final bool keyboardFocused;
+  final VoidCallback? onFocusRequested;
+  final VoidCallback? onKeyboardActionCommitted;
 
   const TaskTile({
     Key? key,
@@ -49,13 +111,41 @@ class TaskTile extends StatefulWidget {
     required this.onDelete,
     this.onDueDateChanged,
     this.onRecurringChanged,
+    this.onStartTimer,
     required this.pageIndex,
     this.showSwipeButton = true,
     this.swipeLeftDelete = true,
+    this.controller,
+    this.keyboardFocused = false,
+    this.onFocusRequested,
+    this.onKeyboardActionCommitted,
   }) : super(key: key);
 
   @override
   State<TaskTile> createState() => _TaskTileState();
+}
+
+class TaskTileController {
+  _TaskTileState? _state;
+
+  bool get hasOptions => _state?._optionMode != null;
+  bool get hasMoveOptions => _state?._optionMode == _SwipeOptionMode.move;
+  bool get hasDeleteOptions => _state?._optionMode == _SwipeOptionMode.delete;
+
+  void _attach(_TaskTileState state) {
+    _state = state;
+  }
+
+  void _detach(_TaskTileState state) {
+    if (_state == state) _state = null;
+  }
+
+  void open() => _state?._openExpanded();
+  void startMoveOptions() => _state?._startMoveOptions(fromKeyboard: true);
+  void startDeleteOptions() => _state?._startDeleteOptions(fromKeyboard: true);
+  void stepOptions() => _state?._stepOptionSelection(fromKeyboard: true);
+  void confirmOptions() => _state?._commitSelectedOption(advanceFocus: true);
+  void closeOptions() => _state?._closeOptions();
 }
 
 class _TaskTileState extends State<TaskTile>
@@ -68,12 +158,22 @@ class _TaskTileState extends State<TaskTile>
   late final TextEditingController _titleController;
   late final TextEditingController _descController;
   late final TextEditingController _noteController;
-  late final TextEditingController _labelController;
   late final List<int> _destinations;
   double _dragOffset = 0;
   bool _dragging = false;
+  int _optionSelectionIndex = 0;
+  bool _optionStartedFromKeyboard = false;
+  bool _sendingToClaude = false;
 
-  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+  /// A generated occurrence that's been hand-edited stops being an
+  /// interchangeable copy of the master: flagging it as an override keeps
+  /// the series' regeneration from ever touching or discarding it, even if
+  /// the schedule later shrinks past its slot.
+  void _markOverrideIfChild() {
+    if (widget.task.recurrenceParentUid != null) {
+      widget.task.recurrenceOverride = true;
+    }
+  }
 
   @override
   void initState() {
@@ -81,14 +181,28 @@ class _TaskTileState extends State<TaskTile>
     _titleController = TextEditingController(text: widget.task.title);
     _descController = TextEditingController(text: widget.task.description);
     _noteController = TextEditingController(text: widget.task.note);
-    _labelController = TextEditingController(text: widget.task.label);
     _progressController = AnimationController(
       vsync: this,
       duration: Config.delayDuration,
     );
-    _destinations = List<int>.generate(Config.tabs.length, (i) => i)
+    // Ordered starting from the immediate next tab (wrapping), so the
+    // auto-committed default (index 0) always matches _moveTaskToNextPage's
+    // "move forward one tab" behavior, whatever the current tab is.
+    final tabCount = Config.tabs.length;
+    _destinations = List<int>.generate(
+        tabCount, (i) => (widget.pageIndex + 1 + i) % tabCount)
       ..remove(widget.pageIndex);
+    widget.controller?._attach(this);
     _checkEmulator();
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(this);
+      widget.controller?._attach(this);
+    }
   }
 
   Future<void> _checkEmulator() async {
@@ -110,35 +224,54 @@ class _TaskTileState extends State<TaskTile>
     if (mounted) setState(() => _isEmulator = isEmulator);
   }
 
-  void _startOptions(_SwipeOptionMode mode) {
-    setState(() => _optionMode = mode);
+  /// A small info button shown next to the Note field: opens the task info
+  /// dialog — when the task was created, whether it was typed in the app or
+  /// came in via Todoist / the approval path, Todoist sync details and the
+  /// full history timeline (see [showTaskInfoDialog]).
+  Widget _taskInfoIcon() {
+    return IconButton(
+      icon: const Icon(Icons.info_outline),
+      tooltip: 'Task info',
+      onPressed: () => showTaskInfoDialog(context, widget.task),
+    );
+  }
+
+  void _startOptions(_SwipeOptionMode mode, {bool fromKeyboard = false}) {
+    setState(() {
+      _optionMode = mode;
+      _optionSelectionIndex = 0;
+      _optionStartedFromKeyboard = fromKeyboard;
+    });
+    _restartOptionTimer(mode);
+  }
+
+  void _restartOptionTimer(_SwipeOptionMode mode) {
     _timer?.cancel();
     _progressController.reset();
     _progressController.forward();
     _timer = Timer(Config.delayDuration, () {
       if (!mounted || _optionMode != mode) return;
-      _progressController.stop();
-      setState(() => _optionMode = null);
-      if (mode == _SwipeOptionMode.move) {
-        widget.onMoveNext();
-      } else {
-        widget.onDelete();
-      }
+      _commitSelectedOption();
     });
   }
 
-  void _startMoveOptions() {
-    _startOptions(_SwipeOptionMode.move);
+  void _startMoveOptions({bool fromKeyboard = false}) {
+    _startOptions(_SwipeOptionMode.move, fromKeyboard: fromKeyboard);
   }
 
-  void _startDeleteOptions() {
-    _startOptions(_SwipeOptionMode.delete);
+  void _startDeleteOptions({bool fromKeyboard = false}) {
+    _startOptions(_SwipeOptionMode.delete, fromKeyboard: fromKeyboard);
   }
 
   void _closeOptions() {
     _timer?.cancel();
     _progressController.stop();
-    if (mounted) setState(() => _optionMode = null);
+    if (mounted) {
+      setState(() {
+        _optionMode = null;
+        _optionStartedFromKeyboard = false;
+      });
+    }
   }
 
   void _selectMove(int dest) {
@@ -156,10 +289,150 @@ class _TaskTileState extends State<TaskTile>
     widget.onMoveToWeekday?.call(weekday);
   }
 
+  int get _optionCount {
+    if (_optionMode == _SwipeOptionMode.move) return _destinations.length;
+    if (_optionMode == _SwipeOptionMode.delete) {
+      return 1 + _deleteSwipeWeekdayOptions.length;
+    }
+    return 0;
+  }
+
+  void _stepOptionSelection({bool fromKeyboard = false}) {
+    final mode = _optionMode;
+    final count = _optionCount;
+    if (mode == null || count == 0) return;
+    setState(() {
+      _optionSelectionIndex = (_optionSelectionIndex + 1) % count;
+      _optionStartedFromKeyboard = _optionStartedFromKeyboard || fromKeyboard;
+    });
+    _restartOptionTimer(mode);
+  }
+
+  void _commitSelectedOption({bool advanceFocus = false}) {
+    final mode = _optionMode;
+    if (mode == null) return;
+    final shouldAdvanceFocus = advanceFocus || _optionStartedFromKeyboard;
+    final selectedIndex = _optionSelectionIndex;
+    _closeOptions();
+    if (mode == _SwipeOptionMode.move) {
+      final dest = _destinations[
+          selectedIndex.clamp(0, _destinations.length - 1).toInt()];
+      widget.onMove(dest);
+    } else if (selectedIndex == 0) {
+      widget.onDelete();
+    } else {
+      final option = _deleteSwipeWeekdayOptions[(selectedIndex - 1)
+          .clamp(0, _deleteSwipeWeekdayOptions.length - 1)
+          .toInt()];
+      widget.onMoveToWeekday?.call(option.weekday);
+    }
+    if (shouldAdvanceFocus) widget.onKeyboardActionCommitted?.call();
+  }
+
+  void _openExpanded() {
+    if (_expanded) return;
+    setState(() => _expanded = true);
+  }
+
   void _toggleExpanded() {
     setState(() => _expanded = !_expanded);
   }
 
+  /// Wall-clock moment of the previous tap, for the hand-rolled double-tap
+  /// detection in [_handleTap]. A real `onDoubleTap` recognizer would hold
+  /// the gesture arena for the double-tap timeout on EVERY tap in the tile —
+  /// delaying the checkbox and the expand-on-tap by ~300 ms (and deadlocking
+  /// fake-async widget tests, which don't advance that timer).
+  DateTime? _lastTapAt;
+
+  void _handleTap() {
+    widget.onFocusRequested?.call();
+    final now = DateTime.now();
+    final last = _lastTapAt;
+    _lastTapAt = now;
+    if (widget.onStartTimer != null &&
+        last != null &&
+        now.difference(last) < kDoubleTapTimeout) {
+      _lastTapAt = null;
+      // Second tap of a double tap: take back the expansion toggle the first
+      // tap made, then show the menu.
+      _toggleExpanded();
+      _showDoubleTapMenu();
+      return;
+    }
+    _toggleExpanded();
+  }
+
+  /// Little menu shown on a double tap: start the egg timer (the dice one)
+  /// for this task, or be reminded about it in a few minutes.
+  Future<void> _showDoubleTapMenu() async {
+    final minutes = Config.diceTimerDefaultMinutes.clamp(1, 60);
+    final action = await showModalBottomSheet<_DoubleTapAction>(
+      context: context,
+      showDragHandle: true,
+      // Five rows do not fit the default 9/16-of-the-screen sheet on a short
+      // screen: let it size to its content (and scroll if even that is too
+      // much) instead of overflowing.
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  widget.task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(sheetContext)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: const Text('Start timer'),
+                subtitle: Text('Counts down $minutes min — '
+                    'turn the dial to change it'),
+                onTap: () => Navigator.of(sheetContext)
+                    .pop(const _DoubleTapAction.startTimer()),
+              ),
+              const Divider(height: 1),
+              for (final option in _doubleTapReminderOptions)
+                ListTile(
+                  leading: const Icon(Icons.notifications_none),
+                  title: Text('Remind me in ${option.label}'),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(_DoubleTapAction.remindIn(option)),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    if (action.isTimer) {
+      widget.onStartTimer?.call();
+      return;
+    }
+    await _scheduleReminder(action.reminder!);
+  }
+
+  /// "in 05:00" for the configured default delay, so the sheet's last entry
+  /// shows what tapping it will do.
+  String _clockDelay(int seconds) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final rest = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$rest';
+  }
+
+  /// The Notify bell: asks *when* first. Picking 5 / 20 / 60 minutes reminds
+  /// about this task later without touching its due date; the last entry keeps
+  /// the one-tap behaviour of the configured default delay.
   Future<void> _sendTaskNotification() async {
     if (!Config.enableNotifications) {
       if (!mounted) return;
@@ -168,16 +441,69 @@ class _TaskTileState extends State<TaskTile>
       );
       return;
     }
-    final delaySeconds = Config.defaultNotificationDelaySeconds;
+    final defaultSeconds = Config.defaultNotificationDelaySeconds;
+    final picked = await showModalBottomSheet<_NotifyDelayOption>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Notify me about "${widget.task.title}"',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(sheetContext)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            for (final option in _notifyDelayOptions)
+              ListTile(
+                leading: const Icon(Icons.notifications_none),
+                title: Text('In ${option.label}'),
+                onTap: () => Navigator.of(sheetContext).pop(option),
+              ),
+            ListTile(
+              leading: const Icon(Icons.schedule),
+              title: const Text('Default delay'),
+              subtitle: Text(defaultSeconds == 0
+                  ? 'Right away'
+                  : 'In ${_clockDelay(defaultSeconds)} — set in Settings'),
+              onTap: () => Navigator.of(sheetContext).pop(
+                _NotifyDelayOption(_clockDelay(defaultSeconds), defaultSeconds),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await _scheduleReminder(picked);
+  }
+
+  /// Schedules [option]'s reminder for this task and reports back in a
+  /// snackbar. Shared by the Notify bell and the double-tap menu.
+  Future<void> _scheduleReminder(_NotifyDelayOption option) async {
+    if (!Config.enableNotifications) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enable notifications in Settings first')),
+      );
+      return;
+    }
     final sent = await NotificationService.showTaskNotification(
       widget.task.title,
-      delaySeconds: delaySeconds,
+      delaySeconds: option.seconds,
     );
     if (!mounted) return;
     if (sent) {
-      final minutes = (delaySeconds ~/ 60).toString().padLeft(2, '0');
-      final seconds = (delaySeconds % 60).toString().padLeft(2, '0');
-      final when = delaySeconds == 0 ? 'now' : 'in $minutes:$seconds';
+      final when = option.seconds == 0 ? 'now' : 'in ${option.label}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Notification scheduled $when')),
       );
@@ -188,15 +514,152 @@ class _TaskTileState extends State<TaskTile>
     }
   }
 
+  /// Fires the routine configured in Settings → Claude Routine with this
+  /// task as context, starting a real Claude Code cloud session. On success,
+  /// offers to open the session (browser on desktop/web, or the claude.ai app
+  /// via its universal link on Android).
+  Future<void> _sendToClaude() async {
+    final url = Config.claudeRoutineUrl.trim();
+    final token = Config.claudeRoutineToken.trim();
+    if (url.isEmpty || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set up Claude Routine in Settings first'),
+        ),
+      );
+      return;
+    }
+    setState(() => _sendingToClaude = true);
+    try {
+      final result = await ClaudeRoutineService.instance.fire(
+        fireUrl: url,
+        token: token,
+        text: ClaudeRoutineService.instance.buildPayload(widget.task),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Claude session started'),
+          duration: const Duration(seconds: 8),
+          action: result.sessionUrl.isEmpty
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => launchUrl(
+                    Uri.parse(result.sessionUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is ClaudeRoutineException
+              ? (e.statusCode == 401
+                  ? 'Invalid Claude Routine token'
+                  : 'Failed to start session: ${e.message}')
+              : 'Failed to start session: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingToClaude = false);
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    widget.controller?._detach(this);
     _titleController.dispose();
     _descController.dispose();
     _noteController.dispose();
-    _labelController.dispose();
     _progressController.dispose();
     super.dispose();
+  }
+
+  /// [protected] tints the pill [protectedTagColor] — used for a chip that
+  /// names one of the app's reserved states (e.g. "wish") so it reads
+  /// consistently with how a manually typed reserved word renders in
+  /// [LabelPickerField].
+  Widget _tag(String text, {bool protected = false}) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = protected ? protectedTagColor : null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color?.withValues(alpha: 0.16) ?? scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+        border: color == null ? null : Border.all(color: color),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          color: color ?? scheme.onSecondaryContainer,
+          fontWeight: color == null ? null : FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  /// Small tags shown under the title: "Project 1" / "To-Do" for a task
+  /// assigned to a project (listens to the project list so renames update
+  /// everywhere), "wish" for wishlist items, plus every label the task
+  /// carries — so the main list shows the task's properties whatever kind of
+  /// task it is. Returns null when there is nothing to show.
+  Widget? _buildSubtitle() {
+    final task = widget.task;
+    final labels = task.label
+        .split(RegExp(r'[,\s]+'))
+        .map((label) => label.trim())
+        .where((label) => label.isNotEmpty)
+        .toList();
+    // A Research item isn't bucketed into a dated tab, so its due date (if
+    // any) is shown on the tile itself, and — like a wish — its description
+    // is shown collapsed under the title.
+    final researchDue = task.isResearch && !Task.isFutureBucketDue(task.dueDate)
+        ? task.dueDate
+        : null;
+    final researchDescription = task.isResearch && task.description.isNotEmpty;
+    if (task.projectId == null &&
+        !task.isWish &&
+        researchDue == null &&
+        !researchDescription &&
+        labels.isEmpty) {
+      return null;
+    }
+    return ValueListenableBuilder<List<Project>>(
+      valueListenable: ProjectService.instance.projects,
+      builder: (context, _, __) => Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 4,
+              runSpacing: 2,
+              children: [
+                if (task.projectId != null) ...[
+                  _tag(ProjectService.instance.nameOf(task.projectId)),
+                  _tag(ProjectService.stageLabel(task.kanbanStatus)),
+                ],
+                if (task.isWish) _tag('wish', protected: true),
+                if (researchDue != null)
+                  _tag('Due ${researchDue.toLocal().toString().split(' ')[0]}'),
+                for (final label in labels)
+                  _tag(label, protected: isProtectedToken(label)),
+              ],
+            ),
+            if ((task.isWish && task.description.isNotEmpty) ||
+                researchDescription)
+              DescriptionDisclosure(description: task.description),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -227,12 +690,33 @@ class _TaskTileState extends State<TaskTile>
           ),
         if (_expanded)
           IconButton(
+            icon: _sendingToClaude
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.smart_toy_outlined),
+            tooltip: 'Send to Claude',
+            onPressed: _sendingToClaude ? null : _sendToClaude,
+          ),
+        if (_expanded)
+          IconButton(
             icon: const Icon(Icons.expand_less),
             tooltip: 'Collapse',
             onPressed: _toggleExpanded,
           ),
       ],
     );
+
+    final scheme = Theme.of(context).colorScheme;
+
+    ButtonStyle? optionStyle(int index) {
+      if (index != _optionSelectionIndex) return null;
+      return TextButton.styleFrom(
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
+      );
+    }
 
     final listTile = ListTile(
       contentPadding: isAndroid
@@ -243,12 +727,13 @@ class _TaskTileState extends State<TaskTile>
         value: widget.task.isDone,
         onChanged: (_) => setState(() => widget.onToggle()),
       ),
-      title: Text(
+      title: LinkifiedText(
         widget.task.title,
         style: TextStyle(
           decoration: widget.task.isDone ? TextDecoration.lineThrough : null,
         ),
       ),
+      subtitle: _buildSubtitle(),
       trailing: trailing,
     );
 
@@ -260,44 +745,56 @@ class _TaskTileState extends State<TaskTile>
             child: Container(
               color: Theme.of(context).cardColor.withOpacity(0.9),
               alignment: Alignment.centerRight,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_optionMode == _SwipeOptionMode.move)
-                        for (var dest in _destinations)
+              // Buttons + countdown bar can be taller than the row (large
+              // system font sizes): shrink to fit instead of overflowing.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_optionMode == _SwipeOptionMode.move)
+                          for (var i = 0; i < _destinations.length; i++)
+                            TextButton(
+                              style: optionStyle(i),
+                              onPressed: () => _selectMove(_destinations[i]),
+                              child: Text(Config.tabs[_destinations[i]]),
+                            ),
+                        if (_optionMode == _SwipeOptionMode.delete) ...[
                           TextButton(
-                            onPressed: () => _selectMove(dest),
-                            child: Text(Config.tabs[dest]),
+                            style: optionStyle(0),
+                            onPressed: _selectDelete,
+                            child: const Text('Delete'),
                           ),
-                      if (_optionMode == _SwipeOptionMode.delete) ...[
-                        TextButton(
-                          onPressed: _selectDelete,
-                          child: const Text('Delete'),
-                        ),
-                        for (final option in _deleteSwipeWeekdayOptions)
-                          TextButton(
-                            onPressed: () => _selectWeekday(option.weekday),
-                            child: Text(option.label),
-                          ),
+                          for (var i = 0;
+                              i < _deleteSwipeWeekdayOptions.length;
+                              i++)
+                            TextButton(
+                              style: optionStyle(i + 1),
+                              onPressed: () => _selectWeekday(
+                                  _deleteSwipeWeekdayOptions[i].weekday),
+                              child: Text(_deleteSwipeWeekdayOptions[i].label),
+                            ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: 60,
-                    child: AnimatedBuilder(
-                      animation: _progressController,
-                      builder: (context, child) {
-                        return LinearProgressIndicator(
-                            value: _progressController.value);
-                      },
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: 60,
+                      child: AnimatedBuilder(
+                        animation: _progressController,
+                        builder: (context, child) {
+                          return LinearProgressIndicator(
+                              value: _progressController.value);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -305,7 +802,7 @@ class _TaskTileState extends State<TaskTile>
     );
 
     Widget content = InkWell(
-      onTap: _toggleExpanded,
+      onTap: _handleTap,
       child: Column(
         children: [
           stackTile,
@@ -321,7 +818,10 @@ class _TaskTileState extends State<TaskTile>
                     child: TextField(
                       controller: _titleController,
                       decoration: const InputDecoration(labelText: 'Title'),
-                      onChanged: (v) => widget.task.title = v,
+                      onChanged: (v) => setState(() {
+                        widget.task.title = v;
+                        _markOverrideIfChild();
+                      }),
                     ),
                   ),
                   Focus(
@@ -334,7 +834,10 @@ class _TaskTileState extends State<TaskTile>
                           const InputDecoration(labelText: 'Description'),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
-                      onChanged: (v) => widget.task.description = v,
+                      onChanged: (v) => setState(() {
+                        widget.task.description = v;
+                        _markOverrideIfChild();
+                      }),
                     ),
                   ),
                   Focus(
@@ -343,21 +846,35 @@ class _TaskTileState extends State<TaskTile>
                     },
                     child: TextField(
                       controller: _noteController,
-                      decoration: const InputDecoration(labelText: 'Note'),
+                      decoration: InputDecoration(
+                        labelText: 'Note',
+                        suffixIcon: _taskInfoIcon(),
+                      ),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
-                      onChanged: (v) => widget.task.note = v,
+                      onChanged: (v) => setState(() {
+                        widget.task.note = v;
+                        _markOverrideIfChild();
+                      }),
                     ),
                   ),
-                  Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) widget.onChanged();
+                  LabelPickerField(
+                    value: widget.task.label,
+                    onChanged: (v) {
+                      setState(() {
+                        widget.task.label = v;
+                        _markOverrideIfChild();
+                      });
+                      widget.onChanged();
                     },
-                    child: TextField(
-                      controller: _labelController,
-                      decoration: const InputDecoration(labelText: 'Label'),
-                      onChanged: (v) => widget.task.label = v,
-                    ),
+                  ),
+                  AttachmentsField(
+                    taskUid: widget.task.uid,
+                    attachments: widget.task.attachments,
+                    onChanged: (v) {
+                      widget.task.attachments = v;
+                      widget.onChanged();
+                    },
                   ),
                   Row(
                     children: [
@@ -376,12 +893,25 @@ class _TaskTileState extends State<TaskTile>
                             lastDate: DateTime.now()
                                 .add(const Duration(days: 365 * 5)),
                           );
-                          if (picked != null) {
-                            final oldDueDate = widget.task.dueDate;
-                            setState(() => widget.task.dueDate = picked);
-                            widget.onDueDateChanged?.call(oldDueDate, picked);
-                            widget.onRecurringChanged?.call();
+                          if (picked == null || !mounted) return;
+                          final oldDueDate = widget.task.dueDate;
+                          RecurrenceEditScope scope;
+                          if (isRecurringChild) {
+                            final chosen = await showRecurrenceScopeDialog(
+                              context,
+                              isDelete: false,
+                              allowAllEvents: false,
+                            );
+                            if (chosen == null || !mounted) return;
+                            scope = chosen;
+                          } else {
+                            // A standalone task, or the master of a series
+                            // (whose own date is the series anchor — moving
+                            // it always re-anchors the whole series).
+                            scope = RecurrenceEditScope.thisAndFollowing;
                           }
+                          widget.onDueDateChanged
+                              ?.call(oldDueDate, picked, scope);
                         },
                         child: const Text('Pick due date'),
                       ),
@@ -398,14 +928,6 @@ class _TaskTileState extends State<TaskTile>
                             : (value) {
                                 setState(() {
                                   widget.task.isRecurring = value;
-                                  if (value &&
-                                      widget.task.recurrenceEndDate == null) {
-                                    final start = _dateOnly(
-                                      widget.task.dueDate ?? DateTime.now(),
-                                    );
-                                    widget.task.recurrenceEndDate =
-                                        start.add(const Duration(days: 7));
-                                  }
                                   if (!value) {
                                     widget.task.recurrenceEndDate = null;
                                   }
@@ -418,60 +940,19 @@ class _TaskTileState extends State<TaskTile>
                   if (isRecurringChild)
                     const Align(
                       alignment: Alignment.centerLeft,
-                      child: Text('This is a generated recurring task.'),
+                      child: Text(
+                        'Part of a recurring series. Editing this occurrence '
+                        'only changes this one.',
+                      ),
                     ),
                   if (widget.task.isRecurring && !isRecurringChild)
-                    Row(
-                      children: [
-                        const Text('Every'),
-                        const SizedBox(width: 8),
-                        DropdownButton<int>(
-                          value: widget.task.recurrenceIntervalDays,
-                          items: const [
-                            DropdownMenuItem(value: 1, child: Text('1 day')),
-                            DropdownMenuItem(value: 2, child: Text('2 days')),
-                            DropdownMenuItem(value: 7, child: Text('7 days')),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() {
-                              widget.task.recurrenceIntervalDays = value;
-                            });
-                            widget.onRecurringChanged?.call();
-                          },
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () async {
-                            final base = _dateOnly(
-                              widget.task.recurrenceEndDate ??
-                                  widget.task.dueDate ??
-                                  DateTime.now(),
-                            );
-                            final minDate = _dateOnly(
-                              widget.task.dueDate ?? DateTime.now(),
-                            );
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate:
-                                  base.isBefore(minDate) ? minDate : base,
-                              firstDate: minDate,
-                              lastDate:
-                                  minDate.add(const Duration(days: 365 * 5)),
-                            );
-                            if (picked == null) return;
-                            setState(() {
-                              widget.task.recurrenceEndDate = picked;
-                            });
-                            widget.onRecurringChanged?.call();
-                          },
-                          child: Text(
-                            widget.task.recurrenceEndDate == null
-                                ? 'Pick end date'
-                                : 'End: ${widget.task.recurrenceEndDate!.toLocal().toString().split(' ')[0]}',
-                          ),
-                        ),
-                      ],
+                    RecurrenceEditor(
+                      config: RecurrenceConfig.fromTask(widget.task),
+                      anchorDate: widget.task.dueDate ?? DateTime.now(),
+                      onChanged: (config) {
+                        setState(() => config.applyTo(widget.task));
+                        widget.onRecurringChanged?.call();
+                      },
                     ),
                   const SizedBox(height: 8),
                 ],
@@ -489,6 +970,11 @@ class _TaskTileState extends State<TaskTile>
 
     Widget? background;
     if (_dragOffset != 0) {
+      // Minimalist mode swaps the orange/red swipe backdrops for neutral ink.
+      final scheme = Theme.of(context).colorScheme;
+      final swipeForeground =
+          Config.minimalistMode ? scheme.surface : Colors.white;
+      final neutralBackdrop = scheme.onSurface.withValues(alpha: 0.45);
       final originalWasRight = _optionMode != null &&
           widget.swipeLeftDelete == (_optionMode == _SwipeOptionMode.move);
       final isCancelDrag = _optionMode != null &&
@@ -501,13 +987,15 @@ class _TaskTileState extends State<TaskTile>
             _dragOffset < 0 ? Alignment.centerRight : Alignment.centerLeft;
         background = Positioned.fill(
           child: Container(
-            color: Colors.orange.withOpacity(0.5),
+            color: Config.minimalistMode
+                ? neutralBackdrop
+                : Colors.orange.withOpacity(0.5),
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(
-                color: Colors.white,
+                color: swipeForeground,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -519,10 +1007,12 @@ class _TaskTileState extends State<TaskTile>
             : Alignment.centerLeft;
         background = Positioned.fill(
           child: Container(
-            color: Colors.red.withOpacity(0.5),
+            color: Config.minimalistMode
+                ? neutralBackdrop
+                : Colors.red.withOpacity(0.5),
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Icon(Icons.delete, color: Colors.white),
+            child: Icon(Icons.delete, color: swipeForeground),
           ),
         );
       } else {
@@ -563,8 +1053,8 @@ class _TaskTileState extends State<TaskTile>
           final swipedRight = _dragOffset > threshold || velocity > 500;
           final swipedLeft = _dragOffset < -threshold || velocity < -500;
           if (_optionMode != null) {
-            final originalWasRight =
-                widget.swipeLeftDelete == (_optionMode == _SwipeOptionMode.move);
+            final originalWasRight = widget.swipeLeftDelete ==
+                (_optionMode == _SwipeOptionMode.move);
             if ((originalWasRight && swipedLeft) ||
                 (!originalWasRight && swipedRight)) {
               _closeOptions();
@@ -587,6 +1077,16 @@ class _TaskTileState extends State<TaskTile>
             _dragOffset = 0;
           });
         },
+        child: content,
+      );
+    }
+
+    if (widget.keyboardFocused) {
+      content = DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: scheme.primary, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: content,
       );
     }

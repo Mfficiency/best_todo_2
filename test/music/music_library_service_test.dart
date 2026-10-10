@@ -1,0 +1,470 @@
+import 'dart:io';
+
+import 'package:besttodo/config.dart';
+import 'package:besttodo/services/music_library_service.dart';
+import 'package:besttodo/services/music_metadata_csv.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+
+class _FakePathProvider extends PathProviderPlatform {
+  _FakePathProvider(this.path);
+  final String path;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => path;
+}
+
+void main() {
+  late Directory appDocsDir;
+  late Directory musicDir;
+
+  setUp(() async {
+    appDocsDir = await Directory.systemTemp.createTemp('besttodo_app_docs_');
+    PathProviderPlatform.instance = _FakePathProvider(appDocsDir.path);
+    musicDir = await Directory.systemTemp.createTemp('besttodo_music_');
+    Config.musicFolder = musicDir.path;
+    Config.musicExcludedSubfolders = [];
+    MusicLibraryService.instance.resetForTest();
+  });
+
+  tearDown(() async {
+    Config.musicFolder = '';
+    Config.musicExcludedSubfolders = [];
+    await appDocsDir.delete(recursive: true);
+    await musicDir.delete(recursive: true);
+  });
+
+  Future<void> writeFile(String relativePath, [List<int>? bytes]) async {
+    final file = File('${musicDir.path}/$relativePath');
+    await file.create(recursive: true);
+    await file.writeAsBytes(bytes ?? [0, 0, 0]);
+  }
+
+  group('isExcludedRelativeDir', () {
+    test('matches the folder itself and anything nested under it', () {
+      const excluded = ['Podcasts', 'Ringtones/Old'];
+      expect(MusicLibraryService.isExcludedRelativeDir('Podcasts', excluded),
+          isTrue);
+      expect(
+          MusicLibraryService.isExcludedRelativeDir(
+              'Podcasts/Season1', excluded),
+          isTrue);
+      expect(
+          MusicLibraryService.isExcludedRelativeDir(
+              'Ringtones/Old', excluded),
+          isTrue);
+      expect(
+          MusicLibraryService.isExcludedRelativeDir('Ringtones', excluded),
+          isFalse);
+      expect(MusicLibraryService.isExcludedRelativeDir('Albums', excluded),
+          isFalse);
+    });
+
+    test('the root folder (empty relative dir) is never excluded', () {
+      expect(MusicLibraryService.isExcludedRelativeDir('', ['Podcasts']),
+          isFalse);
+    });
+
+    test('backslashes are normalized like forward slashes', () {
+      expect(
+          MusicLibraryService.isExcludedRelativeDir(
+              r'Ringtones\Old', ['Ringtones/Old']),
+          isTrue);
+    });
+  });
+
+  group('rescan', () {
+    test('finds supported audio files recursively and skips unsupported ones',
+        () async {
+      await writeFile('top.mp3');
+      await writeFile('Albums/Best Of/track.flac');
+      await writeFile('notes.txt');
+
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      final titles = tracks.map((t) => t.fileBaseName).toSet();
+      expect(titles, {'top', 'track'});
+    });
+
+    test('excluded subfolders (and their nested folders) are skipped',
+        () async {
+      await writeFile('keep.mp3');
+      await writeFile('Podcasts/episode1.mp3');
+      await writeFile('Podcasts/2024/episode2.mp3');
+      Config.musicExcludedSubfolders = ['Podcasts'];
+
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      expect(tracks.map((t) => t.fileBaseName).toSet(), {'keep'});
+    });
+
+    test('an mp3 with no readable ID3 tag falls back to the filename',
+        () async {
+      await writeFile('My Untagged Song.mp3');
+
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      expect(tracks, hasLength(1));
+      expect(tracks.single.title, 'My Untagged Song');
+      expect(tracks.single.source.name, 'local');
+    });
+
+    test('an empty/unset music folder clears the library', () async {
+      Config.musicFolder = '';
+      final tracks = await MusicLibraryService.instance.rescan();
+      expect(tracks, isEmpty);
+    });
+
+    test('a missing folder leaves the previously cached library untouched',
+        () async {
+      await writeFile('keep.mp3');
+      await MusicLibraryService.instance.rescan();
+      expect(MusicLibraryService.instance.tracks.value, hasLength(1));
+
+      Config.musicFolder = '${musicDir.path}/does_not_exist';
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      expect(tracks, hasLength(1));
+    });
+
+    test('a newly found track gets a dateAdded and starts at playCount 0',
+        () async {
+      await writeFile('new.mp3');
+
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      expect(tracks.single.dateAdded, isNotNull);
+      expect(tracks.single.playCount, 0);
+    });
+
+    test('a scanned track carries the date its file arrived on the device',
+        () async {
+      await writeFile('device.mp3');
+
+      final tracks = await MusicLibraryService.instance.rescan();
+
+      final expected = (await File(tracks.single.filePath!).stat()).changed;
+      expect(tracks.single.deviceDate, expected);
+    });
+
+    test('a rescan preserves dateAdded/playCount for a track still there',
+        () async {
+      await writeFile('keep.mp3');
+      final first = await MusicLibraryService.instance.rescan();
+      final dateAdded = first.single.dateAdded;
+      await MusicLibraryService.instance.incrementPlayCount(first.single.id);
+
+      final second = await MusicLibraryService.instance.rescan();
+
+      expect(second.single.dateAdded, dateAdded);
+      expect(second.single.playCount, 1);
+    });
+
+    test('results persist across a resetForTest + load()', () async {
+      await writeFile('persisted.mp3');
+      await MusicLibraryService.instance.rescan();
+
+      MusicLibraryService.instance.resetForTest();
+      expect(MusicLibraryService.instance.tracks.value, isEmpty);
+
+      await MusicLibraryService.instance.load();
+      expect(MusicLibraryService.instance.tracks.value, hasLength(1));
+      expect(MusicLibraryService.instance.tracks.value.single.fileBaseName,
+          'persisted');
+    });
+
+    test('onTrackScanned fires once per track with a running count',
+        () async {
+      await writeFile('a.mp3');
+      await writeFile('b.mp3');
+      final seen = <int, String>{};
+
+      await MusicLibraryService.instance.rescan(
+        onTrackScanned: (scanned, track) => seen[scanned] = track.fileBaseName,
+      );
+
+      expect(seen.keys.toSet(), {1, 2});
+      expect(seen.values.toSet(), {'a', 'b'});
+    });
+  });
+
+  group('listSubfolders', () {
+    test('lists every nested subfolder as a relative path', () async {
+      await writeFile('Albums/Best Of/track.mp3');
+      await writeFile('Podcasts/episode1.mp3');
+
+      final subfolders = await MusicLibraryService.instance.listSubfolders();
+
+      expect(subfolders, containsAll(['Albums', 'Albums/Best Of', 'Podcasts']));
+    });
+
+    test('an unset music folder returns no subfolders', () async {
+      Config.musicFolder = '';
+      expect(await MusicLibraryService.instance.listSubfolders(), isEmpty);
+    });
+  });
+
+  test('ensureFolderPermission is a no-op off Android (tests run on host)',
+      () async {
+    expect(await MusicLibraryService.instance.ensureFolderPermission(), isTrue);
+  });
+
+  test('byId finds a scanned track by its id', () async {
+    await writeFile('findme.mp3');
+    final tracks = await MusicLibraryService.instance.rescan();
+
+    final found = MusicLibraryService.instance.byId(tracks.single.id);
+    expect(found, isNotNull);
+    expect(found!.fileBaseName, 'findme');
+    expect(MusicLibraryService.instance.byId('local:/nope.mp3'), isNull);
+  });
+
+  group('incrementPlayCount', () {
+    test('bumps the matching track and persists it', () async {
+      await writeFile('played.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.incrementPlayCount(id);
+      await MusicLibraryService.instance.incrementPlayCount(id);
+
+      expect(MusicLibraryService.instance.byId(id)!.playCount, 2);
+
+      MusicLibraryService.instance.resetForTest();
+      await MusicLibraryService.instance.load();
+      expect(MusicLibraryService.instance.byId(id)!.playCount, 2);
+    });
+
+    test('is a no-op for an id not in the library', () async {
+      await writeFile('a.mp3');
+      await MusicLibraryService.instance.rescan();
+
+      await MusicLibraryService.instance.incrementPlayCount('local:/nope.mp3');
+
+      expect(MusicLibraryService.instance.tracks.value.every((t) => t.playCount == 0),
+          isTrue);
+    });
+  });
+
+  group('updateTrackMetadata', () {
+    test('sets the given fields, marks metadataEdited, and persists',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Fixed Title',
+        artist: 'Fixed Artist',
+        album: 'Fixed Album',
+        genre: 'Rock',
+        year: 2021,
+      );
+
+      final updated = MusicLibraryService.instance.byId(id)!;
+      expect(updated.title, 'Fixed Title');
+      expect(updated.artist, 'Fixed Artist');
+      expect(updated.album, 'Fixed Album');
+      expect(updated.genre, 'Rock');
+      expect(updated.year, 2021);
+      expect(updated.metadataEdited, isTrue);
+
+      MusicLibraryService.instance.resetForTest();
+      await MusicLibraryService.instance.load();
+      expect(MusicLibraryService.instance.byId(id)!.genre, 'Rock');
+    });
+
+    test('a later rescan keeps manually edited metadata instead of the '
+        "file's own (still empty) tags", () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Fixed Title',
+        artist: 'Fixed Artist',
+        album: 'Fixed Album',
+        genre: 'Rock',
+        year: 2021,
+      );
+
+      final rescanned = await MusicLibraryService.instance.rescan();
+
+      expect(rescanned.single.title, 'Fixed Title');
+      expect(rescanned.single.genre, 'Rock');
+      expect(rescanned.single.year, 2021);
+      expect(rescanned.single.metadataEdited, isTrue);
+    });
+
+    test('sets tags and a later rescan keeps them', () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Title',
+        artist: 'Artist',
+        album: 'Album',
+        genre: '',
+        tags: ['Wedding songs', 'Belgian Top Charts'],
+      );
+
+      expect(MusicLibraryService.instance.byId(id)!.tags,
+          ['Wedding songs', 'Belgian Top Charts']);
+
+      final rescanned = await MusicLibraryService.instance.rescan();
+      expect(rescanned.single.tags, ['Wedding songs', 'Belgian Top Charts']);
+    });
+
+    test('is a no-op for an id not in the library', () async {
+      await writeFile('a.mp3');
+      await MusicLibraryService.instance.rescan();
+
+      await MusicLibraryService.instance.updateTrackMetadata(
+        'local:/nope.mp3',
+        title: 'x',
+        artist: '',
+        album: '',
+        genre: '',
+      );
+
+      expect(
+          MusicLibraryService.instance.tracks.value.every((t) => !t.metadataEdited),
+          isTrue);
+    });
+  });
+
+  group('applyMetadataRows', () {
+    test('applies non-empty fields to matching tracks and marks them edited',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      final applied = await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+          id: id,
+          title: 'Fixed Title',
+          artist: 'Fixed Artist',
+          album: 'Fixed Album',
+          genre: 'Rock',
+          year: 2021,
+        ),
+      ]);
+
+      expect(applied, 1);
+      final updated = MusicLibraryService.instance.byId(id)!;
+      expect(updated.title, 'Fixed Title');
+      expect(updated.artist, 'Fixed Artist');
+      expect(updated.album, 'Fixed Album');
+      expect(updated.genre, 'Rock');
+      expect(updated.year, 2021);
+      expect(updated.metadataEdited, isTrue);
+    });
+
+    test('a blank field in the row leaves the existing value untouched',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+      await MusicLibraryService.instance.updateTrackMetadata(
+        id,
+        title: 'Original Title',
+        artist: 'Original Artist',
+        album: 'Original Album',
+        genre: 'Rock',
+        year: 2019,
+      );
+
+      // Only genre is filled in this row; everything else is blank.
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: 'Jazz', year: null),
+      ]);
+
+      final updated = MusicLibraryService.instance.byId(id)!;
+      expect(updated.title, 'Original Title');
+      expect(updated.artist, 'Original Artist');
+      expect(updated.album, 'Original Album');
+      expect(updated.genre, 'Jazz');
+      expect(updated.year, 2019);
+    });
+
+    test('rows whose id is not in the library are skipped and counted out',
+        () async {
+      await writeFile('a.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      final applied = await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: 'Rock', year: null),
+        const ParsedMetadataRow(
+            id: 'local:/nope.mp3',
+            title: '',
+            artist: '',
+            album: '',
+            genre: 'Pop',
+            year: null),
+      ]);
+
+      expect(applied, 1);
+      expect(MusicLibraryService.instance.byId(id)!.genre, 'Rock');
+    });
+
+    test('a non-empty tags row replaces existing tags; a blank one keeps them',
+        () async {
+      await writeFile('untagged.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+          id: id,
+          title: '',
+          artist: '',
+          album: '',
+          genre: '',
+          year: null,
+          tags: const ['Wedding songs'],
+        ),
+      ]);
+      expect(MusicLibraryService.instance.byId(id)!.tags, ['Wedding songs']);
+
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: '', year: null),
+      ]);
+      expect(MusicLibraryService.instance.byId(id)!.tags, ['Wedding songs']);
+    });
+
+    test('an empty row list is a no-op and persists nothing', () async {
+      await writeFile('a.mp3');
+      await MusicLibraryService.instance.rescan();
+
+      final applied = await MusicLibraryService.instance.applyMetadataRows([]);
+
+      expect(applied, 0);
+    });
+
+    test('persists across a resetForTest + load()', () async {
+      await writeFile('a.mp3');
+      final tracks = await MusicLibraryService.instance.rescan();
+      final id = tracks.single.id;
+      await MusicLibraryService.instance.applyMetadataRows([
+        ParsedMetadataRow(
+            id: id, title: '', artist: '', album: '', genre: 'Rock', year: 2022),
+      ]);
+
+      MusicLibraryService.instance.resetForTest();
+      await MusicLibraryService.instance.load();
+
+      final reloaded = MusicLibraryService.instance.byId(id)!;
+      expect(reloaded.genre, 'Rock');
+      expect(reloaded.year, 2022);
+      expect(reloaded.metadataEdited, isTrue);
+    });
+  });
+}

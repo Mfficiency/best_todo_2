@@ -1,0 +1,1594 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../config.dart';
+import '../models/task.dart';
+import '../models/task_change_source.dart';
+import '../models/view_filter_rules.dart';
+import '../services/auto_tag_service.dart';
+import '../services/claude_routine_service.dart';
+import '../services/github_wishlist_service.dart';
+import '../services/item_repository.dart';
+import '../services/item_views.dart';
+import '../services/shared_wishlist_store.dart';
+import '../services/wishlist_shipped.dart';
+import '../utils/description_disclosure.dart';
+import '../utils/label_utils.dart';
+import '../utils/wish_priority.dart';
+import 'label_picker.dart';
+import 'subpage_app_bar.dart';
+import 'wishlist_sync_banner.dart';
+
+enum _WishlistSortOrder { priority, newest, oldest, title }
+
+/// The release-tracking group a wishlist item is sorted into — rendered as
+/// the wishlist's sections, top to bottom, exactly like the home page's
+/// due-date tabs. Membership is decided entirely by tags: [newlyImplemented]
+/// is automatic (the shipped-wish registry, restricted to the running app's
+/// own version), [nextRelease] and [soon] follow the `release-next` /
+/// `release-soon` label tokens, and anything left over is [backlog].
+enum WishReleaseGroup { newlyImplemented, nextRelease, soon, backlog }
+
+/// Which [WishReleaseGroup] a wishlist item currently belongs to.
+/// [currentVersion] is the running app's version (`Config.version`): an item
+/// the shipped-wish registry says was delivered by exactly that version is
+/// "Newly implemented" regardless of any release-* tag it also carries, so
+/// the group empties out again once the next version ships.
+WishReleaseGroup wishReleaseGroupOf(Task task, String currentVersion) {
+  final shipped = shippedWishesByUid[task.uid];
+  if (shipped != null &&
+      currentVersion.isNotEmpty &&
+      shipped.version == currentVersion) {
+    return WishReleaseGroup.newlyImplemented;
+  }
+  final labels =
+      splitLabelTokens(task.label).map((label) => label.toLowerCase()).toSet();
+  if (labels.contains(releaseNextToken)) return WishReleaseGroup.nextRelease;
+  if (labels.contains(releaseSoonToken)) return WishReleaseGroup.soon;
+  return WishReleaseGroup.backlog;
+}
+
+/// Moves [task] into [group] by rewriting its release tag, keeping every
+/// other label. [WishReleaseGroup.backlog] and [WishReleaseGroup.
+/// newlyImplemented] carry no tag of their own — moving into either just
+/// strips `release-next`/`release-soon`.
+void setWishReleaseGroup(Task task, WishReleaseGroup group) {
+  final labels = splitLabelTokens(task.label)
+      .where((label) => !releaseGroupTokens.contains(label.toLowerCase()))
+      .toList();
+  switch (group) {
+    case WishReleaseGroup.nextRelease:
+      labels.add(releaseNextToken);
+      break;
+    case WishReleaseGroup.soon:
+      labels.add(releaseSoonToken);
+      break;
+    case WishReleaseGroup.newlyImplemented:
+    case WishReleaseGroup.backlog:
+      break;
+  }
+  task.label = joinLabelTokens(labels);
+}
+
+/// Moves [task] back one release step — the swipe-right default action:
+/// nextRelease → soon → backlog (capped). No-op for [WishReleaseGroup.
+/// backlog] (nothing further back to go) and [WishReleaseGroup.
+/// newlyImplemented] (that group is automatic, not tag-driven — see
+/// [wishReleaseGroupOf]).
+void regressWishReleaseGroup(Task task, String currentVersion) {
+  switch (wishReleaseGroupOf(task, currentVersion)) {
+    case WishReleaseGroup.nextRelease:
+      setWishReleaseGroup(task, WishReleaseGroup.soon);
+      break;
+    case WishReleaseGroup.soon:
+      setWishReleaseGroup(task, WishReleaseGroup.backlog);
+      break;
+    case WishReleaseGroup.backlog:
+    case WishReleaseGroup.newlyImplemented:
+      break;
+  }
+}
+
+/// Countdown before the options-swipe panel's progress bar "sweeps" across
+/// and applies its default action ([regressWishReleaseGroup]). Deliberately
+/// longer than the app-wide swipe-delete undo delay ([Config.delayDuration]):
+/// misreading one of four buttons here costs more than misreading a single
+/// undo action.
+const Duration wishlistSweepDelay = Duration(seconds: 8);
+
+/// Section title shown above a group's items.
+String wishReleaseGroupTitle(WishReleaseGroup group) {
+  switch (group) {
+    case WishReleaseGroup.newlyImplemented:
+      return 'Newly implemented';
+    case WishReleaseGroup.nextRelease:
+      return 'Next release';
+    case WishReleaseGroup.soon:
+      return 'Soon';
+    case WishReleaseGroup.backlog:
+      return 'Backlog';
+  }
+}
+
+/// Whether [task] has already been dispatched to the build automation (the
+/// "Send to build" swipe action), so the button can show "Queued" instead of
+/// sending a duplicate GitHub issue.
+bool isQueuedForBuild(Task task) => labelHasToken(task.label, nextBuildToken);
+
+/// The plain-text prompt "Propose for next" puts on the clipboard: an
+/// instruction for Claude to tag the user's Todoist backlog with
+/// `release-next`/`release-soon` (aiming for ~3 items in the next release),
+/// plus a snapshot of the current backlog/soon items so Claude has the exact
+/// titles and tags without needing to cross-reference anything first. Pure
+/// and deterministic, like [WishlistPage.clipboardText], so it's unit
+/// testable without pumping a widget.
+String proposeForNextPrompt(List<Task> backlogAndSoonItems) {
+  final lines = <String>[
+    'Check my BestToDo wishlist backlog in Todoist and decide what ships '
+        'next.',
+    'Tag about 3 items "release-next" (the next release) and a handful more '
+        '"release-soon" (after that); leave everything else untagged so it '
+        'stays in the backlog. Remove either tag from an item that no '
+        'longer belongs there. BestToDo groups the wishlist by these tags, '
+        'so the change takes effect there next time it syncs with Todoist.',
+  ];
+  if (backlogAndSoonItems.isNotEmpty) {
+    lines.add('');
+    lines.add('Current backlog / soon items:');
+    for (final item in backlogAndSoonItems) {
+      final tags = item.label.trim();
+      lines.add('- ${item.title}${tags.isEmpty ? '' : ' [$tags]'}');
+    }
+  }
+  return lines.join('\n');
+}
+
+/// The plain-text prompt "Copy selected as prompt" (multi-select mode) puts
+/// on the clipboard: an instruction for Claude to build the given wishlist
+/// items, followed by each item's title, description and labels. Pure and
+/// deterministic, like [WishlistPage.clipboardText], so it's unit testable
+/// without pumping a widget.
+String buildSelectedWishesPrompt(List<Task> items) {
+  final lines = <String>[
+    'Build the following items from my BestToDo wishlist:',
+    '',
+  ];
+  for (final item in items) {
+    lines.add('- ${item.title}');
+    final description = item.description.trim();
+    if (description.isNotEmpty) lines.add('  $description');
+    final tags = item.label.trim();
+    if (tags.isNotEmpty) lines.add('  [$tags]');
+  }
+  return lines.join('\n');
+}
+
+/// The prefix on a `wishlist-build` GitHub issue body's trailer line naming
+/// the wishlist item's own [Task.uid] — the build routine parses this back
+/// out so it can add the matching `ShippedWish` entry (`wishlist_shipped.
+/// dart`) once the item ships, letting the item self-tick like every other
+/// shipped wish. The issue's title/description text alone can't carry this:
+/// it's a client-side id, not something a human would type.
+const String wishlistIssueUidPrefix = 'Wishlist item uid: ';
+
+/// The GitHub issue body "Send to build" opens for [item]: the same
+/// build-prompt text [buildSelectedWishesPrompt] already produces, plus the
+/// uid trailer above.
+String wishlistIssueBody(Task item) =>
+    '${buildSelectedWishesPrompt(<Task>[item])}\n\n'
+    '$wishlistIssueUidPrefix${item.uid}';
+
+/// Tools → Wishlist: a pre-filtered view over the one task list — like
+/// opening a project — showing only tasks flagged [Task.isWish]. The full
+/// item overview (the home page) shows the same tasks with all their
+/// properties and tags; here they render as plain to-do tiles with no due
+/// dates. Swiping right opens Share/Copy/Export/Delete shortcuts, with the
+/// [wishlistSweepDelay] countdown defaulting to moving the item back one
+/// release step ([regressWishReleaseGroup]); swiping left enters multi-select
+/// mode, where the app bar's "Copy selected as prompt" action puts a
+/// build-these-items prompt on the clipboard for pasting into Claude.
+class WishlistPage extends StatefulWidget {
+  const WishlistPage({Key? key}) : super(key: key);
+
+  @override
+  State<WishlistPage> createState() => _WishlistPageState();
+}
+
+class _WishlistPageState extends State<WishlistPage> {
+  final ItemRepository _repository = ItemRepository.instance;
+  final GithubWishlistService _githubService = GithubWishlistService.instance;
+  final SharedWishlistStore _sharedStore = SharedWishlistStore.instance;
+
+  /// The full task list; the page shows and mutates only the isWish subset
+  /// but always persists the whole list.
+  List<Task> _tasks = <Task>[];
+  bool _loading = true;
+  _WishlistSortOrder _sortOrder = _WishlistSortOrder.priority;
+
+  /// Whether this app currently holds the permission [SharedWishlistStore]
+  /// needs, i.e. whether wishlist items are actually shared with Best
+  /// Music right now — checked on load, never auto-requested.
+  bool _syncConnected = false;
+
+  /// The running app's version, for [wishReleaseGroupOf]. Empty until
+  /// loaded, which no shipped-wish version ever matches, so every item
+  /// sorts by its tags alone until then.
+  String _currentVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    Config.ensureVersionLoaded().then((_) {
+      if (mounted) setState(() => _currentVersion = Config.version);
+    });
+  }
+
+  Future<void> _load() async {
+    // Also merges legacy wishlist.json items into the task list. The
+    // Wishlist starts empty — no dev-only demo item — so a fresh/cleared
+    // list stays genuinely empty instead of quietly repopulating.
+    final tasks = await _repository.loadItems();
+    // Only touch the shared store (and re-persist locally) when actually
+    // connected — an app that never connects behaves exactly as before.
+    final connected = await _sharedStore.isConnected();
+    if (connected) {
+      final shared = await _sharedStore.load();
+      final localWishes = tasks.where((t) => t.isWish).toList();
+      final canonicalWishes = reconcileWishlist(localWishes, shared);
+      tasks.removeWhere((t) => t.isWish);
+      tasks.addAll(canonicalWishes);
+      if (shared.fileExisted) {
+        await _repository.saveItems(tasks);
+      } else {
+        unawaited(_sharedStore.save(canonicalWishes));
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _tasks = tasks;
+      _loading = false;
+      _syncConnected = connected;
+    });
+  }
+
+  Future<void> _save() async {
+    await _repository.saveItems(_tasks);
+    if (_syncConnected) {
+      unawaited(_sharedStore.save(_tasks.where((t) => t.isWish).toList()));
+    }
+  }
+
+  Future<bool> _connectSync() async {
+    final granted = await _sharedStore.requestConnection();
+    if (granted && mounted) {
+      setState(() => _syncConnected = true);
+      await _load();
+    }
+    return granted;
+  }
+
+  void _dismissSyncBanner() {
+    setState(() => Config.wishlistSyncBannerDismissed = true);
+    unawaited(Config.save());
+  }
+
+  int _compareCreatedAt(Task a, Task b, {required bool newestFirst}) {
+    final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return newestFirst
+        ? bCreated.compareTo(aCreated)
+        : aCreated.compareTo(bCreated);
+  }
+
+  int _compareBySortOrder(Task a, Task b) {
+    switch (_sortOrder) {
+      case _WishlistSortOrder.priority:
+        final byPriority = wishPriorityRank(b) - wishPriorityRank(a);
+        if (byPriority != 0) return byPriority;
+        return 0;
+      case _WishlistSortOrder.newest:
+        return _compareCreatedAt(a, b, newestFirst: true);
+      case _WishlistSortOrder.oldest:
+        return _compareCreatedAt(a, b, newestFirst: false);
+      case _WishlistSortOrder.title:
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    }
+  }
+
+  String _sortLabel(_WishlistSortOrder order) {
+    switch (order) {
+      case _WishlistSortOrder.priority:
+        return 'Priority';
+      case _WishlistSortOrder.newest:
+        return 'Newest';
+      case _WishlistSortOrder.oldest:
+        return 'Oldest';
+      case _WishlistSortOrder.title:
+        return 'Title';
+    }
+  }
+
+  /// Wishlist items sorted like a to-do list: open items before done ones,
+  /// then by the selected helper sort, otherwise keeping their list order.
+  List<Task> _wishes() {
+    final wishes = ItemViews.wishlist(
+      _tasks,
+      rules: Config.viewFilterRules[ViewFilterRules.wishlist],
+    );
+    final order = <String, int>{
+      for (var i = 0; i < wishes.length; i++) wishes[i].uid: i,
+    };
+    wishes.sort((a, b) {
+      if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+      final bySelectedSort = _compareBySortOrder(a, b);
+      if (bySelectedSort != 0) return bySelectedSort;
+      return order[a.uid]!.compareTo(order[b.uid]!);
+    });
+    return wishes;
+  }
+
+  String _timestampForFilename() {
+    final now = DateTime.now();
+    final two = (int n) => n.toString().padLeft(2, '0');
+    return '${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  }
+
+  Future<String?> _pickExportPath(String filename) async {
+    final downloads = await getDownloadsDirectory();
+    final directory = await getDirectoryPath(initialDirectory: downloads?.path);
+    if (directory == null) return null;
+    final sep = Platform.pathSeparator;
+    return '$directory${directory.endsWith(sep) ? '' : sep}$filename';
+  }
+
+  Map<String, dynamic> _exportPayload(List<Task> items) => <String, dynamic>{
+        'export_version': 1,
+        'exported_at': DateTime.now().toIso8601String(),
+        'wishlist_items': items.map((item) => item.toJson()).toList(),
+      };
+
+  Future<void> _exportItems(List<Task> items, String filename) async {
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No wishlist items to export')),
+      );
+      return;
+    }
+
+    final path = await _pickExportPath(filename);
+    if (!mounted) return;
+    if (path == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export canceled')),
+      );
+      return;
+    }
+
+    try {
+      final file = File(path);
+      await file.writeAsString(jsonEncode(_exportPayload(items)), flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exported to ${file.path}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to export wishlist')),
+      );
+    }
+  }
+
+  Future<void> _exportAllItems() async {
+    await _exportItems(_wishes(), 'wishlist_${_timestampForFilename()}.json');
+  }
+
+  Future<void> _exportItem(Task item) async {
+    final safeTitle = item.title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    final filenameBase = safeTitle.isEmpty ? 'wishlist_item' : safeTitle;
+    await _exportItems(
+      <Task>[item],
+      '${filenameBase}_${_timestampForFilename()}.json',
+    );
+  }
+
+  /// The plain-text form of a wishlist item put on the clipboard: the title,
+  /// then its description and labels on their own lines when it has any.
+  static String clipboardText(Task item) {
+    final lines = <String>[item.title];
+    if (item.description.trim().isNotEmpty) lines.add(item.description.trim());
+    if (item.label.trim().isNotEmpty) lines.add(item.label.trim());
+    return lines.join('\n');
+  }
+
+  Future<void> _copyItem(Task item) async {
+    await Clipboard.setData(ClipboardData(text: clipboardText(item)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Copied "${item.title}"')));
+  }
+
+  Future<void> _shareItem(Task item) async {
+    await SharePlus.instance.share(
+      ShareParams(text: clipboardText(item), subject: item.title),
+    );
+  }
+
+  List<String> _labelsFromText(String text) => text
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .toList();
+
+  String _labelTextWithPriority(String text, String priorityLabel) {
+    final labels = _labelsFromText(text)
+        .where((label) => !wishPriorityLabels.contains(label.toLowerCase()))
+        .toList();
+    labels.insert(0, priorityLabel);
+    return labels.join(', ');
+  }
+
+  /// The "Add wishlist item" FAB flow. Editing an existing item happens
+  /// inline (tapping a tile folds it open, like the home list's tiles) —
+  /// this dialog is only ever used to create a new one.
+  Future<void> _addItem() async {
+    final result = await showDialog<_WishEditResult>(
+      context: context,
+      builder: (context) => _WishEditDialog(
+        labelTextWithPriority: _labelTextWithPriority,
+      ),
+    );
+
+    if (result == null) return;
+    setState(() {
+      _tasks.insert(
+        0,
+        Task(
+          title: result.title,
+          description: result.description,
+          label: AutoTagService.instance.withAutoTags(
+              result.title, result.label),
+          createdAt: DateTime.now(),
+          origin: TaskChangeSource.user,
+          isWish: true,
+        ),
+      );
+    });
+    await _save();
+  }
+
+  /// Persists a field an expanded tile just edited inline, and refreshes
+  /// this page's own sort/grouping (a priority or release-tag change moves
+  /// the item to a different section/position).
+  void _persistFieldEdit() {
+    setState(() {});
+    _save();
+  }
+
+  void _toggleDone(Task item) {
+    setState(() {
+      item.toggleDone();
+      item.completedAt = item.isDone ? DateTime.now() : null;
+    });
+    _save();
+  }
+
+  /// Swipe-right's default (countdown-timeout) action: move [item] back one
+  /// release step.
+  void _regressRelease(Task item) {
+    setState(() => regressWishReleaseGroup(item, _currentVersion));
+    _save();
+  }
+
+  /// [wishes] partitioned into release groups, in section order. Membership
+  /// is decided by [wishReleaseGroupOf]; each group keeps [wishes]'s own
+  /// (already sorted) relative order.
+  Map<WishReleaseGroup, List<Task>> _groupedWishes(List<Task> wishes) {
+    final grouped = <WishReleaseGroup, List<Task>>{
+      for (final group in WishReleaseGroup.values) group: <Task>[],
+    };
+    for (final wish in wishes) {
+      grouped[wishReleaseGroupOf(wish, _currentVersion)]!.add(wish);
+    }
+    return grouped;
+  }
+
+  void _setReleaseGroup(Task item, WishReleaseGroup group) {
+    setState(() => setWishReleaseGroup(item, group));
+    _save();
+  }
+
+  /// Dispatches [item] to the build automation: opens a `wishlist-build`
+  /// GitHub issue ([wishlistIssueBody] — the same text "Copy selected as
+  /// prompt" already puts on the clipboard, plus a uid trailer the build
+  /// routine needs) and, only once that succeeds, stamps [nextBuildToken] so
+  /// the item isn't sent twice. No-ops with a snackbar if the item is
+  /// already queued or no token is configured (Settings → Wishlist build).
+  Future<void> _sendToBuild(Task item) async {
+    if (isQueuedForBuild(item)) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text('"${item.title}" is already queued for build')));
+      return;
+    }
+    final token = Config.githubWishlistToken.trim();
+    if (token.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content:
+              Text('Set a GitHub token in Settings → Wishlist build first'),
+        ));
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    messenger.showSnackBar(
+        SnackBar(content: Text('Sending "${item.title}" to build…')));
+    try {
+      await _githubService.createWishlistIssue(
+        token: token,
+        title: item.title,
+        body: wishlistIssueBody(item),
+      );
+      if (!mounted) return;
+      setState(() => item.label = addLabelToken(item.label, nextBuildToken));
+      await _save();
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+            SnackBar(content: Text('Queued "${item.title}" for build')));
+    } catch (e) {
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+            SnackBar(content: Text('Failed to send "${item.title}": $e')));
+    }
+  }
+
+  /// Copies the "Propose for next" prompt for every open backlog/soon item
+  /// (newly-implemented and already-scheduled items are the app's own
+  /// bookkeeping, not candidates to re-tag).
+  Future<void> _proposeForNext() async {
+    final candidates = _wishes().where((wish) {
+      if (wish.isDone) return false;
+      final group = wishReleaseGroupOf(wish, _currentVersion);
+      return group == WishReleaseGroup.backlog ||
+          group == WishReleaseGroup.soon;
+    }).toList();
+    await Clipboard.setData(
+        ClipboardData(text: proposeForNextPrompt(candidates)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content:
+            Text('Prompt copied — paste it to Claude, then sync Todoist to '
+                'update the groups.'),
+      ));
+  }
+
+  /// Moves every item in [items] to the deleted list in one go, with a
+  /// single undo snackbar covering all of them.
+  void _deleteItems(List<Task> items) {
+    if (items.isEmpty) return;
+    final originalIndices = <Task, int>{
+      for (final item in items) item: _tasks.indexOf(item),
+    }..removeWhere((_, index) => index < 0);
+    if (originalIndices.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() {
+      for (final item in originalIndices.keys) {
+        _tasks.remove(item);
+      }
+    });
+    _save();
+
+    late Timer timer;
+    timer = Timer(Config.delayDuration, () async {
+      final deleted = await _repository.loadDeletedItems();
+      for (final item in originalIndices.keys) {
+        item.deletedAt = DateTime.now();
+        deleted.insert(0, item);
+      }
+      await _repository.saveDeletedItems(deleted);
+      messenger.hideCurrentSnackBar();
+    });
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(originalIndices.length == 1
+              ? 'Deleted "${originalIndices.keys.first.title}"'
+              : 'Deleted ${originalIndices.length} items'),
+          duration: Config.delayDuration,
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              timer.cancel();
+              messenger.hideCurrentSnackBar();
+              if (!mounted) return;
+              setState(() {
+                final byIndex = originalIndices.entries.toList()
+                  ..sort((a, b) => a.value.compareTo(b.value));
+                for (final entry in byIndex) {
+                  final index = entry.value.clamp(0, _tasks.length);
+                  _tasks.insert(index, entry.key);
+                }
+              });
+              _save();
+            },
+          ),
+        ),
+      );
+  }
+
+  /// The uids currently selected in multi-select mode; empty means the page
+  /// isn't in selection mode. Swiping a tile left starts a selection with
+  /// just that item; tapping other tiles toggles them in and out.
+  final Set<String> _selectedUids = <String>{};
+
+  bool get _selecting => _selectedUids.isNotEmpty;
+
+  void _startSelection(Task item) {
+    setState(() => _selectedUids.add(item.uid));
+  }
+
+  void _toggleSelected(Task item) {
+    setState(() {
+      if (!_selectedUids.remove(item.uid)) _selectedUids.add(item.uid);
+    });
+  }
+
+  void _cancelSelection() => setState(_selectedUids.clear);
+
+  /// Copies [buildSelectedWishesPrompt] for the selected items and exits
+  /// selection mode.
+  Future<void> _copySelectionAsPrompt() async {
+    final items =
+        _wishes().where((wish) => _selectedUids.contains(wish.uid)).toList();
+    if (items.isEmpty) return;
+    await Clipboard.setData(
+        ClipboardData(text: buildSelectedWishesPrompt(items)));
+    if (!mounted) return;
+    setState(_selectedUids.clear);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(items.length == 1
+            ? 'Copied "${items.first.title}" as a prompt'
+            : 'Copied ${items.length} items as a prompt'),
+      ));
+  }
+
+  void _deleteSelection() {
+    final items =
+        _wishes().where((wish) => _selectedUids.contains(wish.uid)).toList();
+    setState(_selectedUids.clear);
+    _deleteItems(items);
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    if (_selecting) {
+      return AppBar(
+        leading: IconButton(
+          tooltip: 'Cancel selection',
+          icon: const Icon(Icons.close),
+          onPressed: _cancelSelection,
+        ),
+        title: Text('${_selectedUids.length} selected'),
+        actions: [
+          IconButton(
+            tooltip: 'Copy selected as prompt',
+            icon: const Icon(Icons.content_copy),
+            onPressed: _copySelectionAsPrompt,
+          ),
+          IconButton(
+            tooltip: 'Delete selected',
+            icon: const Icon(Icons.delete),
+            onPressed: _deleteSelection,
+          ),
+        ],
+      );
+    }
+    return buildSubpageAppBar(
+      context,
+      title: 'Wishlist',
+      actions: [
+        PopupMenuButton<_WishlistSortOrder>(
+          tooltip: 'Sort wishlist',
+          icon: const Icon(Icons.sort),
+          initialValue: _sortOrder,
+          onSelected: (value) => setState(() => _sortOrder = value),
+          itemBuilder: (context) => [
+            for (final order in _WishlistSortOrder.values)
+              PopupMenuItem(
+                value: order,
+                child: Row(
+                  children: [
+                    if (order == _sortOrder)
+                      const Icon(Icons.check, size: 18)
+                    else
+                      const SizedBox(width: 18),
+                    const SizedBox(width: 8),
+                    Text(_sortLabel(order)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        IconButton(
+          tooltip: 'Export wishlist',
+          onPressed: _wishes().isEmpty ? null : _exportAllItems,
+          icon: const Icon(Icons.download_outlined),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wishes = _wishes();
+    final grouped = _groupedWishes(wishes);
+    final showSyncBanner = !_loading &&
+        !_syncConnected &&
+        !Config.wishlistSyncBannerDismissed &&
+        _sharedStore.isSupported;
+    return Scaffold(
+      appBar: _buildAppBar(context),
+      floatingActionButton: _selecting
+          ? null
+          : FloatingActionButton(
+              tooltip: 'Add wishlist item',
+              onPressed: _addItem,
+              child: const Icon(Icons.add),
+            ),
+      body: Column(
+        children: [
+          if (showSyncBanner)
+            WishlistSyncBanner(
+              otherAppName: 'Best Music',
+              onConnect: _connectSync,
+              onDismiss: _dismissSyncBanner,
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : wishes.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No wishlist items yet. Add ideas here; swipe right to '
+                            'share/copy/export, swipe left to select.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                        children: [
+                          for (final group in WishReleaseGroup.values)
+                            // "Next release" always shows — it's where "Propose for
+                            // next" lives, and that button should stay reachable
+                            // even before anything has been tagged into it.
+                            if (grouped[group]!.isNotEmpty ||
+                                group == WishReleaseGroup.nextRelease) ...[
+                              _WishReleaseSectionHeader(
+                                group: group,
+                                count: grouped[group]!.length,
+                                onProposeForNext:
+                                    group == WishReleaseGroup.nextRelease
+                                        ? _proposeForNext
+                                        : null,
+                              ),
+                              for (final item in grouped[group]!)
+                                _WishTile(
+                                  key: ValueKey(item.uid),
+                                  item: item,
+                                  releaseGroup: group,
+                                  selecting: _selecting,
+                                  selected: _selectedUids.contains(item.uid),
+                                  onToggle: () => _toggleDone(item),
+                                  onToggleSelected: () => _toggleSelected(item),
+                                  onStartSelection: () => _startSelection(item),
+                                  onFieldsChanged: _persistFieldEdit,
+                                  onCopy: () => _copyItem(item),
+                                  onShare: () => _shareItem(item),
+                                  onExport: () => _exportItem(item),
+                                  onDelete: () => _deleteItems([item]),
+                                  onSendToBuild: () => _sendToBuild(item),
+                                  onRegressRelease: () => _regressRelease(item),
+                                  onSetReleaseGroup: (newGroup) =>
+                                      _setReleaseGroup(item, newGroup),
+                                ),
+                            ],
+                        ],
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Header row above a release group's items: the group's title, its item
+/// count, and — only above "Next release" — the "Propose for next" button
+/// that copies [proposeForNextPrompt] to the clipboard.
+class _WishReleaseSectionHeader extends StatelessWidget {
+  final WishReleaseGroup group;
+  final int count;
+  final VoidCallback? onProposeForNext;
+
+  const _WishReleaseSectionHeader({
+    required this.group,
+    required this.count,
+    required this.onProposeForNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${wishReleaseGroupTitle(group)} ($count)',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          if (onProposeForNext != null)
+            TextButton.icon(
+              onPressed: onProposeForNext,
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Propose for next'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WishEditResult {
+  final String title;
+  final String description;
+  final String label;
+
+  const _WishEditResult(this.title, this.description, this.label);
+}
+
+/// The "Add wishlist item" dialog, owning its own text controllers so its
+/// exit animation never builds fields with disposed controllers.
+class _WishEditDialog extends StatefulWidget {
+  final String Function(String text, String priorityLabel)
+      labelTextWithPriority;
+
+  const _WishEditDialog({
+    required this.labelTextWithPriority,
+  });
+
+  @override
+  State<_WishEditDialog> createState() => _WishEditDialogState();
+}
+
+class _WishEditDialogState extends State<_WishEditDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  String _label = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController();
+    _descriptionController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  /// Pastes clipboard text into the description field at the current
+  /// selection (or appended, if the field has no active selection).
+  Future<void> _pasteDescription() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty) return;
+    final controller = _descriptionController;
+    final selection = controller.selection;
+    final insertAt =
+        selection.isValid ? selection.start : controller.text.length;
+    final removeTo = selection.isValid ? selection.end : controller.text.length;
+    final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
+    controller.text = newText;
+    controller.selection = TextSelection.collapsed(
+      offset: (insertAt + pasted.length).clamp(0, newText.length),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add wishlist item'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _titleController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Title'),
+              textInputAction: TextInputAction.next,
+            ),
+            // Labels and their priority shortcuts sit right under the title —
+            // most wishes are a title plus a priority; the description is the
+            // exception and lives at the bottom.
+            LabelPickerField(
+              value: _label,
+              fieldLabel: 'Labels / tags',
+              onChanged: (v) => setState(() => _label = v),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Quick priority',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final priority in wishPriorityLabels)
+                  OutlinedButton(
+                    onPressed: () => setState(() {
+                      _label = widget.labelTextWithPriority(_label, priority);
+                    }),
+                    child: Text(priority.replaceFirst('priority-', '')),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _descriptionController,
+              decoration: InputDecoration(
+                labelText: 'Description',
+                suffixIcon: IconButton(
+                  tooltip: 'Paste from clipboard',
+                  icon: const Icon(Icons.content_paste),
+                  onPressed: _pasteDescription,
+                ),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final title = _titleController.text.trim();
+            if (title.isEmpty) return;
+            Navigator.of(context).pop(_WishEditResult(
+              title,
+              _descriptionController.text.trim(),
+              _label.trim(),
+            ));
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A wishlist item rendered like a home-page task tile (checkbox, title,
+/// labels — never a due date). Tapping it folds it open in place, exactly
+/// like a home-list task tile: title/labels/description become editable
+/// fields, and a "Send to Claude" robot button appears right there — no
+/// popover needed. Swiping toward the options side still opens
+/// Share/Copy/Export/Build/Delete shortcuts and moves the item back one
+/// release step ([WishlistPage]'s [regressWishReleaseGroup]) when the
+/// countdown runs out; swiping toward the other side starts multi-select
+/// ([onStartSelection])/toggles it ([onToggleSelected]) instead of deleting —
+/// deleting a single item now lives in the options panel above, and the
+/// selection app bar still deletes several at once. Directions follow
+/// [Config.swipeLeftDelete] like the home list.
+class _WishTile extends StatefulWidget {
+  final Task item;
+  final WishReleaseGroup releaseGroup;
+  final bool selecting;
+  final bool selected;
+  final VoidCallback onToggle;
+  final VoidCallback onToggleSelected;
+  final VoidCallback onStartSelection;
+  final VoidCallback onFieldsChanged;
+  final VoidCallback onCopy;
+  final VoidCallback onShare;
+  final VoidCallback onExport;
+  final VoidCallback onDelete;
+  final VoidCallback onSendToBuild;
+  final VoidCallback onRegressRelease;
+  final void Function(WishReleaseGroup group) onSetReleaseGroup;
+
+  const _WishTile({
+    Key? key,
+    required this.item,
+    required this.releaseGroup,
+    required this.selecting,
+    required this.selected,
+    required this.onToggle,
+    required this.onToggleSelected,
+    required this.onStartSelection,
+    required this.onFieldsChanged,
+    required this.onCopy,
+    required this.onShare,
+    required this.onExport,
+    required this.onDelete,
+    required this.onSendToBuild,
+    required this.onRegressRelease,
+    required this.onSetReleaseGroup,
+  }) : super(key: key);
+
+  @override
+  State<_WishTile> createState() => _WishTileState();
+}
+
+class _WishTileState extends State<_WishTile>
+    with SingleTickerProviderStateMixin {
+  bool _optionsOpen = false;
+  Timer? _timer;
+  late final AnimationController _progressController;
+  double _dragOffset = 0;
+  bool _dragging = false;
+  bool _sendingToClaude = false;
+
+  /// Whether the tile is folded open for inline editing — like tapping a
+  /// task tile on the home list. Title/labels/description become editable
+  /// fields and the "Send to Claude" robot button appears in the trailing
+  /// row.
+  bool _expanded = false;
+  late final TextEditingController _titleController;
+  late final TextEditingController _descController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.item.title);
+    _descController = TextEditingController(text: widget.item.description);
+    _progressController = AnimationController(
+      vsync: this,
+      duration: wishlistSweepDelay,
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _progressController.dispose();
+    _titleController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
+  void _toggleExpanded() => setState(() => _expanded = !_expanded);
+
+  void _startSwipeOptions() {
+    setState(() => _optionsOpen = true);
+    _timer?.cancel();
+    _progressController.reset();
+    _progressController.forward();
+    _timer = Timer(wishlistSweepDelay, () {
+      if (!mounted || !_optionsOpen) return;
+      _progressController.stop();
+      setState(() => _optionsOpen = false);
+      widget.onRegressRelease();
+    });
+  }
+
+  void _closeOptions() {
+    _timer?.cancel();
+    _progressController.stop();
+    if (mounted) setState(() => _optionsOpen = false);
+  }
+
+  void _share() {
+    _closeOptions();
+    widget.onShare();
+  }
+
+  void _copy() {
+    _closeOptions();
+    widget.onCopy();
+  }
+
+  void _export() {
+    _closeOptions();
+    widget.onExport();
+  }
+
+  void _delete() {
+    _closeOptions();
+    widget.onDelete();
+  }
+
+  void _sendToBuild() {
+    _closeOptions();
+    widget.onSendToBuild();
+  }
+
+  /// Fires the routine configured in Settings → Claude Routine with this
+  /// wishlist item as context, starting a real Claude Code cloud session —
+  /// the same "Send to Claude" action the main task list offers, so wishlist
+  /// items can be built with AI without first having to send them to the
+  /// GitHub build queue. Only reachable once the tile is folded open (like
+  /// the home list's own robot button, which only shows on an expanded
+  /// tile).
+  Future<void> _sendToClaude() async {
+    final url = Config.claudeRoutineUrl.trim();
+    final token = Config.claudeRoutineToken.trim();
+    if (url.isEmpty || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set up Claude Routine in Settings first'),
+        ),
+      );
+      return;
+    }
+    setState(() => _sendingToClaude = true);
+    try {
+      final result = await ClaudeRoutineService.instance.fire(
+        fireUrl: url,
+        token: token,
+        text: ClaudeRoutineService.instance.buildPayload(widget.item),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Claude session started'),
+          duration: const Duration(seconds: 8),
+          action: result.sessionUrl.isEmpty
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => launchUrl(
+                    Uri.parse(result.sessionUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is ClaudeRoutineException
+              ? (e.statusCode == 401
+                  ? 'Invalid Claude Routine token'
+                  : 'Failed to start session: ${e.message}')
+              : 'Failed to start session: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingToClaude = false);
+    }
+  }
+
+  /// Pastes clipboard text into the inline description field at the current
+  /// selection (or appended, if the field has no active selection) — the
+  /// same behavior the "Add wishlist item" dialog's paste button offers.
+  Future<void> _pasteDescription() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty) return;
+    final controller = _descController;
+    final selection = controller.selection;
+    final insertAt = selection.isValid ? selection.start : controller.text.length;
+    final removeTo = selection.isValid ? selection.end : controller.text.length;
+    final newText = controller.text.replaceRange(insertAt, removeTo, pasted);
+    controller.text = newText;
+    controller.selection = TextSelection.collapsed(
+      offset: (insertAt + pasted.length).clamp(0, newText.length),
+    );
+    setState(() => widget.item.description = newText);
+    widget.onFieldsChanged();
+  }
+
+  List<String> _labels() => widget.item.label
+      .split(RegExp(r'[,\s]+'))
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .toList();
+
+  /// The fold-open editing section shown below the tile when [_expanded]:
+  /// title, labels/quick-priority and description, editable in place —
+  /// exactly the fields the old "Edit wishlist item" dialog offered.
+  Widget _buildExpandedFields(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Focus(
+            onFocusChange: (hasFocus) {
+              if (!hasFocus) widget.onFieldsChanged();
+            },
+            child: TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(labelText: 'Title'),
+              onChanged: (v) => setState(() => widget.item.title = v),
+            ),
+          ),
+          LabelPickerField(
+            value: widget.item.label,
+            fieldLabel: 'Labels / tags',
+            onChanged: (v) {
+              setState(() => widget.item.label = v);
+              widget.onFieldsChanged();
+            },
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Quick priority',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final priority in wishPriorityLabels)
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() => setWishPriority(widget.item, priority));
+                    widget.onFieldsChanged();
+                  },
+                  child: Text(priority.replaceFirst('priority-', '')),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Focus(
+            onFocusChange: (hasFocus) {
+              if (!hasFocus) widget.onFieldsChanged();
+            },
+            child: TextField(
+              controller: _descController,
+              decoration: InputDecoration(
+                labelText: 'Description',
+                suffixIcon: IconButton(
+                  tooltip: 'Paste from clipboard',
+                  icon: const Icon(Icons.content_paste),
+                  onPressed: _pasteDescription,
+                ),
+              ),
+              keyboardType: TextInputType.multiline,
+              maxLines: null,
+              onChanged: (v) => setState(() => widget.item.description = v),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final labels = _labels();
+
+    final listTile = ListTile(
+      contentPadding: isAndroid
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 16.0),
+      minLeadingWidth: isAndroid ? 0 : null,
+      leading: widget.selecting
+          ? Checkbox(
+              value: widget.selected,
+              onChanged: (_) => widget.onToggleSelected(),
+            )
+          : Checkbox(
+              value: widget.item.isDone,
+              onChanged: (_) => widget.onToggle(),
+            ),
+      title: Text(
+        widget.item.title,
+        style: TextStyle(
+          decoration: widget.item.isDone ? TextDecoration.lineThrough : null,
+        ),
+      ),
+      subtitle: widget.item.description.isEmpty && labels.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (labels.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final label in labels)
+                        Chip(
+                          label: Text(label),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
+                ],
+                if (widget.item.description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  DescriptionDisclosure(description: widget.item.description),
+                ],
+              ],
+            ),
+      // Tapping folds the tile open for inline editing, exactly like a home
+      // list task tile — no edit dialog/popover.
+      onTap: widget.selecting ? widget.onToggleSelected : _toggleExpanded,
+      trailing: widget.selecting
+          ? null
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_expanded)
+                  IconButton(
+                    icon: _sendingToClaude
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.smart_toy_outlined),
+                    tooltip: 'Send to Claude',
+                    onPressed: _sendingToClaude ? null : _sendToClaude,
+                  ),
+                if (widget.releaseGroup != WishReleaseGroup.newlyImplemented)
+                  PopupMenuButton<WishReleaseGroup>(
+                    tooltip: 'Move to release group',
+                    icon: const Icon(Icons.drive_file_move_outline),
+                    initialValue: widget.releaseGroup,
+                    onSelected: widget.onSetReleaseGroup,
+                    itemBuilder: (context) => [
+                      for (final group in const [
+                        WishReleaseGroup.nextRelease,
+                        WishReleaseGroup.soon,
+                        WishReleaseGroup.backlog,
+                      ])
+                        PopupMenuItem(
+                          value: group,
+                          child: Row(
+                            children: [
+                              if (group == widget.releaseGroup)
+                                const Icon(Icons.check, size: 18)
+                              else
+                                const SizedBox(width: 18),
+                              const SizedBox(width: 8),
+                              Text(wishReleaseGroupTitle(group)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                if (_expanded)
+                  IconButton(
+                    icon: const Icon(Icons.expand_less),
+                    tooltip: 'Collapse',
+                    onPressed: _toggleExpanded,
+                  ),
+              ],
+            ),
+    );
+
+    final stackTile = Stack(
+      children: [
+        listTile,
+        if (_optionsOpen)
+          Positioned.fill(
+            child: Container(
+              color: Theme.of(context).cardColor.withValues(alpha: 0.9),
+              alignment: Alignment.centerRight,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        onPressed:
+                            isQueuedForBuild(widget.item) ? null : _sendToBuild,
+                        icon: Icon(
+                          isQueuedForBuild(widget.item)
+                              ? Icons.check_circle
+                              : Icons.rocket_launch,
+                          size: 18,
+                        ),
+                        label: Text(
+                            isQueuedForBuild(widget.item) ? 'Queued' : 'Build'),
+                      ),
+                      TextButton.icon(
+                        onPressed: _share,
+                        icon: const Icon(Icons.share, size: 18),
+                        label: const Text('Share'),
+                      ),
+                      TextButton.icon(
+                        onPressed: _copy,
+                        icon: const Icon(Icons.content_copy, size: 18),
+                        label: const Text('Copy'),
+                      ),
+                      TextButton.icon(
+                        onPressed: _export,
+                        icon: const Icon(Icons.download_outlined, size: 18),
+                        label: const Text('Export'),
+                      ),
+                      TextButton.icon(
+                        onPressed: _delete,
+                        icon: const Icon(Icons.delete, size: 18),
+                        label: const Text('Delete'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 60,
+                    child: AnimatedBuilder(
+                      animation: _progressController,
+                      builder: (context, child) {
+                        return LinearProgressIndicator(
+                            value: _progressController.value);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+
+    final slide = AnimatedSlide(
+      offset: Offset(_dragOffset / MediaQuery.of(context).size.width, 0),
+      duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
+      child: Column(
+        children: [
+          stackTile,
+          if (_expanded) _buildExpandedFields(context),
+        ],
+      ),
+    );
+
+    Widget? background;
+    if (_dragOffset != 0) {
+      final isCancelDrag = _optionsOpen &&
+          (Config.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0);
+      final dragToSelect =
+          Config.swipeLeftDelete ? _dragOffset < 0 : _dragOffset > 0;
+      if (isCancelDrag) {
+        final alignment =
+            _dragOffset < 0 ? Alignment.centerRight : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.orange.withValues(alpha: 0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      } else if (dragToSelect) {
+        final alignment = Config.swipeLeftDelete
+            ? Alignment.centerRight
+            : Alignment.centerLeft;
+        background = Positioned.fill(
+          child: Container(
+            color: Colors.blue.withValues(alpha: 0.5),
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: const Icon(Icons.checklist, color: Colors.white),
+          ),
+        );
+      } else {
+        final alignment = Config.swipeLeftDelete
+            ? Alignment.centerLeft
+            : Alignment.centerRight;
+        background = Positioned.fill(
+          child: Container(
+            alignment: alignment,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child:
+                Icon(Icons.undo, color: Theme.of(context).colorScheme.primary),
+          ),
+        );
+      }
+    }
+
+    Widget content = Stack(
+      children: [
+        if (background != null) background,
+        slide,
+      ],
+    );
+
+    if ((isAndroid || kIsWeb) && !widget.selecting) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) {
+          setState(() => _dragging = true);
+        },
+        onHorizontalDragUpdate: (details) {
+          setState(() => _dragOffset += details.delta.dx);
+        },
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          const threshold = 100;
+          final swipedRight = _dragOffset > threshold || velocity > 500;
+          final swipedLeft = _dragOffset < -threshold || velocity < -500;
+          final optionsSwipe =
+              Config.swipeLeftDelete ? swipedRight : swipedLeft;
+          final selectSwipe = Config.swipeLeftDelete ? swipedLeft : swipedRight;
+          if (_optionsOpen) {
+            // Swiping back toward the select side cancels the pending
+            // release change, mirroring the home list's cancel gesture.
+            if (selectSwipe) _closeOptions();
+          } else if (optionsSwipe) {
+            _startSwipeOptions();
+          } else if (selectSwipe) {
+            widget.onStartSelection();
+          }
+          setState(() {
+            _dragging = false;
+            _dragOffset = 0;
+          });
+        },
+        child: content,
+      );
+    }
+
+    return Card(
+      color: widget.selected
+          ? Theme.of(context).colorScheme.primaryContainer
+          : null,
+      child: content,
+    );
+  }
+}

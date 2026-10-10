@@ -1,0 +1,5397 @@
+# BestToDo — Complete Rebuild Specification & History
+
+> **Purpose of this document.** If the original authors, tooling, and AI sessions behind this
+> app disappeared tomorrow, this file is what a human or AI needs to rebuild BestToDo from
+> zero and to understand *why* it is built the way it is. Part I is the functional/technical
+> specification (what to build). Part II is the complete development history (every step the
+> project took and why). `CHANGELOG.md` remains the authoritative per-version record;
+> `.claude/notes/alarm-work-spec.md` holds the deep-dive on the alarm reliability sessions.
+>
+> Accurate as of version **0.1.88+58** (2026-07-07), commit history through the 0.1.88
+> full-screen alarm work.
+
+---
+
+# Part I — Rebuild specification
+
+## Usage and digital wellbeing dashboard
+
+Tools → Usage Data is both the raw-data export surface and an interactive
+wellbeing dashboard. It combines BestToDo's existing task lifecycle, startup,
+alarm, timer, and daily-stat records with optional Android system usage
+sessions. Today, current-week, current-month, and current-year filters drive
+the summary cards, hourly chart, app ranking, and productivity measures.
+
+Android integration uses the `besttodo/digital_wellbeing` method channel and
+`UsageStatsManager.queryEvents`. The user must deliberately grant Usage Access
+in Android settings; without it the BestToDo dashboard and CSV exports still
+work normally. Foreground/resumed and background/paused pairs become local
+sessions with package label and Android app category. No usage data is sent to
+a server and the feature never blocks another app.
+
+Supportive insights call out late-night use and repeated sessions without
+shaming language. Goals are disabled by default and persisted in shared
+preferences (daily minutes, pickup limit, bedtime, and no-phone start hour).
+The dashboard always retains the selectable detailed CSV export as an
+expandable drill-down.
+
+## 1. What the app is
+
+BestToDo is a **swipe-first, ultra-fast to-do app** built with Flutter, primarily targeting
+Android. Tasks default to *today*; you move them forward in time with gestures. The design
+philosophy (from README, unchanged since the start):
+
+1. **Less than 1 second cold startup.**
+2. **It must not be possible to do the same thing in fewer clicks/steps.**
+3. **Open source.**
+
+Everything else — widgets, alarms, SMS accountability reports, timelines, stats — grew around
+that core. The app deliberately has **no backend, no accounts, no database**: all state is
+plain JSON files in the app documents directory.
+
+- App name: `besttodo`, display "BestToDo". Application id: `com.mfficiency.best_todo_2`.
+- Primary/seed color: `#005FDD` (rgba(0, 95, 221, 1)), Material 3, light + dark themes via
+  `ColorScheme.fromSeed` with primary forced to the seed.
+- Version scheme: `x.y.z+build` in `pubspec.yaml` (`0.1.87+57` = versionName 0.1.87,
+  versionCode 57).
+
+## 2. Tech stack & repository layout
+
+Flutter (Dart SDK >=3.0.0), tested against Flutter 3.29.2 in CI. Key directories:
+
+```
+lib/main.dart            app entry, widget background callback, MyApp/theme/start page
+lib/config.dart          runtime + persisted configuration (settings.json)
+lib/models/              task, daily_task_stats, alarm, countdown_timer, countdown_milestone, sms_*
+lib/services/            storage, startup times, log, notifications (io/web/stub),
+                         alarm pipeline (service/notification/watchdog/diagnostics/log/
+                         storage/ids/widget), sms report (scheduler/service/config/log),
+                         usage_data
+lib/ui/                  all pages (home, settings, chronize, alarms, stats, usage data, …)
+lib/utils/               task_utils (bucketing, sorting, 18:00 normalization), date_time_format
+android/                 manifest, Kotlin widget providers, Gradle config, debug keystore
+test/                    unit + widget tests; integration_test/ for screenshot E2E
+tool/                    build.sh, bump_version.dart, icon scripts, screenshot changelog
+.github/workflows/       build-apk, flutter_test, screenshot_changelog
+```
+
+Dependencies and why they exist:
+
+| Package | Purpose |
+|---|---|
+| `path_provider` | app documents / downloads dirs (all JSON persistence, CSV export) |
+| `shared_preferences` | small flags (intro_shown, watchdog/ack registries) |
+| `uuid` | v4 ids for tasks, alarms, timers |
+| `home_widget` | home-screen widgets (task list + alarm widget, background taps) |
+| `flutter_local_notifications` | task notifications + the alarm-clock delivery path |
+| `android_alarm_manager_plus` | background Dart isolates for SMS report + alarm watchdog |
+| `another_telephony` | SMS sending (daily report) |
+| `permission_handler` | runtime permissions (notifications, SMS, exact alarm, battery) |
+| `timezone` + `flutter_timezone` | correct zoned alarm scheduling (DST-safe) |
+| `device_info_plus` | emulator detection; OEM name for alarm diagnostics |
+| `package_info_plus` | runtime version for About page / export manifests |
+| `file_selector` | directory pickers for export/import |
+| `fl_chart` | startup-times line chart |
+| `flutter_markdown` | renders CHANGELOG.md in-app |
+| `url_launcher` | About page links |
+| `cupertino_icons` | iOS-style glyphs |
+| `youtube_explode_dart` | MP3 Downloader: YouTube search/metadata/audio-stream resolution and download (pure Dart, no API key, no native code — see §10.6d for why it deliberately doesn't also depend on an ffmpeg-kit variant) |
+
+## 3. App startup sequence (order matters)
+
+`main()` in `lib/main.dart`, strictly in this order:
+
+1. `StartupTimeService.start()` — stopwatch for the <1s cold-start budget.
+2. `WidgetsFlutterBinding.ensureInitialized()`.
+3. `await Config.load()` — reads `settings.json` so theme/tabs are right before first frame.
+4. `await NotificationService.initialize()` — plugin + notification channels.
+5. Non-web: `await SmsReportScheduler.applyFromConfig()` — restore the daily SMS alarm chain.
+6. `await AlarmService.instance.load()` — load persisted alarms.
+7. `unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'))` — deliberately
+   NOT awaited; writing the diagnostics snapshot must never delay the first frame
+   (this fixed a black-screen-at-open bug, v0.1.85 era).
+8. Home-widget setup in try/catch: `HomeWidget.setAppGroupId` +
+   `registerInteractivityCallback(alarmWidgetBackgroundCallback)`.
+9. SharedPreferences → `showIntro` = `!intro_shown || !Config.modeChosen`
+   (always skipped in dev builds); the mode question closes the intro, so an
+   unanswered mode brings the whole welcome flow back rather than the chooser
+   alone. `showStartupChoice` = `!startup_choice_made`, a separate one-time
+   flag (0.1.242) decoupled from `intro_shown` so it survives being
+   interrupted mid-onboarding; on an install where `intro_shown` was already
+   true the very first time this flag is read, it backfills to "already
+   answered" so nobody upgrading from an older build is asked it.
+10. `runApp(MyApp(showIntro, showModePicker: !showIntro && !Config.modeChosen,
+    showStartupChoice))`; post-frame → `StartupTimeService.record()`.
+    `MyApp.home`: intro (slides + mode choice) → startup choice (fresh
+    install only) → `_initialPage()`. The standalone `ModeSelectPage` is only
+    for asking the mode question again (Settings → Mode & features, §4.6).
+    **Web dev runs** (`kIsWeb && Config.isDev`, i.e. `flutter run -d chrome`,
+    0.2.100) open `WebDataChoicePage` before all of that: "Demo data" (the
+    dev seeds, as before) or "Real data from Todoist". Real data takes the
+    token from `--dart-define=TODOIST_TOKEN=...`, a token remembered in the
+    browser (SharedPreferences key `web_todoist_token`), or the text field;
+    validates it, sets `Config.webRealData = true` (runtime-only), runs
+    `TodoistSyncService.startFirstLaunchImport` and awaits its background
+    phase too, then opens the app. While `webRealData` is set,
+    `StorageService` keeps the task list in an in-memory string instead of
+    `tasks.json` (the web has no documents dir), `HomePage` reloads from it
+    like on a phone, and every dev seed gated on `Config.seedDevData`
+    (`isDev && !webRealData`: home tasks/projects/stats/streak, countdown
+    timers, food diary) is skipped. Two-way sync stays on, so edits made in
+    the browser sync back to Todoist. Nothing survives a page reload.
+
+**Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
+callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
+background notification-action handler) must first call
+`WidgetsFlutterBinding.ensureInitialized()` **and** `DartPluginRegistrant.ensureInitialized()`.
+A fresh background isolate has no plugin channels; without this, path_provider/notifications/
+telephony silently no-op.
+
+## 4. Core task system
+
+### 4.1 Task model (`lib/models/task.dart`)
+
+Uuid-v4 `uid`; JSON keys equal field names. Fields: `title`, `description`, `note`, `label`
+(single string), `createdAt`, `completedAt`, `movedAt`, `rescheduledAt`,
+`startAt`/`endAt` (schema v2, 0.1.109 — the scheduled interval; deadline-style tasks have
+`startAt == endAt`; `dueDate` is now a compat getter (= `endAt`) / setter (collapses the
+interval to a deadline) and is still written to JSON as a mirror so downgrades/old imports
+work; records carry `schemaVersion` (current 2), v1 records upgrade on read via
+`fromJson`'s `dueDate` fallback; derived getters `allDay` (= `!hasExplicitTime`) and
+`duration`),
+`deletedAt`, `autoDeleted` (swept at rollover vs manual delete), `isDone`,
+`hasExplicitTime` (protects a deliberately chosen time from the 18:00 normalization),
+`listRanking` (int?, omitted from JSON when null, renumbered 1-based per tab on every save),
+recurrence (rebuilt 0.2, see §4.3 "Recurrence" below for the full model):
+`isRecurring`, `recurrenceFrequency`/`recurrenceInterval`/`recurrenceWeekdays`,
+`recurrenceEndType`/`recurrenceEndDate`/`recurrenceOccurrenceCount`,
+`recurrenceExceptionDates`, `recurrenceOverride`, `recurrenceParentUid` +
+`recurrenceInstanceKey` (`yyyy-MM-dd`) on generated children; legacy `recurrenceIntervalDays`
+kept for on-disk compat and migrated into the new fields on read.
+Projects (0.1.89): `projectId` (String?, omitted from JSON when null) + `kanbanStatus`
+(`'todo'`/`'ongoing'`/`'closed'`, constants on `Task`, defaults `'todo'`).
+Wishlist (0.1.101): `isWish` (bool, default false) marks a task as a wishlist item
+(see §10.6); wish tasks are undated and undated tasks bucket into the Future tab.
+Food Diary (0.1.266): `isEatingHabit` (bool, default false) marks a task as a food
+diary entry (see §10.6a); gated out of every other view by
+`ItemViews.isVisibleInMainViews`. Stomach issue entries (0.2.44, multi-select symptom
+type 0.2.45, Start/Stop clearable to neither 0.2.46): `isStomachIssue` (bool, default
+false) + `stomachEventType` (nullable String, `'start'`/`'stop'`/null — null both before
+any dialog interaction and when the user deliberately clears the toggle) +
+`stomachSymptomTypes` (`List<String>`, default `[]`, omitted from JSON when empty;
+`fromJson` also accepts the 0.2.44-only singular `stomachSymptomType` string and wraps
+it in a one-item list) + `stomachIntensity` (nullable int) mark an `isEatingHabit` entry
+as a logged stomach issue rather than a meal — see §10.6a.
+Attachments (0.1.277): `attachments` (`List<Attachment>`, default `[]`, omitted from JSON
+when empty) — see §4.1a.
+`fromJson` is tolerant: missing keys get defaults.
+
+### 4.1a Attachments (`lib/models/attachment.dart`, 0.1.277)
+
+An `Attachment` is a note or file hung off a `Task`: uuid-v4 `uid`, `type` (`Attachment.
+typeText`/`typeImage`/`typePdf`), `text` (inline content — used only by `typeText`),
+`fileName` (original picked file name — used only by the file-backed types), `relativePath`
+(the copy's path relative to the app documents dir — null for `typeText`), `createdAt`.
+`toJson` omits empty `text`/`fileName` and null `relativePath`; `fromJson` defaults a missing
+`type` to `typeText` so a stripped/legacy payload still parses.
+
+`AttachmentStorageService` (`lib/services/attachment_storage_service.dart`, singleton
+`.instance`) owns the on-disk side for image/PDF attachments — text attachments never touch
+it. `importFile({taskUid, sourcePath, type})` copies the picked file's bytes into
+`<docs>/attachments/<taskUid>/<attachmentUid>.<ext>` (never moves/deletes the source) and
+returns the `Attachment`; `absolutePath(relativePath)` resolves a stored path back to an
+absolute one for display; `deleteAttachmentFile(attachment)` removes one copy (no-op for
+`typeText`); `deleteAttachmentsForTask(taskUid)` removes a task's whole attachments
+subdirectory. `StorageService.loadBinTaskList`'s age-based retention purge (§4.2g) calls
+`deleteAttachmentsForTask` for every task it expires out of the bin, so attachment files
+don't outlive the task they belonged to.
+
+UI: `AttachmentsField` (`lib/ui/attachments_field.dart`) is the editor, embedded in the
+task tile's expanded editor (`lib/ui/task_tile.dart`, alongside the label picker) and, in
+`readOnly: true` mode (view/open only, no add row or remove buttons, hidden entirely when
+there are none), on `TaskDetailPage`. Adding an image/PDF uses `file_selector`'s `openFile`
+(already a dependency, used elsewhere for import/export) with an extension-filtered
+`XTypeGroup`; adding a note opens a plain multiline-text `AlertDialog`. Tapping a text
+attachment reopens that dialog pre-filled (edit in place, not read-only mode); tapping an
+image opens a full-screen `InteractiveViewer`; tapping a PDF (or any other file-backed type)
+hands it to `share_plus`'s `SharePlus.instance.share(ShareParams(files: [...]))`, i.e. "open"
+is implemented as the platform share sheet rather than an in-app viewer.
+
+`TaskDetailPage`'s app bar carries an info icon (tooltip "Show all task metadata") that opens
+an `AlertDialog` with two selectable-text sections: the hidden Todoist sync trailer — the same
+text `TodoistMetadataCodec.build` would append to the description when pushing this task to
+Todoist (uid, note, label, project, Kanban stage, createdAt, all normally invisible in the
+regular view) — and a pretty-printed dump of `Task.toJson()` covering every field the model
+persists (schema/internal timestamps, recurrence bookkeeping, `listRanking`, `kanbanStatus`,
+raw `attachments`, etc.), so nothing about the task stays hidden from the user who asks.
+
+Dev seed: `home_page._loadTasks` backfills a demo text attachment onto one starter task
+(`Config.initialTasks[1]`, falling back to the first non-wish/non-food-diary task) whenever
+`Config.isDev` and no task carries an attachment yet, so the "task expanded with an
+attachment" state is visible on a fresh dev/laptop run without adding one by hand — every
+other starter task stays attachment-free, showing the "without" state alongside it.
+
+`DailyTaskStats` (per day, keyed `yyyy-MM-dd`): sets of task uids —
+`openingTaskIds`, `movedFromOpeningTaskIds`, `completedFromOpeningTaskIds`,
+`createdDuringDayTaskIds`, `completedFromCreatedTaskIds`. Powers the stats page and CSV
+rollups.
+
+### 4.2 Persistence (all in app documents dir, JSON, `flush: true`, errors swallowed)
+
+| File | Content | Cap |
+|---|---|---|
+| `settings.json` | Config map | — |
+| `tasks.json` | active tasks (incl. recurrence children and `isWish` wishlist items) | — |
+| `wishlist.json` | legacy wishlist store; drained into `tasks.json` on load since 0.1.101 | — |
+| `deleted_tasks.json` | archive (Archived Items — "deleted" but restorable, never age-purged) | **100**, trimmed on save+load |
+| `deleted_bin.json` | the real Deleted bin — see §4.2g | **100**, trimmed on save+load; also age-purged past `Config.deletedItemsRetentionDays` |
+| `daily_task_stats.json` | one record per day | — |
+| `last_opened.txt` | ISO timestamp for day-rollover detection | 1 value |
+| `countdown_timers.json` | timers (null = first run, [] = emptied) | — |
+| `startup_times.json` | plain ms ints | 100 |
+| `startup_history.json` | `{at, ms}` per launch | 5000 |
+| `alarms.json` | alarm list | — |
+| `sms_report_config.json` / `sms_report_log.json` | SMS config / log | log 500 |
+| `alarm_log.txt` | human-readable alarm pipeline log | ~400 KB → trim to 250 KB |
+| `item_events.jsonl` | append-only item history journal (one JSON event per line) | ~1 MB → keep newest 4000 |
+| `item_event_meta.json` | per-item last sequence number (`{uid: seq}`) | — |
+| `sync_log.json` | `{unseen_error, entries[]}` background-sync history (§4.7) | 100 entries |
+
+**Day rollover:** on load, if the calendar date changed since `last_opened.txt`, every
+`isDone` task gets `completedAt`/`deletedAt` backfilled, moves to the top of the deleted
+list, and is removed from active tasks. The dev date-stepper does the same on forward steps
+(and marks them `autoDeleted: true`; the load-time sweep historically does not — a known
+inconsistency: load-swept show "Deleted", dev-swept show "Auto-deleted").
+
+**Invariant:** `_ensureUniqueIds` on every load/import reassigns empty/duplicate uids.
+
+**Export/import:** three exports (Tasks / Settings / Everything) written to a user-picked
+folder with timestamped names. Tasks bundle is `export_version: 2` with `tasks`,
+`deleted_tasks`, `daily_stats`, derived `task_events`, `labels`, `projects`. Settings and
+Everything use `export_version: 1` (two version namespaces — intentional). Import
+auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
+only `settings` = settings; else tasks bundle.
+
+**Automatic backup (0.1.130):** Settings → Backup schedules the Everything export
+(`AutoBackupService`, `lib/services/auto_backup_service.dart`): frequency off/daily/weekly
+(`Config.autoBackupFrequency`, default off) into a user-picked folder
+(`Config.autoBackupDirectory`), checked after the home page loads and on every app resume
+(`maybeRun`, cheap no-op when off). Daily = first check of each calendar day; weekly =
+≥ 7 days since the last run. The last successful run is stored in `last_auto_backup.txt`
+in the documents dir — deliberately *not* in settings.json, so importing an old settings
+export cannot fake a recent backup. Backups read straight from disk
+(`readTaskListRaw` etc., not the home page's in-memory list), are written as
+`besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
+The Backup section also offers a "Back up now" tile and shows the last backup time.
+
+Next to that JSON file, the same run writes a same-timestamped folder
+`besttodo_backup_<yyyymmdd_hhmmss>/` — a Markdown mirror
+(`MarkdownBackupService`, `lib/services/markdown_backup_service.dart`), export-only (Import
+never reads it). One subfolder per item type — `Tasks/` (active, Archived Items and real
+Deleted-bin tasks together, tagged with a `status: active|archived|binned` field since
+they're the same kind of item and differ only in which list currently holds them),
+`Projects/`, `Alarms/` (standalone alarms only; task-linked reminders are folded into their
+task's note), `Countdown Timers/` — each holding one `.md` note per item (filename:
+sanitized title + 8-char uid suffix). Every note, whatever the type, follows the same
+layout so one Obsidian template/Dataview query covers the whole vault: YAML frontmatter
+(Obsidian's Properties panel, collapsed by default — the note's "hidden" fields: `uid`,
+`type`, `created`, `description` mirrored raw, `tags`, `reminders` — human-readable
+anchor/offset/melody/volume/vibrate summaries pairing each linked alarm's schedule with its
+notification settings — plus every other field the JSON backup carries: due date, project,
+kanban status, wish/food-diary/recurring flags, recurrence detail, attachments summary,
+etc.), then the visible body: `# Title`, the description paragraph, `## Notes`, `## Links`
+(tags rendered as `[[wikilinks]]` for Obsidian's graph view), `## Edit History` (from
+`ItemEventJournal`, one line per event with its source and field-level patch). Two more
+folders describe the app rather than its items: `Views/` — one note per
+`ViewFilterRules.viewIds` (Home, Wishlist, Waiting for Approval, Projects, Food Diary,
+Alarms, Countdown, Archived items, Deleted bin), each showing its built-in structural rule,
+its configured Settings → Filtering rules include/exclude tags (live from
+`Config.viewFilterRules`/`ViewFilterRules.defaultsFor`), and its `ViewPresentation`
+cosmetics, plus a Home-specific tab-bucketing table and a Projects-specific Kanban-column
+table — and `Settings/Settings.md` (a JSON snapshot of `Config.toMap()`, with
+`todoistApiToken` and `googleCalendarUrl` redacted — the JSON backup remains the only place
+those secrets survive a restore). Markdown-vault failures are caught and logged separately
+from the JSON write, so a Markdown bug can never fail the backup itself.
+
+### 4.2b Item history journal (0.1.106)
+
+`ItemEventJournal` (`lib/services/item_event_journal.dart`) records every change to a
+task as an immutable `ItemEvent` (`lib/models/item_event.dart`: eventId, itemId, per-item
+`seq` = version number, at, type, field-level `patch` [{field, from, to}], `seeded` flag)
+in append-only `item_events.jsonl`. `StorageService.saveTaskList` diffs the new list
+against the last persisted snapshot (static baseline set on load/save; first contact only
+snapshots, so test pre-saves stay silent) and enqueues the events on a fire-and-forget
+write chain — **saves and startup are not slowed; the journal is never read at startup,
+only on demand** (task-detail History section, export). Types: created / edited / labeled /
+scheduled / statusChanged / projectChanged / wishChanged / recurrenceChanged / deleted /
+restored. `listRanking` and the lifecycle timestamps are deliberately untracked (noise).
+A reappearing uid whose seq index (`item_event_meta.json`) is non-zero logs `restored`,
+not `created`. Self-compacts past ~1 MB to the newest 4000 events. Task exports carry the
+journal as `item_events` next to the derived `task_events`.
+
+**History seeding (0.1.107):** `ItemHistorySeeder.runOnce()` backfills the journal once
+per install from pre-journal data — task lifecycle timestamps (created/moved/rescheduled/
+completed/deleted + the restore heuristic), the deleted list, and `DailyTaskStats` id sets
+(at day-noon, only for uids still present somewhere, never duplicating timestamp-covered
+events). All seed events carry `seeded: true` ("(reconstructed)" in the timeline UI).
+Guarded by `item_events_seed_v1.txt`; scheduled from `main.dart` 3 s after the first
+frame so startup is untouched; `eventsForItem` sorts by `at` (then seq) because seeds are
+appended after any live events but describe an older past.
+
+### 4.2f Upgrade safety (0.1.113)
+
+No update path may lose data. Three layers (`lib/services/safe_file.dart`,
+`lib/services/pre_update_backup.dart`):
+
+1. **Atomic saves with rotation** — `SafeFile.writeString` writes `<file>.tmp` (flushed),
+   rotates the previous content to `<file>.bak`, then renames over. Applied to
+   `tasks.json`, `deleted_tasks.json`, `deleted_bin.json`, `daily_task_stats.json`,
+   `countdown_timers.json` and `alarms.json`. A crash mid-save can no longer leave a
+   half-written file.
+   Writes to the same path are serialized on a per-path future chain (overlapping
+   saves — e.g. delete + undo — would otherwise race on the shared `.tmp`; last
+   caller wins, a failed write still surfaces to its own caller only).
+2. **Corruption recovery** — loads go through `SafeFile.readWithRecovery`: an
+   unparseable main file is quarantined as `<file>.corrupt-<timestamp>` (so a later save
+   can never destroy the only copy — the pre-0.1.113 failure mode) and the `.bak` is
+   used instead. `wishlist.json` is deliberately excluded (its migration contract is
+   "unreadable file left untouched"); `loadCountdownTimers` keeps its null-vs-[] first-run
+   semantics by also checking the `.bak` for existence.
+3. **Pre-update snapshot** — `PreUpdateBackup.ensure()` runs before the first *write* of
+   a session (static bool → flag file `pre_update_backup_v1.txt` → once per install):
+   copies every data file (see `backedUpFiles`) verbatim into `pre_update_backup/`.
+   Never on the startup path. The wishlist drain saves the merged list BEFORE emptying
+   `wishlist.json` so the snapshot captures the original (re-merge on crash is deduped
+   by uid). Logged to App Logs. `last_run_version.txt` records the running version
+   (deferred from `main.dart`) for future version-specific migrations.
+
+Covered by `test/core/upgrade_safety_test.dart` (payload matrix from the no-uid era
+through projects/wishlist to schema v2, corruption drills, snapshot invariants) and
+`test/alarms/alarm_storage_recovery_test.dart`.
+
+### 4.2e Repository seam (0.1.112)
+
+`ItemRepository` (`lib/services/item_repository.dart`, singleton) is the one interface
+pages use for the item store: `loadItems`/`saveItems` (task list),
+`loadDeletedItems`/`saveDeletedItems`, `loadDailyStats`/`saveDailyStats`,
+`historyOf`/`allHistory` (journal). Today it delegates to `StorageService` +
+`ItemEventJournal`; swapping the backend (SQLite, sync) happens inside this class only.
+Backup/export tooling stays on `StorageService` directly (it deals in files). The
+decision to stay on JSON files — and the concrete triggers for revisiting (sync, ~5k
+items / ~2 MB, measured startup regression) — is recorded in
+`docs/architecture/storage-decision.md`.
+
+### 4.2d Views as queries (0.1.111)
+
+`ItemViews` (`lib/services/item_views.dart`) is the shared query layer over the one task
+list: pure static selectors `inHomeBucket`/`homeBucket` (date-only distance bucketing +
+`sortTasks`, optional extra predicate for search), `wishlist` (isWish), `foodDiary`
+(isEatingHabit, §10.6a), `active` (deletedAt == null), `projectTasks`, `boardColumn`. The
+home page's `_tasksForTab`, the Wishlist/Food Diary pages, the Projects page (counts +
+top pane) and the Kanban board all delegate to it; the Future-tab sentinel date
+(2300-01-01) lives here as `futureSentinelDate`. Membership flags on the task stay the
+stored form (dual-write era) — this step moves the *reading* of them into one place.
+`isVisibleInMainViews` (`isApproved(t) && !t.isEatingHabit`) is the combined gate every
+selector except `foodDiary`/`waitingApproval` filters through — a food diary entry, like
+an unapproved Todoist pull, is invisible everywhere but its own tool.
+
+Every selector above, including `waitingApproval` (0.1.272), also takes an optional `rules`
+(`ViewFilterRules?`, see §4.4 "Filtering rules"), checked via `ItemViews.passesFilterRules` —
+an extra, user-configured tag layer on top of the view's own structural query. `applyFilterRules`
+filters a plain list the same way (used for the Archived Items and Deleted bin pages, neither
+of which is itself a selector — see §4.2g). A null or empty `rules` is a no-op, so every existing
+call site that does not pass one is unaffected. The home screen's two bodies share one
+entry point into all of this (0.2.46): `isOnHomeScreen` (structural gate + the caller's own
+predicate + `passesFilterRules`), which `homeBucket` applies per tab and `homeVisible`
+applies to the whole unbucketed list the schedule view renders — see §4.4's "The three ways
+the demo gate was still leaking".
+
+### 4.2e Waiting for Approval gate (0.1.256, token respelled 0.1.259)
+
+Every task `TodoistSyncService._taskFromRemote` builds — first-launch import and the
+"brand-new Todoist tasks" pull alike — is stamped with `waitingApprovalToken`
+(`lib/utils/label_utils.dart`). `ItemViews.isApproved` makes that token the gate on
+*every* other selector (home buckets, wishlist, active, project tasks, board columns), so
+a task "created with the Todoist workflow" is invisible everywhere until a human decides
+on it in Tools ▸ menu ▸ **Waiting for Approval** (`lib/ui/waiting_approval_page.dart`,
+listed via `ItemViews.waitingApproval`, the one selector that shows *only* gated tasks).
+Approve strips the token (`removeWaitingApprovalToken`) and the task drops into whatever
+list it belongs to; Deny soft-deletes it straight into the real Deleted bin
+(`deleted_bin.json`, recoverable from Deleted Items until it ages out — see §4.2g), never
+into the archive, since a denial was never wanted in the first place.
+
+**Schedule view bypassed the gate (fixed 0.1.261):** `HomePage._buildScheduleBody` built
+the calendar/schedule view's list straight from the raw `_tasks`, not through
+`ItemViews.homeBucket` like the tab list view — so a gated task with a due date (Todoist
+due dates survive onto the stub) rendered under its date in Schedule view even while
+correctly hidden from the tab view. Fixed by filtering `_tasks` through
+`ItemViews.isApproved` before handing it to `ScheduleView`, same as every other surface.
+
+**The home-screen widget bypassed it too, and kept a denied task (fixed 0.1.262):**
+`TaskWidgetService.todayTasks` selected purely on `dueDate`, so a gated task due today sat
+on the Android task widget — and denying it did not take it off, because the widget is only
+pushed by `HomePage._saveTasks`, which the self-contained approval page never calls. Both
+halves are fixed: `todayTasks` now drops `deletedAt != null` and `!ItemViews.isApproved`
+rows (the widget mirrors the same views layer as every list), `WaitingApprovalPage._save`
+pushes `TaskWidgetService.sync` after persisting, and `HomePage._reloadTasksFromStorage`
+(the return path from the approval page, the wishlist and a Todoist pull) pushes as well.
+`toggleInStorage` also re-syncs when the tapped uid is gone, so an already-stale row
+clears itself instead of doing nothing.
+
+**The token is `Waiting_for_approval`, one underscored word (0.1.259).** Label tokens
+split on commas AND whitespace (`_tokenSeparator` = `[,\s]+`), so a Todoist label spelled
+`Waiting for Approval` arrives as three unrelated tags — `Waiting`, `for`, `Approval` —
+that gate nothing. The underscored spelling survives the split as a single tag on both
+sides, and round-trips through Todoist's native `labels` array unchanged. Matching is
+case-insensitive throughout, and `legacyWaitingApprovalTokens` keeps the pre-0.1.259
+`waiting-for-approval` spelling recognized (still gates a task, still stripped on
+approval) but never writes it again — so tasks pulled in before the rename don't get
+stranded. Use `hasWaitingApprovalToken`/`removeWaitingApprovalToken` rather than
+`labelHasToken`/`removeLabelToken` with the constant, or the legacy spelling is missed.
+
+The token is local-only at import: the sync map's fingerprint baseline is computed *with*
+it, so the initial pull pushes nothing back and the Todoist item's `labels` array stays
+untouched. Approving changes `_localFingerprint`, so the next sync pushes the shortened
+label array — the tag is removed on the Todoist side too, exactly once.
+
+**Swipe approve/deny (0.1.272), matching `TaskTile`'s move/delete swipe exactly:** each
+row in `WaitingApprovalPage` (`_PendingTaskTile`) carries the same gesture mechanics as
+the home list and the Wishlist tile (drag with `AnimatedSlide`, 100 px/500 velocity
+thresholds, directions honor `Config.swipeLeftDelete`, `GestureDetector` on Android/web).
+The approve-side swipe opens a shortcut row of every `Config.tabs` label (Today/Tomorrow/
+Day After Tomorrow/Next Week/Next Month/Future) with the `Config.delayDuration` countdown
+bar; tapping one, or letting the countdown run out (default: Today), approves the task
+(`removeWaitingApprovalToken`) AND schedules it — sets `dueDate` to that bucket's date
+(same day math as `HomePageState._dueDateForTab`) plus `movedAt`/`rescheduledAt`. The
+deny-side swipe opens a Deny button plus Fri/Sat/Sun/Mon weekday shortcuts (same set as
+`TaskTile`'s delete-side weekday options): a weekday shortcut approves the task onto the
+next occurrence of that day instead of denying it; Deny, or letting the countdown run out,
+denies the task with the same home-style undo snackbar as everywhere else in the app —
+only after the undo window expires does it move to the real Deleted bin (previously
+`_deny` moved it there immediately, with no undo). Swiping back toward the other side
+while options are open cancels, as on the home list. The original leading/trailing
+Approve/Deny icon buttons are unchanged: they stay one-tap alternatives that lift the
+approval gate (or deny) without touching `dueDate`.
+
+**Inline expand, group-by-conversation and multi-select (0.2.17):** tapping a pending
+row (outside multi-select) toggles an inline details panel below it — no navigation, no
+dialog — showing `Created: <local createdAt>`, `From: <_groupKeyFor(task)>` (see below),
+and, if the task has a `TodoistSyncMapEntry`, a `Synced from Todoist:` line, mirroring
+`TaskTile`'s sync-info dialog fields but inline. Several rows can be expanded at once
+(`_WaitingApprovalPageState._expandedUids`, a `Set<String>` of uids).
+
+**Every detail, inline (0.2.21):** the same panel also shows `Note:` (if set), `Due:`
+(`dueDate`, if set), `Start:`/`End:` (if the task has a real start/end interval, not just a
+deadline-style due date) and an `Attachments: <count>` line, followed by a `Wrap` of every
+label tag on the task (`splitLabelTokens(task.label)`, approval-gate token included) —
+each chip colored exactly like `TaskTile._tag`/`TaskLabelLine` (`protectedChipColorFor`,
+deep-orange outline for a reserved token, `secondaryContainer` fill otherwise). The row's
+title and description are already visible above the panel unconditionally, so nothing
+further is needed there. A trailing "View full details" button pushes `TaskDetailPage`
+(the same page `DeletedBinPage`/`ArchivedItemsPage`/`ProjectBoardPage` use) for what still
+doesn't fit inline: the attachments viewer, the reminder toggle and the task's full
+journal history.
+
+An app-bar icon button (`Icons.view_agenda_outlined` / `Icons.view_list`, tooltip
+"Group by conversation" / "Show as one list") toggles `_groupByConversation` between a
+grouped `ListView` built the same way as `WishlistPage`'s release sections and the
+original flat `ListView.builder`: `_groupedPending` buckets the pending list by
+`_groupKeyFor(task)` (first-seen order), and each `_ApprovalGroupHeader` shows
+`<title> (<count>)`. Not persisted — every visit starts grouped (default flipped 0.2.28;
+was flat by default before), the more useful default once a conversation has more than a
+couple of pending items.
+
+**Retroactive grouping fallback (0.2.20):** `_groupKeyFor` (top-level function in
+`waiting_approval_page.dart`) picks the group key in three tiers, so items created before
+`Task.pendingSourceTitle` existed still land in a useful group instead of one giant
+catch-all: (1) `Task.pendingSourceTitle`, trimmed, when non-blank — the normal case; (2)
+otherwise, if `Task.createdAt` is set, the creation hour rounded down
+(`_hourGroupLabel`, `yyyy-MM-dd HH:00` local time) — a single sync run or batch-typed
+conversation creates all its items within seconds of each other, so the hour doubles as a
+same-batch proxy while also keeping different days apart; (3) otherwise (no `createdAt`
+either — items from before that field existed) `_unspecifiedGroupTitle`
+("Unspecified"). The same three-tier value backs both the group header and the details
+panel's "From:" line, so they always agree.
+
+Long-pressing a row (outside selection) starts multi-select — the same shape as
+`WishlistPage`'s swipe-triggered selection, but click-and-hold here since a pending row's
+swipe gestures are already spoken for (approve/deny). While selecting
+(`_selectedUids.isNotEmpty`), the app bar becomes "N selected" with Approve-selected
+(strips the token, like the plain Approve button — no date is touched) and
+Deny-selected (bulk `_deny`, one combined undo snackbar) actions; a row's leading icon
+becomes a `Checkbox` and its trailing Deny icon disappears (bulk actions live in the app
+bar only), and its swipe gestures are disabled for the duration. Tapping another row
+toggles it in/out of the selection; tapping a group header (grouped view) selects/
+deselects every item in that group at once, and long-pressing a header (outside
+selection) starts a selection with the whole group pre-checked — the header's checkbox
+is a plain `Icon` rather than a real `Checkbox`, since a `Checkbox` owns its own tap
+recognizer that would compete with the header's `InkWell` for the same tap.
+
+`Task.pendingSourceTitle` (`lib/models/task.dart`) is the field behind "From:" and the
+grouping key: set only by `TodoistSyncService._taskFromRemote` (both call sites — the
+first-launch pull and the "brand-new Todoist tasks" step). Two sources feed it, checked
+in this order:
+
+1. **A `[Source: <title>]` marker** (0.2.18): a leading line on the pulled task's Todoist
+   description, recognized by `_sourceMarkerPattern`/`_extractSourceMarker`
+   (case-insensitive, tolerant of surrounding whitespace) and stripped from the visible
+   description before it becomes `Task.description` — so it never shows up in the task
+   body. Lets a routine that fans one run out across many small, unrelated conversations
+   (the Pocket-to-Todoist ingestion routine this was built for — see
+   `.claude/notes/pocket-todoist-ingestion.md`) name each task's source without creating
+   a dedicated Todoist project per conversation, which would litter the project list.
+2. **The Todoist project name** the task lived in, excluding Inbox (every task not
+   otherwise filed lands there, so its name carries no signal) — the fallback for a task
+   that *is* filed into a real per-conversation/per-topic Todoist project instead (e.g.
+   "Propose for next" above's shape: a Claude session with Todoist access using a project
+   as the grouping unit).
+
+Either way, no BestToDo-side change is needed beyond the creating routine adopting one of
+these two conventions — group titles and the "From:" line pick it up automatically on the
+next sync. It's local-only display metadata: never pushed back to Todoist, and never
+touches the sync fingerprints (adding it to a synced task doesn't trigger a push). A task
+with no source title falls through `_groupKeyFor`'s creation-hour and "Unspecified" tiers
+described above instead of piling straight into one catch-all group.
+
+`_taskFromRemote` also now prefers the pulled task's own Todoist-side creation time for
+local `createdAt` over "now" (the pull time): `_remoteCreatedAt` reads `added_at` (the
+unified API v1 field) or, defensively, `created_at` (the older REST v2 spelling), falling
+back to `DateTime.now()` if the API sends neither.
+
+**Quick-tag buttons in the expanded details panel → Research tool (0.2.22, moved from a
+double-tap menu to the details panel in 0.2.23):** tapping a pending row (the same plain
+tap that toggles the inline details panel — see 0.2.21 above) now shows, as the panel's
+first row, one button per configured `ApprovalQuickTag` (`lib/models/approval_quick_tag.dart`)
+— `_PendingTaskTileState._buildQuickTags`, a `Wrap` of `OutlinedButton.icon`s. Tapping one
+both approves the item (`removeWaitingApprovalToken`) and flips the `Task` flag its
+`target` names — `wishlistTarget` → `isWish = true`, `researchTarget` → `isResearch =
+true` — so it lands straight in that tool instead of the home tabs. (0.2.22 originally
+reached this from a double-tap `showModalBottomSheet`, hand-rolled tap-timing detection
+included — dropped for the simpler single-tap-then-tap-a-button flow, which needs no
+custom gesture handling at all.) `ApprovalQuickTagService`
+(`lib/services/approval_quick_tag_service.dart`, JSON file `approval_quick_tags.json`,
+`ValueNotifier`-backed like `AutoTagService`) seeds the default Wishlist/Research pair on
+first run and is fully user-editable at Settings ▸ Tasks ▸ **Approval quick tags**
+(`lib/ui/approval_quick_tags_page.dart`, mirrors `AutoTagRulesPage`'s list/add/edit/delete
+shape): each entry is a button label plus a `target` chosen from a fixed dropdown
+(`ApprovalQuickTag.targets`) — free-form destinations aren't supported since routing means
+flipping one of `Task`'s own membership flags, and only two exist today.
+
+**Research tool** (`lib/ui/research_page.dart`, Tools ▸ Research): a `Task.isResearch`
+gated view exactly like the Food Diary — `ItemViews.research` selects `isResearch &&
+isApproved`, and `ItemViews.isVisibleInMainViews` excludes research items from every main
+view (home tabs, schedule view, wishlist, projects, Todoist sync), so an item only shows up
+here (or, once deleted, Archived Items) — never on the home tabs. Items arrive either
+quick-tag-approved from Waiting for Approval, or typed directly with the page's own FAB
+(title, `LabelPickerField` tags, description, note and an optional due date). Since 0.2.84
+a research item has every field a normal item has: each entry is rendered with the home
+tabs' own `TaskTile` (done checkbox, tap to fold open for inline Title/Description/Note/
+labels/attachments/due date/Recurring editing, Notify and Send to Claude), and the collapsed
+tile shows its due date (a `Due yyyy-mm-dd` tag — research items aren't bucketed into dated
+tabs) and a collapsed description disclosure, like a wish. Swiping works exactly as on the
+home tabs: the reschedule options only change the item's due date (it stays in Research,
+`_ResearchPageState._rescheduleEntry`), and delete archives it with an undo snackbar,
+including the "this event / this and following / all events" scope dialog for a recurring
+item (`_requestDelete`, a port of `HomePage._requestDeleteTask`).
+`RecurrenceService.buildOccurrence` copies `isResearch` onto generated occurrences (like
+`isWish`), so a recurring research item's series never leaks onto the home tabs. `researchToken` (`'Research'`) is a `protectedStateTokens` entry
+and a full `ViewFilterRules` view id (`ViewFilterRules.research`), threaded through every
+other view's default Hide list the same way `fooddiaryToken` is — bumped
+`_currentViewFilterRulesSeedVersion` to 3 so existing installs re-sync their Filtering
+rules defaults to include it.
+
+### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
+
+What used to be the single "Deleted Items" list is now **Archived Items**
+(`lib/ui/archived_items_page.dart`, `deleted_tasks.json`, capped at 100 entries, never
+purged by age): every normal delete — a swipe/menu delete anywhere in the app, Chronize's
+delete, a wishlist delete, and the end-of-day sweep that clears finished tasks (both
+`HomePage._changeDate`'s in-session rollover and `StorageService.loadTaskList`'s
+across-launch rollover, both stamping `autoDeleted: true`) — lands here first, exactly as
+"Deleted Items" always worked. Restorable from there indefinitely.
+
+A second, real bin sits behind it: **the Deleted bin** (`lib/ui/deleted_bin_page.dart`,
+`deleted_bin.json`, same 100-entry cap) is reachable from an Archived Items app-bar action
+(`Icons.delete_forever`, tooltip "Deleted items (bin)"). An archived item's trailing icon
+(`Icons.delete_outline`, "Move to bin" — `HomePage._moveArchivedToBin`) sends it on; from
+there `Icons.delete_forever` ("Delete permanently") erases it for good, same undoable
+snackbar pattern as before. Left alone, an item in the bin purges itself automatically
+`Config.deletedItemsRetentionDays` days after it landed there (default 60, editable in
+Settings → Tasks → "Deleted items retention") — `StorageService.loadBinTaskList` sweeps
+expired entries and re-persists the trimmed list on every read, so the purge applies even
+if the bin page is never opened.
+
+**Denial skips the archive.** `WaitingApprovalPage._deny` was never "delete this task the
+user actually wanted" — it inserts straight into `deleted_bin.json` via
+`ItemRepository.loadBinItems`/`saveBinItems`, starting the retention clock immediately
+rather than sitting in the archive indefinitely.
+
+**Recurring instances and the archive/bin.** `HomePage._refreshRecurringForTask`
+regenerates any date between a recurring parent's due date and its `recurrenceEndDate`
+that is missing from `_tasks` — which, before this, included a date whose instance had
+simply been archived, silently recreating it on the next refresh (app restart, or any edit
+to the parent). The existing-dates lookup now also scans `_deletedTasks` and `_binTasks`
+for that `recurrenceParentUid`, so an archived or binned occurrence's date stays skipped:
+manually archiving one instance of a recurring task never regenerates it, and never
+disturbs the rest of the series. Since goal credit (`StreakGoal`/`_recordGoalCompletion`)
+only ever fires off an `isDone` toggle, an archived-but-incomplete instance was already
+never counted toward a goal — archiving just had to stop fighting the regeneration.
+
+`TodoistSyncService._runSyncBody`'s completed-vs-deleted reconciliation
+(`deletedByUid`) reads both the archive and the bin, so a task whose Todoist mapping
+predates it being moved on to the bin (denied, or sent there from Archived Items) is still
+recognized correctly.
+
+### 4.2c Structured labels (0.1.108)
+
+`Label` (`lib/models/label.dart`: id, name, kind `tag`/`priority`/`system`, optional ARGB
+color) + `LabelService` (`labels.json`, ValueNotifier singleton) form the structured half
+of a label dual-write: `Task.label` (the token string, split on commas/whitespace —
+helpers in `lib/utils/label_utils.dart`) stays canonical; every save auto-registers
+unseen tokens fire-and-forget (`registerFromLabelStrings` from `saveTaskList`; write-free
+when all tokens are known, nothing loads at startup). Kinds derive from the token:
+`priority-low/-medium/-high` → priority, `old` (Todo.md import marker) → system, else
+tag. Name matching is case-insensitive; `upsert` edits metadata (colour) by name.
+
+**Label picker (0.1.255):** `LabelPickerField` (`lib/ui/label_picker.dart`) replaces the
+raw comma-separated label text field everywhere a task's `label` is edited (task-tile
+inline editor, wishlist add dialog and its own inline editor). Current tokens render as
+removable `InputChip`s;
+an "Add label" chip opens a dialog with a search/create field over every known label
+(`LabelService.instance.labels`, checkbox-toggled) — typing a name that isn't already a
+label offers "Add "<name>"" to create and select it in one tap. Selection is staged in
+the dialog and only committed (chips update, `onChanged` fires) on "Done"; "Cancel"
+discards it.
+
+### 4.2e Auto-tagging (0.1.229, grouped dictionary 0.1.249)
+
+`AutoTagGroup` (`lib/models/auto_tag_group.dart`: tag, `keywords` list) + `AutoTagService`
+(`auto_tag_rules.json`, ValueNotifier singleton, `lib/services/auto_tag_service.dart`) —
+a user-editable tag → group-of-words dictionary, e.g. the `fitness` tag fires on any of
+`gym`/`workout`/`exercise`/`cardio`/`yoga`/`jogging`/`running`/`training`/`stretch`. Seeded
+with 12 starter groups (work, bike, fitness, health, shopping, finance, travel, home,
+family, food, study, tech) on first run, same load-seeds-and-persists / write-on-save
+shape as `ProjectService`; the starter word groups were curated from online thesaurus
+results (thesaurus.com, Merriam-Webster, WordHippo, relatedwords.io — via `WebSearch`)
+trimmed to common, everyday words. `withAutoTags(title, label)` is the one entry point:
+when `Config.autoTagEnabled` (default **true**) is on, `tagsFor` whole-word
+case-insensitively matches `title` against every group's keywords and every group with a
+hit contributes its tag; matched tags are appended to `label` (deduped against tokens
+already present via `label_utils`), a no-op otherwise. Called from the home page's
+`_addTask`/`_addTaskFromChronize` and the Wishlist page's new-item flow — edits never
+re-tag. `AutoTagGroup.fromJson` also accepts the original one-keyword-per-tag shape
+(`keyword` singular) from before groups existed, and `AutoTagService._normalize` (run on
+every load/save) merges any groups sharing a tag and dedupes their keywords, so old data
+and hand-edited duplicates both collapse into one clean group per tag. Settings → Tasks
+has the on/off switch ("Auto-tag new items") and an "Auto-tag rules" entry point
+(`AutoTagRulesPage`) to add/rename/delete a tag and edit its whole word group (comma/space
+separated) in one dialog. Deliberately dumb (a fixed dictionary, no real NLP), so it's
+cheap and predictable.
+
+**Smart auto-tag (0.2.91).** Optional fallback for titles the dictionary misses, using a
+*decision model* rather than an LLM: TypeSafe's Jev (`lib/services/jev_decision_service.dart`,
+`POST https://api.typesafe.ai/v1/systemone`, `model: jev-latest`, Bearer key). Decision
+models (Jev, Fastino's GLiDE / open-weight GLiNER2.5-Decide) take a `state` plus typed
+questions (`choice`/`score`/`noul`) and return a bounded answer with probabilities — no
+generated text, output tokens free, ~$0.04 per million input tokens. Picking a tag is
+exactly that shape. `AutoTagService.smartTagFor(title)` returns null unless
+`Config.autoTagEnabled` && `Config.smartAutoTagEnabled` (default **false**) && a non-empty
+`Config.jevApiKey`, *and* `tagsFor` found nothing (so the network is never hit for titles
+the dictionary already handles). It asks one `choice` question whose criteria are every
+tag group (`tag` → "Things related to: <keywords>") plus `AutoTagService.noTagOption`
+(`__none__`), and accepts the pick only if it's a real tag with confidence ≥
+`smartTagMinConfidence` (0.6). Any error (401/422/429/529, timeout after 10 s) → null.
+`HomePage._applySmartTagInBackground` runs it *after* `_addTask`/`_addTaskFromChronize`
+have added and saved the task, then adds the tag via `addLabelToken` and saves again if the
+task still exists — adding a task never waits on the network. Settings > Tasks: "Smart
+auto-tag (Jev)" switch (disabled while auto-tag is off) and, when on, a "TypeSafe API key"
+field (plain text in config, same caveat as the Todoist token). Tests:
+`test/home/smart_auto_tag_test.dart` (MockClient).
+
+### 4.2h Change sources & global Undo (0.1.281)
+
+**Source tracking.** Every `ItemEvent` now carries a `source` field — one of
+`TaskChangeSource`'s constants (`lib/models/task_change_source.dart`): `user` (default,
+omitted from JSON to keep old journal lines readable as-is), `sync` (stamped on every
+`TodoistSyncService` write — push, the two pull saves, §4.2 Todoist sync above), `share`
+(Android share-sheet tasks), `automation` (day-rollover archiving, recurring-task
+generation, shipped-wish auto-completion, wishlist migration), `undo`/`redo` (the global
+Undo/Redo below), and `system` (pre-journal history reconstructed by
+`ItemHistorySeeder`/the dev-seed timelines, which predates source tracking).
+`ItemEventJournal.diffSnapshots`/`recordDiff` and `StorageService.saveTaskList` take an
+optional `source` parameter (threaded through `ItemRepository.saveItems`) that's stamped
+on every event one save produces. The task-detail History section
+(`describeItemEvent`, `lib/ui/task_detail_page.dart`) appends `· <Source>` to non-`user`
+lines (e.g. "Created · Share"); a plain user action stays unadorned since that's the
+overwhelming majority of history.
+
+**Global Undo/Redo.** `TaskMutationService` (`lib/services/task_mutation_service.dart`,
+singleton) is a bounded (30-entry) undo/redo stack sitting alongside every task-list
+save, without owning persistence itself. The home page's three existing save
+chokepoints — `_saveTasks()`/`_saveDeletedTasks()`/`_saveBinTasks()`, which every
+mutation in the file already funnels through (active list, the Archived Items list, the
+real Deleted bin — §4.2g) — call `noteActiveChange`/`noteDeletedChange`/`noteBinChange`
+right alongside their existing `ItemRepository` call. All three notes coalesce into one
+microtask-scheduled flush, so an archive-then-bin move (`_moveArchivedToBin`, which
+calls `_saveDeletedTasks()` then `_saveBinTasks()` back to back, synchronously) becomes
+exactly one undo entry: **bulk/paired changes undo as one action** because Dart's
+microtask queue only drains after the current synchronous call stack finishes.
+`noteBaseline` is called once per session, right after `_loadTasks()` reads the three
+on-disk lists and before any seeding/migration mutates them, so the first save doesn't
+get diffed against nothing and misread as "everything was just created". Each flush
+that finds a real change pushes a three-way before/after snapshot (the same
+`uid → task JSON` shape `StorageService` diffs into the journal) with an auto-generated
+description (`TaskMutationService.describeChange`, tested directly): grouped per-task by
+what happened across all three lists — created/completed/reopened/rescheduled/moved/
+relabeled/archived/restored/deleted (archive → bin)/denied (straight to bin)/permanently
+deleted (bin → gone)/edited — collapsing a same-kind batch into one phrase ("Completed 3
+tasks") rather than one line per task. `undo()`/`redo()` persist the reverted/re-applied
+lists straight through `ItemRepository` tagged `TaskChangeSource.undo`/`.redo` —
+bypassing the note/flush path entirely, so applying an undo is never itself undoable,
+and (since `StorageService` runs its own independent before/after diff on every
+`saveTaskList` call) the per-task History timeline picks up an active-list revert as an
+ordinary tagged event for free. The home app bar carries Undo/Redo icon buttons
+(`ValueListenableBuilder` over `TaskMutationService.instance.revision`, disabled with
+nothing to act on); tapping either applies the returned snapshot to `_tasks`/
+`_deletedTasks`/`_binTasks` **in place** (`clear()` + `addAll()`, never reassigning the
+list) since other open pages (Projects, Archived Items, the bin) hold those exact list
+instances by reference, then shows a snackbar with the action's description. "Priority"
+is not a separate concept in this app — it is a `label` edit (`priority-low/-medium/
+-high` tokens, §4.2c) — so it is already covered by the mechanisms above without its own
+event type. `WishlistPage` and `WaitingApprovalPage` (whose `_deny` writes the bin directly, see
+§4.2g) each keep their own independently-loaded copy of the task list — not shared by
+reference with the home page — and are deliberately left out of this undo stack: wiring
+a second, independently-timed reader/writer into the same before/after baseline risks
+misreading ordinary staleness between the two pages as a real edit.
+
+### 4.2i Presentation filters / view configuration (0.2.5)
+
+`ViewPresentation` (`lib/models/view_presentation.dart`) is the presentation counterpart to
+`ViewFilterRules` (§4.4): where `ViewFilterRules` decides *which* items belong in a view
+(data filter), `ViewPresentation` decides *how* the items a view already selected are shown
+and edited (presentation filter) — the two-part split the item-model redesign calls for.
+Keyed by the same view ids (`ViewPresentation.forView(viewId)`); every field defaults to
+today's actual behavior, so a view that hasn't adopted it renders exactly as before. First
+(and so far only) consumer: `TaskDetailPage` — shared by the Projects board, Archived Items
+and the Deleted bin — takes an optional `viewId` that controls whether the item-linked
+capability sections (`TaskReminderSection`, `TaskCountdownSection`) render; archived/deleted
+items hide both, since offering to attach a *new* reminder or countdown to something already
+over is never useful (an existing linked reminder is already gone by then via
+`ReminderSyncService`). See `docs/architecture/presentation-layer-decision.md` for why this
+step stopped at one real consumer instead of rewriting every view's tile widget onto a shared
+config — `TaskTile` (Home) and the other bespoke tiles (Wishlist, Alarms, Countdown, Food
+Diary, Waiting for Approval, Projects) are unchanged.
+
+### 4.3 Home page UX
+
+Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next
+Month, Future**. Bucketing by date-only diff from the current date: `<=0` Today (overdue
+stays in Today), `1`, `2`, `3–29` Next Week, `>=30` Next Month, and Future = the sentinel
+due date `DateTime(2300,1,1)` (not null — null due dates appear in no tab). Moving to a tab
+sets due = today + `[0,1,2,7,30]` days, or the 2300 sentinel; note move offsets ≠ bucket
+ranges (Next Week accepts diff 3–29 but moves land on +7).
+
+**Ordering:** pending first, done last; within groups ascending `listRanking` (null last).
+Every save renumbers rankings 1..n per tab and then runs **`applyDefaultDeadlineTimes`**:
+per calendar day, tasks without `hasExplicitTime` get times 18:00, 18:01, 18:02… (ranking
+order, clamped 23:59) so same-day tasks never share a time. Chronize sets
+`hasExplicitTime = true` to opt out.
+
+**Adding:** add-task row at the top of each list; new tasks go to the top (ranking min−1)
+by default (`Config.addNewTasksToTop`, default true). Which *bucket* they land in is
+`Config.defaultAddTabIndex` (0.1.233): `addToCurrentTab` (−1, the default) files them under
+the open tab, an index 0–5 pins every quick-added task to that bucket, so an idea typed
+while Today is open can go straight to Future. `_addTargetTabIndex()` resolves it (falling
+back to the open tab for an out-of-range value) and the add row's label names the target
+whenever it is not simply the list you are looking at — "Add task · Future" — because a
+task silently appearing in another tab reads as a bug. The schedule view's active day still
+wins over the pinned bucket (there the day is picked explicitly). A mic button
+(`SpeechInputButton`, 0.1.288) sits beside the field: tap to start local
+speech-to-text (`speech_to_text` plugin, wrapped by `SpeechRecognitionService`),
+tap again to stop; the transcript is written straight into the field (appended
+to whatever was already typed), stays fully editable, and never auto-submits —
+the existing Add button/Enter key still does that.
+
+**Swipe gestures** (the heart of the app):
+- Android/web: custom `GestureDetector` swipe in `TaskTile` (threshold 100 px or velocity
+  500). iOS/desktop: plain `Dismissible` that moves to the next tab.
+- Direction is configurable (`swipeLeftDelete`, default true): one direction opens **Move
+  options** (a button per other tab), the other **Delete options** (Delete + next-Fri/Sat/
+  Sun/Mon reschedule shortcuts).
+- The options overlay auto-commits after a countdown (`defaultDelaySeconds`, default 5 s):
+  move → next tab; delete → delete. Swiping back the opposite way shows an orange
+  **Cancel** and aborts.
+- Emulators/web show explicit swipe/delete icon buttons instead (detected via
+  `device_info_plus`) because gestures are awkward there.
+
+**Delete is deferred:** the task leaves the active list immediately, but only lands in the
+archive after the undo-snackbar window (same 5 s default) so Undo can restore it
+in-place. Restore from Archived Items always resets due date to today.
+
+**Done:** checkbox sets `isDone` + `completedAt`, sinks to bottom with strikethrough;
+swept to the archive at day rollover.
+
+**Recurrence (rebuilt 0.2, `RecurrenceService`):** logic lives in
+`lib/services/recurrence_service.dart` (unit-tested in `test/recurrence/`), not the UI layer.
+A series is one master (`recurrenceParentUid == null`, `isRecurring`) plus generated child
+occurrences (`recurrenceParentUid == master.uid`); the master's own due date is slot 0.
+Rule fields on `Task`: `recurrenceFrequency` (`daily`/`weekly`/`monthly`/`yearly`),
+`recurrenceInterval` (every N units), `recurrenceWeekdays` (weekly multi-day, 1=Mon..7=Sun),
+`recurrenceEndType` (`never`/`date`/`count`) + `recurrenceEndDate`/`recurrenceOccurrenceCount`.
+A `never`-ending series only materializes a rolling ~60-day window (regenerated as time
+passes), not the whole future. `recurrenceExceptionDates` (slot `yyyy-MM-dd` keys) marks a
+slot a "delete this event" removed — `planRefresh` never regenerates an excepted slot, so a
+deleted occurrence stays deleted across reload/import (previously the #1 bug: deletion was
+only ever applied to the live list, so the very next regeneration silently recreated it).
+`planRefresh` also still cross-checks Archived Items and the Deleted bin (§4.2g) for a
+matching slot as a compatibility fallback, so occurrences archived before this rebuild (with
+no exception recorded) stay skipped too. `recurrenceOverride` (bool, on a child) marks an
+individually edited/moved occurrence;
+regeneration always preserves an override, even if the schedule later shrinks past its slot.
+Legacy `recurrenceIntervalDays` records migrate on read (`daily`, that interval).
+
+Google-Calendar-style **edit/delete scope** (`RecurrenceEditScope`, `recurrence_scope_dialog.dart`):
+deleting a series member (deferred to `_requestDeleteTask` in `home_page.dart`) asks *this
+event / this and following / all events* whenever more than one occurrence exists.
+"This event" adds the slot to `recurrenceExceptionDates` (or, deleting the master itself,
+promotes the next occurrence to take over as the new master —
+`RecurrenceService.promoteNextOccurrenceAsMaster`). "This and following"/"all events" use
+`RecurrenceService.truncateSeriesBefore` to end the old series and batch-delete the tail (full
+undo restores every task removed, not just one — `_deleteTasksBatch`). Editing a child's own
+due date (the "Pick due date" button) asks the same *this event/this and following* question;
+"this event" moves just that occurrence and flags it an override (its slot stays reserved, so
+it's never duplicated or lost); "this and following" (`RecurrenceService.reanchorSeriesFrom`)
+splits the series there, turning that occurrence into a new master and shifting its
+non-override tail siblings by the same delta so they keep matching the (unchanged) pattern.
+Moving/rescheduling via a quick gesture (swipe, drag, dice postpone) keeps the occurrence in
+its series as an override rather than detaching it. Regenerated after load, import, and any
+master edit.
+
+**Creating a recurring task:** the add-task row's Repeat button (`Icons.repeat`) opens a
+Calendar-style quick sheet — Does not repeat / Daily / Weekly on `<today>` / Monthly / Yearly
+(all default to no end) / Custom... (the full `RecurrenceEditor`, also used by the tile's
+inline editor and the sheet's "Custom..." dialog) — and arms it for the next task created
+from that row only.
+
+**Inline editing:** tapping a tile expands it — title/description/note text fields (editing
+a child field marks it an override) and a `LabelPickerField` (§4.2c, persists immediately on
+each add/remove) for labels, due-date picker, recurring switch + `RecurrenceEditor`
+(frequency/interval/weekday chips/never-date-count end) for a master, a Notify bell, collapse
+button. Text fields persist on change/focus loss.
+
+**Notify bell (delay sheet 0.1.233):** the bell asks *when* first — a modal sheet headed
+`Notify me about "<title>"` offering In 5 minutes / In 20 minutes / In 1 hour
+(`_notifyDelayOptions`) plus "Default delay", which keeps the old behaviour of
+`Config.defaultNotificationDelaySeconds` and shows it as `In 05:00 — set in Settings`.
+Picking one schedules a task notification (quiet hours still shift it, see §6) and
+confirms with "Notification scheduled in 5 minutes"; dismissing the sheet schedules
+nothing. The task's due date is never touched — this is a reminder, not a reschedule.
+With notifications off the bell skips the sheet and shows "Enable notifications in
+Settings first".
+
+**Schedule view:** app-bar toggle swaps the tabbed lists for one long day-grouped list
+(`ScheduleView`); tabs become scroll anchors; overdue rolls up under Today; each day
+section is a `ReorderableListView`; "Someday" holds the 2300-sentinel tasks.
+
+**Schedule view active day (0.1.91):** each top-level list child is one whole day
+section (header + rows) so scroll tracking can measure it: the bottom-most section whose
+top edge sits at/above 12 px below the list top is the "active" day — its header is
+highlighted (primaryContainer + 3 px primary left border, `ValueKey('active-day-header')`)
+and `onActiveDateChanged` reports its date to the home page, which shows it in the
+add-task label ("Add task · Aug 1") and uses it as the new task's `dueDate` (instead of
+the current tab's bucket) while the schedule view is open. Empty "Next week"/"Next month"
+range sections target today +7/+30; Someday targets the 2300 sentinel; when a range has
+days its header is grouped into the first day's section. Bottom padding is
+`max(32, viewport − 56)` so even the last section can reach the top and be targeted. A
+small back-to-top FAB (tooltip "Back to top") appears past 300 px scroll and animates to
+offset 0. Detection runs on depth-0 scroll notifications + a post-frame callback per
+build; sections scrolled out of view are unmounted, which is fine because the section
+spanning the top is always attached.
+
+**Drawer (reordered 0.2.33):** Home, Settings, Waiting for Approval, Food Diary, Tools ▸
+(Alarms, Weekly Hours Planner, Projects, Wishlist, Research, Chronize, Countdown,
+Productivity Stats, Usage Data, Fitness Activity, Test Results, Worklist, MP3
+Downloader — most-used first), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
+Startup Times, Widget Previews (dev build only). Food Diary is a standalone entry (own
+`ListTile`, gated on `Config.isFeatureEnabled('food_diary')`) rather than a `_toolEntries`
+member, so it always sits above Tools instead of inside it.
+**Home** (0.1.233) is `_goHome()`: pop every page stacked on
+the home route, clear an active search, and return to the start tab
+(`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
+schedule-view feature is on) — so it always lands on the same familiar screen rather than
+just closing the drawer.
+
+**CI test report (0.1.96, moved to Tools + online in 0.1.99):** CI runs the tests and
+serializes the run into `assets/test_report.json` via `tool/generate_test_report.dart`
+(`--commit/--branch/--version`), which the APK bundles; the committed placeholder is
+`{"available": false}` so local/dev builds carry no bundled data (asset registered in
+pubspec). On push, `build-apk.yml` also commits that JSON to `docs/ci/test_report.json`
+so the app can fetch the latest results over the network (`build-apk` push trigger
+`paths-ignore`s `docs/ci/**` to avoid a self-triggering loop). `models/test_report.dart`
+(tolerant fromJson; also owns `fromMachineJsonLines`, the `flutter test --machine` parser)
+carries `appVersion` (`x.y.z+build` from pubspec at CI time). Since 0.1.129 the report
+also carries `suites`: one `TestSuiteResult` per test file (path trimmed to the
+repo-relative `test/…` / `integration_test/…` part, Windows backslashes normalized)
+holding a `TestCaseResult` per executed test — name, result (`passed`/`failed`/`skipped`)
+and `durationMs` (testDone − testStart machine timestamps; null when absent). Hidden
+bookkeeping entries are excluded, tests whose suite was never named group under an empty
+path, and per-suite/report durations sum only the known times (null when none). Reports
+without a `suites` key parse to an empty list, so pre-0.1.129 JSON stays valid everywhere.
+`TestReportService` (singleton; `load` = bundled asset + the acknowledgement marker,
+`loadOnline` = `HttpClient` GET of the dev `docs/ci/test_report.json` with all failures
+swallowed to an unavailable report, `loadForDisplay` = online-primary/bundled-fallback;
+`setReportForTest`/`setOnlineReportForTest`/`refreshOnline`/`resetForTest`). The red
+failure dot uses the **bundled** report (loaded offline at startup, so startup stays fast),
+filtered through an acknowledgement marker (`hasUnseenFailures`): the Tools ▸ Test Results
+entry — and, only when the "Red dot for failed tests" Appearance setting
+(`Config.showFailureDotOnMenu`, default off) is on, the home app bar's custom hamburger
+`leading` (default "Open navigation menu" tooltip, opens the drawer via `Scaffold.of`) —
+carries a 9 px red dot (`Key('test-failure-dot')`). Opening the Test Results page calls
+`markSeen(displayed)` (unawaited): it records the newest acknowledged run date plus
+fingerprints (commit|date|counts) of the seen + bundled reports in
+`test_report_seen.json`, so every dot disappears immediately and stays off across restarts
+until a run newer than anything acknowledged fails. `TestResultsPage` (a Tools page,
+`test_results` start-tool key) is a StatefulWidget with an app-bar refresh action: a
+version card (running version vs tested version, match/mismatch note, online-vs-offline
+source), a summary card (passed/failed/skipped/total plus "ran in 42.3 s" when durations
+are known, commit + branch + run time), one ExpansionTile per failed test with its error +
+stack trace, and — since 0.1.129 — an "All tests" section listing every suite as an
+ExpansionTile (monospace path, per-suite counts + time, failing files sorted first) whose
+children are one row per test: green check / red close / grey skip icon, name, and
+`formatTestDuration` ("340 ms" under a second, "2.1 s" above). Reports without suite
+detail show a "predates per-test details" note instead. `Config.resetVersionForTest()`
+clears the memoized version future so widget tests reload it per async zone.
+
+**Search (0.1.90):** the app-bar title is a live search field ("Search tasks"). A
+non-empty query narrows every tab and the schedule view to tasks whose title,
+description, note, label or assigned project name contains it (case-insensitive
+substring); a clear (×) suffix button resets it. Index-based handlers (move/delete)
+recompute the same filtered list so they act on the right task; a drag-reorder while
+searching permutes only the matching tasks among the rank slots they already hold (see
+§Filtering rules, `_reorderSliceOfTab`), and `_saveTasks` renumbers `listRanking` from the UNfiltered tab
+(`_tasksForTab(i, applySearch: false)`) — otherwise a save during search would scramble
+hidden tasks' order.
+
+**Dice timer (0.1.94):** a dice app-bar action (`Icons.casino`, immediately right of the
+search field) picks a random open (not done) task from the Today tab — ignoring any active
+search — and pushes `DiceTimerPage` (`lib/ui/dice_timer_page.dart`). The page shows the
+rolled task above a rotary egg-timer dial (`DiceTimerDial`, one full turn = 60 min,
+whole-minute snapping) opened pre-wound to a 20-minute default — turn back for less time, on
+past 20 for more: winding uses raw pointer events (a `Listener`, NOT a pan recognizer — an
+ancestor scrollable would win mostly-vertical drags in the gesture arena), with
+`dialAngle`/`dialAngleDelta` keeping the rotation continuous across 12 o'clock. Releasing the
+dial starts the countdown (a 1 s decrementing ticker, deliberately not wall-clock-anchored so
+tests can fake-pump it) and shows the remaining time, the percentage of the started duration
+still left (`DiceTimerController.percentLeft`, relative to `_total`), and the wall-clock end
+time ("Ends at 14:32"). Grabbing the dial mid-countdown (or mid-ring) pauses/silences and
+rounds up to whole minutes for rewinding. The page is sized to fit on one screen without
+scrolling: the action buttons sit in a compact grid (two per row — only "Postpone to
+tomorrow" keeps a full-width row, its label is too long to halve) and the dial diameter
+adapts to the viewport (`maxHeight - 340`, clamped to 220–280 px) via a `LayoutBuilder`,
+with a `SingleChildScrollView` kept only as a safety net for very short viewports.
+
+The live timer lives in **`DiceTimerController`** — a singleton `ChangeNotifier` that owns the
+ticker and state (task/phase/remaining/total/endAt), NOT the page's `State`. So leaving the
+page (back button, other navigation) keeps the countdown running; the page is a thin view
+that `configure()`s the controller in `initState` (a no-op that keeps a still-running same
+task, so re-entering reattaches — `configure` must not `notifyListeners`, it runs during
+build) and rebuilds off `addListener`. The app-bar dice icon shows a `Badge` and switches its
+tooltip to "Return to the running task timer" while a timer `isActive` (running/paused/
+ringing); tapping it then reopens the existing timer instead of re-rolling. **Done** (finish
+early — marks the task done and clears the timer) and **Lock touch** are available from the
+very start (even before a countdown begins); while **running** the page adds **Pause**
+(freezes the time left → **paused** phase, whose center reads "Paused" and which offers
+**Resume**/**Done**). **Lock touch** flips a page-local `_locked` flag that lays a full-screen
+scrim (`AbsorbPointer` over the whole `Scaffold` + a `PopScope(canPop: !_locked)` to swallow
+the system back) with only an **Unlock** button live — so a pocket bump or an incoming call
+can't disturb the timer. At zero the controller runs the alert the settings ask for (see
+below; best-effort, injectable via `DiceTimerController.onRingAlert` for tests) — this fires
+even if the page was left, though a mid-ring page exit silences melody and vibration
+(`DiceTimerController.stopAlert`) while keeping the expired state — and offers: **Done**
+(marks the task done via the home page callback), **Postpone to tomorrow** (same semantics as
+moving to the Tomorrow tab: a series member stays in its series as an override rather than
+detaching), and **+1/+5/+10 min** (stops the
+ring and restarts the countdown with that much time). With no open Today tasks (and no timer
+already running) the dice shows a "No open tasks for today" snackbar instead.
+
+**Cancel timer (0.1.127):** a muted-error `TextButton` in the action grid (beside Lock touch
+while running/paused, beside Done at the ring), shown in the running, paused and ringing
+phases (never on the untouched dial — there is nothing to cancel yet). It calls `DiceTimerController.clear()`, so the ticker, any melody/vibration and the
+OS-scheduled ring all stop, then pops the page with a "Timer cancelled" snackbar. This is the
+only exit that leaves the task untouched — Done and Postpone both answer for it, and plain
+back-navigation deliberately keeps the countdown alive.
+
+**Start timer from a task (0.1.132):** double-tapping a task tile opens a little
+bottom-sheet menu — "Start timer" (subtitle shows the default duration), a divider, and
+since 0.1.234 three snooze entries "Remind me in 5 / 10 / 20 minutes". The sheet is
+`isScrollControlled` so five rows size to their content instead of overflowing the
+default 9/16-height sheet on a short screen. The double tap is detected by hand inside the tile's `onTap` (two taps within
+`kDoubleTapTimeout`, the second one taking back the expansion toggle the first made) —
+deliberately NOT via `InkWell.onDoubleTap`, whose recognizer holds the gesture arena for
+the double-tap timeout on every tap in the tile, delaying the checkbox and expand-on-tap
+by ~300 ms and deadlocking fake-async widget tests (the streak checkbox test caught
+this). The menu only appears when `TaskTile.onStartTimer` is set (it is null in the
+standalone-tile tests). Picking "Start timer" calls
+`HomePage._startTaskTimer`, which — unlike a dice roll — `configure()`s
+`DiceTimerController` for *that* task and immediately `releaseDial()`s, so
+`DiceTimerPage` opens with the countdown already running at
+`Config.diceTimerDefaultMinutes`; the dial still pauses/rewinds it like any dice timer,
+and Done/Postpone/Cancel behave identically. The page header is parameterized for this
+(`DiceTimerPage.caption`/`captionIcon`: "Timer for" + `Icons.timer_outlined` here,
+"The dice picked" + `Icons.casino` by default). Double-tapping the task whose timer is
+already live reopens the running countdown; starting a timer for a different task
+replaces the old one — the double tap is an explicit choice for that task. The reminder
+entries go through `_TaskTileState._scheduleReminder` — the same helper the expanded
+tile's Notify bell uses (§ notifications): `NotificationService.showTaskNotification`
+with the picked delay, quiet-hours shifting included, a "Notification scheduled in 10
+minutes" snackbar, and "Enable notifications in Settings first" when they are off. The
+task's own due date is never touched.
+
+**Dice timer settings (0.1.120):** `Config.diceTimerAlertMode` picks what zero does —
+`melody` (plays `Config.diceTimerMelody` at `Config.diceTimerVolume`, looping, like an
+alarm), `vibrate` (repeating buzz only), `notification` (**the default**) or `silent`.
+`Config.diceTimerAlsoVibrate` (off by default) adds the buzz to the melody/notification
+modes, and `Config.diceTimerDefaultMinutes` (20) sets where the dial opens — so
+`DiceTimerController.defaultDuration` is a getter now, not a const. `diceAlertPlan()` in
+`dice_timer_page.dart` resolves those settings (plus `Config.enableNotifications`) into a
+pure `DiceAlertPlan {melody, vibrate, notification}`, which both the ring and the UI read:
+**a notification alert with notifications switched off degrades to complete silence**, never
+to a sound nobody asked for, and a silent plan (`DiceAlertPlan.isSilent`) shows `0:00` +
+"Time's up" in the dial instead of the loud red "Time's up!". Vibration goes through
+`AlarmVibration` (`lib/services/alarm_vibration.dart`) — the `besttodo/alarm_audio` method
+channel gained `vibrate` / `stopVibrate`, a `USAGE_ALARM` waveform repeating until stopped
+(no-op off Android, like `AlarmSound`). The controls live in one shared widget,
+`DiceTimerSettingsList` (`lib/ui/dice_timer_settings.dart`, writes through to `Config` and
+saves on every change, melody Preview included), rendered both by the Settings page's "Dice
+timer" section (index 6, hidden with the `dice_timer` feature) and by the bottom sheet behind
+the timer page's app-bar gear ("Timer settings").
+
+**Ringing like a real alarm (0.1.122):** away from the timer page zero is delivered through
+the alarm pipeline, not by the in-page alert — full-screen `AlarmRingPage`, insistent, one
+Stop button — so it works with the app backgrounded, killed or the phone locked. Three
+delivery paths, picked by where the user is (`DiceTimerController._ring`):
+1. **timer page on screen** (`_pageVisible && _appResumed`) → the in-page alert as above
+   (dial + Done/Postpone/+min); no OS alarm is armed at all.
+2. **app open, elsewhere** → `_ringFullScreen` presents `AlarmRingPage` through
+   `DiceTimerController.presentFullScreenRing` (wired in `main.dart` to the same `_showAlarmRing`
+   real alarms use), cancels the OS ring and starts the vibration itself.
+3. **app away** → the OS-scheduled ring fires: `NotificationService.scheduleDiceTimerAlarm`
+   puts one alarm on the normal ladder (`_zonedScheduleLayered` + `AlarmWatchdog.armDiceTimer`
+   backup) under the fixed `kDiceTimerNotificationId` / `kDiceTimerUid` (`alarm_ids.dart`),
+   with `_alarmDetails(silent: melody == null)` so the vibration-only and notification alerts
+   stay quiet while still taking the screen.
+
+Arming is driven by app lifecycle, not by a timer: `_DiceLifecycleWatcher` flips
+`_appResumed`, and `_syncOsAlarm` applies the pure rule `diceOsAlarmAction(phase, appResumed,
+alertSilent)` — **arm** while running with the app away, **cancel** when the app is back or
+the countdown is paused/rewound/cleared, **leave** a ring that is already going (only Stop /
+Done / Postpone / +min clear it). This is why there is no race between the two paths: only
+one of them is ever armed. A silent alert (silent mode, or a notification alert with
+notifications switched off) arms and presents nothing at all. Starting a countdown asks once
+per app run for the alarm permissions (`_ensureRingPermissions`, Android only).
+
+Both paths share one payload builder, `diceRingPayload` in `alarm_ids.dart`, so the alarm
+screen is identical either way. The dice uid is a *standalone ring*: `_isStandaloneRing`
+keeps `dismissAlarmFromRing` / `snoozeAlarmFromRing` from rescheduling alarm storage for it,
+and stopping it cancels the dice watchdog. When the ring page closes, `main.dart`
+(`_afterDiceRingStopped`) silences the in-app melody/vibration and calls
+`openRunningDiceTimer` (`home_scaffold_key.dart`, set by `HomePage`) — which reopens the
+timer page in its finished state, unless it is already on the stack or the timer is gone
+(cold start after a kill: the alarm still rings, but there is no in-memory countdown left).
+
+**Home widget updates** after every save and at a self-rescheduling midnight timer: writes
+the "due today or overdue" list text (or "Well done! No more tasks for today!"), a progress
+percent, and a color (green all done / orange exactly 4 left / red ≥5 left).
+
+**First-run seeds:** 3 today-tasks + 1 future task; dev builds additionally seed 20 future
+tasks, 20 deleted tasks, and 14 days of stats (marker strings prevent re-seeding). Dev
+builds also spread 9 of the seeded future tasks across the three seed projects (one task
+per Kanban column in each project) so the Projects tool opens populated — including on
+desktop/web where storage may not persist; skipped as soon as any seeded task carries a
+`projectId`, so manual (re)assignments survive reloads. "First run" means *no non-wish
+task exists* (0.1.138): `loadItems()` merges the one-time Todo.md import into the task
+list as wishes, so a plain `isEmpty` check saw a fresh install as an existing one and
+skipped the starter tasks (and the dev range/history/reminder seeds) entirely. The starter
+tasks are inserted ahead of the imported wishes. Every seed described above (and every other
+dev/demo filler item — alarms, countdown timers, Food Diary entries) carries the `demo` label
+token (0.2.31) so it stays filterable via Settings → Filtering rules; see §4.4's "The `demo`
+tag" note.
+
+### 4.4 Settings (all persisted in `settings.json` via `Config`)
+
+Appearance: dark mode, minimalist mode (0.1.101, default off: swaps both themes for a
+monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pure greys
+only, transparent `surfaceTint`, no ink splashes, selected chips underlined via a
+`WidgetStateTextStyle` label instead of a colour fill; the orange/red/green swipe
+backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with dark
+mode), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
+marks the home hamburger icon while the newest test run has unacknowledged failures,
+see §4.3), 24-hour time (default on), date format (6 choices,
+default `dd.MM.yy`). Tasks: add-to-top, "New tasks go to" (`defaultAddTabIndex`, default
+"Current tab", see §4.3), swipe-left-delete, default delay 0–10 s slider,
+start tab (simple mode hides the tool-related entries, see §4.6), default start page
+(`startTool`: the task list or any enabled tool — Alarms, Countdown,
+Projects, Chronize, Usage Data, Productivity Stats, Weekly Hours Planner; the tool is pushed on top of the task
+list after loading, so back lands on the tasks), start in schedule view, Chronize hour
+wheel, "Auto-tag new items" (`autoTagEnabled`, default on) + an "Auto-tag rules" entry
+point to edit the keyword dictionary (§4.2e). Widget: progress line, "Check off tasks on the widget" (`widgetCheckboxes`,
+default **off**, see §8). Notifications:
+enable (default **off**), quiet hours (default 22:00–07:00, stored as minutes-since-midnight;
+applied to task notifications only, never alarms), default notification delay (dev 3 s /
+prod 300 s). SMS report: see §7. Sync & export: synced-mode switch + sync-folder picker
++ Sync now tile (§4.7), Export/Import buttons. Todoist sync: enable switch + API token
+field (§4.8). `Config.applyMap` is defensive
+(clamps ranges, whitelists date formats). Dev mode = `!dart.vm.product`: skips intro, shows
+the app-bar date stepper, seeds demo data.
+
+**Settings search (0.1.96, independent from the home task search):** a magnifier action in
+the Settings app bar toggles search mode — the pinned section-chip header becomes an
+autofocused text field ("Search settings", clear × suffix, close action in the app bar).
+A static registry (`_SettingsSearchEntry`: title, section index, extra keywords) lists
+every setting; a non-empty query replaces the sections with matching entries (case-
+insensitive substring over title, keywords, or section name; section shown as subtitle).
+Tapping a result closes search and `_jumpToSection`s to its section (deferred one frame so
+the sections re-mount first). New settings must be added to the registry.
+
+**`_jumpToSection` (chips + search results):** the sections are lazy `SliverList` children,
+so an unbuilt one has no context and `ensureVisible` would no-op; the jump walks the scroll
+one viewport at a time until the target's key has a context. Two rules learned the hard way
+(0.1.118, when the tall Mode & features section pushed the later sections down): walk
+**towards** the target (`index < _activeSectionIndex` ⇒ upwards, else downwards — a
+down-only walk left every earlier section unreachable from the bottom of the page), and
+treat only a hop that changes **neither offset nor `maxScrollExtent`** as the end
+(`maxScrollExtent` is an estimate that grows as more children are laid out, so "reached the
+bottom" fires long before the real bottom). Test note: every chip is built even when
+off-screen, so `scrollUntilVisible`/`dragUntilVisible` skip their drag and run
+`ensureVisible` on a chip inside the **pinned** header — which drags the settings list to
+its very bottom. Tests must drag the chip row by rect instead (see `streak_ui_test.dart`).
+
+**Collapsible sections (0.1.123):** every section card's title row is an `InkWell` with a
+trailing chevron (`AnimatedRotation`, 0 → half turn, tooltip "Expand/Collapse &lt;section&gt;");
+tapping it toggles the section, its body simply not being built while collapsed.
+`_collapsedSections` (a `Set<int>` of section indexes, in-memory only — not persisted)
+starts as **every** section index (0.1.157; it was `{1}` from 0.1.123), so Settings opens
+as a short list of headings instead of a wall of switches. A right-aligned
+`TextButton.icon` above the first card is the master toggle: "Collapse all"
+(`unfold_less`) while any visible section is open, "Expand all" (`unfold_more`) once they
+are all closed — on arrival it therefore reads "Expand all". Tests that reach a setting
+must open its section first (tap `Expand <section>` or jump via its chip). `_jumpToSection` removes the target from
+`_collapsedSections` first, so chips and search results never land on a closed title;
+toggles re-run `_updateActiveSectionFromScroll` on the next frame because the list height
+changed under the chip row.
+
+**Filtering rules (0.1.235, extended to the archive/bin split 0.1.266, Waiting for Approval
+added 0.1.272, synthetic state tags + Food Diary/Alarms/Countdown views + protected-tag
+colouring added later):** a per-view tag filter, configured separately for each of Home,
+Wishlist, Waiting for Approval, Projects, Food Diary, Alarms, Countdown, Archived Items and
+the Deleted bin. `ViewFilterRules` (`lib/models/view_filter_rules.dart`: `excludeTags`,
+`includeTags`, both `List<String>`) holds one view's configuration; `Config.viewFilterRules`
+(`Map<String, ViewFilterRules>`, keyed by `ViewFilterRules.home/wishlist/approval/projects/
+foodDiary/alarms/countdown/archived/bin`) persists all of them inside `settings.json`
+alongside every other setting. A task carrying any `excludeTags` token is hidden from that
+view; when `includeTags` is non-empty, only tasks carrying at least one of its tokens show.
+This sits on top of each view's own structural rule (the wishlist still only ever shows
+`isWish` tasks, and the Waiting for Approval queue only ever shows pending, non-deleted ones)
+— see §4.2d. `ViewFilterRules.builtInRules` is a read-only string per view id (empty for
+Archived Items/Deleted bin/Alarms/Countdown, which have no selector-level rule of their own)
+summarizing that always-on structural business logic — Home's reads "Always excludes Waiting
+for Approval, Archived, and Deleted items", for instance — shown in Settings directly under
+each view's description, above its two editable chip rows, so the business logic a view lives
+by is visible even though (being unconditional, not itself one of the `excludeTags`/
+`includeTags` below it) it isn't something a chip edit can turn off. The Settings "Filtering
+rules" section (index 2, right after Mode & features) lists all nine views with the built-in
+line (if any) plus two chip editors each (add via text field + Enter/+, remove via the chip's
+×); `SettingsPage._rulesFor` lazily creates an empty entry per view on first touch. Because a
+Home rule can hide tasks mid-tab, drag-reorder on the home list (`_reorderTask`, and the
+schedule view's per-day `_reorderTaskInSection`) goes through `_reorderSliceOfTab`: the
+visible slice the user dragged is permuted only among the rank slots those same tasks already
+occupy in the full, UNfiltered tab (`_tasksForTab(i, applySearch: false)`), then the whole tab
+is renumbered `1..n`. Every task hidden by search, `widget.tagFilter` (Worklist) or a Home rule
+therefore keeps its exact rank position, so reordering never needs to be disabled. (0.2.87:
+until then reorder was refused whenever the tab was narrowed at all — and since Home ships with
+a non-empty default rule hiding every other view's reserved tag (Wish, Project, ...), a single
+such task due today made every drag on that tab silently spring back.) Renumbering on save
+(`_saveTasks`, `applySearch: false`) likewise always sees the true unfiltered tab so ranks never
+drift. Countdown (which has no such default rule) still applies a disable-reorder-while-filtered
+rule to its own manual drag order
+(`_CountdownTimerPageState._onReorder`).
+
+*Matching, including a task's synthetic state.* Matching (`ItemViews.passesTagRules`) is
+case-insensitive against a *combined* token set: a task's real `Task.label` tokens
+(`splitLabelTokens`) plus its synthetic state tags (`ItemViews.stateTags`) — Wish
+(`isWish`), Fooddiary (`isEatingHabit`), Project (`projectId != null`), Waiting_for_approval
+(`!isApproved`), and — supplied by the caller rather than derived from the task, since
+neither is a field on `Task` itself, only which list currently holds it — Archived and
+Deleted (`ItemViews.applyFilterRules`'s `archived`/`binned` flags, passed `true` at the
+Archived Items and Deleted bin call sites in `home_page.dart`). This is what makes a rule
+like "Home: hide Wish" actually do something even though no task's label literally contains
+the word "Wish". `ItemViews.passesTagRules`/`applyTagRules` are the primitives underneath —
+generalized over a raw tag string rather than a `Task`, so Alarms and Countdown (which have
+their own `tags` field, not a `Task.label`) reuse the identical matching code.
+
+*Protected/reserved tags (`lib/utils/label_utils.dart`, `lib/utils/label_style.dart`).* The
+eight tokens a rule can reference — `Wish`, `Project`, `Archived`, `Deleted`, `Fooddiary`,
+`Alarm`, `Countdown`, `Waiting_for_approval` (`protectedStateTokens`) — are reserved: typing
+one by hand into a task's, alarm's, or timer's own tag field is a naming collision with
+something the app already gives special meaning, so every chip renderer (`LabelPickerField`,
+`TaskTile._tag`, the Alarms/Countdown tag pills) renders a matching token in one fixed accent
+(`protectedTagColor`, deep-orange, with a border and a tooltip explaining why) instead of the
+normal chip style — the tag equivalent of a file extension warning. `labelKindFor` classifies
+every protected token as `Label.kindSystem`. Typing one does not, on its own, flip the
+underlying flag (e.g. typing "Wish" onto a task does not set `isWish`) except
+`Waiting_for_approval`, which — unchanged from before — is the one token that *is* the literal
+mechanism (§4.2e).
+
+*The `demo` tag (0.2.31).* Separately from the eight `protectedStateTokens`, `demoToken`
+(`'demo'`, classified `Label.kindSystem` alongside `old`/`autocompleted` rather than added to
+`protectedStateTokens`, so it renders as a plain chip, not the deep-orange protected one) is
+stamped onto every task/alarm/timer the app ever generates for itself instead of the user: the
+first-run starter tasks (`Config.initialTasks`/`initialFutureTasks`) and every dev-mode filler
+seed — `home_page.dart`'s `_buildDevDeletedSeed`/`_buildDevAutoDeletedBackfill`/
+`_buildDevFutureTasksSeed`/`_seedDevRangeTask`/`_seedDevLinkedReminder`'s reminder alarm,
+`AlarmService._buildDevSeed`, `CountdownTimerPage._devSeedTimers` and `FoodDiaryPage._buildDevSeed`
+(the Wishlist tool's own dev seeding — `home_page.dart`'s `_seedDevWishItem`/`_buildDevWishlistSeed`
+and `WishlistPage._load`'s dev fallback — was removed in 0.2.77: the Wishlist starts empty even
+in dev builds now, see §10.6). Existing tokens on those items (`old`, `priority-medium`, …) are kept —
+`addLabelToken` appends `demo` alongside them rather than replacing the label. The point: once
+one of these seeded items is saved to disk it is a normal record indistinguishable from
+anything the user typed, and outlives whatever produced it — including `Config.isDev` going
+back to `false` on a later release build (the reported case: rich dev-only seed data
+reappearing on a production phone) — so `demo` is what lets a Settings → Filtering rules
+exclude rule (any view) hide it regardless of how it got there. `_seedDevItemHistory` special-
+cases its "no real label yet" check (`hasOnlyDemoLabel`) since its target tasks now always
+carry `demo` from `_buildDevFutureTasksSeed`.
+
+*Demo items hidden by default outside dev builds.* `Config.hideDemoItems` (defaults to
+`!Config.isDev`, but a settable property rather than deriving straight from the compile-time
+`isDev` so tests can flip it — and, since 0.2.46, a user-facing switch, see below) makes
+the `demo` tag self-enforcing rather than opt-in: once true,
+`ItemViews.passesTagRules` hides a `demo`-carrying item ahead of and independent from whatever
+`ViewFilterRules` says, so no Settings → Filtering rules configuration is required — production
+never shows seeded sample data, from the very first release build. `applyTagRules`/
+`applyFilterRules` (used by the Alarms/Countdown pages and the Archived/Bin views) lost their
+"rules empty → return the same list instance" shortcut for exactly this reason: demo hiding can
+still apply when there are no rules configured at all. Three home-screen widgets that build
+their payload straight from the task/alarm list rather than going through a `ViewFilterRules`
+lookup — `TaskWidgetService.todayTasks` (0.2.46: filters through the *Home* view's rules, not just
+the demo gate — the widget is the Today tab on the launcher, so a task Home hides must not
+reappear there; an optional `rules` parameter overrides them for tests),
+`FoodDiaryWidgetService.sync` (already routed through `ItemViews.foodDiary`, so it
+inherited the behavior for free) and `AlarmService`'s two `AlarmWidgetService.sync` call sites
+(wrapped in a `_widgetVisible` helper) — are covered the same way, so a demo alarm or task never
+reaches the home screen in production even though scheduling/notifications for it are untouched.
+
+*The three ways the demo gate was still leaking (0.2.46).* Reported as "the filtering of the
+home view does not work and by default there should be a demo filter — I tried to add it
+manually and it did nothing, even after restarting the app". Three independent causes, all
+fixed:
+
+1. **The schedule view ignored the Home rules entirely.** `_buildScheduleBody` filtered
+   `_tasks` on `ItemViews.isVisibleInMainViews` + search + `tagFilter` only, never
+   `passesFilterRules` — so on a phone with Settings → Tasks → "start in schedule view" on,
+   the home screen showed everything every Home rule (and the demo gate, which lives inside
+   the same check) was supposed to hide, and adding a `demo` Hide chip by hand changed
+   nothing. Both home bodies now go through one gate: `ItemViews.isOnHomeScreen` (structural
+   gate + caller predicate + `passesFilterRules`), used by `homeBucket` for the tabs and by
+   the new `ItemViews.homeVisible` for the schedule view, which is the whole unbucketed home
+   list. `HomePage._homeFilterRules` is the single getter both read, so a rule can no longer
+   apply to one body and not the other.
+2. **Seeds written to disk before 0.2.31 carry no `demo` token at all**, so nothing — not the
+   built-in gate, not a hand-typed `demo` rule — could match them; a debug build run once on
+   a real phone leaves 20+ such tasks behind and they survive every later release install.
+   Every dev seeder stamps its own description marker ("Seeded dev future task", "Dev seed: a
+   wishlist item", …), which no human types, so `isDemoSeedDescription`
+   (`demoSeedDescriptionPrefixes`: `Seeded dev`, `Dev seed:`) recognizes them and
+   `ItemViews.stateTags` adds a synthetic `demo` tag for a match — making those legacy items
+   behave exactly like a stamped one for both the built-in gate and any `demo` rule, without
+   touching stored data. Title-only matches (the `Config.initialTasks` starter tasks: "Get
+   milk", …) are deliberately *not* recognized: a user may well have typed one of those.
+3. **The gate was invisible**, which is why it read as broken. `Config.hideDemoItems` is now
+   a real setting with its own switch, "Hide demo and sample items", at the top of Settings →
+   Filtering rules (above the per-view chip editors, since it is the one rule that applies to
+   all views at once). Only an explicit flip is persisted, never the default
+   (`Config._hideDemoItemsSet`, written to `settings.json` only when non-null): a debug build
+   sharing the phone's settings file would otherwise store `false` and a later release install
+   would read it back and show the leftover seeds again — the exact failure the gate exists to
+   prevent.
+
+A fourth, adjacent bug surfaced while testing this: `SettingsPage._jumpToSection` chose its
+scroll-walk direction from `_activeSectionIndex`, which lags whenever something scrolls the
+list without the scroll listener settling, so a chip tap could expand a section and then walk
+away from it to the end of the list. It now reads the direction off the sections that actually
+have a `RenderObject` (`_sectionIsAboveViewport`) — this is why the three "Settings →
+Filtering rules" widget tests had been failing on CI.
+
+*Food Diary, Alarms and Countdown as filterable views.* Food Diary
+(`ItemViews.foodDiary(tasks, {rules})`) works exactly like Wishlist: an extra rules layer on
+top of its `isEatingHabit` gate. Alarms and Countdown aren't task lists, so each gained its
+own `tags` field (`Alarm.tags`, `CountdownTimerItem.tags` — free-form, same comma/whitespace
+convention as `Task.label`, editable via a `LabelPickerField` in `AlarmEditPage` and the
+`_DraftTimerComposer` used for both adding and inline-editing a timer) and each page filters
+its own list with `ItemViews.applyTagRules(items, rules, (item) => item.tags)` before display,
+rendering any tags as small pills under each row. Since the default seeded rule for each view
+is `includeTags: [ownReservedToken]` (below), and `applyTagRules` matches only against the
+item's own `tags` string (unlike `Task`'s `passesFilterRules`, it has no synthetic `stateTags`
+to fall back on), every alarm/timer must carry its view's reserved token literally in `tags` or
+that default rule would hide it outright. Both models enforce this the same way: a required
+tag (`Alarm.kAlarmRequiredTag`/`CountdownTimerItem.kCountdownRequiredTag`, `'alarm'`/
+`'countdown'`) is folded into `tags` by the constructor and again by `toJson()`
+(`ensureAlarmTag`/`ensureCountdownTag`), so it round-trips even through a legacy record saved
+without it and survives a `LabelPickerField` edit that clears the field. (0.2.40 fix: the
+countdown side of this was missing until then — every `CountdownTimerItem` skipped the
+required-tag step Alarm already had, so the seeded `includeTags: [Countdown]` rule hid every
+timer, old and new alike, the moment `viewFilterRulesSeedVersion` re-synced it.)
+
+*Seeded defaults (`Config.viewFilterRulesSeedVersion`, `ViewFilterRules.defaultsFor`).* A
+fresh install's Settings → Filtering rules starts pre-populated rather than empty, with the
+literal Hide/Show matrix this feature was specified with — every view hides every other
+view's reserved tag and shows only its own: Home has no tag of its own, so it hides all nine
+(Wish, Project, Archived, Deleted, Fooddiary, Alarm, Countdown, Changelog, Waiting_for_
+approval) and shows nothing; Wishlist/Food Diary/Alarms/Countdown hide the other eight and
+show only their own tag; Waiting for Approval hides just Archived/Deleted/Changelog (its
+built-in gate already excludes everything else) and shows Waiting_for_approval; Projects
+hides everything except Wish (a wish can still be assigned to a project) and shows Project;
+Archived and the Deleted bin only ever hide *each other*, since an item can legitimately be
+both, e.g. an archived wish. This is a real, user-facing default, not a restatement of a
+structural gate — e.g. Home now hides Wish/Project-tagged tasks by default even though
+they'd otherwise show by due date. `Config.seedViewFilterRuleDefaultsIfNeeded` applies it:
+called once from `Config.load`, it fills any view with *no* entry on a fresh install
+(`viewFilterRulesSeedVersion == 0`), and — should `ViewFilterRules.defaultsFor`'s template
+itself need correcting later, the way version 1's did (it shipped too conservative, leaving
+Wish/Project out of several Hide lists to avoid disturbing other behavior) — a bump of
+`Config._currentViewFilterRulesSeedVersion` re-syncs *every* view on an install still behind
+that version, overwriting whatever the earlier template had seeded rather than only filling
+gaps; it is a no-op once already at the current version. The one place a literal default
+would break an existing feature outright: Projects' `includeTags: [Project]` would filter its
+"All Tasks" pane (used to drag an *unassigned* task onto a project) down to only
+already-assigned tasks. `ProjectsPage._assignPaneRules` compensates by dropping `includeTags`
+(keeping `excludeTags`) for that one pane only — the project board itself
+(`projectTasks`/`boardColumn`) still gets the full rule, though it's redundant there since a
+board column already filters by exact `projectId`.
+
+### 4.5 Streak (the flames, 0.1.115; three challenges 0.1.157; unlit-until-done
+pulse 0.1.229; configurable goals 0.1.250)
+
+Daily streak gamification with **three** flames (`StreakKind` in
+`lib/models/streak_kind.dart`; the ids are persisted, so keep them stable):
+
+| kind | id | day counts when | flame colours (cold → warm → hot) |
+| --- | --- | --- | --- |
+| Finish a task | `complete` | ≥1 non-wish task completed | orange → deep orange → red |
+| Create (green) | `create` | a task matching its configured goal is completed | light green → green → teal |
+| Plan (blue) | `plan` | a task matching its configured goal is completed | light blue → indigo → purple |
+
+`complete` is fixed. The green (`create`) and blue (`plan`) slots are **user-configured
+goals** since 0.1.250 (`StreakGoal` in `lib/models/streak_goal.dart`, persisted in
+`Config.streakGoals` — a `Map<String, StreakGoal>` keyed by kind id): each goal picks a
+`target` (`StreakGoalTarget.task` — one specific recurring task, matched by its own uid
+**or** its generated instances' `recurrenceParentUid` — or `StreakGoalTarget.project` —
+any task filed under a chosen project, matched by `projectId`) plus a `title` shown on
+the flame instead of a fixed label (pre-filled from the task/project name when the goal
+is set in the picker dialog, freely editable afterwards). `StreakGoal.matches(Task)`
+implements the match. A slot with no entry in `Config.streakGoals` has **no built-in
+default any more** — it just stays cold until configured (`streakFlameInfo` in
+`lib/services/streak_flame_display.dart`, see below).
+
+`StreakService` (ChangeNotifier singleton, `streak.json` via `SafeFile`) stores one
+dayKey → **count** map per kind — `completionsByDay` (the original key, kept so old files
+load unchanged), `createsByDay`, `planByDay` — plus, since 0.1.144, a parallel
+`minutesByDay` map of dayKey → minute-of-day list (one entry per live completion; seeded
+history has counts only) powering the time-of-day challenges. Counts, not booleans, so
+toggle+untoggle on the same day cancels out exactly and per-day stats are possible.
+`record(kind, when)` returns true on that kind's **first** event of the day (the
+streak-kept moment); `recordCompletion` wraps it for `complete`, and `recordGoal(kind,
+when)` is the equivalent for a configured `create`/`plan` goal — at most one event per
+day (re-checking a task's matches on every toggle must not inflate the count).
+`recordUncompletion(when, {kind})` (generalized in 0.1.250 — used to be `complete`-only)
+decrements that kind's map, drops the **latest** recorded minute only for `complete` (the
+other two never tracked times), and removes the day at zero. Every read API
+(`currentStreak`, `isDayDone`, `longestStreak`, `bestDay`, `flameProgress`, …) takes an
+optional `kind:` that defaults to `StreakKind.complete`, so older call sites and tests
+keep their meaning. `enabledKinds` filters by `Config.streakKindEnabled` (all three on by
+default; the switches live in Settings → Streak → "Active challenges" — this is
+independent of whether a `create`/`plan` slot has a goal configured).
+`StreakService.syncKnownTasks(tasks)` (called every `HomePage.build()`) tracks which task
+uids currently exist so `isGoalMissing(kind)` can tell a task-targeted goal whose task was
+deleted apart from one that simply has not fired today; a project-targeted goal is
+checked directly against `ProjectService.instance.byId(goal.targetId)` by the display
+layer instead (no service-to-service dependency needed for that case).
+
+Wish items never count. Hooks in `home_page.dart`, all using `_currentDate` so the dev
+date stepper works: `_recordStreakToggle` (tile checkbox + dice-timer "done") → completion
+plus `_recordGoalCompletion`/`_recordGoalUncompletion`, which check the toggled task
+against `Config.streakGoals['create']`/`['plan']` (`StreakGoal.matches`) and call
+`recordGoal`/`recordUncompletion(kind: …)` on a match. The home-screen widget's checkbox
+(`task_widget_service.dart`) mirrors the same goal-matching inline since it runs in a
+background isolate without the home page's hooks. The old fixed "any task created" /
+"a task moved or the day cleared" defaults (and their `_recordStreakCreation`/
+`_recordStreakPlanning`/`_recordStreakDayCleared` hooks) were retired in 0.1.250 —
+`_trackTaskCreated`/`_trackTaskMove` no longer touch the streak at all.
+
+**Streak semantics:** consecutive active days ending today or later-graced; a day still
+in progress never breaks the streak. Grace (`Config.streakGraceHours`, 24 default / 48):
+24 = every calendar day needs ≥1 completion; 48 = a single missed day between active days
+is forgiven (`_allowedGap` 0/1 applied both when anchoring from today and while walking
+back). `longestStreak()` scans full history under the same rule; `longestStreakRange()`
+returns the same run's exact first/last day as a record (earliest run wins ties). Flame
+maxes out at **365 days** (`flameProgress` = streak/365 clamped to 1).
+
+**Display layer (0.1.250):** `streakFlameInfo(kind)` in
+`lib/services/streak_flame_display.dart` is the single place every flame's `short`
+(chip/tooltip label), `title`, `description` and `callToAction` come from — `StreakPage`,
+`StreakFlameButton` and the Settings "Active challenges" rows all call it instead of
+reading `StreakKind`'s constants directly. `complete` always returns the fixed enum text.
+For `create`/`plan` it returns one of three states: **unconfigured** (no
+`Config.streakGoals` entry — `short`/title fall back to the kind's own short name, e.g.
+"Create · no goal set", description invites setting one, `configured: false`);
+**missing** (a goal is configured but `StreakService.isGoalMissing(kind)` — task target —
+or `ProjectService.instance.byId(goal.targetId) == null` — project target — is true;
+shows the goal's title with a "was deleted" description, `missing: true`); or **active**
+(goal resolved fine — title/description/callToAction all built from `goal.title`, e.g.
+"Complete 'Exercise' every day"). An unconfigured or missing slot never has anything
+recorded against it, so its flame naturally renders cold (`flameColor` at progress 0 is
+already grey) with no special-casing needed in the colour/size math.
+
+**Goal picker (0.1.250):** `StreakGoalDialog` (`lib/ui/streak_goal_dialog.dart`, own
+`StatefulWidget` owning its `TextEditingController` per the `_ProjectEditDialog`
+convention) is opened from a "Set goal"/"Change" row under each of the `create`/`plan`
+switches in Settings → Streak → "Active challenges". A `SegmentedButton` picks
+`StreakGoalTarget.task` (a `DropdownButton` of recurring tasks — `isRecurring &&
+recurrenceParentUid == null`, loaded via `StorageService().readTaskListRaw()` so it never
+fights the home page's in-memory list/rollover) or `.project` (a dropdown of
+`ProjectService.instance.list`); picking an option auto-fills the title field with its
+name (only while the field still matches the last auto-fill, so a hand-typed title is
+never clobbered) and the field stays freely editable. Save writes
+`Config.streakGoals[kind.id]`, `Config.save()`s and calls
+`StreakService.instance.settingsChanged()`; "Remove goal" clears that entry — both close
+the dialog and the Settings page picks up the change via its own `setState`.
+
+**UI:** `StreakFlameButton` (`lib/ui/streak_flame_button.dart`) in the home app bar
+directly left of the dice (`ListenableBuilder` on the service; hidden when
+`Config.showStreak` is false or every challenge is switched off). It **cycles** through
+the active challenges every 2.4 s (`Timer.periodic` + `AnimatedSwitcher` fade/scale keyed
+by kind), showing that kind's colour, `Badge` count and a `streakFlameInfo`-built tooltip
+("Finish a task: 3-day streak" / "Create · no goal set" / "Exercise: 5-day streak"); the
+icon grows 22→30 px with progress.
+**Unlit until the day is done (0.1.229):** the flame burns in the kind's colour only when
+`isDayDone(today, kind:)` — a streak still riding on yesterday (or on the grace day) shows
+the *outlined* icon in `theme.disabledColor`, the `Badge` (still counting the streak at
+risk) greys with it, and the tooltip gains "— still open today" (an unconfigured
+`create`/`plan` slot short-circuits before any of this — `streakFlameInfo`'s `title` is
+shown as-is with no streak/done state at all). That grey icon **pulses**: a 900 ms
+repeat-reverse controller lerps it grey → white and scales it 1.0 → 1.12, so an unfinished
+challenge keeps drawing the eye. Tapping opens `StreakPage` on the kind currently shown.
+**All challenges done settles the flame (0.1.236; goal-aware since 0.1.250):** once every
+*tracked* kind is done today (`complete`, plus `create`/`plan` only once a goal is
+configured — an unconfigured slot is excluded so it can't block this forever — and more
+than one tracked kind is on), the cycling collapses into a single **steady white flame
+with a faint blue cast** (`StreakFlameButton.allDoneColor` = `0xFFE8F0FF`; red 700 until
+0.1.252) badged with the **highest** of the streak counts, keyed `'all-done'` so the
+switcher stops cross-fading. The badge's number switches to
+`StreakFlameButton.allDoneBadgeTextColor` (`0xFF1B2A4A`) so it stays readable on the
+near-white badge;
+the tooltip becomes "All 3 challenges done today — 5-day streak" and tapping opens
+`StreakPage` on the kind that owns that highest streak. A single tracked challenge keeps
+its own colour (there is no cycle to collapse) — the cycle itself still hops through every
+*enabled* kind, tracked or not, so an unconfigured slot's "no goal set" placeholder is
+still shown in its turn. **Cycle and pulse are both disabled under the test bindings** (a
+repeating timer/animation means `pumpAndSettle` never settles, and it also keeps
+screenshot runs deterministic) — the check is `WidgetsBinding.instance.runtimeType`
+containing "Test"; `StreakFlameButton.debugForceCycle` re-enables both for the tests that
+cover them.
+
+`StreakPage`: a `ChoiceChip` row (one mini flame per active challenge, "Finish 3") when
+more than one is on, big flickering flame in the selected kind's colour (700 ms
+repeat-reverse controller — **never `pumpAndSettle` this page in tests**, it never
+settles; scale/sway/glow scale with progress), fun level names ("First spark" →
+"MAXIMUM FIRE"), progress bar to a full year, a "Today" card listing every active
+challenge via `streakFlameInfo` with a check mark, "Open", "Not set" (unconfigured) or an
+error icon (goal missing) trailing (tap a row to select it), a stats card worded per kind
+(streak start, longest ever, active days, total events, best day, average per active
+day — `create`/`plan` use generic "the goal was met" wording since there is no fixed
+challenge behind them any more), and a gear action → Settings. First completion of the
+day plays a ~1.4 s
+self-removing overlay celebration (`showStreakCelebration`: flame pop + sparks + "Streak
+kept — N days!", `IgnorePointer`, gated by `Config.streakCompletionAnimation`) — tied only
+to the `complete` flame, not to a goal completion.
+
+**Streak calendar (0.1.144):** the "Longest streak ever" stat tile is tappable
+("Tap to see it on the calendar") → `StreakCalendarPage`: header card naming the longest
+streak's exact first/last day (`formatTimerDate`), year selector (defaults to the year
+the longest streak started), legend, and all 12 months as compact Monday-first 7-column
+grids in a responsive `Wrap` (2–4 columns by width). Day cells: filled in the kind's
+`warm` colour = active day inside the longest streak, outlined = grace day the streak
+survived, 35 %-alpha `cold` colour = active day outside it. Since 0.1.157 the page takes
+a `kind` (default `complete`) and is opened for whichever flame the stats card belongs
+to.
+
+**Challenges (0.1.144):** `evaluateStreakChallenges(service)` in
+`lib/services/streak_challenges.dart` recomputes **26** Duolingo-style challenges from
+history on every build (nothing persisted, self-healing): First Spark (1st completion);
+time-of-day via `minutesByDay` — Early Bird (<8:00), Dawn Patrol (<6:00), Night Owl
+(≥22:00), Lunch Break Hero (12:00–14:00); best-day counts — Hat Trick 3 / High Five 5 /
+Perfect Ten 10 / Task Tornado 20; streak lengths (max of longest & current) — Week of
+Fire 7 / Fortnight Flame 14 / Monthly Blaze 30 / Quarter Inferno 90 / Half-Year Furnace
+180 / Eternal Flame 365; calendar patterns — Weekend Warrior (Sat + next-day Sun),
+Monday Hero, Fresh Start (1st of month), Full Month (every day of a calendar month),
+Comeback Kid (new active day after ≥2 missed days); totals — Explorer 10 / Regular 50 /
+Veteran 100 active days, Century Club 100 / Task Machine 500 / Task Legend 1000
+completions. Rendered on `StreakPage` below the stats card: "Challenges" card with
+"N / 26 earned" counter; earned tiles get an amber icon + check, unearned multi-step
+ones a thin deep-orange progress bar and "x/y" trailing text. **Order (0.1.234):** still
+open first (evaluation order within the group), then an amber "Earned" divider header
+(only when both groups exist), then the earned ones — the card opens on what is left to
+chase rather than on a wall of check marks.
+
+**Seeding:** on first load without `streak.json` (`needsSeed`), only the `complete` kind
+is backfilled from existing history — completions per day the **max** of daily-stats
+counts and `completedAt` timestamps on live+deleted tasks (so nothing double-counts and
+long-time users start warm). `create`/`plan` are user-configured goals with no fixed
+app-wide meaning (0.1.250), so there is nothing generic to backfill for them — they start
+cold and unconfigured for everyone, new install or not. (In dev builds the seeded demo
+daily-stats produce a pre-lit `complete` flame; tests write an empty `streak.json` up
+front to opt out.) Dev/demo builds then also run `seedDevStreak()`, which fills the last
+`Config.devSeedStreakDays` (**50**) days back from today for `complete` only — max-merged,
+so real counts survive. It runs only inside the `needsSeed` branch, so a dev install's
+real streak is never papered over.
+
+**Reminders (list since 0.1.157):** `Config.streakReminderEnabled` is the master switch
+(default off) and `Config.streakReminders` holds up to `maxStreakReminders` (**24**)
+`StreakReminder`s (`lib/models/streak_reminder.dart`: minutes-of-day, enabled, and a
+`StreakAlertMode` — `notification` = silent channel, no sound or vibration, or `sound` =
+task channel with sound + vibration). Settings written by an older version migrate their
+single `streakReminderMinutes` into one list entry on load. `syncReminder()` cancels
+every slot and re-arms one **one-shot** `zonedSchedule` per enabled reminder (ids
+`kStreakReminderNotificationIdBase = 0x20000010` + slot, plus the legacy
+`kStreakReminderNotificationId = 0x20000002` which is only ever cancelled;
+`inexactAllowWhileIdle` — deliberately NOT the alarm ladder, no exact-alarm permission
+needed) for today's time, or tomorrow when the time has passed or every *tracked* kind is
+already met — an unconfigured `create`/`plan` slot is excluded from that check (0.1.250;
+it has no challenge to meet, so it must not block the "everything done" shortcut). The
+body names what is still open, skipping unconfigured slots and naming a configured goal
+by its own title ("Still open today: finish a task, exercise. Keep your 5-day streak
+alive.", `reminderBody`). Re-synced on every app start, recorded event and settings
+change; cancelled when reminders are off, the streak is hidden, or no challenge is active.
+Settings live in a searchable "Streak" Settings
+section: show/hide, 24h/48h `SegmentedButton`, "Active challenges" (one switch per
+`StreakKind`, plus a "Set goal"/"Change" row under `create`/`plan` opening
+`StreakGoalDialog`), "Streak reminders" (master switch, one row per reminder with time picker,
+alert-mode chips, on/off switch and delete, plus "Add reminder" — new entries default to
+the last time + 1 h), celebration toggle.
+
+### 4.6 Simple mode & feature switches (0.1.118)
+
+Two ways to run the app, chosen on a first-run picker and changeable in Settings.
+
+**Picker (`lib/ui/mode_select_page.dart`):** `ModeSelectView` is the chooser itself
+(no `Scaffold`) — two cards ("Simple mode" / "Full mode", `Start simple` /
+`Use everything`); picking one sets `Config.simpleMode` + `modeChosen` and saves
+(`settings.json`, so it never reappears). It is the last page of the intro on a first
+run (§10), and `ModeSelectPage` wraps it in a `Scaffold` for the ask-again path.
+`MyApp.showModePicker` is a constructor flag (default false, and false whenever the
+intro is showing) so screenshot/integration runs and tests never hit the picker;
+`MyApp.restartModePicker()` clears `modeChosen` and pops back to the standalone page,
+while `MyApp.restartIntro()` (About) replays the slides and the question together.
+
+**Feature registry (`Config`):** `featureKeys` / `featureLabels` / `featureDescriptions`
+(index-aligned) + `Map<String,bool> featureEnabled` (all true by default, persisted under
+`'features'`; unknown/missing keys count as enabled). Keys: the ten tool keys (equal to
+`startToolOptions` minus `tasks`) plus `streak`, `dice_timer`, `schedule_view`, `search`,
+`deleted_items`, `changelog`, `app_logs`, `startup_times`, `sms_report`.
+
+**`Config.isFeatureEnabled(key)` is the single gate:** in simple mode it returns false for
+everything except `Config.simpleModeFeatures` (`deleted_items`, `changelog`, `app_logs`,
+`startup_times` since 0.1.121 — the app's own service pages are not "extra features", and
+Archived Items is the undo of a delete, so simple mode only strips the home surface and
+the tools); in full mode it returns the per-feature switch. About has no feature key and is
+always in the drawer. Call sites: `home_page.dart`
+drawer entries and the Tools section (built from `_toolEntries`, hidden entirely when no
+tool is enabled), the app-bar streak flame / dice / schedule toggle / search field (which
+becomes a plain "BestToDo" title), `_buildToolPage` (returns null for a disabled tool, so
+a stale `startTool` or deep link can't reach it) and `_recordStreakToggle`.
+`_updateSettings` resets `_scheduleView`/`_searchQuery` when their feature disappears, so
+switching modes can't strand the home page in a view with no way back.
+
+**Settings section "Mode & features" (index 1):** the simple-mode switch, "Show the mode
+picker again", and — full mode only — one `SwitchListTile` per feature. Sections owned by
+a feature drop out of the chip row, the scroll list and the settings search when it is
+off (`_isSectionVisible`: Streak → `streak`, SMS report → `sms_report`); single entries do
+the same via `_isEntryVisible` (start-in-schedule-view, Chronize hour wheel, default start
+page). Feature labels are searchable (`_featureSearchEntries`). Turning off the tool that
+is the configured `startTool` resets it to `tasks` (`_dropUnavailableStartTool`), and the
+start-page dropdown only offers enabled tools.
+
+### 4.7 Synced mode — background folder sync on quit (0.1.130)
+
+The offline/synced choice: `Config.syncEnabled` (default **off** = fully offline) +
+`Config.syncFolderPath` (empty until picked), both in Settings → **Sync & export**
+("Synced mode" switch; enabling it with no folder opens the `getDirectoryPath` picker
+immediately; the "Sync folder" tile only shows while enabled; a "Sync now" tile below
+it (0.1.148) runs a manual sync — `SyncService.syncNow(trigger: 'manual')` — with a
+result snackbar, is disabled until a folder is chosen, and its subtitle shows the last
+run from the sync history, "Last sync: <time> (N tasks)" or "Last sync failed: <time>",
+live via the `entries` ValueNotifier). `SyncService`
+(`lib/services/sync_service.dart`, singleton with `resetForTest`) writes the task list
+to `<folder>/besttodo_tasks.json` (`{sync_version: 1, synced_at, app_version,
+task_count, tasks[]}`) — **tasks only** for now.
+
+Since 0.1.132 every sync also writes `<folder>/besttodo_tasks.md`, an Obsidian-friendly
+Markdown companion (`SyncMarkdown.build` in `lib/services/sync_markdown.dart`, pure and
+unit-tested): a header comment marking the file auto-generated, `# BestToDo tasks`, a
+`Synced <yyyy-MM-dd HH:mm> · BestToDo <version> · N open / M total` line, then one `##`
+section per home tab (Today/Tomorrow/Day After Tomorrow/Next Week/Next Month/Future) —
+same bucketing and open-first/ranking sort as the tabs (`ItemViews.homeBucket`), deleted
+tasks excluded, empty sections skipped. Lines follow the Obsidian Tasks plugin format:
+`- [ ]`/`- [x]` + title (newlines flattened) + `📅 yyyy-MM-dd` due date (future-sentinel
+dates omitted) + `✅ yyyy-MM-dd` completion date. Point the sync folder into an Obsidian
+vault (directly or via Syncthing/Dropbox) and the list renders natively. One-way: the
+file is atomically overwritten (`SafeFile`) on every sync; a failed Markdown write fails
+the whole sync run (red history entry) like the JSON write.
+
+Since 0.1.141 the repo also ships **Tier 2** of the Obsidian integration: an
+Obsidian community plugin in the top-level `obsidian-plugin/` folder (TypeScript +
+esbuild, own npm package and CI job `obsidian_plugin.yml` — not part of the Flutter
+build). It renders `besttodo_tasks.json` as a custom `ItemView` (ribbon icon /
+"Open task view" command): the six home buckets, checkbox + title + `📅` due
+date (sentinel omitted) + `✅` completion date + `🔁` recurring marker, label chip and a
+generic `📁 project` chip (the sync file carries no project names), open-first/ranking
+order, plus an "as of …" line showing `synced_at` + app version. It re-reads on
+Obsidian's file-change events (safe because the app's write is atomic), refuses unknown
+`sync_version` values with a friendly notice, and parses tasks as tolerantly as
+`Task.fromJson`. The contract lives in the pure module `obsidian-plugin/src/model.ts`
+(mirrors `ItemViews.inHomeBucket`, `sortTasks`, `Task.fromJson`) and is pinned by jest
+tests (`obsidian-plugin/test/model.test.ts`) mirroring `test/sync/sync_markdown_test
+.dart`.
+
+Since 0.1.235 the repo also ships **Tier 3**: two-way sync via a change journal, so
+checking a task off (or back on) in Obsidian flows back to the phone. The plugin's
+checkbox is no longer disabled — a tap appends a `complete`/`reopen` operation to
+`besttodo_changes.json`, written next to the sync file (`BestToDoPlugin.appendChangeOp`,
+`obsidian-plugin/src/main.ts`), instead of editing `besttodo_tasks.json`/`.md`
+directly (the app overwrites both on every sync, so a direct edit would be clobbered).
+The view updates optimistically and shows a "syncing…" chip on the task
+(`BestToDoView.pending` in `obsidian-plugin/src/view.ts`) until a subsequent
+file-change event confirms the app picked up the change.
+
+On the app side, `SyncService.onLifecycleChanged` triggers `SyncImportService
+.importPending()` (`lib/services/sync_import_service.dart`) on every **resume** —
+the mirror of the quit-time sync trigger. It reads `besttodo_changes.json`, applies
+ops by `uid` with last-writer-wins conflict rules (idempotent/monotonic
+`complete`/`reopen` against `Task.completedAt`; date-field `edit`s arbitrated against
+`Task.rescheduledAt`; `delete` as a `Task.deletedAt` tombstone, never a hard delete;
+`create` idempotent by the `uid` it brings), truncates the journal to an empty
+envelope (never deletes the file), and re-runs `SyncService.syncNow` so both sides
+converge. Failures (malformed journal, unknown `journal_version`, folder gone) land as
+red entries in the same App Logs "Sync" history as a regular sync
+(`SyncService.recordEntry`), never as an exception — same fail-soft contract as the
+rest of synced mode. The op vocabulary also carries `edit`/`create`/`delete` for a
+future richer write surface; only the checkbox (`complete`/`reopen`) is wired up on the
+plugin side today. Conflict rules and failure-mode rationale are recorded in
+`.claude/notes/obsidian-integration.md`; tests: `test/sync/sync_import_service_test
+.dart` (Dart) and the "change journal" describe block in `obsidian-plugin/test/model
+.test.ts` (TypeScript).
+
+**Trigger — quit, never startup:** `_MyAppState` is a `WidgetsBindingObserver` that
+forwards every lifecycle state to `SyncService.onLifecycleChanged`. The first
+hidden/paused/detached after a resume starts exactly one fire-and-forget sync
+(`_syncedThisBackground` latch, reset on `resumed`; hidden→paused→detached arriving in
+a row must not sync three times). Nothing runs at launch: the service is only touched
+at startup by a lazy `ensureLoaded()` (memoized read of `sync_log.json`) from the home
+page/App Logs, so first frame and load paths are untouched. The sync reads
+`readTaskListRaw()` (state already on disk — every mutation saves), so it needs no page
+state.
+
+**Graceful failure:** the write is atomic (`SafeFile`, tmp+rename — a reader or crash
+can never see a half-written file); every failure (no folder chosen, folder deleted,
+write denied) is caught and becomes a red history entry, never an exception. Overlapping
+runs are skipped (`_syncInFlight`).
+
+**Sync history (App Logs → "Sync" tab):** every run is a `SyncLogEntry` (at,
+durationMs, itemCount, success, message, trigger 'app quit'/'manual'), newest first,
+capped 100, persisted in `sync_log.json` and mirrored as a one-liner into `LogService`.
+The page has two tabs since 0.1.130: "Logs" (the live 24 h `LogService` list) and
+"Sync" (green check "Synced N items in M ms" / red error "Sync failed: reason", with
+timestamp · trigger subtitle).
+
+**Red dot:** a failed sync sets `hasUnseenError` (persisted as `unseen_error`), which
+puts a small red dot (Key `sync-error-dot`, same `_iconWithFailureDot` stack as the CI
+test-failure dot but its own key) on the drawer's App Logs entry via a
+`ValueListenableBuilder`. Opening App Logs calls `markErrorSeen()` (dot gone, entry
+stays); a later successful sync also clears it.
+
+Tests live in their own silo `test/sync/` (service round-trip/failures/lifecycle latch
++ Sync tab, drawer dot, settings switch).
+
+### 4.8 Todoist sync — two-way sync with a Todoist account (0.1.237, API v1 since 0.1.238)
+
+`Config.todoistSyncEnabled` (default **off**) + `Config.todoistApiToken` (plain text,
+same as every other setting — the app has no secret-storage layer), both in Settings →
+**Todoist sync**. `TodoistSyncService` (`lib/services/todoist_sync_service.dart`,
+singleton with `resetForTest`) mirrors `SyncService`'s shape (lifecycle-triggered
+background run via the same `onLifecycleChanged` latch, a manual "Sync now", a
+`SyncLogEntry` history in `todoist_sync_log.json` — App Logs gained a third "Todoist" tab,
+and its `hasUnseenError` ORs into the same drawer red dot as the folder sync) but writes
+**both directions** against Todoist's unified API v1
+(`https://api.todoist.com/api/v1`, `lib/services/todoist_api_client.dart`, `http` package,
+injectable client for tests). Pulling down on the home page's task list
+(`RefreshIndicator` around the tab/schedule body, `HomePage._pullToRefreshSync`) also runs
+`syncNow(trigger: 'pull_to_refresh')` and reloads tasks from storage afterwards — a no-op
+(no snackbar) when Todoist sync is off or unconfigured, same as any other trigger
+otherwise; the same `SyncLogEntry` history and drawer dot apply. The old REST v2 (`rest/v2`)
+and Sync v9 (`sync/v9`) endpoints Todoist previously offered are sunset and now return a
+deprecation notice
+instead of data — `tasks`/`projects` GET responses on v1 are also cursor-paginated
+(`{"results": [...], "next_cursor": ...}` rather than a bare array), which
+`TodoistApiClient._fetchAllPages` walks to completion.
+
+**Scope:** recurring tasks (parents and generated instances) are excluded —
+Todoist's own recurrence engine has no clean mapping onto this app's
+generated-instance model, so those stay local-only. Everything else syncs,
+including wishlist items: a task's `label` free-text round-trips as real
+Todoist labels (auto-created on push), and `_targetProjectKey` routes it to a
+Todoist project — its own Kanban project if it has one, else a dedicated
+**Wishlist** project for `isWish` tasks, else a dedicated **Future** project
+for any other unprojected task with no due date (the Future tab bucket,
+including the schedule view's `Task.futureBucketMarker` sentinel date), else
+Todoist's Inbox. Both dedicated projects are created on first push and cached
+in `todoist_sync_state.json`'s project map like any other. Pulling a task back
+out of either project restores the matching local state (`isWish: true`/
+unassigned, or just unassigned).
+
+**No live diff, so fingerprints:** the API has no per-task "updated at" and no
+completed-task endpoint, so a run can't diff against a timestamp. `TodoistSyncMapEntry`
+(`lib/models/todoist_sync_map_entry.dart`) persists, per synced task
+(`todoist_sync_state.json`: task entries + the local-project→Todoist-project id map), a
+fingerprint of each side's fields as of the last successful sync; a run recomputes both
+current fingerprints and compares. **Conflict rule: local wins** — a task changed on both
+sides pushes the local edit and overwrites the Todoist-side one. A task's disappearance
+from Todoist's active-task list (the only "done" signal the API gives) is always treated
+as a completion, never a delete, so the ambiguity never loses data.
+
+**Fields with no Todoist equivalent** — `Task.note`, the project/Kanban assignment, `uid`
+for relinking — round-trip through a trailer appended to Todoist's `description` field
+(`lib/services/todoist_metadata_codec.dart`): the task's own description text, then a
+`⸻ BestToDo sync — generated, do not edit below this line ⸻` separator, human-readable
+`Project:`/`Label:`/`Note:` lines (visible if you open the task in Todoist), then one
+`sync-data: {...}` JSON line, which is what parsing actually reads back. A description
+with no such trailer is a plain Todoist-native task. `Task.label` is pushed into the
+trailer's `Label:` summary line too (for readability in the Todoist app), but is **not**
+read back from it — Todoist's native `labels` array is the only source of truth on pull,
+so a label added/removed via Todoist's own label UI (which never touches the description)
+is picked up. Label fingerprints (both push- and pull-side) compare the token *set*
+case-insensitively, order-independent, so re-ordering labels on either side isn't treated
+as a change.
+
+**Sync info in the UI, not the description** (0.1.263; widened to every task as the Task
+info dialog in 0.2.88): `TodoistSyncService.entryForLocalUid` looks up a task's
+`TodoistSyncMapEntry` by `Task.uid`. `TaskTile`'s expanded edit view shows an info icon
+(`Icons.info_outline`, tooltip "Task info") as the Note field's `suffixIcon` on **every**
+task. Tapping it opens `showTaskInfoDialog` (`lib/ui/task_info_dialog.dart`): Created
+(`Task.createdAt`), Origin, the Todoist source (`pendingSourceTitle`), Approved
+(`Task.approvedAt`) or "Waiting for approval", Completed/Deleted times, the Todoist id and
+last `syncedAt` when a mapping exists, and the full History timeline from the item journal
+(same `describeItemEvent` wording as Task Details; a label change that drops the
+`Waiting_for_approval` token reads "Approved"). `TaskDetailPage` shows the same
+Created/Origin/approval rows (`TaskInfoView(showHistory: false)`) above its own History
+section. `Task.description` never carries any of this — it round-trips only the free text
+on both sides, unlike the note/label/project/Kanban trailer above.
+
+**Task origin** (0.2.88): `Task.origin` (JSON `origin`, omitted when null) is one of
+`TaskChangeSource`'s constants, stamped once at creation — `sync` by
+`TodoistSyncService._taskFromRemote` (every Todoist pull goes through Waiting for Approval),
+`share` by the share-sheet quick-add screen, `automation` by
+`RecurrenceService.buildOccurrence`, `user` by the home add row, Chronize, Wishlist and
+Research add paths. `Task.approvedAt` (JSON `approvedAt`, omitted when null) is stamped by
+every approve action on the Waiting for Approval page (single, dated, weekday, quick-tag and
+bulk). Neither is pushed to Todoist. `resolveTaskOrigin` infers an origin for unstamped
+(pre-0.2.88) tasks, shown with "(inferred)": approval traces (`pendingSourceTitle`,
+`approvedAt`, the waiting token) → Todoist; else the journal's live (non-seeded) `created`
+event's source; else `recurrenceParentUid` → automation; else "Unknown — created before
+origin tracking".
+
+**Algorithm** (`TodoistSyncService._runSync`, six passes over one fetch of Todoist's
+active tasks + projects): (0) every Kanban project already mapped in `_projectMap` has its
+name reconciled against Todoist's, fingerprinted the same local-wins way as tasks (baseline
+in `todoist_sync_state.json`'s `projectNameMap`, seeded rather than pushed the first time a
+mapping is seen so a pre-existing mapping doesn't look like a rename); (1) a locally-vanished
+synced task (completed-and-rolled-over or deleted) closes or deletes its Todoist
+counterpart; (2) a still-open-locally task now marked done closes it; (3) every other open
+local task creates (new), or pushes/pulls an edit by fingerprint diff (conflict → local
+wins); (4) a Todoist task with no local mapping is pulled in as a new local task (an
+embedded `uid` matching an existing local task relinks instead of duplicating — recovers
+from a lost/reset state file); (5) a mapped task that silently vanished from Todoist's
+active list is marked done locally. Projects are matched by name (case-insensitive) or
+created on first push; an unmapped Todoist project on a pulled task leaves the local task
+unassigned rather than importing the project. The Wishlist/Future dedicated projects are
+exempt from name-sync (pass 0) — they're app infrastructure, not user projects. Due dates:
+`hasExplicitTime` tasks are pushed via `due_datetime` (UTC); date-only tasks via `due_date`.
+On pull, v1's `due.date` is a single field holding either a bare date or a full datetime
+string — a `T` in it tells them apart; date-only tasks default to 18:00 (matching
+`applyDefaultDeadlineTimes`).
+
+Tests live in `test/sync/`: `todoist_metadata_codec_test.dart` (pure trailer round-trip),
+`todoist_api_client_test.dart` (`http.testing.MockClient`), `todoist_sync_service_test.dart`
+(a small in-memory fake Todoist backend routed through `MockClient`, covering push/pull/
+conflict/completion/deletion/project-mapping/lifecycle-latch), plus the Settings section
+and combined drawer-dot coverage in `sync_ui_test.dart`.
+
+## 5. Alarm subsystem (the reliability showpiece)
+
+Two **independent** systems share nothing but the log: the user-facing alarm clock
+(flutter_local_notifications) and the SMS report (android_alarm_manager_plus isolate).
+Every mechanism below exists because a real failure was observed on Samsung/One UI
+hardware — see Part II §"The reliability arc" and `.claude/notes/alarm-work-spec.md`.
+
+### 5.1 Model & ids
+
+`Alarm`: uid, name, description, hour/minute, optional one-off `date`, `isRepeating` +
+`repeatDays` (Mon=1..Sun=7), `vibrate`, `overrideDnd` (default off), `color`, snooze
+(enabled, duration min, default 9), `enabled`, `melody` + `volume` (0–1, fraction of the
+device maximum). Melody/volume are played by the ring UI through the native
+`besttodo/alarm_audio` channel (`AlarmSoundPlayer.kt`): synthesized melodies on the ALARM
+stream, stream pinned to max during playback (previous level restored on stop) with the
+alarm's volume applied as track gain — so loudness is independent of the phone's current
+volume; `overrideDnd` additionally plays through Do Not Disturb. (`snoozeMaxCount` is
+stored but **not implemented** — known deferred work.) `nextOccurrence()` is the
+scheduling brain; a one-off *without* a date re-arms for tomorrow after firing (no
+delivered-callback exists to auto-disable it).
+
+Deterministic id scheme so every path can find an alarm's notifications:
+`base = (uid.hashCode & 0x1FFFFFF) * 8`; `base+0` one-off/snooze slot, `base+1..7` weekday
+slots, `base + 0x10000000` watchdog id; fixed test-alarm ids at `0x20000000/1`. All within
+signed 32-bit; spaces cannot collide.
+
+**Item-linked reminders (0.1.110):** `Alarm` additionally carries `itemUid?` +
+`triggerAnchor` (`start`/`end`) + `triggerOffsetMinutes` (negative = before; serialized
+only when linked, so standalone alarm JSON is byte-identical to before). A linked alarm
+is an ordinary one-off whose `date`/`hour`/`minute` are rewritten from its task by
+`ReminderSyncService` (fire-and-forget from `saveTaskList`; free when no linked alarm is
+in memory): reschedule → follows (and re-enables), complete/undated → disabled (never
+deleted, so reopening revives it), task gone → removed, rename → name follows. Created
+via the one-tap "Remind me 15 min before due" on the task-detail page (hidden for
+undated tasks). **The scheduling pipeline below the model is untouched.**
+
+**Tags:** `Alarm.tags` (free-form, `Task.label`'s comma/whitespace convention, empty string
+omitted from JSON) is editable via a `LabelPickerField` in `AlarmEditPage`, alongside name/
+description, and filterable in Settings → Filtering rules → Alarms (`ItemViews.applyTagRules`,
+see §4.4). Any tag rendered anywhere (this field, the Alarms list's tag pills, `TaskTile`'s
+label chips) that names a reserved state — Wish/Project/Archived/Deleted/Fooddiary/Alarm/
+Countdown/Waiting_for_approval — renders in one fixed protected colour as a naming-collision
+warning (`protectedTagColor`, `lib/utils/label_style.dart`).
+
+`AlarmService` is a singleton `ValueNotifier` store; every mutation persists →
+syncs the widget → **awaits** `rescheduleAll` (so short-lived isolates don't die mid-work).
+`toggleInStorage(uid)` is the static isolate-safe path used by widget toggles: load from
+disk, flip, save, sync widget, and **always** reschedule (the old `_loaded`-guarded version
+was why widget toggles silently did nothing with the app closed).
+
+**Dev seed (0.1.270):** `load()` seeds three sample alarms (a repeating weekday "Wake up",
+a one-off "Midday stretch", a disabled repeating-weekend "Wind down") when storage is
+empty and `Config.isDev`, mirroring the seeds already used for tasks/wishlist/projects/
+countdown timers — so the Alarms tool (and its screenshot) is never an empty state in
+dev/demo builds. Goes through the same persist-and-reschedule path as any other mutation.
+
+### 5.2 Scheduling pipeline (per reschedule run)
+
+1. Log a `RESCHEDULE (trigger)` banner.
+2. **Individual cancel, never `cancelAll()`** — compute which `base+0` slots must be
+   preserved (pending snoozes live there) and cancel only stale ids. `cancelAll` on every
+   app-open used to kill pending snoozes.
+3. Schedule each enabled alarm: repeating → one zoned schedule per weekday with
+   `matchDateTimeComponents: dayOfWeekAndTime`; one-off → `nextOccurrence()`.
+4. **Method ladder** per schedule, strongest first, first success wins, every attempt
+   logged: `alarmClock` (setAlarmClock — immune to Doze) → `exactAllowWhileIdle` →
+   `inexactAllowWhileIdle` (last resort). All with absolute-time interpretation.
+5. **OS read-back verification**: `pendingNotificationRequests()` diffed against expected
+   ids — "we called schedule()" ≠ "the OS kept it".
+6. **Arm the watchdog** (Android): an independent `android_alarm_manager_plus` one-shot at
+   `fireAt + 90 s` per enabled alarm (exact, wakeup, allowWhileIdle, rescheduleOnReboot),
+   registry in SharedPreferences (`alarm_watchdogs_v1`).
+
+**Watchdog fire logic:** no registry entry → alarm was edited meanwhile, done. Else check
+(a) user ack (`recordAck` from every tap/snooze/dismiss, valid if after fireAt−5 min) and
+(b) `getActiveNotifications()` for the alarm's ids. Either → DELIVERED, log OK. Neither →
+primary path silently dropped: log FAIL with likely cause and **ring now** via
+`showAlarmNotification` (~90 s late but it rings). Then re-arm for the next occurrence.
+
+**Notification presentation:** channel `alarm_notifications_v2` (v2 = channel migration;
+Android channel settings are immutable), Importance.max, `audioAttributesUsage: alarm`
+(alarm volume stream), `fullScreenIntent`, `ongoing`, insistent flag (`additionalFlags:
+[4]`) so it loops until acted on. Actions: Snooze (if enabled) + Dismiss. Snooze schedules
+`now + snoozeMinutes` into the `base+0` slot through the same ladder and gets its own
+watchdog cover. When the ring UI starts the alarm's own melody it hands the notification
+over to the sound-less channel `alarm_notifications_silent_v1` (same actions/vibration, no
+channel sound) so the default sound and the melody don't stack; if melody playback can't
+start, the loud channel keeps ringing as the reliability baseline.
+
+**Full-screen ring UI (0.1.88):** a ringing alarm presents `AlarmRingPage`
+(`lib/ui/alarm_ring_page.dart`) — a clock-app-style full-screen page (live clock, alarm
+name/description, pulsing icon, big Snooze / round Stop button, dark gradient themed with
+the alarm's `color`; back is blocked, the alarm must be answered). Delivery paths into it:
+(a) the notification's full-screen intent fires while the device is locked/screen-off —
+`MainActivity` detects the `SELECT_NOTIFICATION` intent whose `payload` extra contains an
+alarm `uid` and sets `setShowWhenLocked/setTurnScreenOn` (cleared again via the
+`besttodo/alarm_ring` MethodChannel when the page closes, so the rest of the app never
+sits over the keyguard); cold start then reads `getNotificationAppLaunchDetails()`
+(`getAlarmLaunchPayload`), a warm app gets the response via `onDidReceiveNotificationResponse`
+→ the `onAlarmRing` handler registered by `_MyAppState`, which pushes the page (guarded
+against double-push). (b) tapping the ringing notification — same wiring. The sound keeps
+coming from the insistent notification while the page shows. Page **Stop**: `recordAck` →
+cancel the alarm's active notifications (`plugin.cancel` also kills same-id pending
+schedules, e.g. the auto-rearmed next weekly fire) → full reschedule from storage.
+**Snooze**: ack → cancel actives → reschedule → snooze scheduled last (so the reschedule
+can't clear the `base+0` slot) → snooze watchdog. The watchdog backup ring passes the
+alarm `uid` into `showAlarmNotification`, which then posts under the alarm's own `base`
+id with the full payload — so the backup ring gets the identical full-screen treatment.
+The Android 14+ "full screen intents" special access is checked in `ensureAlarmPermissions`
+(opens the system toggle when revoked) and in diagnostics via
+`NotificationManager.canUseFullScreenIntent` over the `besttodo/alarm_ring` channel.
+
+**Reboot/update:** boot receivers (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, quickboot) for
+both plugins + `rescheduleOnReboot` + full reschedule on every app launch. Force-stop
+drops all OS alarms until next launch — platform rule, documented, unfixable.
+
+**DST:** next-occurrence stepping rebuilds wall-clock `TZDateTime` per day instead of
+`add(Duration(days:1))` (which shifts the local hour across DST transitions).
+
+### 5.3 The alarm log & diagnostics
+
+`alarm_log.txt`: `YYYY-MM-DD HH:mm:ss.mmm [OK|FAIL|WARN|INFO] STAGE | message`, stages
+ENV/PERM/SCHEDULE/VERIFY/BACKUP/FIRE/ACTION, section banners, self-trimming, write-chained
+per isolate, mirrored to `debugPrint` for logcat. Viewable/copyable in-app (Alarms → log
+icon) with FAIL/WARN/OK colorization.
+
+Startup diagnostics ("alarm doctor", also on-demand): device/OEM/SDK, notification +
+channel state, exact-alarm permission, battery-optimization exemption, per-OEM power-saver
+hints (samsung/xiaomi/huawei/honor/oppo/vivo/oneplus/meizu/asus each get the specific
+setting to change), full-screen-intent access (Android 14+ can revoke it → the alarm
+degrades to a banner while locked; logged with the settings path), configured alarms vs
+what the OS reports pending. "Test alarm (1 min)" exercises the full ladder+watchdog with
+fixed test ids.
+
+## 6. Notifications (platform split)
+
+`notification_service.dart` facade with conditional imports: `_io` (Android/iOS — the real
+implementation), `_web` (immediate `dart:html` notifications only; scheduling is a no-op),
+`_stub` (everything no-op). Two Android channels: `task_notifications` (Importance.high)
+and `alarm_notifications_v2` (see §5.2). Quiet hours shift only task notifications —
+neither alarms nor the streak reminder (§4.5), which rides the task channel at an
+explicit user-chosen time.
+
+## 7. SMS daily report ("snitch text")
+
+Social-accountability feature: a scheduled daily SMS with today's completed/uncompleted
+counts and remaining list. Config (`sms_report_config.json`): enabled (default off), time
+(default 22:00), message template with tokens `{hello}{nickname}{completed}{uncompleted}
+{date}{list}`, recipients (nickname+phone+`enabled`), `subscriptionId` (-1 = default SIM;
+dual-SIM support), optional completion-rate threshold (only send on days below X%).
+
+**Recipient pause switch (0.1.117):** each recipient carries `enabled` (default true;
+missing key in older payloads reads as true). Settings shows a `Switch` per row next to
+edit/delete — off dims the row, appends "• disabled" to the number, and keeps the contact
+so it never has to be re-typed; editing a paused recipient preserves the flag.
+`SmsReportConfig.activeRecipients` is the send list, so the daily report and "Send test
+now" both skip paused contacts; an all-disabled list logs "Skipped — all N recipient(s)
+disabled" and the send diag reports "Sent x/y (N disabled)".
+
+**Scheduling:** exact **one-shot self-re-arming chain** (`oneShotAt` →
+`setExactAndAllowWhileIdle`, fixed id `0x517D`), NOT `periodic` (maps to `setRepeating`:
+inexact since API 19, deferred indefinitely in Doze — this was a real bug). The callback
+(background isolate; binding+registrant first) logs "Alarm fired" (proves background
+delivery), **re-arms tomorrow before running the report** (crash-safe chain), then sends.
+`applyFromConfig()` on every launch restores a force-stopped chain; ≥1 min headroom
+prevents same-day double-fire.
+
+**Permissions strategy:** requested in the **foreground** when the user enables the report
+(SMS, exact alarm, ignore-battery-optimizations, notifications) — a background isolate has
+no Activity and cannot show a permission dialog, so the send would be silently skipped.
+
+**Sending:** per enabled recipient, render template, auto-multipart when >160 ASCII / >70 unicode
+chars (carriers silently drop over-length single parts), send via `another_telephony` with
+a 20 s status-listener timeout. Everything logged to `sms_report_log.json` (500 entries,
+send + diag kinds) with an in-app viewer and export. "Send test now" calls the report
+directly — the fact that test-send worked while the alarm never fired was the diagnostic
+clue for the missing-receiver bug.
+
+## 8. Home-screen widgets (Android)
+
+Six widgets via `home_widget` (app group `group.homeScreenApp`):
+
+- **Task widget** (`SimpleWidgetProvider.kt`): today's open tasks as text + colored
+  progress bar (green/orange/red per §4.3); tap opens the app. Updated after every save and
+  at midnight. Deleted and not-yet-approved tasks never appear (§4.2e). The whole payload is built by `TaskWidgetService.sync(tasks)`
+  (`lib/services/task_widget_service.dart`) — `home_page._updateHomeWidget` and the
+  background isolate both go through it, so both looks always agree.
+  **Checkable rows (0.1.125, `Config.widgetCheckboxes`, default off):** with the setting on
+  the provider hides the text blob and draws up to `maxRows` = 5 rows
+  (`widget_task_{i}_id/title/done` + `widget_task_count`/`widget_task_overflow`), each a
+  vector checkbox (`widget_check_box[_checked].xml`) plus the title; done rows go grey.
+  Rows are today's + overdue tasks, **open first** (so a busy day still shows what is left)
+  and completed after them (so a mis-tap can be undone). The checkbox fires
+  `besttodotask://toggle?id=` as a background broadcast → `alarmWidgetBackgroundCallback` →
+  `Config.load()` (the isolate has no settings) → `TaskWidgetService.toggleInStorage`:
+  flips `isDone`/`completedAt` in `tasks.json`, records the streak (guarded — the reminder
+  re-sync needs the notification plugin, which may be unavailable there) and re-syncs the
+  widget. The title and every non-row area still open the app.
+  Because that isolate writes the file behind the app's back, `_HomePageState` is a
+  `WidgetsBindingObserver`: on `resumed` it runs `_mergeWidgetCompletions`, which reloads
+  storage and copies **only** the done state of changed uids into the in-memory list (plus
+  the daily stats, which live only in the page) — without it the next in-app save would
+  silently undo the widget's completion.
+- **Alarm widget** (`AlarmsWidgetProvider.kt`): up to 4 alarms (time/name/sub + ON/OFF),
+  "+N more", empty state. URI scheme `besttodoalarm://` — `open` (root container +
+  header/+ + empty state + "+N more" → alarms list; since 0.1.90 the container-level
+  intent makes ANY tap on the widget that lacks a more specific action open straight to
+  the alarms page), `edit?id=` (whole row incl. its container → editor), and `toggle?id=`
+  as a **background broadcast** that does not open the app: HomeWidgetBackgroundReceiver → Dart `alarmWidgetBackgroundCallback` →
+  binding+registrant init → `AlarmService.toggleInStorage` → full awaited reschedule. This
+  chain is what makes a widget toggle actually schedule/cancel the OS alarm with the app
+  closed.
+- **Food Diary widget** (`FoodDiaryWidgetProvider.kt`, 0.1.278): a "+" that opens the
+  in-app "create entry" dialog directly (`besttodofood://add` → `FoodDiaryPage(autoAddEntry:
+  true)`, which auto-opens `_editEntry()` on first frame, same pattern as the alarm widget's
+  `edit?id=`); tapping anywhere else opens the Food Diary list (`besttodofood://open`). Both
+  are foreground `HomeWidgetLaunchIntent`s, unlike the other two widgets' background
+  toggles — logging food always needs the UI, so there is no background isolate path here.
+  Pulses red (alternating a bright and a dim red, see below) once today's running entry count
+  falls behind a checkpoint schedule (0.2.25; pulsing since 0.2.32): at least 1 entry logged by
+  8:00, 2 by 13:00, 3 by 16:30 and 4 by 20:00 (`checkpointMinutes`/`requiredCounts`) — a plain
+  "log something roughly every few hours" cadence, not tied to any particular meal.
+  `FoodDiaryWidgetService`
+  (`lib/services/food_diary_widget_service.dart`) pushes only the raw "how many entries
+  today" count plus the date it describes, synced from `FoodDiaryPage._save`,
+  `home_page._updateHomeWidget` and `WaitingApprovalPage._save`; whether a checkpoint has
+  *passed*, and so whether the count is behind, is deliberately decided in Kotlin against the
+  live clock (`food_diary_widget_info.xml` sets `updatePeriodMillis` = 30 min), so the color
+  is right even when the widget redraws on its own schedule with the app never opened — a
+  purely Flutter-computed flag would go stale the moment the clock crosses a checkpoint
+  without a save happening. The same four checkpoints also carve the day into breakfast
+  (before 8:00) / lunch (8:00–13:00) / snack (13:00–16:30) / dinner (from 16:30) windows,
+  reused by the add-entry dialog's "copy from yesterday" shortcuts (see §10.6a).
+- **Food Diary button widget** (`FoodDiaryButtonWidgetProvider.kt`): a companion to the
+  Food Diary widget above, fixed at 1x1 (`minWidth`/`minHeight` = 40dp, `targetCellWidth`/
+  `targetCellHeight` = 1, `resizeMode="none"`) and drawing nothing but a "+" that fills the
+  cell. Tapping it is the same foreground `besttodofood://add` launch intent as the full
+  widget's "+" — there is no room for status text at this size, so it carries no other tap
+  target. Since 0.2.12 it redraws every 30 minutes and pulses red on the same running-count
+  schedule as the full widget (0.2.25, pulsing since 0.2.32); tapping it remains an immediate
+  shortcut to the add-entry dialog.
+- **Music mini widget** (`MusicMiniWidgetProvider.kt`, 0.2.61): a single play/pause button plus
+  a one-line title, nothing else. **Music controls widget** (`MusicControlsWidgetProvider.kt`,
+  0.2.61): the same, plus skip-previous and (0.2.63) skip-next buttons. Both differ from every
+  other widget here: their buttons don't call into Dart at all (there is no in-memory
+  `MusicAudioHandler` a separate background isolate could reach — unlike the on-disk task/alarm
+  lists, playback state lives in the running foreground service). Instead `MusicWidgetIntents.kt`
+  builds an explicit `ACTION_MEDIA_BUTTON` broadcast (`KEYCODE_MEDIA_PLAY_PAUSE`/
+  `KEYCODE_MEDIA_PREVIOUS`/`KEYCODE_MEDIA_NEXT`) targeted straight at `audio_service`'s own
+  `MediaButtonReceiver` — the same path a Bluetooth headset or wired remote uses — so the buttons
+  work whenever the Music Player's playback service is alive, in the foreground or not.
+  `MusicWidgetService` (`lib/services/music_widget_service.dart`) only pushes the display data
+  (title/artist/playing) by subscribing to the audio handler's `mediaItem`/`playbackState`
+  streams; tapping the title opens the app (`besttodomusic://open`). Best Music only since
+  0.2.98 (receivers declared in the `music` flavor manifest) — see §10.6e/§10.6n.
+
+*Pulsing red, not flat red (0.2.32).* `FoodDiaryAlert.kt` (shared by both providers) alternates
+the background between a bright and a dim red every 900ms (`pulseColor`, `pulseIntervalMs`) so a
+missed checkpoint actually catches the eye instead of sitting there as a flat color that blends
+into the background after the first glance. AppWidgets have no real animation API — no
+`Animatable.start()` reaches a `RemoteViews`-hosted `View` from outside its own process — so the
+pulse is faked: each `onUpdate` that finds the alert active schedules a *non-wakeup* elapsed-
+realtime alarm (`AlarmManager.setExact(ELAPSED_REALTIME, …)`) that re-broadcasts
+`ACTION_APPWIDGET_UPDATE` at its own provider (an explicit-`Intent` self-target, so it lands
+regardless of Android 8+'s implicit-broadcast restrictions and needs no extra manifest
+receiver). Non-wakeup on purpose: the loop only actually ticks while the device is already
+awake — i.e. while someone could plausibly be looking at the home screen — so it costs nothing
+while the phone sleeps, and the two providers already hold `SCHEDULE_EXACT_ALARM`/
+`USE_EXACT_ALARM` for the alarm feature. Each tick recomputes `FoodDiaryAlert.status` fresh
+(never assumes the previous tick's alert still holds) and reschedules only while still behind;
+the moment it isn't, or the last widget instance of that kind is removed (an empty
+`appWidgetIds` breaks the reschedule chain), the loop stops itself. `widget_previews_page.dart`'s
+in-app mock does not reproduce the pulse (`FoodDiaryWidgetService.isBehindSchedule` only ever
+returns the static behind/not-behind boolean) — it still shows flat red for "behind", since the
+mock exists to keep the *data* in sync with the Kotlin providers, not to fully replicate a
+`RemoteViews` animation loop outside the Flutter tree.
+
+**Widget Previews** (`lib/ui/widget_previews_page.dart`, dev-only — drawer entry gated on
+`Config.isDev`, next to App Logs/Startup Times): the widgets above are drawn by
+`RemoteViews` on the Android home screen, entirely outside the Flutter tree, so they cannot
+be captured by the desktop screenshot integration test (`integration_test/
+home_page_screenshot_test.dart`, run with `-d windows`). This page mocks each one in Flutter
+from the same data/logic the real widgets use — `TaskWidgetService.todayTasks`, the sorted
+`AlarmService.instance.list`, `FoodDiaryWidgetService.computeEntryCount`/`isBehindSchedule`
+plus the same checkpoint-passed-against-the-live-clock check `FoodDiaryWidgetProvider.kt`
+does — so the colors/text stay in sync with the Kotlin providers without duplicating their
+logic. The Food Diary mock falls back to two in-memory (never saved) demo entries when no
+Food Diary tasks exist yet, the same way `FoodDiaryPage` seeds its own copy on first open.
+The button-widget mock shares the same red/black logic as the full widget's mock, just
+without any status text, matching what the Kotlin provider actually draws.
+
+## 9. Android platform config
+
+**Manifest permissions** (each exists for a reason): `POST_NOTIFICATIONS` (13+),
+`SEND_SMS`, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`, `SCHEDULE_EXACT_ALARM` +
+`USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`, `SET_ALARM`,
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (0.2.61 — the Music Player's
+background playback service, required alongside `FOREGROUND_SERVICE` when targeting SDK 34),
+`VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
+About page; the user still confirms every install) and `INTERNET` (0.1.139 — debug builds
+get it implicitly, so "Check for updates" worked in development and failed on every release
+APK until it was declared in the main manifest). Music folder access reuses the existing
+`MANAGE_EXTERNAL_STORAGE` grant (§10.6d) rather than adding `READ_MEDIA_AUDIO`. An
+`androidx.core.content.FileProvider`
+(authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
++ external-files dirs) shares the downloaded update APK with the system installer as a
+`content://` URI.
+
+**Receivers/services:** android_alarm_manager_plus `AlarmService` +
+**`AlarmBroadcastReceiver`** (its absence was the original "SMS never sent" root cause —
+the plugin ships an empty manifest and its PendingIntent targets this class) +
+`RebootBroadcastReceiver`; flutter_local_notifications `ScheduledNotificationReceiver` +
+`ScheduledNotificationBootReceiver` (BOOT/PACKAGE_REPLACED/quickboot) +
+`ActionBroadcastReceiver` (snooze/dismiss); home_widget background receiver/service; the
+six widget providers; `audio_service`'s own `AudioService` foreground service
+(`foregroundServiceType="mediaPlayback"`) and `MediaButtonReceiver` (0.2.61 — the Music
+Player's background playback, notification and lock-screen controls, and the target the two
+music widgets' buttons send real media-button broadcasts to — see §8).
+
+**Gradle (`build.gradle.kts`):** namespace/appId `com.mfficiency.best_todo_2`; minSdk
+`max(26, flutter.minSdkVersion)` (androidx.work via home_widget needs 23; the
+`health` plugin behind Tools → Fitness Activity needs 26, and Health Connect is
+Android 8+ only — raised from 23 in 0.2.9+300); Java/Kotlin 11
+with core-library desugaring; glance pinned to 1.1.1 (home_widget 0.8.1 pulls `1.+` which
+would demand compileSdk 37); NDK 28.2.13676358. **Signing:** `key.properties` if present,
+otherwise a **committed fixed debug keystore** (`android/app/debug.keystore`, password
+`android`) — deliberate, so every build (CI or local) is signed identically and updates
+install in place instead of failing with a signature mismatch. A Gradle task renames the
+release APK to `best_todo_<version>+<build>.apk` (e.g. `best_todo_0.1.117+87.apk`),
+alongside the untouched `app-release.apk` CI uploads. The pubspec version must keep its
+`+build` suffix — without it `flutter.versionCode` falls back to `1` and the APK is
+rejected as a downgrade on any device holding an earlier build.
+
+**ProGuard/R8 (`android/app/proguard-rules.pro`, wired in the release build type):** keep
+rules for Gson generic signatures/`TypeToken` and `com.dexterous.flutterlocalnotifications.**`.
+Without them R8 full mode strips the generic type info Gson needs, and **every** schedule
+call in a release build throws `RuntimeException: Missing type parameter.` — the 0.1.85–87
+releases could not hand a single alarm to the OS (only the watchdog backup rang, ~90 s
+late). Do not remove.
+
+**MainActivity** (`com/example/best_todo_2/MainActivity.kt`) is no longer a bare
+`FlutterActivity` — since 0.2.61 it extends `AudioServiceFragmentActivity` (not plain
+`FlutterFragmentActivity`) so the Music Player's background playback service can hand it
+the `FlutterEngine` it manages; the health plugin's Health Connect flow (which needs a
+`FragmentActivity`) is unaffected, since `AudioServiceFragmentActivity` is itself one. It
+sets show-when-locked/turn-screen-on when launched by an alarm's
+full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
+(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
+the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
+installer via the FileProvider (ACTION_VIEW, `application/vnd.android.package-archive`);
+when the one-time "install unknown apps" toggle is missing (O+,
+`canRequestPackageInstalls()` false) it opens that settings screen and returns
+`"needs-permission"` so the Dart side tells the user to grant it and retry. The same channel
+also hosts `startBackgroundDownload`/`queryDownload`/`cancelDownload` (0.2.x — see "Background
+downloads via DownloadManager" below), which hand the APK transfer to Android's
+`DownloadManager` instead of a Dart-side socket: it is enqueued into the app's
+`getExternalFilesDir(null)/updates/` (DownloadManager runs as a separate system process and
+cannot write into the app's *internal* `filesDir`, only its external one), with
+a notification titled `"<appDisplayName> update <x.y.z+build>"` (e.g. "Best Music update
+0.3.1+397", passed as the channel's `title` arg so the two apps' downloads are distinguishable),
+`VISIBILITY_VISIBLE_NOTIFY_COMPLETED` and both `NETWORK_WIFI`/`NETWORK_MOBILE` allowed so it
+keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
+cursor back into a status/progress map.
+
+**Single instance** (BestToDo 0.2.89, Best Music 0.2.90): only one copy of either
+app ever runs. Android: `MainActivity` is `launchMode="singleTask"` with the default task affinity
+(the app's package, so BestToDo and Best Music stay separate apps) — previously `singleTop` +
+`taskAffinity=""` (Flutter template default), which let a launch from the media notification, a
+widget or a link start a second `MainActivity`/Flutter engine in a new task. Every launch now
+re-fronts the one instance and arrives via `onNewIntent` (already handled for alarms and shares).
+Windows: `windows/runner/main.cpp` takes the named mutex `Local\BestToDo.SingleInstance`; a second
+launch finds it taken, restores + foregrounds the existing "BestToDo" window and exits. Guarded by
+`test/share/single_instance_wiring_test.dart`.
+
+**Share-sheet task capture** (0.1.145; quick-add screen, images/PDFs, Today/Inbox
+choice, redelivery dedup added later): BestToDo appears in Android's share sheet for
+`text/plain`, `image/*` and `application/pdf` ACTION_SEND, plus `ACTION_SEND_MULTIPLE`
+for `image/*` (Chrome, YouTube, Maps, Gmail, Photos, ...) and opens a very small
+quick-add screen prefilled from whatever was shared, rather than silently creating a
+task. `ShareActivity` — a translucent, non-Flutter trampoline (`excludeFromRecents`,
+`noHistory`) — receives the share, merges `EXTRA_SUBJECT` + `EXTRA_TEXT` (browsers put
+the page title in the subject; the subject is dropped when the text already contains
+it), copies any `EXTRA_STREAM` file(s) into `cacheDir/shared_incoming/` (a `content://`
+URI's read grant dies with this activity, so the file must be copied before it
+finishes — a display name is looked up via `OpenableColumns.DISPLAY_NAME` when the
+source provides one, else a generated name from the mime type's extension), and
+forwards everything to `MainActivity` with `FLAG_ACTIVITY_NEW_TASK`. It is
+deliberately not `MainActivity` itself: the share sheet starts its target inside the
+*sharing* app's task, and a second MainActivity there would mean a second Flutter
+engine. MainActivity queues the content (`pendingSharedContent`, one entry per share:
+`{text, files: [{path, mimeType}, ...]}`) and pokes Dart over the `besttodo/share`
+channel; delivery is always **pull-with-clear** (`takeSharedContent`), so a cold start
+(queue filled before the engine ran, drained by `ShareIntentService.init`) and a warm
+poke can never double-deliver.
+
+On the Dart side, `SharedPayload`/`SharedFile` (`lib/models/shared_payload.dart`) parse
+the channel map. `ShareIntentService` (`lib/services/share_intent_service.dart`) drops
+an empty payload and a **redelivered duplicate** — a content signature (text + subject
++ file names) seen again within `dedupWindow` (5 s default) is dropped, so a fast
+double-tap on the share target or an Android-level redelivery never queues twice — then
+hands every remaining payload to the callback `main.dart` attached via
+`setOnSharedPayload` (queued payloads drain into it the moment it attaches). `main.dart`
+presents one `QuickAddSharePage` at a time (queuing the rest) via `appNavigatorKey`.
+
+`QuickAddSharePage` (`lib/ui/quick_add_share_page.dart`) prefills title/description via
+`ShareIntentService.buildDraftTask` — first non-empty line of the text (or the subject,
+when there's no text) as the title (capped at 120 chars, full text kept in the
+description when it carries more); a file-only share (no text/subject) titles itself
+from the file — its display name when the source app provided one, a generic "Shared
+photo"/"Shared PDF" for a camera/gallery-generated name (`IMG_...`, a UUID, ...), "(+N
+more)" appended for multiple files. Both fields stay editable. Two buttons save
+directly: **Save to Today** (due today) or **Save to Inbox** (undated — lands in the
+Future tab like any other undated task, via `Task.futureBucketMarker`); any shared
+image/PDF is imported into permanent attachment storage under the new task's uid via
+`ShareIntentService.importAttachments` (reuses `AttachmentStorageService`; a type
+`AttachmentsField` has no viewer for is skipped; the share's cache copy is deleted once
+imported). Saving hands the built `Task` to `ShareIntentService.saveTask`, which routes
+it exactly like every other share-derived write: while a home page is alive it is the
+registered consumer and adds the task through its own in-memory list + `_saveTasks()`
+(no second `tasks.json` writer, and ranking follows the same top/bottom setting as every
+other add via `_tabIndexForDueDate`); without one it is persisted directly through
+`ItemRepository`. Saving *or* discarding calls `returnToPreviousApp`
+(`besttodo/share` → Android `moveTaskToBack(true)`), backgrounding the app to re-front
+whatever app the share came from — the standard "quick capture" pattern, since this
+activity was launched fresh by that app's share sheet; a bare back-gesture dismissal
+(no button tapped) does the same from `dispose()`. Tests: `test/share/`.
+
+**Song-link share routing** (0.2.60): before presenting `QuickAddSharePage`, `main.dart`
+runs the share's text (or subject) through `detectMusicShareLink`
+(`lib/services/music_share_link.dart`) looking for a Spotify track link
+(`open.spotify.com/track/...`), a Shazam track link (`shazam.com/track|song/...`), or a
+YouTube video/playlist link (the same patterns `Mp3DownloaderService` already
+recognizes). A match routes straight into `Mp3DownloaderPage(sharedLink: ...)` instead of
+the task editor, skipping the quick-add flow entirely — the share's caption text (with
+the link itself removed, and boilerplate like "I used Shazam to discover" stripped) is
+kept as a `textHint`. On open, the page resolves the link into a search query via
+`MusicLinkResolverService.resolveSearchQuery`: a YouTube link passes through unchanged
+(the downloader's existing direct-URL path resolves and downloads it immediately, no
+picker); a Spotify/Shazam link uses the caption `textHint` when there is one, otherwise
+fetches Spotify's public `open.spotify.com/oembed` endpoint (`title` + `author_name`, no
+API key) or parses the Shazam page's `og:title`/`<title>` (via the `html` package,
+stripping the trailing " | Shazam") — either way the resolved text feeds the same
+`_submit()` a typed query uses, landing on the usual up-to-5-candidate picker. A failed
+lookup with no caption to fall back on shows an error (`MusicLinkResolveException`)
+rather than hanging. `Mp3DownloaderPage` swaps its normal Tools app bar for one with a
+"Find & Download Song" title and a Close button (`_finishShare`) that calls
+`ShareIntentService.returnToPreviousApp` and pops, same as `QuickAddSharePage`'s
+Save/Discard; a bare back-gesture dismissal does the same from `dispose()`. Tests:
+`test/tools/music_share_link_test.dart`,
+`test/tools/mp3_downloader_test.dart` ("opened from a share (sharedLink)").
+
+**"Play out loud?" confirmation** (Best Music 0.2.91):
+`SpeakerPlayGuard.confirmPlay` (`lib/services/speaker_play_guard.dart`) runs before every
+UI play entry point — `MusicPlayerPage` Shuffle play and `_play` (tap a song / Play / play a
+playlist), the mini player's and Now Playing's play button. It shows a "Play out loud?"
+Cancel/Play dialog only when `Config.musicConfirmSpeakerPlay` (default on; Music Settings →
+"Ask before playing out loud") is set, nothing is playing right now, and the
+`besttodo/audio_output` channel's `isExternalOutputConnected` (MainActivity:
+`AudioManager.getDevices(GET_DEVICES_OUTPUTS)` has any type besides built-in speaker/
+earpiece/speaker-safe/telephony/remote-submix/unknown — i.e. no Bluetooth, wired/USB
+headset, car, HDMI) returns false. Off Android or on a channel error it never asks.
+Hardware media buttons and the notification are untouched (a headset button implies a
+headset anyway). Tests: `test/music/speaker_play_guard_test.dart`.
+*0.3.19 gaps closed*: "nothing is playing" now means not **audible** —
+`MusicAudioHandler.isAudible` = `_player.playing && _audibleSinceLoad`, the latter set when
+the player state is playing+ready and cleared at the start of every `_playCurrent` — because
+`playbackState.playing` is already true while a video is still being resolved/buffered, so
+switching to music then skipped the question. The guard now also runs in
+`switchSessionAndShow` ("Back to music/videos" pill, mini player and Now Playing switch;
+dialog on the navigator's context, Cancel = no switch), the Subscriptions feed's `_play`
+(tap, swipe/long-press "Play", options-sheet Play, online search results) and Songs by
+BPM's `_play`. **Home-screen widgets**: their play/pause button is now a `PendingIntent`
+for `MusicPlayGuardActivity` (translucent, `taskAffinity=""`, `noHistory`, excluded from
+Recents) instead of the bare media-button broadcast: when the widget data says playing,
+`music_confirm_speaker` (written by `MusicWidgetService` on attach, with every sync and when
+the setting is toggled) is false, or `AudioOutputs.isExternalConnected` (the shared helper
+MainActivity's channel now uses too) — it sends the play/pause broadcast
+(`MusicWidgetIntents.playPauseBroadcast`) and finishes invisibly; otherwise it shows a
+native "Play out loud?" AlertDialog over the home screen (Play → broadcast; Cancel/outside →
+nothing). Skip buttons still broadcast directly.
+
+**Best Music share-to-download** (Best Music 0.2.91): Best Music uses the same native path
+(`ShareActivity` → `MainActivity` → `besttodo/share` → `ShareIntentService`), hooked up in
+`lib/main_music.dart`'s `_BestMusicAppState` with the same one-at-a-time share queue as
+`main.dart`. Since everything shared into a music app is a song to find, it routes through
+`detectBestMusicShare` instead: Spotify/Shazam/YouTube exactly as above, plus any *other*
+link (`MusicLinkSource.otherLink` — Apple Music, Deezer, SoundCloud, ...; caption first,
+else the page's `og:title`/`<title>` minus a short trailing "| Site") and plain text such
+as "Song - Artist" (`MusicLinkSource.text`, searched as-is). Only a blank (file-only)
+share is dropped, straight back to the sharing app. Best Music opens
+`Mp3DownloaderPage(sharedLink: ..., autoDownloadTopMatch: true)`: a share that resolves to
+a *search* queues the top result immediately (no tap needed) and keeps the other
+candidates listed under "Downloading the top match. Wrong song? Tap the right one below
+instead." — tapping another candidate cancels the auto-picked job (`Mp3DownloadManager.
+cancel`) and queues that one. BestToDo keeps the plain picker (flag off). After a download
+lands inside the library folder (`Config.musicFolder`, defaulting to the MP3 download folder
+when unset — same rule as `MusicPlayerPage.initState`), `MusicDownloadLibrarySync`
+(`lib/services/music_download_library_sync.dart`) rescans the library once the download
+queue goes idle, so the song is playable without a manual Rescan; only completions seen
+after `attach()` count, never the persisted history. The music flavor's
+`android/app/src/music/AndroidManifest.xml` replaces `ShareActivity` (`tools:node=
+"replace"`) with a text/plain-only filter, so Best Music isn't offered for images/PDFs.
+Tests: `test/tools/music_share_link_test.dart` (`detectBestMusicShare`, other-link/text
+resolving), `test/tools/mp3_downloader_test.dart` ("autoDownloadTopMatch (Best Music)"),
+`test/music/music_download_library_sync_test.dart`, `test/update/music_build_wiring_test.dart`
+(manifest overlay).
+
+**Quirk — do not "fix":** Kotlin files sit under `com/example/best_todo_2/` but declare
+`package com.mfficiency.best_todo_2` (matches applicationId). It works; blind refactors
+here have broken builds before.
+
+## 10. Secondary tools
+
+### 10.1 Chronize (experimental continuous timeline)
+Vertical infinite timeline on a continuous time axis (`_pixelsPerMinute` zoom 0.03–12.0,
+default 0.9; `_topMinute` from a `_base` = start of today). Eight mark levels (1d, 12h, 6h,
+2h, 1h, 30m, 10m, 5m); each fades in/out by pixel spacing (`markLevelOpacity`: ramp 22→52
+px; day level always visible); finer intervals divide coarser so marks align. Left gutter
+56 px with day labels ("D Mon", primary bold) and "HH:mm"; grid lines across the body;
+error-colored now-line + dot recomputed every build. Pinch/pan with anchor-minute
+preservation; mouse wheel support; fling → `FrictionSimulation(0.135, …)` in pixel space;
+shared 300 ms easeOut glide for Today (centers now), zoom buttons (×1.6, compounding),
+wheel settles, and nav taps. Right side: infinite Cupertino wheels (optional hour, day,
+month; item 0 = `_base`; 120 ms settle debounce; suppress-counters to ignore programmatic
+moves). Tasks render as chips at their due time, cascading downward on overlap (height 22,
+gap 2); done = strikethrough on surfaceContainerHighest. When no dated event is on screen,
+two centered pills point at the nearest past (arrow above) / future (arrow below) events
+with coarse distances ("3 hours"); tap to glide there. Tap empty timeline → create dialog
+(5-min rounded time); tap chip → edit dialog (sets `hasExplicitTime`).
+
+### 10.2 Countdown timers (Tools → Countdown)
+`CountdownTimerItem{uid,label,target,notifyOnZero,notifyRoundNumbers,milestones,createdAt,editedAt,tags,itemUid}`
+in `countdown_timers.json`. Inline always-present composer (auto-names "Timer N", default
+target now+7d, minimizes on scroll), in-place edit, long-press drag reorder (manual mode) or
+sort by name/added/edited/deadline asc/desc, 1 s tick. Swiping is not used for delete — it
+conflicted with the long-press-drag gesture — so the row's edit/notify/milestone/delete
+buttons (delete has an undo snackbar) stay hidden until the row is tapped open; tapping again
+collapses it. Collapsed rows show whole-unit breakdowns ("in 2mo 1w 3d 4h"); expanded shows
+the same duration as
+decimals in every unit (years=days/365.25, months=days/30.4375, …). Past timers count up
+(orange); the instant date picker ranges 1900 → now+100y (0.1.103) so past events
+(birthdays) can be created directly. Notify-on-zero fires a notification once (suppressed for already-past timers so
+they never retro-fire; suppression is per-session).
+
+**Item-linked timers (0.2.5):** `itemUid` (nullable, mirroring `Alarm.itemUid`, §5.1) makes a
+countdown attach to a task instead of standing alone — Task Details offers a one-tap "Add
+countdown to due date" (`TaskCountdownSection`, next to the reminder section), and a linked
+timer's card shows a small link icon (tooltip names the task). Unlike reminders, the link is
+resolved *lazily*: `CountdownSyncService.resolveAgainstTasks` runs once when the Countdown
+page loads (free when nothing is linked), not on every task save — milestone notifications
+are foreground-only (this page's own ticker), so there is no background path that needs the
+target kept correct between app opens. A linked timer's `target` follows the task's due date;
+a timer whose task disappears is **unlinked**, not deleted — a countdown still means
+something on its own once detached. See `docs/architecture/presentation-layer-decision.md`.
+
+`tags` (free-form, `Task.label`'s comma/whitespace convention) is editable via a
+`LabelPickerField` in the composer, and filterable in Settings → Filtering rules → Countdown
+(`ItemViews.applyTagRules`, see §4.4). Every timer also always carries the required
+`'countdown'` token (`CountdownTimerItem.kCountdownRequiredTag`/`ensureCountdownTag`, folded in
+by the constructor and `toJson()`, mirroring `Alarm.kAlarmRequiredTag`) so the seeded
+`includeTags: [Countdown]` default rule matches it — see §4.4. Filtering narrows the displayed
+list only — reorder is disabled while a Countdown filter rule is active, same reasoning as Home
+(§4.4).
+
+**Milestone notifications** (# icon → `showCountdownMilestonesDialog`, per-timer, 0.1.105;
+replaced the fixed power-of-ten-seconds ladder of 0.1.103). `notifyRoundNumbers` is now the
+master switch for `List<CountdownMilestone>`
+(`lib/models/countdown_milestone.dart`): `{value:int, unit:MilestoneUnit, direction:
+MilestoneDirection}` where unit ∈ seconds|minutes|hours|days|weeks|months|years and
+direction ∈ before|after|both. Any count of any unit, any number of entries.
+
+A milestone is *not* compared as a span of remaining seconds — it resolves to **absolute
+instants** relative to the target: `target − value` (before side) and `target + value`
+(after side), via `CountdownMilestone.shift`. Seconds→weeks add a fixed `Duration`;
+months/years walk the calendar with day-of-month clamping (`addMonths`: 31 Mar − 1 month →
+28/29 Feb), so "10 months before" lands on the same day-of-month. This is what makes the two
+directions symmetric and calendar units correct.
+
+`CountdownTimerItem.dueMilestone({previousNow, now})` returns the `MilestoneHit`
+(milestone + `isAfter` + instant) whose instant lies in the half-open window
+`(previousNow, now]`, or null. The page keeps last-checked wall-clock per timer
+(`_milestoneSeen`, per-session); the first observation only baselines (no retro-fire on
+load/edit/dialog-save), and a window spanning several milestones (backgrounded app) reports
+only the **most recent** so reopening yields one notification, not a burst. Message reads
+"<name> — 10 days to go" / "… since".
+
+Defaults (`CountdownTimerItem.defaultMilestones()`, both directions, declared longest-first):
+10 years, 10 months, 10,000,000 s, 10 weeks, 100,000 min, 1,000 h, 10 days — note
+10,000,000 s (~115.7 d) outranks 10 weeks (70 d). Timers saved before 0.1.105 carry no
+`milestones` key and inherit the defaults on load. The dialog owns one
+`TextEditingController` per row and disposes them itself (never dispose from the caller after
+`showDialog`); on save it drops non-positive rows, collapses duplicate number+unit pairs, and
+re-sorts by `approximateSeconds` descending (months/years use average lengths — display
+ordering only, never placement).
+
+### 10.3 Productivity Stats (formerly "Your Stats"; lives under Tools since 0.1.91)
+Four sections: (a) GitHub-style 52-week × 7-day heatmap of **deleted-per-day** counts
+(title says "Completed" — historical mislabel; buckets 0/1/2/3/4+ in blue shades, tap for
+snackbar, auto-scrolls to newest); (b) 365 daily stacked bars from `DailyTaskStats` —
+five segments: moved-from-start (red 0xFFD84343), completed-from-start (dark green
+0x1B5E20), not-completed-from-start (dark grey), completed-from-created (light green),
+not-completed-from-created (light grey); weekend tint/bold; unit height
+`(180/total).clamp(3,16)`; (c) item-activity heatmap, last 31 days, 24h × 7 weekdays,
+tabs Created/Completed/Moved/Deleted/Combined, primary-color lerp 0.18→0.92, with a peak
+sentence ("Most items are completed on Monday between 09:00-10:00."); (d) **Fun stats
+(0.1.234)** — an all-time trivia list at the very bottom, computed on the fly from the
+deduped `tasks` + `deletedItems` union (by uid) plus `dailyStatsByDay`, no new storage:
+items completed, items ever created, completion rate, busiest day (count + date), days
+with something done (with the average per day), golden hour (modal `completedAt` hour,
+`_hourRangeLabel`), favourite weekday, planning hour (modal `createdAt` hour — when
+things get written down), early-bird (<08:00) and night-owl (≥22:00 or <05:00) finishes,
+weekend share, fastest finish / longest wait (min and max `completedAt − createdAt`,
+negatives skipped, task title as subtitle), oldest open item (earliest `createdAt` among
+live undone tasks), times postponed (Σ `movedFromOpeningTaskIds ∩ openingTaskIds` over
+all days), most-postponed weekday (the same sum bucketed by the day key's weekday) and
+open right now. Together these answer the backlog wish `wish-extra-productivity-stats`
+(most productive day/time, when planning happens, which day gets postponed most), which
+the shipped-wish registry ticks off in 0.1.234. Rows whose
+input is missing are dropped; a completely empty history shows "Complete a few items and
+the trivia shows up here." instead of a column of zeroes. Durations are deliberately
+rough (`s` → `min` → `h` → `days` → `weeks`).
+
+Since 0.1.239, any row backed by concrete items or days is **tappable** (a trailing
+chevron marks it — `_funStatTile`'s `details` param, empty list = plain row, e.g. "Open
+right now" and "Items ever created" stay non-interactive): tapping opens a
+`DraggableScrollableSheet` (`_showStatDetails`) listing each item's title (or day, for
+day-bucketed stats like busiest day / days with something done / times postponed / most
+postponed on) against the weekday + date + time it happened
+(`_weekdayDateTime`, e.g. "Mon, 2026-08-10 · 14:32"), newest first. Fastest finish /
+longest wait / oldest open item show a two-row created→completed breakdown instead of a
+list, since there is only ever one task behind them. All detail lists are recomputed on
+tap from the same in-memory `tasks`/`deletedItems`/`dailyStatsByDay` the tile numbers
+already come from — no new storage or state.
+
+The item-activity cell shading is **outlier-resistant** (`_ActivityScale`, 0.1.124): the
+ramp saturates at the Tukey upper fence of the non-empty cells
+(`cap = clamp(max(q3+1, q3 + 1.5·IQR), 1, maxCount)`) and counts are compressed
+logarithmically inside it (`log(1+count)/log(1+cap)`, `cap == 1` → full intensity).
+Normalising against the raw maximum instead made one huge slot (bulk import, marathon
+session) flatten every other slot into the same faint shade. A legend under each tab shows
+geometric swatch stops (0, 1, `cap^⅓`, `cap^⅔`, `cap`, the top one labelled `cap+` when it
+saturates) plus a caption naming the cap and the raw busiest slot.
+
+### 10.4 Usage Data (Tools → Usage Data)
+Digital-Wellbeing-style CSV dump of everything ever recorded, as far back as device data
+goes. Loads all sources fault-tolerantly, shows summary (earliest day, total records) + a
+per-dataset include/exclude checklist, exports RFC-4180 CSVs into
+`besttodo_usage_<timestamp>/` in a picked folder plus an `export_info.csv` manifest.
+Datasets (see `usage_data_service.dart` for exact columns): all_events (unified timeline
+across task/alarm/sms/app/timer sources), daily_usage (first/last activity, active span,
+opens, task counts, day-start completion rate), hourly_usage, task_history (with derived
+hours_to_complete / completed_on_time), daily_task_stats (raw id sets), alarm_pipeline_log
+(parsed alarm_log.txt), alarms snapshot, sms_report_log, app_opens (timestamped since
+0.1.85), startup_times (legacy), countdown_timers.
+
+### 10.5 Projects (Kanban, 0.1.89–0.1.90)
+Tools → Projects (`lib/ui/projects_page.dart`; moved from a top-level drawer entry into
+the Tools group in 0.1.90). Split view: top pane (flex 3) lists all non-deleted tasks;
+bottom pane (flex 2) shows the projects. **Projects persist** via `ProjectService`
+(singleton, `ValueNotifier<List<Project>>`, `projects.json` in app documents dir, seeded
+with `Project.placeholders` "Project 1–3" on first run; corrupt/missing file keeps the
+in-memory seeds). `Project = {id, name, description}` (immutable, `copyWith`); ids are
+stable — tasks reference `projectId`, so renames propagate everywhere. Drag a
+task onto a project card to assign it (sets `task.projectId`, resets `kanbanStatus` to
+todo, snackbar confirms; assignment persists via the task's own JSON through `onChanged`
+→ `_saveTasks`). Cards show name, one-line description (if any) and live task count.
+Drag sources are `AdaptiveDraggable` (`lib/ui/adaptive_draggable.dart`): long-press-drag
+on touch platforms (Android/iOS incl. mobile web, so drags don't fight list scrolling),
+immediate mouse drag on desktop and desktop web (e.g. Chrome on a laptop; decided via
+`defaultTargetPlatform`, which reflects the underlying OS on web). The hint text above
+the task pane adapts to the input mode.
+
+**Tags on task tiles (0.1.90):** an assigned task shows two small
+`secondaryContainer`-tinted pills under its title on every home tile — the project name
+and the stage ("Project 1", "To-Do"); rendered via `ValueListenableBuilder` on
+`ProjectService.projects` so renames update live; stage names via
+`ProjectService.stageLabel`. Unknown project ids fall back to the raw id.
+`ProjectService.load()` runs in HomePage initState so names resolve without opening the
+tool.
+
+**Board** (`ProjectBoardPage`): three equal-width Kanban columns — To-Do (blue
+0xFF90CAF9), Ongoing (orange 0xFFFFCC80), Closed (green 0xFFA5D6A7) — each a `DragTarget`
+with count in the header; drag cards between columns (same `AdaptiveDraggable`
+long-press-on-touch / immediate-on-mouse behavior) to change `kanbanStatus`,
+tap a card for `TaskDetailPage`, the × on a card unassigns it (clears `projectId`, resets
+stage). **Edit (0.1.90):** pencil action in the app bar opens a name+description dialog;
+Save upserts through `ProjectService` (empty name keeps the old one, description may be
+cleared); the app-bar title and a hint-colored description line under it update in place.
+Original board written pre-0.1.58, merged at 0.1.89; still uses deprecated
+`onWillAccept`/`onAccept` and some hardcoded `Colors.black45`-style hints.
+
+### 10.6 Wishlist (0.1.94–0.1.95, Todo.md import 0.1.100, unified into the task list 0.1.101)
+Tools → Wishlist (`lib/ui/wishlist_page.dart`): a pre-filtered view over the ONE task
+list — exactly like opening a project — showing only tasks flagged `Task.isWish`
+(JSON key `isWish`, default false). Wish tasks live in `tasks.json` alongside
+everything else; they are undated (`dueDate == null`), which alone buckets them into
+the Future tab (`_tasksForTab` sends null-due tasks to the future bucket), where they
+render as full, editable task tiles whose `TaskTile` subtitle shows a small "wish" tag
+and the task's own labels as tags first, then (for a wish with a description) a
+`DescriptionDisclosure` — a chevron toggle that expands the description on tap instead
+of dumping it inline; tags read first since they're the more useful glance info. Label
+tags are not wish-only: from 0.1.252 `TaskTile._buildSubtitle` renders every label token
+on any task (plain, project-assigned or wish), so a task tagged `urgent` shows that tag
+in the home list; the subtitle is still null when a task has no project, no wish flag
+and no labels. The schedule view groups undated
+tasks under "Someday". The home search matches them like any task. So: the item
+overview (home) shows all items with all properties/tags; the Wishlist shows only wish
+items and never anything date-related.
+
+The page loads via `StorageService.loadTaskList()`, keeps the full list in memory,
+mutates only the wish subset and always saves the whole list; HomePage reloads
+`_tasks` from disk when returning from the Wishlist tool. Wishes are sorted open
+items first, then by priority label (`priority-high` > `priority-medium` >
+`priority-low` > none, stable within a group). Tiles look like home task tiles
+(checkbox toggles done + `completedAt`; done wishes strike through, sort last, and are
+archived by the normal new-day rollover); the subtitle shows label tags first, then a
+`DescriptionDisclosure` chevron for the description — same order and widget as the
+Food Diary tile and `TaskTile`'s own wish subtitle. The FAB's add dialog keeps its
+0.1.148 field order (title, labels/tags with the quick-priority buttons right below —
+most wishes are a title plus a priority, description last; a `_WishEditDialog`
+StatefulWidget owning its controllers, add-only). **Tapping an existing tile no
+longer opens a dialog (0.2.80):** it folds open in place exactly like a home-list
+`TaskTile` — title/labels-and-quick-priority/description become editable `TextField`s/
+`LabelPickerField` right below the tile (`_WishTileState._buildExpandedFields`,
+toggled by `_expanded`), and the trailing row gains the "Send to Claude" robot button
+(see below) plus a collapse chevron while open. Free-text fields (title/description)
+save on blur (`Focus.onFocusChange`, like `TaskTile`); label/quick-priority taps save
+immediately — both call `widget.onFieldsChanged` (`_WishlistPageState._persistFieldEdit`),
+which also re-sorts/re-groups the page so a priority or release-tag change moves the
+item right away. Edits mutate the task in place so uid/project/recurrence fields
+survive. Per-item and export-all JSON export (`{export_version: 1, exported_at,
+wishlist_items: [...]}`) remain.
+
+**Copy to clipboard (0.1.236, moved behind the swipe panel 0.1.259):** "Copy" puts the
+plain-text item on the clipboard via `_WishlistPageState.clipboardText` — title, then
+description, then labels, each on its own line, empty parts skipped — and confirms with a
+`Copied "<title>"` snackbar. Since 0.1.259 it lives only in the options-swipe panel; the
+per-tile `Icons.copy_outlined` button is gone.
+
+**Release grouping (0.1.254):** the wishlist is sectioned like the home page's due-date
+tabs, top to bottom: **Newly implemented**, **Next release**, **Soon**, **Backlog**
+(`WishReleaseGroup` in `wishlist_page.dart`). An empty non-"Next release" section is
+skipped entirely; "Next release" always renders (even at 0) since it carries the
+"Propose for next" button. Membership is decided purely by tags, via
+`wishReleaseGroupOf(task, currentVersion)`:
+- **Newly implemented** is automatic and not user-settable: it's the shipped-wish
+  registry (`wishlist_shipped.dart`) restricted to the app's *own running version* —
+  `shippedWishesByUid[task.uid]?.version == currentVersion` — so a backlog item that
+  auto-completed this release shows here, and drops back to its tag-based group the
+  moment the next version ships (`currentVersion` comes from `Config.version`, loaded
+  async in `initState`; blank until then, which no registry version ever matches).
+- **Next release** / **Soon** follow the `release-next` / `release-soon` label tokens
+  (`releaseNextToken`/`releaseSoonToken`/`releaseGroupTokens` in `label_utils.dart`,
+  ordinary `Label.kindTag` tokens — no new label kind). Anything left over, including
+  a task whose shipped-version match has expired, is **Backlog**.
+- `setWishReleaseGroup(task, group)` rewrites just the release tag (keeping every other
+  label), mirroring `setWishPriority`; moving to Backlog or Newly-implemented just
+  strips `release-next`/`release-soon`.
+
+Every tile except a "Newly implemented" one carries a "Move to release group" icon
+button (`Icons.drive_file_move_outline`, a `PopupMenuButton`) offering Next release /
+Soon / Backlog with a checkmark on the current group — same shape as the sort menu.
+Since 0.1.259 it was the tile's only trailing control; since 0.2.80 a folded-open tile
+also shows the "Send to Claude" robot button and a collapse chevron alongside it (see
+above). The swipe default still only steps an item back one group, so the picker has
+no swipe equivalent. Since `Task.label` is the same field the Todoist sync maps onto Todoist's
+native labels (§ Sync), tagging an item `release-next` in Todoist (by hand, or via
+"Propose for next" below) moves it here on the next sync, with no extra plumbing.
+
+**"Propose for next" (0.1.254):** a `TextButton.icon` (`Icons.auto_awesome`) on the
+"Next release" section header. There is no in-app model call — it copies
+`proposeForNextPrompt(...)` to the clipboard: an instruction for Claude to review the
+Todoist backlog, tag roughly 3 items `release-next` and a few more `release-soon`
+(the "~3 items per release" target is a guideline in the prompt text, not an enforced
+cap), plus a snapshot of every open, non-"Newly implemented" Backlog/Soon item
+(`- <title> [<tags>]`) so Claude has titles and existing tags without cross-referencing
+anything first. The user pastes the prompt into a Claude session with Todoist access;
+BestToDo picks up the resulting tag changes on its next Todoist sync. Confirms with a
+snackbar reminding the user to sync after pasting.
+
+**Send to build (0.2.35):** the options-swipe row's "Build" button
+(`Icons.rocket_launch`) dispatches one item to the build automation:
+`GithubWishlistService.createWishlistIssue` (`lib/services/
+github_wishlist_service.dart`, a thin `http`-based wrapper matching
+`TodoistApiClient`'s shape) opens a `wishlist-build`-labeled GitHub issue on
+`Mfficiency/best_todo_2`, titled from the item and bodied with
+`wishlistIssueBody(item)` — `buildSelectedWishesPrompt([item])`'s text (the
+same "Copy selected as prompt" already produces) plus a `Wishlist item uid:
+<uid>` trailer (`wishlistIssueUidPrefix`) the build routine parses back out,
+since the issue's title/description alone carry no client-side id for it to
+match a `ShippedWish` entry against. Only once that call succeeds does
+`_WishlistPageState._sendToBuild` stamp the item with the `next-build` label
+token (`nextBuildToken` in `label_utils.dart`) — deliberately a separate
+token from `release-next`/`release-soon`, since those name a human's release
+plan and this one names an already-taken automation action. An item already
+carrying the token shows "Queued" (icon `Icons.check_circle`) instead of
+"Build" and the button is disabled — no duplicate issue. Untagging (e.g.
+editing the label by hand) is local only: it does not close or touch the
+GitHub issue. With no token configured, or on any API failure, a snackbar
+explains why and the item is left untagged so it can be retried
+(`isQueuedForBuild(task)` is the query helper). The token itself is a
+GitHub fine-grained PAT scoped to Issues-only on this one repo, entered in
+Settings → Wishlist build (`_SettingsPageState._buildWishlistBuildSection`,
+section index 14) and stored in plain text like `Config.todoistApiToken` —
+save/test-connection mirror the Todoist sync section's fields. A Claude Code
+Remote routine (daily 17:00, plus on demand) watches for open
+`wishlist-build` issues, implements each and pushes straight to `dev` — no
+PR/approval step by design, matching the "bump, sync and build" workflow's
+own direct-to-dev habit; see `.claude/notes/automation.md` for the routine
+itself. CI (`build-apk.yml`) then builds/publishes the APK exactly as it
+does for any other `dev` push — no separate delivery mechanism was needed.
+
+**Send to Claude (0.2.74, moved to the tile's trailing row 0.2.80):** a robot
+icon button (`Icons.smart_toy_outlined`, tooltip "Send to Claude") in the
+tile's trailing row, shown only while the tile is folded open — the same
+"Send to Claude" action the main task list's expanded tile already offers
+(`_TaskTileState._sendToClaude` in `lib/ui/task_tile.dart`), so an idea can
+be built with AI directly without first routing it through the GitHub build
+queue above. It briefly lived in the options-swipe panel instead (0.2.74);
+that made it too easy to miss, so it moved next to "Move to release group"
+where expanding the tile already puts it in view. Fires the routine
+configured in Settings → Claude Routine (`Config.claudeRoutineUrl`/
+`claudeRoutineToken`) via `ClaudeRoutineService.fire` with
+`ClaudeRoutineService.buildPayload(item)` (title/description/note/label) as
+the `text` context, starting a real Claude Code cloud session; the icon
+swaps for a small spinner while in flight, and a snackbar confirms with an
+"Open" action (`url_launcher`, external application) once the fire call
+returns a session URL. Unlike "Build", this action carries no tagging/dedup
+state of its own — it's a one-shot fire-and-forget, so it can be pressed
+again freely. With no routine configured, or on any API failure (bad/expired
+token, network error), a snackbar explains why.
+
+**Clickable URLs (0.1.148) and phone numbers (0.1.276):** http/https URLs and phone
+numbers in descriptions are auto-linkified by `LinkifiedText`
+(`lib/utils/linkified_text.dart`): a StatefulWidget that renders `Text.rich` with
+underlined, primary-colored link spans (trailing sentence punctuation excluded), owns
+and disposes the spans' `TapGestureRecognizer`s, and opens links via `url_launcher`
+(`LaunchMode.externalApplication`; `onOpenLink` test hook). A link tap wins the gesture
+arena over the tile's own `onTap`, so it never opens the edit dialog. Phone matching is
+a shape regex (digits/spaces/dashes/dots/parens, optional leading `+`, 7-15 digits;
+a bare run with no separators needs 9+ digits so short item counts/IDs don't qualify)
+filtered to reject YYYY-MM-DD/MM-DD-YYYY-shaped text so due dates typed into a note
+aren't mistaken for numbers; a match dials via a `tel:` Uri built from its digits and
+any leading `+`. URL and phone matches share one pass so an accidental digit run inside
+a matched URL never double-links. Used by the wish tile subtitle and by `TaskDetailPage`
+(description and note).
+
+**Swipes (0.1.101, redesigned 0.1.258, sole entry point 0.1.259, Delete +
+8s sweep 0.1.261):** same gesture mechanics as `TaskTile` (drag with
+AnimatedSlide, 100 px/500 velocity thresholds, directions honor
+`Config.swipeLeftDelete`, GestureDetector on Android/web), but the two
+swipe directions no longer prioritize/delete:
+
+- **Options swipe** (right by default) opens a Build/Share/Copy/Export/Delete
+  shortcut row (a `Wrap`, so a narrow phone wraps to a second line instead of
+  overflowing) — each button is a `TextButton.icon` (icon beside its label) — with a
+  `wishlistSweepDelay` (8s; deliberately longer than the app-wide
+  `Config.delayDuration` 5s undo delay used elsewhere, since misreading one of
+  four buttons costs more) countdown bar. "Share" calls `SharePlus.instance.share`
+  (`share_plus`) with `clipboardText(item)`, summoning the OS share sheet; "Copy" puts
+  `clipboardText(item)` on the clipboard; "Export" (0.1.259) writes the single-item JSON
+  export; "Delete" (0.1.261) calls the same `_deleteItems` bulk-delete path with a
+  single-item list, moving it to the archive with the usual undo snackbar
+  (`Config.delayDuration`-timed, not the sweep delay). Letting the countdown run out
+  applies the default: `regressWishReleaseGroup(task, currentVersion)` moves the
+  item back one release step (nextRelease→soon, soon→backlog; no-op for Backlog and for
+  the automatic Newly-implemented group). Swiping back toward the other side cancels, as
+  on the home list.
+- **Selection swipe** (left by default) starts multi-select instead of deleting: the app
+  bar swaps to a "N selected" bar (close icon cancels, `Icons.content_copy` "Copy
+  selected as prompt", `Icons.delete` "Delete selected"); tapping other tiles toggles
+  them in and out of the selection (tile tap opens the edit dialog only outside selection
+  mode). "Copy selected as prompt" puts `buildSelectedWishesPrompt(items)` — "Build the
+  following items from my BestToDo wishlist:" plus each item's title/description/labels
+  — on the clipboard for pasting into a Claude session, then exits selection mode.
+  "Delete selected" moves every selected item to the archive in one shot
+  (`_WishlistPageState._deleteItems`, a single undo snackbar covering all of them); when
+  the undo window expires each task gets `deletedAt` and moves to `deleted_tasks.json`.
+  Restoring a wish from Archived Items keeps `dueDate` null (other restores get today) so
+  it lands back in the wishlist, not Today. Since 0.1.261 a single item can also be
+  deleted straight from the options-swipe panel, reusing this same path.
+
+**Trailing icons removed (0.1.259):** the per-tile Share / Copy / Export icon buttons and
+the emulator/desktop fallback pair ("Wishlist swipe options" + "Select") are gone —
+every one of those actions is reachable by swiping, so the icons were pure duplication
+crowding the tile. Export joined the options panel as a third button so nothing was lost,
+and `device_info_plus` emulator detection dropped out of `wishlist_page.dart` with the
+fallback row. Only "Move to release group" survives as a trailing control. Consequence:
+on desktop (where the GestureDetector is Android/web-only) per-item share/copy/export are
+no longer reachable — acceptable, as Windows is a dev/screenshot target. Quick-priority
+setting had already moved entirely into the add/edit dialog's priority buttons —
+`wishPriorityRank`/`setWishPriority`/`bumpWishPriority` still back sorting and that
+dialog, just no longer the swipe panel.
+
+**Legacy `wishlist.json` migration (0.1.101):** `loadTaskList()` calls
+`_migrateWishlistIntoTasks`: any items still in `wishlist.json` (a pre-0.1.101 store)
+are flagged `isWish`, stripped of any due date, appended to the task list (dedup by
+uid), persisted, and the legacy file is emptied so nothing merges twice. An unreadable
+`wishlist.json` makes `loadWishlist()` return an empty list, so the migration is a
+no-op and the corrupt file is left untouched. The migration also runs when
+`tasks.json` doesn't exist yet.
+
+**One-time Todo.md import (0.1.100):** `lib/services/wishlist_migration.dart` bakes in
+the still-open ideas from the repo's historical `Todo.md` ("After MVP → TODO" + "Later"
+sections, verbatim; 63 items, DONE sections excluded).
+`StorageService.loadWishlist()` merges them once into the wishlist, each labelled
+`old`, deduplicating against existing items by normalized title (lowercased,
+whitespace-collapsed) and never modifying or removing existing entries. The run is
+guarded by a `wishlist_todo_import_v1.txt` flag file so later deletions of imported
+items stick, and the import is skipped entirely (no flag, no write) when an existing
+`wishlist.json` fails to parse, so a corrupt-but-recoverable file is never overwritten.
+Since 0.1.101 this import feeds the task list via the wishlist migration above (fresh
+installs get the backlog as wish tasks on first `loadTaskList`).
+
+**Stable backlog uids + auto-completion (0.1.232):** every `LegacyTodoItem` now carries
+a hand-assigned permanent id (`wish-<slug>`, e.g. `wish-calendar-view`) used verbatim as
+the imported `Task.uid`, so a backlog entry is addressable from source. That makes the
+shipped-wish registry possible (`lib/services/wishlist_shipped.dart`): a
+`const List<ShippedWish>` of `(uid, version, note)` naming the backlog entries whose
+feature has actually been built. `applyShippedWishes(tasks)` — called by `loadTaskList()`
+after the wishlist migration, saving only when it changed something — ticks each matching
+**wish** task done, stamps `completedAt`, appends the `autocompleted` tag to its labels
+and `"Auto-completed in v<x.y.z>. <note>"` to its `note`. So the workflow for a wishlist
+feature is *build it, then add one line to `shippedWishes`*; the app does the bookkeeping
+on every install at next launch.
+
+Rules that keep it safe:
+- **Tag-guarded, so it runs exactly once per item.** An item already carrying
+  `autocompleted` is skipped entirely — re-opening or un-ticking a wish by hand sticks,
+  and the note is never appended twice. An item the user had already ticked off keeps
+  its own `completedAt`.
+- **Two kinds of registry id.** A `wish-<slug>` id is shared by every install (the
+  backlog import assigns it). A raw uuid addresses a wish the *user* added themselves —
+  those are minted per install, so the entry only ever matches on the device that
+  created that idea, which is the point: it is that user's own wish. Uuids survive the
+  wishlist JSON export/import, so the match also survives a reinstall from a backup.
+  `wishlist_autocomplete_test.dart` pins both shapes down, because a typo in either is
+  silent (the item simply never gets ticked off).
+- **Existing installs are re-identified first.** `backfillLegacyWishUids(tasks)` maps
+  0.1.100–0.1.231 imports (random uuids) onto their stable id by normalized title,
+  restricted to items carrying the `old` import token so a user's same-titled item keeps
+  its uid, and never taking a uid another item in the list already holds. It runs in
+  `loadTaskList()` **before** `_journalBaseline` is snapshotted — re-identifying an item
+  is bookkeeping, and a uid swap seen by the journal diff would read as delete + create —
+  and again in `loadWishlist()` so an item still parked in the legacy file dedupes
+  against its migrated twin by uid.
+- `autocompleted` is classified `Label.kindSystem` by `labelKindFor` (like `old`).
+- Auto-completed wishes are archived by the normal new-day rollover, exactly like
+  manually ticked ones; the sweep runs before the shipped pass, so a freshly
+  auto-completed wish stays visible for the rest of the day.
+
+The 0.1.232 registry seeds twelve entries whose features shipped long before the
+mechanism existed (calendar view ×2, Chronize, the Wishlist tab itself, Productivity
+Stats, Startup Times, simple/advanced/pro mode ×3, the manual GitHub APK action, the
+automatic test workflow, the screenshot integration tests).
+
+### 10.6a Food Diary (0.1.266, phase 1)
+Tools → Food Diary (`lib/ui/food_diary_page.dart`): a pre-filtered view over the ONE
+task list, structurally identical to the Wishlist tool — flagged tasks
+(`Task.isEatingHabit`) rather than a separate store. Unlike the wishlist, a food diary
+entry is invisible everywhere except this tool and, once deleted, Archived Items/the
+Deleted bin: `ItemViews.isVisibleInMainViews` (`isApproved(t) && !t.isEatingHabit`)
+gates `homeBucket`, `wishlist`, `active`, `projectTasks`, `boardColumn`, the schedule
+view's task list, the home-screen widget's `todayTasks`, and Todoist's `syncable`
+filter — an eating-habit task carries no Todoist mapping and is never pushed or pulled.
+`ItemViews.foodDiary(tasks)` (gated by `isApproved` alone, since the eating-habit check
+would exclude every result) is the tool's own selector.
+
+Phase 1 fields, deliberately small: title, description, a "time" (stored in the same
+`dueDate`/`hasExplicitTime` fields every task uses — picked via `pickDateInstantly` +
+`pickTimeOfDay`, so a past or future time is fine and never triggers day-rollover sweep
+since rollover only sweeps `isDone` tasks and an entry's `isDone` never flips), and
+free-form tags (e.g. "sugar", "lactose") through the same `LabelPickerField` every task
+uses (the add/edit dialog puts the tags field right under the title, description at the
+bottom, matching the wishlist dialog's field order — see 10.6). The Title field has the
+same mic button (`SpeechInputButton`, 0.1.288, see §"Adding" above) as the home add-task
+row, for speaking a food entry instead of typing it. Entries render
+newest-time-first, no checkbox, no priority/release grouping/
+export/share/multi-select (wishlist's extras) — add via FAB, tap to edit, swipe
+(`Dismissible`) to delete. Deleting moves the entry straight to Archived Items
+(`ItemRepository.loadDeletedItems`/`saveDeletedItems`) with an undo snackbar, exactly
+like a wishlist delete — never the plain task list, never the real bin directly.
+
+Entry cards are visually keyed to their logged time (0.2.12): before 12:00 uses a
+light-blue hue, 12:00–17:59 a warm yellow hue, and 18:00 onward a pale
+Bordeaux-inspired hue. Dark theme uses darker equivalents of the same three hues;
+an entry without a time receives the daytime/noon treatment.
+
+Each day-grouping header shows the weekday alongside the date (0.2.15), via
+`formatWeekdayShort` (`lib/utils/date_time_format.dart`): "Today · Mon" for
+today, "$weekday, $date" (honoring `Config.dateFormat`) for every other day,
+"No date" unchanged for undated entries.
+
+The app-bar export action (0.2.12) writes a human-readable Markdown file: a `## Summary`
+block first (0.2.26 — entry/day counts, the covered date range, and tag frequency sorted
+most-common-first, e.g. `- Tags: sugar (5), dairy (3)`), then newest day first, entries
+chronological within each day, with time/title as the prominent line and tags/notes
+indented below. The small 1x1 Food Diary “+” widget uses the same behind-schedule red
+background as the full widget and is refreshed whenever Flutter syncs diary data.
+
+**Nutritionist view (0.2.26).** A second app-bar action (`Icons.health_and_safety` /
+`Icons.menu_book`, tooltip "Switch to nutritionist/diary view") toggles `_nutritionistView`
+and swaps the body for `_NutritionistView` — a read-oriented layout meant for reviewing the
+whole log rather than logging a meal. It leads with the same summary card the export's
+`## Summary` block carries (entry/day counts, tag frequency as chips), then renders every
+day grouped, same as the diary view, but always fully expanded — no `ExpansionTile`
+collapsing history away — with each entry's full notes shown inline (no
+`DescriptionDisclosure` chevron) and no swipe-to-delete or copy-to-now actions, since the
+view is for reading, not editing. Off by default; toggling back to the diary view restores
+the normal collapsed-history logging UI. `_sortedFoodDiaryTagCounts`/
+`_foodDiarySummaryLines` back both this view and the export so they report the same tag
+counts.
+
+**Copy days as text (0.2.27).** A third app-bar action (`Icons.copy_all_outlined`, tooltip
+"Copy days as text") opens `_CopyDaysDialog`: a checkbox per logged day (all checked to
+start, so copying everything is one tap), each labeled with `_foodDiaryDayTitle` and its
+entry count. "Copy" puts `foodDiaryPlainText` for just the checked days on the clipboard
+and shows a "Copied N day(s) to clipboard" snackbar; "Cancel" or an empty selection closes
+the dialog with no clipboard write. `foodDiaryPlainText` is deliberately not
+`foodDiaryExportText`: no `#`/`##` headers, no `**bold**`, no summary block — a plain day
+header line, a `- ` bullet per entry (`$time — $title`), tags/notes as plain indented
+lines, blank lines between days — meant for pasting a handful of meals straight into a
+message rather than sharing the whole exported file. Both share `_sortedForExport` for the
+newest-day-first, chronological-within-a-day ordering.
+
+The add dialog, when creating a new entry (not editing), shows a row of four small icon
+buttons above the title field (0.2.25) — `_CopyYesterdayRow` — one per meal
+(`Icons.free_breakfast`/`lunch_dining`/`icecream`/`dinner_dining`, icons rather than
+labels to keep the row compact). Each fills the title/tags/description from yesterday's
+matching meal (`FoodDiaryWidgetService.latestEntryPerMealWindow`, the same breakfast/
+lunch/snack/dinner windows the widget's checkpoints carve the day into — the later entry
+wins when a window has more than one) without touching the time field, so logging a
+repeat meal is a tap plus Save; a button is disabled (with a tooltip explaining why) when
+yesterday has nothing logged for that meal.
+
+**Stomach issue entries (0.2.44, multi-select symptom type 0.2.45, optional Start/Stop +
+no color-tinting 0.2.46).** A `SegmentedButton<bool>` at the top of the add/edit dialog
+(`Food`/`Stomach`, backed by `_isStomach`) switches the whole dialog between the food
+fields described above and a second, unrelated form for logging a stomach issue instead
+of a meal — both entry types share the one `isEatingHabit` gate and the one diary list,
+sorted together by time. A stomach entry adds four `Task` fields: `isStomachIssue`
+(bool), `stomachEventType` (`'start'`/`'stop'`/null), `stomachSymptomTypes`
+(`List<String>`, any combination of `'gas'`/`'liquid'`/`'discomfort'`) and
+`stomachIntensity` (int, 1-10); a food entry leaves all four unset/false/empty. The
+stomach form is: the same time row as the food form (reused via `_timeRow()`), a
+Start/Stop `SegmentedButton` (`_stomachEventType`), a Gas/Liquid/Discomfort
+`SegmentedButton<String>` with `multiSelectionEnabled: true` (`_stomachSymptomTypes`, a
+`Set<String>` defaulting to `{'gas'}` for a fresh add) — any combination is selectable at
+once (e.g. gas *and* discomfort together), and the widget's own
+`emptySelectionAllowed: false` default blocks tapping off the last remaining type — and a
+1-10 `Slider` labeled "Intensity: N/10" (`_stomachIntensity`, default 5) — no title, tags
+or description field.
+
+The Start/Stop `SegmentedButton` is deliberately built with `multiSelectionEnabled: true`
++ `emptySelectionAllowed: true` even though only one of the two is ever meant to be
+selected at once — that combination is the only way to make tapping the *already*-selected
+segment clear it back to no selection (a plain single-select `SegmentedButton` always
+forces exactly one segment selected and can't be tapped off). Since multi-select just
+toggles membership, tapping the other segment while one is already selected would
+otherwise leave both lit up; `onSelectionChanged` resolves that itself — when the new
+selection has two members, it keeps only the one that isn't `_stomachEventType` (the one
+just tapped) — so Start and Stop stay mutually exclusive from the user's perspective,
+with "select neither" as a third reachable state. The entry's headline
+(`foodDiaryEntryTitle`, used by the tile, the nutritionist view and both exports in place
+of `entry.title`) is derived as "$Symptoms · $Event" (`_stomachSymptomsLabel` joins every
+selected symptom with ", " in a fixed Gas/Liquid/Discomfort order regardless of tap
+order, e.g. "Gas, Liquid · Start" — "Gas · Start" for just the one) — just "$Symptoms",
+no suffix, once `stomachEventType` is null. The Start/Stop toggle defaults per fresh add
+to whichever keeps today's log consistent (`_FoodDiaryPageState._defaultStomachEventType`,
+still returning a plain `String`, never null): 'stop' when today's chronologically-latest
+stomach entry is an unmatched 'start', 'start' otherwise (including when nothing has been
+logged today) — the user can still tap that default off afterward. Editing an existing
+stomach entry always opens on its own stored event/symptoms/intensity (including a stored
+null event), ignoring the default. `Task.fromJson` still accepts a 0.2.44-only record's
+singular `stomachSymptomType` string and wraps it in a one-item list, so an entry saved
+before the multi-select change still loads with its one symptom intact.
+
+Unlike a food entry, a stomach entry's `_FoodDiaryTile` card is never tinted by time of
+day: `_cardColor` returns `null` (the theme's plain card color) whenever
+`entry.isStomachIssue`, so a stomach log visually reads as its own kind of entry rather
+than another meal time slot.
+`FoodDiaryWidgetService.computeEntryCount`/`latestEntryPerMealWindow` (the meal-count
+checkpoint schedule and the "copy yesterday's meal" shortcuts) both skip
+`isStomachIssue` entries, since neither concept applies to a stomach log. The dialog's
+content is wrapped in a `SizedBox(width: 400)` (a bit wider than the food-only dialog
+used to size itself) to fit the extra controls; the food form's own field order changed
+only in that its tags field now sits under the time row instead of directly under the
+title.
+
+Registered like every other tool: `food_diary` key in `Config.startToolOptions`/
+`featureKeys` (and their label/description arrays), a `_ToolEntry` in home_page's
+drawer list, a `_buildToolPage` case, and `_openTool` reloading `_tasks` from storage
+on return (the tool loads/saves the list on its own, like Wishlist).
+
+A home-screen widget mirrors the tool (§8, "Food Diary widget") — its "+" opens this
+same add dialog and its background goes red once today's entry count falls behind the
+checkpoint schedule.
+
+**Dev seed (0.1.270):** when no `isEatingHabit` task exists yet and `Config.isDev`, the
+page seeds three entries spread across the day (breakfast/lunch/dinner, each with its own
+tags) so the tool is testable in Chrome and never shows the empty state in a screenshot.
+Checking the eating-habit subset rather than `tasks.isEmpty` is the fix (0.1.270): the
+dev/demo starter tasks seeded by `home_page._loadTasks` mean the overall list is never
+actually empty by the time this page loads, so the original single-entry seed (a plain
+`tasks.isEmpty` check) never fired in practice.
+
+### 10.6b Weekly Hours Planner (0.1.272, vertical grid + Google Calendar overlay 0.1.274,
+week navigation + actual over/undertime + sync-on-edit 0.1.280)
+Tools → Weekly Hours Planner (`lib/models/weekly_hours_plan.dart`,
+`lib/services/weekly_hours_service.dart`, `lib/ui/weekly_hours_planner_page.dart`): a
+standalone, date-less Monday-to-Friday work-hours template — not tied to the task list or
+any specific calendar week — with an optional Google Calendar overlay and a per-week actual
+over/undertime entry, both resolved against whichever calendar week chevrons navigate to.
+
+**Model:** `WorkBlock{startMinutes,endMinutes}` (minutes since midnight); `DayPlan{morning,
+afternoon}` with `lunchMinutes` simply the gap between them and `workedMinutes` the sum of
+both block durations; `WeeklyHoursPlan{days}` holds 5 `DayPlan`s (Monday index 0 .. Friday
+index 4). `targetMinutesPerDay` is a fixed constant, 8:36 (516 min), so
+`targetWeeklyMinutes` is 43:00 (the standard flexitime week this tool is built around).
+`DayPlan.defaultPlan()` starts at 09:00, splits the 8:36 evenly (4:18 each side) around the
+fixed 30-minute default lunch, ending 18:06.
+
+**Flexitime carryover:** dragging a block's start/end away from the 8:36 default on any
+Monday-Thursday day changes that day's `workedMinutes` without touching the 43:00 weekly
+target. `WeeklyHoursPlan.carryoverBeforeFriday` sums `workedMinutes - targetMinutesPerDay`
+over Monday-Thursday; `theoreticalFridayEndMinutes` is Friday's own start time + its lunch
+gap + however many minutes Friday needs to work (`targetWeeklyMinutes` minus the
+Monday-Thursday total) to bring the week back to 43:00 — independent of how Friday's own
+two blocks are split, since only the total matters. The Weekly Hours Planner page renders
+this as a dashed red line + time label under Friday's column (`_TheoreticalEndLine`,
+`_HorizontalDashedLinePainter`), which is always computed (not gated on any "modified" flag)
+so it simply coincides with Friday's own scheduled end when the week is exactly on target.
+
+**UI (`weekly_hours_planner_page.dart`) — vertical week grid:** the five weekdays render as
+columns side by side with time running top-to-bottom, sized (via a `LayoutBuilder` computing
+`pxPerMinute = trackHeight / rangeMinutes`) to fill the space left under the summary card, so
+the whole configured hour range (`Config.weeklyHoursStartHour`/`weeklyHoursEndHour`, Settings
+→ Weekly Hours Planner, default 06:00-22:00) is visible without scrolling — replacing the
+original one-row-per-weekday horizontal-timeline layout. A shared left gutter
+(`_HourGutterPainter`) draws the hour labels; each day column (`_DayColumn`,
+`_ColumnBackgroundPainter` for its faint hour gridlines) draws the morning block (primary
+color) and afternoon block (secondary color) as `Positioned` bars (start/end time labels once
+tall enough) plus 4 draggable handles (`_Handle.morningStart/morningEnd/afternoonStart/
+afternoonEnd`, each keyed `handle-<Weekday>-<handleName>` for tests, now horizontal bars
+dragged **vertically** — `onVerticalDragUpdate`, `deltaDy / pxPerMinute` for the minute delta)
+that resize a block by dragging either of its own two edges, clamped to a 30-minute minimum
+block length and to not cross the other block, snapped to 5-minute increments. Dragging
+updates the in-memory plan on every frame (so Friday's dashed line and every day's duration
+label react live) but only persists to disk once via `onDragEnd` when the drag finishes, to
+avoid hammering the file on every pointer move — a drag-end also re-syncs the Google Calendar
+overlay (`_persistAndSync`), not only the file write. A summary card at the top shows the
+viewed week's planned-plus-actual vs. 43:00 target total with a +/- surplus/deficit chip; a
+reset button (app bar) restores `WeeklyHoursPlan.defaultPlan()`.
+
+**Week navigation (0.1.280):** chevrons above the summary card move `_viewedWeekStart`
+(Monday-normalized, `WeeklyActual.mondayOf`) a week at a time; a "Back to this week" text
+button appears whenever it isn't the current week and jumps straight back. The block template
+itself (`_plan`) is never per-week — dragging edits the one reusable template regardless of
+which week is being viewed — but the Google Calendar overlay's date range and the actual
+over/undertime field (below) both follow `_viewedWeekStart`, which is what makes "moving
+between weeks" meaningful for a date-less template: it changes what real-world context you're
+comparing the template against, not the template itself.
+
+**Actual over/undertime (0.1.280):** a field in the summary card
+(`ValueKey('over-undertime-field')`, signed decimal hours, debounced 500 ms) records
+`WeeklyActual{weekStart, overUndertimeMinutes}` for whichever week is being viewed — positive
+means more was actually worked than the template planned, negative less. Typing updates the
+displayed total (`planned + actualMinutes`) immediately via `setState`, independent of the
+save debounce; after the debounce fires, `WeeklyHoursService.saveActual` persists it and the
+page re-syncs the Google Calendar overlay, same as a block edit. Switching weeks reloads the
+field from `WeeklyHoursService.actualFor(_viewedWeekStart)` (a zeroed, unpersisted record for
+a week with nothing saved) and rewrites the controller text via `_formatSignedHours` (empty
+for zero, `+`-prefixed for a surplus, unprefixed negative for a deficit).
+
+**Google Calendar overlay:** Settings → Weekly Hours Planner has a "Calendar URL" field
+(`Config.googleCalendarUrl`, shared with nothing else) — paste a public `.ics` feed (a Google
+Calendar "Secret address in iCal format" URL, or any RFC 5545 feed) and Settings' Import
+button fetches + caches it immediately, showing the event count/timestamp or an error inline.
+`GoogleCalendarService` (`lib/services/google_calendar_service.dart`,
+`lib/models/gcal_event.dart`) parses the feed into `GCalRawEvent`s (RFC 5545 line-unfolding;
+`DTSTART`/`DTEND`/`DURATION`/`SUMMARY`/`UID`/`RRULE`/`EXDATE`; a `VALUE=DATE` or bare
+8-digit `DTSTART` is all-day) and caches them to `google_calendar_cache.json` in the app
+documents dir, so the planner has something to show offline before the next refresh.
+`GoogleCalendarService.eventsInRange` expands `RRULE` on demand for whatever date range is
+asked for — `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `COUNT`, `UNTIL`, and (`WEEKLY`
+only) `BYDAY`; `EXDATE` drops one occurrence (a date-only `EXDATE` excludes that whole day).
+Network access goes through `HttpClient` (same pattern as `UpdateService._fetch`, with a
+`fetchOverride` test hook). The plan itself stays date-less, so the Weekly Hours Planner page
+resolves the overlay against `_viewedWeekStart` (defaults to the current calendar week, moved
+by the chevrons above): `_viewedWeekStart` plus the column index gives each weekday column's
+real date, and `eventsInRange` is called per day (`_gcalEventsForDay`, timed events only —
+all-day events are not shown). The overlay refreshes (`_loadGoogleCalendar`) on page open, on
+every block drag-end, and on every debounced actual-over/undertime edit — not only on the
+Settings page's manual Import button — so it never falls behind while the planner is open.
+Each event renders as a `_gcalBlock`: a `tertiaryContainer`-tinted, 55%-opacity `Positioned`
+bar added to the column's `Stack` *before* the work blocks, so it paints underneath them —
+visible in any gap where no work block covers that time, and simply covered where one does
+(the honest reading: that time slot is occupied by a real work block).
+
+**Persistence:** `WeeklyHoursService` (singleton, `ValueNotifier<WeeklyHoursPlan>`)
+persists to `weekly_hours_plan.json` in the app documents directory, seeded with
+`WeeklyHoursPlan.defaultPlan()` on first run — same load-once/seed-if-missing/swallow-errors
+shape as `ProjectService`. A second `ValueNotifier<List<WeeklyActual>>` on the same singleton
+persists to `weekly_hours_actuals.json` (own load flag `loadActuals`/`_actualsLoaded`, so the
+plan and the actuals list load independently); `saveActual` upserts by `weekStart` and drops
+the row entirely once it goes back to zero, so an untouched week never leaves a stale entry.
+
+Registered like every other tool: `weekly_hours_planner` key in
+`Config.startToolOptions`/`featureKeys` (and their label/description arrays, right after
+`test_results` so the "first N keys match `startToolOptions`" comment stays accurate), a
+`_ToolEntry` in home_page's drawer list (`Icons.calendar_view_week`), and a
+`_buildToolPage` case. No `_openTool` reload-on-return wiring is needed — unlike
+Wishlist/Food Diary this tool never touches `_tasks`. The Settings section (index 13,
+"Weekly Hours Planner": start/end hour dropdowns + the Calendar URL field/Import button) sits
+at the end of `_sectionTitles` to avoid renumbering the other twelve.
+
+### 10.6c Worklist (0.2.36, streak/dice hidden + orange accent 0.2.37, schedule-view filter leak fixed 0.2.38)
+Tools ▸ Worklist: the home screen itself — same tabs, add-task row, search,
+drag-reorder, swipe, undo/redo, schedule view — narrowed to tasks whose label
+carries the `mlr` tag, minus the streak flame and dice timer, and tinted
+orange so it's visually distinct from the real home screen at a glance.
+Unlike every other tool (a dedicated page), Worklist is a *second `HomePage`
+instance*: `_buildToolPage`'s `'worklist'` case returns
+`const HomePage(tagFilter: 'mlr', toolTitle: 'Worklist')`.
+`HomePage` gained two optional constructor fields, `tagFilter`/`toolTitle` (both
+null for the regular home page):
+- `toolTitle` is the app-bar title — and, when the search feature is on (the app bar
+  is then the search field), the search field's hint instead of "Search tasks"
+  (0.2.99), so a tool instance always shows its name.
+- `_tasksForTab` folds `tagFilter` into its `where` predicate alongside search
+  (`labelHasToken(task.label, tagFilter)`), but — like search — only when
+  `applySearch` is true; the `applySearch: false` callers (`_saveTasks`'s
+  `listRanking` renumbering loop above all) still see the *whole* tab, so a
+  filtered instance renumbering only its visible subset can never scramble the
+  ranking of the tasks it isn't showing.
+- `_buildScheduleBody` (the schedule-view body, an alternative to the
+  tab-per-bucket layout, toggled by the calendar icon or auto-selected when
+  `Config.startInScheduleView` is on) built its own `visibleTasks` straight
+  off `_tasks`, filtered only by `isVisibleInMainViews`/search — it never
+  applied `tagFilter`. That leaked every task into Worklist whenever schedule
+  view was active (immediately, for anyone with `startInScheduleView` on),
+  even though the tab-per-bucket layout was correctly filtered. Fixed by
+  folding the same `tagFilter == null || labelHasToken(t.label, tagFilter)`
+  check into its `visibleTasks` predicate.
+- Drag-reorder (`_reorderTask`/`_reorderTaskInSection`) already refused to run
+  while a search query or a Home filter rule narrowed the tab (renumbering a
+  subset would scramble the rest); the same guard, factored into a
+  `_tabNarrowed` getter, now also covered `tagFilter != null` — reordering
+  simply off inside Worklist. That getter was since replaced by
+  `_tabNarrowedByFilters(pageIndex)` (see §Filtering rules below), which
+  compares the tab's filtered vs. unfiltered task count instead of checking
+  each condition (search/tagFilter/rules) for being merely *set* — Home's
+  non-empty default rule made the old getter true for nearly every install
+  even when nothing in the tab was actually hidden. Since 0.2.87 there is no
+  guard at all: `_reorderSliceOfTab` reorders the visible slice within its
+  own rank slots, leaving hidden tasks untouched (see §Filtering rules).
+- `_addTask` stamps `tagFilter` onto a task typed directly into a filtered
+  instance's add row (`addLabelToken`), so it shows up immediately.
+- Two pieces of state are process-wide singletons the real home page owns —
+  the share-sheet quick-add consumer (`ShareIntentService.registerConsumer`)
+  and the `openRunningDiceTimer` callback used to reopen a live dice timer
+  after its full-screen alarm — so `initState` only claims them when
+  `tagFilter == null`; a second instance would otherwise steal them from the
+  primary home page for as long as it stays open.
+- The app-bar `StreakFlameButton` and dice-roll `IconButton` are both wrapped
+  in `widget.tagFilter == null` guards (rather than a `Config` feature flag,
+  which is app-wide) so a filtered instance simply never renders them; the
+  streak-completion celebration overlay (`_recordStreakToggle`) and the
+  task tile's double-tap "Start timer" menu (`onStartTimer`) get the same
+  guard, so no dice/streak UI is reachable from within Worklist even though
+  the underlying `StreakService` singleton still records completions made
+  there (it's the same tasks, same day — the primary home page's flame
+  should still reflect them).
+- `build()`'s final return wraps the page in a `Theme` that swaps in
+  `ColorScheme.fromSeed(seedColor: Colors.orange)` (keeping the ambient
+  theme's brightness/other settings via `copyWith`) whenever
+  `tagFilter != null`, tinting buttons, the selected-tab indicator, etc.
+  orange — the same per-page accent-override mechanism `alarm_ring_page.dart`
+  uses for its per-alarm colour.
+- `_maybeOpenStartTool` no-ops when `tagFilter != null` (a filtered instance
+  must not also open the configured default start tool on top of itself), and
+  the drawer's Tools list hides the `worklist` entry from within a filtered
+  instance (it doesn't list itself).
+- `_openTool`'s post-pop refresh treats `'worklist'` like Wishlist/Food
+  Diary/Research: reloads `_tasks` from storage on return, since the pushed
+  instance kept its own in-memory copy over the same on-disk file.
+- `_updateHomeWidget` (the Android home-screen widget) and `_addSharedTask`
+  read `_tasks` directly rather than through `_tasksForTab`, so calling them
+  from a filtered instance still syncs/creates against the *full* list, never
+  the mlr-only subset.
+
+**mlr tasks are exclusive to Worklist (0.2.39)**: an `mlr`-tagged task shows
+*only* inside Worklist now — everywhere else treats it like a Food Diary
+entry or Research item (10.6a/10.6b): hidden from the regular home tabs,
+schedule view, Wishlist, Projects/board and the Todoist Markdown export, even
+if it also carries a due date, `isWish`, or a `projectId`. Same mechanism as
+those two gates: `label_utils.dart`'s `worklistToken` (`'mlr'`) and
+`hasWorklistToken`, folded into `ItemViews.isVisibleInMainViews` as a fourth
+condition (`includeWorklistItems || !hasWorklistToken(task.label)`).
+`ItemViews.homeBucket` gained the `includeWorklistItems` parameter so the one
+caller that *is* the dedicated tool can still see them: `_tasksForTab` passes
+`includeWorklistItems: widget.tagFilter != null`, and `_buildScheduleBody`'s
+own direct `isVisibleInMainViews` call does the same off its local
+`tagFilter`. Every other `ItemViews` query (`wishlist`, `active`,
+`projectTasks`, `boardColumn`) and `TaskWidgetService.todayTasks` call
+`isVisibleInMainViews` with the gate left on, so they need no changes to
+pick up the exclusion.
+
+Registered like every other tool: `worklist` key in
+`Config.startToolOptions`/`featureKeys` (and their label/description arrays,
+appended after `weekly_hours_planner`), a `_ToolEntry` in home_page's drawer
+list (`Icons.checklist`), and the `_buildToolPage` case above. No dedicated
+`ViewFilterRules` view id — a filtered `HomePage` still applies
+`ViewFilterRules.home` on top of `tagFilter`, same as the regular home page.
+
+### 10.6d MP3 Downloader (0.2.48, ffmpeg dropped for size 0.2.49, background queue + PoToken fix 0.2.51, filename cleanup + metadata tagging + downloads-list actions + playlist import 0.2.54, playlist empty-getVideos() fallback 0.2.55, browse-API fallback + logging 0.2.56, schema-agnostic playlist-item search 0.2.57, lockupViewModel support 0.2.58)
+Tools ▸ MP3 Downloader — Best Music only since 0.2.98, see §10.6n (`lib/ui/mp3_downloader_page.dart`,
+`lib/services/mp3_downloader_service.dart`): paste a YouTube URL, or type a
+title to search, and save the video's audio. A pasted URL
+(`looksLikeYoutubeUrl`/`extractYoutubeVideoId` match `youtube.com/watch`,
+`youtu.be/`, `/shorts/`) resolves and downloads directly; a text query calls
+`Mp3DownloaderService.search` and shows up to 5 candidates (title, channel,
+formatted duration, and play count via `formatViewCount` — `376M plays`,
+usually the fastest way to tell the real upload from a reupload) so the
+ambiguous case is a tap, not a guess.
+
+Built on `youtube_explode_dart` (a pure-Dart YouTube client — metadata
+search, video lookup, and the audio-only stream manifest, no server or API
+key, no native code). The audio-only stream is saved exactly as YouTube
+serves it — an mp4/AAC stream saved as `.m4a` (preferred: plays almost
+everywhere), or `.webm`/Opus when that's the only option — rather than
+transcoded to a literal `.mp3`.
+
+**0.2.48 shipped a real-MP3 version using `ffmpeg_kit_flutter_new_full`
+(`libmp3lame`) and tripled the APK's size**: every ffmpeg-kit variant bundles
+the whole ffmpeg native library per Android ABI, and even the audio-only
+variant adds tens of MB — nowhere close to the ≤6%-over-0.2.46 budget this
+tool was given. 0.2.49 drops the ffmpeg dependency entirely; the download is
+pure Dart again, so the tool adds negligible APK size. Getting a literal
+`.mp3` back without that cost would need a from-scratch decode (platform
+`MediaCodec`/equivalent) + a small LAME encoder (e.g. `flutter_lame`) —
+genuine new native-code work, not a dependency swap, and not done here.
+
+#### How the bytes are actually fetched (0.2.51)
+
+0.2.48-0.2.50 called `streamsClient.get(streamInfo)` and **hung at 0% forever
+on real music** — the reported symptom was "mamma mia … keeps turning on 0
+percent". Measuring the alternatives against `ABBA - Mamma Mia` (3.4 MB AAC)
+found a server-side gate, not a client bug:
+
+| approach | result |
+|---|---|
+| `streamsClient.get()` | 0 bytes in 300 s |
+| plain GET, no `Range` (what `DownloadManager` sends) | `200`, but **31 KiB/s** |
+| 1 MiB `Range` requests, stock `youtube_explode` clients | `403` past the first MiB |
+| 1 MiB `Range` requests, **visionOS** client | ~4 MiB/s, complete |
+
+Every InnerTube client shipped in `youtube_explode_dart` 3.1.0
+(`androidSdkless`, `android`, `ios`, `androidVr`, `tv`, `mweb`, `safari`, …)
+returns a stream URL that serves the first 1 MiB and then `403`s every
+subsequent byte — YouTube's PoToken gate. Matching User-Agents doesn't help,
+and 3.1.0 is the newest release. `yt-dlp` downloads the same video fine, and
+its log shows why: it uses a **visionOS** client that 3.1.0 has no constant
+for. `_visionOsClient` in `mp3_downloader_service.dart` transcribes that
+client's InnerTube payload from `yt_dlp/extractor/youtube/_base.py`, and it
+is the only one that serves a whole stream ungated.
+
+So the download is: resolve with `_streamClients` (visionOS first, the stock
+clients as fallbacks for videos it refuses — "made for kids" videos aren't
+available to it), **probe a range near the end of the file before committing**
+so a gated client is rejected up front rather than stalling mid-download, then
+pull the stream as a series of `kAudioChunkBytes` (1 MiB) `Range` requests
+into `<name>.part`, renamed on success. That is ~125x faster than the single
+throttled response and is also why the transfer **cannot** be handed to
+Android's `DownloadManager` the way an APK download is (§5 of the update
+flow): `DownloadManager` only knows how to fetch one URL straight through,
+which is exactly the 31 KiB/s path.
+
+**Network routes (Best Music 0.3.18)** — on some networks (typically home Wi-Fi, dual-stack)
+YouTube blocks the address ("Sign in to confirm you're not a bot") or the player request and
+the audio leave on different address families, and stream URLs only work from the address
+that resolved them, so video/song audio failed on Wi-Fi but worked on mobile data. Resolving
+(`_resolveStream`, used by streaming *and* downloads) now walks `YoutubeRoute.tryOrder()`
+(`lib/services/youtube_network_route.dart`): `system` (phone default), `ipv4`, `ipv6` —
+each the full `_streamClients` walk (`_resolveViaClients`) over `httpClientForRoute(route)`,
+an `HttpClient` whose `connectionFactory` looks the host up for that family only and, for a
+direct https connection, does TLS itself (`SecureSocket.secure(socket, host:)`), passed to
+youtube_explode as `YoutubeHttpClient(IOClient(http))` and used for the range probe — then
+`invidious` (`_resolveViaInvidious`: each of `VideoTranscriptService.invidiousInstances`'
+`/api/v1/videos/<id>?local=true&fields=adaptiveFormats`, `pickInvidiousAudio` = best
+`audio/mp4` by bitrate (else any audio), URL resolved against the instance, size from
+`clen`, then the same end-of-file probe) so YouTube only sees the relay's address. The route
+that works becomes `YoutubeRoute.lastWorking` (in memory) and is tried first next time;
+`ResolvedAudioStream.route` / `_ResolvedStream.route` make `YoutubeAudioSource` and
+`downloadMp3` fetch the bytes over that same route. All routes failing → one
+`Mp3DownloadException` listing each route's error. The probe now runs for any file over
+1 KiB. (How Tubular/NewPipe cope instead: a BotGuard PoToken generated in a hidden WebView
+plus client switching — not implemented here.)
+
+Every request is bounded — `kResolveTimeout`/`kChunkTimeout` (90 s each) —
+so a wedged socket surfaces as a readable error instead of a progress bar
+that never moves, which was the whole failure mode being fixed.
+
+#### Background queue and history (0.2.51)
+
+`Mp3DownloadManager` (`lib/services/mp3_download_manager.dart`) owns the
+transfers, not the page: an app-level singleton with a `ValueNotifier<List<
+Mp3DownloadJob>>`, running one job at a time so several tracks can't starve
+each other of bandwidth. Leaving the page or backgrounding the app therefore
+doesn't interrupt a download, and the app-bar download button (badged with
+the in-flight count) opens `Mp3DownloadsPage` showing what's running, what's
+queued, and the history — each finished job with the path it landed at or the
+reason it failed. History persists to `mp3_downloads.json` in the app
+documents dir, capped at 100 entries.
+
+It is *not* an OS-level download: a job still `running` when the app is
+force-stopped is reloaded as `failed` / "Interrupted when the app closed"
+(`Mp3DownloadJob.fromJson`) rather than showing a bar that can never move.
+
+A completed job also calls `MediaScannerService.scanFile` (0.2.53,
+`lib/services/media_scanner_service.dart`) with the saved path. The file was
+written with plain `dart:io` `File` calls, which never goes through
+`MediaStore`, so without this OEM media apps (Samsung's Music/My
+Files/Gallery included) don't see the new track until the next full device
+scan — on some OEMs that's not until a reboot. The Dart side is a thin,
+Android-only (`Platform.isAndroid`) wrapper around the
+`besttodo/media_scanner` platform channel; `MainActivity.kt`'s handler calls
+`MediaScannerConnection.scanFile` on the given path. Best-effort: any
+failure is swallowed since the download itself already succeeded by this
+point.
+
+Failures are surfaced on the downloader page itself, not just in the list —
+a failed job renders an `errorContainer` card with the full message plus
+Dismiss/Retry, because the bug being fixed was precisely a user left guessing
+at a stuck 0%. Everything also goes to `LogService` under the `MP3` source
+(App logs page): the search, the client chosen, byte counts, throughput, and
+every failure.
+
+#### Filename formatting and metadata tagging (0.2.54)
+
+`downloadMp3` no longer saves the raw YouTube title verbatim.
+`parseTrackTitle`/`formatTrackFileBaseName` (`lib/services/track_title.dart`)
+split the title on the first `Artist - Title` separator (en/em dash also
+match), falling back to the channel name (stripping a trailing `- Topic`,
+the suffix YouTube Music's auto-generated artist channels carry) as the
+artist when the title has none. Promotional annotations in `(...)`/`[...]`
+are stripped from both — but only when *every* word inside reduces to one
+from a curated filler list (`official`, `video`, `lyrics`, `hd`, `original`,
+`mix`, `remaster`, …), so "(Official Video)"/"(Lyrics)"/"(HD)" go while
+"(Live at Wembley)" or "(feat. Other Artist)" are left alone. The result is
+saved as `Artist - Title.<ext>`.
+
+An `.m4a` result (not `.webm` — Matroska/Opus tagging is a different format,
+not attempted) is then tagged in place by `Mp4MetadataWriter`
+(`lib/services/mp4_metadata_writer.dart`) with title, artist (also written
+as album artist), the source URL as a comment, the upload year
+(`Mp3SearchResult.uploadDate`, from `youtube_explode_dart`'s `Video.
+uploadDate`), and the video's thumbnail (`ThumbnailSet.highResUrl`, fetched
+best-effort) as cover art. This is real MP4 box surgery, not a transcode:
+it locates (or builds) `moov/udta/meta/ilst`, splices in the new atom, and —
+only if that changes `moov`'s size *and* `moov` sits before `mdat` in the
+file — patches every `stco`/`co64` chunk-offset table found inside `moov`
+by the size delta, since those offsets point at absolute byte positions in
+`mdat` that just moved. Getting this wrong would corrupt playable audio, so
+it is deliberately conservative: a fragmented file (`moof`/`sidx` present),
+more than one `mdat`, or an offset table that fails an internal consistency
+check aborts tagging entirely, and even a successful rewrite is written to a
+sibling `.tag.tmp` file and structurally re-validated before it replaces the
+original — a track missing metadata is fine, a corrupted one never ships.
+This is the pure-Dart alternative flagged as future work when ffmpeg was
+dropped in 0.2.49 (see above): no native encoder, no APK size cost.
+
+#### Downloads-list actions (0.2.54)
+
+Every row in `Mp3DownloadsPage` (queued, running, or finished) now also has
+an "Open original video" icon (`launchUrl` on
+`https://www.youtube.com/watch?v=<videoId>`, `LaunchMode.externalApplication`)
+and a "Share YouTube link" icon (`SharePlus.instance.share`, same pattern as
+Wishlist's share action), alongside the existing cancel/remove icon —
+`Mp3DownloadJob.videoId` was already stored, so no new persisted state was
+needed.
+
+#### Playlist import (0.2.54)
+
+Pasting (or sharing) a playlist link — `youtube.com/playlist?list=...`, or a
+video URL that also carries `&list=...` — instead of a single video or a
+search query is detected by `looksLikeYoutubePlaylistUrl`
+(`mp3_downloader_service.dart`), checked *before* `looksLikeYoutubeUrl` so a
+video-within-a-playlist link is treated as the playlist. It's a
+domain-anchored regex (`(youtube.com|youtu.be)/…[?&]list=…`) rather than
+`youtube_explode_dart`'s own `PlaylistId.parsePlaylistId`, which treats any
+short alphanumeric string as a "valid" bare playlist id and would misfire on
+an ordinary one-word search query.
+
+`Mp3DownloaderService.resolvePlaylist` fetches the playlist's title
+(`client.playlists.get`) and every video in it (`client.playlists.
+getVideos`, a `Stream<Video>` drained to a list, in playlist order), mapped
+to the same `Mp3SearchResult` shape search/resolve produce
+(`Mp3PlaylistInfo(title, tracks)`) so the rest of the pipeline doesn't need
+to know a track came from a playlist.
+
+**Fallback for `getVideos()` coming back empty (0.2.55).** Reported against
+a real, fully public 3-track playlist: it resolved a title ("MUZ_03") but
+zero tracks. `PlaylistClient.getVideos` (`youtube_explode_dart` 3.1.0)
+silently *skips* a playlist entry whose uploader channel id it can't parse
+off the page — it tries three JSON paths (`ownerText`/`shortBylineText` →
+`browseId`, two variants), and a playlist whose byline layout misses all
+three loses every single track this way, not just the odd one. When
+`getVideos()` returns empty, `resolvePlaylist` falls back to
+`fetchPlaylistVideoIdsFromPage` (`lib/services/playlist_video_ids.dart`):
+fetches the same playlist page HTML via a plain `yt_explode.
+YoutubeHttpClient`, extracts `ytInitialData` from its `<script>` tags the
+same way the library's own `YoutubePage` does (`var ytInitialData = ` /
+`window["ytInitialData"] =`, JSON-decoded), and walks the identical
+`contents.twoColumnBrowseResultsRenderer.tabs[]…playlistVideoListRenderer.
+contents` path `PlaylistPage._videoItems` uses — but only ever pulls
+`videoId` out of each `playlistVideoRenderer` (direct or
+`richItemRenderer`-wrapped), so it isn't tripped by an unparseable byline.
+Each id found is then resolved individually via the already-proven
+`client.videos.get`, skipping (and logging) any single video that fails
+rather than failing the whole playlist. Single page only — no
+`continuation` follow-up — so a playlist beyond YouTube's first batch (a
+few hundred entries) is only partially covered by the fallback; the normal
+`getVideos()` path already paginates and is tried first regardless.
+
+**A second, independent gap — and full logging (0.2.56).** The 0.2.55
+fallback alone still didn't fix the reported playlist. A separate reason
+`getVideos()` can come back empty: some playlists don't embed their video
+list in the initial HTML page's `ytInitialData` at all —
+`youtube_explode_dart`'s own `PlaylistPage.get()` already anticipates this
+("Needed for Mixes and YT Music playlists whose initial HTML page doesn't
+embed the video list") and internally retries via an innertube `browse`
+POST call, but that call's *outcome* isn't exposed through
+`PlaylistClient.get`/`getVideos`'s public API, so this can't just reuse it.
+`fetchPlaylistVideoIdsFromPage` now repeats that retry itself when the page
+parse alone finds nothing: `YoutubeHttpClient.sendPost('browse', {
+'browseId': 'VL<playlistId>'})` (`VL`-prefixing a playlist id is the
+standard way to address its video list as a "browse id" on YouTube's
+internal API — the same convention yt-dlp and other scrapers use), then
+runs the same `extractPlaylistVideoIdsFromData` walk against that response
+too (an initial, non-continuation `browse` response for a playlist has the
+same overall shape as the HTML-embedded data).
+
+Every step of resolving a playlist — `playlists.get()`'s metadata,
+`getVideos()`'s track count, entering the fallback, the page fetch and its
+byte count, ytInitialData found/not-found, items found, ids found, the
+browse-API attempt and its id count, and each individual video resolved or
+skipped — is now written to `LogService` under the `MP3` source (App Logs
+page, reachable from the drawer). Both gaps are easy to reproduce from a
+bug report but were hard to diagnose blind with no live YouTube access to
+test against.
+
+**The actual root cause, found from those logs (0.2.57).** The 0.2.56
+build still came back with zero tracks on the reported playlist — and the
+new logs showed exactly why: `playlists.get()` confirmed the playlist
+genuinely has videos (`videoCount=3`, a real title), the page fetch
+succeeded (840 KB), but both the page-parse *and* the browse-API attempt
+hit "tabs found but no playlistVideoListRenderer inside". That path —
+`contents.twoColumnBrowseResultsRenderer.tabs[].tabRenderer.content.
+sectionListRenderer.contents[].itemSectionRenderer.contents[].
+playlistVideoListRenderer.contents` — is the *exact same hardcoded path*
+`youtube_explode_dart`'s own `PlaylistPage._videoItems` getter uses, which
+is exactly why `getVideos()` returned nothing in the first place: YouTube's
+current response no longer nests the video list where that path (0.2.55's
+fallback included, since it copied the same path for maximum fidelity)
+expects it. Not a filter, not a missing byline — the container structure
+itself had moved.
+
+`extractPlaylistVideoIdsFromData` (now in `_findPlaylistVideoIds`)
+no longer walks any hardcoded path at all: it recursively searches the
+*entire* decoded response for a `playlistVideoRenderer` (direct, or
+wrapped in `richItemRenderer.content`) wherever it lives, in document
+order (a `jsonDecode`d object preserves source key/array order, so a
+depth-first walk visits entries in playlist order without needing to know
+the surrounding containers). `playlistVideoRenderer` is otherwise a
+stable, specific type name — it only ever represents a video in a
+playlist's own listing — so this is robust to exactly the kind of path
+drift that broke both the library and the exact-path fallback, without
+needing to know or guess the current container structure. If even this
+finds nothing, it logs a census of every key anywhere in the response
+ending in `Renderer` or `ViewModel` — e.g. if YouTube has since moved
+playlist items to some other type name entirely, this names it directly
+instead of costing another guess-and-report round trip.
+
+**And that census immediately paid off (0.2.58).** The 0.2.57 build still
+found nothing on the reported playlist — but this time the census named
+the answer directly: `playlistVideoRenderer`/`playlistVideoListRenderer`
+were entirely absent from the response, while `lockupViewModel`,
+`lockupMetadataViewModel` and `contentMetadataViewModel` were all present.
+This playlist's page has migrated to YouTube's newer unified "lockup"
+component system (the same one search results and related videos have
+been moving to), which represents a playlist entry as a `lockupViewModel`
+with `contentId` (the video id) and a `contentType` field — a `lockupViewModel`
+also represents playlists, channels and podcast episodes elsewhere on
+YouTube, so `_findPlaylistVideoIds` only trusts `contentId` as a video id
+when `contentType` names a video (a substring check for `VIDEO`, since the
+exact enum string isn't confirmed and a substring match is robust to any
+suffix variant). It now recognises both the older `playlistVideoRenderer`
+shape and this one, in the same single recursive pass. No guessing was
+needed for this one specifically *because* the 0.2.57 census logged every
+candidate type name up front — validating that adding it was worth doing
+even though it added no fix of its own that round.
+
+`Mp3DownloaderPage` gets a third stage (`_Stage.playlist`) alongside
+`picking`/`error`: every track as a `CheckboxListTile`, an "All"/"None"
+bulk-select row, and a "Download N" button that enqueues whatever is
+checked, one `Mp3DownloadManager.enqueue` call per track, then resets to
+idle. Before showing the list, it asks for (or reuses) the download folder,
+works out which folder(s) to check for tracks already downloaded via
+`compareFoldersFor(folder, configuredCompareFolder: Config.mp3CompareFolder)`,
+and calls `existingTrackBaseNamesAcross(folders)` — a recursive,
+case-insensitive scan of every `.m4a`/`.webm`/`.mp3` file already under any
+of those folders or their subfolders, matched by filename (without
+extension) rather than video id, since a pre-tagging download carries no
+reliable back-reference to its source video. Any playlist track whose
+would-be filename (`parseTrackTitle(...).fileBaseName`) is already in that
+set starts **unchecked** (shown as "Already downloaded", not hidden) so
+re-pasting a partially-downloaded list only offers to fetch what's missing,
+while still leaving a re-download one tap away.
+
+`compareFoldersFor` always includes the download folder itself, plus
+either `Config.mp3CompareFolder` (an explicit override) when set, or —
+auto-detected, no permission prompt needed since it's just an `exists()`
+check — Android's standard shared Music folder
+(`defaultPhoneMusicFolder`, `/storage/emulated/0/Music`) when that folder
+is actually there. This matters because `Config.mp3DownloadFolder` is
+picked for *writability* (often the app's own sandboxed folder when the
+user hasn't granted "All files access" — see below), which is rarely where
+a phone's real music library lives; without also checking the phone's
+Music folder, a track already sitting there (synced from a PC, or
+downloaded before scoped storage pushed the save location into the
+sandbox) would be re-offered as new. When auto-detection guesses wrong —
+the library lives somewhere non-standard, or scoped storage hides the
+standard folder from a plain path check — Settings ▸ MP3 Downloader's
+"Check for existing tracks in" tile lets the user point it at the right
+folder directly.
+
+The save location is asked for **once** — `Config.mp3DownloadFolder`, set on
+the first download via `file_selector`'s `getDirectoryPath` (defaulting to
+`getDownloadsDirectory()`) and reused silently afterwards. It is editable at
+Settings ▸ MP3 Downloader (BestToDo section index 15 until 0.2.98, §10.6n; gated on the
+`mp3_downloader` feature switch — Best Music's own settings since), which can also forget it so the next download asks again.
+The same section's "Check for existing tracks in" tile sets
+`Config.mp3CompareFolder` (empty = automatic, as above) and can be cleared
+back to automatic detection.
+`youtube_explode_dart`'s scraping doesn't work from a browser sandbox, so
+`Mp3DownloaderService.isSupported` (`!kIsWeb`) gates the page to a "not
+supported on this platform" message there; every other platform
+(Android/Windows/iOS/macOS/Linux) works. `Mp3DownloaderService` exposes
+`searchOverride`/`resolveOverride`/`downloadOverride` (`@visibleForTesting`)
+so widget tests substitute fakes instead of hitting the network — the same
+seam `TodoistSyncService.apiClientFactory` uses. Because those fakes can't
+catch a YouTube-side change like the PoToken gate, the real thing is checked
+by `tool/check_mp3_download.dart`: a live search + download that asserts the
+saved file is a valid container and is *not* truncated at 1 MiB. It lives in
+`tool/` so `flutter test` (which only walks `test/`) can never go red from a
+flaky network; run it by hand with
+`flutter test tool/check_mp3_download.dart`. Registered like every other
+tool: an entry in `_toolEntries`/`_buildToolPage` (home_page.dart) and in
+`Config.featureKeys`/`Config.startToolOptions` (feature switch + default
+start page).
+
+### 10.6e Music Player (0.2.61)
+
+Tools ▸ Music Player — Best Music only since 0.2.98, see §10.6n (`lib/ui/music_player_page.dart`, `lib/ui/now_playing_page.dart`,
+`lib/ui/queue_page.dart`):
+a full local MP3/audio player with background playback, home-screen widgets, notification
+and lock-screen controls, an M3U/M3U8 playlist import (Samsung Music's share-out format),
+and a "Tinder for songs" swipe gesture on Now Playing — swipe up favorites the current
+track, swipe down marks it disliked and skips it, so disliked tracks come up far less (not
+never) in future shuffles. Separate from and does not replace §10.6d's MP3 Downloader, which
+only fetches audio; the two default to sharing a folder — opening Music Player with
+`Config.musicFolder` unset auto-adopts `Config.mp3DownloadFolder` when that is already set
+(and persists the choice), since downloaded tracks are the common case, but the two settings
+are fully independent once either is picked explicitly.
+
+**Library scanning** (`lib/services/music_library_service.dart`, singleton
+`MusicLibraryService.instance`, `ValueNotifier<List<Track>> tracks`): recursively scans
+`Config.musicFolder` for `mp3`/`m4a`/`flac`/`wav`/`ogg`/`aac`/`wma` files via `dart:io`
+`Directory.list(recursive: true)` — not `on_audio_query`/`MediaStore`, so it works on any
+folder the user picks, not just the device's indexed media. `Config.musicExcludedSubfolders`
+(relative, forward-slash paths) excludes a subfolder and everything nested under it
+(`isExcludedRelativeDir`); Settings → Music Player lists every subfolder found so far as a
+checkbox (`MusicLibraryService.listSubfolders`). Each mp3's ID3 tags are read best-effort via
+the pure-Dart `id3_codec` package — only the file's first 1 MiB is read (`_id3ReadCap`, covers
+the common ID3v2-at-the-front case without reading every file whole for a folder that could
+hold thousands of tracks); a file with no/unreadable tag, or any non-mp3 format, falls back to
+its filename as the title. Results cache to `music_library.json` (same
+singleton/`ValueNotifier`/`flush: true`/swallowed-errors pattern as `ProjectService`, §4.2) so
+the library shows up instantly on the next launch; a failed or partial rescan (folder deleted,
+permission revoked) leaves the previous cache in place rather than clearing it (0.2.68 —
+`rescan` no longer swallows the failure silently: every step — permission status, folder
+existence, files seen/skipped/kept, any thrown error — is written to `LogService` under source
+`Music`, viewable in App Logs, since a scan that quietly finds nothing was previously
+undiagnosable from the UI). Rescans are manual (Music Player's refresh button, or automatically
+once on first open when the folder is set but the cache is empty) — there is no filesystem
+watcher. All three folder pickers (Music Player's own, and Settings → Music Player in both
+BestToDo and Best Music) call `MusicLibraryService.ensureFolderPermission()` before opening the
+picker (0.2.68): on Android this checks/requests `MANAGE_EXTERNAL_STORAGE`, the same "All files
+access" grant §10.6d's MP3 Downloader already prompts for — the music folder pick flow was the
+one place in the app that scanned an arbitrary folder without ever asking for it, so a folder
+picked before granting it anywhere else scanned as empty with no error shown.
+
+`MusicPlayerService.ensurePermissions` (0.2.69, called from both `main.dart` and
+`main_music.dart` shortly after first frame) covers the case where the folder was configured
+before the permission existed (e.g. restored from a backup) rather than through the picker:
+Best Music requests `MANAGE_EXTERNAL_STORAGE` unconditionally (`eager: true` — local playback is
+its whole purpose, so it asks up front like other music apps); BestToDo only asks once
+`Config.musicFolder` is already set, so the far larger group of BestToDo users who never open
+Music Player aren't interrupted at launch for a permission a tool they don't use needs. Either
+way it also requests notification access (for the playback controls notification) and, if
+`MANAGE_EXTERNAL_STORAGE` had just been denied and is now granted, immediately re-runs `rescan`
+rather than leaving the already-configured folder empty until the user notices and retriggers
+one themselves.
+
+**Playback engine** (`lib/services/music_audio_handler.dart`'s `MusicAudioHandler`, a
+`BaseAudioHandler` from `audio_service` wrapping a single `just_audio` `AudioPlayer`):
+one track is loaded at a time via `setAudioSource` rather than a gapless
+`ConcatenatingAudioSource` — simpler to keep in sync with a queue that swipe actions mutate
+mid-playback, at the cost of a small gap between tracks. The queue
+(`List<Track> _queue`/`_queueIndex`) advances on `ProcessingState.completed` or a manual
+skip; running off the end reshuffles the whole scanned library fresh
+(`MusicPlaylistService.weightedShuffle`) rather than stopping, so playback continues
+indefinitely, radio-style. `MusicPlayerService` (`lib/services/music_player_service.dart`) is
+the facade the UI actually calls (`playLibraryShuffled`, `playQueue(tracks, startIndex:)`) and
+owns startup: `AudioService.init` registers the handler with the OS notification/lock-screen
+integration on Android/iOS/macOS; on a platform `audio_service` doesn't cover for this app
+(Windows, used for tests/screenshots per the top of this doc) it falls back to a bare
+`MusicAudioHandler()` — playback still works through `just_audio` directly, just without the
+system media surfaces. `favoriteCurrent()`/`dislikeCurrentAndSkip()` on the handler are what
+Now Playing's swipe gestures and the notification/widget controls ultimately call.
+`just_audio`'s `playbackEventStream` only fires on discrete state changes (buffering, track
+load, pause/play), not once a second, so `MusicAudioHandler` also runs a one-second
+`Timer.periodic` (started/stopped off `playingStream`) that re-broadcasts `playbackState` while
+playing — otherwise Now Playing's progress bar/position text sits frozen between events instead
+of ticking (0.2.63). It also listens to `durationStream` and patches the current `MediaItem`'s
+`duration` once the player itself reports it, since a track's tag-derived `durationMs` (from
+library scanning) isn't reliably populated and was leaving the progress bar's total time at
+0:00.
+
+**Favorites, "Don't really like" and the weighted shuffle**
+(`lib/services/music_playlist_service.dart`, singleton `MusicPlaylistService.instance`,
+persisted to `music_playlists.json`): two fixed system playlists
+(`MusicPlaylist.favoritesId`/`dislikedId`) plus any number of user/imported ones
+(`MusicPlaylist` model: id/name/`trackIds`/`isSystem`). `weightedShuffle` builds a shuffled
+play order using Efraimidis–Spirakis weighted random sampling without replacement: each track
+gets a key of `random()^(1/weight)` and the result sorts descending by key — favorited tracks
+(weight 3.0) tend to land earlier, disliked tracks (weight 0.05, a 60x ratio) tend to land much
+later, ordinary tracks (weight 1.0) fall in between, and every track can still appear (nothing
+is ever hard-excluded, since a mood can change). `toggleFavorite`/`markDisliked` are mutually
+exclusive on a track (favoriting clears a dislike and vice versa).
+
+**Shuffle toggle and queue reordering** (0.2.65 — `MusicAudioHandler.toggleShuffle`/
+`reorderQueue`, `lib/ui/queue_page.dart`'s `QueuePage`): a shuffle icon button in Now
+Playing's bottom tools row (`ValueNotifier<bool> shuffleEnabled`) shuffles only the not-yet-played
+tail of `_queue`, leaving playback history and the current track's position untouched;
+toggling it back off restores the tail's pre-shuffle order (captured in `_preShuffleOrder`
+when shuffle turns on). A "Queue" icon button next to it opens `QueuePage`, a
+`ReorderableListView.builder` (same drag-handle pattern as the task list, `home_page.dart`'s
+`_reorderTask`) over `MusicAudioHandler.currentQueueTracks`; dragging calls `reorderQueue`,
+which moves the track and keeps `_queueIndex` pointing at whichever track is actually
+playing even if its position shifted, then clears `_preShuffleOrder` (a manual drag is a
+new baseline order, not something a later shuffle-off should undo). This is separate from
+the existing `weightedShuffle`-driven "radio" reshuffle that happens when the queue runs
+off the end (**Playback engine**, above) — that automatic reshuffle from the full library is
+unaffected by the shuffle toggle.
+
+**Now Playing swipe gesture** (`lib/ui/now_playing_page.dart`): a `GestureDetector` on the
+artwork/title column tracks vertical drag distance and velocity; crossing a distance or
+velocity threshold upward calls `favoriteCurrent()`, downward calls
+`dislikeCurrentAndSkip()` (marks disliked, then immediately skips) — both also available as
+plain buttons in the transport row for a non-swipe fallback. A brief toast-style label flashes
+to confirm which action fired.
+
+**M3U/M3U8 import** (`lib/services/m3u_playlist_service.dart`): Samsung Music has no public
+API or an easily-parsed database without root, but it (like most music apps) can export/share
+a playlist as `.m3u`/`.m3u8`. `M3uPlaylistService.parseEntries` strips `#EXT...`
+directives/comments/blank lines and decodes `file://` URIs; `importFile` matches each
+remaining entry against the scanned library first by exact normalized path, then by file
+basename (case/extension-insensitive — the common case, since a playlist made on another
+device/app rarely carries this app's exact folder path), and reports what didn't match rather
+than silently dropping it. A match creates an ordinary (non-system) `MusicPlaylist`.
+
+**Self-hosted server prep** (`lib/services/subsonic_client.dart`'s `SubsonicClient`,
+`lib/models/track.dart`'s `TrackSource.subsonic`): a small Subsonic/OpenSubsonic API client
+(Navidrome, Airsonic, Gonic, … — the most widely supported self-hosted music protocol) for
+when a server is configured in Settings → Music Player (`Config.subsonicServerUrl/Username/
+Password`). Auth follows the Subsonic token scheme — `token = md5(password + fresh salt)` sent
+with every request, so the plaintext password never goes on the wire (it is still stored in
+plaintext on-device, same caveat as `Config.todoistApiToken`). Implemented so far: `ping()`
+(Settings' "Test connection"), `search()` (`search3`, full-text), and `streamUri(songId)` (the
+URL `MusicAudioHandler._resolveUri` streams a `TrackSource.subsonic` track from). A remote
+track is just another `Track` in the same queue/favorites/shuffle machinery as a local one —
+there is no separate "remote mode". Not yet wired into a server-browsing UI (artists/albums);
+that is the natural next step once a server is actually connected.
+
+**Home-screen widgets and notification/lock screen:** see §8 for the two widgets
+(`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`) and §9 for the `audio_service`
+manifest wiring. The system media notification and lock-screen controls (previous, play/pause,
+next — no Stop button, by request) come from `audio_service` itself once `AudioService.init` registers the handler — no
+custom notification code needed, unlike the alarm subsystem's hand-built full-screen
+notification (§5, §6).
+
+**YouTube fallback in search (Best Music 0.2.93 / BestToDo 0.2.92).** When the library search (`_MusicSearchDelegate`)
+finds no track for a non-empty query, it shows `YoutubeSearchFallback` (not on web, where
+`Mp3DownloaderService.isSupported` is false), which searches YouTube **automatically**
+(Best Music 0.2.98; before that it waited for a "Search on YouTube" tap) once typing pauses
+for `YoutubeSearchFallback.debounce` (600 ms — the widget is keyed by the query, so each
+keystroke disposes the old one and cancels its timer), via
+`Mp3DownloaderService.search(q, limit: 10)`. Results sit under a "Not in your library" banner
+card ("Results from YouTube, not songs on your phone...", spinner while searching); each row
+has a video icon, a "YouTube · channel · duration" subtitle and a cloud-download icon, so it
+can't be mistaken for a local song. Errors show the real message plus "Try again". Tapping a result goes through `SpeakerPlayGuard.confirmPlay`, then
+`MusicYoutubeFallback.playAndDownload` (`lib/services/music_youtube_fallback.dart`) does two
+things at once: (1) silently queues the video on `Mp3DownloadManager` — no folder prompt; the
+folder is `Config.mp3DownloadFolder` if set, else `Config.musicFolder` if writable, else
+`defaultDownloadFolder()`; skipped if a job for the same video id is already active or
+completed with its file still present — so `MusicDownloadLibrarySync` rescans it into the
+library when it lands there; (2) plays a one-track queue of `Track.youtube(videoId, ...)`
+(`TrackSource.youtube`, id `youtube:<videoId>`, `remoteId` = video id, `artUrl` = the
+`hqdefault.jpg` thumbnail, title/artist from
+`parseTrackTitle` so it matches the downloaded file's tags), then opens Now Playing.
+The YouTube track plays through the same `YoutubeAudioSource` path the Subscriptions feed
+uses (thumbnail as cover art), so a restored "last played" YouTube track still works after a
+restart.
+
+**YouTube search goes through the JSON API (Best Music 0.2.95 / BestToDo 0.2.93).** `Mp3DownloaderService.search` (used by
+the search fallback above and the MP3 Downloader) first calls `YoutubeSearchApi.search`
+(`lib/services/youtube_search_api.dart`): a POST to `youtube.com/youtubei/v1/search` with a WEB
+client context and the "videos only" `params` (`EgIQAQ==`), parsing every `videoRenderer` in
+page order (title, channel, `lengthText` clock → duration, view count, "N years ago" →
+approximate upload date for the year tag). Only if that fails or returns nothing does it fall
+back to `youtube_explode_dart`'s `search.search`, which scrapes the HTML results page with the
+legacy `CONSENT=YES+cb` cookie — in the EU that page can be Google's consent interstitial, so
+every search failed on a working connection (reported as "YouTube search failed. Check your
+connection"). A failure now throws `Mp3DownloadException('YouTube search failed: <cause>')`
+and the search fallback shows that message instead of a generic connection hint.
+
+**Settings → Music Player** (removed from BestToDo in 0.2.98, §10.6n; was `lib/ui/settings_page.dart`, section 16): folder picker (shares
+the `file_selector` `getDirectoryPath` pattern §4.4/§10.6d use), an "Excluded subfolders"
+dialog populated from `MusicLibraryService.listSubfolders`, and the Subsonic server
+URL/username/password fields with Save/Test connection. `Config.featureKeys`/
+`startToolOptions` gained a `music_player` entry (`_ToolEntry` in `home_page.dart`, case in
+`_buildToolPage`), same wiring pattern as every other tool.
+
+**Known gaps, honestly stated:** this shipped from a single development session without
+access to a physical Android device, an emulator, a real Subsonic server, or Samsung Music
+itself — `flutter analyze`/`flutter test` are clean and the pure-Dart logic (library scan,
+exclusions, weighted shuffle, M3U parsing/matching, Subsonic URL/auth shape) is unit-tested
+(`test/music/`), but the native Android side (the two widgets' `RemoteViews`, the
+`MediaButtonReceiver` broadcast wiring, the actual system notification/lock-screen chrome, and
+playback itself) has not been run on-device and needs manual verification on a real phone
+before relying on it. The M3U importer is built against the general-purpose M3U/M3U8 spec,
+not a Samsung Music export sample, on the assumption documented in this section (a plain path
+list, possibly `file://`, matched by basename when the exact path doesn't line up) — worth
+confirming against a real Samsung Music export.
+
+### 10.6f Best Music — a second app from the same codebase (0.2.66, drawer + Settings + About 0.2.67)
+`lib/main_music.dart` is a second entry point, built as its own Android app rather than a
+BestToDo tool: no task list, alarms, sync, or any other to-do feature — just §10.6e's Music
+Player as the home page, with a proper drawer menu (MP3 Downloader, Wishlist, Settings,
+Changelog, Startup Times, App Logs, About — see §10.6h for Wishlist) mirroring BestToDo's own
+home page. Installs side by side with
+BestToDo on the same device (separate `applicationId`, so Android sandboxes its storage
+independently — no data collision with BestToDo's own `Config`/library files).
+
+**Build**: `android/app/build.gradle.kts` defines two product flavors under a single `app`
+flavor dimension — `todo` (BestToDo, `applicationId` unchanged, still the default: `flutter
+build apk` now requires an explicit `--flavor`, so `tool/build.sh` injects `--flavor todo`
+when a caller doesn't pass one) and `music` (`applicationId com.mfficiency.best_music`).
+`sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass -File
+tool\build.ps1 music-apk --release`) is shorthand for `flutter build apk --release --flavor
+music -t lib/main_music.dart`; Gradle's `createVersioned<Flavor>ReleaseApk` task — **one task
+per flavor**, each finalizing only its own `assemble<Flavor>Release` — renames that flavor's
+output to `best_todo_<version>.apk` or `best_music_<version>.apk`, matching what
+`tool/stage_local_release.dart --prefix
+best_music` stages into `github_releases/` alongside BestToDo's own APKs — both apps' last two
+builds live in that one folder, pruned independently by prefix (`namesToPrune` is prefix-blind;
+`main()` filters `present` to the caller's own prefix before pruning, since a prefix-blind prune
+could otherwise delete the wrong app's build purely by version-number coincidence — see §10.6i
+for why that's true even though the two apps no longer share one version).
+
+**Branding, not a fork**: app label (`res/values/strings.xml` `app_name`, overridden per flavor
+in `src/music/res/values/strings.xml`) and Best Music's icon set are the flavor-specific
+Android resources (the music flavor's own manifest additions — share filter, widgets — aside).
+**Icon (Best Music 0.3.13)**: a black eighth note with a motion blur trailing left, on white
+(the user's artwork; generated from one 1254 px source by a one-off PIL script — ink alpha =
+(250 − luminance) scaled to 0–255, background forced to pure white):
+`mipmap-*/ic_launcher.png` (48–192 px full tiles, legacy launchers);
+`mipmap-anydpi-v26/ic_launcher.xml` adaptive icon — `@color/ic_launcher_background` (#FFFFFF,
+`src/music/res/values/colors.xml`), foreground `mipmap-*/ic_launcher_foreground.png`
+(108–432 px, transparent, the source square scaled to 76 of the 108 dp so the note keeps its
+framing inside the 66 dp safe zone; also the Android 12+ splash icon) and the same file as the
+`<monochrome>` layer for Android 13 themed icons; `drawable-{m..xxx}hdpi/ic_stat_music_note.png`
+(24–96 px white-on-transparent silhouette cropped to the note) overriding main's vector
+`ic_stat_music_note` for the media and background-work notifications; and the Flutter asset
+`assets/branding/best_music_icon.png` (512 px) shown by `BestMusicLogo`
+(`lib/ui/best_music_logo.dart`, rounded tile) in the drawer header (40 px, beside "Best Music
+vX") and at the top of the About page (96 px). BestToDo keeps its own icons; everything else (permissions, receivers/services, signing)
+stays the single shared manifest, unused permissions in the Best Music APK included — a
+deliberate simplification since it is sideloaded, not Play-Store-distributed.
+
+**In-app updates**: `UpdateService` gained per-app instance config (`appDisplayName`,
+`apkPrefix`, via `UpdateService.forApp(...)`; `UpdateService.instance` stays BestToDo's own
+`best_todo`/`BestToDo` default) so each app's folder/release lookup only ever considers its own
+prefix — a bare version-number regex over the whole `github_releases/` listing would otherwise
+happily match the other app's file name too. A non-default app's `checkReleases` skips the
+repo-wide "latest release" fallback entirely (GitHub's `releases/latest` endpoint isn't
+per-app), reporting no update rather than risking BestToDo's release.
+
+**The drawer/menu (0.2.67)**: `MusicPlayerPage` gained a `standalone` flag (true only from
+`main_music.dart`). Standalone, its `Scaffold` carries `key: homeScaffoldKey` and a real
+`Drawer` — the same key `home_page.dart` uses for its own — so it is the Best Music app's home
+page in the same sense BestToDo's home page is: `buildSubpageAppBar`'s "Menu" button (used by
+every page the drawer pushes: MP3 Downloader, Wishlist, Settings, Changelog, Startup Times, App
+Logs, About) opens it via that shared key, and its own app bar (no `buildSubpageAppBar`, since as the
+root route it has no "Back to Home" to offer) gets Flutter's automatic drawer-hamburger button
+for free from `Scaffold.drawer` being non-null. `lib/ui/music_settings_page.dart` is a
+standalone settings page — the music folder picker and excluded-subfolders dialog are
+reimplemented from BestToDo's Settings → Music Player section (`settings_page.dart`) since that
+page is one monolithic widget tightly coupled to BestToDo's full settings list. Since Best
+Music 0.3.3 it is laid out like BestToDo's Settings: a pinned row of `ChoiceChip` section
+buttons (tap = open that section and scroll to it; the chip of the section at the top of the
+viewport is highlighted and kept on screen), collapsible `Card` sections that all start
+closed (header tap toggles; tooltip "Expand <title>"/"Collapse <title>") and a Collapse
+all/Expand all button. Sections (`MusicSettingsSection`): Library (music folder, forget,
+excluded subfolders), Playback (ask before playing out loud, music volume, sleep timer),
+Appearance (dark mode), Subscriptions feed and SponsorBlock (§10.6m), Updates (downloads
+folder). `initialSection` opens one section on arrival; the body is a
+`SingleChildScrollView` so every section's context exists for `Scrollable.ensureVisible`.
+`lib/ui/music_about_page.dart` mirrors `AboutPage` (Best Music branding + an
+`UpdateService.forApp` instance, exposed as `MusicAboutPage.updateService` for tests) — the
+`UpdateSection` widget (`about_page.dart`, made public and given optional `service`/`appName`
+params for this) is shared between the two About pages rather than duplicated. Reusable as-is,
+unmodified: `ChangelogPage` (pure CHANGELOG.md rendering, no BestToDo-coupled service),
+`StartupTimesPage` (`StartupTimeService.start()`/`.record()` added to `main_music.dart`,
+mirroring `main.dart`, so it has real data) and `AppLogsPage` (its Sync/Todoist tabs just stay
+empty for Best Music, which never touches those services — a known, harmless simplification
+rather than forking the page to hide them).
+
+**CI**: `.github/workflows/build-apk.yml`'s `build_music_apk` job builds the `music` flavor on
+every push to main/staging/dev, uploads it as a workflow artifact, and — mirroring what a local
+`sh tool/build.sh music-apk --release` does — stages it into `github_releases/` (`--prefix
+best_music`) and commits+pushes (rebase-and-retry against the `build` job's own same-branch
+push, same pattern `screenshot_changelog.yml` uses). Deliberately does *not* also publish to a
+GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateService.checkReleases`'s
+doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
+this repo — the folder stays each app's only update-check source.
+
+### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74, CSV bulk metadata export/import 0.2.77)
+**Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
+(`DateTime?`) and `playCount` (`int`, default 0) added to `lib/models/track.dart`, all tolerant
+of missing keys in `fromJson` and omitted from `toJson` when empty/zero/null (same
+minimal-JSON convention as the rest of the model). `Track` stays immutable (`final` fields); a
+new `copyWith` is how the library scan/audio handler update just the fields that changed.
+`dateAdded`/`playCount` are scan-preserved, not scan-derived: `MusicLibraryService.rescan()`
+merges each freshly-scanned `Track` with the previous library entry of the same `id` (falling
+back to `DateTime.now()`/`0` for a track seen for the first time) — a rescan refreshes tags, it
+must never reset "when was this added" or "how many times has this been played".
+
+**Metadata extraction moved to `lib/services/music_metadata_extractor.dart`** — pure Dart (only
+`dart:typed_data` + `package:id3_codec`, no Flutter import), decoding `TIT2`/`TPE1`/`TALB` (as
+before) plus `TCON` (genre, stripping an old ID3v1 `"(17)Rock"`-style numeric-code wrapper down
+to the trailing name) and `TDRC`/`TYER`/`TDOR` (year, first 4-digit run). `MusicLibraryService`
+calls this from `_buildTrack` instead of decoding tags itself; still mp3-only, still capped to
+the first `id3ReadCap` (1 MiB) bytes — m4a/flac/etc. still fall back to filename-as-title with
+no metadata, unchanged from §10.6e. Never throws — an unreadable/absent tag yields an
+all-null `ExtractedTags`, same fallback-to-filename behavior as before.
+
+**`tool/scan_music_metadata.dart`** — a standalone `dart run` script (no Flutter engine, no
+`flutter test` harness) sharing that same extractor module, so it reports exactly what the app
+itself would see. Walks a folder recursively and prints (or `--out file.json` writes) a JSON
+array of `{path, title, artist?, album?, genre?, year?}` per supported audio file, plus a
+scanned/tagged-count summary on stderr. For sanity-checking a whole collection's metadata
+coverage (which files actually have a readable genre/year) before relying on it for rule
+playlists — independent of the app, the music folder setting, or a device.
+
+**Play count**: `MusicLibraryService.incrementPlayCount(trackId)` bumps and persists one
+track's count. Called from `MusicAudioHandler`'s `processingStateStream` listener only on
+`ja.ProcessingState.completed` (a track that played to the end) — a manual `skipToNext`/
+`skipToPrevious` never reaches that stream state, so skipping doesn't count as a play.
+
+**Smart (computed) playlists** — `MusicPlaylist` gained a `kind` (`PlaylistKind`: `list` — the
+existing stored-`trackIds` behavior, now the explicit default; `lastAdded`; `mostPlayed`; `rule`)
+plus `genreFilter` (scopes `mostPlayed`) and `ruleSet` (drives `rule`), all JSON round-tripped.
+`MusicPlaylistService.smartPlaylists` computes "Last Added" and "Most Played" (overall, plus one
+per distinct `Track.genre` present in the library) fresh from `MusicLibraryService.instance.tracks`
+on every read — never persisted, never deletable, empty entirely when the library itself is
+empty. Both cap at `smartPlaylistLimit` (50) tracks. `MusicPlaylistService.resolvedTracks(playlist)`
+is the one place that turns any `MusicPlaylist` (whatever its `kind`) into an actual `List<Track>`
+— `MusicPlaylistDetailPage`/the Playlists tab's track-count subtitle both go through it instead of
+reading `trackIds` directly, so they work uniformly across stored and computed playlists.
+
+**Rule-based ("smart" in the iTunes/Plex sense) playlists** — `lib/models/playlist_rule.dart`:
+`RuleCondition` (a `RuleField` — title/artist/album/genre/year — a `RuleOperator`, and a
+`values` list) plus `PlaylistRuleSet` (a `RuleCombinator.all`/`any` over a list of conditions).
+Deliberately a **flat** model, not a nested AND/OR/NOT expression tree: NOT lives per-condition
+(`notEquals`/`notContains`/`notInList`), OR lives inside one `inList` condition's value list
+("Artist A or Artist B"), and AND is `RuleCombinator.all` across conditions ("genre X and
+released last year, excluding Artist C" is three conditions ANDed together). This covers every
+case actually asked for with a UI and evaluator an order of magnitude simpler than a real
+boolean-tree editor, at the cost of not supporting an arbitrary nested expression (e.g. "(A or B)
+and not (C and D)") — acceptable for a personal playlist-building tool. `year` is the only
+numeric field (`greaterOrEqual`/`lessOrEqual` besides the text operators); an empty rule set
+matches nothing (not "everything") so a freshly created empty rule playlist reads as empty
+rather than the whole library. `lib/ui/rule_playlist_editor_page.dart` is the builder: a name
+field, an all/any selector, and a dynamic list of field/operator/value rows (comma-separated
+values for `inList`/`notInList`) — reachable from the Playlists tab's "New rule playlist" row,
+or an existing rule playlist's edit icon (`MusicPlaylistService.createRulePlaylist`/
+`updateRulePlaylist`). Rule playlists are ordinary (non-system) playlists — deletable like any
+hand-built one.
+
+**Best Music's own background update poll**: `AutoUpdateChecker.start`/`checkOnce` gained an
+optional `service` parameter (defaults to `UpdateService.instance`, so BestToDo's own wiring in
+`main.dart` is unchanged) so the same checker class can drive a second app's update instance.
+`main_music.dart`'s `BestMusicApp` became a `StatefulWidget` that starts it (Android only,
+pointed at `MusicAboutPage.updateService`) in `initState`, showing the same "New version
+available" dialog (`showUpdateAvailableDialog`, removed in 0.2.98 — updates now install with no
+dialog, see §11) and background download
+(`downloadUpdateInBackground`) BestToDo's own poll uses, via a dedicated `musicNavigatorKey`
+(mirrors `appNavigatorKey`) since there is no `BuildContext` on hand outside the widget tree.
+Best Music has no Settings toggle for this yet (unlike BestToDo's "Automatically check for
+updates" switch) — it simply always polls; the manual "Check for updates" button on
+`MusicAboutPage` (§10.6f) is unaffected either way.
+
+**Hand-built playlists (0.2.71)** — the plain, add-songs-yourself kind Samsung Music and every
+other player offer, previously only reachable via M3U import: the Playlists tab's "New playlist"
+row prompts for a name (`promptPlaylistName`/`_PlaylistNameDialog` in `music_player_page.dart` —
+its own `StatefulWidget` owning the `TextEditingController`, per the "never dispose right after
+`showDialog` returns" convention) and creates an empty `PlaylistKind.list` playlist via the
+existing `MusicPlaylistService.createPlaylist`. Every song row (`TrackListView`, shared by the
+Library tab and every playlist detail page) gained an "Add to playlist" button
+(`showAddToPlaylistSheet`) opening a bottom sheet: a `CheckboxListTile` per hand-built,
+non-system playlist (`kind == list && !isSystem` — this excludes Favorites/"Don't really like"
+and every smart/rule playlist, which aren't a plain track list to add to) checked when the track
+is already in it, toggling `addTo`/`removeFrom` immediately on tap, plus a "New playlist" row at
+the top that creates one pre-filled with the current track without leaving the sheet. Removing a
+song again happens on the playlist itself: `MusicPlaylistDetailPage` now passes `TrackListView`
+an `onRemove` callback (a "Remove from playlist" icon per row) only when the playlist being
+viewed is itself a hand-built, non-system one — Favorites/disliked stay swipe-gesture-only, and a
+smart/rule playlist's tracks aren't stored to remove from in the first place.
+
+**In-app metadata scan + editor (0.2.74)** — `Track` gained `metadataEdited` (`bool`, default
+false, omitted from JSON when false). `MusicLibraryService.rescan` now takes an optional
+`onTrackScanned(int scanned, Track track)` callback, fired once per supported file found (with
+that file's already-merged final `Track` — dateAdded/playCount preserved as before, and, new
+here, its title/artist/album/genre/year preserved too when the previous entry had
+`metadataEdited: true`, instead of being overwritten by a fresh — possibly still empty — tag
+read); the per-file merge/callback logic that used to run as a separate pass after the whole
+folder was walked was folded into the main scan loop so the callback sees final values without a
+second pass. `MusicLibraryService.updateTrackMetadata(trackId, {title, artist, album, genre,
+year})` sets those fields to exactly the given values (required, not merged via `copyWith`'s
+`?? this.field` pattern — an editor needs to be able to clear a field, which that pattern can't
+express) and sets `metadataEdited: true`.
+
+`lib/ui/music_metadata_scan_page.dart` (`MusicMetadataScanPage`, opened from
+`MusicPlayerPage`'s app bar, "Metadata scan" icon next to "Rescan library") runs `rescan` on
+open (and again on its refresh action) and renders every track live as `onTrackScanned` fires —
+a `LinearProgressIndicator` plus a running count while scanning, then a
+found/with-genre/with-year summary, with each row showing a green check (both genre and year
+known), orange (one of the two) or red (neither) icon. Tapping a row opens
+`lib/ui/track_metadata_page.dart` (`TrackMetadataPage`), also reachable via a new "Track info"
+(ⓘ) button on Now Playing's bottom tools row (disabled — `onPressed: null` — while nothing is playing):
+editable title/artist/album/genre/year fields pre-filled from `MusicLibraryService.byId`, plus
+read-only duration/play count/date added/source/file path, and a note when the track was already
+manually edited. Saving calls `updateTrackMetadata`; an unparsable year shows an inline error
+instead of saving. This only ever changes this app's own cached record (`music_library.json`) —
+it does not write ID3 tags back into the file itself, which stays a possible future addition, not
+something either page does today.
+
+Widget tests that pump a page whose `initState` triggers `rescan` (`MusicMetadataScanPage`) poll
+with real delays (`tester.runAsync(delay) + pump()`, condition-driven on the progress indicator
+disappearing) rather than `pumpAndSettle()`, which both never resolves the real dart:io Future
+inside `testWidgets`' fake-async zone and would hang forever on the indeterminate
+`LinearProgressIndicator` even if it did (see CLAUDE.md's "Real file I/O hangs inside
+testWidgets" note) — and set the page's initial "scanning" field directly in `initState` rather
+than via `setState` (illegal before `initState` returns), letting only the later, async-gap
+`setState` calls do the rebuilding.
+
+**CSV bulk metadata export/import (0.2.77)** — a way to fill in metadata for a whole collection
+at once outside the app (e.g. hand it to an AI), for when editing one track at a time via
+`TrackMetadataPage` doesn't scale. `lib/services/music_metadata_csv.dart` (`MusicMetadataCsv`):
+`encode(tracks)` writes one CSV row per track — `id, filename, title, artist, album, genre,
+year` — reusing `UsageDataService.csvField`/`toCsv` for RFC-4180-style quoting rather than
+duplicating that escaping logic (`UsageDataService`'s CSV primitives are public statics
+precisely so other export features can share them). `decode(csvText)` is a hand-rolled decoder
+(no `csv` package dependency; none existed in the codebase and none was added) — a small
+state-machine parser handling quoted fields, doubled-quote escaping, CRLF/bare-LF line endings,
+and a missing trailing newline, then looking columns up **by header name** (case-insensitive,
+tolerant of reordering/missing/extra columns) rather than by position, so a spreadsheet round
+-trip that reorders columns still imports correctly. A row's `id` is the match key (the export's
+`filename` column is read-only context for an AI when a file has no tags to go on at all —
+title/artist/album are also empty in that case); a row with a blank `id` is skipped, and a file
+with no `id` column at all decodes to zero rows rather than guessing.
+
+`MusicLibraryService.applyMetadataRows(List<ParsedMetadataRow>)` matches each row's `id` against
+the library and, for every match, sets `title`/`artist`/`album`/`genre`/`year` — but **only the
+non-empty fields**: a blank cell leaves that track's existing value untouched, so a spreadsheet
+edit that accidentally clears a cell (or an AI that only filled in the columns it was asked to)
+can't silently erase data the app already had. Every matched row gets `metadataEdited: true`,
+same as a manual `TrackMetadataPage` edit — so it also survives a later rescan (§ above). Returns
+how many rows matched, for the caller's "Updated N of M" summary.
+
+The UI lives on `MusicMetadataScanPage`, alongside the scan itself: "Export metadata CSV" writes
+the current library (`MusicLibraryService.instance.tracks.value`, not just what's scanned into
+the page's own live list — so it works even without running a fresh scan first) to a file in
+`getTemporaryDirectory()` and hands it straight to the OS share sheet
+(`SharePlus.instance.share(ShareParams(files: [XFile(path)]))` — the same pattern
+`attachments_field.dart` uses to share an attachment) rather than a folder-picker write like
+`UsageDataPage`'s CSV export — simpler for "get this file into another app" than picking a save
+folder first. "Import filled-in CSV" uses `file_selector`'s `openFile` (same pattern as the M3U
+import in `music_player_page.dart`), reads and decodes the file, applies it, and refreshes the
+scan page's already-displayed rows in place (looked back up by id) so their status icons update
+without a full rescan. Neither the export/import buttons themselves nor the M3U import they
+mirror are exercised in `testWidgets` — both go through a real OS file picker/share sheet with no
+test seam in this codebase, so only the pure `MusicMetadataCsv`/`applyMetadataRows` logic
+underneath is unit tested.
+
+### 10.6h Best Music Wishlist (0.2.75, briefly shared across both apps 0.2.78-0.2.83, reverted to
+local-only Best Music 0.2.84 — see §10.6i for the version split)
+Drawer → Wishlist (`lib/ui/music_wishlist_page.dart`) gives Best Music the same wishlist
+BestToDo has (§10.7's Wishlist tool), reduced to its plainest form. Items are ordinary `Task`
+records flagged `isWish` — the same `ItemRepository`/`StorageService` seam BestToDo's own
+Wishlist reads and writes (`tasks.json`, unchanged JSON shape). Priority (`0..3`, stored as one
+of the `priority-low`/`priority-medium`/`priority-high` label tokens) is shared code too:
+`lib/utils/wish_priority.dart` (`wishPriorityLabels`/`wishPriorityRank`/`setWishPriority`/
+`bumpWishPriority`) is the single source both `wishlist_page.dart` and `music_wishlist_page.dart`
+import, rather than each keeping its own copy.
+
+Unlike BestToDo's Wishlist, this page carries none of that tool's build-tracking chrome
+(release-group sections, GitHub "Send to build", swipe-to-reveal Share/Copy/Export/Delete,
+multi-select) — those are specific to BestToDo's own development workflow, not something Best
+Music's users need. Each row is just a leading `Checkbox` (toggles `isDone`/`completedAt` and
+saves immediately, no editor needed — Best Music 0.2.83; the original "no icons at all" design
+was amended once actually asked for) and the title (struck through once done) — no priority/tag chips, no
+trailing icon. Tapping the title itself pushes a full-page editor for everything else: a "Done"
+switch (kept there too, alongside the list's own checkbox), priority as three `ChoiceChip`s, tags
+via the shared `LabelPickerField`, and a multi-line description field. The app bar's check icon
+saves; a delete icon (edit mode only) confirms then removes the item. Adding is the same editor
+with no item, reached via the page's `+` FAB. Sorting mirrors BestToDo's default: open items
+before done ones, then by priority, otherwise list order. `ItemViews.wishlist` (the same shared
+query BestToDo's Wishlist filters through) is the visibility gate, so demo-seed hiding and the
+isWish/isVisibleInMainViews rules apply identically in both apps.
+
+**No inherited BestToDo backlog (Best Music 0.2.83)**: `ItemRepository.loadItems()`/`StorageService.
+loadTaskList()` is shared code, and it unconditionally ran a one-time migration
+(`_maybeImportLegacyTodoItems`, `lib/services/wishlist_migration.dart`'s `legacyTodoWishlistItems`
+— 61 items straight from BestToDo's own historical `Todo.md` backlog) into whichever app's own
+`tasks.json` was empty and had never run it before — including a genuinely fresh Best Music
+install, which has its own separate app-private storage and so had never spent that one-time flag
+either. `Config.isBestMusic` (`lib/config.dart`, default `false`) is set once, first line of
+`main_music.dart`'s `main()`, before anything else runs; `_maybeImportLegacyTodoItems` returns
+immediately when it's true, so Best Music's Wishlist now starts genuinely empty on a fresh
+install, same as its dev-build behavior (see "Empty by default" below) — the migration itself,
+and BestToDo's own behavior, are untouched.
+
+**Cross-app sync, added 0.2.78 then reverted to BestToDo-only 0.2.84**: BestToDo and Best Music
+are two separately-sandboxed Android apps (different `applicationId`, §10.6f) —
+`getApplicationDocumentsDirectory()` (what `StorageService`/`ItemRepository` use for
+`tasks.json`) is invisible across that sandbox boundary, so each app's Wishlist really is its own
+local database, matching on JSON shape alone but never actually shared. 0.2.78 added
+`lib/services/shared_wishlist_store.dart` (`SharedWishlistStore`) to bridge that: it reads/writes
+one file — a fixed path under public external storage
+(`/storage/emulated/0/BestToDo/wishlist_shared.json`) both apps can reach because both already
+hold `MANAGE_EXTERNAL_STORAGE` (the shared `AndroidManifest.xml`; `MusicLibraryService.
+ensureFolderPermission` already requests the same permission for the music folder, and Best Music
+already asks for it eagerly at startup, §10.6e/f) — via `SafeFile`, the same atomic-write/
+corruption-recovery helper `StorageService` itself uses.
+
+Both Wishlist pages treated the shared file as authoritative once it existed: on load,
+`reconcileWishlist(local, shared)` replaced the local wish-item subset with the shared file's
+content whenever that file already existed (so a deletion or edit made in the other app took
+effect here too — the whole set was replaced, not merged item-by-item, since there is no
+per-field "last modified" timestamp on `Task` to arbitrate a real conflict), and only fell back
+to seeding the shared file from local data the first time, before it existed at all. Every save
+(add/edit/delete/toggle) re-pushed the page's current wish-item set out to the shared file.
+**0.2.84 reverted this for Best Music**: `music_wishlist_page.dart` no longer imports
+`SharedWishlistStore`/`WishlistSyncBanner` at all — it reads and writes only its own
+app-private `tasks.json` via `ItemRepository`, exactly like every other Best Music list, so
+checking an item off there can never mark it done in BestToDo (users had not asked for the two
+lists to be the same list, and being checked in an app they weren't using was surprising). Best
+Music's Wishlist drawer entry no longer shows a connect banner or offers to sync at all.
+BestToDo's own Wishlist (`wishlist_page.dart`) is untouched: `SharedWishlistStore`, the dismissible
+`WishlistSyncBanner` (`lib/ui/wishlist_sync_banner.dart`) and its "Connect" flow
+(`Config.wishlistSyncBannerDismissed`, `SharedWishlistStore.requestConnection()` showing
+Android's "All files access" settings screen) still exist there exactly as before — connecting
+now just means nothing else reads the file it writes to.
+`SharedWishlistStore.sharedDirectoryOverride`/`connectionOverride` (test-only) redirect this to a
+temp directory and force a connected/not-connected state without the real `permission_handler`
+plugin, which `flutter test`'s host platform can't provide —
+`test/core/shared_wishlist_store_test.dart` covers the store directly (save/load round-trip,
+deletion visibility, `reconcileWishlist`); the former `test/tools/wishlist_cross_app_sync_test.dart`,
+which proved an item added/deleted in one app's Wishlist showed up in the other's, was removed
+along with that behavior.
+
+**Empty by default, even in dev builds (0.2.77)**: both Wishlist tools used to seed demo content
+on an empty list — `WishlistPage._load`'s "Learn to sail" fallback, `home_page.dart`'s
+`_seedDevWishItem` (same item, seeded on first launch) and `_buildDevWishlistSeed` (the
+`legacyTodoWishlistItems` backlog, re-backfilled on *every* dev launch once no wishes remain,
+independent of first-launch) — all gated on `Config.isDev`. That backfill in particular meant a
+developer who cleared the Wishlist to test an empty state saw it silently repopulate on the next
+launch. All three are removed; the Wishlist starts (and stays) genuinely empty in dev builds
+exactly like production, so testing the cross-app sync feature above from a clean slate doesn't
+require fighting demo data first. The production one-time Todo.md-backlog import
+(`StorageService`/`wishlist_migration.dart`, §10.6, unconditional on `Config.isDev`) is untouched
+— that is a real, flag-guarded, one-time migration for actual installs, not a dev convenience.
+
+### 10.6i Independent versioning and changelogs (0.2.81)
+Through 0.2.80, Best Music's every build shared BestToDo's own `pubspec.yaml` `version:` line
+(via Flutter's `flutter.versionCode`/`flutter.versionName`, injected into both Gradle product
+flavors alike) and its Android APK's release notes came from BestToDo's own CHANGELOG.md — so a
+Todo-only release always bumped Music's version number too, and Music's own Changelog tool
+showed BestToDo's whole history mixed in with the entries actually about Music. The two apps now
+version and changelog fully independently, seeded from 0.2.80+371 (the last build number they
+shared) going forward — nothing before the split was rewritten or copied over; BestToDo's own
+history stays in CHANGELOG.md.
+
+**Best Music's own version file**: `MUSIC_VERSION` at the repo root holds a single `version:
+x.y.z+build` line, the same shape as `pubspec.yaml`'s. `android/app/build.gradle.kts` reads it
+(`rootProject.file("../MUSIC_VERSION")`, mirroring how `key.properties` is already read) and
+overrides `versionCode`/`versionName` on the `music` product flavor only — `todo` keeps coming
+from `flutter.versionCode`/`flutter.versionName` (i.e. `pubspec.yaml`) exactly as before. The
+`createVersionedReleaseApk` task's `fullVersion` (used to name `best_todo_<version>.apk` /
+`best_music_<version>.apk`) now branches on which flavor's APK it actually found rather than
+always reading `flutter.*`. `PackageInfo.fromPlatform()` (what `Config.versionWithBuild` and
+`MusicAboutPage` read) then reports each installed app's own real version for free, since it
+reads the running APK's own `versionCode`/`versionName` — no Dart-side change needed there.
+`versionCode` only ever moves forward from 371 (Android refuses an "update" with a lower
+versionCode than what's installed), so bumping `MUSIC_VERSION` always increments the existing
+build number rather than resetting it, even though its `x.y.z` name can change freely.
+
+**Best Music's own changelog**: `CHANGELOG_MUSIC.md` at the repo root, bundled as an app asset
+alongside `CHANGELOG.md` (`pubspec.yaml`'s `assets:`). `ChangelogPage` (§10.7) gained `assetPath`
+(default `CHANGELOG.md`) and `showStoryPoster` (default `true`) constructor params;
+`MusicPlayerPage`'s drawer entry passes `assetPath: 'CHANGELOG_MUSIC.md', showStoryPoster:
+false, hidePreamble: true` (the text view starts at the first `## ` release, hiding the file's
+title + developer intro via `stripChangelogPreamble`) — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
+would be wrong to show under Best Music.
+
+**Tooling, both apps share the same scripts with a flag rather than forking them**:
+- `dart run tool/bump_version.dart <version> "<entry>" --music` bumps `MUSIC_VERSION` +
+  `CHANGELOG_MUSIC.md` instead of `pubspec.yaml` + `CHANGELOG.md`; the changelog-insertion logic
+  now finds the first `## [...]` heading and inserts the new section right above it rather than
+  assuming a single-line header, so `CHANGELOG_MUSIC.md`'s explanatory preamble paragraph (above
+  its first release) survives every bump untouched.
+- `dart run tool/append_build_time.dart --app music` (default: BestToDo) notes a local build in
+  `CHANGELOG_MUSIC.md` and reads `MUSIC_VERSION` for its `build_history.json` record, which now
+  also carries an `app` field (`'todo'`/`'music'`).
+- `dart run tool/stage_local_release.dart --version <x.y.z+build>` names the staged file
+  explicitly instead of the tool re-reading `pubspec.yaml` — without it, staging a
+  `--prefix best_music` build would silently tag it with BestToDo's version once the two
+  diverged. `tool/build.sh`/CI always pass it now.
+- `tool/build.sh`: `VERSION` is read from `MUSIC_VERSION` instead of `pubspec.yaml` whenever
+  `FLAVOR=music` (i.e. every `music-apk` build), and `--app music`/`--version "$VERSION"` are
+  passed through to `append_build_time.dart`/`stage_local_release.dart` accordingly.
+  `tool/publish_apk.dart` stays BestToDo-only (Best Music's update check never looks at GitHub
+  releases — see §10.6f's "In-app updates" paragraph), so `PUBLISH_APK=1` is now a no-op for a
+  music build rather than publishing a GitHub release mislabeled "BestToDo" from Music's bytes.
+- `.github/workflows/build-apk.yml`'s `build_music_apk` job reads its "app version" step from
+  `MUSIC_VERSION` and passes `--version` to `stage_local_release.dart` the same way.
+- `tool/build_all.sh`/`tool/build.ps1` (the gap this change originally left open, closed since):
+  `all` now builds the Best Music APK as its own step between the BestToDo APK and the Windows
+  exe — "everything this project ships" includes Best Music — skippable with `MUSIC=0`, and the
+  sync step also stages `CHANGELOG_MUSIC.md`. `tool/build.ps1` has full flavor parity with
+  `tool/build.sh`: a `music-apk` shorthand, `--flavor todo` injected when an `apk` build doesn't
+  name one, `MUSIC_VERSION` as the version source and `best_music_` as the artifact prefix for a
+  music build, `--app music`/`--version`/`--prefix` passed through to
+  `append_build_time.dart`/`stage_local_release.dart`, and the same BestToDo-only `PUBLISH_APK`
+  guard.
+
+**Why the rename task is per-flavor** (regression fixed after the split): a single shared
+`createVersionedReleaseApk` used to decide which app it had just built by scanning
+`build/app/outputs/flutter-apk/` for the first existing `app-<flavor>-release.apk`, `todo`
+first. That directory is never cleaned between builds, so on any machine that had built
+BestToDo at least once, every subsequent `--flavor music` build matched the leftover
+`app-todo-release.apk`, re-copied that stale BestToDo APK as `best_todo_<pubspec version>.apk`
+and produced **no** `best_music_<MUSIC_VERSION>.apk` at all. The music build exited 0, so the
+failure was silent — `stage_local_release.dart` then staged nothing (or the wrong app). CI never
+saw it because each job starts from a clean checkout. Deciding the flavor from the task that
+triggered the rename, rather than from whatever files happen to be on disk, is what makes a
+local music build correct.
+
+Not split by this change: `SCREENSHOT_CHANGELOG.md` (`tool/update_screenshot_changelog.dart`)
+stays one shared file for both apps' screenshot-capture audit trail, and still labels every
+entry with BestToDo's `pubspec.yaml` version regardless of which app's screenshots it's
+recording — a known, low-stakes inconsistency (it's an audit log, not a user-facing changelog)
+left for a future pass if it's ever worth the tooling churn.
+
+### 10.6j Samsung-Music-style redesign: Favourites/Artists/Folders tabs, search, sort, "+" add-songs (Best Music 0.2.81)
+`MusicPlayerPage`'s `TabController` grew from 2 tabs (Library/Playlists) to 5, matching Samsung
+Music's own layout: Favourites, Playlists, **Tracks** (renamed from Library), Artists, Folders —
+`TabBar(isScrollable: true)` since five labels don't all fit on a phone width, same as Samsung's.
+Favourites (`_FavouritesTab`) is a shortcut straight to the Favorites system playlist's resolved
+tracks — the same list already reachable via Playlists → Favorites, just one tap away. Artists
+(`_ArtistsTab`) and Folders (`_FoldersTab`) are new grouping views computed live from
+`MusicLibraryService.instance.tracks` (never persisted): Artists groups by `Track.artist`
+(`Unknown artist` for a blank tag, sorted last); Folders groups by each local track's folder
+relative to `Config.musicFolder` (`folderLabelOf`, a top-level function in
+`music_player_page.dart` — tracks right under the music folder itself land in `(Music folder)`,
+whose leading `(` sorts it ahead of any real subfolder name; a Subsonic track with no
+`Track.filePath` groups under `Other`). Tapping a row in either tab pushes `_FilteredTracksPage`,
+a plain `TrackListView` over that artist's/folder's tracks.
+
+**Search** (app bar search icon, `_MusicSearchDelegate extends SearchDelegate<void>`): filters
+the whole library by title/artist (falling back to the filename), reusing `TrackListView` for
+results so a search hit is playable and carries the same "more options" menu as everywhere else.
+Plain `showSearch(context:, delegate:)` — no separate search page/route to maintain.
+
+**Quick sort + shuffle/play-all header** (`TrackListView`, a `StatefulWidget` owning its own
+`TrackSortField` + direction): every track list — Tracks/Favourites tabs, an artist/folder
+drill-down, search results, and any playlist detail page — gets a header row with a
+`PopupMenuButton<TrackSortField>` (Added to device [default] / Added to app / Title / Artist /
+Duration, checkmark plus
+an up/down arrow on the active choice), a direction `TextButton` (key `sortDirectionButton`,
+labelled per field: Newest/Oldest first, A–Z/Z–A, Longest/Shortest first) that flips ascending ↔
+descending, plus shuffle and play-all icon buttons that queue the *currently sorted* list.
+Re-picking the active field also flips its direction; picking a new field starts in its natural
+direction (`trackSortDefaultAscending`: A–Z for text, newest/longest first otherwise). Ties fall
+back to title; tracks with no date added always sink to the bottom. The choice is persisted in
+`Config.musicTrackSortField`/`musicTrackSortAscending` (0.2.85) so every list and the next launch
+follow it.
+
+**Two "date added"s** (0.2.87): `Track.deviceDate` is when the *file* arrived on the
+phone/computer — `FileStat.changed` (creation time on Windows, inode change time on Android/Linux,
+i.e. when it was copied/downloaded there), re-read on every rescan, persisted as `deviceDate`
+(ms), null for Subsonic tracks. `Track.dateAdded` stays "first seen by a Best Music scan" (backs the
+Last Added smart playlist, unchanged). Sorting offers both ("Added to device" — the default — and
+"Added to app"); Track info shows both rows ("Added to device", "Added to app").
+
+**Fast scroll** (`lib/ui/fast_scroll_list.dart`, `FastScrollList`, 0.2.85): track rows are a
+fixed two-line height (`prototypeItem`; title/artist ellipsize to one line, a missing artist reads
+"Unknown artist") so a drag position maps exactly onto a row. Lists of 30+ tracks get a draggable
+handle on the right edge (key `fastScrollHandle`; tap or drag to jump) with a bubble showing the
+top row's `trackSectionLabel` — initial letter (digits → `#`) for Title/Artist, "Sep 2026" for
+Date added, "3 min" for Duration.
+
+**Blue theme + dark mode** (0.2.89): Best Music's theme comes from `lib/ui/music_theme.dart` —
+`buildMusicTheme(brightness)` seeds `ColorScheme.fromSeed` with `musicSeedColor` (0xFF005FDD, the
+same blue as BestToDo's `_seedColor`) and pins `primary` to it, light and dark. Settings →
+"Dark mode" (`SwitchListTile`) calls `MusicTheme.setDarkMode`, which persists `Config.darkMode` (Best
+Music's own settings file) and flips the `MusicTheme.darkMode` notifier that `BestMusicApp` wraps its
+`MaterialApp` in, so the switch applies instantly.
+
+**Sleep timer** (0.2.89): `MusicSleepTimer.instance` (`lib/services/music_sleep_timer.dart`) holds a
+`ValueNotifier<SleepTimerState>` — off, timed (`endsAt`, a Dart `Timer` that pauses playback when
+it fires) or end-of-song (`MusicAudioHandler`'s completion listener calls `consumeEndOfTrack()` and,
+when set, pauses and rewinds instead of advancing). `extend()` adds time, `cancel()` turns it off.
+One picker, `showSleepTimerSheet` (`lib/ui/sleep_timer_sheet.dart`: 5/10/15/30/45/60/90 min, End of
+current song, Custom… minutes, plus Add 10 minutes / Turn off while active), opened from: Now
+Playing's app bar (`SleepTimerButton`, tooltip "Sleep timer" / "Sleep timer: 23 min"), the Best
+Music drawer ("Sleep timer" with time left), Settings ("Sleep timer" row), and the mini player
+(a bedtime + time-left badge while running, and long-press on the bar). The timer is in-memory —
+not restored after the app process is killed.
+
+**Always-visible mini player + resume after restart** (0.2.88): `MusicMiniPlayerBar`
+(`lib/ui/music_mini_player_bar.dart`) is mounted once in `BestMusicApp`'s `MaterialApp.builder`
+(a `Column` of the navigator + the bar, inside the bottom `SafeArea`), so the current song — title,
+artist, play/pause, tap → `NowPlayingPage` via `musicNavigatorKey` — is at the bottom of every Best
+Music screen. That spot has no Overlay, so the bar uses no tooltips (play/pause has key
+`musicMiniPlayerPlayPause` + a Semantics label). It hides while Now Playing is open
+(`NowPlayingPage.openCount`, bumped in a microtask from initState/dispose) and when there is no
+current or remembered song. `MusicPlayerPage(standalone: true)` no longer renders its own bar
+(the non-standalone mode was BestToDo's Music Player tool, removed in 0.2.98 — §10.6n).
+`MusicResumeService` (`music_resume_service.dart`) persists `{queue: [track ids], index, positionMs,
+current: Track json}` to `music_resume.json` in the app documents dir (survives restarts, reboots
+and app updates). `MusicAudioHandler` saves it on every track change, pause, shuffle/reorder and
+every 15 s while playing (writes chained so they never interleave). At startup `main_music.dart`
+calls `MusicPlayerService.restoreLastSession()` after the library loads: queue ids are mapped
+through the library (missing ones dropped, the current track falling back to its saved copy) and
+`handler.restore()` shows it paused (mediaItem + paused playbackState at the saved position)
+without loading audio; the first `play()` loads it with `initialPosition`. Skipping before
+playing drops the saved position.
+
+**Navigation-bar inset** (0.2.86): `BestMusicApp` (`lib/main_music.dart`) wraps every route in
+`MaterialApp.builder: SafeArea(bottom: true)` exactly like BestToDo's `main.dart`, so no page (track
+lists, Track info, the mini player) draws under Android's edge-to-edge navigation bar. 0.2.85's
+attempt (mini player as the Scaffold's `bottomNavigationBar`) only covered the home page and let
+the mini player's `Column` stretch to the full screen height — reverted; the mini player is back
+as the last child of the home body `Column` (its text `Column` now `MainAxisSize.min`).
+
+**Per-track "more options" menu**: the row's separate Favorite/"Add to playlist"/"Remove from
+playlist" icon buttons were folded into one `PopupMenuButton<String>` (`Icons.more_vert`, tooltip
+"More options") per Samsung Music's own ⋮ button — Favorite/Unfavorite (dynamic label + heart
+icon), Add to playlist (still `showAddToPlaylistSheet`), Remove from playlist (only when
+`TrackListView.onRemove` is set — i.e. inside a hand-built, non-system playlist, unchanged
+condition), and a new Track info entry (`TrackMetadataPage`, previously only reachable from Now
+Playing's info button). Tapping the row itself still plays the (sorted) list from that track,
+unchanged.
+
+**"+" add-songs-to-playlist (`AddSongsToPlaylistPage`)**: `MusicPlaylistDetailPage` gained an
+"Add songs" app bar button, shown under the same `editable` condition as its existing "Remove
+from playlist" wiring (`kind == list && !isSystem` — a hand-built playlist only; Favorites/
+disliked/smart/rule playlists don't get one). It opens a full-screen multi-select checkbox list
+of every library track not already in the playlist; "Add selected" (enabled once at least one is
+checked) calls the new `MusicPlaylistService.addAllTo(playlistId, trackIds)` — one save/notify
+for the whole batch rather than one per track (`addTo` in a loop). Complements the existing
+one-track-at-a-time flow from a track row's own "Add to playlist" menu entry, for adding several
+songs into a playlist at once instead.
+
+### 10.6k Artists tab groups "feat." credits, free-form Tags (Best Music 0.2.82)
+**Artists tab merges featuring credits.** A library ripped from Samsung Music (or similarly
+tagged) often has one artist appear as several distinct `Track.artist` strings — "49th & Main",
+"49th & Main feat. SKYLAR", "50 Cent feat. Justin Timberlake" — because the ID3 `TPE1` tag
+folds the featured artist into the same field. `lib/utils/artist_utils.dart`'s
+`splitArtistCredit(artist)` splits that on the first `feat.`/`feat`/`ft.`/`ft`/`featuring`
+marker (case-insensitive, tolerant of surrounding whitespace) into `mainArtist` + `featuring`,
+returning an empty `featuring` when there's no such marker. `_ArtistsTab` groups by
+`mainArtist` instead of the raw `Track.artist` (an empty main artist still falls back to
+"Unknown artist", sorted last) — so "49th & Main" and "49th & Main feat. SKYLAR" land under one
+row, its track count covering both. When any of a main artist's tracks carry a featuring
+credit, the row's `trailing` shows "feat. <names>" (deduped via a `Set`, comma-joined, ellipsized
+past two lines) so that information isn't lost, just moved out of the grouping key. This only
+affects grouping in the Artists tab — `Track.artist` itself, and every other view/search/sort
+that reads it, is untouched.
+
+**Free-form tags.** `Track` gained `tags` (`List<String>`, default `const []`, omitted from
+`toJson` when empty, tolerant of a missing/non-list key in `fromJson`) — unlike every other
+metadata field, never read from a file's ID3 tags; purely a user-assigned label for grouping
+tracks the way genre/artist/folder can't (occasion, a personal chart, "songs for a specific
+playlist elsewhere"), e.g. "Belgian Top Charts", "Wedding songs". Editable on
+`TrackMetadataPage` (a comma-separated "Tags" text field alongside title/artist/album/genre/
+year, `helperText` showing the format) — saving goes through the same
+`MusicLibraryService.updateTrackMetadata(..., tags: [...])` call as every other field (now
+taking an optional `tags` parameter, default `const []`) and sets `metadataEdited: true`, so
+tags survive a rescan exactly like a manually-fixed genre does (§10.6g). `applyMetadataRows`
+gained the same blank-means-leave-alone semantics for tags as every other field: a row's empty
+`tags` list keeps the track's existing tags. `MusicMetadataCsv` round-trips tags as an eighth
+`tags` column, multiple tags in one cell `; `-joined (not `,`-joined, since the CSV's own field
+separator is a comma) and split back the same way on import.
+
+A new **Tags tab** (`_TagsTab`, `TabController` grown from 5 to 6, `TabBar` labels Favourites/
+Playlists/Tracks/Artists/Tags/Folders) groups the library by tag the same way Artists/Folders
+do, computed live from `MusicLibraryService.instance.tracks` — but unlike those two (each track
+belongs to exactly one artist/folder), a tag grouping is many-to-many: a track with several tags
+appears once under each one, and a track with none groups under "Untagged" (sorted last, same
+pattern as "Unknown artist"). Tapping a tag row pushes the same `_FilteredTracksPage` Artists/
+Folders already use.
+
+### 10.6l F1 Reminder (0.2.85)
+Tools → **F1 Reminder** (feature/start-tool key `f1_reminder`, `Icons.sports_score`) texts one
+phone number 4 hours (`kF1ReminderLead`) before every remaining race of the season.
+- **Calendar**: `kF1Races` in `lib/models/f1_reminder.dart` — hard-coded `F1Race(name, start)`
+  entries in the phone's local clock time (entered as CET/CEST): Singapore GP Sprint Sat 10 Oct
+  11:00, Singapore GP Sun 11 Oct 14:00, United States 25 Oct 21:00, Mexico City 1 Nov 21:00,
+  Brazil 8 Nov 18:00, Las Vegas 22 Nov 05:00, Qatar 29 Nov 17:00, Abu Dhabi 6 Dec 14:00 (all
+  2026). `F1Race.key` = the start's ISO string.
+- **Config** (`f1_reminder.json`, `F1ReminderConfig`): `enabled`, `phoneNumber`, `template`,
+  `handledRaces` (race keys already sent *or attempted* — a failed send is not retried so a bad
+  number can't loop), `history` (`F1SendRecord`, newest last, capped at 50). Tolerant `fromJson`;
+  an empty template falls back to `kDefaultF1Template`.
+- **Template tokens**: `{race}`, `{time}` (HH:mm), `{date}` ("Sunday 8 November"), `{countdown}`
+  (time left at the moment of sending — "4 hours" normally, "2 hours 20 minutes" for a late send).
+- **Scheduling** (`F1ReminderService`): `nextPending` = earliest non-handled race still more than
+  `kF1LateSendCutoff` (30 min) away; its send time may be in the past (missed alarm → sent ASAP).
+  `applyFromConfig` (also a startup step in `main.dart`, after the SMS report scheduler) cancels
+  alarm id `0xF1F1` and, when the feature is enabled, the switch is on and a number is set, arms a
+  one-shot `AndroidAlarmManager.oneShotAt(exact, wakeup, allowWhileIdle, rescheduleOnReboot)` at
+  `max(sendAt, now+10 s)`. The background `f1ReminderAlarmCallback` → `runDue`: if a reminder is
+  due (send time ≤ now+1 min) it marks the race handled and saves, re-arms for the next race,
+  THEN sends (invariant 10) and appends the result to `history`.
+- **Page** (`lib/ui/f1_reminder_page.dart`): next-text card ("Next text: <date>, <time>" + race +
+  relative time, or "Reminders are off" / "Add a phone number" / "No more races this season"),
+  "Send race reminders" switch (switching on requests SMS/exact-alarm/battery/notification
+  permissions via `SmsReportScheduler.ensureBackgroundPermissions`), phone field, message field
+  (reset button + live preview for the next race), "Send welcome message" button
+  (`sendWelcome`: fixed `kDefaultF1WelcomeTemplate` naming the next race), the race list with a
+  per-race status (Text sent / Finished / Next / Text at HH:mm), and "Recent texts". Save
+  (app-bar, tooltip "Save") persists the fields and re-arms the alarm; the switch saves too.
+  Sending uses `another_telephony` directly (`F1ReminderService.sendSms`, test seam
+  `sendOverride`); the daily SMS report's send path is untouched.
+- **Editable race times (0.2.86)**: `F1ReminderConfig.startOverrides` (`{raceKey: ISO start}`,
+  tolerant `fromJson`) moves a calendar race; `config.races` is `kF1Races` with overrides applied
+  (`F1Race.withStart` keeps the original `key`, so handled flags/overrides stay attached), sorted by
+  start — every scheduling path (`nextPending`, `nextRace`, the page list) reads it.
+  `setStart(race, start)` stores the override (or drops it when set back to the calendar time) and
+  un-handles the race, so an already-sent reminder goes out again for the new time. On the page,
+  tapping a race (or its "Edit time" button) opens a date picker then a 24-hour time picker;
+  edited races show "(edited)" and a "Reset time" button; each change saves and re-arms the alarm.
+
+### 10.6m Subscriptions feed — YouTube channels in Best Music (Best Music 0.2.92)
+A Tubular/NewPipe-style feed built in Dart on the existing `youtube_explode_dart` + player
+stack rather than by forking Tubular (a native Java app, GPL-3.0 — embedding it would mean
+two UIs and two media sessions, and would make the APK GPL). Drawer entry **Subscriptions**
+in Best Music (`MusicPlayerPage._buildDrawer`) → `YoutubeFeedPage`
+(`lib/ui/youtube_feed_page.dart`).
+
+**State** — `YoutubeFeedService` (`lib/services/youtube_feed_service.dart`, singleton) owns
+`ValueNotifier`s for `subscriptions` (`YoutubeChannel`: `UC...` id, name, avatar URL),
+`videos` (`FeedVideo`, newest first, unfiltered), `settings` (`YoutubeFeedSettings`),
+`progress` (`videoId → WatchProgress`: position, duration, completed, updated; capped at the
+2000 most recently updated) and `refreshing`/`failedChannels`, all persisted to one
+`youtube_feed.json` in the app documents dir (models in `lib/models/youtube_feed.dart`,
+tolerant `fromJson`). `main_music.dart` loads it before `MusicPlayerService.init` so feed
+playback has its settings and resume positions.
+
+**Refresh** — on opening the feed (when there are subscriptions), pull-to-refresh, after a
+Tubular import, and for just the new channel on subscribe. Up to 6 channels in parallel; per
+channel `fetchChannel` reads:
+1. the RSS feed `youtube.com/feeds/videos.xml?channel_id=UC...` (`parseYoutubeRss`, package
+   `xml`): the 15 newest uploads of every kind, exact `published`, full `media:description`,
+   view count; a `/shorts/<id>` link sets `isShort`;
+2. the Videos tab (`channels.getUploadsFromPage`): durations and view counts. Livestreams sit
+   on the separate Live tab, so `mergeVideosTab` flags a non-Short RSS entry missing from a
+   *successfully read, non-empty* Videos tab as `isLivestream`.
+If RSS fails the Videos tab is used alone (approximate "3 days ago" dates, no descriptions —
+the video page fetches one on demand via `videos.get`); if the tab fails nothing is flagged
+live; only both failing fails the channel. A failed channel keeps its cached videos and is
+named in the feed's error row; descriptions fetched on demand survive later refreshes.
+`filterFeed` applies the settings at display time (`visibleVideos`), so toggles need no
+refetch.
+
+**Feed UI** — rows: 16:9 thumbnail (`i.ytimg.com/vi/<id>/mqdefault.jpg`) with duration badge
+and red progress bar, title, "channel · 2d ago · 1.2K views", a Play button (tooltip "Play").
+Played videos are dimmed with a check icon. The app bar has **Channels** and **Feed
+settings**. Empty state → "Add channels". Tapping a row opens `YoutubeVideoPage`: large
+thumbnail, title, meta line, **Play**/"Resume at m:ss", **Open in YouTube**
+(`launchUrl(watchUrl, externalApplication)` → the YouTube app), **Download** (pushes
+`Mp3DownloaderPage(initialQuery: watchUrl)`, which submits it like a typed URL → queued
+through the usual folder checks, §10.6d), **Mark played/unplayed**, and the description as
+`LinkifiedText`.
+
+**Channels** (`YoutubeChannelsPage`) — search by name → Subscribe/Subscribed per result.
+`searchChannels` posts to InnerTube's `search` endpoint (`YoutubeHttpClient.sendPost`,
+`params: EgIQAg==` = channels only) and walks the whole response for `channelRenderer`s
+(`parseChannelSearchResults`); it does **not** use `youtube_explode_dart`'s `searchContent`,
+whose 3.1.0 channel parser calls the `getT` extension on a `dynamic` (`videoCountText/runs
+.first`) and throws `NoSuchMethodError` for every channel with a video count (Best Music
+0.2.94 fix). A typed/pasted `/channel/UC...` URL, `@handle` or `/user/` URL resolves to that
+channel directly; the subscribed list with
+Unsubscribe (+ Undo snackbar); app-bar "Import from Tubular/NewPipe" opens a `.json` export
+(`{"subscriptions":[{"service_id":0,"url":...,"name":...}]}`, `parseNewPipeSubscriptions`):
+non-YouTube services are dropped, `/channel/UC...` URLs map directly, `@handle`/`/user/` URLs
+are resolved through `youtube_explode_dart`, anything else counts as skipped; already
+subscribed channels are counted, not duplicated.
+
+**Playback** — `TrackSource.youtube` (`Track.youtube`: id `youtube:<videoId>`, `remoteId` =
+video id, `artist` = channel, new `Track.artUrl` = `hqdefault.jpg`, also sent as the
+`MediaItem.artUri` for the notification/lock screen and drawn on Now Playing instead of the
+note icon). Play builds the queue with `queueFrom`: the tapped video, then up to 50 *unplayed*
+videos below it. The end of a YouTube queue pauses instead of reshuffling the local library.
+Audio comes from `YoutubeAudioSource` (`lib/services/youtube_audio_source.dart`, a just_audio
+`StreamAudioSource`): it resolves the stream with `Mp3DownloaderService.resolveAudioStream`
+(the downloader's visionOS-first client walk + PoToken-wall probe) and serves just_audio's
+local proxy from 1 MiB range requests, because YouTube throttles one open response to
+~31 KiB/s and 403s most clients past 1 MiB. Each request bumps a generation counter so the
+stream abandoned by a seek stops at its next chunk, and reads stay at most 6 MiB ahead of
+estimated real-time consumption (the proxy has no back-pressure).
+**Progress**: `MusicAudioHandler._persist` (every ~15 s and on pause) records the position
+of a YouTube track once its own audio is loaded (`_loadedTrackId`); within the last 30 s or
+95 % counts as played, as does reaching the end. `_playCurrent` resumes a feed video at its
+saved position minus 3 s unless it was played or under 10 s in.
+**SponsorBlock**: on loading a YouTube track the handler fetches
+`sponsor.ajay.app/api/skipSegments?videoID=..&categories=[..]` (`SponsorBlockService`; 404/
+errors = nothing to skip; only `actionType: skip`) and, on `positionStream`, seeks to a
+segment's end when the playhead is within its first 2 s — so seeking into the middle of a
+segment on purpose still plays it.
+
+**Playback speed** (Best Music 0.2.96): `YoutubeFeedSettings.playbackSpeed` (default 1.0,
+clamped 0.5–3.0) is the default for feed videos; local/Subsonic tracks always play at 1x.
+`MusicAudioHandler._applySpeed` sets it after each track loads, using
+`_videoSpeedOverride` when set; `setVideoSpeed` (Now Playing) sets that override and applies
+it at once, and `setQueueAndPlay` clears it, so a quick change lasts for the rest of that
+queue only. `handler.videoSpeed` (ValueNotifier) drives Now Playing's bottom-row
+`PlaybackSpeedButton` (`lib/ui/playback_speed_sheet.dart`), shown only while the current
+track is a feed video (`isFeedVideo`), labelled e.g. "1.5×" (tooltip "Playback speed"). Its sheet
+has preset chips (0.75–3x), a 0.05-step slider with Slower/Faster buttons, and "Make … the
+default". Feed settings has a "Default playback speed" row opening the same sheet in
+default-only mode.
+
+**Music vs. video playback rules (Best Music 0.2.98).** `Track.isFeedVideo` (=
+`TrackSource.youtube && !youtubeSong`) is what every feed-only behaviour keys on — speed,
+volume/boost, SponsorBlock, resume position/`recordProgress`, "played" marks, and stopping at
+the end of the queue. Songs streamed from the library search's YouTube fallback are
+`Track.youtube(..., song: true)` (`youtubeSong`, persisted as `"youtubeSong": true`), so they
+follow music rules: always 1x, music's phone volume, no feed bookkeeping; the speed button is
+hidden for them. **Volume** (Best Music 0.3.4: no app volume any more) is the phone's own
+media volume (Android `STREAM_MUSIC`), remembered per kind and switched automatically.
+`MediaVolume` (`lib/services/media_volume.dart`) talks to the `besttodo/media_volume`
+channel in `MainActivity.kt` (`get` → current index / max as 0..1, null when unreadable;
+`set {volume, showUi}` → `setStreamVolume`, skipped on fixed-volume devices, a Do Not
+Disturb `SecurityException` swallowed; non-Android: no-ops). State lives in `Config`:
+`musicPhoneVolume`/`videoPhoneVolume` (0..1, null until known) and `phoneVolumeKind`
+(`'music'`/`'video'`/`''`, survives restarts). `MusicAudioHandler._applyVolume` runs for every
+track that loads: the player volume is always 1.0, then `MediaVolume.onPlaying(kind)` — when
+the kind differs from `phoneVolumeKind`, the phone's current level is saved for the kind that
+was playing (so volume-button changes are kept) and the new kind's remembered level, if any,
+is set with `showUi: true` (the phone's own volume bar appears); the very first track, or a
+kind with nothing remembered yet, leaves the phone alone. The old app volumes
+(`Config.musicVolume`, `YoutubeFeedSettings.videoVolume`) are gone; their JSON keys are
+ignored. `YoutubeFeedSettings.videoBoostDb` (0–12 dB, default 0) is the only in-app level: it
+drives an `AndroidLoudnessEnhancer` in the player's `AudioPipeline` (Android only; enabled
+only while a feed video plays with boost > 0, gain 0/disabled for music). UI:
+`lib/ui/volume_sheet.dart` — a 5%-step slider for the kind's phone volume
+(`MediaVolume.choose`: for the kind playing — or when nothing has played yet — it moves the
+phone volume live while dragging; for the other kind it only sets the level it gets on the
+next switch; saved on release) and, for videos on Android, a "Boost for quiet videos" slider
+("Off"/"+N dB"). The sheet opens on `MediaVolume.current` (the phone's level for the kind
+playing, else the remembered one). Opened from Now Playing's volume button (tooltip "Music
+volume" or "Video volume" by the current track), Settings → Subscriptions feed → "Video
+volume" and Settings → Playback → "Music volume" (both show the remembered level, or "Not
+remembered yet").
+
+**Now Playing layout (Best Music 0.3.7).** The app bar holds only the menu button
+(`buildSubpageAppBar(..., showBack: false)`; the system back gesture still pops) and the
+title. Every control is at the bottom, top to bottom: the swipe hint, the "Back to music/
+videos" chip, the progress slider, the transport row (`_Transport`) and a tools row
+(`_ToolsRow`): playback speed (feed videos only), volume ("Music volume"/"Video volume"),
+sleep timer, shuffle, queue and track info. The tools row also shows under "Nothing playing".
+
+**Back/forward 10 seconds (Best Music 0.3.5).** While a feed video is the current track,
+`MusicAudioHandler.notificationControls` is `[previous, replay10, play/pause, forward10,
+next]` (songs keep `[previous, play/pause, next]`) with `androidCompactActionIndices`
+`[1, 2, 3]` so the collapsed notification shows back 10 / play / forward 10. The two controls
+are `MediaAction.rewind`/`fastForward` with the app's own icons
+(`res/drawable/ic_replay_10.xml`/`ic_forward_10.xml`: Material's replay arrow, mirrored for
+forward, around a "10"); audio_service also exposes them as custom actions, so Android 13+'s
+media controls and the lock screen show them, and `systemActions` adds rewind/fastForward for
+headsets and Bluetooth. `rewind()`/`fastForward()` call `seekBy(∓/±seekStep)` (10 s), clamped
+to 0..duration; a restored track that isn't loaded yet moves its resume point instead (and
+`_broadcastState` reports that resume point as the position until it loads). In the app: Now
+Playing's transport row swaps Favorite/"Don't really like" for "Back 10 seconds"/"Forward 10
+seconds" (`Icons.replay_10`/`forward_10`) on a video, and the mini player shows the same two
+around its play button for a video only.
+
+**Last song ↔ last video (Best Music 0.2.99).** `MusicAudioHandler.otherSession`
+(`ValueNotifier<PlaybackSession?>`; `PlaybackSession` = queue, index, position) holds the
+paused queue of the *other* kind. `setQueueAndPlay` snapshots the current queue into it
+(after a `_persist()` so a feed video records its resume point) whenever the new queue's
+first track differs in `isFeedVideo` from the current one; `switchToOtherSession()` swaps the
+two — the current queue becomes `otherSession`, the saved one is resumed at its position
+(`_resumePosition`; speed override cleared, shuffle off). `MusicResumeService.save(state,
+other:)` writes it under `"other"` in `music_resume.json` (`loadOther()` reads it back);
+video sessions — active or other — also store full `tracks` copies since feed videos aren't
+in the library. `MusicPlayerService.restoreLastSession` resolves both
+(`_resolve`: `tracks` if present, else library ids + saved `current`) and calls
+`restoreOtherSession`. UI: `SwitchSessionButton` in the mini player (icon only, labelled via
+`Semantics` "Back to video: <title>"/"Back to music: <title>" — the bar has no Overlay for
+tooltips) and an `ActionChip` with the same label at the top of Now Playing.
+
+**Feed loading, tap-to-play, switch pill (Best Music 0.3.0).**
+- *Staged window*: `YoutubeFeedService.window` (`ValueNotifier<Duration>`). Opening the feed
+  calls `startSession()` (window = `initialWindow`, 2 days) so cached videos of the last two days
+  show at once; the refresh now publishes `videos` after **each** channel finishes (`_merged`),
+  so fresh ones join as they arrive; when the refresh ends (or fails) the page calls
+  `widenToBackgroundWindow()` (7 days). `visibleVideos` = `windowFeed(filterFeed(...), window)`
+  — newest first; undated videos only once nothing dated is hidden. Older weeks only on
+  demand: scrolling within 400 px of the end (once the week is shown) or the footer's "Show
+  older videos" calls `showOlder()` — `windowStep` (7 days) further, or straight to the next
+  older video across a quiet stretch. Footer: "Loading the rest of the week..." /
+  "Show older videos" / "No older videos".
+- *Rows*: tapping a `FeedVideoTile` plays it; its trailing info button (tooltip "Video info",
+  was a play button) opens `YoutubeVideoPage`.
+- *No auto-play*: `YoutubeFeedSettings.autoplayNext` (default **false**): `queueFrom` returns
+  just the tapped video unless it's on (Feed settings → "Play the next video automatically").
+- *Speed remembered*: the Now Playing speed sheet now writes
+  `YoutubeFeedSettings.playbackSpeed` directly (no per-queue override, no "Make default");
+  the handler's feed-settings listener re-applies speed and volume to the playing track.
+- *Switch pill*: `SessionSwitchPill` (`music_mini_player_bar.dart`) floats bottom-left just
+  above the song bar on every Best Music screen (a `Stack` in `main_music.dart`'s builder),
+  hidden while Now Playing is open or there's nothing to switch to. Since Best Music 0.3.15 it
+  is a 40 px icon-only circle (`CircleBorder`, `secondaryContainer` at 60 % alpha, no
+  elevation; `smart_display_outlined` to go to videos, `library_music_outlined` to go to
+  music, icon at 85 % alpha) so snackbars behind it stay readable — the label "Back to
+  videos: <title>" / "Back to music: <title>" is only its `Semantics`; tap → `switchToOtherSession()`, which now resumes `switchTarget()`: the
+  remembered `otherSession`, else (music or nothing playing) the feed's
+  `lastPlayedVideo()` (most recently updated progress entry still in the feed), else (a video
+  playing) a fresh weighted shuffle of the library. Volume and speed follow the track's kind
+  (`_applyVolume`/`_applySpeed` in `_playCurrent`).
+
+**Switching brings its screen, reliable duration/views/upload time in rows (Best Music 0.3.2).**
+- Every "Back to music"/"Back to video(s)" control (the pill, the mini player's
+  `SwitchSessionButton`, Now Playing's chip) calls `switchSessionAndShow(handler, navigator)`:
+  it reads `switchTarget()`, starts `switchToOtherSession()` and calls
+  `showSessionScreen(navigator, video: target.isVideo)` — a video opens the Subscriptions feed,
+  a song opens Now Playing. `showSessionScreen` `popUntil`s a route named
+  `YoutubeFeedPage.routeName` (`/subscriptions`) / `NowPlayingPage.routeName`
+  (`/now-playing`) or the root; if it didn't find one it pushes `YoutubeFeedPage.route()` /
+  `NowPlayingPage.route()`. Every push of those pages uses `route()` so the names are always
+  set. The pill and mini player sit outside the navigator, so `main_music.dart` hands them
+  `musicNavigatorKey`.
+- `FeedVideoTile`: title, channel (1 line), then `_MetaRow`s — play icon + "12:34 · 1.2K
+  views" (key `feedVideoStats`) and clock icon + "Today 14:05 (3h ago)" (key
+  `feedVideoUploadTime`). `formatFeedUploadTime` (local time): "Today 14:05", "Yesterday 09:12",
+  "Mon 18:30" within the week, "3 Oct, 14:05" this year, "3 Oct 2025" before; with
+  `approx: true` (`FeedVideo.publishedApprox`, a date read off "3 days ago") no clock time.
+  The video page's meta line has all of it.
+- *Reliable duration/views/date*: `youtube_explode`'s `getUploadsFromPage` reads YouTube's newer
+  `lockupViewModel` cards from dead paths (duration 0, views 0), and `mergeVideosTab` used to
+  overwrite the RSS view count with that 0. Now:
+  `YoutubeChannelVideosApi` (`lib/services/youtube_channel_videos_api.dart`) POSTs
+  `youtubei/v1/browse` (browseId = channel id, params `EgZ2aWRlb3PyBgQKAjoA` = Videos tab)
+  and `parseVideosTab` walks the tree for `videoRenderer`/`gridVideoRenderer`/
+  `lockupViewModel` cards, collecting each card's texts (`simpleText`/`runs`/`text`/
+  `content`) and recognising the clock (`12:34`), views (`parseViewCount`: "1,234 views",
+  "1.2K views", "No views"; "watching" = live, ignored) and "N units ago". `fetchChannel`
+  tries it first and falls back to `getUploadsFromPage` with 0 → null — and (0.3.14) also
+  runs `getUploadsFromPage` whenever RSS failed, even if the JSON tab answered, because the
+  JSON tab has no titles: before, a channel whose RSS feed hiccuped was dropped from that
+  refresh. The scraped page then only fills titles (`tab ??=` keeps the JSON tab's
+  durations/views); without RSS only videos with a title are listed. `mergeVideosTab`
+  takes the higher of the RSS/tab view counts, a null never erases the other.
+  `_merged` runs every fresh video through `keepKnownDetails(fresh, known)` so a refresh that
+  missed duration/views/description/exact date keeps the cached ones. After each refresh,
+  `fillMissingDetails()` (unawaited; also callable) looks up, newest first, up to
+  `maxDetailLookups` (15) non-Short filtered videos still missing duration, views or an exact
+  date on their own page (`youtube_explode` `videos.get`, 3 at a time, each video once per app
+  run via `_detailsTried`; tests: `detailsOverride` → `VideoDetails`, and it never runs when
+  `fetchOverride` is set without one). A video whose page gives a duration is no longer
+  flagged `isLivestream`.
+- *Gestures, options sheet, online search, offline queue (Best Music 0.3.17)*:
+  `YoutubeFeedSettings` gains `swipeRight` (default `addToQueue`), `swipeLeft`
+  (`togglePlayed`), `longPress` (`options`) — `FeedGestureAction` {nothing, addToQueue,
+  togglePlayed, options, play, transcript, summary, info}, JSON by `key`, unknown → default —
+  and `offlineDays` (default 2, 0–`maxOfflineDays` 14). Each feed row is a `_SwipeableVideo`
+  (`Dismissible` whose `confirmDismiss` runs the action and returns false, so the row springs
+  back; a direction set to Nothing doesn't swipe; colored background with the action's icon
+  and label — "Mark watched"/"Mark unwatched" by state); `FeedVideoTile.onLongPress` runs the
+  long-press action. Actions: Add to queue → `MusicAudioHandler.addToVideoQueue(trackFor(v))`
+  (snackbar "Added to the queue — downloading it for offline play" / "Already in the queue");
+  Mark watched/unwatched → `setPlayed` with an Undo snackbar; Show options → bottom sheet
+  (title, Play, Add to queue, Mark watched/unwatched, Transcript, Quick summary, Download as
+  MP3, Open in YouTube, Video info). The app bar's "Feed settings" (tune) button is gone —
+  feed settings live in Settings → Subscriptions, which gets "Swipe a video right/left",
+  "Long-press a video" (radio dialogs over every action) and "Keep queued videos offline"
+  (0 = off, 1, 2, 3, 5, 7, 14 days). `addToVideoQueue`: with a video playing/paused → appended
+  to `_queue` (and `_preShuffleOrder`) unless already there; with music current → appended to
+  the video `otherSession` (or a new one), so "Back to videos" resumes into it; with nothing
+  loaded → `restore([track])`. Every add starts `VideoAudioCache.cacheInBackground`; playing a
+  feed video also caches the next `_videosAhead` (2) queued feed videos. `VideoAudioCache.keepFor`
+  is now an instance getter = `offlineDays` days (was a fixed 7); 0 → nothing is cached.
+  **Online fallback of the feed search**: when the local search (`_localMatches`) has no match
+  and the query is ≥ 2 characters, YouTube is searched after `onlineSearchDelay` (600 ms; a
+  newer query wins via `_onlineSeq`) with `YoutubeSearchApi.search(q, limit: 15)`; results
+  (`feedVideoFromSearch`: channelId '', `publishedApprox`) show as normal rows — same tap,
+  swipes and long-press — under "Nothing in your feed — searching YouTube…" / "— results from
+  YouTube" / "…couldn't be searched (offline?)" / "Nothing in your feed or on YouTube".
+- *Loading without RSS + a saved, growing feed (Best Music 0.3.16)*: `fetchChannel` asks the
+  RSS feed (`_fetchRss`, 12 s timeout) and the Videos tab (`YoutubeChannelVideosApi.fetch`)
+  **in parallel**; `ChannelTabVideo.title` is now parsed (`videoRenderer`/`gridVideoRenderer`
+  `title` runs/simpleText; `lockupViewModel` `metadata.lockupMetadataViewModel.title.content`;
+  the title text is excluded from the age/views/clock scan so "… 10 years ago" in a title
+  isn't a date), so the tab alone can list a channel. `getUploadsFromPage` (20 s) only runs
+  when the tab didn't answer, or RSS failed and no tab card had a title (titles then come from
+  it via `extraTitles`). `combineChannelSources(channel, rss:, tab:, extraTitles:)`: with RSS →
+  `mergeVideosTab` plus every titled tab video RSS doesn't list (RSS carries only the newest
+  15); without → every titled tab video (`publishedApprox` when dated); untitled ones are
+  skipped; no RSS and nothing titled → throws. Why: YouTube's RSS fails often, and needing it
+  for titles made channels — at times the whole feed — not load (0.3.14 then waited 30 s per
+  channel on the scraper). `_merged` now **adds** instead of replacing a fetched channel's
+  videos: fresh ones are added/updated (`keepKnownDetails`), saved ones stay unless the
+  channel was fetched and they were published more than `keepVideosFor` (30 days, `clock()`)
+  ago or are undated and no longer listed; unsubscribed channels' videos go. Opening the feed
+  calls `refreshIfStale()`: skipped when `lastRefresh` is under `freshFor` (10 min) old, the
+  feed isn't empty and no channel failed; pull-to-refresh calls `refresh()` directly. The saved
+  feed (`youtube_feed.json`) shows at once either way.
+- *Force-checking one channel (Best Music 0.3.14)*: `forceRefreshChannel(channel)` fetches
+  just that channel, up to 3 tries `forceRetryDelays` apart (2 s, 5 s); success → its videos
+  replace its cached ones via `_merged({id: fresh})`, it leaves `failedChannels`, saves,
+  `fillMissingDetails()`, and returns how many video ids are new to the feed; all tries failed
+  → null and its name is (kept) in `failedChannels`. `forceRefreshing` (`Set` of channel ids)
+  drives spinners; a second call for a channel already being checked returns null at once.
+  `retryFailedChannels()` force-checks every subscription whose name is in `failedChannels`
+  (in parallel) and returns how many loaded. UI: each row under "Subscribed (N)" on the
+  Channels page has a refresh button ("Check for new videos"; spinner while checking) next to
+  Unsubscribe → snackbar "<name>: N new videos" / "<name>: no new videos" / "Couldn't reach
+  <name> — try again in a bit"; the feed's "Couldn't refresh N channels: …" line gets a
+  trailing **Retry** (spinner while any check runs) → "All N channels loaded" / "Loaded X of
+  N — the rest still don't answer".
+
+**Video audio cache (Best Music 0.2.99).** `VideoAudioCache`
+(`lib/services/video_audio_cache.dart`) keeps a full copy of every feed video started:
+`_playCurrent` calls `cacheInBackground(track)` for `isFeedVideo` tracks once loaded; it
+downloads one at a time with `Mp3DownloaderService.downloadMp3` into
+`<app support>/video_cache/<videoId>/` (not the library, not the MP3 downloads list; a failed
+download deletes its folder). `_audioSourceFor` plays a feed video from `cachedFile(id)` when
+present and `touch`es it. A file's mtime = last played; `keepFor` = 7 days — `cachedFile`
+ignores older files and `purgeExpired` (after each download batch and at Best Music startup)
+deletes folders not played within 7 days.
+
+**Loading progress (Best Music 0.2.99).** `EstimatedProgressBar`
+(`lib/ui/estimated_progress_bar.dart`): a thin `LinearProgressIndicator` that shows a real
+`value` when known, otherwise an estimate `0.95·(1−e^(−t/τ))`, τ = `expected`/2.5, so it
+always visibly fills; it jumps to 100% for 300 ms when `active` turns false, then hides.
+Used for track loading/buffering (mini player top edge, Now Playing), the feed refresh (real
+fraction: `YoutubeFeedService.refreshProgress` = channels fetched / total), a feed video's
+description, channel search/import, the library search's YouTube lookup and the MP3
+Downloader's search.
+
+**Settings** (Best Music 0.3.3: no separate page any more — two sections of Best Music's own
+Settings, `MusicSettingsPage`; the feed's tune icon "Feed settings" opens it with
+`initialSection: MusicSettingsSection.feed`, i.e. that section open and scrolled to):
+*Subscriptions feed* — Hide Shorts (default on), Hide livestreams (default on), Video speed
+(above), Video volume, Play the next video automatically; *SponsorBlock* — "Skip sponsored
+segments" on/off (default on) and per-category checkboxes (default sponsor, selfpromo,
+interaction, music_offtopic). Log lines go to App Logs under "Feed".
+
+**Search** (Best Music 0.3.3): the feed's search icon ("Search feed") puts a text field and
+All/Title/Channel/Date chips under the app bar. It searches every fetched video
+(`filterFeed(videos, settings)` — Shorts/livestream hiding still applies, but not the
+2-day/week window, so older videos are found too) with `searchFeed`
+(`lib/services/feed_search.dart`): every query word must match the title, channel name or
+upload date (only the chosen field when a chip other than All is picked). A word matches a
+text best when a word there starts with it (1), then when it's contained (0.85), then within
+1 edit — 2 for words of 7+ letters — of a word or a word's prefix (Levenshtein with adjacent
+swaps: 0.7/0.55), then as letters in order within a word at most twice its length (0.4);
+words under 3 letters only match exactly. Words with digits match whole numbers only
+(`3` finds `3/10/2026`, not `30`). The date text (`feedDateSearchText`) spells the upload day
+as `2026-10-03`, `3/10/2026`, `10/3/2026`, `03.10.2026`, the month name and its 3-letter
+abbreviation, the weekday and its abbreviation, and `today`/`yesterday`. Results sort by the
+average word score (bucketed to tenths) and then newest first; tapping one plays it with the
+search results as the queue. Paging older weeks and the footer are off while searching;
+"No videos in your feed match." when nothing does. The close button clears the search.
+
+Not done yet (deliberately out of the MVP): in-app video playback, background
+new-upload notifications, feed groups.
+
+### 10.6n Songs by BPM (Best Music 0.3.9)
+**BPM per track** — `Track.bpm` (int?, JSON `bpm`, omitted when null; kept by `copyWith`).
+Sources: an mp3's ID3 `TBPM` frame (`decodeMp3Tags` → `ExtractedTags.bpm` via `parseBpm`:
+first number in the text, `,`/`.` decimals rounded, 1–999 else null); an OpenSubsonic
+server's `bpm` (0 = unknown → null, `Track.subsonic(bpm:)`); the Track info page's "BPM (beats
+per minute)" field (validated 1–999, passed to `updateTrackMetadata(bpm:)` — which sets
+exactly the given values, so the page must always pass it); and the metadata CSV's `bpm`
+column (between `year` and `tags`; blank cell = keep, like the other columns). A rescan of a
+`metadataEdited` track keeps the hand-set BPM but fills a missing one from the tag
+(`previous.bpm ?? track.bpm`).
+
+**Page** — `lib/ui/bpm_range_page.dart` (`BpmRangePage`), from Best Music's drawer ("Songs by
+BPM") and the Playlists tab's third row (also in BestToDo's Music Player). With no song
+having a BPM it explains the three ways to add one. Otherwise: a row of preset `InputChip`s
+("<name> · min–max"; tap applies the range — with a snackbar if it reaches past the
+library's range — delete icon removes it with Undo), a big "min – max BPM" label, a
+`RangeSlider` over `bpmBounds(library)` (lowest..highest BPM in the library, 1-BPM steps,
+both handles draggable; the range starts as the full span and is clamped when the library
+changes), "N songs · M without a BPM aren't shown", and the list `tracksInBpmRange` (BPM
+ascending, then title; trailing "128 BPM"; tap = play the list from that song). Bottom
+buttons: "Play as queue" (`MusicPlayerService.playQueue` of the list), "Save as playlist"
+(name dialog suggesting "min–max BPM" → `MusicPlaylistService.createPlaylist` with the listed
+ids — a fixed snapshot), "Save preset" (name dialog → `Config.musicBpmPresets`, a list of
+`BpmPreset {name, min, max}` (`lib/models/bpm_preset.dart`, tolerant `fromJson`: swapped
+ends reordered, missing ends dropped); saving under an existing name replaces it).
+
+### 10.6p Automatic metadata filling (Best Music 0.3.11)
+Hands-off, no setting: `MusicMetadataEnricher.instance.start()` runs after Best Music's
+first frame (`main_music.dart`, not on web) and listens to `MusicLibraryService.tracks`.
+Every library change (launch, rescan, finished download) first re-applies its cache, then —
+debounced 3 s — runs two passes over local tracks, one song at a time:
+1. **Online lookup** for any track missing artist/album/genre/year/BPM
+   (`MusicOnlineMetadataLookup`, `lib/services/music_online_metadata.dart`). Query
+   variants (`queryVariants`): the `cleanTitle`d title (track-number prefixes, "(Official
+   Video)"/"[Lyrics]"-style brackets, "feat." tails and underscores stripped) with the
+   artist; with `mainArtist` (first of "A feat. B"/"A & B"/"A, B"/"A x B"); without any
+   bracketed part; and, for a track with no artist tag, an "Artist - Title" filename split
+   both ways round. Services in order, each skipped once every wanted field is known:
+   **Deezer** (`/search` with `artist:"…" track:"…"`, falling back to a free query; then
+   `/track/{id}` for `bpm` (30–300, 0 = unknown) and release date, `/album/{id}` for the
+   first genre), **iTunes Search** (`entity=song`: `primaryGenreName`, album, year),
+   **MusicBrainz** (`/ws/2/recording` Lucene query, ≥1.1 s apart, `User-Agent:
+   BestMusic/1.0 (…)`; first-release year, a no-secondary-type Album release preferred,
+   most-counted tag title-cased as genre) — always asked when a year is wanted, since its
+   first-release year wins over the others' (else the earliest of Deezer/iTunes).
+   Candidates are scored by `matchScore`: 0.6 × title + 0.4 × artist word similarity
+   (`textSimilarity` — accent/punctuation-folded Dice, or 0.9 × containment), artist < 0.5
+   rejects; with no artist only a ≥0.95 title counts; length off by >30 s halves the score,
+   >10 s × 0.85, ≤3 s +0.05; accepted at ≥ 0.72.
+   **Rate limits (0.3.12)** — every request goes through `_getJson`, paced per host
+   (`defaultSpacing`: Deezer 120 ms — its limit is 50 per 5 s; iTunes 3.1 s — ~20/min;
+   MusicBrainz 1.1 s). A rate-limit answer (429, 5xx, iTunes' 403, Deezer's in-body
+   `error.code == 4`) or a connection failure/timeout is retried twice (waits: `Retry-After`
+   ≤ 60 s if given, Deezer quota 5 s, else 2 s then 6 s); after that the host *rests* for
+   `cooldown` (10 min; connection-only failures don't rest it) and the lookup carries on
+   with the other services, returning `incomplete: true`. Hosts already resting are skipped
+   (also `incomplete`). If no service answered at all and something failed →
+   `MetadataLookupUnavailable` (offline, `retryAfter` null); if every needed host was
+   resting → `MetadataLookupUnavailable(retryAfter: earliest rest end)`. `resetCooldowns()`
+   clears the rests. (0.3.11 threw on the first rate-limit answer and paused the whole
+   pass for 15 min — with ~10 unpaced Deezer requests per song it stalled after ~4 songs.)
+   The enricher marks an incomplete song `EnrichmentEntry.incomplete` (persisted), merges
+   it with any earlier result (old values win) and re-asks it after `incompleteRetry`
+   (1 h); the pass moves straight on. On `MetadataLookupUnavailable` the pass stops without
+   marking the song: status "Song info services asked for a break — continuing at HH:MM"
+   (retry then + 5 s) or "No internet connection — trying again in 15 min (or tap
+   Restart)" (`offlineRetry`).
+2. **On-device BPM** — only when, after the online pass, under 90 %
+   (`bpmCoverageTarget`) of local tracks have a BPM; then every local track still without
+   one is analyzed: `AudioPcmDecoder` decodes 45 s from 30 s in (from 0 for songs under
+   75 s; the native side slides the window back for short files) to mono 16-bit PCM at
+   11025 Hz — Android via channel `besttodo/audio_pcm` (`AudioPcmDecoder.kt`:
+   MediaExtractor + MediaCodec on a single worker thread, downmix, box-filter resample,
+   16-bit or float PCM), desktop via an `ffmpeg` on PATH, else null — and `estimateBpm`
+   (`lib/services/bpm_detector.dart`, run with `compute`): log-compressed spectral flux
+   (512-sample Hann frames, 128 hop, radix-2 FFT), minus a ±0.25 s moving mean, rectified;
+   unbiased autocorrelation over 50–220 BPM lags × a log-normal prior at 120 BPM (σ = 1
+   octave); parabolic refinement. Null when the envelope peak < 5 (no attacks), the best
+   lag's correlation < 5 % of zero-lag, or < 1.3 × the mean over the lag range (no beat).
+
+Results are cached per track id in `music_enrichment.json` (`EnrichmentEntry {onlineAt,
+found, detectedAt, detectedBpm}`); a song is looked up/analyzed once — retried only after
+30 days when nothing was found. They are applied through
+`MusicLibraryService.fillMissingMetadata`, which fills only empty fields (title only when
+it was the filename and there's no artist), never sets `metadataEdited`, so tags, manual
+edits and CSV imports always win and a rescan simply gets the cache re-applied. The
+enricher's `status` line ("Looking up song info online… 3/40", "Detecting BPM on device…",
+"Song info filled in automatically — N of M complete, K with a BPM", "…paused (offline?)")
+shows under the Metadata Scan page's counts and on Songs by BPM while songs lack a BPM.
+Both passes append a time-left estimate once 3 songs are done (`_Eta`: average time per
+song so far × songs left; `formatTimeLeft` → "less than a minute left" / "about 12 min
+left" / "about 2 h 5 min left"). On Metadata Scan the row is always shown (idle text
+"Missing song info is looked up online in the background.") with a **Restart** button →
+`restartOnlineSearch()`: `resetCooldowns()`, cancels a pending retry, clears `onlineAt` on
+every entry whose track still misses a field (so no-match songs are asked again too),
+interrupts a running pass (`_restartRequested`) and runs now.
+**Background running (0.3.12)** — while a pass has work, `BackgroundWork.start`
+(`lib/services/background_work.dart`, channel `besttodo/background_work`) starts
+`BackgroundWorkService.kt`: a `specialUse` foreground service (no 6 h/day cap like
+`dataSync`; `FOREGROUND_SERVICE_SPECIAL_USE`, subtype property in the manifest) with an
+ongoing silent low-importance notification "Best Music · filling in song info" whose text
+mirrors `status` (`update` re-notifies; tap opens the app) and a partial wake lock (3 h
+timeout, released on stop). It keeps the process from being frozen while other apps are in
+front; Dart keeps running on audio_service's cached engine. Stopped when a run ends with
+nothing paused (kept up during a pause so the retry still fires) and on `stop()`. Android
+12+ refusing a start from the background is swallowed — the work then just runs while the
+app is open. No-op off Android.
+App Logs ("Music") record each pass's counts.
+
+3. **Into the files** — after the two passes, every mp3 whose entry has data and no
+   `taggedAt` gets it written into its own ID3v2 tag (`Id3TagWriter.addMissing`,
+   `lib/services/id3_tag_writer.dart`), using the library's *current* value for each field
+   the enricher supplied (so a manual in-app edit is what lands in the file; the title only
+   when the online one was applied). Fill-only: a TIT2/TPE1/TALB/TCON/TYER (v2.3) or TDRC
+   (v2.4)/TBPM frame that already has text is never changed (TYER and TDRC count for each
+   other); empty ones are replaced; every other frame is copied byte for byte. No tag →
+   a new v2.3 one (Latin-1, or UTF-16 with BOM when needed; v2.4 writes UTF-8). Bails with
+   `unsupported` on non-mp3, v2.2, or any of the unsync/extended-header/experimental/footer
+   flags, or if `decodeMp3Tags` can't read the new artist/BPM back. When the frames fit in
+   the old tag (its padding) only the tag bytes are overwritten in place; otherwise
+   tag + 2048 bytes padding + the audio stream into `<file>.besttodo-tag.tmp`, its length is
+   checked, and it is renamed over the original. The modified time is restored. Result →
+   `taggedAt` set (written/nothingToAdd/unsupported) or `tagFailures++` (I/O error; given up
+   after 3). New online/detected data resets `taggedAt`. Because writing bumps a file's
+   change time, `rescan` now keeps the *earlier* of the previous and fresh `deviceDate`.
+
+**ID3 read fix (0.3.11)** — `decodeMp3Tags` had never actually read a frame: id3_codec 1.0.x
+reports ID3v2 frames as a `Frames` list of `{Frame ID, Content: {Information}}` maps, not the
+`Frame[<id>]` keys it looked up, so every mp3 scanned as untagged (filename title, no
+artist/album/genre/year/BPM). Frames are now indexed as `Frame[<id>]` (first wins). On its first `start()` the enricher rescans the library
+once (marker file `music_enrichment_rescan_v1`; skipped for an empty library) so existing
+installs pick their tags up before anything is looked up online.
+
+### 10.7 The rest
+**App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
+**Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
+chart of the last 30 launches (y-axis fits data, shaded band >1 s, date labels, tap
+tooltips), and an auto-generated "What this means" section: median verdict, older-vs-newer
+trend, share of slow starts, outlier callout, first-launch-of-day cold-start comparison;
+uses timestamped history with legacy fallback. **Changelog**: `ChangelogPage` renders a
+bundled markdown asset — CHANGELOG.md by default, or Best Music's own CHANGELOG_MUSIC.md
+via `assetPath`/`showStoryPoster` (`false` for Music: `changelogMilestones` below is
+BestToDo's own curated history — see §10.6i); an app-bar button toggles an update heatmap
+— the file is parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd`
+headings + their bullets, wrapped lines joined, undated headings skipped) and drawn as a
+GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri labels, month label
+above the week where the month changes — with the year appended on the first column and
+at every year switch, e.g. "Jan 2026", drawn in an `OverflowBox` so it can run past its
+12 px column — horizontally scrolled to the newest week). Tapping a day selects it and lists that day's
+versions and their entries below; opens on the newest release day. **About**: description,
+version, update link, "Replay Introduction" (clears `intro_shown` *and*
+`Config.modeChosen`, so the slides and the mode question both run again).
+**Intro** (`intro_page.dart`): 3 value screens (Privacy First / Open Source & Fast /
+Minimal Interactions) followed by the simple/full mode chooser (`ModeSelectView`) as
+its last page — the dots count 4, the last page has no Next button so the mode
+question cannot be skipped, and picking a mode is what ends the intro. Shown once
+(`intro_shown` + `Config.modeChosen`), replayable from About, skipped in dev.
+
+**Startup choice** (`startup_choice_page.dart`, 0.1.242; today-first import 0.1.243):
+shown once, right after the intro/mode picker finish on a brand-new install (§3 step
+9's `showStartupChoice`; never shown again after "Replay Introduction" — only the
+intro's own two flags are cleared there). Two cards: **Start fresh** finishes
+onboarding immediately with an empty list; **Import from Todoist** opens a dialog for
+a Todoist API token (`TodoistSyncService.testConnection`), and on success saves it
+(`Config.todoistApiToken`, `Config.todoistSyncEnabled = true`) and calls
+`TodoistSyncService.startFirstLaunchImport()` — a pull-only, first-launch-shaped
+variant of the regular two-way `syncNow()` (§4.8): it pulls just today's (and overdue)
+tasks synchronously so the dialog can close and onboarding finish right away, and
+returns a `finishInBackground()` closure — fired and forgotten — that pulls everything
+else while the user is already on the home page exploring. `syncing` (the same
+`ValueNotifier` the Settings page spinner uses) stays true until that finishes,
+driving a slim "Importing the rest of your tasks from Todoist…" banner atop the home
+page's tab view. A failed *first* connection (bad token) blocks with an inline error
+and keeps the dialog open; once connected, a background-phase failure only shows up
+in App Logs → Todoist — onboarding has already finished by then.
+
+### 10.6n Music & MP3 download live only in Best Music (0.2.98)
+
+BestToDo no longer ships the Music Player or the MP3 Downloader; both exist only in the Best
+Music app (§10.6f, entry point `lib/main_music.dart`). The shared code under `lib/` is
+unchanged — only BestToDo's wiring to it is gone:
+
+- `Config.startToolOptions`/`featureKeys` (and their label/description arrays) no longer list
+  `mp3_downloader` or `music_player`; `home_page.dart` has no `_ToolEntry` or `_buildToolPage`
+  case for them. A saved `startTool` of either key fails `startToolOptions.contains` on load
+  and falls back to `tasks`; stale `features` entries for them are ignored.
+- Settings drops its MP3 Downloader and Music Player sections (old indexes 15/16, with their
+  search entries and Subsonic controllers); Claude Routine is now section 15 (16 sections).
+- `main.dart` boots no music services (`MusicLibraryService`/`MusicPlaylistService`/
+  `MusicPlayerService.init`, the deferred `ensurePermissions`), and a shared Spotify/YouTube/
+  Shazam link opens the normal quick-add screen like any other share — `detectMusicShareLink`
+  routing to `Mp3DownloaderPage` is Best Music only. The `besttodomusic://` widget-tap branch
+  of `_handleWidgetClick` is gone.
+- The two music home-screen widgets (`MusicMiniWidgetProvider`/`MusicControlsWidgetProvider`)
+  are declared in `android/app/src/music/AndroidManifest.xml` instead of `src/main`, so only
+  Best Music offers them; the Kotlin classes stay in `src/main` (one shared source set).
+  Widget Previews no longer mocks them.
+- The `audio_service` service/receiver and `MANAGE_EXTERNAL_STORAGE` stay in the shared
+  manifest (the latter is also used by the shared Wishlist store).
+
+Earlier sections (§8 music widgets, §10.6d, §10.6e, "Settings → Music Player") describe the
+code as it still runs inside Best Music; their "Tools ▸ …" / BestToDo-Settings wiring is
+historical.
+
+### 10.6o Video transcripts & Quick summary (Best Music 0.3.9)
+
+A Subscriptions video's page (`YoutubeVideoPage`) has **Transcript** and **Quick summary**
+buttons (`lib/ui/video_transcript_page.dart`, both take a `VideoRef` of id/title/channel/
+published).
+
+- **Transcript source** — `VideoTranscriptService` (`lib/services/video_transcript_service.dart`,
+  singleton, per-session in-memory cache by video id): first YouTube's own caption tracks via
+  youtube_explode (`videos.closedCaptions.getManifest` → `get`), then, if that throws or has no
+  tracks, the public Invidious instances in `invidiousInstances` (`/api/v1/captions/<id>` →
+  the chosen track's WebVTT, parsed by `parseVtt`). Track choice (`pickTrack`): manual English
+  → auto English → any manual → first. `cleanSegments` strips tags/entities, drops the
+  repeated lines of YouTube's rolling auto-captions and `[Music]`-style cues. All sources
+  failing throws `TranscriptUnavailableException` listing each attempt (shown on the page).
+  `paragraphs()` groups segments into ~45 s timestamped paragraphs (forced break at 90 s for
+  unpunctuated auto-captions). The transcript page shows source/language/auto/word count,
+  Copy and Share (Markdown) and a Quick summary button.
+- **Summary** — `VideoSummaryService.summarize` (`lib/services/video_summary_service.dart`):
+  with `Config.claudeApiKey` set it POSTs to `https://api.anthropic.com/v1/messages`
+  (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-beta:
+  server-side-fallback-2026-07-01`; model `claude-opus-5-5`, `fallbacks: "default"`,
+  `output_config.effort: low` + a JSON-schema format `{overview, key_points[], conclusion}`;
+  the whole transcript is sent, never truncated). Non-200, network errors and
+  `stop_reason: refusal` throw `VideoSummaryException`; the page then shows the on-device
+  summary with the error. Without a key: `extractiveSummary` — sentences (or 25-word chunks for
+  unpunctuated captions) scored by content-word frequency, best five in order as key points,
+  the last 1–2 as the conclusion, an overview naming length/word count/top words. A banner
+  on an on-device summary links to Settings → Transcripts & summaries.
+- **Obsidian** — `ObsidianResearchNote.markdown` builds the note (frontmatter: title, source,
+  channel, published, created, tags research+video; then `## Summary`/`## Key points`/
+  `## Conclusion`). **Save to Obsidian** opens `obsidian://new?vault=…&file=<folder>/<title>&content=…`
+  (`saveUri`, percent-encoded by hand since Obsidian keeps `+`; vault omitted when empty =
+  the open vault; file name sanitized, ≤100 chars); Share/Copy send the same Markdown.
+- **Settings** — Best Music Settings gains a "Transcripts & summaries" section
+  (`MusicSettingsSection.summaries`, before Updates): Claude API key (obscured),
+  Obsidian research folder (`Config.obsidianResearchFolder`, default `Research`) and vault
+  (`Config.obsidianVault`), edited in `_TextSettingDialog`. All three persist in
+  `settings.json`.
+- Tests: `test/music/video_transcript_test.dart`.
+
+## 11. Build, versioning, CI
+
+- **Versioning:** `dart run tool/bump_version.dart <x.y.z[+build]> ["changelog entry"]`
+  updates pubspec and prepends a dated CHANGELOG section (idempotent). Build number strictly
+  increases per distributed build; passing a bare `x.y.z` carries the current build number
+  forward and increments it, so the `+build` suffix (= Android `versionCode`) can never be
+  dropped by accident.
+- **tool/build.sh:** smoke-test gate (`test/core/build_smoke_test.dart`) → times
+  `flutter build $@` → on success, `dart run tool/append_build_time.dart --duration <secs>
+  --target $1` → rename artifacts with the version (`best_todo_<VERSION>.apk`,
+  `web-<VERSION>`, …) → `dart run tool/stage_local_release.dart` for an APK build →
+  optionally `dart run tool/publish_apk.dart` when `PUBLISH_APK=1`. `tool/build.ps1` mirrors
+  this (including the flavor/`music-apk` handling — §10.6i) with
+  `[System.Diagnostics.Stopwatch]` for the timing.
+- **Local build time & duration (0.1.240; duration + build_history.json added later):**
+  `tool/append_build_time.dart` writes/updates a `- Local build: yyyy-mm-dd HH:MM` bullet
+  inside the *newest* CHANGELOG.md section (`withBuildTimeNote`: replaces the existing line
+  for that version on a repeat build instead of piling one up per build; inserted right
+  after that section's other entries). When called with `--duration <secs> --target
+  <name>` (both `build.sh` and `build.ps1` always pass these on a successful build) it also
+  writes/updates a `- Build duration (<target>): <1h 02m|3m 05s|45s>` bullet in the same
+  section, keyed by target so an `apk` and a `windows` build each keep their own line
+  instead of overwriting each other (`withBuildDurationNote`), and appends
+  `{version, target, durationSeconds, finishedAt, os}` to `build_history.json` at the repo
+  root (`historyRecord`/`appendHistoryRecord`; JSON array, capped at the newest
+  `maxHistoryEntries` = 1000, oldest dropped first) — committed (not gitignored) alongside
+  `github_releases/` + CHANGELOG.md by `tool/build_all.sh`/`build.ps1`'s `all` sync step, so
+  build durations are tracked across builds, versions and machines over time. Runs after
+  `flutter build`, which already bundled CHANGELOG.md as an asset for *this* build — so a
+  build only ever shows the previous build's timestamp/duration on the Changelog page,
+  never its own; that's expected, not a bug. No-ops on the CHANGELOG.md note (prints,
+  doesn't touch the file) when it has no `## [version] - date` heading yet; the
+  `--duration`/`--target` args are optional so a bare call still only records the timestamp.
+- **Kept builds in the repo (0.1.146):** `tool/stage_local_release.dart` copies the built
+  APK to `github_releases/best_todo_<x.y.z+build>.apk` and deletes everything but the
+  newest two (`--keep`, `--dir`, `--apk`, `--dry-run`; ordering by the numeric name
+  components, non-APK files such as the folder README never touched). Committing that
+  folder is what publishes a build: the app reads it over plain HTTPS, so the newest APK
+  is the update and the one next to it is the rollback.
+- **In-app updates (0.1.133):** `tool/publish_apk.dart` uploads a locally built release APK
+  to a GitHub release — tag `v<x.y.z>-<build>` (git tags can't carry `+`), name
+  `BestToDo <x.y.z>+<build>`, asset `BestToDo-<x.y.z>+<build>.apk`, body = the newest
+  CHANGELOG section; token from `GITHUB_TOKEN`/`GH_TOKEN` or `gh auth token`; re-running
+  for the same version reuses the release and replaces the asset. The app side
+  (`lib/services/update_service.dart`, singleton `UpdateService.instance` with an
+  injectable `fetchOverride` for tests) maps a tag back to `x.y.z+build` and compares
+  numeric components (unparseable versions — 'unknown' in tests — compare as all-zero).
+  The About page's "Check for updates" section then walks check → "Version x available" →
+  download (in the background via `DownloadManager` — see "Background downloads via
+  DownloadManager" below — with a progress bar fed by its polled status) → hand to the
+  installer over the `besttodo/update` channel (§9); a `needs-permission` reply keeps an
+  "Install update" button up for the retry after granting. Web/desktop or a release without
+  an APK asset falls back to opening the release page in the browser.
+- **Update source + rollback (0.1.146):** `checkReleases()` reads the repo folder first —
+  `contents/github_releases?ref=dev` (unauthenticated; `dev` is where every build lands
+  first, and the API's `download_url` is already percent-encoded, which matters because
+  the file names carry `+`). Versions come from the file names
+  (`best_todo_0.1.143+115.apk`, also the `BestToDo-…` asset spelling), newest first, so
+  the result is an `UpdateCheck` of `latest` + `previous`; when the folder is missing or
+  holds no APK it falls back to `releases/latest` (single build, no rollback). The About
+  page shows "Download & install" for `latest` and "Go back to <version>" for
+  `UpdateCheck.rollback` — `previous` unless that is the running version — in both the
+  update-available and up-to-date states. The rollback warns that Android blocks
+  downgrades for non-debuggable builds, so the install may need an uninstall first.
+- **Automatic update check (0.1.264, replaced by the background poll below in
+  0.2.1):** `Config.autoUpdateCheckEnabled` (Settings → Updates) originally
+  checked once per launch and, on finding a newer build, opened a confirm
+  dialog that pushed `AboutPage` with its check pre-triggered — the user still
+  had to tap "Download & install" there themselves.
+- **Background auto-update prompt (0.2.1):** `Config.autoUpdateCheckEnabled`
+  (Settings → Updates, **on by default**) now gates `AutoUpdateChecker`
+  (`lib/services/auto_update_checker.dart`, singleton `.instance` like
+  `UpdateService`), which polls `UpdateService.checkForUpdate()` on a
+  `Timer.periodic` once a minute while the app is open. Started in
+  `_MyAppState.initState` alongside the other Android-only wiring
+  (`!kIsWeb && Platform.isAndroid` — which is false under `flutter test`'s
+  host runner, so the suite never starts a real timer) and stopped in
+  `dispose`; the setting itself is only read at launch, so flipping it in
+  Settings takes effect on the next start. Since 0.2.13, loading a legacy
+  settings file with no `autoUpdateCheckEnabled` key explicitly restores the
+  default `true`; a stored `false` remains a respected user opt-out. A release
+  with no APK asset is
+  skipped (nothing to auto-install); once a version is found it is reported at
+  most once — a later tick finding the same build is a no-op
+  (`_pendingUpdateVersion` in `main.dart`), onboarding screens (intro/mode
+  picker/startup chooser) suppress the prompt entirely, and a declined version
+  is not offered again until a newer one ships (`AutoUpdateChecker.dismiss`).
+  The report opens `showUpdateAvailableDialog`
+  (`lib/ui/auto_update_dialog.dart`) — "New version available. Do you want to
+  download and install it?", Yes/No — via `appNavigatorKey`, the same pattern
+  `_showAlarmRing` uses to reach the navigator from outside `build`. Yes starts
+  the background download below (installing immediately once it finishes, no
+  further confirmation — Android's own install prompt is the only gate left);
+  No just dismisses it. The About page's "Download & install" already chained
+  straight from download into install before this and is unchanged (the
+  `AboutPage(autoCheckForUpdate: ...)` pre-trigger the old flow used is gone,
+  since nothing navigates there automatically anymore).
+- **Silent auto-update, both apps (0.2.98 / Best Music 0.3.6):** the
+  "New version available" dialog and `showUpdateAvailableDialog` are gone.
+  When the poll reports a build, `_maybeStartAutoUpdate` (in `main.dart` and,
+  identically, `main_music.dart` against `MusicAboutPage.updateService`) skips
+  it if `wasDownloaded(version)` (already downloading or already handed to the
+  installer — e.g. the user backed out of Android's install screen, so the
+  minute poll doesn't re-download it), otherwise calls
+  `downloadUpdateInBackground` straight away; Android's own install prompt is
+  the only confirmation left. `downloadUpdateInBackground` now returns
+  `Future<bool>` (true once the APK reached `installApk`); on false the caller
+  `AutoUpdateChecker.dismiss`es the version, so a failing download isn't
+  retried every minute — the next launch tries again. Settings → Updates'
+  switch is renamed "Automatically update" (same `autoUpdateCheckEnabled`
+  key). `Config.applyMap` turns it back on once for settings saved before this
+  (no `autoUpdateEnabledOnce: true` key — `toMap` always writes it), after which
+  a user's "off" sticks again. Best Music still has no toggle; its poll always
+  runs on Android.
+- **"Installed …" line on the Changelog (0.2.98 / Best Music 0.3.6):** the
+  text view of `ChangelogPage` (both apps) starts with a banner
+  (`Key('changelog-installed-since')`): "Installed v<versionWithBuild> ·
+  yyyy-MM-dd HH:mm (<n> min/hours/days ago)" (`formatInstalledAt`), so the user
+  can see when an automatic update landed. `InstallInfoService.load()`
+  (`lib/services/install_info_service.dart`) asks the native side first —
+  `lastUpdateTime` on the `besttodo/update` channel returns
+  `PackageInfo.lastUpdateTime` (epoch ms) from `MainActivity` — and falls back
+  to the first time this version was seen running, which both `main()`s record
+  after the first frame (`recordLaunch`, `shared_preferences` key
+  `install_info_first_seen` = `{version, at}`, replaced when the version
+  changes). Hidden when neither source knows (e.g. version 'unknown').
+- **Background downloads via DownloadManager (0.2.x):** both download paths —
+  the auto-update Yes and the About page's "Download & install"/rollback
+  buttons — go through `UpdateService.downloadInBackground()` instead of a
+  Dart-side `HttpClient` socket. It calls the new `besttodo/update` methods
+  (`startBackgroundDownload` → `watchDownload`, a `Stream<DownloadProgress>`
+  polling `queryDownload` every 700 ms until a terminal status) so the APK
+  transfer runs as an Android system service: it survives the app being
+  backgrounded and DownloadManager itself resumes the transfer (HTTP range
+  requests) across a Wi-Fi/mobile handover, which a socket held open by the
+  app process cannot. `downloadInBackground` also persists `{downloadId,
+  version}` via `shared_preferences` (cleared once the download reaches a
+  terminal status); `_MyAppState.initState` calls
+  `UpdateService.pendingDownload()`/resumes watching it on the next launch, so
+  a download that finished (or is still running) after the app was closed
+  still gets installed instead of silently going nowhere. The old blocking
+  `UpdateDownloadDialog` modal is gone — `downloadUpdateInBackground`
+  (`lib/ui/auto_update_dialog.dart`) instead shows a transient snackbar via
+  `ScaffoldMessenger`, since the transfer no longer needs the app in the
+  foreground at all. `UpdateService.downloadChannelOverride` is the test seam
+  for the three new channel methods, mirroring `fetchOverride` for the
+  release-JSON lookup.
+- **Update downloads folder in Settings (BestToDo 0.2.94, Best Music 0.2.97):**
+  both apps' Settings (BestToDo: Settings → Updates; Best Music: the bottom of
+  its Settings page) show an "Update downloads folder" row
+  (`lib/ui/update_downloads_folder_tile.dart`, `UpdateDownloadsFolderTile`,
+  given the app's own `UpdateService` — `UpdateService.instance` /
+  `MusicAboutPage.updateService`) with the absolute path the update APKs land
+  in and a "Copy path" button. The path comes from
+  `UpdateService.updateDownloadsDirectory()`, which asks the native side via
+  the `besttodo/update` channel's `updateDownloadsDir` method (the same
+  `getExternalFilesDir(null)/updates` that `startBackgroundDownload` writes
+  to, e.g. `/storage/emulated/0/Android/data/<applicationId>/files/updates`);
+  it returns null off Android (no in-app downloads there) or when external
+  storage is unavailable, and the row then says "Not available".
+- **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
+  - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
+    `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a
+    failing test run does not stop the build) and embeds the parsed results into the APK
+    as `assets/test_report.json` via `dart run tool/generate_test_report.dart --input …
+    --commit … --branch … --version …`. On push events it also commits that JSON to
+    `docs/ci/test_report.json` (`[skip-screenshot-changelog]`) so the app can pull the
+    latest results online. Then builds the release APK, uploads artifact
+    `besttodo-<version>` (30-day retention), adds a download link to the job summary. The
+    app surfaces the bundled report as a red dot on the drawer icon and shows the
+    online-primary/bundled-fallback report on the Tools ▸ Test Results page (see §4.3).
+  - `flutter_test.yml` (main/staging/dev): `flutter test --coverage`, parses results into a
+    PASS/FAIL markdown report artifact, fails on test failure.
+  - `screenshot_changelog.yml` (push to main/staging/dev): Windows runner drives an
+    integration test capturing screenshots (home, menu, settings, stats; since 0.1.90 also
+    search-active, projects page, project board, project edit dialog; since 0.1.275 also the
+    Weekly Hours Planner grid) into `docs/screenshots/home/<timestamp>-<sha>/` and prepends
+    to `SCREENSHOT_CHANGELOG.md`. The workflow copies every `build/e2e_screenshots/*.png`
+    and the changelog tool emits one section per PNG found, so new captures need no CI
+    edits. Each entry's header line reads `branch: <branch> v<pubspec version>` (since
+    0.1.275, read straight from `pubspec.yaml` at the captured commit) alongside the
+    timestamp and source sha. Loop protection: paths-ignore on its own outputs, skips actor
+    `github-actions[bot]`, and its commit message carries `[skip-screenshot-changelog]`.
+  - `build-windows-exe.yml` (`workflow_dispatch` + successful `Build APK`
+    `workflow_run`, 0.1.250): Windows runner (same `windows-2022` pin as
+    `screenshot_changelog.yml`, for the same VS-2022-CMake-generator reason)
+    runs `flutter build windows --release`, zips the
+    `build/windows/x64/runner/Release` folder as
+    `BestToDo-<version>-portable-win64.zip` and uploads it as a build artifact
+    (30-day retention). "Portable" = unzip and run `BestToDo.exe`, no installer,
+    no admin rights; works on Windows 10 and 11 (x64). APK-triggered runs check
+    out `github.event.workflow_run.head_sha`, so the EXE is built from the same
+    commit as the APK that triggered it.
+  - `delete-merged-branch.yml` (0.1.264, `pull_request: closed`; `contents: write`):
+    once a PR into `dev` merges, deletes its head branch via `actions/github-script`
+    (`git.deleteRef`), skipping `dev`/`staging`/`main` themselves and tolerating a branch
+    already gone (422/404, e.g. deleted by a squash-merge UI option).
+- **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
+  `staging` → `main`. Releases are built from dev after a version bump. A feature branch's
+  PR into `dev` has its branch auto-deleted on merge (`delete-merged-branch.yml` above).
+
+## 12. Testing
+
+Tests are organized into siloed suites under `test/` so a change only needs the
+suites it can affect (see `test/README.md` for the file→suite map): `core/`
+(task model, storage/config persistence, tab bucketing, ordering/reorder,
+deadline normalization, app-boot + build-gate smoke tests — always run),
+`alarms/` (alarm model/storage, editor, ring page), `projects/` (model,
+service, projects page, board, tile tags), `home/` (search, drawer, tile
+description editing), `update/` (in-app update check + About page update
+section + publish-tool helpers), `tools/` (export/import + analytics, usage data,
+startup-times page, countdown model, chronize). Plain `flutter test` still
+runs the full suite and is what CI uses; `tool/build.sh` gates builds on
+`test/core/build_smoke_test.dart`.
+
+Unit/widget tests cover: usage-data CSV building (escaping, event derivation, rollups,
+manifest), chronize mark-fade invariants + interaction smoke tests, startup-times page
+(history/legacy/empty states, chart maxY not clipping outliers), countdown model, export/
+import round-trip + legacy import, storage rollover, config persistence, alarm model +
+storage round-trip, 18:00 deadline normalization, done-task ordering, reorder ranking,
+dev date-advance sweep, home filtering, tile description editing, intro smoke. Projects &
+search (0.1.90): project model + `ProjectService` persistence (seed/rename/reload/corrupt
+file), projects page (drag-assign incl. desktop mouse drag, renamed-projects-from-disk,
+platform-dependent hint), board page (column grouping, drag between columns incl. desktop
+mouse drag, unassign, edit dialog save/cancel/empty-name), dev project seed (spread across
+projects/columns, no reshuffle of existing assignments), task-tile
+project/stage tags (incl. live rename + unknown-id fallback), home search (title/
+description/label/project-name matching, case-insensitivity, clear button, empty state),
+drawer placement of Projects under Tools, alarm-editor top save action, schedule-view
+active-day tracking (highlight follows scroll, back-to-top arrow, add-to-highlighted-day
+end to end). CI test report & settings search (0.1.96): `TestReport` tolerant fromJson /
+toJson round-trip and the `--machine` output parser (hidden/skipped handling, error
+capture, garbage tolerance), Test Results page states (failures + expandable errors, all
+green, no bundled report), home red dot on the hamburger (opt-in setting) + drawer entry
+navigation (its absence when green/unavailable/by default on the hamburger, and its
+clearing once Test Results is opened), settings search (toggle, title + keyword matching,
+section subtitle, no-match message, jump-to-section, close restoring chips). Simple mode &
+features (0.1.118, `test/home/simple_mode_test.dart` + `settings_features_test.dart`):
+home page in simple mode (no dice/flame/schedule/search, drawer down to Settings + Deleted
+Items + About + Changelog + App Logs + Startup Times, no Tools section),
+per-feature hiding of drawer tools and app-bar actions, the mode
+picker storing and persisting its choice, `isFeatureEnabled` semantics + `features`
+round-trip, and the Settings side (feature switches searchable, feature-owned sections
+disappearing, the simple-mode switch persisting). Both suites restore `Config` in
+`tearDown` — the flags are global statics. Quick-add & reminders (0.1.233,
+`test/home/home_default_add_bucket_test.dart`, `home_drawer_home_entry_test.dart`,
+`task_tile_notify_delay_test.dart`): the default bucket (open tab by default, a pinned
+Future bucket labelling the add row and persisting the 2300 sentinel), the drawer's Home
+entry (search dropped, start tab restored) and the Notify bell's delay sheet (the four
+options, dismissal scheduling nothing, the notifications-off path). Widget tests that
+touch persistence use a `_FakePathProvider` + temp dir. Caveat: real file I/O awaited
+inside `testWidgets` hangs until the 10-min per-test timeout (the fake-async zone never
+services dart:io completions — locally and on CI) — such tests wrap I/O in
+`tester.runAsync` and pump real-event-loop slices in rounds; see CLAUDE.md for the exact
+patterns. The unmitigated pattern kept `flutter_test.yml` red from 0.1.87 until 0.1.90. Integration tests: screenshot
+walk-through + task-creation screenshots (Windows desktop, needs Developer Mode for
+plugin symlinks). Not covered: stats/usage page widget rendering, the
+Kotlin widget PendingIntent wiring (verified on hardware), most alarm/SMS runtime paths
+(verified on hardware + via alarm_log instead).
+
+## 13. Invariants & quirks a rebuilder must preserve
+
+1. Background isolates must init binding + DartPluginRegistrant before any plugin call.
+2. Never `cancelAll()` notifications on reschedule — preserve snooze slots.
+3. The 18:00 normalization runs on every save; `hasExplicitTime` is the only escape hatch.
+4. Future bucket = magic `DateTime(2300,1,1)`; null due date appears nowhere.
+5. Deleted list caps at 100 everywhere it's touched.
+6. Delete/undo is deferred commit; killing the app mid-window loses the task silently.
+7. uid uniqueness is enforced (reassigned) on every load/import.
+8. Widget toggles must go through `toggleInStorage` + awaited reschedule.
+9. DST: never `add(Duration(days:1))` for next-occurrence math on wall-clock times.
+10. SMS/alarm one-shots re-arm themselves; re-arm BEFORE running the payload.
+11. Permissions that need dialogs are requested in the foreground only.
+12. Alarm channel changes require a new channel id (hence `_v2`).
+13. Kotlin folder/package mismatch is intentional; keep the committed debug keystore.
+14. `snoozeMaxCount` is stored-but-unused; keep serializing it. (`melody`/`volume` are
+    implemented since 0.1.91 via the native `besttodo/alarm_audio` channel.)
+15. Stats heatmap counts deletions but is titled "Completed" — fix knowingly or keep.
+
+---
+
+# Part II — Development history (every step, explained)
+
+428 commits, 87 released versions, June 2025 → July 2026. Sources: `CHANGELOG.md`
+(authoritative per-version bullets), git log, `.claude/notes/alarm-work-spec.md`. The
+project was built largely through AI-assisted sessions (OpenAI Codex branches `codex/*`
+early on, Claude sessions `claude/*` later) merged by the maintainer (mfficiency), flowing
+feature branch → dev → staging → main.
+
+### Phase 1 — Bootstrap (June 2025, v0.1.0 → 0.1.3)
+Flutter skeleton generated, renamed to `best_todo_2`, README with the three fundamentals
+(<1 s startup, fewest clicks, open source). The swipe concept landed immediately: Today/
+Tomorrow pages, swipe/drag to move tasks forward, then Day After Tomorrow and Next Week.
+The swipe-options-with-countdown pattern (reveal choices for a delay, then auto-commit)
+appeared in v0.1.1 with a 2 s delay — later made configurable and defaulted to 5 s.
+Expandable task editing, settings (configurable swipe direction), drawer navigation,
+undoable delete with a Deleted Items page, dev-mode date navigation, and task persistence
+(v0.1.2 — plain JSON, not the Hive/Isar the README once envisioned) all arrived in this
+first burst. Automatic version bumping began (v0.1.3).
+
+### Phase 2 — Android era: the widget saga (August 2025, v0.1.4 → 0.1.41)
+Focus shifted to making it a real Android app. SDK/NDK config fixed, swipe UI cleaned up
+(0.1.4–0.1.5). The **home-screen widget** went through visible trial and error: first a
+widget showing just the app version (0.1.6), clickable to open the app (0.1.7), then
+showing today's tasks (0.1.8), multiple rounds of color/readability fixes — including a
+comically documented green-background-red-text experiment — a black-background temp fix
+(0.1.15), file-path fixes, filtering out done tasks (0.1.13) and tomorrow's tasks
+(0.1.14–0.1.15), and ordering aligned with the app (0.1.37-era). An App Logs page was
+added to debug the widget from the phone (in-memory, 24 h retention). Startup-time logging
+with an in-app graph landed (0.1.40) to police the <1 s budget. Theme standardized on
+#005FDD (0.1.18). Tabs grew Next Month (0.1.21) and icons (0.1.22–0.1.23). Settings began
+persisting (0.1.24), intro screens introduced the app's values (0.1.26), import/export
+arrived with directory pickers (0.1.27–0.1.31; a storage-permission attempt was reverted
+in "0.1.36 — this is actually 0.1.33, but i fucked up the versioning"). Crucially for
+everything later: **tasks got uuid uids and listRanking** (0.1.37), done-tasks-to-bottom
+and the deleted-list-on-rollover model (0.1.38), swipe animations (0.1.20, 0.1.39).
+
+### Phase 3 — Revival and analytics (February 2026, v0.1.42 → 0.1.56)
+After a five-month gap, a fix-and-features burst: deleted-items restore repaired
+(0.1.42–0.1.46, including permanent delete), the versioning/bump script cleaned up
+(0.1.45), and the **Your Stats** page born (0.1.47): GitHub-style completion heatmap,
+then more stats below it (0.1.52–0.1.54). First notification support (0.1.48), widget
+progress line (0.1.50), navigation-bar-safe layout + auto APK naming (0.1.49).
+**Recurring tasks** (0.1.55) and quality-of-life settings: new-task position, startup tab,
+quiet hours, future tab (0.1.55–0.1.56). Dev mode learned to skip intro and seed data.
+
+### Phase 4 — Automation and the SMS report (May 2026, v0.1.57 → 0.1.69)
+CI matured: automated screenshot changelog on every push with loop protection (0.1.57),
+APK build workflow (May 11). Export was overhauled and moved into settings (0.1.58).
+Swipe both ways + swipe-cancel with the orange background (0.1.59–0.1.60). Then the
+**daily SMS report** ("snitch text", social accountability): initial module with schedule,
+recipients, template (0.1.61); then a hardening series driven by real-device failures —
+permission narrowing + persistent diagnostic log (0.1.62), waiting for the native
+SENT/DELIVERED callback with a 20 s timeout instead of trusting the API return (0.1.63),
+dual-SIM subscription id + log export (0.1.64), auto-multipart because carriers silently
+drop over-length messages (0.1.65), completion-rate threshold (0.1.66). Also: auto-deleted
+label in Deleted Items (0.1.67) and the **schedule view** — Google-Calendar-style single
+list with tabs as scroll anchors (0.1.68–0.1.69).
+
+### Phase 5 — Tools: Countdown and Chronize (June 2026, v0.1.70 → 0.1.79)
+The Tools menu appeared with the **Countdown** tool, iterated rapidly in one stretch:
+multiple timers counting down then up, inline composer with auto-names, instant pickers
+(tap-a-day closes, analog clock dial), drag reorder + sort modes, minimizing form,
+3-decimal breakdowns, Monday-first tinted date picker, backup/restore integration
+(0.1.70–0.1.71). Build/CI fixes: pinned Flutter 3.29.2, minSdk 23, and the **fixed debug
+keystore** decision so every build installs over the last (0.1.72). Then **Chronize**, the
+experimental continuous timeline, over seven versions: initial tool + the 18:00 default
+deadline time (0.1.73), scroll wheels + infinite timeline (0.1.74), continuous zoom with
+fading granularity marks + optional hour wheel (0.1.75–0.1.76), task chips with cascade +
+now-line (0.1.76), navigator cards to nearest off-screen events (0.1.77), center-on-now
+Today + momentum + tap-to-create/edit with `hasExplicitTime` (0.1.78), subtler distance
+pills (0.1.79).
+
+### Phase 6 — The reliability arc (June 30 – July 6 2026, v0.1.80 → 0.1.85)
+The defining engineering saga, fully documented in `.claude/notes/alarm-work-spec.md`.
+Four rounds of "it works when the app is open but not when it's closed":
+
+- **0.1.80 — the missing receiver.** The daily SMS report never fired in the background.
+  Root cause: the manifest lacked `AlarmBroadcastReceiver` — the plugin's PendingIntent
+  target. The OS fired; nothing received it. Diagnostic clue: "Send test now" worked
+  (bypasses the alarm). Fix: declare the receiver.
+- **0.1.81 — OEM power savers.** Samsung "Sleeping apps"/Doze silently dropped alarms.
+  The stock Clock is exempt as a system app; a normal app must request
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`. Enabling the report now prompts for exact-alarm
+  + battery exemption; manifest gained SET_ALARM/FOREGROUND_SERVICE/VIBRATE.
+- **0.1.82 — Doze defers repeating alarms.** `periodic(exact:true)` maps to Android's
+  `setRepeating` — inexact since API 19, ignores allowWhileIdle, deferred indefinitely in
+  deep sleep. Replaced with the exact one-shot self-re-arming chain
+  (`setExactAndAllowWhileIdle`, re-arm on fire + on every launch + on reboot). SMS
+  permission moved to foreground request (background isolates can't show dialogs).
+  Every background fire now logs "Alarm fired" as proof of delivery.
+- **0.1.83 — the Alarms tool + widget.** Full alarm clock (per-alarm settings, repeat
+  days, snooze, colors), home-screen alarm widget, exact OS scheduling surviving reboot
+  and flight mode, absolute-time fix for timezone drift. Its own app-closed bug set:
+  widget toggles that only changed stored state (never scheduling), snooze dead in the
+  notification-action isolate (missing plugin registration), pending snoozes killed by
+  `cancelAll` on app open, and DST drift from day-adding — all fixed, all now invariants
+  (§13). The session ended by writing the work-spec notes file so future sessions could
+  trace the reasoning.
+- **0.1.84 — foolproof delivery.** Belt-and-suspenders: the method ladder (setAlarmClock →
+  setExactAndAllowWhileIdle → inexact, every attempt logged), OS read-back verification,
+  the independent 90 s watchdog that re-rings if the primary path was silently dropped,
+  ack tracking so it never double-rings, the persistent human-readable `alarm_log.txt`
+  with startup diagnostics + per-OEM hints, test-alarm and run-diagnostics buttons, and
+  the insistent (looping) alarm sound.
+- **0.1.85 — release build** (no functional changes) plus, same day, a fix making app
+  startup non-blocking on plugin init (black-screen-at-open) — which is why the alarm
+  diagnostics snapshot is fire-and-forget in `main()`.
+
+### Phase 7 — Insight tools (July 2026, v0.1.86 → 0.1.91, current)
+**0.1.86 — Usage Data tool**: export the app's entire recorded history as detailed CSVs
+(unified event timeline, daily/hourly rollups, task history with derived metrics, alarm
+pipeline log, SMS log, app opens, timers + manifest); app opens now recorded with
+timestamps (`startup_history.json`, cap 5000). Note: 0.1.85 was claimed twice in parallel
+branches (release-build bump on dev vs the usage-data branch); resolved at merge by moving
+the usage-data feature to 0.1.86. **0.1.87 — Startup Times facelift**: the bare clipped
+line chart became summary stats + a data-scaled themed chart + an auto-generated
+"What this means" analysis (typical verdict, trend, slow-start share, outliers, cold-start
+pattern), with widget tests. **0.1.88 — full-screen alarm ring UI + release scheduling
+fix**: `AlarmRingPage` (§5.2) and the R8/ProGuard keep rules that un-broke scheduling in
+release builds. **0.1.89 — Projects tool (§10.5)**: written back in June on a parallel
+branch (claimed 0.1.57), cherry-picked into dev during a branch cleanup; also added a Save
+action to the top app bar of the alarm editor. Second time a parallel branch's version
+claim had to be re-resolved at merge (after 0.1.85). **0.1.90 — Projects grow up +
+search**: Projects moved under Tools; projects persist (`ProjectService`,
+`projects.json`) with an edit dialog for name/description on the board; assigned tasks
+show project + stage tags on every home tile; the app-bar search placeholder became a
+working live filter (title/description/note/label/project name, all tabs + schedule
+view, reorder disabled and ranking renumbering kept unfiltered while searching); any tap
+on the alarms home-screen widget now opens the alarms page (container-level
+PendingIntent); screenshot CI generalized to archive every captured PNG. First feature
+batch to ship with per-feature widget tests, CLAUDE.md (AI working guide) and expanded
+screenshot coverage in the same commit. **0.1.91 — schedule view active day**: the day
+section scrolled to the top of the schedule list is highlighted and becomes the target
+of the add-task row (label shows "Add task · <day>", new tasks get that day's due date);
+back-to-top arrow; generous bottom padding so the last sections can reach the top (§ Home
+page, "Schedule view active day").
+
+### Recurring themes (read this before adding features)
+1. **Everything background on Android will silently fail at least once.** Manifest
+   receivers, plugin registration, permissions, OEM power savers, Doze semantics — each
+   bit them separately. The response evolved from "fix the bug" to "build verification and
+   logging into the pipeline itself" (read-back, watchdog, alarm log).
+2. **Iterate in public, in small versions.** 87 versions in ~13 months; most features
+   shipped rough and were refined over 3–7 consecutive patch versions (widget, countdown,
+   Chronize, SMS, alarms).
+3. **Logs are features.** App Logs, SMS report log, alarm log, startup times, usage-data
+   export — every debugging pain became a permanent in-app observability tool.
+4. **Speed is a spec.** Startup is measured on every launch and charted in-app; the <1 s
+   budget drove the non-blocking startup fix and the fire-and-forget diagnostics.
+
+### 10.4.1 Weekly wellbeing analysis (0.2.9)
+Usage Data defaults to a Monday–Sunday analysis. The header arrows and horizontal
+swipe move through weeks (never beyond the current week). Phone sessions are
+loaded for both the selected and preceding week so total screen time, session
+count and each ranked app state their percentage change. A seven-bar daily chart
+and the existing 24-hour chart label both axes and the summary states the
+seven-calendar-day average. Historical weeks use their complete Monday–Sunday
+window; Android Usage Access remains opt-in and all calculations stay local.
+
+### 10.5 Fitness Activity (Tools → Fitness Activity)
+Fitness Activity is a read-only Health Connect dashboard, styled after Samsung
+Health (0.2.16): the week picker, big step total and the bar chart are bundled
+into one rounded gradient "hero" card (`colorScheme.primaryContainer` →
+`secondaryContainer`), and every metric tile and personal-best row carries a
+colored circular icon badge (`_iconBadge`) instead of a plain leading icon.
+After explicit consent it reads the selected and preceding Monday–Sunday
+windows for steps, distance, active calories, workouts, heart rate, resting
+heart rate, asleep time and weight. It shows totals, a true seven-day step
+average, sleep average over days with records, weekly changes, strongest day
+and actionable conclusions. The step chart labels steps and weekdays; arrows
+browse weeks and pull-to-refresh re-reads Health Connect (and re-scans the
+auto personal-bests history, see below). Missing permission/data is stated
+rather than treated as zero evidence. Tapping the week range can jump to any
+historical week and requests Android's separate history permission for
+records older than 30 days. The dashboard and Settings shortcut open Health
+Connect's source settings so Samsung Health can share phone, restored cloud,
+and Galaxy Watch records. Health measurements are displayed without medical
+diagnosis.
+
+Below the Health Connect data, a "Weight & personal bests" area holds three
+things: the Weight card, an "Auto-detected records" card, then a "Your
+personal bests" card of manually-entered records.
+
+Personal bests are calculated automatically (0.2.16) from Health Connect
+history: on page load (and on force-refresh via pull-to-refresh or the
+section's refresh icon) the page fetches roughly the last 365 days of samples
+and calls `FitnessActivityService.computeAutoBests`, a pure function that
+scans them for the single best day/session per metric — most steps in a day,
+longest distance in a day, most active energy in a day (bucketed by calendar
+day, since Health Connect reports those in many small chunks), longest single
+workout, longest sleep session, highest heart rate reading and lowest resting
+heart rate reading (compared sample-by-sample, since a session is the
+meaningful unit there) — returning one `AutoPersonalBest` (metric, label,
+value, unit, date) per metric that had at least one sample. The "Auto-detected
+records" card renders one row per result via `_autoBestTile`, each with an
+icon/color from the `AutoBestMetric` → `(IconData, Color)` `_autoBestStyle`
+map (steps=blue walk icon, distance=orange route, calories=deep-orange flame,
+workout=teal dumbbell, sleep=indigo moon, heart rate=pink heart, resting heart
+rate=purple outlined heart), and is hidden entirely once loaded if history had
+no samples for any metric; while the year of history is still loading it shows
+a "Scanning your history for personal bests…" placeholder instead.
+
+Manually-entered records stay exactly as before, kept separate from both the
+read-only Health Connect data and the auto-detected records.
+`HealthTrackingService` (`lib/services/health_tracking_service.dart`)
+persists two lists as `ValueNotifier`s, each to its own JSON file in the app
+documents directory — `WeightEntry` (`lib/models/health_metrics.dart`: id,
+date, weightKg, note) to `weight_log.json`, `PersonalBest` (id, name, value,
+unit, date, note — `unit` is free-form so it covers both weight PRs like
+"80 kg" and time PRs like "22.5 min") to `personal_bests.json`. Both lists
+are sorted newest-first; `save*` upserts by id, `delete*` removes by id.
+The Weight card shows the latest entry large with up to 6 older entries
+below a divider; the "Your personal bests" card lists every manually-entered
+record. Each card's "+" opens an add/edit `AlertDialog` (its own
+`StatefulWidget` owning the text controllers, per the task_detail/food_diary
+rule) with a `pickDateInstantly` date field; tapping a row reopens it
+prefilled for editing. Deleting shows a snackbar with Undo that re-saves the
+same record (same id, so it lands back in the same slot once re-sorted).

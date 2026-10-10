@@ -7,9 +7,32 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 
 const List<String> _monthsShort = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
+
+const List<String> _weekdaysShort = [
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
+];
+
+/// Short weekday abbreviation for [d], e.g. "Mon".
+String formatWeekdayShort(DateTime d) => _weekdaysShort[d.weekday - 1];
 
 /// Formats the time of [d] honoring [Config.use24HourFormat].
 String formatTimerTime(DateTime d) {
@@ -53,7 +76,9 @@ String formatTimerDateTime(DateTime d) =>
 /// no separate OK/Cancel step. Selecting a year or navigating months does not
 /// close it. Returns null if dismissed without a selection.
 Future<DateTime?> pickDateInstantly(BuildContext context, DateTime initial) {
-  final firstDate = DateTime(2000);
+  // A century back and forward: past dates make count-up timers (days since
+  // a birthday etc.), future dates make countdowns.
+  final firstDate = DateTime(1900);
   final lastDate = DateTime(DateTime.now().year + 100);
   // Clamp the initial date into range so CalendarDatePicker never asserts.
   var initialDate = initial;
@@ -95,8 +120,7 @@ class _InstantDatePickerState extends State<_InstantDatePicker> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final portrait =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
+    final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
     // Matches CalendarDatePicker's day-grid horizontal padding so the weekend
     // tint lines up with the columns, and its 52px sub-header height.
     final gridPadding = (theme.useMaterial3 && portrait) ? 12.0 : 8.0;
@@ -127,7 +151,8 @@ class _InstantDatePickerState extends State<_InstantDatePicker> {
                         Expanded(
                           child: i >= 5
                               ? DecoratedBox(
-                                  decoration: BoxDecoration(color: weekendColor),
+                                  decoration:
+                                      BoxDecoration(color: weekendColor),
                                 )
                               : const SizedBox.shrink(),
                         ),
@@ -184,7 +209,8 @@ class _MondayFirstLocalizationsDelegate
 }
 
 /// Shows a quick two-step time picker (tap an hour, then tap a minute) that
-/// closes the instant a minute is tapped — no separate OK step. Honors
+/// closes the instant a minute is tapped. A manual Save button is also offered
+/// on the minute step for keeping the existing minute. Honors
 /// [Config.use24HourFormat]. Returns null if dismissed without a selection.
 Future<TimeOfDay?> pickTimeOfDay(BuildContext context, TimeOfDay initial) {
   return showDialog<TimeOfDay>(
@@ -225,8 +251,12 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
     if (_step == _TimePickStep.hour) {
       setState(() => _step = _TimePickStep.minute);
     } else {
-      Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: _minute));
+      _save();
     }
+  }
+
+  void _save() {
+    Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: _minute));
   }
 
   /// Maps a touch point on the dial to an hour or minute value.
@@ -242,16 +272,11 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
       return;
     }
 
-    final pos = (ang / (2 * math.pi) * 12).round() % 12; // 0..11, 0 = top
     int h;
     if (_use24) {
-      final inner = v.distance < _dialSize / 2 * 0.66;
-      if (inner) {
-        h = pos == 0 ? 0 : pos + 12; // 00, 13..23
-      } else {
-        h = pos == 0 ? 12 : pos; // 12, 1..11
-      }
+      h = (ang / (2 * math.pi) * 24).round() % 24; // single ring, 0..23
     } else {
+      final pos = (ang / (2 * math.pi) * 12).round() % 12; // 0..11, 0 = top
       final h12 = pos == 0 ? 12 : pos;
       h = (h12 % 12) + (_hour >= 12 ? 12 : 0);
     }
@@ -371,6 +396,11 @@ class _InstantTimePickerState extends State<_InstantTimePicker> {
             onPressed: () => setState(() => _step = _TimePickStep.minute),
             child: const Text('Minutes'),
           ),
+        if (!hourActive)
+          FilledButton(
+            onPressed: _save,
+            child: const Text('Save'),
+          ),
       ],
     );
   }
@@ -398,7 +428,6 @@ class _ClockPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     final outerR = radius - 18;
-    final innerR = radius - 54;
 
     canvas.drawCircle(
         center, radius, Paint()..color = scheme.surfaceContainerHighest);
@@ -410,28 +439,32 @@ class _ClockPainter extends CustomPainter {
             -math.cos(sel.angle) * sel.radius);
     final accent = Paint()..color = scheme.primary;
     canvas.drawLine(
-        center, knob, Paint()
-      ..color = scheme.primary
-      ..strokeWidth = 2);
+        center,
+        knob,
+        Paint()
+          ..color = scheme.primary
+          ..strokeWidth = 2);
     canvas.drawCircle(center, 4, accent);
     canvas.drawCircle(knob, 17, accent);
 
     if (step == _TimePickStep.minute) {
-      _drawRing(canvas, center, outerR, 12, (i) => (i * 5).toString().padLeft(2, '0'),
+      _drawRing(
+          canvas,
+          center,
+          outerR,
+          12,
+          (i) => (i * 5).toString().padLeft(2, '0'),
           (i) => minute % 5 == 0 && minute ~/ 5 == i);
     } else if (use24) {
-      _drawRing(canvas, center, outerR, 12, (i) => (i == 0 ? 12 : i).toString(),
-          (i) {
-        final val = i == 0 ? 12 : i;
-        final outer = !(hour == 0 || hour >= 13);
-        return outer && val == hour;
-      });
-      _drawRing(canvas, center, innerR, 12,
-          (i) => (i == 0 ? '00' : (i + 12).toString()), (i) {
-        final val = i == 0 ? 0 : i + 12;
-        final inner = hour == 0 || hour >= 13;
-        return inner && val == hour;
-      });
+      // A single ring with all 24 hours (no inner/outer AM-PM-style split).
+      _drawRing(
+          canvas,
+          center,
+          outerR,
+          24,
+          (i) => i.toString().padLeft(2, '0'),
+          (i) => i == hour,
+          fontScale: 0.72);
     } else {
       final curH12 = hour % 12 == 0 ? 12 : hour % 12;
       _drawRing(canvas, center, outerR, 12, (i) => (i == 0 ? 12 : i).toString(),
@@ -441,31 +474,30 @@ class _ClockPainter extends CustomPainter {
 
   ({double angle, double radius}) _selectedAngleRadius(double radius) {
     final outerR = radius - 18;
-    final innerR = radius - 54;
     if (step == _TimePickStep.minute) {
       return (angle: minute / 60 * 2 * math.pi, radius: outerR);
     }
     if (use24) {
-      final inner = hour == 0 || hour >= 13;
-      final pos = inner ? (hour == 0 ? 0 : hour - 12) : (hour == 12 ? 0 : hour);
-      return (angle: pos / 12 * 2 * math.pi, radius: inner ? innerR : outerR);
+      return (angle: hour / 24 * 2 * math.pi, radius: outerR);
     }
     final curH12 = hour % 12 == 0 ? 12 : hour % 12;
     final pos = curH12 == 12 ? 0 : curH12;
     return (angle: pos / 12 * 2 * math.pi, radius: outerR);
   }
 
-  void _drawRing(Canvas canvas, Offset center, double r, int count,
-      String Function(int) labelFor, bool Function(int) isSelected) {
+  void _drawRing(
+      Canvas canvas, Offset center, double r, int count,
+      String Function(int) labelFor, bool Function(int) isSelected,
+      {double fontScale = 1}) {
     for (var i = 0; i < count; i++) {
       final ang = i / count * 2 * math.pi;
-      final pos =
-          center + Offset(math.sin(ang) * r, -math.cos(ang) * r);
+      final pos = center + Offset(math.sin(ang) * r, -math.cos(ang) * r);
       final selected = isSelected(i);
       final tp = TextPainter(
         text: TextSpan(
           text: labelFor(i),
           style: textStyle.copyWith(
+            fontSize: (textStyle.fontSize ?? 14) * fontScale,
             color: selected ? scheme.onPrimary : scheme.onSurface,
             fontWeight: selected ? FontWeight.bold : FontWeight.normal,
           ),

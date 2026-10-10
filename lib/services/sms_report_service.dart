@@ -131,6 +131,13 @@ class SmsReportService {
       await _diag('Skipped — no recipients configured', success: false);
       return 0;
     }
+    final recipients = config.activeRecipients;
+    if (recipients.isEmpty) {
+      await _diag(
+          'Skipped — all ${config.recipients.length} recipient(s) disabled',
+          success: false);
+      return 0;
+    }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       await _diag('Skipped — not on Android', success: false);
       return 0;
@@ -184,7 +191,7 @@ class SmsReportService {
     }
 
     var sent = 0;
-    for (final recipient in config.recipients) {
+    for (final recipient in recipients) {
       final phone = recipient.phoneNumber.trim();
       final nick = recipient.nickname.trim();
       if (phone.isEmpty) {
@@ -256,7 +263,9 @@ class SmsReportService {
     }
 
     final total = summary.completedCount + summary.uncompletedCount;
-    await _diag('Sent $sent/${config.recipients.length} • '
+    final paused = config.recipients.length - recipients.length;
+    await _diag('Sent $sent/${recipients.length}'
+        '${paused > 0 ? ' ($paused disabled)' : ''} • '
         '${summary.completedCount}/$total done (${thresholdCheck.percent}%)');
     return sent;
   }

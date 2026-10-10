@@ -3,8 +3,16 @@ name: Run Flutter Tests
 on:
   push:
     branches: [main, staging, dev]
+    # The steps below publish the run's own report back into the repo; ignore
+    # those bot commits here so they can't re-trigger this workflow in a loop.
+    paths-ignore:
+      - 'assets/test_report.json'
+      - 'docs/ci/**'
   pull_request:
     branches: [main, staging, dev]
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -13,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -23,64 +33,52 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Read app version
+        id: appver
+        shell: bash
+        run: echo "version=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+      # One run, machine-readable: the app's report and the human summary below
+      # are both rendered from this stream, so they can never disagree.
       - name: Run tests
         id: flutter_test
         shell: bash
         run: |
           set +e
-          flutter test --coverage -r expanded 2>&1 | tee flutter_test_output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          flutter test --machine --coverage > test_machine_output.jsonl
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
-      - name: Publish clean test report
+      - name: Parse results into a test report
         if: always()
         shell: bash
         run: |
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
+          mkdir -p build/ci
+          dart run tool/generate_test_report.dart \
+            --input test_machine_output.jsonl \
+            --output build/ci/test_report.json \
+            --commit "${GITHUB_SHA:0:9}" \
+            --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" \
+            --version "${{ steps.appver.outputs.version }}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          output_path = Path("flutter_test_output.txt")
-          raw = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else ""
+      # Keep the report that ships inside builds pointed at the newest run known
+      # — this run, or a newer one another branch already published.
+      - name: Package the newest report into assets
+        if: always()
+        shell: bash
+        run: |
+          dart run tool/sync_test_report.dart \
+            --candidate build/ci/test_report.json \
+            --output assets/test_report.json
 
-          progress_matches = list(re.finditer(r"\+(\d+)(?:\s+~(\d+))?(?:\s+-([0-9]+))?", raw))
-          passed = failed = skipped = 0
-          if progress_matches:
-            last = progress_matches[-1]
-            passed = int(last.group(1))
-            skipped = int(last.group(2) or 0)
-            failed = int(last.group(3) or 0)
-
-          total = passed + failed
-          score = 100.0 if total == 0 and failed == 0 else (passed / total * 100.0 if total else 0.0)
-          status = "PASS" if failed == 0 else "FAIL"
-
-          summary_lines = []
-          if failed == 0:
-            summary_lines.append("All tests passed, so keep this branch ready for merge and monitor only for regressions in new changes.")
-            summary_lines.append("Keep adding focused tests for new behavior to maintain confidence and reduce release risk.")
-          else:
-            summary_lines.append("One or more tests failed; open the detailed output below and fix the first failure before re-running the pipeline.")
-            summary_lines.append("Prioritize deterministic fixes, then re-run tests locally and push again to confirm the pipeline is green.")
-          summary_lines.append("If failures repeat, isolate flaky tests and stabilize them before adding new features.")
-
-          score_line = f"## Test Report: {score:.0f}% ({passed}/{total} passed) - {status}"
-          metrics = f"- Passed: {passed}\n- Failed: {failed}\n- Skipped: {skipped}\n- Total evaluated: {total}"
-          summary = " ".join(summary_lines[:3])
-
-          details_block = (
-            "<details><summary>Full flutter test output</summary>\n\n"
-            "```text\n"
-            f"{raw.strip()}\n"
-            "```\n"
-            "</details>\n"
-          )
-
-          report = f"{score_line}\n\n{metrics}\n\n### What to do next\n{summary}\n\n### Details\n{details_block}"
-          summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
-          summary_file.write_text(report, encoding="utf-8")
-          Path("flutter_test_report.md").write_text(report, encoding="utf-8")
-          PY
+      - name: Render job summary
+        if: always()
+        shell: bash
+        run: |
+          dart run tool/render_test_report_summary.dart \
+            --report build/ci/test_report.json \
+            --machine test_machine_output.jsonl \
+            --out flutter_test_report.md
 
       - name: Upload test artifacts
         id: upload_test_artifacts
@@ -90,6 +88,8 @@ jobs:
           name: flutter-test-report
           path: |
             flutter_test_report.md
+            build/ci/test_report.json
+            test_machine_output.jsonl
           if-no-files-found: warn
 
       - name: Add artifact download link to summary
@@ -100,6 +100,42 @@ jobs:
             echo "### Download" >> "$GITHUB_STEP_SUMMARY"
             echo "- [Download flutter-test-report artifact](${{ steps.upload_test_artifacts.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      # Every branch's run lands in the shared `ci-reports` store, so "latest
+      # results" is branch-independent for builds and for installed apps.
+      - name: Publish report to the ci-reports store
+        if: always() && github.event_name == 'push'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash tool/ci/publish_test_report.sh build/ci/test_report.json "${GITHUB_REF_NAME}"
+
+      # dev is the single branch whose history carries the packaged report, so
+      # dev → staging → main merges just carry it along instead of conflicting.
+      # A checkout of dev therefore has real results offline — no network, no
+      # build step needed (this is what makes `flutter run -d chrome` useful).
+      - name: Commit the packaged report on dev
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p docs/ci
+          # docs/ci copy kept for app versions before 0.1.127, which fetch it.
+          cp assets/test_report.json docs/ci/test_report.json
+          git add assets/test_report.json docs/ci/test_report.json
+          if git diff --cached --quiet; then
+            echo "Packaged report unchanged."
+            exit 0
+          fi
+          git commit -m "ci: package latest test report [skip-screenshot-changelog]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin dev && git push origin "HEAD:dev" && exit 0
+            echo "Push attempt $attempt failed; retrying."
+            sleep $((attempt * 3))
+          done
+          echo "Could not commit the packaged report; continuing."
 
       - name: Fail workflow if tests failed
         if: always() && steps.flutter_test.outputs.exit_code != '0'

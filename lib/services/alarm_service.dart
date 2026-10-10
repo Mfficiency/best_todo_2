@@ -1,0 +1,159 @@
+import 'package:flutter/foundation.dart';
+
+import '../config.dart';
+import '../models/alarm.dart';
+import '../utils/label_utils.dart';
+import 'alarm_notification_service.dart';
+import 'alarm_storage_service.dart';
+import 'alarm_widget_service.dart';
+import 'item_views.dart';
+
+/// Single source of truth for alarms shared between the alarms page and the
+/// home-screen widget click handling. Holds the alarms in a [ValueNotifier] so
+/// the UI rebuilds when an alarm is toggled from the widget.
+class AlarmService {
+  AlarmService._();
+
+  static final AlarmService instance = AlarmService._();
+
+  final AlarmStorageService _storage = AlarmStorageService();
+  final ValueNotifier<List<Alarm>> alarms = ValueNotifier<List<Alarm>>(<Alarm>[]);
+  bool _loaded = false;
+
+  List<Alarm> get list => alarms.value;
+
+  /// Loads alarms from disk (only once) and syncs the widget + schedule.
+  Future<void> load() async {
+    if (_loaded) return;
+    await reload(persist: false, trigger: 'app start');
+    // Platforms without storage (web) load an empty list; dev builds seed a
+    // few sample alarms so the tool — and its screenshots — are never an
+    // empty state.
+    if (alarms.value.isEmpty && Config.isDev) {
+      alarms.value = _buildDevSeed();
+      // Persisting the seed is best-effort: on a platform without file storage
+      // the save throws, and the seeded alarms are still worth showing.
+      try {
+        await _afterChange(trigger: 'dev seed');
+      } catch (_) {}
+    }
+    _loaded = true;
+  }
+
+  /// A small, varied set of alarms for dev/demo builds: a repeating weekday
+  /// alarm, a one-off reminder, and a disabled weekend alarm, so the alarms
+  /// list shows off toggles, repeat schedules and colours at a glance.
+  List<Alarm> _buildDevSeed() => [
+        Alarm(
+          name: 'Wake up',
+          hour: 7,
+          minute: 0,
+          isRepeating: true,
+          repeatDays: const [1, 2, 3, 4, 5],
+          color: 0xFF005FDD,
+          tags: demoToken,
+        ),
+        Alarm(
+          name: 'Midday stretch',
+          hour: 12,
+          minute: 30,
+          color: 0xFF43A047,
+          snoozeEnabled: false,
+          tags: demoToken,
+        ),
+        Alarm(
+          name: 'Wind down',
+          hour: 22,
+          minute: 0,
+          isRepeating: true,
+          repeatDays: const [6, 7],
+          color: 0xFF8E24AA,
+          enabled: false,
+          vibrate: false,
+          tags: demoToken,
+        ),
+      ];
+
+  /// [source] with demo/dev-seed alarms dropped outside dev builds (see
+  /// `demoToken`) — the home-screen widget is a production surface, so a
+  /// leftover demo alarm from a build that used to be a dev build must not
+  /// show up there, even though it can still ring (scheduling is untouched).
+  static List<Alarm> _widgetVisible(List<Alarm> source) =>
+      ItemViews.applyTagRules(source, null, (a) => a.tags);
+
+  /// Re-reads alarms from disk, optionally persisting afterwards. Used after a
+  /// background widget toggle modified the stored data.
+  Future<void> reload({bool persist = true, String? trigger}) async {
+    alarms.value = await _storage.loadAlarms();
+    _loaded = true;
+    await _afterChange(persist: persist, trigger: trigger ?? 'reload');
+  }
+
+  Future<void> upsert(Alarm alarm) async {
+    final next = [...alarms.value];
+    final idx = next.indexWhere((a) => a.uid == alarm.uid);
+    if (idx >= 0) {
+      next[idx] = alarm;
+    } else {
+      next.add(alarm);
+    }
+    alarms.value = next;
+    await _afterChange(trigger: 'alarm saved');
+  }
+
+  Future<void> delete(String uid) async {
+    alarms.value = alarms.value.where((a) => a.uid != uid).toList();
+    await _afterChange(trigger: 'alarm deleted');
+  }
+
+  Future<void> setEnabled(String uid, bool value) async {
+    final next = [...alarms.value];
+    final idx = next.indexWhere((a) => a.uid == uid);
+    if (idx < 0) return;
+    next[idx].enabled = value;
+    alarms.value = next;
+    await _afterChange(
+        trigger: 'alarm toggled ${value ? 'ON' : 'OFF'} in app');
+  }
+
+  /// Persists and re-syncs after an external bulk edit of [alarms]`.value`
+  /// (used by the reminder sync, which rewrites linked alarms from their
+  /// task's schedule).
+  Future<void> commitExternalChange({String? trigger}) =>
+      _afterChange(trigger: trigger ?? 'external change');
+
+  Future<void> _afterChange({bool persist = true, String? trigger}) async {
+    if (persist) {
+      await _storage.saveAlarms(alarms.value);
+    }
+    await AlarmWidgetService.sync(_widgetVisible(alarms.value));
+    // Awaited so callers running in short-lived background isolates don't get
+    // torn down before the OS schedule is updated.
+    await AlarmNotificationService.rescheduleAll(alarms.value,
+        trigger: trigger);
+  }
+
+  /// Toggles an alarm directly against storage. Safe to call from a background
+  /// isolate (the widget interactivity callback) where [instance] state may not
+  /// be populated. Returns after persisting, re-syncing the widget and
+  /// re-syncing the OS alarm schedule.
+  static Future<void> toggleInStorage(String uid) async {
+    final storage = AlarmStorageService();
+    final alarms = await storage.loadAlarms();
+    final idx = alarms.indexWhere((a) => a.uid == uid);
+    if (idx < 0) return;
+    alarms[idx].enabled = !alarms[idx].enabled;
+    await storage.saveAlarms(alarms);
+    await AlarmWidgetService.sync(_widgetVisible(alarms));
+    // Keep the in-memory list aligned if it has been loaded in this isolate.
+    if (instance._loaded) {
+      instance.alarms.value = alarms;
+    }
+    // ALWAYS re-sync the OS schedule — this often runs in the widget's
+    // background isolate where the app never loaded. Skipping it there would
+    // mean an alarm toggled ON from the widget never rings, and one toggled
+    // OFF still fires.
+    await AlarmNotificationService.rescheduleAll(alarms,
+        trigger: 'home-screen widget toggle');
+  }
+}

@@ -1,0 +1,331 @@
+import '../config.dart';
+import '../models/task.dart';
+import '../models/view_filter_rules.dart';
+import '../utils/date_utils.dart';
+import '../utils/label_utils.dart';
+import '../utils/task_utils.dart';
+
+/// The views layer: every surface that shows items — home tabs, wishlist,
+/// project boards, project cards — is a *query over the one task list*,
+/// and this is where those queries live. Pure, synchronous selectors: no
+/// I/O, no state, so they cost nothing at startup and can be unit-tested
+/// without pumping widgets.
+///
+/// Membership flags on the task (`isWish`, `isEatingHabit`, `projectId`,
+/// `kanbanStatus`) remain the stored representation for now (dual-write
+/// era); pages just no longer hand-roll the same `where(...)` chains.
+class ItemViews {
+  ItemViews._();
+
+  /// Index of the Future tab, the bucket for undated tasks.
+  static const int futureTabIndex = 5;
+
+  /// Sentinel due date meaning "parked in the Future tab" (kept from the
+  /// home page's historical convention).
+  static final DateTime futureSentinelDate = DateTime(2300, 1, 1);
+
+  static bool isFutureSentinel(DateTime date) =>
+      date.year == futureSentinelDate.year &&
+      date.month == futureSentinelDate.month &&
+      date.day == futureSentinelDate.day;
+
+  /// A task freshly pulled in from Todoist is stamped with
+  /// [waitingApprovalToken] and stays out of every other view until a human
+  /// approves or denies it in the Waiting for Approval page — see that
+  /// token's doc.
+  static bool isApproved(Task task) => !hasWaitingApprovalToken(task.label);
+
+  /// Whether [task] belongs to every main view — home tabs, schedule view,
+  /// wishlist, projects, the home-screen widget, Todoist sync — as opposed
+  /// to being gated into exactly one dedicated tool. Combines the Todoist
+  /// approval gate with the Food Diary gate ([Task.isEatingHabit]), the
+  /// Research gate ([Task.isResearch]) and the Worklist gate
+  /// ([hasWorklistToken]): a food diary entry, research item, or task tagged
+  /// `mlr` is visible only in its own tool and, once deleted there, the
+  /// deleted/archived lists. [includeWorklistItems] lifts the Worklist gate
+  /// for the one caller that is that dedicated tool — the Worklist instance
+  /// of the home page itself (see [homeBucket]).
+  static bool isVisibleInMainViews(Task task,
+          {bool includeWorklistItems = false}) =>
+      isApproved(task) &&
+      !task.isEatingHabit &&
+      !task.isResearch &&
+      (includeWorklistItems || !hasWorklistToken(task.label));
+
+  /// Whether [task] belongs to home tab [tabIndex] relative to [today].
+  /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
+  /// 1 Tomorrow, 2 Day After, 3–29 Next Week, 30+ Next Month, and the
+  /// sentinel or no date at all → Future.
+  static bool inHomeBucket(Task task, int tabIndex, DateTime today) {
+    final due = task.dueDate;
+    if (due == null) return tabIndex == futureTabIndex;
+    final diff = dateDiffInDays(due, today);
+    final isFuture = isFutureSentinel(due);
+    switch (tabIndex) {
+      case 0:
+        return diff <= 0;
+      case 1:
+        return diff == 1;
+      case 2:
+        return diff == 2;
+      case 3:
+        return diff >= 3 && diff < 30;
+      case 4:
+        return diff >= 30 && !isFuture;
+      default:
+        return isFuture;
+    }
+  }
+
+  /// Synthetic view-membership tokens for [task] — layered onto its real
+  /// label tokens (see [passesFilterRules]) so a Filtering Rules exclude/
+  /// include tag can reference a task's state even though that state isn't a
+  /// literal token in [Task.label] (e.g. "Wish" for [Task.isWish], "Project"
+  /// for an assigned [Task.projectId], [demoToken] for a legacy dev seed
+  /// recognized by its description marker). [archived] and [binned] are supplied
+  /// by the two pages that read one specific list directly (Archived Items,
+  /// the Deleted bin) rather than the shared task pool, since neither state
+  /// is a field on [Task] itself — it's purely which list currently holds it.
+  static Set<String> stateTags(Task task,
+      {bool archived = false, bool binned = false}) {
+    final tags = <String>{};
+    if (task.isWish) tags.add(wishToken);
+    // A dev seed written to disk before 0.2.31 carries no `demo` label of
+    // its own; its description marker stands in for one, so both the
+    // production demo gate and a hand-written `demo` Hide rule still catch
+    // it (see [demoSeedDescriptionPrefixes]).
+    if (isDemoSeedDescription(task.description)) tags.add(demoToken);
+    if (task.isEatingHabit) tags.add(fooddiaryToken);
+    if (task.isResearch) tags.add(researchToken);
+    if (task.projectId != null) tags.add(projectToken);
+    if (!isApproved(task)) tags.add(waitingApprovalToken);
+    if (archived) tags.add(archivedToken);
+    if (binned) tags.add(deletedToken);
+    return tags;
+  }
+
+  /// Whether the token set derived from [rawTags] (see [splitLabelTokens])
+  /// passes [rules]: hidden if it carries any [ViewFilterRules.excludeTags]
+  /// token, or — when [ViewFilterRules.includeTags] is non-empty — kept only
+  /// if it carries at least one of them. A null or empty [rules] passes
+  /// everything except a [demoToken]-carrying item while [Config.hideDemoItems]
+  /// is set (see below). [extraTags] adds synthetic tokens (see [stateTags])
+  /// that aren't literally present in [rawTags] but should still match. The
+  /// primitive [passesFilterRules] and non-Task views (Alarms, Countdown)
+  /// both build on this.
+  ///
+  /// Demo/dev-seed items ([demoToken]) are hidden from every view by default
+  /// outside dev builds ([Config.hideDemoItems]) — no Settings → Filtering
+  /// rules configuration required — since they can otherwise reappear on a
+  /// production phone if [Config.isDev] was ever true when they were seeded
+  /// to disk (see [demoToken]'s doc). This check runs ahead of and
+  /// independent from [rules] so it can never be configured away.
+  static bool passesTagRules(
+    String rawTags,
+    ViewFilterRules? rules, {
+    Set<String> extraTags = const {},
+  }) {
+    final tokens = {
+      ...splitLabelTokens(rawTags).map((t) => t.toLowerCase()),
+      ...extraTags.map((t) => t.toLowerCase()),
+    };
+    if (Config.hideDemoItems && tokens.contains(demoToken)) return false;
+    if (rules == null || rules.isEmpty) return true;
+    if (rules.excludeTags.any((t) => tokens.contains(t.toLowerCase()))) {
+      return false;
+    }
+    if (rules.includeTags.isNotEmpty &&
+        !rules.includeTags.any((t) => tokens.contains(t.toLowerCase()))) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Whether [task] passes the user-configured [rules] (Settings →
+  /// Filtering rules) — see [passesTagRules]. [archived]/[binned] extend the
+  /// matched token set with [stateTags]'s synthetic Archived/Deleted tags.
+  static bool passesFilterRules(
+    Task task,
+    ViewFilterRules? rules, {
+    bool archived = false,
+    bool binned = false,
+  }) =>
+      passesTagRules(
+        task.label,
+        rules,
+        extraTags: stateTags(task, archived: archived, binned: binned),
+      );
+
+  /// [items] narrowed to those whose [tagsOf] string passes [rules] (see
+  /// [passesTagRules]) — the non-[Task] equivalent of [applyFilterRules],
+  /// for a view over items with their own tag string rather than a
+  /// [Task.label] (Alarms, Countdown). Returns [items] itself, unfiltered,
+  /// only when there is truly nothing to filter — empty [rules] and demo
+  /// hiding off; otherwise every item is re-checked, since demo hiding can
+  /// still apply with no [rules] configured at all.
+  static List<T> applyTagRules<T>(
+    List<T> items,
+    ViewFilterRules? rules,
+    String Function(T item) tagsOf,
+  ) {
+    if ((rules == null || rules.isEmpty) && !Config.hideDemoItems) {
+      return items;
+    }
+    return items.where((item) => passesTagRules(tagsOf(item), rules)).toList();
+  }
+
+  /// [tasks] narrowed to those passing [passesFilterRules]. Returns [tasks]
+  /// itself, unfiltered, only when there is truly nothing to filter — see
+  /// [applyTagRules].
+  static List<Task> applyFilterRules(
+    List<Task> tasks,
+    ViewFilterRules? rules, {
+    bool archived = false,
+    bool binned = false,
+  }) {
+    if ((rules == null || rules.isEmpty) && !Config.hideDemoItems) {
+      return tasks;
+    }
+    return tasks
+        .where((t) =>
+            passesFilterRules(t, rules, archived: archived, binned: binned))
+        .toList();
+  }
+
+  /// Whether [task] belongs on the home screen at all, before any bucketing:
+  /// the structural main-view gate plus the configured Home view filter
+  /// ([rules], see [passesFilterRules]) and the caller's own [where]
+  /// predicate (search / the Worklist tag). Both home bodies go through this
+  /// one gate — the tabs via [homeBucket], the schedule view via
+  /// [homeVisible] — so a filter rule can never apply to one and not the
+  /// other (0.2.46: the schedule view used to skip [rules] entirely, which
+  /// leaked demo/wish/project items onto a phone that starts in that view).
+  static bool isOnHomeScreen(
+    Task task, {
+    bool Function(Task task)? where,
+    ViewFilterRules? rules,
+    bool includeWorklistItems = false,
+  }) =>
+      isVisibleInMainViews(task, includeWorklistItems: includeWorklistItems) &&
+      (where == null || where(task)) &&
+      passesFilterRules(task, rules);
+
+  /// Every task the home screen may show, unbucketed and in list order —
+  /// what the schedule view renders as one long day-grouped list. Same gate
+  /// as the tabs (see [isOnHomeScreen]).
+  static List<Task> homeVisible(
+    List<Task> tasks, {
+    bool Function(Task task)? where,
+    ViewFilterRules? rules,
+    bool includeWorklistItems = false,
+  }) =>
+      tasks
+          .where((t) => isOnHomeScreen(t,
+              where: where,
+              rules: rules,
+              includeWorklistItems: includeWorklistItems))
+          .toList();
+
+  /// The tasks of home tab [tabIndex], sorted like the home list (open
+  /// first, then by ranking). [where] adds an extra predicate (search).
+  /// [rules] is the configured Home view filter, see [passesFilterRules].
+  /// [includeWorklistItems] is true only for the Worklist tool's own
+  /// instance of the home page, which reuses this same bucketing — see
+  /// [isVisibleInMainViews].
+  static List<Task> homeBucket(
+    List<Task> tasks,
+    int tabIndex,
+    DateTime today, {
+    bool Function(Task task)? where,
+    ViewFilterRules? rules,
+    bool includeWorklistItems = false,
+  }) {
+    final list = tasks
+        .where((t) =>
+            isOnHomeScreen(t,
+                where: where,
+                rules: rules,
+                includeWorklistItems: includeWorklistItems) &&
+            inHomeBucket(t, tabIndex, today))
+        .toList();
+    sortTasks(list);
+    return list;
+  }
+
+  /// The wishlist: wish-flagged tasks, exactly like opening a project.
+  static List<Task> wishlist(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isWish &&
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
+          .toList();
+
+  /// The Food Diary: eating-habit-flagged tasks, exactly like opening the
+  /// wishlist. [isApproved] rather than [isVisibleInMainViews] since the
+  /// latter itself excludes eating-habit tasks. [rules] is the configured
+  /// Food Diary view filter, an extra layer on top of the structural gate,
+  /// see [passesFilterRules].
+  static List<Task> foodDiary(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isEatingHabit && isApproved(t) && passesFilterRules(t, rules))
+          .toList();
+
+  /// The Research tool: research-flagged tasks, exactly like opening the
+  /// Food Diary. [isApproved] rather than [isVisibleInMainViews] since the
+  /// latter itself excludes research tasks. [rules] is the configured
+  /// Research view filter, an extra layer on top of the structural gate, see
+  /// [passesFilterRules].
+  static List<Task> research(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isResearch && isApproved(t) && passesFilterRules(t, rules))
+          .toList();
+
+  /// All non-deleted tasks (the Projects page's top pane).
+  static List<Task> active(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
+          .toList();
+
+  /// A project's tasks, regardless of board stage.
+  static List<Task> projectTasks(List<Task> tasks, String projectId,
+          {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              t.projectId == projectId &&
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
+          .toList();
+
+  /// One Kanban column of a project's board.
+  static List<Task> boardColumn(
+          List<Task> tasks, String projectId, String stage,
+          {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              t.projectId == projectId &&
+              t.kanbanStatus == stage &&
+              isVisibleInMainViews(t) &&
+              passesFilterRules(t, rules))
+          .toList();
+
+  /// Tasks pulled from Todoist that are still waiting for a human decision
+  /// (see [waitingApprovalToken]) — the Waiting for Approval page's list.
+  /// [rules] is the configured Waiting for Approval view filter, an extra
+  /// layer on top of the structural pending/non-deleted gate, see
+  /// [passesFilterRules].
+  static List<Task> waitingApproval(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.deletedAt == null &&
+              !isApproved(t) &&
+              passesFilterRules(t, rules))
+          .toList();
+}

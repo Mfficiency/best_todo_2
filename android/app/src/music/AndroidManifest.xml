@@ -1,0 +1,49 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Best Music's share-sheet entry: the same ShareActivity trampoline
+             as BestToDo (see src/main/AndroidManifest.xml), but only for
+             text — a Spotify/Shazam/YouTube link or a "Song - Artist" line
+             goes straight to the MP3 Downloader (lib/main_music.dart).
+             Images/PDFs mean nothing to a music app, so replacing the
+             activity drops those filters and keeps Best Music out of the
+             share sheet for them. -->
+        <activity
+            android:name="com.mfficiency.best_todo_2.ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            tools:node="replace">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <!-- Best Music's home-screen widgets (play/pause and controls). Only
+             Best Music declares them: BestToDo has no music player, so the
+             shared src/main manifest doesn't list them. The provider classes
+             live in src/main because both flavors share one Kotlin source set. -->
+        <receiver
+            android:name="com.mfficiency.best_todo_2.MusicMiniWidgetProvider"
+            android:exported="true"
+            android:label="@string/music_mini_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/music_mini_widget_info" />
+        </receiver>
+        <receiver
+            android:name="com.mfficiency.best_todo_2.MusicControlsWidgetProvider"
+            android:exported="true"
+            android:label="@string/music_controls_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/music_controls_widget_info" />
+        </receiver>
+    </application>
+</manifest>

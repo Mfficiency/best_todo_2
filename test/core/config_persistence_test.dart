@@ -1,0 +1,166 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+
+import 'package:besttodo/config.dart';
+
+class _FakePathProvider extends PathProviderPlatform {
+  _FakePathProvider(this.path);
+  final String path;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => path;
+}
+
+void main() {
+  test('Config persists settings to disk', () async {
+    final tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+
+    // Set and save custom values
+    Config.darkMode = true;
+    Config.minimalistMode = true;
+    Config.swipeLeftDelete = false;
+    Config.useIconTabs = true;
+    Config.enableNotifications = true;
+    Config.addNewTasksToTop = true;
+    Config.enterSavesNewTask = false;
+    Config.defaultAddTabIndex = 5;
+    Config.defaultDelaySeconds = 7.5;
+    Config.use24HourFormat = false;
+    Config.dateFormat = 'yyyy-MM-dd';
+    Config.startTool = 'productivity_stats';
+    Config.showFailureDotOnMenu = true;
+    Config.autoUpdateCheckEnabled = true;
+    Config.deletedItemsRetentionDays = 90;
+    Config.weeklyHoursStartHour = 8;
+    Config.weeklyHoursEndHour = 20;
+    Config.googleCalendarUrl = 'https://example.com/calendar.ics';
+    await Config.save();
+
+    // Reset to defaults
+    Config.darkMode = false;
+    Config.minimalistMode = false;
+    Config.swipeLeftDelete = true;
+    Config.useIconTabs = false;
+    Config.enableNotifications = false;
+    Config.addNewTasksToTop = false;
+    Config.enterSavesNewTask = true;
+    Config.defaultAddTabIndex = Config.addToCurrentTab;
+    Config.defaultDelaySeconds = 5.0;
+    Config.use24HourFormat = true;
+    Config.dateFormat = Config.dateFormats.first;
+    Config.startTool = 'tasks';
+    Config.showFailureDotOnMenu = false;
+    Config.autoUpdateCheckEnabled = false;
+    Config.deletedItemsRetentionDays = 60;
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+    Config.googleCalendarUrl = '';
+
+    await Config.load();
+
+    expect(Config.darkMode, isTrue);
+    expect(Config.minimalistMode, isTrue);
+    expect(Config.swipeLeftDelete, isFalse);
+    expect(Config.useIconTabs, isTrue);
+    expect(Config.enableNotifications, isTrue);
+    expect(Config.addNewTasksToTop, isTrue);
+    expect(Config.enterSavesNewTask, isFalse);
+    expect(Config.defaultAddTabIndex, 5);
+    expect(Config.defaultDelaySeconds, 7.5);
+    expect(Config.use24HourFormat, isFalse);
+    expect(Config.dateFormat, 'yyyy-MM-dd');
+    expect(Config.startTool, 'productivity_stats');
+    expect(Config.showFailureDotOnMenu, isTrue);
+    expect(Config.autoUpdateCheckEnabled, isTrue);
+    expect(Config.deletedItemsRetentionDays, 90);
+    expect(Config.weeklyHoursStartHour, 8);
+    expect(Config.weeklyHoursEndHour, 20);
+    expect(Config.googleCalendarUrl, 'https://example.com/calendar.ics');
+
+    // Restore the defaults so other tests see a clean config.
+    Config.showFailureDotOnMenu = false;
+    Config.enterSavesNewTask = true;
+    Config.defaultAddTabIndex = Config.addToCurrentTab;
+    Config.autoUpdateCheckEnabled = true;
+    Config.deletedItemsRetentionDays = 60;
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+    Config.googleCalendarUrl = '';
+  });
+
+  test('weekly hours planner end hour is kept above the start hour', () {
+    Config.applyMap({'weeklyHoursStartHour': 10, 'weeklyHoursEndHour': 9});
+    expect(Config.weeklyHoursEndHour, 11);
+
+    // Restore the defaults so other tests see a clean config.
+    Config.weeklyHoursStartHour = 6;
+    Config.weeklyHoursEndHour = 22;
+  });
+
+  test('automatic update checks default on when the setting is absent', () {
+    Config.autoUpdateCheckEnabled = false;
+
+    Config.applyMap(<String, dynamic>{});
+
+    expect(Config.autoUpdateCheckEnabled, isTrue);
+  });
+
+  test('auto-update is switched back on once, then the choice sticks', () {
+    // Saved before 0.2.98 with the switch off: turned back on once.
+    Config.applyMap({'autoUpdateCheckEnabled': false});
+    expect(Config.autoUpdateCheckEnabled, isTrue);
+
+    // Saved after that with the switch off again: stays off.
+    Config.applyMap(
+        {'autoUpdateCheckEnabled': false, 'autoUpdateEnabledOnce': true});
+    expect(Config.autoUpdateCheckEnabled, isFalse);
+
+    // Restore the default so other tests see a clean config.
+    Config.autoUpdateCheckEnabled = true;
+  });
+
+  test('deletedItemsRetentionDays is clamped on load', () {
+    Config.applyMap({'deletedItemsRetentionDays': 0});
+    expect(Config.deletedItemsRetentionDays, 1);
+
+    Config.applyMap({'deletedItemsRetentionDays': 99999});
+    expect(Config.deletedItemsRetentionDays, 3650);
+
+    Config.applyMap({'deletedItemsRetentionDays': 30});
+    expect(Config.deletedItemsRetentionDays, 30);
+
+    // Restore the default so other tests see a clean config.
+    Config.deletedItemsRetentionDays = 60;
+  });
+
+  test('out-of-range default add buckets are clamped on load', () {
+    Config.applyMap({'defaultAddTabIndex': 99});
+    expect(Config.defaultAddTabIndex, Config.tabs.length - 1);
+
+    Config.applyMap({'defaultAddTabIndex': -7});
+    expect(Config.defaultAddTabIndex, Config.addToCurrentTab);
+
+    // Settings written before the option existed keep the current value.
+    Config.defaultAddTabIndex = 2;
+    Config.applyMap({});
+    expect(Config.defaultAddTabIndex, 2);
+
+    // Restore the default so other tests see a clean config.
+    Config.defaultAddTabIndex = Config.addToCurrentTab;
+  });
+
+  test('unknown startTool values are ignored on load', () {
+    Config.startTool = 'tasks';
+    Config.applyMap({'startTool': 'does_not_exist'});
+    expect(Config.startTool, 'tasks');
+
+    Config.applyMap({'startTool': 'chronize'});
+    expect(Config.startTool, 'chronize');
+
+    // Restore the default so other tests see a clean config.
+    Config.startTool = 'tasks';
+  });
+}

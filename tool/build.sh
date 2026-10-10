@@ -2,17 +2,212 @@
 # Bump version and run flutter build with given arguments, then
 # rename the resulting artifact to include the version number.
 
-# Update version numbers in pubspec.yaml and other files.
-dart run tool/bump_version.dart
+# `all` is not a flutter target: it means "everything this project ships"
+# (Android APK + Windows exe, staged into github_releases/ and pushed).
+# `sh tool/build.sh all --release` hands over to tool/build_all.sh, which
+# calls back into this script once per real target.
+if [ "$1" = "all" ]; then
+  shift
+  exec sh tool/build_all.sh "$@"
+fi
 
-# Run one small unit test as a build gate.
-flutter test test/build_smoke_test.dart
+# `music-apk` is a shorthand for building the Best Music flavor (Music
+# Player + MP3 Downloader, no to-do features — see lib/main_music.dart):
+#   sh tool/build.sh music-apk --release
+# is exactly sh tool/build.sh apk --release --flavor music -t lib/main_music.dart.
+if [ "$1" = "music-apk" ]; then
+  shift
+  exec sh tool/build.sh apk --flavor music -t lib/main_music.dart "$@"
+fi
 
-# Extract the new version string from pubspec.yaml
-VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
+# No version bump here: tool/bump_version.dart requires an explicit
+# `<version> [changelog entry]` (see the "bump, sync and build" workflow), so
+# calling it argument-less only printed its usage line on every build. Bump
+# first, then build:  dart run tool/bump_version.dart 0.1.258 "what changed"
 
-# Build using Flutter with any arguments passed to this script.
+# Which app is being built. android/app/build.gradle.kts defines the `todo`
+# (BestToDo, unchanged) and `music` (Best Music) product flavors; `apk` builds
+# now require an explicit --flavor, so default to `todo` here rather than
+# making every existing `sh tool/build.sh apk --release` caller pass one.
+# Renamed/staged artifact names key off FLAVOR too (best_<flavor>_<version>.apk
+# — see the Gradle createVersionedReleaseApk task), which is what
+# UpdateService's per-app folder filtering relies on.
+FLAVOR=""
+if [ "$1" = "apk" ]; then
+  prev=""
+  for arg in "$@"; do
+    [ "$prev" = "--flavor" ] && FLAVOR="$arg"
+    prev="$arg"
+  done
+  if [ -z "$FLAVOR" ]; then
+    FLAVOR="todo"
+    set -- "$@" --flavor todo
+  fi
+fi
+PREFIX="best_${FLAVOR:-todo}"
+
+# Extract the version string. Versioned release artifact names are the cache
+# key for deciding whether this build already exists. Best Music versions
+# independently of BestToDo (its own MUSIC_VERSION file, CLAUDE.md/SPEC.md
+# §10.6i) rather than pubspec.yaml, so this — and everything below that
+# writes a build-time note or stages a release — has to branch on FLAVOR.
+APP_ARG=""
+if [ "$FLAVOR" = "music" ]; then
+  VERSION=$(grep '^version:' MUSIC_VERSION | cut -d ' ' -f2)
+  APP_ARG="--app music"
+else
+  VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
+fi
+
+is_cacheable_release_build() {
+  [ "$#" -gt 0 ] || return 1
+  shift
+
+  skip_next=0
+  for arg in "$@"; do
+    if [ "$skip_next" = 1 ]; then
+      skip_next=0
+      continue
+    fi
+    case "$arg" in
+      --release)
+        ;;
+      --flavor|-t)
+        skip_next=1
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
+existing_build_artifact() {
+  version="$1"
+  shift
+
+  [ "$FORCE_BUILD" = "1" ] && return 1
+  is_cacheable_release_build "$@" || return 1
+
+  target="$1"
+  case "$target" in
+    apk)
+      for path in \
+        "github_releases/${PREFIX}_${version}.apk" \
+        "build/app/outputs/flutter-apk/${PREFIX}_${version}.apk"
+      do
+        [ -e "$path" ] && printf '%s\n' "$path" && return 0
+      done
+      ;;
+    web)
+      [ -d "build/web-${version}" ] &&
+        printf '%s\n' "build/web-${version}" &&
+        return 0
+      ;;
+    windows)
+      [ -e "build/windows/x64/runner/Release/BestToDo-${version}.exe" ] &&
+        printf '%s\n' "build/windows/x64/runner/Release/BestToDo-${version}.exe" &&
+        return 0
+      ;;
+    macos)
+      [ -d "build/macos/Build/Products/Release/best_todo_2-${version}.app" ] &&
+        printf '%s\n' "build/macos/Build/Products/Release/best_todo_2-${version}.app" &&
+        return 0
+      ;;
+    linux)
+      [ -d "build/linux-${version}" ] &&
+        printf '%s\n' "build/linux-${version}" &&
+        return 0
+      ;;
+  esac
+
+  return 1
+}
+
+EXISTING_ARTIFACT=$(existing_build_artifact "$VERSION" "$@")
+if [ -n "$EXISTING_ARTIFACT" ]; then
+  echo "==> existing release build found: $EXISTING_ARTIFACT"
+  echo "    skipping flutter build (set FORCE_BUILD=1 to rebuild)"
+
+  case "$1:$EXISTING_ARTIFACT" in
+    apk:build/app/outputs/flutter-apk/*)
+      dart run tool/stage_local_release.dart --apk "$EXISTING_ARTIFACT" --prefix "$PREFIX" --version "$VERSION"
+      ;;
+  esac
+
+  # tool/publish_apk.dart only ever publishes a BestToDo GitHub release (see
+  # its own header comment) -- Best Music's update check never looks at
+  # GitHub releases, only github_releases/ (UpdateService.checkReleases), so
+  # publishing there for a music build would just mislabel this APK as a
+  # BestToDo one.
+  if [ "$PUBLISH_APK" = "1" ] && [ "$FLAVOR" != "music" ]; then
+    case "$EXISTING_ARTIFACT" in
+      *.apk)
+        dart run tool/publish_apk.dart --apk "$EXISTING_ARTIFACT"
+        ;;
+      *)
+        dart run tool/publish_apk.dart
+        ;;
+    esac
+  fi
+
+  exit 0
+fi
+
+# Pull the latest CI test report from GitHub into assets/test_report.json so
+# this local build bundles real test results the app can show offline. Network
+# failures are non-fatal (keeps the existing asset), so offline builds still work.
+# SKIP_PREFLIGHT=1 skips the report pull and the test gate -- set by
+# tool/build_all.sh for its second and later targets, which already ran both.
+if [ "$SKIP_PREFLIGHT" != "1" ]; then
+  dart run tool/pull_test_report.dart
+
+  # Run one small unit test as a build gate.
+  flutter test test/core/build_smoke_test.dart
+fi
+
+# Build using Flutter with any arguments passed to this script, timing it so
+# the duration can be recorded alongside the finish time.
+BUILD_START=$(date +%s)
 flutter build "$@"
+BUILD_STATUS=$?
+BUILD_DURATION=$(( $(date +%s) - BUILD_START ))
+
+# Record when this build finished (and how long it took) in the app's own
+# changelog (CHANGELOG.md, or CHANGELOG_MUSIC.md for a music build -- see
+# APP_ARG above): a "- Local build: <time>" line, a "- Build duration
+# (<target>): <time>" line and the APK/build size in this version's section, each updated in
+# place on repeat builds. Also appends a record to build_history.json
+# (committed, so build times are tracked across builds/machines over time).
+# The changelog is bundled as an app asset by the `flutter build` above, so
+# this build's own asset already froze the old text -- only the *next* build
+# will show this timestamp/duration. That's expected.
+if [ "$BUILD_STATUS" -eq 0 ]; then
+  # What was built, so its size is tracked too (the "- APK size:" line and
+  # build_history.json's sizeBytes): the versioned APK Gradle just wrote
+  # (or the plain app-<flavor>-release.apk if that task didn't run), or the
+  # whole Windows Release folder.
+  ARTIFACT=""
+  case "$1" in
+    apk)
+      ARTIFACT="build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk"
+      [ -e "$ARTIFACT" ] || ARTIFACT="build/app/outputs/flutter-apk/app-${FLAVOR:-todo}-release.apk"
+      ;;
+    windows)
+      ARTIFACT="build/windows/x64/runner/Release"
+      ;;
+  esac
+  if [ -n "$ARTIFACT" ]; then
+    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" --artifact "$ARTIFACT" $APP_ARG
+  else
+    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" $APP_ARG
+  fi
+else
+  # Don't rename or stage artifacts left over from an earlier build.
+  echo "flutter build $* failed (status $BUILD_STATUS)" >&2
+  exit "$BUILD_STATUS"
+fi
 
 # Helper to rename a file if it exists.
 rename_if_exists() {
@@ -22,9 +217,21 @@ rename_if_exists() {
   fi
 }
 
-# Android APK
-rename_if_exists "build/app/outputs/flutter-apk/app-release.apk" \
-  "build/app/outputs/flutter-apk/app-release-${VERSION}.apk"
+# Android APK -> best_<flavor>_<version>.apk (Gradle's createVersionedReleaseApk
+# task already writes this file directly; this is a fallback for whichever of
+# the two names the Flutter/Gradle tooling actually produced).
+rename_if_exists "build/app/outputs/flutter-apk/app-${FLAVOR:-todo}-release.apk" \
+  "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk"
+
+# Keep the last two APKs of each app in github_releases/ (newest + one version
+# back): the app's About/update-check reads that folder, filtered to its own
+# best_<flavor>_ prefix (see UpdateService.apkPrefix). Commit the folder for
+# the build to reach the app.
+if [ -e "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk" ]; then
+  dart run tool/stage_local_release.dart \
+    --apk "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk" \
+    --prefix "$PREFIX" --version "$VERSION"
+fi
 
 # Web build directory
 if [ -d build/web ]; then
@@ -32,9 +239,10 @@ if [ -d build/web ]; then
   echo "Renamed build/web -> build/web-${VERSION}"
 fi
 
-# Windows executable
-rename_if_exists "build/windows/runner/Release/best_todo_2.exe" \
-  "build/windows/runner/Release/best_todo_2-${VERSION}.exe"
+# Windows executable (stays inside its bundle -- the exe locates data/
+# by directory, not by name, so the renamed copy still runs).
+rename_if_exists "build/windows/x64/runner/Release/BestToDo.exe" \
+  "build/windows/x64/runner/Release/BestToDo-${VERSION}.exe"
 
 # macOS application bundle
 rename_if_exists "build/macos/Build/Products/Release/best_todo_2.app" \
@@ -46,3 +254,14 @@ if [ -d build/linux/outputs/flutter-linux-x64/release/bundle ]; then
      "build/linux-${VERSION}"
   echo "Renamed linux bundle"
 fi
+
+# Optionally publish the APK to a GitHub release, where the app's About page
+# "Check for updates" button looks for new versions. Opt-in:
+#   PUBLISH_APK=1 sh tool/build.sh apk --release
+# Needs a GitHub token (GITHUB_TOKEN / GH_TOKEN, or a logged-in gh CLI).
+# BestToDo only -- see the matching guard above for why.
+if [ "$PUBLISH_APK" = "1" ] && [ "$FLAVOR" != "music" ]; then
+  dart run tool/publish_apk.dart
+fi
+
+exit "$BUILD_STATUS"

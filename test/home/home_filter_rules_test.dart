@@ -1,0 +1,373 @@
+import 'dart:io';
+
+import 'package:besttodo/config.dart';
+import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/view_filter_rules.dart';
+import 'package:besttodo/services/project_service.dart';
+import 'package:besttodo/services/storage_service.dart';
+import 'package:besttodo/utils/label_utils.dart';
+import 'package:besttodo/ui/home_page.dart';
+import 'package:besttodo/ui/settings_page.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+
+class _FakePathProvider extends PathProviderPlatform {
+  _FakePathProvider(this.path);
+  final String path;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => path;
+}
+
+void main() {
+  late Directory tempDir;
+
+  setUp(() async {
+    tempDir = await Directory.systemTemp.createTemp();
+    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    ProjectService.instance.resetForTest();
+    await File('${tempDir.path}/${StorageService.wishlistImportFlagFileName}')
+        .writeAsString('done');
+  });
+
+  tearDown(() {
+    Config.viewFilterRules = {};
+    Config.startInScheduleView = false;
+    Config.resetHideDemoItemsForTest();
+  });
+
+  Future<void> pumpHome(
+    WidgetTester tester, {
+    required List<Task> tasks,
+    required String marker,
+  }) async {
+    await tester.runAsync(() => StorageService().saveTaskList(tasks));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    final markerFinder = find.text(marker);
+    for (var i = 0; i < 300 && markerFinder.evaluate().isEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(markerFinder, findsOneWidget,
+        reason: 'HomePage never loaded the tasks');
+  }
+
+  testWidgets('a Home exclude-tag rule hides matching tasks from the Today tab',
+      (tester) async {
+    final today = DateTime.now();
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules(excludeTags: ['Waiting_for_approval']);
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Visible task', dueDate: today),
+        Task(
+          title: 'Blocked task',
+          dueDate: today,
+          label: 'Waiting_for_approval',
+        ),
+      ],
+      marker: 'Visible task',
+    );
+
+    expect(find.text('Visible task'), findsOneWidget);
+    expect(find.text('Blocked task'), findsNothing);
+  });
+
+  Future<void> dragFirstItemDown(WidgetTester tester, String title) async {
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text(title)));
+    await tester.pump(const Duration(milliseconds: 600));
+    for (var i = 0; i < 8; i++) {
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    // The reorder's save is real file I/O kicked off from inside the
+    // fake-async pump zone (see test/README.md): give it real event-loop
+    // turns so it actually flushes before reading it back.
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+  }
+
+  testWidgets(
+      'Home ships with non-empty default filter rules, but they must not '
+      'block drag-reorder on a tab they do not actually narrow',
+      (tester) async {
+    final today = DateTime.now();
+    // Same defaults Config.load() seeds on every real app start.
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules.defaultsFor(ViewFilterRules.home)!;
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Alpha task', dueDate: today, listRanking: 1),
+        Task(title: 'Beta task', dueDate: today, listRanking: 2),
+        Task(title: 'Gamma task', dueDate: today, listRanking: 3),
+      ],
+      marker: 'Alpha task',
+    );
+    // Nothing in this tab carries a reserved tag, so the default rule isn't
+    // hiding anything here.
+    expect(find.text('Beta task'), findsOneWidget);
+    expect(find.text('Gamma task'), findsOneWidget);
+
+    await dragFirstItemDown(tester, 'Alpha task');
+
+    final saved = await tester.runAsync(() => StorageService().loadTaskList());
+    const titles = {'Alpha task', 'Beta task', 'Gamma task'};
+    final order = saved!.where((t) => titles.contains(t.title)).toList()
+      ..sort((a, b) => (a.listRanking ?? 0).compareTo(b.listRanking ?? 0));
+    expect(order.first.title, isNot('Alpha task'),
+        reason: 'dragging the top task down should have moved it, not '
+            'sprung back to its original position');
+  });
+
+  testWidgets(
+      'a Home filter rule that hides a task in this tab does not block '
+      'drag-reorder, and the hidden task keeps its rank slot', (tester) async {
+    // Regression: any hidden task in a tab (e.g. a Wish/Project-tagged one
+    // under Home's default rule) used to disable reordering the whole tab,
+    // so every drag sprang back.
+    final today = DateTime.now();
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules(excludeTags: ['workstuff']);
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Alpha task', dueDate: today, listRanking: 1),
+        Task(
+          title: 'Blocked task',
+          dueDate: today,
+          listRanking: 2,
+          label: 'workstuff',
+        ),
+        Task(title: 'Beta task', dueDate: today, listRanking: 3),
+        Task(title: 'Gamma task', dueDate: today, listRanking: 4),
+      ],
+      marker: 'Alpha task',
+    );
+    expect(find.text('Blocked task'), findsNothing);
+
+    await dragFirstItemDown(tester, 'Alpha task');
+
+    final saved = await tester.runAsync(() => StorageService().loadTaskList());
+    const titles = {'Alpha task', 'Blocked task', 'Beta task', 'Gamma task'};
+    final order = saved!.where((t) => titles.contains(t.title)).toList()
+      ..sort((a, b) => (a.listRanking ?? 0).compareTo(b.listRanking ?? 0));
+    expect(order.first.title, isNot('Alpha task'),
+        reason: 'dragging the top visible task down should have moved it, '
+            'not sprung back because a rule hides another task in the tab');
+    expect(order[1].title, 'Blocked task',
+        reason: 'only the visible tasks are permuted, among the slots they '
+            'already hold — the hidden task keeps its rank position');
+    expect(order.map((t) => t.listRanking), [1, 2, 3, 4]);
+  });
+
+  testWidgets(
+      'the schedule view applies the same Home exclude-tag rule as the tabs',
+      (tester) async {
+    // Regression: the schedule view used to filter on the structural gate
+    // only, so a phone that starts in that view showed everything the Home
+    // rules hide — including demo items.
+    final today = DateTime.now();
+    Config.startInScheduleView = true;
+    Config.viewFilterRules[ViewFilterRules.home] =
+        ViewFilterRules(excludeTags: ['later']);
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Visible task', dueDate: today),
+        Task(title: 'Hidden task', dueDate: today, label: 'later'),
+      ],
+      marker: 'Visible task',
+    );
+
+    expect(find.text('Hidden task'), findsNothing);
+  });
+
+  testWidgets('the schedule view hides demo items like the tabs do',
+      (tester) async {
+    final today = DateTime.now();
+    Config.startInScheduleView = true;
+    Config.hideDemoItems = true;
+
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Real task', dueDate: today),
+        Task(title: 'Seeded sample', dueDate: today, label: demoToken),
+        Task(
+          title: 'Legacy seeded sample',
+          dueDate: today,
+          description: 'Seeded dev future task',
+        ),
+      ],
+      marker: 'Real task',
+    );
+
+    expect(find.text('Seeded sample'), findsNothing);
+    expect(find.text('Legacy seeded sample'), findsNothing);
+  });
+
+  testWidgets('clearing the rule brings the task back', (tester) async {
+    final today = DateTime.now();
+    await pumpHome(
+      tester,
+      tasks: [
+        Task(title: 'Visible task', dueDate: today),
+        Task(title: 'Also visible', dueDate: today, label: 'later'),
+      ],
+      marker: 'Visible task',
+    );
+
+    expect(find.text('Also visible'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Settings → Filtering rules: adding a tag updates Config and shows a chip',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    // initState kicks off the SMS config file load; walk real-event-loop
+    // slices so the dart:io future completes inside testWidgets (see
+    // test/README.md).
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+
+    // Sections start collapsed, and this one is last, so its chip sits off
+    // the horizontally-scrolled chip row too — scroll it into view before
+    // tapping the chip row's jump-to-section (which then scrolls the lazy
+    // sliver into view and expands it).
+    final filteringChip = find.widgetWithText(ChoiceChip, 'Filtering rules');
+    await tester.ensureVisible(filteringChip);
+    await tester.pumpAndSettle();
+    await tester.tap(filteringChip);
+    await tester.pumpAndSettle();
+
+    final homeExcludeField = find.descendant(
+      of: find.byType(SettingsPage),
+      matching: find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Tag name'),
+    );
+    expect(homeExcludeField, findsWidgets);
+
+    await tester.enterText(homeExcludeField.first, 'Waiting_for_approval');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(
+      Config.viewFilterRules[ViewFilterRules.home]?.excludeTags,
+      contains('Waiting_for_approval'),
+    );
+    expect(find.text('Waiting_for_approval'), findsOneWidget);
+
+    // Removing the chip clears it again (invoke onDeleted directly rather
+    // than hit-testing the small delete glyph, which sits inside the chip's
+    // own gesture handling).
+    final chip = tester.widget<InputChip>(
+      find.widgetWithText(InputChip, 'Waiting_for_approval'),
+    );
+    chip.onDeleted!();
+    await tester.pumpAndSettle();
+    expect(
+      Config.viewFilterRules[ViewFilterRules.home]?.excludeTags,
+      isEmpty,
+    );
+  });
+
+  testWidgets(
+      'Settings → Filtering rules: the demo filter switch is shown and '
+      'toggles Config.hideDemoItems', (tester) async {
+    Config.hideDemoItems = true;
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+
+    final filteringChip = find.widgetWithText(ChoiceChip, 'Filtering rules');
+    await tester.ensureVisible(filteringChip);
+    await tester.pumpAndSettle();
+    await tester.tap(filteringChip);
+    await tester.pumpAndSettle();
+
+    final demoSwitch =
+        find.widgetWithText(SwitchListTile, 'Hide demo and sample items');
+    expect(demoSwitch, findsOneWidget);
+    expect(tester.widget<SwitchListTile>(demoSwitch).value, isTrue);
+
+    await tester.tap(demoSwitch);
+    // The tap awaits Config.save() before the rebuild settles.
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    expect(Config.hideDemoItems, isFalse);
+  });
+
+  testWidgets(
+      'Settings → Filtering rules: the Waiting for Approval view is listed '
+      'with its built-in rule', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+
+    final filteringChip = find.widgetWithText(ChoiceChip, 'Filtering rules');
+    await tester.ensureVisible(filteringChip);
+    await tester.pumpAndSettle();
+    await tester.tap(filteringChip);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Waiting for Approval'), findsOneWidget);
+    expect(
+      find.textContaining('Always excludes Waiting for Approval, Archived, '
+          'and Deleted'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Always shows only items still tagged Waiting '
+          'for Approval'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'Settings → Filtering rules: Food Diary, Alarms and Countdown are '
+      'listed as views', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+
+    final filteringChip = find.widgetWithText(ChoiceChip, 'Filtering rules');
+    await tester.ensureVisible(filteringChip);
+    await tester.pumpAndSettle();
+    await tester.tap(filteringChip);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Food Diary'), findsOneWidget);
+    expect(find.text('Alarms'), findsOneWidget);
+    expect(find.text('Countdown'), findsOneWidget);
+  });
+}

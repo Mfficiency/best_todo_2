@@ -45,6 +45,11 @@ class SmsReportConfig {
     this.completionThresholdPercent = 50,
   }) : recipients = recipients ?? <SmsRecipient>[];
 
+  /// Recipients the daily report actually sends to — paused ones stay in the
+  /// list (and in Settings) but are skipped.
+  List<SmsRecipient> get activeRecipients =>
+      recipients.where((r) => r.enabled).toList();
+
   factory SmsReportConfig.fromJson(Map<String, dynamic> json) {
     final list = json['recipients'];
     return SmsReportConfig(

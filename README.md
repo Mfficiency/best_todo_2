@@ -2,17 +2,23 @@
 
 📝 Swipe-first, ultra-fast to-do app built with Flutter. Tasks default to today. Move with gestures. Notes, labels, and smart rescheduling.
 
+> **Rebuilding or onboarding?** [SPEC.md](SPEC.md) is the complete rebuild specification:
+> every feature, data format, platform mechanism, and the full development history with the
+> reasoning behind each step. Written so a human or AI can rebuild the app from zero.
+
 ## Fundamentals
-1. less than 1 second cold startup
+1. less than 0.5 seconds cold startup
 2. it must not be possible in less clicks/steps
 3. open source
+4. The app serves the user—not the other way around.
+
 
 ## 🚀 MVP Features
 - Add task: description, note, labels
 - Tasks default to today
 - Swipe right: reschedule to tomorrow, 2d, next week, next month
 - Local DB: Hive or Isar
-- <1s cold startup
+- <0.5s cold startup
 - Unit and widget test coverage
 
 ## 🛠️ Getting Started
@@ -23,8 +29,20 @@
 
 flutter pub get
 flutter run -d chrome
-flutter build apk --release #after installing the android SDK
+flutter build apk --release
+#after installing the android SDK
+## windows
+flutter config --enable-windows-desktop
+flutter pub get
+flutter build windows --release
 ```
+
+`flutter run -d chrome` opens a **Which data?** chooser first: **Use demo**
+loads the sample data, **Load real data** pulls your actual tasks from
+Todoist (API token from Todoist → Settings → Integrations → Developer; tick
+"Remember in this browser", or pass it with
+`flutter run -d chrome --dart-define=TODOIST_TOKEN=<token>`). Edits made in a
+real-data session sync back to Todoist; nothing is kept after a reload.
 
 When running the app on Chrome, swipe gestures can be hard to test.
 Each task tile includes a **swipe** icon that performs the same action
@@ -44,6 +62,54 @@ dart run tool/bump_version.dart 0.1.59+29 "swipe both ways"
 # but in theory you should be able to just run
 bash tool/build.sh apk
 ```
+
+On Windows without Git Bash or WSL, run the native PowerShell wrapper from
+`cmd.exe`:
+
+```bat
+powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release
+```
+
+### Local dev build watcher
+This machine may have a Windows Scheduled Task named `BestTodo Dev Build Watch`.
+It runs every 10 minutes from `D:\Code\best_todo_2`, checks whether
+`origin/dev` is ahead, and only then pulls and builds with:
+
+```powershell
+tool\build.ps1 all --release
+```
+
+Turn the watcher off:
+
+```powershell
+Stop-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+Disable-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+```
+
+Turn it back on:
+
+```powershell
+Enable-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+Start-ScheduledTask -TaskName "BestTodo Dev Build Watch"
+```
+
+Check its status:
+
+```powershell
+Get-ScheduledTask -TaskName "BestTodo Dev Build Watch" | Select TaskName,State
+```
+
+The task runs silently in the background (no console window popping up) through a
+windowless `wscript` launcher next to the script:
+
+```powershell
+wscript.exe //B //Nologo "C:\Users\noone\AppData\Local\BestTodo\DevBuildWatch\dev-build-watch-hidden.vbs"
+```
+
+which starts `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File dev-build-watch.ps1`
+with a hidden window.
+
+It writes recent activity to `dev_build_watch.log`.
 
 For example `bash tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.

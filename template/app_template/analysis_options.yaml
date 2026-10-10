@@ -1,0 +1,13 @@
+# Self-contained analyzer config (no external lint package needed so the
+# template resolves offline). Mirrors the host app's lenient stance: legacy
+# infos are tolerated, new code stays clean. The template ships no deprecated
+# APIs of its own.
+analyzer:
+  errors:
+    todo: ignore
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_final_fields: true
+    unnecessary_new: true

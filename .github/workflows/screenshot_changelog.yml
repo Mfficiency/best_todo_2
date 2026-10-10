@@ -6,6 +6,9 @@ on:
     paths-ignore:
       - 'SCREENSHOT_CHANGELOG.md'
       - 'docs/screenshots/home/**'
+      - 'docs/screenshots/music/**'
+      - 'docs/ci/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,7 +16,10 @@ permissions:
 jobs:
   screenshot-changelog:
     if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip-screenshot-changelog]')
-    runs-on: windows-latest
+    # windows-latest moved to an image with Visual Studio 2026 (June 2026).
+    # Flutter <3.35 only knows the VS 2022 CMake generator (VS 18 falls back
+    # to the VS 2019 generator, which fails), so pin the VS 2022 image.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +29,10 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          # 3.22's Windows build requires the VS 2019 CMake generator, which
+          # windows-latest no longer ships (broke silently in June 2026).
+          # Keep in sync with flutter_test.yml.
+          flutter-version: '3.29.2'
           channel: 'stable'
 
       - name: Enable Windows desktop
@@ -33,32 +42,85 @@ jobs:
         run: flutter pub get
 
       - name: Capture home page screenshot
-        run: flutter test integration_test/home_page_screenshot_test.dart -d windows
+        shell: pwsh
+        run: |
+          flutter test integration_test/home_page_screenshot_test.dart -d windows *>&1 | Tee-Object -FilePath capture_output.log
+          exit $LASTEXITCODE
+
+      # Best Music (lib/main_music.dart) is a separate app entry point built
+      # from this same codebase — its own integration test, own failure log,
+      # own screenshot folder — but runs in the same job so it shares the
+      # Windows runner/Flutter setup rather than doubling CI minutes.
+      - name: Capture Best Music screenshots
+        shell: pwsh
+        run: |
+          flutter test integration_test/music_home_page_screenshot_test.dart -d windows *>&1 | Tee-Object -FilePath capture_output_music.log
+          exit $LASTEXITCODE
+
+      # The capture broke silently for weeks because job logs need auth to
+      # read. On failure, commit the test output into the repo so it can be
+      # inspected (and fixed) without GitHub credentials.
+      - name: Publish capture failure log
+        if: failure()
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          New-Item -ItemType Directory -Force docs/ci | Out-Null
+          # .txt, not .log — the repo gitignores *.log, which made git add a
+          # silent no-op the first time around. -f as belt and braces.
+          if (Test-Path capture_output.log) {
+            Copy-Item capture_output.log docs/ci/screenshot_capture_failure.txt -Force
+            git add -f docs/ci/screenshot_capture_failure.txt
+          }
+          if (Test-Path capture_output_music.log) {
+            Copy-Item capture_output_music.log docs/ci/screenshot_capture_failure_music.txt -Force
+            git add -f docs/ci/screenshot_capture_failure_music.txt
+          }
+          git commit -m "ci: record screenshot capture failure log [skip-screenshot-changelog]"
+          foreach ($attempt in 1..3) {
+            git pull --rebase origin ${{ github.ref_name }}
+            git push
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Output "Push attempt $attempt failed; retrying."
+            Start-Sleep -Seconds ($attempt * 3)
+          }
+          Write-Output "Could not publish the capture failure log."
+          exit 1
 
       - name: Save screenshot in repo
         id: screenshot_meta
         shell: pwsh
         run: |
-          $targetDir = "docs/screenshots/home"
-          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-
           $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
           $shortSha = "${{ github.sha }}".Substring(0, 7)
           $folderName = "$timestamp-$shortSha"
+
+          $targetDir = "docs/screenshots/home"
           $targetFolderPath = Join-Path $targetDir $folderName
           New-Item -ItemType Directory -Path $targetFolderPath -Force | Out-Null
-
-          Copy-Item "build/e2e_screenshots/home_page.png" (Join-Path $targetFolderPath "home_page.png") -Force
-          Copy-Item "build/e2e_screenshots/menu_open.png" (Join-Path $targetFolderPath "menu_open.png") -Force
-          Copy-Item "build/e2e_screenshots/settings_page.png" (Join-Path $targetFolderPath "settings_page.png") -Force
-          Copy-Item "build/e2e_screenshots/your_stats_page.png" (Join-Path $targetFolderPath "your_stats_page.png") -Force
-
+          # Copy every captured page so newly added screenshots are archived
+          # without editing this workflow.
+          Copy-Item "build/e2e_screenshots/*.png" $targetFolderPath -Force
           "screenshot_folder=$targetDir/$folderName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $musicTargetDir = "docs/screenshots/music"
+          $musicTargetFolderPath = Join-Path $musicTargetDir $folderName
+          New-Item -ItemType Directory -Path $musicTargetFolderPath -Force | Out-Null
+          Copy-Item "build/e2e_screenshots_music/*.png" $musicTargetFolderPath -Force
+          "screenshot_folder_music=$musicTargetDir/$folderName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Update screenshot changelog
         run: >
           dart run tool/update_screenshot_changelog.dart
           --screenshot-folder "${{ steps.screenshot_meta.outputs.screenshot_folder }}"
+          --branch "${{ github.ref_name }}"
+          --source-sha "${{ github.sha }}"
+
+      - name: Update Best Music screenshot changelog
+        run: >
+          dart run tool/update_screenshot_changelog.dart
+          --screenshot-folder "${{ steps.screenshot_meta.outputs.screenshot_folder_music }}"
           --branch "${{ github.ref_name }}"
           --source-sha "${{ github.sha }}"
 
@@ -68,7 +130,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add SCREENSHOT_CHANGELOG.md docs/screenshots/home
+          # A green run supersedes any published failure log.
+          if (Test-Path docs/ci/screenshot_capture_failure.txt) {
+            git rm -f docs/ci/screenshot_capture_failure.txt
+          }
+          if (Test-Path docs/ci/screenshot_capture_failure_music.txt) {
+            git rm -f docs/ci/screenshot_capture_failure_music.txt
+          }
+          git add SCREENSHOT_CHANGELOG.md docs/screenshots/home docs/screenshots/music
 
           if (git diff --cached --quiet) {
             Write-Output "No screenshot changelog changes to commit."
@@ -76,4 +145,16 @@ jobs:
           }
 
           git commit -m "chore: update home screenshot changelog [skip-screenshot-changelog]"
-          git push
+          # The flutter-tests workflow pushes its packaged report to the same
+          # branch around the same time, so a plain push loses the race and
+          # fails the job (seen on dev repeatedly). Rebase-and-retry like
+          # flutter_test.yml does.
+          foreach ($attempt in 1..3) {
+            git pull --rebase origin ${{ github.ref_name }}
+            git push
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Output "Push attempt $attempt failed; retrying."
+            Start-Sleep -Seconds ($attempt * 3)
+          }
+          Write-Output "Could not push the screenshot changelog."
+          exit 1

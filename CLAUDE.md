@@ -1,0 +1,166 @@
+# CLAUDE.md — AI working guide for BestToDo
+
+Flutter to-do app (Android-first, Windows desktop used for tests/screenshots).
+Read `SPEC.md` for the full rebuild-grade spec and development history — this
+file is the short operational guide.
+
+## Commands
+
+- Analyze: `flutter analyze --no-pub` (pre-existing infos/warnings exist; add none)
+- Tests: `flutter test` runs everything (CI does this). Locally, run only the
+  suites your change touches — `test/core/` always, plus the matching silo:
+  `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
+  `home`, `share`, `sync`, `update`, `tools`, `recurrence` or `music`. See `test/README.md` for the file→suite map. Cross-cutting
+  changes (theme, navigation, pubspec) → full `flutter test`.
+- Smart test runner: `dart run tool/smart_test.dart` figures the above out for
+  you — it looks at what's changed (working tree, or the last commit if
+  nothing's pending) and runs only the matching `test/<area>` suite(s), per
+  the same map as `test/README.md`. A change it can't confidently map (a new
+  file, `pubspec.yaml`, ...) falls back to a full `flutter test`; so does
+  every 10th targeted run and anything past 7 days since the last full run,
+  so the shortcut can't silently drift out of sync with the real suite.
+  `--dry-run` prints the decision without running anything; `--full` forces a
+  full run now. State (mods since the last full run) lives in the gitignored
+  `.smart_test_state.json`.
+- Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
+  → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
+  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main). Best Music has its own
+  suite: `flutter test integration_test/music_home_page_screenshot_test.dart -d windows`
+  → `build/e2e_screenshots_music/`, archived to `docs/screenshots/music/` the same way.
+- Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
+  keystore). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
+  (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
+  separate standalone app from this same codebase (Music Player + MP3 Downloader only, no
+  to-do features — `lib/main_music.dart`, SPEC.md §10.6f). Build it with
+  `sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass
+  -File tool\build.ps1 music-apk --release`). CI also builds and stages it
+  automatically on every push to main/staging/dev (`build_music_apk` job in
+  `build-apk.yml`). The per-flavor rename to `best_<flavor>_<version>.apk` is done
+  by Gradle's `createVersioned<Flavor>ReleaseApk` task — one task per flavor, wired
+  to that flavor's own `assemble<Flavor>Release`, because
+  `build/app/outputs/flutter-apk/` is never cleaned between builds and anything
+  that infers the flavor by looking for an existing `app-<flavor>-release.apk`
+  picks up the *previous* app's leftover.
+- Build everything + ship: `sh tool/build.sh all --release` (alias for
+  `sh tool/build_all.sh --release`), or on Windows without Git Bash/WSL:
+  `powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release`.
+  Builds the BestToDo APK, the Best Music APK **and** the Windows exe, stages both
+  APKs into `github_releases/`, then commits and pushes the current branch so the
+  apps can download them.
+  Switches: `SYNC=0` (no git), `PUSH=0` (commit only), `WINDOWS=0`/`ANDROID=0`
+  (one target), `MUSIC=0` (skip the Best Music APK), `REQUIRE_WINDOWS=1` (a failing
+  Windows build aborts instead of warning).
+- Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
+  release build (`tool/build.sh` does it automatically). Copies the APK to
+  `github_releases/` and deletes the older ones; commit the folder — the app's About page
+  downloads the newest from there ("Download & install") and the other one for
+  "Go back to <version>" (`UpdateService.releasesRef` = the `dev` branch)
+- Build time, duration & size: `tool/build.sh`/`tool/build.ps1` time the
+  `flutter build` call and, on success, run
+  `dart run tool/append_build_time.dart --duration <secs> --target <apk|windows|...> --artifact <apk or Release dir>`,
+  writing/updating a "Local build: <time>" line, a per-target
+  "Build duration (<target>): <time>" line and an "APK size: <MB>" line (or
+  "Build size (<target>)") in that version's CHANGELOG.md entry, and appending
+  `{version, app, target, durationSeconds, sizeBytes, source, finishedAt, os}` to
+  `build_history.json` (committed, capped at the newest 1000 entries) so build times and
+  app size are tracked over time. CI does the same for every push to `dev`
+  (`build-apk.yml`, both apps): `--source ci` writes "CI build: <UTC time>" and
+  "Build duration (apk, CI)" instead, commits and pushes — so a version that's only ever
+  built by CI still gets its notes.
+  Since CHANGELOG.md is bundled as an asset by that same build, the Changelog page
+  only ever shows the *previous* build's time/duration — expected, not a bug.
+- Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
+  (or `PUBLISH_APK=1 sh tool/build.sh apk --release` to build + publish). Creates
+  release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk`; the About
+  page "Check for updates" button downloads and installs it in-app. Token from
+  `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
+- Test results shown in-app come from `assets/test_report.json`, packaged into every
+  build. CI keeps it current; locally refresh it with
+  `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`
+  branch), or from your own run:
+  `flutter test --machine > build/ci/machine.jsonl` then
+  `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
+- Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
+  or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`.
+  Best Music versions and changelogs independently of BestToDo (SPEC.md §10.6i) — add
+  `--music` to bump `MUSIC_VERSION` + `CHANGELOG_MUSIC.md` instead
+- Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
+  build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
+
+## Workflow ("bump, sync and build")
+
+1. Bump version + CHANGELOG entry for every feature batch.
+2. Commit to `dev`, push (`sync`). Branch flow: feature → dev → staging → main.
+3. `flutter build apk --release` when a release is asked for.
+4. Keep `SPEC.md` updated when adding/changing features (it must stay
+   rebuild-grade). Deep-dive docs live in `.claude/` — `.claude/README.md` is
+   the index (rebuild playbook, testing, CI/automation, environment,
+   engineering principles, alarm-work history).
+
+## Architecture in one minute
+
+- `lib/models/` — plain mutable models with `toJson`/`fromJson` (tolerant of
+  missing keys). `Task` is the core; tasks live in one list, bucketed into
+  tabs by `dueDate` distance (Today/Tomorrow/Day after/Next week/Next
+  month/Future).
+- `lib/services/` — singletons or small classes persisting JSON files in the
+  app documents dir (`flush: true`, errors swallowed so web/tests keep
+  working). Examples: `StorageService` (tasks), `AlarmService`+storage,
+  `ProjectService` (`projects.json`, seeded with 3 placeholder projects).
+- `lib/ui/` — pages; `home_page.dart` is the hub (drawer, tabs, search,
+  add-task row). Subpages use `buildSubpageAppBar`.
+- Alarms are the reliability showpiece (escalation ladder + watchdog +
+  `alarm_log.txt`); do not touch scheduling paths without reading SPEC §5.
+- Android widgets: `android/.../AlarmsWidgetProvider.kt` (alarms list; taps
+  route via `besttodoalarm://` URIs handled in `main.dart`) and
+  `SimpleWidgetProvider.kt` (today's tasks).
+
+## Conventions
+
+- Tests live in per-area suites (`test/core|alarms|projects|home|tools/`);
+  add new tests to the suite matching the feature, new directory for a new
+  feature area. Core is reserved for task model/persistence/bucketing + smoke
+  tests.
+- Tests mirror existing style: plain `test()` for logic, `testWidgets` with
+  `MaterialApp(home: ...)` for widgets, `_FakePathProvider extends
+  PathProviderPlatform` + temp dir for anything touching persistence.
+  `ProjectService.instance.resetForTest()` between tests.
+- **Real file I/O hangs inside `testWidgets`** (the fake-async zone never
+  services dart:io completions — locally AND on CI; the unmitigated pattern in
+  startup_times_page_test kept `flutter_test.yml` red from 0.1.87 until fixed):
+  - Create temp dirs / pre-save files in `setUp` (outside the fake zone) or
+    wrap in `await tester.runAsync(() => ...)`.
+  - I/O started inside the widget (initState loads, save-on-tap): a single
+    runAsync delay only advances ~one I/O hop. Loop rounds of
+    `runAsync(delay 5ms)` + `pump()` — condition-driven for loads (until a
+    marker widget appears), FIXED count (~60) after taps whose handler awaits
+    a write before setState (in-memory state updates before the write ends,
+    so polling exits too early). See home_search_test / project_board_page_test.
+  - Always run with `--timeout 60s` locally so hangs fail fast.
+- `find.byType` matches exact runtimeType: `FilledButton.icon(...)` builds a
+  private subtype, so find its label text instead.
+- Never dispose `TextEditingController`s right after `showDialog` returns —
+  the exit animation still builds the fields; give the dialog its own
+  StatefulWidget owning the controllers (see `_ProjectEditDialog`).
+- `Config.isDev` is true in debug/tests → dev seed data appears when storage
+  is empty; widget tests that need deterministic lists should pre-save tasks
+  via `StorageService` first.
+- UI text findable by tooltip is the norm for icon buttons ("Save", "Edit
+  project", "Clear search", "Open navigation menu").
+- Don't introduce new deprecation warnings; existing `withOpacity`/
+  `onWillAccept` infos are legacy and get cleaned opportunistically.
+- Changelog entries are user-facing bullet points under `## [x.y.z] - date`.
+- **Standing rule — MLR tag is Worklist-exclusive**: any task tagged/labeled
+  `mlr` shows *only* inside the Worklist tool, never in the regular home
+  tabs, schedule view, Wishlist, Projects/board, or the Markdown export —
+  the user has asked for this once and it does not need to be requested
+  again. Enforced structurally in `ItemViews.isVisibleInMainViews`
+  (`lib/services/item_views.dart`), the same gate Food Diary/Research use,
+  via `worklistToken`/`hasWorklistToken` in `lib/utils/label_utils.dart`.
+  When touching task-visibility filtering (home tabs, schedule view,
+  wishlist, projects, the home-screen widget), preserve this gate rather
+  than reintroducing a path that reads `_tasks`/the task list unfiltered.
+  Both home bodies must go through `ItemViews.isOnHomeScreen` — the tabs via
+  `homeBucket`, the schedule view via `homeVisible` — so the Home filter
+  rules and the demo gate can never apply to one and not the other (that
+  leak was 0.2.46's bug).

@@ -1,19 +1,77 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Network access for the in-app update check (GitHub releases) in
+         release builds; debug/profile get it implicitly via their manifests. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Tools -> MP3 Downloader: lets the user grant "All files access" so a
+         shared folder they pick (e.g. Music) is actually writable, instead
+         of always being redirected to the app's private storage. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Local speech-to-text (mic button beside the Food Diary and add-task
+         text fields) — captured on-device via Android's SpeechRecognizer. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Full-screen alarm UI over the lock screen when an alarm rings. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- "set an alarm" — lets the app hand alarms to the system alarm clock. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Lets the app ask to be exempted from battery optimization / Doze.
+         This is the main reason a scheduled alarm silently never fires on
+         aggressive OEMs (Samsung "Sleeping apps", etc.) — without the
+         exemption the OS deep-sleeps the app and drops the alarm. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- "run foreground service" / "control vibration" — capabilities the
+         background alarm delivery path uses when it wakes the app. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Music Player: background playback foreground service + its media
+         notification/lock-screen controls (audio_service). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Best Music: keeps the background song-info search / BPM detection
+         running while other apps are open (BackgroundWorkService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- In-app updates (About page): lets the app hand a downloaded APK to
+         the system package installer. The user still confirms the install
+         and grants the one-time "install unknown apps" toggle. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Optional: the user explicitly grants Usage Access from the wellbeing
+         dashboard. Android does not show a runtime permission dialog. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        android:protectionLevel="signature|privileged|development|appop" />
+    <!-- Read-only Health Connect access for Tools -> Fitness Activity. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <!-- Lets the user explicitly allow browsing records older than 30 days. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
     <application
-        android:label="BestToDo"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- singleTask (not singleTop) and the default task affinity (the
+             app's own package, so BestToDo and Best Music stay separate):
+             there is only ever ONE MainActivity / Flutter engine. A launch
+             from the home screen, the media notification, a widget, a
+             besttodoalarm:// link or ShareActivity re-fronts that one
+             instance and reaches it via onNewIntent. With singleTop plus
+             taskAffinity="" (the old Flutter template default) such a
+             launch could start a second copy of the app in a new task. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
+            android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -30,6 +88,63 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Health Connect shows its own permissions-rationale screen
+                 before the consent dialog; without an activity declaring
+                 this action the health plugin's requestAuthorization()
+                 silently fails to open anything (Tools -> Fitness Activity's
+                 "Connect" button looked like it did nothing). -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <!-- Required alongside the intent-filter above so Health Connect's
+             own settings can show which permissions this app requested. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+        <!-- Share-sheet entry: sharing text/links/email addresses, images or
+             PDFs from any app (Chrome, YouTube, Maps, Gmail, Photos, ...)
+             offers BestToDo, which opens the quick-add screen prefilled from
+             the shared content. A translucent trampoline (not MainActivity
+             itself): the share sheet starts its target inside the sharing
+             app's task, and a second MainActivity there would mean a second
+             Flutter engine. ShareActivity copies any shared file into the
+             app's own cache dir (a content:// URI's read grant dies with
+             this activity), forwards everything into the app's real task
+             and finishes. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
@@ -39,6 +154,13 @@
         <service
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
             android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <!-- Receiver that AlarmManager's PendingIntent targets when a scheduled
+             alarm fires. It hands off to AlarmService to run the Dart callback.
+             Without it, alarms fire in the OS but are never delivered to the app,
+             so the daily SMS report never runs. -->
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
             android:exported="false" />
         <receiver
             android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"
@@ -57,6 +179,124 @@
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/simple_widget_info" />
         </receiver>
+        <receiver
+            android:name=".AlarmsWidgetProvider"
+            android:exported="true"
+            android:label="@string/alarms_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/alarms_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".FoodDiaryWidgetProvider"
+            android:exported="true"
+            android:label="@string/food_diary_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/food_diary_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".FoodDiaryButtonWidgetProvider"
+            android:exported="true"
+            android:label="@string/food_diary_button_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/food_diary_button_widget_info" />
+        </receiver>
+        <!-- Receives background taps (alarm toggles) from the home-screen widget -->
+        <receiver
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true" />
+
+        <!-- flutter_local_notifications: deliver and reschedule exact alarms,
+             including after a device reboot, and handle action buttons. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
+
+        <!-- Music Player background playback: notification + lock-screen
+             media controls, headset buttons (audio_service). -->
+        <!-- The Music widgets' play button: asks "Play out loud?" over the
+             home screen when nothing is connected, else just plays
+             (MusicPlayGuardActivity). See-through, its own task, never in
+             Recents. -->
+        <activity
+            android:name=".MusicPlayGuardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!-- Best Music's background song-info search (MusicMetadataEnricher):
+             an ongoing "Filling in song info…" notification that keeps the
+             process alive while other apps are in front. specialUse because
+             no standard type fits (dataSync is capped at 6 h a day). -->
+        <service
+            android:name=".BackgroundWorkService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Looks up missing song metadata online and detects song tempo on the device, on the user's own music library" />
+        </service>
+        <service
+            android:name="com.ryanheise.audioservice.AudioService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+            android:exported="true"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Shares the downloaded update APK (in the cache dir) with the
+             system package installer via a content:// URI — file:// URIs are
+             rejected since Android 7. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -67,6 +307,21 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Package-visibility requirement (Android 11+) for the
+             speech_to_text plugin to find the device's speech recognizer. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <!-- Package-visibility requirement (Android 11+) for the health
+             plugin to detect whether Health Connect is installed, and to
+             find its permissions-rationale screen. Without these, checks
+             like isHealthConnectAvailable() report "not installed" even
+             when it is, and requestAuthorization() has nothing to launch. -->
+        <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="com.sec.android.app.shealth" />
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
     </queries>
 </manifest>

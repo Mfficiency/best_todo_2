@@ -1,3 +1,4 @@
+import '../models/project.dart';
 import '../models/task.dart';
 
 /// Default deadline time of day for tasks, expressed in minutes since
@@ -10,18 +11,48 @@ void sortTasks(List<Task> list) {
   list.sort((a, b) {
     final doneCompare = (a.isDone ? 1 : 0).compareTo(b.isDone ? 1 : 0);
     if (doneCompare != 0) return doneCompare;
-    return (a.listRanking ?? 1 << 31).compareTo(b.listRanking ?? 1 << 31);
+    return (a.listRanking ?? 1 << 31)
+        .compareTo(b.listRanking ?? 1 << 31);
   });
 }
 
-/// Ensures every task's deadline time defaults to 18:00. When several tasks
-/// fall on the same calendar day the time is incremented by a minute
-/// (18:01, 18:02, ...) so that no two tasks on the same day share a time.
-///
-/// Ordering within a day follows [listRanking] (then [Task.uid] for a stable
-/// result), so the earliest-ranked task keeps 18:00. Tasks without a due date
-/// are left untouched. The calendar date itself is never changed; only the
+/// Dev-only seed helper: spreads [seedTasks] across [projects] — one task per
+/// Kanban column (To-Do/Ongoing/Closed) in each project — so the Projects
+/// tool opens with populated cards and boards in dev builds. Assignment goes
+/// round-robin over the projects, filling every project's To-Do column
+/// first, then Ongoing, then Closed; tasks beyond `projects × 3` are left
+/// untouched. No-op when either list is empty or when any seed task already
+/// carries a project, so manual (re)assignments survive reloads.
+void assignDevProjectSeed(List<Task> seedTasks, List<Project> projects) {
+  if (seedTasks.isEmpty || projects.isEmpty) return;
+  if (seedTasks.any((t) => t.projectId != null)) return;
+  const stages = <String>[
+    Task.kanbanTodo,
+    Task.kanbanOngoing,
+    Task.kanbanClosed,
+  ];
+  final slots = projects.length * stages.length;
+  final limit = seedTasks.length < slots ? seedTasks.length : slots;
+  for (var i = 0; i < limit; i++) {
+    seedTasks[i].projectId = projects[i % projects.length].id;
+    seedTasks[i].kanbanStatus = stages[(i ~/ projects.length) % stages.length];
+  }
+}
+
+/// Ensures every task's deadline time defaults into the 18:00+ range, with
+/// several tasks on the same calendar day incrementing by a minute (18:01,
+/// 18:02, ...) so that no two share a time. Tasks without a due date are
+/// left untouched. The calendar date itself is never changed; only the
 /// time-of-day component is normalized.
+///
+/// A task that already sits on a distinct default-range slot keeps it as-is,
+/// even if its [listRanking] relative to its day-mates has since changed —
+/// this runs on every task-list save (see HomePage._saveTasks), so without
+/// that stability, completing or deleting one task would reshuffle every
+/// other same-day task's time as an unrelated, invisible side effect. Only a
+/// task that's new to the default range, or actually collides with another,
+/// gets assigned a fresh slot — in [listRanking] order (then [Task.uid] for
+/// a stable tie-break) among just those needing one.
 void applyDefaultDeadlineTimes(List<Task> tasks) {
   final byDay = <String, List<Task>>{};
   for (final task in tasks) {
@@ -31,18 +62,42 @@ void applyDefaultDeadlineTimes(List<Task> tasks) {
     byDay.putIfAbsent(key, () => <Task>[]).add(task);
   }
 
+  const lastMinuteOfDay = 24 * 60 - 1;
+
   for (final dayTasks in byDay.values) {
-    dayTasks.sort((a, b) {
-      final ra = a.listRanking ?? 1 << 31;
-      final rb = b.listRanking ?? 1 << 31;
-      if (ra != rb) return ra.compareTo(rb);
-      return a.uid.compareTo(b.uid);
-    });
-    for (var i = 0; i < dayTasks.length; i++) {
-      final task = dayTasks[i];
+    // Tasks with an explicitly chosen time (e.g. placed on the Chronize
+    // timeline) are never touched here.
+    final candidates = dayTasks.where((t) => !t.hasExplicitTime).toList()
+      ..sort((a, b) {
+        final ra = a.listRanking ?? 1 << 31;
+        final rb = b.listRanking ?? 1 << 31;
+        if (ra != rb) return ra.compareTo(rb);
+        return a.uid.compareTo(b.uid);
+      });
+
+    final usedMinutes = <int>{};
+    final needsSlot = <Task>[];
+    for (final task in candidates) {
       final due = task.dueDate!;
-      // Cap at 23:59 so the time never spills into the next calendar day.
-      final minutes = (defaultDeadlineMinutesOfDay + i).clamp(0, 24 * 60 - 1);
+      final minute = due.hour * 60 + due.minute;
+      if (minute >= defaultDeadlineMinutesOfDay && usedMinutes.add(minute)) {
+        continue; // Already on a unique default-range slot — leave it.
+      }
+      needsSlot.add(task);
+    }
+
+    var slot = 0;
+    for (final task in needsSlot) {
+      var minutes =
+          (defaultDeadlineMinutesOfDay + slot).clamp(0, lastMinuteOfDay);
+      while (usedMinutes.contains(minutes) && minutes < lastMinuteOfDay) {
+        slot++;
+        minutes =
+            (defaultDeadlineMinutesOfDay + slot).clamp(0, lastMinuteOfDay);
+      }
+      usedMinutes.add(minutes);
+      slot++;
+      final due = task.dueDate!;
       final hour = minutes ~/ 60;
       final minute = minutes % 60;
       final updated = DateTime(due.year, due.month, due.day, hour, minute);
