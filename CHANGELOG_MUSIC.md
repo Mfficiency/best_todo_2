@@ -8,6 +8,9 @@ nothing has been copied over here.
 
 ## [0.3.20] - 2026-10-11
 - Dev, Staging and regular builds are now separate apps ("Best Music Dev", "Best Music Staging", "Best Music") that can be installed side by side, and each one only updates itself from its own channel's GitHub releases (checked every 15 minutes); the About page shows the channel next to the version
+- Local build: 2026-10-11 14:41
+- Build duration (apk): 3m 15s
+- APK size: 64.1 MB
 
 ## [0.3.19] - 2026-10-09
 - Fixed: "Ask before playing out loud" didn't ask when you pressed play on the home-screen widget — it now shows the question right over your home screen (and just plays when headphones or a speaker are connected)
