@@ -1,0 +1,28 @@
+name: Laptop build
+
+# Asks the laptop to pull and build this push right away: dispatches to
+# Mfficiency/laptop-builder (private), whose self-hosted runner on the laptop
+# runs the local build. Needs the secret LAPTOP_BUILD_TOKEN (fine-grained,
+# laptop-builder only, Contents: read and write); skips without it.
+# Commits with [skip ci] (the build's own commits) don't trigger it.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask the laptop to build
+        env:
+          GH_TOKEN: ${{ secrets.LAPTOP_BUILD_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::LAPTOP_BUILD_TOKEN is not set; the laptop builds at its next logon instead."
+            exit 0
+          fi
+          gh api repos/Mfficiency/laptop-builder/dispatches             -f event_type=build -f 'client_payload[app]=BestTodo' -f "client_payload[sha]=${GITHUB_SHA::7}"
