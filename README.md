@@ -37,6 +37,13 @@ flutter pub get
 flutter build windows --release
 ```
 
+`flutter run -d chrome` opens a **Which data?** chooser first: **Use demo**
+loads the sample data, **Load real data** pulls your actual tasks from
+Todoist (API token from Todoist → Settings → Integrations → Developer; tick
+"Remember in this browser", or pass it with
+`flutter run -d chrome --dart-define=TODOIST_TOKEN=<token>`). Edits made in a
+real-data session sync back to Todoist; nothing is kept after a reload.
+
 When running the app on Chrome, swipe gestures can be hard to test.
 Each task tile includes a **swipe** icon that performs the same action
 as dragging the tile. Use this button to simulate a swipe when testing

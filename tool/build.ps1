@@ -9,6 +9,37 @@ function Get-RepoRoot {
   return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
 
+# Exit code of a native command, without throwing or printing its output.
+function Test-Native {
+  param([string]$Exe, [string[]]$Arguments = @())
+  $saved = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $Exe @Arguments *> $null
+    return $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $saved
+  }
+}
+
+# The commit a release build is for: HEAD, or, when HEAD is this script's own
+# APK commit (it only changes $Folder), the newest commit below it that
+# changes something else. So an APK commit whose release went out finds that
+# release and stops, a release that failed after the push is retried, and a
+# push the APK commit was rebased onto still gets built.
+function Get-SourceCommit {
+  param([string]$Folder)
+  $commit = (& git rev-parse HEAD).Trim()
+  while ($true) {
+    $parents = @((& git rev-list --parents -n 1 $commit).Trim() -split ' ' | Select-Object -Skip 1)
+    if ($parents.Count -ne 1) { return $commit }
+    if ((Test-Native "git" @("diff", "--quiet", $parents[0], $commit, "--", ".", ":(exclude)$Folder")) -ne 0) {
+      return $commit
+    }
+    $commit = $parents[0]
+  }
+}
+
 function Invoke-Checked {
   param(
     [Parameter(Mandatory = $true)]
@@ -372,11 +403,15 @@ function Invoke-BuildAll {
 # `build.ps1 release` -- the laptop builder's entry point (one dedicated clone
 # per branch, see SPEC.md section 11 "Laptop channel builds"). Builds BOTH apps' release
 # APKs for the channel in BUILD_CHANNEL (dev / staging / main; unset = main)
-# with versionCode BUILD_NUMBER, and with PUBLISH=1 publishes one GitHub
-# release per app (tool/publish_apk.dart). Commits and pushes nothing: no
-# version bumps, no changelog build notes, no github_releases/ staging.
-# An app whose release for this exact build already exists is skipped; the
-# other one is still built. Exits non-zero if any app failed.
+# with versionCode BUILD_NUMBER into github_releases/<channel>/ (newest 2 per
+# app kept), and with PUBLISH=1 commits and pushes that folder to the branch
+# ([skip ci], so it doesn't trigger another build), then publishes one GitHub
+# release per app (tool/publish_apk.dart). Nothing else is committed: no
+# version bumps, no changelog build notes. An app whose release for this
+# exact build already exists is skipped; the other one is still built. When
+# HEAD only changes github_releases/ (this script's own commit), the build is
+# for the commit below it (Get-SourceCommit). Exits non-zero if any app
+# failed.
 function Get-KeyProperties {
   $path = "android/key.properties"
   if (-not (Test-Path -LiteralPath $path)) {
@@ -414,6 +449,18 @@ function Invoke-ChannelRelease {
     throw "BUILD_NUMBER must be an integer (got '$buildNumber')"
   }
   $publish = ($env:PUBLISH -eq "1")
+  $sha = Get-SourceCommit "github_releases"
+  $head = (& git rev-parse HEAD).Trim()
+  if ($sha -ne $head) {
+    Write-Host "==> HEAD only changes github_releases/; building $($sha.Substring(0, 7)) below it"
+    # The builder's number is 10000 + HEAD's commit count; use the source's.
+    if ($buildNumber -ne "") {
+      $buildNumber = "$([int]$buildNumber - ([int](& git rev-list --count $head) - [int](& git rev-list --count $sha)))"
+    }
+  }
+  $branch = "$env:BUILD_BRANCH".Trim()
+  if ($branch -eq "") { $branch = (& git rev-parse --abbrev-ref HEAD).Trim() }
+  if ($branch -eq "" -or $branch -eq "HEAD") { $branch = $channel }
 
   Get-KeyProperties
   # Belt and braces: android/app/build.gradle.kts fails the build instead of
@@ -421,8 +468,8 @@ function Invoke-ChannelRelease {
   $env:REQUIRE_RELEASE_KEY = "1"
 
   $apps = @(
-    @{ Flavor = "todo"; Name = "BestToDo"; Args = @("--flavor", "todo") },
-    @{ Flavor = "music"; Name = "Best Music"; Args = @("--flavor", "music", "-t", "lib/main_music.dart") }
+    @{ Flavor = "todo"; Name = "BestToDo"; Asset = "BestToDo"; VersionFile = "pubspec.yaml"; Args = @("--flavor", "todo") },
+    @{ Flavor = "music"; Name = "Best Music"; Asset = "BestMusic"; VersionFile = "MUSIC_VERSION"; Args = @("--flavor", "music", "-t", "lib/main_music.dart") }
   )
   $numberArgs = @()
   if ($buildNumber -ne "") { $numberArgs = @("--build-number", $buildNumber) }
@@ -457,6 +504,8 @@ function Invoke-ChannelRelease {
   }
 
   $failed = @()
+  $built = @()
+  $keep = 2
   foreach ($app in $todo) {
     $flavor = $app.Flavor
     try {
@@ -478,20 +527,52 @@ function Invoke-ChannelRelease {
       if (-not (Test-Path -LiteralPath $apk)) { throw "build produced no $apk" }
       $seconds = [int][Math]::Round($sw.Elapsed.TotalSeconds)
 
+      # Every build lands in github_releases/<channel>/ (one folder per
+      # channel, so merging dev -> staging -> main never conflicts there),
+      # named like its release asset. Only the newest $keep APKs per app
+      # stay; older ones remain on the GitHub releases.
       $suffix = if ($channel -eq "main") { "" } else { "-$channel" }
-      $out = "build/app/outputs/flutter-apk/best_$flavor$suffix-release.apk"
+      $line = Select-String -Path $app.VersionFile -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)' |
+        Select-Object -First 1
+      $name = $line.Matches[0].Groups[1].Value
+      $number = if ($buildNumber -ne "") { $buildNumber } else { $line.Matches[0].Groups[2].Value }
+      $dir = Join-Path "github_releases" $channel
+      New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      $out = Join-Path $dir "$($app.Asset)-$name+$number$suffix.apk"
       Copy-Item -LiteralPath $apk -Destination $out -Force
+      Get-ChildItem (Join-Path $dir "$($app.Asset)-*.apk") |
+        Sort-Object { [int]([regex]::Match($_.BaseName, '\+([0-9]+)').Groups[1].Value) } -Descending |
+        Select-Object -Skip $keep |
+        Remove-Item -Force
       Write-Host "    built $out in ${seconds}s"
-
-      if ($publish) {
-        Invoke-Checked "dart" (@("run", "tool/publish_apk.dart", "--app", $flavor,
-          "--channel", $channel, "--apk", $out, "--duration", "$seconds") + $numberArgs)
-      } else {
-        Write-Host "    PUBLISH is not 1: not publishing $($app.Name)"
-      }
+      $built += @{ App = $app; Apk = $out; Seconds = $seconds }
     } catch {
       Write-Warning "$($app.Name): $_"
       $failed += $app.Name
+    }
+  }
+
+  if (-not $publish) {
+    Write-Host "    PUBLISH is not 1: nothing committed or published"
+  } elseif ($built.Count -gt 0) {
+    # Commit the APKs to the branch before releasing: if the push fails,
+    # nothing is released and the next run of this build does both.
+    Invoke-Checked "git" @("add", "-A", "--", (Join-Path "github_releases" $channel))
+    if ((Test-Native "git" @("diff", "--cached", "--quiet")) -ne 0) {
+      $names = ($built | ForEach-Object { $_.App.Name }) -join " + "
+      Invoke-Checked "git" @("commit", "-q", "-m", "build: $names $buildNumber ($channel) [skip ci]")
+      Invoke-Checked "git" @("pull", "--rebase", "--autostash", "-q", "origin", $branch)
+      Invoke-Checked "git" @("push", "-q", "origin", "HEAD:refs/heads/$branch")
+    }
+    foreach ($b in $built) {
+      try {
+        Invoke-Checked "dart" (@("run", "tool/publish_apk.dart", "--app", $b.App.Flavor,
+          "--channel", $channel, "--apk", $b.Apk, "--target", $sha,
+          "--duration", "$($b.Seconds)") + $numberArgs)
+      } catch {
+        Write-Warning "$($b.App.Name): $_"
+        $failed += $b.App.Name
+      }
     }
   }
 

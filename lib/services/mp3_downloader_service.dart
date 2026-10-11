@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/io_client.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
@@ -10,6 +12,8 @@ import 'log_service.dart';
 import 'mp4_metadata_writer.dart';
 import 'playlist_video_ids.dart';
 import 'track_title.dart';
+import 'video_transcript_service.dart' show VideoTranscriptService;
+import 'youtube_network_route.dart';
 import 'youtube_search_api.dart';
 
 /// One candidate track shown to the user when a search query is ambiguous —
@@ -542,37 +546,77 @@ class Mp3DownloaderService {
   /// Subscriptions feed's playback — see `YoutubeAudioSource`): the same
   /// client walk and PoToken-wall probe a download uses, so whatever URL
   /// comes back can be read in [kAudioChunkBytes] range requests to the end.
+  /// Stands in for one route's resolve in [_resolveStream] (tests).
+  @visibleForTesting
+  Future<ResolvedAudioStream> Function(String videoId, YoutubeRoute route)?
+      routeResolverOverride;
+
   Future<ResolvedAudioStream> resolveAudioStream(String videoId) async {
-    final http = HttpClient()..connectionTimeout = const Duration(seconds: 20);
-    try {
-      final resolved = await _resolveStream(videoId, http)
-          .timeout(kResolveTimeout, onTimeout: () {
-        throw Mp3DownloadException(
-            'Timed out working out how to stream this video.');
-      });
-      final container = resolved.info.container;
-      return ResolvedAudioStream(
-        url: resolved.info.url,
-        totalBytes: resolved.totalBytes,
-        contentType: container == yt_explode.StreamContainer.mp4
-            ? 'audio/mp4'
-            : 'audio/${container.name}',
-      );
-    } finally {
-      http.close(force: true);
-    }
+    final resolved = await _resolveStream(videoId)
+        .timeout(kResolveTimeout, onTimeout: () {
+      throw Mp3DownloadException(
+          'Timed out working out how to stream this video.');
+    });
+    return ResolvedAudioStream(
+      url: resolved.url,
+      totalBytes: resolved.totalBytes,
+      contentType: resolved.isMp4 ? 'audio/mp4' : 'audio/${resolved.extension}',
+      route: resolved.route,
+    );
   }
 
-  /// Picks the best audio stream for [videoId], trying each client in
-  /// [_streamClients] until one both returns audio streams *and* proves it
-  /// will serve bytes past the 1 MiB PoToken wall.
-  Future<_ResolvedStream> _resolveStream(
-      String videoId, HttpClient http) async {
+  /// Finds a stream for [videoId] that serves all its bytes, walking
+  /// [YoutubeRoute.tryOrder]: the phone's default connection, then pinned
+  /// to IPv4, then IPv6 (each with the [_streamClients] walk), then a
+  /// public Invidious server relaying the audio. Whatever works is
+  /// remembered as [YoutubeRoute.lastWorking] and its [_ResolvedStream.route]
+  /// tells the caller how to fetch the bytes — a stream URL only works from
+  /// the address that resolved it.
+  Future<_ResolvedStream> _resolveStream(String videoId) async {
+    final problems = <String>[];
+    for (final route in YoutubeRoute.tryOrder()) {
+      final http = httpClientForRoute(route);
+      try {
+        final override = routeResolverOverride;
+        final resolved = override != null
+            ? await override(videoId, route).then((r) => _ResolvedStream(
+                url: r.url,
+                totalBytes: r.totalBytes,
+                extension: r.contentType == 'audio/mp4' ? 'm4a' : 'webm',
+                route: route))
+            : route == YoutubeRoute.invidious
+                ? await _resolveViaInvidious(videoId, http)
+                : await _resolveViaClients(videoId, route, http);
+        if (YoutubeRoute.lastWorking != route) {
+          _log('YouTube reachable via ${route.label} — using it from now on');
+        }
+        YoutubeRoute.lastWorking = route;
+        return resolved;
+      } catch (e) {
+        problems.add('${route.label}: $e');
+        _log('Route ${route.label} failed for $videoId: $e');
+      } finally {
+        http.close(force: true);
+      }
+    }
+    throw Mp3DownloadException(
+      'YouTube would not serve this video over any connection '
+      '(${problems.join('; ')}). It may be age-restricted, private or '
+      'region-locked — or this network is blocked and no relay answered.',
+    );
+  }
+
+  /// The [_streamClients] walk over one [route]: picks the best audio
+  /// stream from the first client that returns audio streams *and* proves
+  /// it will serve bytes past the 1 MiB PoToken wall.
+  Future<_ResolvedStream> _resolveViaClients(
+      String videoId, YoutubeRoute route, HttpClient http) async {
     Object? lastError;
     for (final apiClient in _streamClients) {
       final name = ((apiClient.payload['context']
               as Map)['client'] as Map)['clientName'] as String;
-      final client = yt_explode.YoutubeExplode();
+      final client = yt_explode.YoutubeExplode(
+          httpClient: yt_explode.YoutubeHttpClient(IOClient(http)));
       try {
         final manifest = await client.videos.streamsClient
             .getManifest(videoId, ytClients: [apiClient]);
@@ -590,31 +634,77 @@ class Mp3DownloaderService {
         final info = (mp4Streams.isNotEmpty ? mp4Streams : audioOnly)
             .withHighestBitrate();
         final total = info.size.totalBytes;
-        // Probe a byte well past the wall. A client that 403s here would
-        // otherwise stall the download partway with no useful error.
-        if (total > kAudioChunkBytes) {
-          final ok = await _probeRange(http, info.url, total - 1024, total - 1);
-          if (!ok) {
-            _log('Client $name: serves only the first MiB (403 past the '
-                'PoToken wall), trying next client');
-            continue;
-          }
+        // Probe a byte well past the wall — over this same route. A client
+        // that 403s here would otherwise stall playback partway.
+        if (total > 1024 &&
+            !await _probeRange(http, info.url, total - 1024, total - 1)) {
+          _log('Client $name (${route.label}): stream refused past the '
+              'first bytes, trying next client');
+          continue;
         }
-        _log('Client $name: using ${info.container.name} '
+        _log('Client $name (${route.label}): using ${info.container.name} '
             '${info.bitrate}, $total bytes');
-        return _ResolvedStream(info, total);
+        return _ResolvedStream(
+          url: info.url,
+          totalBytes: total,
+          extension: _extensionFor(info.container),
+          route: route,
+        );
       } catch (e) {
         lastError = e;
-        _log('Client $name failed: $e');
-      } finally {
-        client.close();
+        _log('Client $name (${route.label}) failed: $e');
       }
+      // (No client.close(): that would close [http], which the next client
+      // and the caller still need; the caller closes it.)
     }
     throw Mp3DownloadException(
-      'YouTube would not serve this track to any client'
-      '${lastError == null ? '' : ' ($lastError)'}. '
-      'It may be age-restricted, private, or region-locked.',
-    );
+        'no client could stream it${lastError == null ? '' : ' ($lastError)'}');
+  }
+
+  /// A public Invidious server fetches the audio for us (`local=true` makes
+  /// its stream URLs point back at the server itself), so YouTube only sees
+  /// the server's address — the way out when this network is blocked.
+  Future<_ResolvedStream> _resolveViaInvidious(
+      String videoId, HttpClient http) async {
+    Object? lastError;
+    for (final instance in VideoTranscriptService.invidiousInstances) {
+      try {
+        final base = Uri.parse(instance);
+        final request = await http
+            .getUrl(base.replace(
+                path: '/api/v1/videos/$videoId',
+                queryParameters: {'local': 'true', 'fields': 'adaptiveFormats'}))
+            .timeout(const Duration(seconds: 15));
+        final response =
+            await request.close().timeout(const Duration(seconds: 15));
+        final body = await response
+            .transform(utf8.decoder)
+            .join()
+            .timeout(const Duration(seconds: 15));
+        if (response.statusCode != 200) {
+          throw HttpException('HTTP ${response.statusCode}');
+        }
+        final pick = pickInvidiousAudio(jsonDecode(body), base);
+        if (pick == null) throw const FormatException('no audio formats');
+        if (pick.totalBytes > 1024 &&
+            !await _probeRange(
+                http, pick.url, pick.totalBytes - 1024, pick.totalBytes - 1)) {
+          throw const HttpException('relay refused the audio');
+        }
+        _log('Invidious ${base.host}: using ${pick.extension}, '
+            '${pick.totalBytes} bytes');
+        return _ResolvedStream(
+          url: pick.url,
+          totalBytes: pick.totalBytes,
+          extension: pick.extension,
+          route: YoutubeRoute.invidious,
+        );
+      } catch (e) {
+        lastError = e;
+        _log('Invidious $instance failed: $e');
+      }
+    }
+    throw Mp3DownloadException('no Invidious server relayed it ($lastError)');
   }
 
   /// Fetches `bytes=[start]-[end]` into [sink] and returns the new byte
@@ -679,20 +769,21 @@ class Mp3DownloaderService {
     if (downloadOverride != null) {
       return downloadOverride!(result, destinationDir, onProgress);
     }
-    final http = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    HttpClient? http;
     try {
       _log('Download starting: "${result.title}" (${result.videoId})');
-      final resolved = await _resolveStream(result.videoId, http)
+      final resolved = await _resolveStream(result.videoId)
           .timeout(kResolveTimeout, onTimeout: () {
         throw Mp3DownloadException(
           'Timed out working out how to download this track. Check your '
           'connection and try again.',
         );
       });
-      final info = resolved.info;
+      // The bytes must come over the route that resolved the URL.
+      http = httpClientForRoute(resolved.route);
       final total = resolved.totalBytes;
 
-      final extension = _extensionFor(info.container);
+      final extension = resolved.extension;
       final trackTitle = parseTrackTitle(result.title, result.channel);
       final fileName = sanitizeAudioFileName(trackTitle.fileBaseName, extension);
       final separator = Platform.pathSeparator;
@@ -727,7 +818,7 @@ class Mp3DownloaderService {
           final before = received;
           received = await _fetchChunk(
             http: http,
-            url: info.url,
+            url: resolved.url,
             start: received,
             end: end,
             total: total,
@@ -783,7 +874,7 @@ class Mp3DownloaderService {
       _log('Download failed for "${result.title}": $e');
       rethrow;
     } finally {
-      http.close(force: true);
+      http?.close(force: true);
     }
   }
 
@@ -850,19 +941,73 @@ class ResolvedAudioStream {
     required this.url,
     required this.totalBytes,
     required this.contentType,
+    this.route = YoutubeRoute.system,
   });
 
   final Uri url;
   final int totalBytes;
+
+  /// The connection the URL was resolved over — the bytes must be fetched
+  /// over the same one ([httpClientForRoute]).
+  final YoutubeRoute route;
 
   /// `audio/mp4` (AAC) or `audio/webm` (Opus).
   final String contentType;
 }
 
 class _ResolvedStream {
-  _ResolvedStream(this.info, this.totalBytes);
-  final yt_explode.AudioStreamInfo info;
+  _ResolvedStream({
+    required this.url,
+    required this.totalBytes,
+    required this.extension,
+    required this.route,
+  });
+  final Uri url;
   final int totalBytes;
+
+  /// `m4a` (AAC/mp4) or the container name (`webm`).
+  final String extension;
+  final YoutubeRoute route;
+
+  bool get isMp4 => extension == 'm4a';
+}
+
+/// The audio format to play from an Invidious `/api/v1/videos` answer:
+/// the highest-bitrate `audio/mp4` entry of `adaptiveFormats` (any audio
+/// one if there's no mp4), with its URL resolved against [base] (with
+/// `local=true` they're relative, served by the Invidious server itself)
+/// and its size from `clen`. Null when there's no usable audio format.
+({Uri url, int totalBytes, String extension})? pickInvidiousAudio(
+    Object? json, Uri base) {
+  if (json is! Map) return null;
+  final formats = json['adaptiveFormats'];
+  if (formats is! List) return null;
+  Map? best;
+  var bestScore = -1;
+  for (final f in formats) {
+    if (f is! Map) continue;
+    final type = '${f['type'] ?? ''}';
+    final url = f['url'];
+    final size = int.tryParse('${f['clen'] ?? ''}');
+    if (!type.startsWith('audio/') || url is! String || size == null ||
+        size <= 0) {
+      continue;
+    }
+    final bitrate = int.tryParse('${f['bitrate'] ?? ''}') ?? 0;
+    // mp4 always beats webm; within a container, the higher bitrate.
+    final score = (type.startsWith('audio/mp4') ? 1 << 30 : 0) + bitrate;
+    if (score > bestScore) {
+      bestScore = score;
+      best = f;
+    }
+  }
+  if (best == null) return null;
+  final type = '${best['type']}';
+  return (
+    url: base.resolve(best['url'] as String),
+    totalBytes: int.parse('${best['clen']}'),
+    extension: type.startsWith('audio/mp4') ? 'm4a' : 'webm',
+  );
 }
 
 /// A mutable boolean shared with an in-flight chunk fetch, so a timeout can

@@ -355,6 +355,12 @@ class UpdateService {
     return channelReleases(decoded, tagPrefix: tagPrefix, channel: channel);
   }
 
+  /// The running app's `x.y.z+build`.
+  Future<String> currentVersionWithBuild() async {
+    await Config.ensureVersionLoaded();
+    return Config.versionWithBuild;
+  }
+
   /// Looks up the newest build of this app's channel plus the newest one
   /// older than the running build (the rollback). Throws on network/parse
   /// failures — the About page shows the error, the background poll retries.
@@ -487,7 +493,11 @@ class UpdateService {
   /// the app process — it keeps going if the app is backgrounded and rides
   /// out a Wi-Fi/mobile handover, unlike a plain HTTP socket held open by the
   /// app. Progress is polled with [queryDownload]/[watchDownload].
-  Future<int> startBackgroundDownload(UpdateInfo info) async {
+  ///
+  /// [silent] (the automatic update) downloads without a notification; the
+  /// app asks to install once it is complete.
+  Future<int> startBackgroundDownload(UpdateInfo info,
+      {bool silent = false}) async {
     final url = info.apkUrl;
     if (url == null) {
       throw StateError('This release has no APK to download');
@@ -498,6 +508,7 @@ class UpdateService {
       'url': url,
       'fileName': fileName,
       'title': downloadNotificationTitle(info),
+      'silent': silent,
     });
     return (result as Map)['downloadId'] as int;
   }
@@ -562,13 +573,14 @@ class UpdateService {
   Stream<DownloadProgress> downloadInBackground(
     UpdateInfo info, {
     Duration interval = const Duration(milliseconds: 700),
+    bool silent = false,
   }) async* {
-    final id = await startBackgroundDownload(info);
+    final id = await startBackgroundDownload(info, silent: silent);
     await _savePendingDownload(id, info.version);
     await for (final progress in watchDownload(id, interval: interval)) {
       yield progress;
       if (progress.status == DownloadStatus.successful) {
-        await markVersionDownloaded(info.version);
+        await markVersionDownloaded(info.version, path: progress.localPath);
         await clearPendingDownload();
       } else if (progress.status == DownloadStatus.failed) {
         await clearPendingDownload();
@@ -590,9 +602,36 @@ class UpdateService {
   /// Records that [version]'s APK was downloaded and handed to the
   /// installer, so [wasDownloaded] recognizes it on a later check even after
   /// [clearPendingDownload] has dropped the in-progress record.
-  Future<void> markVersionDownloaded(String version) async {
+  Future<void> markVersionDownloaded(String version, {String? path}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_downloadedVersionPrefsKey, version);
+    if (path != null) {
+      await prefs.setString(
+          _downloadedApkPrefsKey, jsonEncode({'version': version, 'path': path}));
+    }
+  }
+
+  /// Where the complete APK of the last download is, as `{version, path}`.
+  static const String _downloadedApkPrefsKey = 'update_downloaded_apk';
+
+  /// Test seam: replaces the check that a downloaded APK is still on disk.
+  bool Function(String path)? fileExistsOverride;
+
+  /// Path of [version]'s completely downloaded APK — also from before a
+  /// restart — or null when it isn't (or no longer is) on disk.
+  Future<String?> readyApk(String version) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_downloadedApkPrefsKey);
+    if (raw == null) return null;
+    try {
+      final saved = jsonDecode(raw) as Map<String, dynamic>;
+      final path = saved['path'] as String?;
+      if (saved['version'] != version || path == null) return null;
+      final exists = fileExistsOverride ?? (p) => File(p).existsSync();
+      return exists(path) ? path : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// True when [version] is either downloading right now or was already
@@ -616,13 +655,13 @@ class UpdateService {
     return jsonDecode(raw) as Map<String, dynamic>;
   }
 
-  /// Hands the downloaded APK to the Android package installer. Returns
-  /// "ok" when the install UI opened, or "needs-permission" when the app
+  /// Hands the downloaded APK to Android in a PackageInstaller session
+  /// (`ApkInstaller.kt`), so Android's "Update this app?" is the only step.
+  /// Returns "ok" when that opened, or "needs-permission" when the app
   /// first has to be allowed to install packages (the settings screen for
   /// that is opened by the platform side; retry after granting).
   Future<String> installApk(String path) async {
-    final result =
-        await _channel.invokeMethod<String>('installApk', {'path': path});
-    return result ?? 'error';
+    final result = await _invokeDownloadChannel('installApk', {'path': path});
+    return result is String ? result : 'error';
   }
 }

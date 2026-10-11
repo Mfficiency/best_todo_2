@@ -1,11 +1,36 @@
 # Changelog
 
+## [0.2.103] - 2026-10-11
+- Updates download quietly in the background; once a new version is complete the app asks whether to install it (Install or Later — Later keeps a banner until you install). Pull down on the Changelog to check right away. The install goes through Android's own "Update this app?" screen.
+
+## [0.2.102] - 2026-10-11
+- Added a Compass tool (Tools → Compass): a dial that turns with your phone, plus a Hold button to freeze the reading
+
+## [0.2.101] - 2026-10-11
+- Dev, Staging and regular builds are now separate apps ("BestToDo Dev", "BestToDo Staging", "BestToDo") that can be installed side by side, and each one only updates itself from its own channel's releases; the About page shows the channel next to the version (e.g. "0.2.101+12199 · dev")
+- Update checks now read the GitHub releases directly (every 15 minutes, backing off when GitHub's rate limit is reached), and "Go back to" offers the newest older build of the same channel
+- Local build: 2026-10-11 14:42
+- Build duration (apk): 11m 46s
+- APK size: 64.6 MB
+- Build duration (windows): 1m 17s
+- Build size (windows): 128.9 MB
+
+## [0.2.100] - 2026-10-07
+- Running the app in Chrome (flutter run -d chrome) now asks first whether to use the demo data or load your real tasks from Todoist
+- CI build: 2026-10-10 17:13 UTC
+- Build duration (apk, CI): 9m 10s
+- APK size: 63.9 MB
+- Local build: 2026-10-07 22:30
+- Build duration (apk): 18m 51s
+- Build duration (windows): 2m 23s
+- Build size (windows): 128.8 MB
+
 ## [0.2.99] - 2026-10-05
 - The Worklist now shows its name at the top (in the search box), so you can tell it apart from your normal task list
 - The Move/Delete options that appear when you swipe a task now shrink to fit the row instead of being cut off with large system font sizes
 - If an update can't be downloaded, the "Downloading…" message is replaced right away by the reason (e.g. "Update download failed: This release has no APK to download") instead of showing a few seconds later
-- CI build: 2026-10-07 09:28 UTC
-- Build duration (apk, CI): 9m 17s
+- CI build: 2026-10-07 16:48 UTC
+- Build duration (apk, CI): 9m 23s
 - APK size: 63.9 MB
 - Local build: 2026-10-06 06:39
 - Build duration (apk): 19m 13s

@@ -23,7 +23,6 @@ import 'services/music_playlist_service.dart';
 import 'services/music_share_link.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
-import 'services/update_service.dart';
 import 'services/youtube_feed_service.dart';
 import 'ui/auto_update_dialog.dart';
 import 'ui/mp3_downloader_page.dart';
@@ -89,12 +88,14 @@ class BestMusicApp extends StatefulWidget {
   State<BestMusicApp> createState() => _BestMusicAppState();
 }
 
-class _BestMusicAppState extends State<BestMusicApp> {
-  /// Version currently auto-updating (downloading), so a poll tick that
-  /// lands mid-download doesn't start the same build a second time. Mirrors `_MyAppState._pendingUpdateVersion` in `main.dart`,
-  /// without that file's task/alarm/sync-specific resume logic Best Music
-  /// doesn't need.
-  String? _pendingUpdateVersion;
+class _BestMusicAppState extends State<BestMusicApp>
+    with WidgetsBindingObserver {
+  /// The automatic update, same as BestToDo's (`main.dart`): silent
+  /// download, then "Update ready" — for Best Music's own builds only.
+  late final AutoUpdateFlow _updates = AutoUpdateFlow(
+    navigatorKey: musicNavigatorKey,
+    service: () => MusicAboutPage.updateService,
+  );
 
   /// Shares waiting for the downloader screen, shown one at a time — same
   /// queue as `_MyAppState._pendingShares` in `main.dart`.
@@ -123,13 +124,28 @@ class _BestMusicAppState extends State<BestMusicApp> {
     // MusicAboutPage's own UpdateService.forApp instance so it only ever
     // offers Best Music's builds, never BestToDo's.
     if (!kIsWeb && Platform.isAndroid) {
+      AutoUpdateFlow.current = _updates;
+      WidgetsBinding.instance.addObserver(this);
       AutoUpdateChecker.instance
-          .start(_onUpdateFound, service: MusicAboutPage.updateService);
+          .start(_updates.onUpdateFound, service: MusicAboutPage.updateService);
+      unawaited(_updates.resumePending());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A download that finished while the app was away: ask now.
+    _updates.onLifecycleChanged(state);
+    if (state == AppLifecycleState.resumed) {
+      unawaited(AutoUpdateChecker.instance.checkIfDue(_updates.onUpdateFound,
+          service: MusicAboutPage.updateService));
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (AutoUpdateFlow.current == _updates) AutoUpdateFlow.current = null;
     AutoUpdateChecker.instance.stop();
     ShareIntentService.instance.setOnSharedPayload(null);
     MusicDownloadLibrarySync.instance.detach();
@@ -173,51 +189,6 @@ class _BestMusicAppState extends State<BestMusicApp> {
         _presentNextSharedPayload();
       });
     });
-  }
-
-  void _onUpdateFound(UpdateInfo info) {
-    if (_pendingUpdateVersion == info.version) return;
-    unawaited(_maybeStartAutoUpdate(info));
-  }
-
-  /// Auto-updates to [info] with no "New version available" question —
-  /// Android's own install prompt is the only confirmation. Same as
-  /// `_MyAppState._maybeStartAutoUpdate` in `main.dart`: skipped when the
-  /// build is already downloading or was already handed to the installer
-  /// (e.g. the user backed out of Android's install screen), so the
-  /// minute-by-minute poll doesn't download it over and over.
-  Future<void> _maybeStartAutoUpdate(UpdateInfo info) async {
-    if (await MusicAboutPage.updateService.wasDownloaded(info.version)) {
-      _pendingUpdateVersion = info.version;
-      return;
-    }
-    if (_pendingUpdateVersion == info.version) return;
-    _pendingUpdateVersion = info.version;
-    WidgetsBinding.instance.scheduleFrame();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startAutoUpdate(info));
-  }
-
-  void _startAutoUpdate(UpdateInfo info) {
-    final navigator = musicNavigatorKey.currentState;
-    if (navigator == null) {
-      _pendingUpdateVersion = null;
-      return;
-    }
-    // The download runs in the background (Android's DownloadManager), so
-    // don't await it here — but keep _pendingUpdateVersion set for its
-    // whole duration so a poll tick mid-download doesn't start it again. A
-    // failed download is dismissed for this run and retried on next launch.
-    unawaited(downloadUpdateInBackground(
-      navigator.context,
-      info,
-      service: MusicAboutPage.updateService,
-    ).then((ok) {
-      if (!ok) AutoUpdateChecker.instance.dismiss(info.version);
-    }).whenComplete(() {
-      if (_pendingUpdateVersion == info.version) {
-        _pendingUpdateVersion = null;
-      }
-    }));
   }
 
   @override

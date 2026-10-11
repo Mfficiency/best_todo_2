@@ -33,8 +33,35 @@ object MusicWidgetIntents {
         )
     }
 
-    fun playPause(context: Context): PendingIntent =
-        mediaButtonPendingIntent(context, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+    /** The bare play/pause media-button broadcast (MusicPlayGuardActivity
+     *  sends it once it's sure). */
+    fun playPauseBroadcast(context: Context): Intent =
+        Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+            component = ComponentName(context.packageName, RECEIVER_CLASS)
+            putExtra(
+                Intent.EXTRA_KEY_EVENT,
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+            )
+        }
+
+    /** Play/pause goes through [MusicPlayGuardActivity] first, so pressing
+     *  play with nothing connected asks "Play out loud?" instead of
+     *  starting on the phone speaker straight away. */
+    fun playPause(context: Context): PendingIntent {
+        val intent = Intent(context, MusicPlayGuardActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+            )
+        }
+        return PendingIntent.getActivity(
+            context,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
 
     fun previous(context: Context): PendingIntent =
         mediaButtonPendingIntent(context, KeyEvent.KEYCODE_MEDIA_PREVIOUS)

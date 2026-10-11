@@ -197,13 +197,21 @@ Future<void> main(List<String> args) async {
   var appId = 'todo';
   String? channelArg;
   String? buildNumberArg;
+  String? targetArg;
   int? durationSeconds;
   var dryRun = false;
   var existsOnly = false;
   const usage = 'Usage: dart run tool/publish_apk.dart [--app todo|music] '
       '[--channel main|staging|dev] [--build-number N] [--apk <path>] '
-      '[--duration <secs>] [--exists] [--dry-run]';
-  const valued = {'--apk', '--app', '--channel', '--build-number', '--duration'};
+      '[--duration <secs>] [--target <commit>] [--exists] [--dry-run]';
+  const valued = {
+    '--apk',
+    '--app',
+    '--channel',
+    '--build-number',
+    '--duration',
+    '--target',
+  };
 
   for (var i = 0; i < args.length; i++) {
     final arg = args[i];
@@ -227,6 +235,10 @@ Future<void> main(List<String> args) async {
         buildNumberArg = v;
       case '--duration':
         durationSeconds = int.tryParse(v!);
+      // The built commit (tool\build.ps1 release: HEAD may be the APK
+      // commit on top of it); default HEAD.
+      case '--target':
+        targetArg = v;
       case '--exists':
         existsOnly = true;
       case '--dry-run':
@@ -329,7 +341,7 @@ Future<void> main(List<String> args) async {
   if (changelog.existsSync()) {
     notes = firstChangelogSection(changelog.readAsStringSync());
   }
-  final commit = await _git(['rev-parse', 'HEAD']);
+  final commit = targetArg ?? await _git(['rev-parse', 'HEAD']);
   var branch = await _git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '';
   if (branch.isEmpty || branch == 'HEAD') {
     branch = env['BUILD_BRANCH'] ?? channel;

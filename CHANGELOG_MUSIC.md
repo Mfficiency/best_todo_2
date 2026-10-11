@@ -6,13 +6,35 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.21] - 2026-10-11
+- Updates download quietly in the background; once a new version is complete the app asks whether to install it (Install or Later — Later keeps a banner until you install). Pull down on the Changelog to check right away.
+
+## [0.3.20] - 2026-10-11
+- Dev, Staging and regular builds are now separate apps ("Best Music Dev", "Best Music Staging", "Best Music") that can be installed side by side, and each one only updates itself from its own channel's GitHub releases (checked every 15 minutes); the About page shows the channel next to the version
+- Local build: 2026-10-11 14:41
+- Build duration (apk): 3m 15s
+- APK size: 64.1 MB
+
+## [0.3.19] - 2026-10-09
+- Fixed: "Ask before playing out loud" didn't ask when you pressed play on the home-screen widget — it now shows the question right over your home screen (and just plays when headphones or a speaker are connected)
+- Fixed: it also didn't ask when a video was still loading and you switched to music (a loading video counted as "already listening") — and now it asks for the "Back to music/videos" button, tapping a Subscriptions video and Songs by BPM too
+- CI build: 2026-10-10 17:05 UTC
+- Build duration (apk, CI): 8m 07s
+- APK size: 63.4 MB
+
+## [0.3.18] - 2026-10-08
+- Fixed: videos (and YouTube songs) wouldn't play on some Wi-Fi networks — YouTube blocks some home internet addresses. Best Music now tries other ways in by itself: forcing IPv4, then IPv6, then letting a public Invidious server fetch the audio for you; whichever works is used straight away next time. Offline downloads of queued videos use the same fix
+- CI build: 2026-10-08 04:50 UTC
+- Build duration (apk, CI): 7m 35s
+- APK size: 63.4 MB
+
 ## [0.3.17] - 2026-10-07
 - Subscriptions: swipe a video right to add it to the queue, left to mark it watched (with Undo), and long-press for all its options — Transcript, Quick summary, Download, Open in YouTube and more. Each gesture can be changed in Settings → Subscriptions
 - Videos you add to the queue are downloaded so they play without internet, and kept for 2 days (the playing video and the next two in the queue too) — change the number of days, or turn it off, in Settings → Subscriptions
 - Searching Subscriptions: when nothing in your feed matches, it searches YouTube itself and shows those videos instead
 - The Subscriptions screen no longer has a settings button at the top — its settings are in Settings
-- CI build: 2026-10-07 09:19 UTC
-- Build duration (apk, CI): 6m 28s
+- CI build: 2026-10-07 20:40 UTC
+- Build duration (apk, CI): 7m 13s
 - APK size: 63.4 MB
 - Local build: 2026-10-07 11:19
 - Build duration (apk): 4m 55s

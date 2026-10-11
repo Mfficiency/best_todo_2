@@ -13,8 +13,9 @@ import 'music_player_service.dart';
 ///
 /// Asks only when all of these hold:
 /// - [Config.musicConfirmSpeakerPlay] is on (Music settings),
-/// - nothing is playing right now (switching songs mid-playback, or pausing,
-///   never asks — the user is clearly already listening),
+/// - nothing is audibly playing right now (switching songs mid-playback, or
+///   pausing, never asks — the user is clearly already listening; a video
+///   still loading doesn't count, see `MusicAudioHandler.isAudible`),
 /// - the platform reports no output besides the built-in speaker/earpiece
 ///   (no Bluetooth speaker/headphones, wired/USB headset, car, ...) —
 ///   `besttodo/audio_output` → `MainActivity.isExternalAudioOutputConnected`.
@@ -39,8 +40,9 @@ class SpeakerPlayGuard {
     final override = isPlayingOverride;
     if (override != null) return override();
     if (!MusicPlayerService.isReady) return false;
-    return MusicPlayerService.handler.playbackState.valueOrNull?.playing ??
-        false;
+    // Audible, not just "playing": a video that is still loading reports
+    // playing too, and nothing has come out of the speaker yet.
+    return MusicPlayerService.handler.isAudible;
   }
 
   static Future<bool> _externalOutputConnected() async {

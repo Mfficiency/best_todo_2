@@ -18,6 +18,7 @@ import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
+import 'ui/web_data_choice_page.dart';
 import 'ui/auto_update_dialog.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
@@ -37,7 +38,6 @@ import 'services/task_widget_service.dart';
 import 'services/notification_service.dart';
 import 'services/f1_reminder_service.dart';
 import 'services/sms_report_scheduler.dart';
-import 'services/update_service.dart';
 
 const Color _seedColor = Color(0xFF005FDD);
 
@@ -191,6 +191,8 @@ Future<void> main() async {
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
     showStartupChoice: showStartupChoice,
+    // `flutter run -d chrome`: ask demo seeds vs real Todoist data first.
+    showWebDataChoice: kIsWeb && Config.isDev,
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
@@ -221,11 +223,16 @@ class MyApp extends StatefulWidget {
   /// intro and mode picker, on a brand-new install only. Tests and
   /// screenshot runs pass false.
   final bool showStartupChoice;
+
+  /// Whether the demo-vs-real-data chooser ([WebDataChoicePage]) opens
+  /// first. Only for dev runs in a browser (`flutter run -d chrome`).
+  final bool showWebDataChoice;
   const MyApp({
     Key? key,
     required this.showIntro,
     this.showModePicker = false,
     this.showStartupChoice = false,
+    this.showWebDataChoice = false,
   }) : super(key: key);
 
   static _MyAppState? of(BuildContext context) =>
@@ -239,14 +246,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late bool _showIntro = widget.showIntro;
   late bool _showModePicker = widget.showModePicker;
   late bool _showStartupChoice = widget.showStartupChoice;
+  late bool _showWebDataChoice = widget.showWebDataChoice;
   bool _alarmRingOpen = false;
   final List<SharedPayload> _pendingShares = [];
   bool _shareScreenOpen = false;
 
-  /// The version currently being downloaded/installed, so a later tick of
-  /// the background update poll (still finding the same build) does not
-  /// start a second download of it.
-  String? _pendingUpdateVersion;
+  /// The automatic update: silent download, then "Update ready" (see
+  /// [AutoUpdateFlow]). Asks only once the intro/pickers are out of the way.
+  late final AutoUpdateFlow _updates = AutoUpdateFlow(
+    navigatorKey: appNavigatorKey,
+    canAsk: () => !(_showIntro || _showModePicker || _showStartupChoice),
+  );
 
   @override
   void initState() {
@@ -286,17 +296,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
       // Settings → Updates → "Automatically update" (on by default): poll
-      // GitHub for a newer build of this channel every 15 minutes while the app is open and
-      // download + install it as soon as one appears. Platform.isAndroid is false under `flutter test`'s host
-      // runner, so this never starts a real timer in the test suite.
+      // GitHub for a newer build of this channel every 15 minutes while the
+      // app is open; a newer one downloads silently and the app asks to
+      // install it once it is complete. Platform.isAndroid is false under
+      // `flutter test`'s host runner, so this never starts a real timer in
+      // the test suite.
+      AutoUpdateFlow.current = _updates;
       if (Config.autoUpdateCheckEnabled) {
-        AutoUpdateChecker.instance.start(_onUpdateFound);
+        AutoUpdateChecker.instance.start(_updates.onUpdateFound);
       }
       // A background update download from an earlier run may have kept
       // going (or already finished) while the app was closed — it runs as
       // an Android system service, not tied to this process. Pick it back
-      // up so "install when ready" still holds after a restart.
-      unawaited(_resumePendingUpdateDownload());
+      // up so the app still asks once it is complete.
+      unawaited(_updates.resumePending());
     }
   }
 
@@ -305,89 +318,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.setOnAlarmRing(null);
     AutoUpdateChecker.instance.stop();
+    if (AutoUpdateFlow.current == _updates) AutoUpdateFlow.current = null;
     super.dispose();
-  }
-
-  void _onUpdateFound(UpdateInfo info) {
-    // Don't collide with the intro/mode picker/startup chooser.
-    if (_showIntro || _showModePicker || _showStartupChoice) return;
-    if (_pendingUpdateVersion == info.version) return;
-    unawaited(_maybeStartAutoUpdate(info));
-  }
-
-  /// Auto-updates to [info]: downloads it and opens Android's installer
-  /// straight away, with no "New version available" question first —
-  /// Android's own install prompt is the only confirmation. Skipped when the
-  /// build is already downloading (an earlier run's background download
-  /// resumed by [_resumePendingUpdateDownload]) or was already downloaded
-  /// and handed to the installer — `_pendingUpdateVersion` alone can't catch
-  /// this on a fresh launch: it starts out null every time the process
-  /// restarts, while the download itself, run by Android's
-  /// `DownloadManager`, survives across restarts.
-  Future<void> _maybeStartAutoUpdate(UpdateInfo info) async {
-    if (await UpdateService.instance.wasDownloaded(info.version)) {
-      _pendingUpdateVersion = info.version;
-      return;
-    }
-    if (_pendingUpdateVersion == info.version) return;
-    _pendingUpdateVersion = info.version;
-    WidgetsBinding.instance.scheduleFrame();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startAutoUpdate(info));
-  }
-
-  void _startAutoUpdate(UpdateInfo info) {
-    final navigator = appNavigatorKey.currentState;
-    if (navigator == null) {
-      _pendingUpdateVersion = null;
-      return;
-    }
-    // The download runs in the background (Android's DownloadManager), so
-    // don't await it here — but keep _pendingUpdateVersion set for its
-    // whole duration, so a poll tick that lands mid-download doesn't start
-    // the same build again. A failed download is not retried every poll:
-    // the version is dismissed for this run and tried again on next launch.
-    unawaited(
-      downloadUpdateInBackground(navigator.context, info).then((ok) {
-        if (!ok) AutoUpdateChecker.instance.dismiss(info.version);
-      }).whenComplete(() {
-        if (_pendingUpdateVersion == info.version) {
-          _pendingUpdateVersion = null;
-        }
-      }),
-    );
-  }
-
-  /// Resumes watching a background download an earlier app run started but
-  /// didn't see finish, installing it if it completed while the app was
-  /// closed.
-  Future<void> _resumePendingUpdateDownload() async {
-    final pending = await UpdateService.instance.pendingDownload();
-    if (pending == null) return;
-    final downloadId = pending['downloadId'] as int;
-    final version = pending['version'] as String?;
-    // Block a poll tick that lands while this is watching from re-prompting
-    // "New version available" for the very build already downloading.
-    if (version != null) _pendingUpdateVersion = version;
-    try {
-      await for (final progress
-          in UpdateService.instance.watchDownload(downloadId)) {
-        if (progress.status == DownloadStatus.successful &&
-            progress.localPath != null) {
-          if (version != null) {
-            await UpdateService.instance.markVersionDownloaded(version);
-          }
-          await UpdateService.instance.clearPendingDownload();
-          await UpdateService.instance.installApk(progress.localPath!);
-        } else if (progress.status == DownloadStatus.failed) {
-          await UpdateService.instance.clearPendingDownload();
-        }
-      }
-    } catch (_) {
-      // Nothing to recover here — the next auto-update poll offers a fresh
-      // download if one is still needed.
-    } finally {
-      if (_pendingUpdateVersion == version) _pendingUpdateVersion = null;
-    }
   }
 
   @override
@@ -396,11 +328,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     TodoistSyncService.instance.onLifecycleChanged(state);
     // Re-check when the app comes back to the foreground, unless the last
     // check was under 15 minutes ago (GitHub's anonymous rate limit).
-    if (state == AppLifecycleState.resumed &&
-        !kIsWeb &&
-        Platform.isAndroid &&
-        Config.autoUpdateCheckEnabled) {
-      unawaited(AutoUpdateChecker.instance.checkIfDue(_onUpdateFound));
+    if (kIsWeb || !Platform.isAndroid) return;
+    // A download that finished while the app was away: ask now.
+    _updates.onLifecycleChanged(state);
+    if (state == AppLifecycleState.resumed && Config.autoUpdateCheckEnabled) {
+      unawaited(AutoUpdateChecker.instance.checkIfDue(_updates.onUpdateFound));
     }
   }
 
@@ -600,16 +532,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               useMaterial3: true,
             ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: _showIntro
-          ? IntroPage(onFinished: _finishIntro)
-          : _showModePicker
-              ? ModeSelectPage(
-                  onModeSelected: () =>
-                      setState(() => _showModePicker = false),
-                )
-              : _showStartupChoice
-                  ? StartupChoicePage(onFinished: _finishStartupChoice)
-                  : _initialPage(),
+      home: _showWebDataChoice
+          ? WebDataChoicePage(
+              onFinished: () => setState(() => _showWebDataChoice = false),
+            )
+          : _showIntro
+              ? IntroPage(onFinished: _finishIntro)
+              : _showModePicker
+                  ? ModeSelectPage(
+                      onModeSelected: () =>
+                          setState(() => _showModePicker = false),
+                    )
+                  : _showStartupChoice
+                      ? StartupChoicePage(onFinished: _finishStartupChoice)
+                      : _initialPage(),
     );
   }
 }
