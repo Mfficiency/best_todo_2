@@ -20,6 +20,214 @@ Jump to a screenshot from the most recent run:
 
 ---
 
+## 2026.10.11 21:04:26 | branch: dev v0.2.102+410 | source: 80a632e
+
+- Folder: `docs/screenshots/music/20261011-190424-80a632e`
+
+### Mp3 Downloader Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - mp3_downloader_page](docs/screenshots/music/20261011-190424-80a632e/mp3_downloader_page.png)
+
+### Mp3 Downloads Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - mp3_downloads_page](docs/screenshots/music/20261011-190424-80a632e/mp3_downloads_page.png)
+
+### Music About Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_about_page](docs/screenshots/music/20261011-190424-80a632e/music_about_page.png)
+
+### Music App Logs Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_app_logs_page](docs/screenshots/music/20261011-190424-80a632e/music_app_logs_page.png)
+
+### Music Changelog Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_changelog_page](docs/screenshots/music/20261011-190424-80a632e/music_changelog_page.png)
+
+### Music Home Library Tab
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_home_library_tab](docs/screenshots/music/20261011-190424-80a632e/music_home_library_tab.png)
+
+### Music Home Playlists Tab
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_home_playlists_tab](docs/screenshots/music/20261011-190424-80a632e/music_home_playlists_tab.png)
+
+### Music Playlist Detail Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_playlist_detail_page](docs/screenshots/music/20261011-190424-80a632e/music_playlist_detail_page.png)
+
+### Music Settings Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_settings_page](docs/screenshots/music/20261011-190424-80a632e/music_settings_page.png)
+
+### Music Startup Times Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - music_startup_times_page](docs/screenshots/music/20261011-190424-80a632e/music_startup_times_page.png)
+
+### Rule Playlist Editor Page
+![2026.10.11 21:04:26 - dev v0.2.102+410 - rule_playlist_editor_page](docs/screenshots/music/20261011-190424-80a632e/rule_playlist_editor_page.png)
+
+---
+
+## 2026.10.11 21:04:25 | branch: dev v0.2.102+410 | source: 80a632e
+
+- Folder: `docs/screenshots/home/20261011-190424-80a632e`
+
+### About Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - about_page](docs/screenshots/home/20261011-190424-80a632e/about_page.png)
+
+### Alarm Edit Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - alarm_edit_page](docs/screenshots/home/20261011-190424-80a632e/alarm_edit_page.png)
+
+### Alarm Log Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - alarm_log_page](docs/screenshots/home/20261011-190424-80a632e/alarm_log_page.png)
+
+### Alarms Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - alarms_page](docs/screenshots/home/20261011-190424-80a632e/alarms_page.png)
+
+### App Logs Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - app_logs_page](docs/screenshots/home/20261011-190424-80a632e/app_logs_page.png)
+
+### Approval Quick Tags Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - approval_quick_tags_page](docs/screenshots/home/20261011-190424-80a632e/approval_quick_tags_page.png)
+
+### Archived Items Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - archived_items_page](docs/screenshots/home/20261011-190424-80a632e/archived_items_page.png)
+
+### Auto Tag Rules Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - auto_tag_rules_page](docs/screenshots/home/20261011-190424-80a632e/auto_tag_rules_page.png)
+
+### Calendar View Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - calendar_view_page](docs/screenshots/home/20261011-190424-80a632e/calendar_view_page.png)
+
+### Changelog Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - changelog_page](docs/screenshots/home/20261011-190424-80a632e/changelog_page.png)
+
+### Chronize Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - chronize_page](docs/screenshots/home/20261011-190424-80a632e/chronize_page.png)
+
+### Countdown Milestones Dialog
+![2026.10.11 21:04:25 - dev v0.2.102+410 - countdown_milestones_dialog](docs/screenshots/home/20261011-190424-80a632e/countdown_milestones_dialog.png)
+
+### Countdown Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - countdown_page](docs/screenshots/home/20261011-190424-80a632e/countdown_page.png)
+
+### Deleted Bin Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - deleted_bin_page](docs/screenshots/home/20261011-190424-80a632e/deleted_bin_page.png)
+
+### Fitness Activity Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - fitness_activity_page](docs/screenshots/home/20261011-190424-80a632e/fitness_activity_page.png)
+
+### Food Diary Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - food_diary_page](docs/screenshots/home/20261011-190424-80a632e/food_diary_page.png)
+
+### Home Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - home_page](docs/screenshots/home/20261011-190424-80a632e/home_page.png)
+
+### Menu Open
+![2026.10.11 21:04:25 - dev v0.2.102+410 - menu_open](docs/screenshots/home/20261011-190424-80a632e/menu_open.png)
+
+### Project Board Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - project_board_page](docs/screenshots/home/20261011-190424-80a632e/project_board_page.png)
+
+### Project Edit Dialog
+![2026.10.11 21:04:25 - dev v0.2.102+410 - project_edit_dialog](docs/screenshots/home/20261011-190424-80a632e/project_edit_dialog.png)
+
+### Projects Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - projects_page](docs/screenshots/home/20261011-190424-80a632e/projects_page.png)
+
+### Recurrence Editor
+![2026.10.11 21:04:25 - dev v0.2.102+410 - recurrence_editor](docs/screenshots/home/20261011-190424-80a632e/recurrence_editor.png)
+
+### Research Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - research_page](docs/screenshots/home/20261011-190424-80a632e/research_page.png)
+
+### Search Active
+![2026.10.11 21:04:25 - dev v0.2.102+410 - search_active](docs/screenshots/home/20261011-190424-80a632e/search_active.png)
+
+### Settings Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_page](docs/screenshots/home/20261011-190424-80a632e/settings_page.png)
+
+### Settings Section Appearance
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_appearance](docs/screenshots/home/20261011-190424-80a632e/settings_section_appearance.png)
+
+### Settings Section Backup
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_backup](docs/screenshots/home/20261011-190424-80a632e/settings_section_backup.png)
+
+### Settings Section Dice Timer
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_dice_timer](docs/screenshots/home/20261011-190424-80a632e/settings_section_dice_timer.png)
+
+### Settings Section Filtering Rules
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_filtering_rules](docs/screenshots/home/20261011-190424-80a632e/settings_section_filtering_rules.png)
+
+### Settings Section Mode Features
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_mode_features](docs/screenshots/home/20261011-190424-80a632e/settings_section_mode_features.png)
+
+### Settings Section Notifications
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_notifications](docs/screenshots/home/20261011-190424-80a632e/settings_section_notifications.png)
+
+### Settings Section Sms Report
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_sms_report](docs/screenshots/home/20261011-190424-80a632e/settings_section_sms_report.png)
+
+### Settings Section Streak
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_streak](docs/screenshots/home/20261011-190424-80a632e/settings_section_streak.png)
+
+### Settings Section Sync Export
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_sync_export](docs/screenshots/home/20261011-190424-80a632e/settings_section_sync_export.png)
+
+### Settings Section Tasks
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_tasks](docs/screenshots/home/20261011-190424-80a632e/settings_section_tasks.png)
+
+### Settings Section Todoist Sync
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_todoist_sync](docs/screenshots/home/20261011-190424-80a632e/settings_section_todoist_sync.png)
+
+### Settings Section Updates
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_updates](docs/screenshots/home/20261011-190424-80a632e/settings_section_updates.png)
+
+### Settings Section Widget
+![2026.10.11 21:04:25 - dev v0.2.102+410 - settings_section_widget](docs/screenshots/home/20261011-190424-80a632e/settings_section_widget.png)
+
+### Sms Report Log Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - sms_report_log_page](docs/screenshots/home/20261011-190424-80a632e/sms_report_log_page.png)
+
+### Startup Times Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - startup_times_page](docs/screenshots/home/20261011-190424-80a632e/startup_times_page.png)
+
+### Streak Calendar Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - streak_calendar_page](docs/screenshots/home/20261011-190424-80a632e/streak_calendar_page.png)
+
+### Streak Goal Dialog
+![2026.10.11 21:04:25 - dev v0.2.102+410 - streak_goal_dialog](docs/screenshots/home/20261011-190424-80a632e/streak_goal_dialog.png)
+
+### Streak Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - streak_page](docs/screenshots/home/20261011-190424-80a632e/streak_page.png)
+
+### Task Detail Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - task_detail_page](docs/screenshots/home/20261011-190424-80a632e/task_detail_page.png)
+
+### Task Open No Attachment
+![2026.10.11 21:04:25 - dev v0.2.102+410 - task_open_no_attachment](docs/screenshots/home/20261011-190424-80a632e/task_open_no_attachment.png)
+
+### Task Open With Attachment
+![2026.10.11 21:04:25 - dev v0.2.102+410 - task_open_with_attachment](docs/screenshots/home/20261011-190424-80a632e/task_open_with_attachment.png)
+
+### Test Results Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - test_results_page](docs/screenshots/home/20261011-190424-80a632e/test_results_page.png)
+
+### Usage Data Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - usage_data_page](docs/screenshots/home/20261011-190424-80a632e/usage_data_page.png)
+
+### Waiting Approval Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - waiting_approval_page](docs/screenshots/home/20261011-190424-80a632e/waiting_approval_page.png)
+
+### Weekly Hours Planner Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - weekly_hours_planner_page](docs/screenshots/home/20261011-190424-80a632e/weekly_hours_planner_page.png)
+
+### Widget Previews Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - widget_previews_page](docs/screenshots/home/20261011-190424-80a632e/widget_previews_page.png)
+
+### Wishlist Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - wishlist_page](docs/screenshots/home/20261011-190424-80a632e/wishlist_page.png)
+
+### Your Stats Page
+![2026.10.11 21:04:25 - dev v0.2.102+410 - your_stats_page](docs/screenshots/home/20261011-190424-80a632e/your_stats_page.png)
+
+---
+
+
+
+---
+
 ## 2026.10.11 14:49:43 | branch: dev v0.2.101+409 | source: fe78be6
 
 - Folder: `docs/screenshots/music/20261011-124942-fe78be6`
