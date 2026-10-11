@@ -286,7 +286,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
       // Settings → Updates → "Automatically update" (on by default): poll
-      // GitHub for a newer build every minute while the app is open and
+      // GitHub for a newer build of this channel every 15 minutes while the app is open and
       // download + install it as soon as one appears. Platform.isAndroid is false under `flutter test`'s host
       // runner, so this never starts a real timer in the test suite.
       if (Config.autoUpdateCheckEnabled) {
@@ -344,7 +344,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // The download runs in the background (Android's DownloadManager), so
     // don't await it here — but keep _pendingUpdateVersion set for its
     // whole duration, so a poll tick that lands mid-download doesn't start
-    // the same build again. A failed download is not retried every minute:
+    // the same build again. A failed download is not retried every poll:
     // the version is dismissed for this run and tried again on next launch.
     unawaited(
       downloadUpdateInBackground(navigator.context, info).then((ok) {
@@ -394,14 +394,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
     TodoistSyncService.instance.onLifecycleChanged(state);
-    // Re-check the moment the app comes back to the foreground, not just on
-    // the next minute-tick — someone reopening the app to see if an update
-    // landed shouldn't have to wait up to a minute for the background poll.
+    // Re-check when the app comes back to the foreground, unless the last
+    // check was under 15 minutes ago (GitHub's anonymous rate limit).
     if (state == AppLifecycleState.resumed &&
         !kIsWeb &&
         Platform.isAndroid &&
         Config.autoUpdateCheckEnabled) {
-      unawaited(AutoUpdateChecker.instance.checkOnce(_onUpdateFound));
+      unawaited(AutoUpdateChecker.instance.checkIfDue(_onUpdateFound));
     }
   }
 

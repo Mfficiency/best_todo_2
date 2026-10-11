@@ -21,7 +21,8 @@ void main() {
     AutoUpdateChecker.resetForTest();
   });
 
-  String releaseJson(String tag, {bool withApk = true}) => jsonEncode({
+  // The releases list (one main-channel release); `jsonEncode([{...}])`.
+  String releaseJson(String tag, {bool withApk = true}) => jsonEncode([{
         'tag_name': tag,
         'name': 'BestToDo release',
         'html_url': 'https://example.com/release',
@@ -33,7 +34,7 @@ void main() {
               'size': 52428800,
             },
         ],
-      });
+      }]);
 
   test('reports an installable newer build', () async {
     UpdateService.instance.fetchOverride =
@@ -104,6 +105,25 @@ void main() {
     await AutoUpdateChecker.instance.checkOnce((info) => calls++);
 
     expect(calls, 0);
+  });
+
+  test('checkIfDue skips a check within 15 minutes of the last one',
+      () async {
+    var requests = 0;
+    UpdateService.instance.fetchOverride = (url) async {
+      requests++;
+      return releaseJson('v0.0.0-0');
+    };
+    await AutoUpdateChecker.instance.checkIfDue((_) {});
+    await AutoUpdateChecker.instance.checkIfDue((_) {});
+    expect(requests, 1);
+    await AutoUpdateChecker.instance.checkIfDue((_) {},
+        now: DateTime.now().add(const Duration(minutes: 16)));
+    expect(requests, 2);
+  });
+
+  test('polls no more often than every 15 minutes', () {
+    expect(AutoUpdateChecker.interval >= const Duration(minutes: 15), isTrue);
   });
 
   test('start() checks immediately instead of waiting for the first tick',

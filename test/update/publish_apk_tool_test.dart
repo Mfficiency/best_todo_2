@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:besttodo/services/update_service.dart';
+
 import '../../tool/publish_apk.dart' as publish_tool;
 
 /// Pure helpers of `tool/publish_apk.dart` — the naming conventions the
@@ -45,5 +47,72 @@ void main() {
     expect(candidates.first,
         'build/app/outputs/flutter-apk/best_todo_0.1.132+104.apk');
     expect(candidates.last, 'build/app/outputs/flutter-apk/app-release.apk');
+  });
+
+  group('channel releases', () {
+    test('tags, names and assets carry app and channel', () {
+      const v = '0.2.101+12199';
+      expect(publish_tool.releaseTagFor(v, channel: 'dev'), 'v0.2.101-12199-dev');
+      expect(publish_tool.releaseTagFor(v, channel: 'staging'),
+          'v0.2.101-12199-staging');
+      expect(publish_tool.releaseTagFor(v), 'v0.2.101-12199');
+      expect(
+          publish_tool.releaseTagFor(v, app: publish_tool.musicApp),
+          'music-v0.2.101-12199');
+      expect(
+          publish_tool.releaseTagFor(v,
+              app: publish_tool.musicApp, channel: 'dev'),
+          'music-v0.2.101-12199-dev');
+      expect(publish_tool.releaseNameFor(v, channel: 'dev'),
+          'BestToDo 0.2.101+12199 (dev)');
+      expect(publish_tool.releaseNameFor(v, app: publish_tool.musicApp),
+          'Best Music 0.2.101+12199');
+      expect(publish_tool.assetNameFor(v, channel: 'staging'),
+          'BestToDo-0.2.101+12199-staging.apk');
+      expect(publish_tool.assetNameFor(v, app: publish_tool.musicApp),
+          'BestMusic-0.2.101+12199.apk');
+    });
+
+    test('tags round-trip through the in-app updater', () {
+      for (final channel in publish_tool.channels) {
+        for (final app in [publish_tool.todoApp, publish_tool.musicApp]) {
+          final tag = publish_tool.releaseTagFor('1.2.3+12345',
+              app: app, channel: channel);
+          final parsed = ReleaseTag.parse(tag)!;
+          expect(parsed.version, '1.2.3+12345');
+          expect(parsed.channel, channel);
+          expect(parsed.music, app.id == 'music');
+        }
+      }
+    });
+
+    test('release notes leave out build-meta lines', () {
+      const changelog = '## [0.2.100] - 2026-10-07\n'
+          '- A user-facing change\n'
+          '- CI build: 2026-10-10 17:13 UTC\n'
+          '- Build duration (apk, CI): 9m 10s\n'
+          '- APK size: 63.9 MB\n'
+          '- Local build: 2026-10-07 22:30\n'
+          '- Build size (windows): 128.8 MB\n';
+      expect(publish_tool.firstChangelogSection(changelog),
+          '## [0.2.100] - 2026-10-07\n- A user-facing change');
+    });
+
+    test('the footer names channel, commit, branch, duration and size', () {
+      final footer = publish_tool.buildFooter(
+        channel: 'dev',
+        commit: 'abc1234',
+        branch: 'dev',
+        builtAt: DateTime(2026, 10, 11, 14, 3),
+        durationSeconds: 192,
+        apkBytes: 64 * 1024 * 1024,
+      );
+      expect(footer, contains('Channel: dev'));
+      expect(footer, contains('`abc1234` (branch `dev`)'));
+      expect(footer, contains('2026-10-11 14:03'));
+      expect(footer, contains('Build duration: 3m 12s'));
+      expect(footer, contains('APK size: 64.0 MB'));
+      expect(footer, contains('Built on the laptop'));
+    });
   });
 }

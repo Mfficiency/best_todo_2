@@ -2358,7 +2358,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SwitchListTile(
           title: const Text('Automatically update'),
           subtitle: const Text(
-              'Checks for a newer version every minute while the app is open '
+              'Checks for a newer version every 15 minutes while the app is open '
               'and downloads and installs it as soon as one appears — only '
               'Android\'s own install screen asks to confirm. Manual checks '
               'on the About page always work regardless of this setting.'),
