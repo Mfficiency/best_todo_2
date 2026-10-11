@@ -125,7 +125,7 @@ class _CountdownTimerPageState extends State<CountdownTimerPage> {
     // an empty list the same as a missing file so the demo timers also appear
     // on platforms where persistence is unavailable (e.g. Flutter web/Chrome,
     // where loading falls back to an empty list).
-    if (Config.isDev && (loaded == null || loaded.isEmpty)) {
+    if (Config.seedDevData && (loaded == null || loaded.isEmpty)) {
       timers = _devSeedTimers();
       await _storage.saveCountdownTimers(timers);
     } else {

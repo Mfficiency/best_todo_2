@@ -189,6 +189,15 @@ Future<void> switchSessionAndShow(
     MusicAudioHandler handler, NavigatorState? navigator) async {
   final target = handler.switchTarget();
   if (target == null) return;
+  // Switching starts the other session playing — ask first if that would
+  // be out of the phone's speaker (a video still loading doesn't count as
+  // already listening, see MusicAudioHandler.isAudible).
+  final askContext = navigator?.context;
+  if (askContext != null &&
+      askContext.mounted &&
+      !await SpeakerPlayGuard.confirmPlay(askContext)) {
+    return;
+  }
   final switching = handler.switchToOtherSession();
   if (navigator != null) showSessionScreen(navigator, video: target.isVideo);
   await switching;

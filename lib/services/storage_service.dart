@@ -60,6 +60,14 @@ class StorageService {
 
   static void resetJournalBaselineForTest() => _journalBaseline = null;
 
+  /// The task list of a Chrome "Real data" session ([Config.webRealData]).
+  /// The web has no documents dir, so `tasks.json` can't be written there;
+  /// this in-memory copy stands in for it, so the Todoist import, the home
+  /// page and later syncs all see the same list for the rest of the run.
+  static String? _webRealDataTasks;
+
+  static void resetWebRealDataForTest() => _webRealDataTasks = null;
+
   void _ensureUniqueIds(List<Task> tasks) {
     final ids = <String>{};
     for (final t in tasks) {
@@ -153,8 +161,12 @@ class StorageService {
     // Item-linked reminders follow their task (reschedule/complete/delete).
     // Free when no linked alarm exists in memory.
     ReminderSyncService.syncAfterSave(tasks);
-    final file = await _getLocalFile();
     final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
+    if (Config.webRealData) {
+      _webRealDataTasks = jsonString;
+      return;
+    }
+    final file = await _getLocalFile();
     await SafeFile.writeString(file, jsonString);
   }
 
@@ -232,6 +244,7 @@ class StorageService {
   /// while the app was in the background), where [loadTaskList]'s side effects
   /// would fight the in-memory list.
   Future<List<Task>> readTaskListRaw() async {
+    if (Config.webRealData) return _webRealDataTaskList();
     try {
       final file = await _getLocalFile();
       final tasks =
@@ -243,7 +256,17 @@ class StorageService {
     }
   }
 
+  List<Task> _webRealDataTaskList() {
+    final json = _webRealDataTasks;
+    return json == null ? <Task>[] : _parseTaskArray(json);
+  }
+
   Future<List<Task>> loadTaskList() async {
+    if (Config.webRealData) {
+      final tasks = _webRealDataTaskList();
+      _journalBaseline = _snapshotOf(tasks);
+      return tasks;
+    }
     try {
       final isNewDay = await _isNewDay();
       final file = await _getLocalFile();

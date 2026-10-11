@@ -120,7 +120,7 @@ jobs:
         retention-days: 30
 
     # No release publishing and no commit-backs here: the laptop builder
-    # (tooluild.ps1 release, triggered by laptop-build.yml) is the only APK
+    # (tool\build.ps1 release, triggered by laptop-build.yml) is the only APK
     # publisher, one GitHub release per app and channel (dev/staging/main).
     # This job is a build check whose APK is only kept as a workflow artifact.
     - name: Add APK download link to summary

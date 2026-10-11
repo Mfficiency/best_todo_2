@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../services/install_info_service.dart';
+import '../services/update_service.dart';
+import 'auto_update_dialog.dart';
 import 'subpage_app_bar.dart';
 
 /// One `## [version] - date` block of CHANGELOG.md.
@@ -190,7 +192,12 @@ class ChangelogPage extends StatefulWidget {
     this.assetPath = 'CHANGELOG.md',
     this.showStoryPoster = true,
     this.hidePreamble = false,
+    this.updateService,
   }) : super(key: key);
+
+  /// Whose builds pulling down checks for when no [AutoUpdateFlow] runs
+  /// (off Android): Best Music passes its own; default BestToDo's.
+  final UpdateService? updateService;
 
   /// Bundled asset to render — BestToDo's own `CHANGELOG.md` by default, or
   /// Best Music's `CHANGELOG_MUSIC.md` from [MusicPlayerPage]'s drawer (the
@@ -368,7 +375,16 @@ class _ChangelogPageState extends State<ChangelogPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildInstalledBanner(),
-                Expanded(child: Markdown(data: text, selectable: true)),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _checkForUpdates,
+                    child: Markdown(
+                      data: text,
+                      selectable: true,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                    ),
+                  ),
+                ),
               ],
             );
           }
@@ -377,6 +393,35 @@ class _ChangelogPageState extends State<ChangelogPage> {
         },
       ),
     );
+  }
+
+  /// Pull-down: checks for a newer build of this app's channel right away.
+  /// One that is found downloads in the background and the app asks to
+  /// install it when it is complete, like the automatic check
+  /// ([AutoUpdateFlow]).
+  Future<void> _checkForUpdates() async {
+    final flow = AutoUpdateFlow.current;
+    String message;
+    try {
+      final update = flow != null
+          ? await flow.checkNow()
+          : await (widget.updateService ?? UpdateService.instance)
+              .checkForUpdate();
+      message = update == null
+          ? 'You have the newest version.'
+          : flow == null
+              ? 'v${update.version} is out: About → Check for updates.'
+              : 'v${update.version} found: downloading in the background, '
+                  "you'll be asked to install it.";
+    } on UpdateRateLimitedException catch (e) {
+      message = e.toString();
+    } catch (e) {
+      message = 'Update check failed: $e';
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// "Installed v0.2.98+399 · 2026-10-04 18:40 (2 hours ago)" above the

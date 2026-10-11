@@ -8,6 +8,7 @@ import '../models/track.dart';
 import '../services/music_library_service.dart';
 import '../services/music_metadata_enricher.dart';
 import '../services/music_player_service.dart';
+import '../services/speaker_play_guard.dart';
 import '../services/music_playlist_service.dart';
 import 'subpage_app_bar.dart';
 
@@ -59,9 +60,10 @@ class _BpmRangePageState extends State<BpmRangePage> {
   /// The picked range; null until the library's bounds are known.
   RangeValues? _range;
 
-  Future<void> _play(List<Track> list, {int startIndex = 0}) {
+  Future<void> _play(List<Track> list, {int startIndex = 0}) async {
+    if (!await SpeakerPlayGuard.confirmPlay(context)) return;
     final play = widget.playQueue ?? MusicPlayerService.playQueue;
-    return play(list, startIndex: startIndex);
+    await play(list, startIndex: startIndex);
   }
 
   RangeValues _clamped(({int min, int max}) bounds) {

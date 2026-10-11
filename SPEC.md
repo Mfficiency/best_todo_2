@@ -125,6 +125,20 @@ Dependencies and why they exist:
     `MyApp.home`: intro (slides + mode choice) → startup choice (fresh
     install only) → `_initialPage()`. The standalone `ModeSelectPage` is only
     for asking the mode question again (Settings → Mode & features, §4.6).
+    **Web dev runs** (`kIsWeb && Config.isDev`, i.e. `flutter run -d chrome`,
+    0.2.100) open `WebDataChoicePage` before all of that: "Demo data" (the
+    dev seeds, as before) or "Real data from Todoist". Real data takes the
+    token from `--dart-define=TODOIST_TOKEN=...`, a token remembered in the
+    browser (SharedPreferences key `web_todoist_token`), or the text field;
+    validates it, sets `Config.webRealData = true` (runtime-only), runs
+    `TodoistSyncService.startFirstLaunchImport` and awaits its background
+    phase too, then opens the app. While `webRealData` is set,
+    `StorageService` keeps the task list in an in-memory string instead of
+    `tasks.json` (the web has no documents dir), `HomePage` reloads from it
+    like on a phone, and every dev seed gated on `Config.seedDevData`
+    (`isDev && !webRealData`: home tasks/projects/stats/streak, countdown
+    timers, food diary) is skipped. Two-way sync stays on, so edits made in
+    the browser sync back to Todoist. Nothing survives a page reload.
 
 **Background isolate rule (critical, learned the hard way):** every `@pragma('vm:entry-point')`
 callback (`alarmWidgetBackgroundCallback`, `alarmWatchdogCallback`, `smsReportAlarmCallback`,
@@ -2283,9 +2297,25 @@ Cancel/Play dialog only when `Config.musicConfirmSpeakerPlay` (default on; Music
 `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` has any type besides built-in speaker/
 earpiece/speaker-safe/telephony/remote-submix/unknown — i.e. no Bluetooth, wired/USB
 headset, car, HDMI) returns false. Off Android or on a channel error it never asks.
-Hardware media buttons, the notification and home-screen widgets are untouched (no UI to
-ask in; a headset button implies a headset anyway). Tests:
-`test/music/speaker_play_guard_test.dart`.
+Hardware media buttons and the notification are untouched (a headset button implies a
+headset anyway). Tests: `test/music/speaker_play_guard_test.dart`.
+*0.3.19 gaps closed*: "nothing is playing" now means not **audible** —
+`MusicAudioHandler.isAudible` = `_player.playing && _audibleSinceLoad`, the latter set when
+the player state is playing+ready and cleared at the start of every `_playCurrent` — because
+`playbackState.playing` is already true while a video is still being resolved/buffered, so
+switching to music then skipped the question. The guard now also runs in
+`switchSessionAndShow` ("Back to music/videos" pill, mini player and Now Playing switch;
+dialog on the navigator's context, Cancel = no switch), the Subscriptions feed's `_play`
+(tap, swipe/long-press "Play", options-sheet Play, online search results) and Songs by
+BPM's `_play`. **Home-screen widgets**: their play/pause button is now a `PendingIntent`
+for `MusicPlayGuardActivity` (translucent, `taskAffinity=""`, `noHistory`, excluded from
+Recents) instead of the bare media-button broadcast: when the widget data says playing,
+`music_confirm_speaker` (written by `MusicWidgetService` on attach, with every sync and when
+the setting is toggled) is false, or `AudioOutputs.isExternalConnected` (the shared helper
+MainActivity's channel now uses too) — it sends the play/pause broadcast
+(`MusicWidgetIntents.playPauseBroadcast`) and finishes invisibly; otherwise it shows a
+native "Play out loud?" AlertDialog over the home screen (Play → broadcast; Cancel/outside →
+nothing). Skip buttons still broadcast directly.
 
 **Best Music share-to-download** (Best Music 0.2.91): Best Music uses the same native path
 (`ShareActivity` → `MainActivity` → `besttodo/share` → `ShareIntentService`), hooked up in
@@ -3183,6 +3213,27 @@ throttled response and is also why the transfer **cannot** be handed to
 Android's `DownloadManager` the way an APK download is (§5 of the update
 flow): `DownloadManager` only knows how to fetch one URL straight through,
 which is exactly the 31 KiB/s path.
+
+**Network routes (Best Music 0.3.18)** — on some networks (typically home Wi-Fi, dual-stack)
+YouTube blocks the address ("Sign in to confirm you're not a bot") or the player request and
+the audio leave on different address families, and stream URLs only work from the address
+that resolved them, so video/song audio failed on Wi-Fi but worked on mobile data. Resolving
+(`_resolveStream`, used by streaming *and* downloads) now walks `YoutubeRoute.tryOrder()`
+(`lib/services/youtube_network_route.dart`): `system` (phone default), `ipv4`, `ipv6` —
+each the full `_streamClients` walk (`_resolveViaClients`) over `httpClientForRoute(route)`,
+an `HttpClient` whose `connectionFactory` looks the host up for that family only and, for a
+direct https connection, does TLS itself (`SecureSocket.secure(socket, host:)`), passed to
+youtube_explode as `YoutubeHttpClient(IOClient(http))` and used for the range probe — then
+`invidious` (`_resolveViaInvidious`: each of `VideoTranscriptService.invidiousInstances`'
+`/api/v1/videos/<id>?local=true&fields=adaptiveFormats`, `pickInvidiousAudio` = best
+`audio/mp4` by bitrate (else any audio), URL resolved against the instance, size from
+`clen`, then the same end-of-file probe) so YouTube only sees the relay's address. The route
+that works becomes `YoutubeRoute.lastWorking` (in memory) and is tried first next time;
+`ResolvedAudioStream.route` / `_ResolvedStream.route` make `YoutubeAudioSource` and
+`downloadMp3` fetch the bytes over that same route. All routes failing → one
+`Mp3DownloadException` listing each route's error. The probe now runs for any file over
+1 KiB. (How Tubular/NewPipe cope instead: a BotGuard PoToken generated in a hidden WebView
+plus client switching — not implemented here.)
 
 Every request is bounded — `kResolveTimeout`/`kChunkTimeout` (90 s each) —
 so a wedged socket surfaces as a readable error instead of a progress bar
@@ -4266,6 +4317,19 @@ phone number 4 hours (`kF1ReminderLead`) before every remaining race of the seas
   tapping a race (or its "Edit time" button) opens a date picker then a 24-hour time picker;
   edited races show "(edited)" and a "Reset time" button; each change saves and re-arms the alarm.
 
+### 10.6n Compass
+Tools → **Compass** (feature/start-tool key `compass`, `Icons.explore`; `lib/ui/compass_page.dart`).
+A dial (CustomPaint) whose card turns opposite to the heading so N points north, a fixed
+pointer at the top for where the phone faces, and a reading like `92° E` (8-point
+`compassDirection`). **Hold** freezes the reading and dial (ring/pointer switch to the
+primary colour); **Release** resumes live updates. Hold is disabled until the first heading
+arrives.
+Heading source: native `CompassSensor.kt` on the `besttodo/compass` EventChannel — degrees
+clockwise from magnetic north from `TYPE_ROTATION_VECTOR`, falling back to accelerometer +
+magnetometer; sensors are registered only while the page listens. No sensor (or no Android,
+e.g. Windows) → the stream errors and the page shows "No compass sensor on this device".
+`CompassPage(headings:)` takes an injected stream for tests (`test/tools/compass_page_test.dart`).
+
 ### 10.6m Subscriptions feed — YouTube channels in Best Music (Best Music 0.2.92)
 A Tubular/NewPipe-style feed built in Dart on the existing `youtube_explode_dart` + player
 stack rather than by forking Tubular (a native Java app, GPL-3.0 — embedding it would mean
@@ -4926,7 +4990,7 @@ published).
   (`Config.channel`, shown on the About pages as `0.2.101+12199 · dev`).
   - **Publisher:** only the laptop builder (Mfficiency/laptop-builder's self-hosted runner,
     dispatched by `.github/workflows/laptop-build.yml` on pushes to dev/staging/main with
-    `client_payload[branch]`) publishes APKs, by running `tooluild.ps1 release` in a
+    `client_payload[branch]`) publishes APKs, by running `tool\build.ps1 release` in a
     dedicated clone with `BUILD_CHANNEL`, `BUILD_NUMBER`, `PUBLISH=1`. Release mode requires
     `android/key.properties` (upload key; also enforced in Gradle via
     `REQUIRE_RELEASE_KEY=1`), runs the usual preflight (test report + smoke test), skips an app
@@ -4936,9 +5000,15 @@ published).
     channels, title like "BestToDo 0.2.101+12199 (dev)", asset with version + channel, notes =
     the app's newest changelog section without build-meta lines + a footer (channel, commit,
     branch, build time, duration, APK size, "built on the laptop"). It prints one
-    `LAPTOP_BUILD_RESULT app=… version=… channel=… tag=…` line per published APK and commits
-    nothing (no changelog build notes, no `github_releases/` staging). Without `PUBLISH=1` it
-    only builds. GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
+    `LAPTOP_BUILD_RESULT app=… version=… channel=… tag=…` line per published APK. Before
+    publishing it commits both APKs to `github_releases/<channel>/` (named like their release
+    assets, newest 2 per app kept) with `[skip ci]` and pushes that commit to the branch
+    (`pull --rebase --autostash` first); nothing else is committed (no changelog build notes).
+    When HEAD only changes `github_releases/` (that APK commit), the build is for the commit
+    below it, with that commit's build number (`Get-SourceCommit`): already released → nothing
+    to do; a release that failed after the push, or a push the APK commit was rebased onto →
+    built and released then (`publish_apk.dart --target` points the release at that commit).
+    Without `PUBLISH=1` it only builds (APKs in `github_releases/<channel>/`, not committed). GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
     workflow artifacts, no releases, no commit-backs.
   - **App side:** `UpdateService` reads `releases?per_page=30` (anonymous) and keeps only its
     own app's tags (`v` vs `music-v`, `ReleaseTag.parse`) of its own channel (a `main` build
@@ -4947,9 +5017,24 @@ published).
     — both from the same channel. `AutoUpdateChecker` polls every 15 minutes, and on resume
     only when the last check is 15+ minutes old (`checkIfDue`); a 403/429 makes the service
     skip requests until GitHub's reset time (`UpdateRateLimitedException`).
-  - **Legacy:** `github_releases/` stays in the repo untouched because installs from before
-    0.2.101 still read it, but nothing reads or writes it any more (`tool/build.sh` /
-    `build.ps1 all` still stage into it locally — legacy, not used by the release flow).
+  - **Silent download, then ask (0.2.103 / Best Music 0.3.21; same flow as BestCollage and
+    Hally Remote):** `AutoUpdateFlow` (`lib/ui/auto_update_dialog.dart`, one per app, wired in
+    `main.dart` / `main_music.dart`) downloads a build found by the poll silently
+    (`DownloadManager` with `silent: true` → `VISIBILITY_HIDDEN`, permission
+    `DOWNLOAD_WITHOUT_NOTIFICATION`). Only when the APK is complete does the app ask: an
+    "Update ready" dialog once per version and start (in the foreground, not over the
+    intro/pickers), then a banner that stays until it is installed. Nothing installs without a
+    tap: Install commits the APK to a PackageInstaller session (`ApkInstaller.kt` +
+    `InstallReceiver`), so Android's "Update this app?" is the only step; without the "install
+    unknown apps" switch that opens first and the install starts on resume. The finished APK is
+    remembered (`UpdateService.readyApk`, prefs `update_downloaded_apk`) and reused after a
+    restart; a failed silent download leaves a banner whose Install downloads in the foreground
+    and installs. **Pulling down on the Changelog** runs the same check right away
+    (`AutoUpdateFlow.current.checkNow`). The About page's "Check for updates" is unchanged.
+  - **Legacy:** the `.apk` files directly in `github_releases/` stay because installs from
+    before 0.2.101 still read them; current apps read GitHub releases. The laptop build's
+    copies go into `github_releases/<channel>/` subfolders (`tool/build.sh` / `build.ps1 all`
+    still stage into the folder root locally — legacy, not used by the release flow).
 - **Automatic update check (0.1.264, replaced by the background poll below in
   0.2.1):** `Config.autoUpdateCheckEnabled` (Settings → Updates) originally
   checked once per launch and, on finding a newer build, opened a confirm
