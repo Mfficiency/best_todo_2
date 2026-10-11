@@ -8,10 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 
-/// Where an [UpdateInfo] was found: an APK committed to the repo's
-/// `github_releases/` folder (the primary source — see
-/// [UpdateService.folderContentsUrl]) or a published GitHub release (the
-/// fallback for branches where the folder does not exist yet).
+/// Where an [UpdateInfo] was found. Every build now comes from a published
+/// GitHub release of its own app + channel; [repoFolder] is the legacy
+/// `github_releases/` folder (still in the repo for old installs, no longer
+/// read or written by current builds).
 enum UpdateSource { repoFolder, githubRelease }
 
 /// An installable app build — the newest one, or the one kept for a rollback.
@@ -49,9 +49,9 @@ class UpdateInfo {
   final UpdateSource source;
 }
 
-/// The outcome of one update check: the newest installable build and the one
-/// version back that the `github_releases/` folder still keeps, so the About
-/// page can offer both an update and a rollback.
+/// The outcome of one update check: the newest build of this app's channel
+/// and the newest one older than the running build, so the About page can
+/// offer both an update and a rollback (both from the same channel).
 class UpdateCheck {
   UpdateCheck({required this.currentVersion, this.latest, this.previous});
 
@@ -61,7 +61,7 @@ class UpdateCheck {
   /// Newest build found, whatever its version relative to [currentVersion].
   final UpdateInfo? latest;
 
-  /// Second-newest build kept in the repo folder, if there is one.
+  /// Newest same-channel build older than the running one, if there is one.
   final UpdateInfo? previous;
 
   /// True when [latest] is actually newer than the running app.
@@ -70,8 +70,7 @@ class UpdateCheck {
       UpdateService.compareVersions(latest!.version, currentVersion) > 0;
 
   /// The build to offer as "one version back": [previous], unless that is the
-  /// version already running (which happens right after an update is
-  /// published, when the folder keeps new + current).
+  /// version already running.
   UpdateInfo? get rollback {
     final candidate = previous;
     if (candidate == null) return null;
@@ -128,68 +127,133 @@ class DownloadProgress {
   }
 }
 
+/// Thrown by an update check while GitHub's anonymous API rate limit
+/// (60 requests/hour/IP) is exhausted — a "try again later", not a failure.
+class UpdateRateLimitedException implements Exception {
+  UpdateRateLimitedException(this.retryAfter);
+
+  /// When the limit resets (or a 15-minute back-off when GitHub didn't say).
+  final DateTime retryAfter;
+
+  @override
+  String toString() {
+    final t = retryAfter.toLocal();
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    return 'GitHub rate limit reached, try again after $hh:$mm';
+  }
+}
+
+/// A release tag split into app, version and channel. Tags (published by the
+/// laptop builder through `tool/publish_apk.dart`):
+///   BestToDo   `v<x.y.z>-<build>`        + `-dev` / `-staging`
+///   Best Music `music-v<x.y.z>-<build>`  + `-dev` / `-staging`
+class ReleaseTag {
+  const ReleaseTag(
+      {required this.music, required this.version, required this.channel});
+
+  /// True for a Best Music tag (`music-v...`).
+  final bool music;
+
+  /// `x.y.z+build`.
+  final String version;
+
+  /// `main`, `staging` or `dev`.
+  final String channel;
+
+  static final RegExp _pattern = RegExp(
+      r'^(music-)?v(\d+\.\d+\.\d+)-(\d+)(?:-(dev|staging))?$',
+      caseSensitive: false);
+
+  /// Null for anything that isn't one of the app tags above.
+  static ReleaseTag? parse(String tag) {
+    final m = _pattern.firstMatch(tag.trim());
+    if (m == null) return null;
+    return ReleaseTag(
+      music: m.group(1) != null,
+      version: '${m.group(2)}+${m.group(3)}',
+      channel: (m.group(4) ?? 'main').toLowerCase(),
+    );
+  }
+}
+
 /// Finds installable builds, downloads an APK and hands it to the Android
 /// package installer (via the `besttodo/update` channel).
 ///
-/// Primary source is the repo's `github_releases/` folder, which
-/// `tool/stage_local_release.dart` (run from `tool/build.sh`) keeps at the last
-/// two APKs — that is what makes "one version back" possible. When the folder
-/// is missing or empty the lookup falls back to the newest published GitHub
-/// release (`tool/publish_apk.dart` / the build-apk workflow).
+/// Source: the GitHub releases list of `Mfficiency/best_todo_2`
+/// ([releasesListUrl]), where the laptop builder publishes one release per
+/// app, channel and build. Only this app's own tags ([tagPrefix]) of this
+/// build's own channel ([channel], `Config.channel`) are ever considered —
+/// a dev build never offers a staging/main APK and vice versa, and BestToDo
+/// never offers a Best Music APK. Newer = (x.y.z, build) compared as numbers.
 ///
-/// The repo is public, so both the lookup and the download are plain
-/// unauthenticated HTTPS.
+/// The repo is public, so the lookup and the download are anonymous HTTPS
+/// (60 API requests/hour/IP): [AutoUpdateChecker] polls at most every 15
+/// minutes and a 403/429 backs off ([UpdateRateLimitedException]).
+///
+/// The old `github_releases/` repo folder is legacy — old installs still
+/// read it, current builds neither read nor write it.
 class UpdateService {
-  UpdateService._({this.appDisplayName = 'BestToDo', this.apkPrefix = 'best_todo'});
+  UpdateService._(
+      {this.appDisplayName = 'BestToDo',
+      this.apkPrefix = 'best_todo',
+      String? channel})
+      : channel = channel ?? Config.channel;
 
   static UpdateService instance = UpdateService._();
 
   /// A second app built from this same repo (Best Music) gets its own
   /// instance rather than reusing [instance], so its `appDisplayName` and
-  /// `apkPrefix` never leak into BestToDo's own update check.
+  /// tags never leak into BestToDo's own update check. [channel] defaults to
+  /// the running build's (`Config.channel`); tests pass one explicitly.
   static UpdateService forApp(
-          {required String appDisplayName, required String apkPrefix}) =>
-      UpdateService._(appDisplayName: appDisplayName, apkPrefix: apkPrefix);
+          {required String appDisplayName,
+          required String apkPrefix,
+          String? channel}) =>
+      UpdateService._(
+          appDisplayName: appDisplayName,
+          apkPrefix: apkPrefix,
+          channel: channel);
 
   /// Fresh instance per test, dropping any injected [fetchOverride].
-  static void resetForTest() {
-    instance = UpdateService._();
+  static void resetForTest({String? channel}) {
+    instance = UpdateService._(channel: channel);
   }
 
   /// Shown in release names and the background-download file name, e.g.
   /// "BestToDo 0.1.132+104" / "BestToDo-update-0.1.132-104.apk".
   final String appDisplayName;
 
-  /// Only [releasesFolder] entries whose file name starts with this (plus an
-  /// underscore) are treated as this app's own builds — the folder holds
-  /// both apps' APKs, and a bare version regex would otherwise happily match
-  /// the other app's file name too.
+  /// Which app this is: `best_todo` (BestToDo) or `best_music` (Best Music).
+  /// Picks the release tag family ([tagPrefix]).
   final String apkPrefix;
+
+  /// Release channel whose builds this instance offers: `main`, `staging`
+  /// or `dev`.
+  final String channel;
+
+  /// `v` for BestToDo, `music-v` for Best Music.
+  String get tagPrefix => apkPrefix == 'best_music' ? 'music-v' : 'v';
 
   static const String owner = 'Mfficiency';
   static const String repo = 'best_todo_2';
-  static const String latestReleaseUrl =
-      'https://api.github.com/repos/$owner/$repo/releases/latest';
 
-  /// Repo folder holding the last two built APKs.
-  static const String releasesFolder = 'github_releases';
-
-  /// Branch the folder is read from. `dev` is where every build lands first
-  /// (both local `tool/build.sh` runs and the build-apk workflow publish from
-  /// it), so it always carries the two newest APKs.
-  static const String releasesRef = 'dev';
-
-  /// Directory listing of [releasesFolder]. Entries carry `name`, `size` and a
-  /// ready-made `download_url` (percent-encoded, which matters because the
-  /// file names contain `+`).
-  static const String folderContentsUrl =
-      'https://api.github.com/repos/$owner/$repo/contents/$releasesFolder'
-      '?ref=$releasesRef';
+  /// The releases list (newest first). `releases/latest` is repo-wide and
+  /// ignores prereleases, so it can't serve two apps × three channels.
+  static const String releasesListUrl =
+      'https://api.github.com/repos/$owner/$repo/releases?per_page=30';
 
   static const MethodChannel _channel = MethodChannel('besttodo/update');
 
-  /// Test seam: replaces the real HTTPS GET of the release JSON.
+  /// Test seam: replaces the real HTTPS GET of the release JSON. Throwing an
+  /// `HttpException('GitHub replied 403')` simulates the rate limit.
   Future<String> Function(Uri url)? fetchOverride;
+
+  /// Set after a 403/429: no request is made before this time.
+  DateTime? rateLimitedUntil;
+
+  /// Back-off after a 403/429 that didn't say when the limit resets.
+  static const Duration rateLimitBackoff = Duration(minutes: 15);
 
   /// Numeric components of a version string, in order. `0.1.74+45` →
   /// [0, 1, 74, 45]. Unparseable strings ("unknown" in tests) yield [] and
@@ -214,12 +278,13 @@ class UpdateService {
   }
 
   /// Release tag → pubspec version: `v0.1.74-45` → `0.1.74+45` (git tags
-  /// can't carry `+`, so the publisher uses `-` for the build number).
+  /// can't carry `+`, so the publisher uses `-` for the build number). Also
+  /// drops a `music-` app prefix and a `-dev`/`-staging` channel suffix.
   static String versionFromTag(String tag) {
+    final parsed = ReleaseTag.parse(tag);
+    if (parsed != null) return parsed.version;
     var v = tag.trim();
     if (v.startsWith('v') || v.startsWith('V')) v = v.substring(1);
-    final m = RegExp(r'^(\d+\.\d+\.\d+)[-+](\d+)$').firstMatch(v);
-    if (m != null) return '${m.group(1)}+${m.group(2)}';
     return v;
   }
 
@@ -250,102 +315,68 @@ class UpdateService {
     );
   }
 
-  /// `best_todo_0.1.143+115.apk` → `0.1.143+115`. Also accepts the release
-  /// asset spelling (`BestToDo-0.1.143+115.apk`) and a `-build` separator.
-  /// Returns null for names that are not a versioned APK.
-  static String? versionFromApkFileName(String name) {
-    if (!name.toLowerCase().endsWith('.apk')) return null;
-    final m =
-        RegExp(r'(\d+\.\d+\.\d+)(?:[+\-_](\d+))?').firstMatch(name);
-    if (m == null) return null;
-    final build = m.group(2);
-    return build == null ? m.group(1)! : '${m.group(1)}+$build';
+  /// True when [release] (a releases-list entry) is a published build of
+  /// the app with [tagPrefix] (`v` / `music-v`) on [channel]. A main build
+  /// must also not be marked prerelease; drafts never count.
+  static bool isChannelRelease(Map<String, dynamic> release,
+      {required String tagPrefix, required String channel}) {
+    if (release['draft'] == true) return false;
+    final tag = ReleaseTag.parse(release['tag_name'] as String? ?? '');
+    if (tag == null) return false;
+    if (tag.music != (tagPrefix == 'music-v')) return false;
+    if (tag.channel != channel) return false;
+    if (channel == 'main' && release['prerelease'] == true) return false;
+    return true;
   }
 
-  /// Maps a GitHub contents-API directory listing to installable builds,
-  /// newest first. Non-APK entries (the folder's README) are skipped.
-  ///
-  /// [appDisplayName] only affects the [UpdateInfo.releaseName] shown to the
-  /// user; filtering entries down to one app's own APKs (the folder holds
-  /// both BestToDo's and Best Music's builds) is [fetchFolderReleases]'s job,
-  /// since it alone knows [apkPrefix].
-  static List<UpdateInfo> folderReleases(List<dynamic> contents,
-      {String appDisplayName = 'BestToDo'}) {
+  /// This app's [channel] builds out of a releases-list payload, newest
+  /// (x.y.z, build) first.
+  static List<UpdateInfo> channelReleases(List<dynamic> releases,
+      {required String tagPrefix, required String channel}) {
     final builds = <UpdateInfo>[];
-    for (final entry in contents) {
-      if (entry is! Map) continue;
-      final name = entry['name'] as String? ?? '';
-      final version = versionFromApkFileName(name);
-      final url = entry['download_url'] as String? ?? '';
-      if (version == null || url.isEmpty) continue;
-      builds.add(UpdateInfo(
-        version: version,
-        releaseName: '$appDisplayName $version',
-        htmlUrl: entry['html_url'] as String? ??
-            'https://github.com/$owner/$repo/tree/$releasesRef/$releasesFolder',
-        apkUrl: url,
-        apkSizeBytes: (entry['size'] as num?)?.round(),
-        source: UpdateSource.repoFolder,
-      ));
+    for (final release in releases) {
+      if (release is! Map<String, dynamic>) continue;
+      if (!isChannelRelease(release, tagPrefix: tagPrefix, channel: channel)) {
+        continue;
+      }
+      builds.add(releaseInfo(release));
     }
     builds.sort((a, b) => compareVersions(b.version, a.version));
     return builds;
   }
 
-  /// The APKs currently kept in the repo folder that belong to this app (file
-  /// name starting with [apkPrefix]), newest first. Empty when the folder
-  /// holds none of this app's builds; throws when the listing can't be
-  /// fetched.
-  Future<List<UpdateInfo>> fetchFolderReleases() async {
-    final decoded = jsonDecode(await _fetch(Uri.parse(folderContentsUrl)));
-    if (decoded is! List) return const [];
-    final mine = decoded.where((entry) {
-      if (entry is! Map) return false;
-      final name = (entry['name'] as String? ?? '').toLowerCase();
-      return name.startsWith('${apkPrefix.toLowerCase()}_');
-    }).toList();
-    return folderReleases(mine, appDisplayName: appDisplayName);
+  /// This app's own channel builds, newest first. Throws on network/parse
+  /// failures, and [UpdateRateLimitedException] while rate limited.
+  Future<List<UpdateInfo>> fetchChannelReleases() async {
+    final decoded = jsonDecode(await _fetch(Uri.parse(releasesListUrl)));
+    if (decoded is! List) {
+      throw const FormatException('Unexpected releases payload');
+    }
+    return channelReleases(decoded, tagPrefix: tagPrefix, channel: channel);
   }
 
-  /// Looks up the installable builds: the repo folder first (newest + one
-  /// version back), the newest published release as a fallback. Throws on
-  /// network/parse failures of the fallback — the caller shows the error, this
-  /// is a user-initiated check.
-  ///
-  /// The release fallback only ever applies to the default app
-  /// ([apkPrefix] `best_todo`): GitHub's "latest release" endpoint is
-  /// repo-wide, not per-app, so for any other app it would misreport
-  /// BestToDo's latest release as an update. A non-default app with an empty
-  /// folder simply reports no update available.
+  /// Looks up the newest build of this app's channel plus the newest one
+  /// older than the running build (the rollback). Throws on network/parse
+  /// failures — the About page shows the error, the background poll retries.
   Future<UpdateCheck> checkReleases({String? currentVersion}) async {
     var current = currentVersion;
     if (current == null) {
       await Config.ensureVersionLoaded();
       current = Config.versionWithBuild;
     }
-    var folder = const <UpdateInfo>[];
-    try {
-      folder = await fetchFolderReleases();
-    } catch (_) {
-      // No folder on this branch (or offline for it) — the release lookup
-      // below is the fallback and reports the failure instead.
+    final builds = await fetchChannelReleases();
+    UpdateInfo? previous;
+    for (final b in builds) {
+      if (compareVersions(b.version, current) < 0) {
+        previous = b;
+        break;
+      }
     }
-    if (folder.isNotEmpty) {
-      return UpdateCheck(
-        currentVersion: current,
-        latest: folder.first,
-        previous: folder.length > 1 ? folder[1] : null,
-      );
-    }
-    if (apkPrefix != 'best_todo') {
-      return UpdateCheck(currentVersion: current);
-    }
-    final body = await _fetch(Uri.parse(latestReleaseUrl));
-    final release = jsonDecode(body);
-    if (release is! Map<String, dynamic>) {
-      throw const FormatException('Unexpected release payload');
-    }
-    return UpdateCheck(currentVersion: current, latest: releaseInfo(release));
+    return UpdateCheck(
+      currentVersion: current,
+      latest: builds.isEmpty ? null : builds.first,
+      previous: previous,
+    );
   }
 
   /// The newest build when it is newer than [currentVersion] (defaults to the
@@ -355,7 +386,7 @@ class UpdateService {
     return check.hasUpdate ? check.latest : null;
   }
 
-  /// A background poll runs every minute (see [AutoUpdateChecker]) guarded by
+  /// A background poll (see [AutoUpdateChecker]) is guarded by
   /// a single in-flight flag; a request that never completes — flaky mobile
   /// data, Doze-mode network suspension — would otherwise wedge that flag
   /// forever and silently stop checking for the rest of the session. This
@@ -364,8 +395,23 @@ class UpdateService {
   static const Duration _fetchTimeout = Duration(seconds: 20);
 
   Future<String> _fetch(Uri url) async {
+    final until = rateLimitedUntil;
+    if (until != null) {
+      if (DateTime.now().isBefore(until)) {
+        throw UpdateRateLimitedException(until);
+      }
+      rateLimitedUntil = null;
+    }
     final override = fetchOverride;
-    if (override != null) return override(url);
+    if (override != null) {
+      try {
+        return await override(url);
+      } on HttpException catch (e) {
+        final status = RegExp(r'replied (\d+)').firstMatch(e.message);
+        _throwIfRateLimited(int.tryParse(status?.group(1) ?? ''), null);
+        rethrow;
+      }
+    }
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       return await _fetchWith(client, url).timeout(
@@ -380,12 +426,27 @@ class UpdateService {
     }
   }
 
+  /// 403/429 = GitHub's anonymous rate limit: remember when to try again
+  /// (its `x-ratelimit-reset`, else [rateLimitBackoff]) and throw
+  /// [UpdateRateLimitedException]. No-op for any other status.
+  void _throwIfRateLimited(int? status, String? resetHeader) {
+    if (status != 403 && status != 429) return;
+    final reset = int.tryParse(resetHeader ?? '');
+    final until = reset != null
+        ? DateTime.fromMillisecondsSinceEpoch(reset * 1000)
+        : DateTime.now().add(rateLimitBackoff);
+    rateLimitedUntil = until;
+    throw UpdateRateLimitedException(until);
+  }
+
   Future<String> _fetchWith(HttpClient client, Uri url) async {
     final request = await client.getUrl(url);
     request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
     request.headers.set(HttpHeaders.userAgentHeader, 'BestToDo-update-check');
     final response = await request.close();
     final text = await response.transform(utf8.decoder).join();
+    _throwIfRateLimited(
+        response.statusCode, response.headers.value('x-ratelimit-reset'));
     if (response.statusCode != 200) {
       throw HttpException('GitHub replied ${response.statusCode}', uri: url);
     }
@@ -408,7 +469,7 @@ class UpdateService {
 
   /// Version whose APK was last downloaded successfully (handed to the
   /// installer), so a re-prompt for the same build — the auto-checker polls
-  /// every minute, and a fresh app launch has no in-memory record of what an
+  /// every 15 minutes, and a fresh app launch has no in-memory record of what an
   /// earlier run already fetched — can be skipped instead of asking the user
   /// to download it again. Naturally stops mattering once that version is
   /// actually installed, since `checkForUpdate` then no longer reports it as

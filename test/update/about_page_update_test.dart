@@ -5,13 +5,23 @@ import 'package:besttodo/services/update_service.dart';
 import 'package:besttodo/ui/about_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
-/// The About page's update section, with the release lookup faked through
-/// [UpdateService.fetchOverride] so no network is touched. In widget tests the
-/// app version is 'unknown' (no PackageInfo), which compares as 0.0.0 — so a
-/// v0.0.0-0 release means "up to date" and anything real means "update".
+/// The About page's update section, with the release lookup (the GitHub
+/// releases list) faked through [UpdateService.fetchOverride] so no network
+/// is touched. The running version is mocked to 0.0.0+0 — so a v0.0.0-0
+/// release means "up to date" and anything real means "update".
 void main() {
+  void mockRunningVersion(String version, String build) =>
+      PackageInfo.setMockInitialValues(
+          appName: 'BestToDo',
+          packageName: 'com.mfficiency.best_todo_2',
+          version: version,
+          buildNumber: build,
+          buildSignature: '');
+
   setUp(() {
+    mockRunningVersion('0.0.0', '0');
     Config.resetVersionForTest();
     UpdateService.resetForTest();
   });
@@ -20,19 +30,23 @@ void main() {
     UpdateService.resetForTest();
   });
 
-  String releaseJson(String tag, {bool withApk = true}) => jsonEncode({
+  Map<String, dynamic> release(String tag, {bool withApk = true}) => {
         'tag_name': tag,
         'name': 'BestToDo release',
         'html_url': 'https://example.com/release',
+        'prerelease': false,
         'assets': [
           if (withApk)
             {
               'name': 'BestToDo.apk',
-              'browser_download_url': 'https://example.com/BestToDo.apk',
+              'browser_download_url': 'https://example.com/$tag.apk',
               'size': 52428800,
             },
         ],
-      });
+      };
+
+  String releaseJson(String tag, {bool withApk = true}) =>
+      jsonEncode([release(tag, withApk: withApk)]);
 
   Future<void> pumpAboutPage(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: AboutPage()));
@@ -90,37 +104,34 @@ void main() {
     expect(find.text('Open release page'), findsOneWidget);
   });
 
-  /// A `github_releases/` directory listing, the update section's primary
-  /// source (the app version is 'unknown' → 0.0.0, so both builds are "newer").
-  String folderJson(List<String> versions) => jsonEncode([
-        {'name': 'README.md', 'download_url': 'https://example.com/README.md'},
-        for (final v in versions)
-          {
-            'name': 'best_todo_$v.apk',
-            'download_url': 'https://example.com/best_todo_$v.apk',
-            'size': 60803674,
-          },
+  /// Several releases of this app's (main) channel, plus another channel's
+  /// and the other app's newer ones that must be ignored.
+  String releasesJson(List<String> tags) => jsonEncode([
+        for (final t in tags) release(t),
+        release('v9.9.9-99999-dev'),
+        release('music-v9.9.9-99999'),
       ]);
 
-  testWidgets('offers the newest folder build plus one version back',
+  testWidgets('offers the newest channel build plus one version back',
       (tester) async {
-    UpdateService.instance.fetchOverride =
-        (url) async => folderJson(['0.1.142+114', '0.1.143+115']);
+    mockRunningVersion('0.1.143', '115');
+    UpdateService.instance.fetchOverride = (url) async =>
+        releasesJson(['v0.1.142-114', 'v0.1.143-115', 'v0.1.144-116']);
 
     await pumpAboutPage(tester);
     await tapCheck(tester);
 
-    expect(find.text('Version 0.1.143+115 is available.'), findsOneWidget);
+    expect(find.text('Version 0.1.144+116 is available.'), findsOneWidget);
     expect(find.textContaining('Download & install'), findsOneWidget);
     expect(find.textContaining('Go back to 0.1.142+114'), findsOneWidget);
     expect(
         find.textContaining('Reinstalls the previous build'), findsOneWidget);
   });
 
-  testWidgets('no rollback button when the folder keeps a single build',
+  testWidgets('no rollback button without an older build in the channel',
       (tester) async {
     UpdateService.instance.fetchOverride =
-        (url) async => folderJson(['0.1.143+115']);
+        (url) async => releasesJson(['v0.1.143-115']);
 
     await pumpAboutPage(tester);
     await tapCheck(tester);

@@ -369,9 +369,144 @@ function Invoke-BuildAll {
   }
 }
 
+# `build.ps1 release` -- the laptop builder's entry point (one dedicated clone
+# per branch, see SPEC.md section 11 "Laptop channel builds"). Builds BOTH apps' release
+# APKs for the channel in BUILD_CHANNEL (dev / staging / main; unset = main)
+# with versionCode BUILD_NUMBER, and with PUBLISH=1 publishes one GitHub
+# release per app (tool/publish_apk.dart). Commits and pushes nothing: no
+# version bumps, no changelog build notes, no github_releases/ staging.
+# An app whose release for this exact build already exists is skipped; the
+# other one is still built. Exits non-zero if any app failed.
+function Get-KeyProperties {
+  $path = "android/key.properties"
+  if (-not (Test-Path -LiteralPath $path)) {
+    throw "release mode needs android/key.properties (the upload key) -- refusing to build a debug-signed APK"
+  }
+  $props = @{}
+  foreach ($line in Get-Content -LiteralPath $path) {
+    if ($line -match '^\s*([^#=]+?)\s*=\s*(.*?)\s*$') {
+      $props[$Matches[1]] = $Matches[2]
+    }
+  }
+  foreach ($key in @("storeFile", "storePassword", "keyAlias", "keyPassword")) {
+    if ([string]::IsNullOrWhiteSpace($props[$key])) {
+      throw "android/key.properties has no $key -- refusing to build a debug-signed APK"
+    }
+  }
+  $store = $props["storeFile"]
+  # Gradle resolves a relative storeFile against android/app.
+  if (-not [System.IO.Path]::IsPathRooted($store)) {
+    $store = Join-Path "android/app" $store
+  }
+  if (-not (Test-Path -LiteralPath $store)) {
+    throw "keystore $($props['storeFile']) (from android/key.properties) not found"
+  }
+}
+
+function Invoke-ChannelRelease {
+  $channel = if ([string]::IsNullOrWhiteSpace($env:BUILD_CHANNEL)) { "main" } else { $env:BUILD_CHANNEL.Trim().ToLower() }
+  if (@("main", "staging", "dev") -notcontains $channel) {
+    throw "BUILD_CHANNEL must be dev, staging or main (got '$channel')"
+  }
+  $env:BUILD_CHANNEL = $channel
+  $buildNumber = "$env:BUILD_NUMBER".Trim()
+  if ($buildNumber -ne "" -and $buildNumber -notmatch '^\d+$') {
+    throw "BUILD_NUMBER must be an integer (got '$buildNumber')"
+  }
+  $publish = ($env:PUBLISH -eq "1")
+
+  Get-KeyProperties
+  # Belt and braces: android/app/build.gradle.kts fails the build instead of
+  # falling back to the debug key when this is set.
+  $env:REQUIRE_RELEASE_KEY = "1"
+
+  $apps = @(
+    @{ Flavor = "todo"; Name = "BestToDo"; Args = @("--flavor", "todo") },
+    @{ Flavor = "music"; Name = "Best Music"; Args = @("--flavor", "music", "-t", "lib/main_music.dart") }
+  )
+  $numberArgs = @()
+  if ($buildNumber -ne "") { $numberArgs = @("--build-number", $buildNumber) }
+
+  Write-Host "==> release: channel=$channel build=$(if ($buildNumber) { $buildNumber } else { '(version files)' }) publish=$publish"
+
+  $todo = @()
+  foreach ($app in $apps) {
+    if ($publish) {
+      & dart run tool/publish_apk.dart --app $app.Flavor --channel $channel @numberArgs --exists
+      $status = $LASTEXITCODE
+      if ($status -eq 0) {
+        Write-Host "    $($app.Name): release for this build already exists -- skipping"
+        continue
+      }
+      if ($status -ne 2) {
+        throw "could not check for an existing $($app.Name) release (exit $status)"
+      }
+    }
+    $todo += $app
+  }
+  if ($todo.Count -eq 0) {
+    Write-Host "==> nothing to do: every app's release for this build exists"
+    return
+  }
+
+  # Same preflight as every other build: newest CI test report packaged into
+  # the APK + a quick smoke test.
+  if ($env:SKIP_PREFLIGHT -ne "1") {
+    Invoke-Checked "dart" @("run", "tool/pull_test_report.dart")
+    Invoke-Checked "flutter" @("test", "test/core/build_smoke_test.dart")
+  }
+
+  $failed = @()
+  foreach ($app in $todo) {
+    $flavor = $app.Flavor
+    try {
+      $apk = "build/app/outputs/flutter-apk/app-$flavor-release.apk"
+      # Never pick up a previous build's leftover (see build.gradle.kts).
+      if (Test-Path -LiteralPath $apk) { Remove-Item -LiteralPath $apk -Force }
+
+      $flutterArgs = @("build", "apk", "--release") + $app.Args +
+        @("--dart-define=BUILD_CHANNEL=$channel")
+      if ($buildNumber -ne "") {
+        $flutterArgs += @("--build-number=$buildNumber", "--dart-define=BUILD_NUMBER=$buildNumber")
+      }
+      Write-Host "==> flutter $($flutterArgs -join ' ')"
+      $sw = [System.Diagnostics.Stopwatch]::StartNew()
+      & flutter @flutterArgs
+      $status = $LASTEXITCODE
+      $sw.Stop()
+      if ($status -ne 0) { throw "flutter build failed (exit $status)" }
+      if (-not (Test-Path -LiteralPath $apk)) { throw "build produced no $apk" }
+      $seconds = [int][Math]::Round($sw.Elapsed.TotalSeconds)
+
+      $suffix = if ($channel -eq "main") { "" } else { "-$channel" }
+      $out = "build/app/outputs/flutter-apk/best_$flavor$suffix-release.apk"
+      Copy-Item -LiteralPath $apk -Destination $out -Force
+      Write-Host "    built $out in ${seconds}s"
+
+      if ($publish) {
+        Invoke-Checked "dart" (@("run", "tool/publish_apk.dart", "--app", $flavor,
+          "--channel", $channel, "--apk", $out, "--duration", "$seconds") + $numberArgs)
+      } else {
+        Write-Host "    PUBLISH is not 1: not publishing $($app.Name)"
+      }
+    } catch {
+      Write-Warning "$($app.Name): $_"
+      $failed += $app.Name
+    }
+  }
+
+  if ($failed.Count -gt 0) {
+    Write-Error "release failed for: $($failed -join ', ')"
+    exit 1
+  }
+}
+
 Set-Location (Get-RepoRoot)
 
-if ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "all") {
+if ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "release") {
+  # The laptop builder's channel build (see Invoke-ChannelRelease).
+  Invoke-ChannelRelease
+} elseif ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "all") {
   if ($BuildArgs.Count -eq 1) {
     Invoke-BuildAll @()
   } else {
