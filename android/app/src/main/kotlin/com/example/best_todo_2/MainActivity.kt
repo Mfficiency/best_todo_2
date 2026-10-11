@@ -18,7 +18,6 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
 import android.view.WindowManager
-import androidx.core.content.FileProvider
 import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -336,6 +335,10 @@ class MainActivity : AudioServiceFragmentActivity() {
                     // Notification title naming the app + version being
                     // downloaded ("Best Music update 0.1.12+30").
                     val title = call.argument<String>("title") ?: "BestToDo update"
+                    // The automatic update downloads without a notification
+                    // (DOWNLOAD_WITHOUT_NOTIFICATION); the app asks to
+                    // install once it is complete.
+                    val silent = call.argument<Boolean>("silent") == true
                     if (url == null || fileName == null) {
                         result.error("bad-args", "url/fileName missing", null)
                         return@setMethodCallHandler
@@ -367,7 +370,8 @@ class MainActivity : AudioServiceFragmentActivity() {
                             .setTitle(title)
                             .setDestinationUri(Uri.fromFile(destFile))
                             .setNotificationVisibility(
-                                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                                if (silent) DownloadManager.Request.VISIBILITY_HIDDEN
+                                else DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
                             )
                             .setAllowedNetworkTypes(
                                 DownloadManager.Request.NETWORK_WIFI or
@@ -486,25 +490,23 @@ class MainActivity : AudioServiceFragmentActivity() {
                         result.success("needs-permission")
                         return@setMethodCallHandler
                     }
-                    try {
-                        val uri = FileProvider.getUriForFile(
-                            this, "$packageName.fileprovider", File(path)
-                        )
-                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(
-                                uri,
-                                "application/vnd.android.package-archive",
-                            )
-                            addFlags(
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                    Intent.FLAG_ACTIVITY_NEW_TASK
-                            )
+                    // A PackageInstaller session (ApkInstaller.kt): Android
+                    // shows only "Update this app?". Copying the APK into the
+                    // session blocks, so it runs off the main thread.
+                    val main = android.os.Handler(android.os.Looper.getMainLooper())
+                    Thread {
+                        val error = try {
+                            ApkInstaller.install(applicationContext, File(path))
+                            null
+                        } catch (e: Exception) {
+                            android.util.Log.w("ApkInstaller", "install failed", e)
+                            e.message ?: e.toString()
                         }
-                        startActivity(intent)
-                        result.success("ok")
-                    } catch (e: Exception) {
-                        result.error("install-failed", e.message, null)
-                    }
+                        main.post {
+                            if (error == null) result.success("ok")
+                            else result.error("install-failed", error, null)
+                        }
+                    }.start()
                 }
                 else -> result.notImplemented()
             }

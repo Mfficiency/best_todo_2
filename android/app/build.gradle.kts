@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 }
 val hasReleaseKeystore = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
     .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
-// `tooluild.ps1 release` (a published laptop channel build) sets this: such
+// `tool\build.ps1 release` (a published laptop channel build) sets this: such
 // a build must be signed with the upload key, never the debug fallback below.
 if (System.getenv("REQUIRE_RELEASE_KEY") == "1" && !hasReleaseKeystore) {
     throw GradleException("REQUIRE_RELEASE_KEY=1 but android/key.properties is missing or incomplete")
@@ -40,7 +40,7 @@ val musicVersionCode = musicVersionFull?.substringAfter("+")?.toIntOrNull()
 
 // Release channel (dev / staging / main), one installable app per branch so
 // all three can sit side by side on a phone: BUILD_CHANNEL comes from the
-// laptop builder (tooluild.ps1 release). Unset = main = the plain app id
+// laptop builder (tool\build.ps1 release). Unset = main = the plain app id
 // and name, so `flutter run`, CI checks and old scripts behave as before.
 val buildChannel = (System.getenv("BUILD_CHANNEL") ?: "").trim().lowercase().ifEmpty { "main" }
 if (buildChannel !in setOf("main", "staging", "dev")) {

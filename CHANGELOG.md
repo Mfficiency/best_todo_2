@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.103] - 2026-10-11
+- Updates download quietly in the background; once a new version is complete the app asks whether to install it (Install or Later — Later keeps a banner until you install). Pull down on the Changelog to check right away. The install goes through Android's own "Update this app?" screen.
+
 ## [0.2.102] - 2026-10-11
 - Added a Compass tool (Tools → Compass): a dial that turns with your phone, plus a Hold button to freeze the reading
 

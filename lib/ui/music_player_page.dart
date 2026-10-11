@@ -228,10 +228,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Changelog'),
-            onTap: () => _pushStandalonePage(() => const ChangelogPage(
+            onTap: () => _pushStandalonePage(() => ChangelogPage(
                   assetPath: 'CHANGELOG_MUSIC.md',
                   showStoryPoster: false,
                   hidePreamble: true,
+                  updateService: MusicAboutPage.updateService,
                 )),
           ),
           ListTile(

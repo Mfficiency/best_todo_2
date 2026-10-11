@@ -4990,7 +4990,7 @@ published).
   (`Config.channel`, shown on the About pages as `0.2.101+12199 · dev`).
   - **Publisher:** only the laptop builder (Mfficiency/laptop-builder's self-hosted runner,
     dispatched by `.github/workflows/laptop-build.yml` on pushes to dev/staging/main with
-    `client_payload[branch]`) publishes APKs, by running `tooluild.ps1 release` in a
+    `client_payload[branch]`) publishes APKs, by running `tool\build.ps1 release` in a
     dedicated clone with `BUILD_CHANNEL`, `BUILD_NUMBER`, `PUBLISH=1`. Release mode requires
     `android/key.properties` (upload key; also enforced in Gradle via
     `REQUIRE_RELEASE_KEY=1`), runs the usual preflight (test report + smoke test), skips an app
@@ -5000,9 +5000,15 @@ published).
     channels, title like "BestToDo 0.2.101+12199 (dev)", asset with version + channel, notes =
     the app's newest changelog section without build-meta lines + a footer (channel, commit,
     branch, build time, duration, APK size, "built on the laptop"). It prints one
-    `LAPTOP_BUILD_RESULT app=… version=… channel=… tag=…` line per published APK and commits
-    nothing (no changelog build notes, no `github_releases/` staging). Without `PUBLISH=1` it
-    only builds. GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
+    `LAPTOP_BUILD_RESULT app=… version=… channel=… tag=…` line per published APK. Before
+    publishing it commits both APKs to `github_releases/<channel>/` (named like their release
+    assets, newest 2 per app kept) with `[skip ci]` and pushes that commit to the branch
+    (`pull --rebase --autostash` first); nothing else is committed (no changelog build notes).
+    When HEAD only changes `github_releases/` (that APK commit), the build is for the commit
+    below it, with that commit's build number (`Get-SourceCommit`): already released → nothing
+    to do; a release that failed after the push, or a push the APK commit was rebased onto →
+    built and released then (`publish_apk.dart --target` points the release at that commit).
+    Without `PUBLISH=1` it only builds (APKs in `github_releases/<channel>/`, not committed). GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
     workflow artifacts, no releases, no commit-backs.
   - **App side:** `UpdateService` reads `releases?per_page=30` (anonymous) and keeps only its
     own app's tags (`v` vs `music-v`, `ReleaseTag.parse`) of its own channel (a `main` build
@@ -5011,9 +5017,24 @@ published).
     — both from the same channel. `AutoUpdateChecker` polls every 15 minutes, and on resume
     only when the last check is 15+ minutes old (`checkIfDue`); a 403/429 makes the service
     skip requests until GitHub's reset time (`UpdateRateLimitedException`).
-  - **Legacy:** `github_releases/` stays in the repo untouched because installs from before
-    0.2.101 still read it, but nothing reads or writes it any more (`tool/build.sh` /
-    `build.ps1 all` still stage into it locally — legacy, not used by the release flow).
+  - **Silent download, then ask (0.2.103 / Best Music 0.3.21; same flow as BestCollage and
+    Hally Remote):** `AutoUpdateFlow` (`lib/ui/auto_update_dialog.dart`, one per app, wired in
+    `main.dart` / `main_music.dart`) downloads a build found by the poll silently
+    (`DownloadManager` with `silent: true` → `VISIBILITY_HIDDEN`, permission
+    `DOWNLOAD_WITHOUT_NOTIFICATION`). Only when the APK is complete does the app ask: an
+    "Update ready" dialog once per version and start (in the foreground, not over the
+    intro/pickers), then a banner that stays until it is installed. Nothing installs without a
+    tap: Install commits the APK to a PackageInstaller session (`ApkInstaller.kt` +
+    `InstallReceiver`), so Android's "Update this app?" is the only step; without the "install
+    unknown apps" switch that opens first and the install starts on resume. The finished APK is
+    remembered (`UpdateService.readyApk`, prefs `update_downloaded_apk`) and reused after a
+    restart; a failed silent download leaves a banner whose Install downloads in the foreground
+    and installs. **Pulling down on the Changelog** runs the same check right away
+    (`AutoUpdateFlow.current.checkNow`). The About page's "Check for updates" is unchanged.
+  - **Legacy:** the `.apk` files directly in `github_releases/` stay because installs from
+    before 0.2.101 still read them; current apps read GitHub releases. The laptop build's
+    copies go into `github_releases/<channel>/` subfolders (`tool/build.sh` / `build.ps1 all`
+    still stage into the folder root locally — legacy, not used by the release flow).
 - **Automatic update check (0.1.264, replaced by the background poll below in
   0.2.1):** `Config.autoUpdateCheckEnabled` (Settings → Updates) originally
   checked once per launch and, on finding a newer build, opened a confirm

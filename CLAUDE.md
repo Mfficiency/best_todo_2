@@ -32,7 +32,10 @@ file is the short operational guide.
   `powershell -File tool\build.ps1 release` with `BUILD_CHANNEL` (dev/staging/main),
   `BUILD_NUMBER` and `PUBLISH=1`: both APKs (BestToDo + Best Music) for that channel, signed
   with the upload key (`android/key.properties`, required), one GitHub release per app
-  (tags `v<x.y.z>-<build>[-dev|-staging]` / `music-v…`). Each channel is its own app
+  (tags `v<x.y.z>-<build>[-dev|-staging]` / `music-v…`), after committing both APKs to
+  `github_releases/<channel>/` and pushing that commit (`[skip ci]`, so it doesn't trigger
+  another build). A HEAD that only changes `github_releases/` builds the commit below it
+  (released already → nothing to do). Each channel is its own app
   (`.dev`/`.staging` id suffix, "Dev"/"Staging" label) and updates only from its own
   channel's releases. Local test build without publishing: set `BUILD_CHANNEL=dev`,
   `BUILD_NUMBER=12345`, leave `PUBLISH` unset, run the same command. GitHub CI only builds

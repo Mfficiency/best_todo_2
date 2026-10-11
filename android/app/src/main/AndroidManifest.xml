@@ -40,6 +40,9 @@
          the system package installer. The user still confirms the install
          and grants the one-time "install unknown apps" toggle. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The automatic update downloads silently (DownloadManager,
+         VISIBILITY_HIDDEN); the app asks to install when it is complete. -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
     <!-- Optional: the user explicitly grants Usage Access from the wellbeing
          dashboard. Android does not show a runtime permission dialog. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -159,6 +162,11 @@
              alarm fires. It hands off to AlarmService to run the Dart callback.
              Without it, alarms fire in the OS but are never delivered to the app,
              so the daily SMS report never runs. -->
+        <!-- Install session status (ApkInstaller.kt): opens Android's
+             "update this app?" dialog. -->
+        <receiver
+            android:name="com.mfficiency.best_todo_2.InstallReceiver"
+            android:exported="false" />
         <receiver
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
             android:exported="false" />

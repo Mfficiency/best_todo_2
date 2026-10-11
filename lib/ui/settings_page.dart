@@ -2359,9 +2359,10 @@ class _SettingsPageState extends State<SettingsPage> {
           title: const Text('Automatically update'),
           subtitle: const Text(
               'Checks for a newer version every 15 minutes while the app is open '
-              'and downloads and installs it as soon as one appears — only '
-              'Android\'s own install screen asks to confirm. Manual checks '
-              'on the About page always work regardless of this setting.'),
+              'and downloads it quietly in the background; once it is complete '
+              'the app asks whether to install it. Pulling down on the '
+              'Changelog and the About page\'s check always work regardless '
+              'of this setting.'),
           value: _autoUpdateCheckEnabled,
           onChanged: _setAutoUpdateCheckEnabled,
         ),
