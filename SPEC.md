@@ -3744,7 +3744,8 @@ deliberate simplification since it is sideloaded, not Play-Store-distributed.
 prefix — a bare version-number regex over the whole `github_releases/` listing would otherwise
 happily match the other app's file name too. A non-default app's `checkReleases` skips the
 repo-wide "latest release" fallback entirely (GitHub's `releases/latest` endpoint isn't
-per-app), reporting no update rather than risking BestToDo's release.
+per-app), reporting no update rather than risking BestToDo's release. *(Superseded in 0.2.101: both apps publish GitHub releases with their own
+tags per channel — see §11 "Laptop channel builds".)*
 
 **The drawer/menu (0.2.67)**: `MusicPlayerPage` gained a `standalone` flag (true only from
 `main_music.dart`). Standalone, its `Scaffold` carries `key: homeScaffoldKey` and a real
@@ -3783,7 +3784,8 @@ best_music`) and commits+pushes (rebase-and-retry against the `build` job's own 
 push, same pattern `screenshot_changelog.yml` uses). Deliberately does *not* also publish to a
 GitHub release the way `tool/publish_apk.dart` does for BestToDo: see `UpdateService.checkReleases`'s
 doc comment for why a repo-wide `releases/latest` isn't safe to reuse for a second app sharing
-this repo — the folder stays each app's only update-check source.
+this repo — the folder stays each app's only update-check source. *(Superseded in 0.2.101: both apps publish GitHub releases with their own
+tags per channel — see §11 "Laptop channel builds".)*
 
 ### 10.6g Smart & rule-based playlists, extended track metadata, Best Music auto-update (0.2.70, hand-built playlist management 0.2.71, in-app metadata scan + editor 0.2.74, CSV bulk metadata export/import 0.2.77)
 **Extended `Track` metadata**: `genre` (`String`, default `''`), `year` (`int?`), `dateAdded`
@@ -4960,6 +4962,45 @@ published).
   `UpdateCheck.rollback` — `previous` unless that is the running version — in both the
   update-available and up-to-date states. The rollback warns that Android blocks
   downgrades for non-debuggable builds, so the install may need an uninstall first.
+- **Laptop channel builds (0.2.101 / Best Music 0.3.20) — supersedes the folder and
+  release flow above:** each of `dev`, `staging` and `main` is its own pair of installable
+  apps. `BUILD_CHANNEL` (env, read by `android/app/build.gradle.kts`) adds
+  `applicationIdSuffix` `.dev` / `.staging` to both flavors
+  (`com.mfficiency.best_todo_2.dev`, `com.mfficiency.best_music.staging`, …) and the launcher
+  label suffix " Dev" / " Staging" (manifest placeholder `${appLabel}`, set per flavor);
+  unset = `main` = the original ids/names, so `flutter run`, CI and old scripts are unchanged.
+  The FileProvider authority already uses `${applicationId}` and widgets/media receivers are
+  resolved via `context.packageName`, so channels install side by side. `BUILD_NUMBER` (the
+  builder uses 10000 + commit count) becomes the versionCode of **both** apps
+  (`--build-number`, and the `music` flavor prefers it over `MUSIC_VERSION`'s build); version
+  names stay `pubspec.yaml` / `MUSIC_VERSION`. Dart gets `--dart-define=BUILD_CHANNEL=…`
+  (`Config.channel`, shown on the About pages as `0.2.101+12199 · dev`).
+  - **Publisher:** only the laptop builder (Mfficiency/laptop-builder's self-hosted runner,
+    dispatched by `.github/workflows/laptop-build.yml` on pushes to dev/staging/main with
+    `client_payload[branch]`) publishes APKs, by running `tooluild.ps1 release` in a
+    dedicated clone with `BUILD_CHANNEL`, `BUILD_NUMBER`, `PUBLISH=1`. Release mode requires
+    `android/key.properties` (upload key; also enforced in Gradle via
+    `REQUIRE_RELEASE_KEY=1`), runs the usual preflight (test report + smoke test), skips an app
+    whose release for this build already exists, builds both APKs, and publishes one GitHub
+    release per app with `tool/publish_apk.dart`: tags `v<x.y.z>-<build>` (BestToDo) /
+    `music-v<x.y.z>-<build>` (Best Music) plus `-dev` / `-staging` (prerelease) for those
+    channels, title like "BestToDo 0.2.101+12199 (dev)", asset with version + channel, notes =
+    the app's newest changelog section without build-meta lines + a footer (channel, commit,
+    branch, build time, duration, APK size, "built on the laptop"). It prints one
+    `LAPTOP_BUILD_RESULT app=… version=… channel=… tag=…` line per published APK and commits
+    nothing (no changelog build notes, no `github_releases/` staging). Without `PUBLISH=1` it
+    only builds. GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
+    workflow artifacts, no releases, no commit-backs.
+  - **App side:** `UpdateService` reads `releases?per_page=30` (anonymous) and keeps only its
+    own app's tags (`v` vs `music-v`, `ReleaseTag.parse`) of its own channel (a `main` build
+    also skips prereleases; drafts never count), newest by (x.y.z, build) first. `latest` is the
+    newest, `previous` (the "Go back to" rollback) the newest one older than the running build
+    — both from the same channel. `AutoUpdateChecker` polls every 15 minutes, and on resume
+    only when the last check is 15+ minutes old (`checkIfDue`); a 403/429 makes the service
+    skip requests until GitHub's reset time (`UpdateRateLimitedException`).
+  - **Legacy:** `github_releases/` stays in the repo untouched because installs from before
+    0.2.101 still read it, but nothing reads or writes it any more (`tool/build.sh` /
+    `build.ps1 all` still stage into it locally — legacy, not used by the release flow).
 - **Automatic update check (0.1.264, replaced by the background poll below in
   0.2.1):** `Config.autoUpdateCheckEnabled` (Settings → Updates) originally
   checked once per launch and, on finding a newer build, opened a confirm

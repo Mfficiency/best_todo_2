@@ -119,4 +119,34 @@ void main() {
       expect(manifest, isNot(contains('application/pdf')));
     });
   });
+
+  /// Laptop channel builds (SPEC.md §11): dev/staging/main install side by
+  /// side and a published build is never debug-signed.
+  group('channel builds', () {
+    test('Gradle derives id suffix, label and versionCode from the env', () {
+      final gradle = read('android/app/build.gradle.kts');
+      expect(gradle, contains('System.getenv("BUILD_CHANNEL")'));
+      expect(gradle, contains('applicationIdSuffix = channelIdSuffix'));
+      expect(gradle, contains(r'manifestPlaceholders["appLabel"] = "BestToDo$channelLabelSuffix"'));
+      expect(gradle, contains(r'manifestPlaceholders["appLabel"] = "Best Music$channelLabelSuffix"'));
+      expect(gradle, contains('System.getenv("BUILD_NUMBER")'));
+      expect(gradle, contains('REQUIRE_RELEASE_KEY'));
+    });
+
+    test('the manifest label and provider authority follow the channel', () {
+      final manifest = read('android/app/src/main/AndroidManifest.xml');
+      expect(manifest, contains(r'android:label="${appLabel}"'));
+      expect(manifest, contains(r'android:authorities="${applicationId}.fileprovider"'));
+    });
+
+    test('build.ps1 release builds both apps and refuses the debug key', () {
+      final ps1 = read('tool/build.ps1');
+      expect(ps1, contains('Invoke-ChannelRelease'));
+      expect(ps1, contains('android/key.properties'));
+      expect(ps1, contains(r'$env:REQUIRE_RELEASE_KEY = "1"'));
+      expect(ps1, contains('--dart-define=BUILD_CHANNEL='));
+      expect(ps1, contains('lib/main_music.dart'));
+      expect(ps1, contains('--exists'));
+    });
+  });
 }

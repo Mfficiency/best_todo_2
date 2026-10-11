@@ -69,6 +69,28 @@ class Config {
   /// Drops an explicit [hideDemoItems] choice, restoring the build's default.
   static void resetHideDemoItemsForTest() => _hideDemoItemsSet = null;
 
+  /// Release channel this build belongs to — `dev`, `staging` or `main` —
+  /// compiled in by the laptop builder (`--dart-define=BUILD_CHANNEL=...`,
+  /// see `tool/build.ps1 release`). Each channel is its own Android app
+  /// (`.dev` / `.staging` id suffix) that only ever updates from its own
+  /// channel's GitHub releases. Unset (`flutter run`, tests) = `main`.
+  static const String buildChannel = String.fromEnvironment(
+    'BUILD_CHANNEL',
+    defaultValue: 'main',
+  );
+
+  /// The channel normalized to one of `main` / `staging` / `dev` (anything
+  /// unexpected counts as `main`).
+  static String get channel {
+    final c = buildChannel.trim().toLowerCase();
+    return (c == 'dev' || c == 'staging') ? c : 'main';
+  }
+
+  /// Version line shown on the About pages: `0.2.100+12199 · dev` on a
+  /// dev/staging build, plain `0.2.100+12199` on main.
+  static String get versionWithChannel =>
+      channel == 'main' ? versionWithBuild : '$versionWithBuild · $channel';
+
   static String _appVersion = 'unknown';
   static String _buildNumber = '';
   static Future<void>? _versionLoadFuture;
@@ -716,7 +738,7 @@ class Config {
   /// same no-secret-storage caveat applies (local device storage only).
   static String subsonicPassword = '';
 
-  /// If true, the app polls GitHub for a newer build every minute while it
+  /// If true, the app polls GitHub for a newer build every 15 minutes while it
   /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
   /// appears, downloads it and opens Android's installer with no question
   /// first — see Settings → Updates. On by default, and switched back on

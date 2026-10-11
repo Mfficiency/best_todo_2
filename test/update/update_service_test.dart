@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:besttodo/services/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,182 +94,197 @@ void main() {
     });
   });
 
-  group('github_releases folder listing', () {
-    test('reads the version out of the APK file name', () {
-      expect(UpdateService.versionFromApkFileName('best_todo_0.1.143+115.apk'),
-          '0.1.143+115');
-      expect(UpdateService.versionFromApkFileName('BestToDo-0.1.74+45.apk'),
-          '0.1.74+45');
-      expect(UpdateService.versionFromApkFileName('README.md'), isNull);
-      expect(UpdateService.versionFromApkFileName('app-release.apk'), isNull);
+  /// A releases-list entry the way the laptop builder publishes them.
+  Map<String, dynamic> rel(String tag,
+          {bool prerelease = false, bool draft = false, bool withApk = true}) =>
+      {
+        'tag_name': tag,
+        'name': 'release $tag',
+        'html_url': 'https://example.com/$tag',
+        'prerelease': prerelease,
+        'draft': draft,
+        'assets': [
+          if (withApk)
+            {
+              'name': '$tag.apk',
+              'browser_download_url': 'https://example.com/$tag.apk',
+              'size': 1000,
+            },
+        ],
+      };
+
+  /// Both apps × all three channels, mixed up like the real list.
+  List<Map<String, dynamic>> mixedReleases() => [
+        rel('v0.2.101-12210-dev', prerelease: true),
+        rel('music-v0.1.20-12210-dev', prerelease: true),
+        rel('v0.2.100-12150-staging', prerelease: true),
+        rel('music-v0.1.19-12150-staging', prerelease: true),
+        rel('v0.2.99-12100'),
+        rel('music-v0.1.18-12100'),
+        rel('v0.2.101-12200-dev', prerelease: true),
+        rel('v0.2.98-12050'),
+        rel('v0.2.97-300'), // a pre-channel release (old scheme)
+      ];
+
+  group('ReleaseTag', () {
+    test('parses app, version and channel', () {
+      final dev = ReleaseTag.parse('v0.2.100-12199-dev')!;
+      expect(dev.music, isFalse);
+      expect(dev.version, '0.2.100+12199');
+      expect(dev.channel, 'dev');
+      final staging = ReleaseTag.parse('music-v0.1.5-12000-staging')!;
+      expect(staging.music, isTrue);
+      expect(staging.version, '0.1.5+12000');
+      expect(staging.channel, 'staging');
+      final main = ReleaseTag.parse('v0.1.132-104')!;
+      expect(main.channel, 'main');
+      expect(main.music, isFalse);
     });
 
-    test('maps the listing to builds, newest first', () {
-      final builds = UpdateService.folderReleases([
-        {'name': 'README.md', 'download_url': 'https://x/README.md'},
-        {
-          'name': 'best_todo_0.1.142+114.apk',
-          'download_url': 'https://x/best_todo_0.1.142%2B114.apk',
-          'size': 60803503,
-        },
-        {
-          'name': 'best_todo_0.1.143+115.apk',
-          'download_url': 'https://x/best_todo_0.1.143%2B115.apk',
-          'size': 60803674,
-        },
-      ]);
-      expect(builds.map((b) => b.version), ['0.1.143+115', '0.1.142+114']);
-      expect(builds.first.apkUrl, 'https://x/best_todo_0.1.143%2B115.apk');
-      expect(builds.first.apkSizeBytes, 60803674);
-      expect(builds.first.source, UpdateSource.repoFolder);
-      expect(builds.first.releaseName, 'BestToDo 0.1.143+115');
+    test('rejects tags that are not app builds', () {
+      expect(ReleaseTag.parse('v0.1.74'), isNull);
+      expect(ReleaseTag.parse('v0.1.74-45-beta'), isNull);
+      expect(ReleaseTag.parse('obsidian-1.0.0'), isNull);
     });
 
-    test('skips entries without a download url', () {
+    test('versionFromTag strips the app prefix and channel suffix', () {
+      expect(UpdateService.versionFromTag('music-v0.1.5-12000-dev'),
+          '0.1.5+12000');
+      expect(UpdateService.versionFromTag('v0.2.100-12199-staging'),
+          '0.2.100+12199');
+    });
+  });
+
+  group('channel filtering', () {
+    List<String> versions(String tagPrefix, String channel) =>
+        UpdateService.channelReleases(mixedReleases(),
+                tagPrefix: tagPrefix, channel: channel)
+            .map((b) => b.version)
+            .toList();
+
+    test('BestToDo dev sees only its dev builds, newest first', () {
+      expect(versions('v', 'dev'), ['0.2.101+12210', '0.2.101+12200']);
+    });
+
+    test('BestToDo staging and main see only their own', () {
+      expect(versions('v', 'staging'), ['0.2.100+12150']);
+      expect(versions('v', 'main'),
+          ['0.2.99+12100', '0.2.98+12050', '0.2.97+300']);
+    });
+
+    test('Best Music sees only music-v tags of its channel', () {
+      expect(versions('music-v', 'dev'), ['0.1.20+12210']);
+      expect(versions('music-v', 'staging'), ['0.1.19+12150']);
+      expect(versions('music-v', 'main'), ['0.1.18+12100']);
+    });
+
+    test('main ignores prereleases and every channel ignores drafts', () {
+      final list = [
+        rel('v0.3.0-13000', prerelease: true),
+        rel('v0.3.1-13001', draft: true),
+        rel('v0.3.1-13002-dev', prerelease: true, draft: true),
+        rel('v0.2.0-12000'),
+      ];
       expect(
-          UpdateService.folderReleases([
-            {'name': 'best_todo_0.1.143+115.apk'},
-          ]),
+          UpdateService.channelReleases(list, tagPrefix: 'v', channel: 'main')
+              .map((b) => b.version),
+          ['0.2.0+12000']);
+      expect(
+          UpdateService.channelReleases(list, tagPrefix: 'v', channel: 'dev'),
           isEmpty);
+    });
+
+    test('newer is (x.y.z, build) as numbers, not text', () {
+      final list = [
+        rel('v0.2.9-12999-dev'),
+        rel('v0.2.10-12001-dev'),
+        rel('v0.2.10-12000-dev'),
+      ];
+      expect(
+          UpdateService.channelReleases(list, tagPrefix: 'v', channel: 'dev')
+              .map((b) => b.version),
+          ['0.2.10+12001', '0.2.10+12000', '0.2.9+12999']);
     });
   });
 
   group('checkReleases', () {
-    String folderJson(List<String> versions) => jsonEncode([
-          {'name': 'README.md', 'download_url': 'https://x/README.md'},
-          for (final v in versions)
-            {
-              'name': 'best_todo_$v.apk',
-              'download_url': 'https://x/best_todo_$v.apk',
-              'size': 60000000,
-            },
-        ]);
-
-    test('offers the newest folder build and the one before it', () async {
-      UpdateService.instance.fetchOverride =
-          (url) async => folderJson(['0.1.142+114', '0.1.143+115']);
-      final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.1.142+114');
-      expect(check.hasUpdate, isTrue);
-      expect(check.latest!.version, '0.1.143+115');
-      expect(check.previous!.version, '0.1.142+114');
-      // The older kept build is the running version — nothing to roll back to.
-      expect(check.rollback, isNull);
-    });
-
-    test('up to date still offers a rollback to the kept older build',
-        () async {
-      UpdateService.instance.fetchOverride =
-          (url) async => folderJson(['0.1.142+114', '0.1.143+115']);
-      final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.1.143+115');
-      expect(check.hasUpdate, isFalse);
-      expect(check.rollback!.version, '0.1.142+114');
-    });
-
-    test('a folder with a single build has no rollback', () async {
-      UpdateService.instance.fetchOverride =
-          (url) async => folderJson(['0.1.143+115']);
-      final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.1.143+115');
-      expect(check.previous, isNull);
-      expect(check.rollback, isNull);
-    });
-
-    test('reads the folder of the release branch first', () async {
+    test('queries the releases list, not releases/latest', () async {
       final requested = <String>[];
-      UpdateService.instance.fetchOverride = (url) async {
+      final dev = UpdateService.forApp(
+          appDisplayName: 'BestToDo', apkPrefix: 'best_todo', channel: 'dev');
+      dev.fetchOverride = (url) async {
         requested.add(url.toString());
-        return folderJson(['0.1.143+115']);
+        return jsonEncode(mixedReleases());
       };
-      await UpdateService.instance.checkReleases(currentVersion: '0.1.1+1');
+      await dev.checkReleases(currentVersion: '0.1.1+1');
       expect(requested, [
-        'https://api.github.com/repos/Mfficiency/best_todo_2/contents/'
-            'github_releases?ref=dev',
+        'https://api.github.com/repos/Mfficiency/best_todo_2/releases?per_page=30',
       ]);
     });
 
-    test('falls back to the latest release when the folder is unavailable',
+    test('dev build: newest dev build is the update, older dev the rollback',
         () async {
-      final requested = <String>[];
-      UpdateService.instance.fetchOverride = (url) async {
-        requested.add(url.toString());
-        if (url.toString().contains('/contents/')) {
-          throw Exception('404 — no folder on this branch');
-        }
-        return jsonEncode({
-          'tag_name': 'v0.1.144-116',
-          'name': 'BestToDo 0.1.144+116',
-          'html_url': 'https://example.com/release',
-          'assets': [
-            {
-              'name': 'BestToDo-0.1.144+116.apk',
-              'browser_download_url': 'https://example.com/BestToDo.apk',
-              'size': 1000,
-            },
-          ],
-        });
-      };
+      UpdateService.resetForTest(channel: 'dev');
+      UpdateService.instance.fetchOverride =
+          (url) async => jsonEncode(mixedReleases());
       final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.1.143+115');
-      expect(requested.length, 2);
-      expect(check.latest!.version, '0.1.144+116');
-      expect(check.latest!.source, UpdateSource.githubRelease);
-      expect(check.previous, isNull);
+          .checkReleases(currentVersion: '0.2.101+12205');
       expect(check.hasUpdate, isTrue);
+      expect(check.latest!.version, '0.2.101+12210');
+      expect(check.latest!.apkUrl,
+          'https://example.com/v0.2.101-12210-dev.apk');
+      expect(check.latest!.source, UpdateSource.githubRelease);
+      expect(check.rollback!.version, '0.2.101+12200');
     });
-  });
 
-  group('checkForUpdate', () {
-    String releaseJson(String tag) => jsonEncode({
-          'tag_name': tag,
-          'name': 'BestToDo release',
-          'html_url': 'https://example.com/release',
-          'assets': [
-            {
-              'name': 'BestToDo.apk',
-              'browser_download_url': 'https://example.com/BestToDo.apk',
-              'size': 1000,
-            },
-          ],
-        });
-
-    test('newer release is reported', () async {
+    test('never offers another channel even when it is newer', () async {
+      // A staging build running 0.2.100+12150: the dev releases are newer,
+      // but only staging's own (= the running one) may be offered.
+      UpdateService.resetForTest(channel: 'staging');
       UpdateService.instance.fetchOverride =
-          (url) async => releaseJson('v0.1.132-104');
-      final info = await UpdateService.instance
-          .checkForUpdate(currentVersion: '0.1.131+103');
-      expect(info, isNotNull);
-      expect(info!.version, '0.1.132+104');
+          (url) async => jsonEncode(mixedReleases());
+      final check = await UpdateService.instance
+          .checkReleases(currentVersion: '0.2.100+12150');
+      expect(check.hasUpdate, isFalse);
+      expect(check.latest!.version, '0.2.100+12150');
+      expect(check.rollback, isNull);
     });
 
-    test('same or older release means up to date', () async {
+    test('main: a channel build number above old versionCodes is newer',
+        () async {
+      UpdateService.resetForTest(channel: 'main');
       UpdateService.instance.fetchOverride =
-          (url) async => releaseJson('v0.1.131-103');
-      expect(
-          await UpdateService.instance
-              .checkForUpdate(currentVersion: '0.1.131+103'),
-          isNull);
-      expect(
-          await UpdateService.instance
-              .checkForUpdate(currentVersion: '0.1.132+104'),
-          isNull);
+          (url) async => jsonEncode(mixedReleases());
+      final check = await UpdateService.instance
+          .checkReleases(currentVersion: '0.2.97+300');
+      expect(check.hasUpdate, isTrue);
+      expect(check.latest!.version, '0.2.99+12100');
+      expect(check.previous, isNull);
     });
 
-    test('queries the latest-release endpoint of the app repo', () async {
-      Uri? requested;
-      UpdateService.instance.fetchOverride = (url) async {
-        requested = url;
-        return releaseJson('v0.1.1-1');
-      };
-      await UpdateService.instance.checkForUpdate(currentVersion: '9.9.9+9');
-      expect(requested.toString(),
-          'https://api.github.com/repos/Mfficiency/best_todo_2/releases/latest');
+    test('up to date still offers a rollback to an older same-channel build',
+        () async {
+      UpdateService.resetForTest(channel: 'main');
+      UpdateService.instance.fetchOverride =
+          (url) async => jsonEncode(mixedReleases());
+      final check = await UpdateService.instance
+          .checkReleases(currentVersion: '0.2.99+12100');
+      expect(check.hasUpdate, isFalse);
+      expect(check.rollback!.version, '0.2.98+12050');
+    });
+
+    test('no release for this app/channel means no update', () async {
+      final music = UpdateService.forApp(
+          appDisplayName: 'Best Music', apkPrefix: 'best_music', channel: 'dev');
+      music.fetchOverride = (url) async => jsonEncode([rel('v9.9.9-99999-dev')]);
+      final check = await music.checkReleases(currentVersion: '0.1.0+1');
+      expect(check.latest, isNull);
+      expect(check.hasUpdate, isFalse);
     });
 
     test('malformed payload throws instead of pretending up-to-date',
         () async {
-      UpdateService.instance.fetchOverride = (url) async => '[]';
+      UpdateService.instance.fetchOverride = (url) async => '{}';
       expect(
           () => UpdateService.instance
               .checkForUpdate(currentVersion: '0.1.131+103'),
@@ -276,66 +292,55 @@ void main() {
     });
   });
 
-  /// Best Music (SPEC.md §10.6f) is built from this same repo and shares the
-  /// `github_releases/` folder with BestToDo — `UpdateService.forApp` scopes
-  /// an instance to its own file-name prefix so the two apps never offer
-  /// each other's builds as an "update".
-  group('forApp (a second app sharing the folder)', () {
-    late UpdateService music;
-
-    setUp(() {
-      music = UpdateService.forApp(
-        appDisplayName: 'Best Music',
-        apkPrefix: 'best_music',
-      );
-    });
-
-    test('only sees its own prefix in the shared folder listing', () async {
-      music.fetchOverride = (url) async => jsonEncode([
-            {'name': 'README.md', 'download_url': 'https://x/README.md'},
-            {
-              'name': 'best_todo_0.2.66+357.apk',
-              'download_url': 'https://x/best_todo_0.2.66%2B357.apk',
-              'size': 1,
-            },
-            {
-              'name': 'best_music_0.2.66+357.apk',
-              'download_url': 'https://x/best_music_0.2.66%2B357.apk',
-              'size': 2,
-            },
-          ]);
-      final releases = await music.fetchFolderReleases();
-      expect(releases.map((r) => r.version), ['0.2.66+357']);
-      expect(releases.single.releaseName, 'Best Music 0.2.66+357');
-      expect(releases.single.apkUrl, 'https://x/best_music_0.2.66%2B357.apk');
-    });
-
-    test('BestToDo (the default instance) never sees a Best Music build',
+  group('rate limit', () {
+    test('403/429 backs off without further requests until it resets',
         () async {
-      UpdateService.instance.fetchOverride = (url) async => jsonEncode([
-            {
-              'name': 'best_music_0.2.66+357.apk',
-              'download_url': 'https://x/best_music_0.2.66%2B357.apk',
-              'size': 1,
-            },
-          ]);
-      expect(await UpdateService.instance.fetchFolderReleases(), isEmpty);
-    });
-
-    test(
-        'an empty folder reports no update instead of falling back to the '
-        "repo-wide latest release (which could be the other app's)",
-        () async {
-      final requested = <String>[];
-      music.fetchOverride = (url) async {
-        requested.add(url.toString());
-        return jsonEncode([]);
+      var calls = 0;
+      UpdateService.instance.fetchOverride = (url) async {
+        calls++;
+        throw const HttpException('GitHub replied 403');
       };
-      final check = await music.checkReleases(currentVersion: '0.1.0+1');
-      expect(check.latest, isNull);
-      expect(check.hasUpdate, isFalse);
-      expect(requested.length, 1);
-      expect(requested.single, contains('/contents/github_releases'));
+      await expectLater(
+          UpdateService.instance.checkForUpdate(currentVersion: '0.1.0+1'),
+          throwsA(isA<UpdateRateLimitedException>()));
+      await expectLater(
+          UpdateService.instance.checkForUpdate(currentVersion: '0.1.0+1'),
+          throwsA(isA<UpdateRateLimitedException>()));
+      expect(calls, 1);
+      expect(UpdateService.instance.rateLimitedUntil, isNotNull);
+    });
+
+    test('requests resume once the back-off has passed', () async {
+      UpdateService.resetForTest(channel: 'main');
+      UpdateService.instance.rateLimitedUntil =
+          DateTime.now().subtract(const Duration(seconds: 1));
+      UpdateService.instance.fetchOverride =
+          (url) async => jsonEncode(mixedReleases());
+      final info = await UpdateService.instance
+          .checkForUpdate(currentVersion: '0.2.98+12050');
+      expect(info!.version, '0.2.99+12100');
+      expect(UpdateService.instance.rateLimitedUntil, isNull);
+    });
+
+    test('other HTTP errors are plain errors', () async {
+      UpdateService.instance.fetchOverride =
+          (url) async => throw const HttpException('GitHub replied 500');
+      await expectLater(
+          UpdateService.instance.checkForUpdate(currentVersion: '0.1.0+1'),
+          throwsA(isA<HttpException>()));
+      expect(UpdateService.instance.rateLimitedUntil, isNull);
+    });
+  });
+
+  group('channel of the running build', () {
+    test('defaults to main outside a laptop channel build', () {
+      expect(UpdateService.instance.channel, 'main');
+      expect(UpdateService.instance.tagPrefix, 'v');
+      expect(
+          UpdateService.forApp(
+                  appDisplayName: 'Best Music', apkPrefix: 'best_music')
+              .tagPrefix,
+          'music-v');
     });
   });
 

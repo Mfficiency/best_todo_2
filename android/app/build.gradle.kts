@@ -16,6 +16,11 @@ if (keystorePropertiesFile.exists()) {
 }
 val hasReleaseKeystore = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
     .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
+// `tooluild.ps1 release` (a published laptop channel build) sets this: such
+// a build must be signed with the upload key, never the debug fallback below.
+if (System.getenv("REQUIRE_RELEASE_KEY") == "1" && !hasReleaseKeystore) {
+    throw GradleException("REQUIRE_RELEASE_KEY=1 but android/key.properties is missing or incomplete")
+}
 
 // Best Music versions independently of BestToDo (CLAUDE.md/SPEC.md §10.6i):
 // its own `version: x.y.z+build` line lives in MUSIC_VERSION at the repo
@@ -32,6 +37,24 @@ val musicVersionFull = if (musicVersionFile.exists()) {
 } else null
 val musicVersionName = musicVersionFull?.substringBefore("+")
 val musicVersionCode = musicVersionFull?.substringAfter("+")?.toIntOrNull()
+
+// Release channel (dev / staging / main), one installable app per branch so
+// all three can sit side by side on a phone: BUILD_CHANNEL comes from the
+// laptop builder (tooluild.ps1 release). Unset = main = the plain app id
+// and name, so `flutter run`, CI checks and old scripts behave as before.
+val buildChannel = (System.getenv("BUILD_CHANNEL") ?: "").trim().lowercase().ifEmpty { "main" }
+if (buildChannel !in setOf("main", "staging", "dev")) {
+    throw GradleException("BUILD_CHANNEL must be dev, staging or main (got '$buildChannel')")
+}
+val channelIdSuffix = if (buildChannel == "main") "" else ".$buildChannel"
+val channelLabelSuffix = when (buildChannel) {
+    "dev" -> " Dev"
+    "staging" -> " Staging"
+    else -> ""
+}
+// Laptop builds pass BUILD_NUMBER (10000 + commit count) as the versionCode of
+// BOTH apps; without it each app keeps its own version file's build number.
+val envBuildNumber = System.getenv("BUILD_NUMBER")?.trim()?.toIntOrNull()
 
 android {
     namespace = "com.mfficiency.best_todo_2"
@@ -65,6 +88,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // .dev / .staging, applied on top of both flavors' application ids.
+        if (channelIdSuffix.isNotEmpty()) applicationIdSuffix = channelIdSuffix
     }
 
     // Two apps from one codebase, picked with `flutter build apk --flavor
@@ -81,15 +106,20 @@ android {
     productFlavors {
         create("todo") {
             dimension = "app"
+            // Launcher label (AndroidManifest android:label="${appLabel}").
+            manifestPlaceholders["appLabel"] = "BestToDo$channelLabelSuffix"
         }
         create("music") {
             dimension = "app"
             applicationId = "com.mfficiency.best_music"
+            manifestPlaceholders["appLabel"] = "Best Music$channelLabelSuffix"
             // Own versionCode/versionName, read from MUSIC_VERSION above —
             // see that val's comment. versionCode in particular must never
             // regress below whatever the last shipped Best Music build used,
             // or Android refuses the install as a downgrade.
-            if (musicVersionCode != null) versionCode = musicVersionCode
+            // A laptop channel build's BUILD_NUMBER wins over MUSIC_VERSION's.
+            if (envBuildNumber != null) versionCode = envBuildNumber
+            else if (musicVersionCode != null) versionCode = musicVersionCode
             if (musicVersionName != null) versionName = musicVersionName
         }
     }

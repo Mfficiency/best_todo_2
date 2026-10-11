@@ -27,15 +27,24 @@ file is the short operational guide.
   prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main). Best Music has its own
   suite: `flutter test integration_test/music_home_page_screenshot_test.dart -d windows`
   → `build/e2e_screenshots_music/`, archived to `docs/screenshots/music/` the same way.
+- **Releases come from the laptop builder only** (SPEC.md §11 "Laptop channel builds"):
+  every push to `dev`/`staging`/`main` dispatches `laptop-build.yml` → the laptop runs
+  `powershell -File tool\build.ps1 release` with `BUILD_CHANNEL` (dev/staging/main),
+  `BUILD_NUMBER` and `PUBLISH=1`: both APKs (BestToDo + Best Music) for that channel, signed
+  with the upload key (`android/key.properties`, required), one GitHub release per app
+  (tags `v<x.y.z>-<build>[-dev|-staging]` / `music-v…`). Each channel is its own app
+  (`.dev`/`.staging` id suffix, "Dev"/"Staging" label) and updates only from its own
+  channel's releases. Local test build without publishing: set `BUILD_CHANNEL=dev`,
+  `BUILD_NUMBER=12345`, leave `PUBLISH` unset, run the same command. GitHub CI only builds
+  (artifacts) — it no longer publishes or commits builds.
 - Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
-  keystore). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
+  keystore unless `android/key.properties` exists). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
   (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
   separate standalone app from this same codebase (Music Player + MP3 Downloader only, no
   to-do features — `lib/main_music.dart`, SPEC.md §10.6f). Build it with
   `sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass
-  -File tool\build.ps1 music-apk --release`). CI also builds and stages it
-  automatically on every push to main/staging/dev (`build_music_apk` job in
-  `build-apk.yml`). The per-flavor rename to `best_<flavor>_<version>.apk` is done
+  -File tool\build.ps1 music-apk --release`). CI also builds it on every push to
+  main/staging/dev as a check (`build_music_apk` job in `build-apk.yml`, artifact only). The per-flavor rename to `best_<flavor>_<version>.apk` is done
   by Gradle's `createVersioned<Flavor>ReleaseApk` task — one task per flavor, wired
   to that flavor's own `assemble<Flavor>Release`, because
   `build/app/outputs/flutter-apk/` is never cleaned between builds and anything
@@ -50,7 +59,9 @@ file is the short operational guide.
   Switches: `SYNC=0` (no git), `PUSH=0` (commit only), `WINDOWS=0`/`ANDROID=0`
   (one target), `MUSIC=0` (skip the Best Music APK), `REQUIRE_WINDOWS=1` (a failing
   Windows build aborts instead of warning).
-- Keep the last 2 APKs in the repo: `dart run tool/stage_local_release.dart` after a
+- **Legacy:** `github_releases/` (last 2 APKs per app) is only read by installs older
+  than 0.2.101; current apps read GitHub releases. Keep the folder, don't rely on it.
+  `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
   `github_releases/` and deletes the older ones; commit the folder — the app's About page
   downloads the newest from there ("Download & install") and the other one for
@@ -63,17 +74,16 @@ file is the short operational guide.
   "Build size (<target>)") in that version's CHANGELOG.md entry, and appending
   `{version, app, target, durationSeconds, sizeBytes, source, finishedAt, os}` to
   `build_history.json` (committed, capped at the newest 1000 entries) so build times and
-  app size are tracked over time. CI does the same for every push to `dev`
-  (`build-apk.yml`, both apps): `--source ci` writes "CI build: <UTC time>" and
-  "Build duration (apk, CI)" instead, commits and pushes — so a version that's only ever
-  built by CI still gets its notes.
+  app size are tracked over time. (CI used to record its builds the same way with
+  `--source ci` and commit them to `dev`; it no longer commits anything, and the laptop's
+  `build.ps1 release` puts build time/duration/size in the release notes instead.)
   Since CHANGELOG.md is bundled as an asset by that same build, the Changelog page
   only ever shows the *previous* build's time/duration — expected, not a bug.
-- Publish APK to GitHub: `dart run tool/publish_apk.dart` after a release build
-  (or `PUBLISH_APK=1 sh tool/build.sh apk --release` to build + publish). Creates
-  release `v<x.y.z>-<build>` with asset `BestToDo-<x.y.z+build>.apk`; the About
-  page "Check for updates" button downloads and installs it in-app. Token from
-  `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
+- Publish APK to GitHub: `dart run tool/publish_apk.dart [--app todo|music]
+  [--channel main|staging|dev] [--build-number N] [--apk <path>]` (what `build.ps1 release`
+  calls). Creates release `v<x.y.z>-<build>` (`music-v…` for Best Music, `-dev`/`-staging`
+  suffix + prerelease for those channels); the About page "Check for updates" button
+  downloads and installs it in-app. Token from `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

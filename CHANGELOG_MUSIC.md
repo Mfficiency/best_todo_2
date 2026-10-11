@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.20] - 2026-10-11
+- Dev, Staging and regular builds are now separate apps ("Best Music Dev", "Best Music Staging", "Best Music") that can be installed side by side, and each one only updates itself from its own channel's GitHub releases (checked every 15 minutes); the About page shows the channel next to the version
+
 ## [0.3.19] - 2026-10-09
 - Fixed: "Ask before playing out loud" didn't ask when you pressed play on the home-screen widget — it now shows the question right over your home screen (and just plays when headphones or a speaker are connected)
 - Fixed: it also didn't ask when a video was still loading and you switched to music (a loading video counted as "already listening") — and now it asks for the "Back to music/videos" button, tapping a Subscriptions video and Songs by BPM too

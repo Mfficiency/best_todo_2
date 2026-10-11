@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.101] - 2026-10-11
+- Dev, Staging and regular builds are now separate apps ("BestToDo Dev", "BestToDo Staging", "BestToDo") that can be installed side by side, and each one only updates itself from its own channel's releases; the About page shows the channel next to the version (e.g. "0.2.101+12199 · dev")
+- Update checks now read the GitHub releases directly (every 15 minutes, backing off when GitHub's rate limit is reached), and "Go back to" offers the newest older build of the same channel
+
 ## [0.2.100] - 2026-10-07
 - Running the app in Chrome (flutter run -d chrome) now asks first whether to use the demo data or load your real tasks from Todoist
 - CI build: 2026-10-10 17:13 UTC

@@ -38,7 +38,7 @@ class MusicAboutPage extends StatelessWidget {
                 future: Config.ensureVersionLoaded(),
                 builder: (context, snapshot) {
                   return Text(
-                    'Best Music v${Config.versionWithBuild}\nRunning in $mode mode',
+                    'Best Music v${Config.versionWithChannel}\nRunning in $mode mode',
                     textAlign: TextAlign.center,
                   );
                 },

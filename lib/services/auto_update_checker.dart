@@ -23,11 +23,16 @@ class AutoUpdateChecker {
     instance = AutoUpdateChecker._();
   }
 
-  static const Duration interval = Duration(minutes: 1);
+  /// GitHub's anonymous API allows 60 requests/hour/IP, shared by every
+  /// installed channel/app on the phone's network — so no faster than this.
+  static const Duration interval = Duration(minutes: 15);
 
   Timer? _timer;
   bool _checking = false;
   String? _dismissedVersion;
+
+  /// When the last check started (null = none yet this session).
+  DateTime? _lastCheck;
 
   bool get isRunning => _timer != null;
 
@@ -50,6 +55,17 @@ class AutoUpdateChecker {
     );
   }
 
+  /// Like [checkOnce], but skipped when the last check started less than
+  /// [minGap] (default [interval]) ago — used when the app comes back to the
+  /// foreground, so frequent app switching can't burn the API rate limit.
+  Future<void> checkIfDue(UpdateFoundCallback onUpdateFound,
+      {UpdateService? service, Duration? minGap, DateTime? now}) async {
+    final last = _lastCheck;
+    final t = now ?? DateTime.now();
+    if (last != null && t.difference(last) < (minGap ?? interval)) return;
+    await checkOnce(onUpdateFound, service: service);
+  }
+
   void stop() {
     _timer?.cancel();
     _timer = null;
@@ -68,6 +84,7 @@ class AutoUpdateChecker {
       {UpdateService? service}) async {
     if (_checking) return;
     _checking = true;
+    _lastCheck = DateTime.now();
     try {
       final update = await (service ?? UpdateService.instance).checkForUpdate();
       if (update != null &&
@@ -76,7 +93,9 @@ class AutoUpdateChecker {
         onUpdateFound(update);
       }
     } catch (_) {
-      // Offline or GitHub unreachable — retried on the next tick.
+      // Offline, GitHub unreachable or rate limited (UpdateRateLimitedException,
+      // which also makes UpdateService skip requests until the limit resets)
+      // — retried on the next tick.
     } finally {
       _checking = false;
     }
