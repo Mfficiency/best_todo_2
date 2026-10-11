@@ -170,6 +170,7 @@ class Config {
     'weekly_hours_planner',
     'worklist',
     'f1_reminder',
+    'compass',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -189,6 +190,7 @@ class Config {
     'Weekly Hours Planner',
     'Worklist',
     'F1 Reminder',
+    'Compass',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -237,6 +239,7 @@ class Config {
     'startup_times',
     'sms_report',
     'f1_reminder',
+    'compass',
   ];
 
   /// Human-readable labels for [featureKeys], index-aligned.
@@ -264,6 +267,7 @@ class Config {
     'Startup times',
     'Daily SMS report',
     'F1 Reminder',
+    'Compass',
   ];
 
   /// One-line explanations for [featureKeys], index-aligned.
@@ -291,6 +295,7 @@ class Config {
     'How fast the app started, over time',
     'Daily SMS with your completion rate',
     'Texts a phone number 4 hours before every F1 race',
+    'Simple compass with a Hold button to freeze the reading',
   ];
 
   /// Per-feature switches used in full mode. Missing keys count as enabled.

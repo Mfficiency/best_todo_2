@@ -4317,6 +4317,19 @@ phone number 4 hours (`kF1ReminderLead`) before every remaining race of the seas
   tapping a race (or its "Edit time" button) opens a date picker then a 24-hour time picker;
   edited races show "(edited)" and a "Reset time" button; each change saves and re-arms the alarm.
 
+### 10.6n Compass
+Tools → **Compass** (feature/start-tool key `compass`, `Icons.explore`; `lib/ui/compass_page.dart`).
+A dial (CustomPaint) whose card turns opposite to the heading so N points north, a fixed
+pointer at the top for where the phone faces, and a reading like `92° E` (8-point
+`compassDirection`). **Hold** freezes the reading and dial (ring/pointer switch to the
+primary colour); **Release** resumes live updates. Hold is disabled until the first heading
+arrives.
+Heading source: native `CompassSensor.kt` on the `besttodo/compass` EventChannel — degrees
+clockwise from magnetic north from `TYPE_ROTATION_VECTOR`, falling back to accelerometer +
+magnetometer; sensors are registered only while the page listens. No sensor (or no Android,
+e.g. Windows) → the stream errors and the page shows "No compass sensor on this device".
+`CompassPage(headings:)` takes an injected stream for tests (`test/tools/compass_page_test.dart`).
+
 ### 10.6m Subscriptions feed — YouTube channels in Best Music (Best Music 0.2.92)
 A Tubular/NewPipe-style feed built in Dart on the existing `youtube_explode_dart` + player
 stack rather than by forking Tubular (a native Java app, GPL-3.0 — embedding it would mean
