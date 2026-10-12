@@ -2,9 +2,11 @@ import 'dart:async' show unawaited;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/youtube_feed.dart';
+import '../services/music_backup_service.dart';
 import '../services/music_widget_service.dart';
 import '../services/music_library_service.dart';
 import '../services/media_volume.dart';
@@ -26,6 +28,7 @@ enum MusicSettingsSection {
   feed('Subscriptions feed'),
   sponsorBlock('SponsorBlock'),
   summaries('Transcripts & summaries'),
+  backup('Backup'),
   updates('Updates');
 
   const MusicSettingsSection(this.title);
@@ -74,9 +77,12 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
   late MusicSettingsSection _active =
       widget.initialSection ?? MusicSettingsSection.values.first;
 
+  DateTime? _lastBackup;
+
   @override
   void initState() {
     super.initState();
+    unawaited(_loadLastBackup());
     final initial = widget.initialSection;
     if (initial != null) {
       WidgetsBinding.instance
@@ -444,6 +450,8 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                     ),
                     _buildSection(
                         MusicSettingsSection.summaries, _summaryTiles()),
+                    _buildSection(
+                        MusicSettingsSection.backup, _backupTiles()),
                     _buildSection(MusicSettingsSection.updates, [
                       UpdateDownloadsFolderTile(
                           updateService: MusicAboutPage.updateService),
@@ -654,6 +662,148 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
           hint: 'Leave empty for the open vault',
           apply: (v) => Config.obsidianVault = v,
         ),
+      ),
+    ];
+  }
+
+  Future<void> _loadLastBackup() async {
+    final last = await MusicBackupService.lastRun();
+    if (!mounted) return;
+    setState(() => _lastBackup = last);
+  }
+
+  Future<String?> _pickDirectory() async {
+    String? initial;
+    try {
+      initial = (await getDownloadsDirectory())?.path;
+    } catch (_) {}
+    return getDirectoryPath(initialDirectory: initial);
+  }
+
+  Future<void> _pickBackupFolder() async {
+    final directory = await _pickDirectory();
+    if (directory == null) return;
+    setState(() => Config.autoBackupDirectory = directory);
+    await Config.save();
+  }
+
+  Future<void> _setBackupFrequency(String value) async {
+    setState(() => Config.autoBackupFrequency = value);
+    await Config.save();
+    // Same as BestToDo: turning the schedule on asks for the folder and
+    // writes the first backup right away.
+    if (value != 'off' && Config.autoBackupDirectory.isEmpty) {
+      await _pickBackupFolder();
+    }
+    if (value != 'off' && Config.autoBackupDirectory.isNotEmpty) {
+      await MusicBackupService.maybeRun();
+      await _loadLastBackup();
+    }
+  }
+
+  /// "Back up now": into the backup folder when one is set, otherwise into
+  /// a folder picked for this one backup.
+  Future<void> _backupNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final directory = Config.autoBackupDirectory.isNotEmpty
+        ? Config.autoBackupDirectory
+        : await _pickDirectory();
+    if (directory == null) return;
+    final file = await MusicBackupService.exportTo(directory);
+    await _loadLastBackup();
+    messenger.showSnackBar(SnackBar(
+      content: Text(file != null ? 'Backed up to ${file.path}' : 'Backup failed'),
+    ));
+  }
+
+  Future<void> _restore() async {
+    final messenger = ScaffoldMessenger.of(context);
+    const typeGroup = XTypeGroup(label: 'json', extensions: ['json']);
+    final picked = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (picked == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore backup?'),
+        content: const Text('Your playlists, library, subscriptions, '
+            'download history, Wishlist and settings are replaced with the '
+            "backup's. A copy of the current data is kept first."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final result = await MusicBackupService.restoreFile(picked.path);
+    if (result.success) {
+      MusicTheme.darkMode.value = Config.darkMode;
+      if (mounted) setState(() {});
+    }
+    messenger.showSnackBar(SnackBar(content: Text(result.message)));
+  }
+
+  String _formatDateTime(DateTime dt) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} '
+        '${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  List<Widget> _backupTiles() {
+    final folderChosen = Config.autoBackupDirectory.isNotEmpty;
+    return [
+      ListTile(
+        leading: const Icon(Icons.backup_outlined),
+        title: const Text('Back up now'),
+        subtitle: Text(_lastBackup == null
+            ? 'No backup yet — saves playlists, library, subscriptions, '
+                'download history, Wishlist and settings to one file'
+            : 'Last backup: ${_formatDateTime(_lastBackup!)}'),
+        onTap: _backupNow,
+      ),
+      ListTile(
+        leading: const Icon(Icons.settings_backup_restore),
+        title: const Text('Restore from backup'),
+        subtitle: const Text('Pick a Best Music backup file'),
+        onTap: _restore,
+      ),
+      ListTile(
+        leading: const Icon(Icons.schedule),
+        title: const Text('Automatic backup'),
+        subtitle: Text(switch (Config.autoBackupFrequency) {
+          'daily' => 'Backs up once a day when you open the app',
+          'weekly' => 'Backs up once a week when you open the app',
+          _ => 'No automatic backups',
+        }),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: SegmentedButton<String>(
+          segments: [
+            for (var i = 0; i < Config.autoBackupFrequencies.length; i++)
+              ButtonSegment(
+                value: Config.autoBackupFrequencies[i],
+                label: Text(Config.autoBackupFrequencyLabels[i]),
+              ),
+          ],
+          selected: {Config.autoBackupFrequency},
+          onSelectionChanged: (selection) =>
+              _setBackupFrequency(selection.first),
+        ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.folder_open),
+        title: const Text('Backup folder'),
+        subtitle: Text(folderChosen
+            ? Config.autoBackupDirectory
+            : 'Not set — tap to choose'),
+        onTap: _pickBackupFolder,
       ),
     ];
   }

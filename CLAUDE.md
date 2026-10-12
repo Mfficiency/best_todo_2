@@ -89,6 +89,12 @@ file is the short operational guide.
   calls). Creates release `v<x.y.z>-<build>` (`music-v…` for Best Music, `-dev`/`-staging`
   suffix + prerelease for those channels); the About page "Check for updates" button
   downloads and installs it in-app. Token from `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
+- In-app updates (`AutoUpdateFlow`, `lib/ui/auto_update_dialog.dart`, both apps; SPEC.md
+  §11): **every** download is silent (DownloadManager `VISIBILITY_HIDDEN`, no progress
+  dialog/sheet/banner; a tap that starts one shows one SnackBar, progress is only passive
+  text on the Changelog status card and the About page). Once the APK is complete it goes
+  straight to Android's PackageInstaller confirm (`installApk`) — no app dialog — in the
+  foreground, once per version and start; a cancel leaves a slim "Update ready" banner.
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

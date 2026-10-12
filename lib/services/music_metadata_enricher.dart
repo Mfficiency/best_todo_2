@@ -574,6 +574,13 @@ class MusicMetadataEnricher {
     } catch (_) {}
   }
 
+  /// Re-reads the enrichment store from disk (after a backup restore).
+  Future<void> reload() async {
+    _entries.clear();
+    _loaded = false;
+    await _load();
+  }
+
   Future<void> _save() async {
     try {
       final file = await _file();

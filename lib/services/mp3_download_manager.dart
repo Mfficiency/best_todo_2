@@ -175,6 +175,23 @@ class Mp3DownloadManager {
     }
   }
 
+  /// Re-reads the history from disk (after a backup restore). Downloads
+  /// running right now stay on top; restored jobs that were still queued or
+  /// running when the backup was taken can't resume and are dropped.
+  Future<void> reload() async {
+    final live = jobs.value.where((j) => j.isActive).toList();
+    _loaded = false;
+    jobs.value = <Mp3DownloadJob>[];
+    await load();
+    final restored = jobs.value.where((j) => !j.isActive).toList();
+    final liveIds = {for (final j in live) j.id};
+    jobs.value = [
+      ...live,
+      ...restored.where((j) => !liveIds.contains(j.id)),
+    ];
+    await _save();
+  }
+
   Future<void> _save() async {
     try {
       final file = await _historyFile();

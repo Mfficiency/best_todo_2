@@ -99,4 +99,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Music folder'), findsOneWidget);
   });
+
+  testWidgets('the Backup section offers back up, restore and a schedule',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+        home: MusicSettingsPage(initialSection: MusicSettingsSection.backup)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Back up now'), findsOneWidget);
+    expect(find.text('Restore from backup'), findsOneWidget);
+    expect(find.text('Automatic backup'), findsOneWidget);
+    expect(find.text('Backup folder'), findsOneWidget);
+  });
 }

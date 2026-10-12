@@ -211,6 +211,12 @@ class YoutubeFeedService {
     }
   }
 
+  /// Re-reads the saved state from disk (after a backup restore).
+  Future<void> reload() async {
+    _loaded = false;
+    await load();
+  }
+
   Future<void> _save() async {
     try {
       final file = await _file();
