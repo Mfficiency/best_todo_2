@@ -24,7 +24,7 @@ class AutoUpdateChecker {
   }
 
   /// GitHub's anonymous API allows 60 requests/hour/IP, shared by every
-  /// installed channel/app on the phone's network — so no faster than this.
+  /// installed app on the phone's network — so no faster than this.
   static const Duration interval = Duration(minutes: 15);
 
   Timer? _timer;

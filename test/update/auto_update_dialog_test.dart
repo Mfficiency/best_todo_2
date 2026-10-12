@@ -6,7 +6,7 @@ import 'package:besttodo/services/update_service.dart';
 import 'package:besttodo/ui/auto_update_dialog.dart';
 import 'package:besttodo/ui/changelog_page.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,6 +34,12 @@ String releases(String tag) => jsonEncode([
       },
     ]);
 
+class _ChangelogBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async => ByteData.sublistView(
+      Uint8List.fromList(utf8.encode('## [9.9.9] - 2026-10-12\n- x\n')));
+}
+
 void main() {
   late List<String> calls;
   late List<String> installed;
@@ -43,7 +49,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    UpdateService.resetForTest(channel: 'main');
+    UpdateService.resetForTest();
     calls = [];
     installed = [];
     silent = [];
@@ -89,7 +95,8 @@ void main() {
     }
   }
 
-  testWidgets('a newer build downloads silently, then the app asks; '
+  testWidgets(
+      'a newer build downloads silently, then the app asks; '
       'Install hands it to Android', (tester) async {
     final flow = await pumpApp(tester);
     await tester.runAsync(() async {
@@ -108,8 +115,8 @@ void main() {
   testWidgets('Later keeps a banner; the same build is not asked again',
       (tester) async {
     final flow = await pumpApp(tester);
-    final info = (await tester
-        .runAsync(() => UpdateService.instance.checkForUpdate()))!;
+    final info =
+        (await tester.runAsync(() => UpdateService.instance.checkForUpdate()))!;
     flow.onUpdateFound(info);
     await settle(tester);
     await tester.tap(find.text('Later'));
@@ -131,8 +138,7 @@ void main() {
 
   testWidgets('an APK downloaded before a restart is reused', (tester) async {
     SharedPreferences.setMockInitialValues({
-      'update_downloaded_apk':
-          '{"version":"9.9.9+99999","path":"/x/old.apk"}',
+      'update_downloaded_apk': '{"version":"9.9.9+99999","path":"/x/old.apk"}',
     });
     final flow = await pumpApp(tester);
     await tester.runAsync(() async {
@@ -143,7 +149,8 @@ void main() {
     expect(find.text('Update ready'), findsOneWidget);
   });
 
-  testWidgets('a failed background download leaves a banner; Install '
+  testWidgets(
+      'a failed background download leaves a banner; Install '
       'downloads it again and installs', (tester) async {
     failDownloads = true;
     final flow = await pumpApp(tester);
@@ -160,17 +167,35 @@ void main() {
     expect(installed, ['/x/new.apk']);
   });
 
-  testWidgets('pulling down on the changelog checks and downloads',
-      (tester) async {
-    final flow = AutoUpdateFlow.current = await pumpApp(tester);
+  /// Opens the changelog over [pumpApp]'s home and waits for its list.
+  Future<void> openChangelog(WidgetTester tester) async {
+    // A fresh bundle per test: rootBundle caches the load, and a future
+    // from an earlier test's zone never completes in this one.
     navigatorKey.currentState!.push(MaterialPageRoute<void>(
-        builder: (_) => const ChangelogPage(assetPath: 'CHANGELOG_MUSIC.md')));
-    for (var i = 0; i < 50 && find.byType(Markdown).evaluate().isEmpty; i++) {
+        builder: (_) => DefaultAssetBundle(
+            bundle: _ChangelogBundle(),
+            child: const ChangelogPage(assetPath: 'CHANGELOG_MUSIC.md'))));
+    final list = find.byKey(const Key('changelog-release-list'));
+    for (var i = 0; i < 50 && list.evaluate().isEmpty; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 10)));
       await tester.pump(const Duration(milliseconds: 100));
     }
-    await tester.fling(find.byType(Markdown), const Offset(0, 400), 1000);
+  }
+
+  Finder statusText(String text) => find.descendant(
+      of: find.byKey(const Key('changelog-update-status')),
+      matching: find.textContaining(text));
+
+  testWidgets(
+      'pulling down on the changelog checks and downloads silently; '
+      'the status card follows', (tester) async {
+    final flow = AutoUpdateFlow.current = await pumpApp(tester);
+    await openChangelog(tester);
+    expect(statusText('Not checked yet'), findsOneWidget);
+
+    await tester.fling(find.byKey(const Key('changelog-release-list')),
+        const Offset(0, 400), 1000);
     for (var i = 0; i < 20; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
@@ -178,7 +203,33 @@ void main() {
     }
     expect(find.textContaining('v9.9.9+99999 found'), findsOneWidget);
     await settle(tester);
-    expect(silent, [true]);
+    expect(silent, [true], reason: 'no dialog or progress first');
     expect(flow.readyVersion, '9.9.9+99999');
+    // The "Update ready" question comes once the APK is complete.
+    expect(find.text('Update ready'), findsOneWidget);
+    await tester.tap(find.text('Later'));
+    await settle(tester);
+
+    expect(statusText('Update available 9.9.9 (99999)'), findsOneWidget);
+    expect(statusText('9.9.9 (99999) downloaded '), findsOneWidget);
+    expect(statusText('ready to install'), findsOneWidget);
+    expect(statusText('Last checked '), findsOneWidget);
+    expect(statusText('null'), findsNothing);
+  });
+
+  testWidgets("the status card's Install installs the downloaded build",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'update_downloaded_apk': '{"version":"9.9.9+99999","path":"/x/old.apk"}',
+    });
+    AutoUpdateFlow.current = await pumpApp(tester);
+    await tester.runAsync(() => UpdateService.instance.checkForUpdate());
+    await openChangelog(tester);
+    expect(statusText('Update available 9.9.9 (99999)'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('changelog-update-install')));
+    await settle(tester);
+    expect(calls, isNot(contains('startBackgroundDownload')));
+    expect(installed, ['/x/old.apk']);
   });
 }

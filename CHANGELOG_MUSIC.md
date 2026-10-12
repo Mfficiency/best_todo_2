@@ -6,6 +6,13 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.23] - 2026-10-12
+- Menu: the same order as BestToDo — Home first (closes the menu), Settings, MP3 Downloader, Subscriptions, Songs by BPM, Wishlist, Sleep timer, then Changelog, About, App Logs and Startup Times
+- New Changelog look: a card at the top shows your version and whether it is up to date, when it was downloaded and installed, a newer version that is downloaded and ready to install (with an Install button) and when updates were last checked; below it, one card per release with its date. Pulling down checks right away and downloads a new version quietly in the background — the app asks to install it once it is complete.
+
+## [0.3.22] - 2026-10-12
+- Dev, Staging and regular builds are one app again ("Best Music"): it always updates to the newest build of any of them. The About page still shows where the installed build came from (e.g. "0.3.22+3600000 · dev"). If you installed "Best Music Dev" or "Best Music Staging", you can uninstall those.
+
 ## [0.3.21] - 2026-10-11
 - Updates download quietly in the background; once a new version is complete the app asks whether to install it (Install or Later — Later keeps a banner until you install). Pull down on the Changelog to check right away.
 
