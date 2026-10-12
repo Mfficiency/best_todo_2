@@ -5333,18 +5333,21 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   to, e.g. `/storage/emulated/0/Android/data/<applicationId>/files/updates`);
   it returns null off Android (no in-app downloads there) or when external
   storage is unavailable, and the row then says "Not available".
-- **APK size — Best Music (Best Music 0.3.24):** Best Music is built
-  `--target-platform android-arm64 --split-debug-info=build/symbols/music` everywhere it is
-  built (`$musicSizeArgs` in `tool/build.ps1` — the `release` mode, `all` and `music-apk` —,
-  `tool/build.sh music-apk`, and CI's `build_music_apk` job). A plain `flutter build apk` is a
-  *fat* APK: `libflutter.so` + `libapp.so` once per ABI (arm64-v8a, armeabi-v7a, x86_64),
-  stored uncompressed since minSdk ≥ 23, so 67 MB of which ~64 MB were binaries the phone
-  never loads; arm64 only with the Dart debug symbols written to `build/symbols/music`
-  (only needed for `flutter symbolize` of a native release stack trace) brings it to roughly
-  a third. Not `--split-per-abi` (three APKs; the updater takes a release's first `.apk`
-  asset), not `--obfuscate` (renames classes, so anything printing `runtimeType` changes). A
-  32-bit-only phone would need a hand-built `--target-platform android-arm` APK. Same fix as
-  Hally Remote (its `docs/LESSONS_LEARNED.md` › APK size). BestToDo is still a fat APK.
+- **APK size (Best Music 0.3.24, BestToDo 0.2.109):** both apps are built
+  `--target-platform android-arm64 --split-debug-info=build/symbols/<flavor>` everywhere they
+  are built (`$todoSizeArgs` / `$musicSizeArgs` in `tool/build.ps1` — the `release` mode, `all`,
+  single `apk` builds and `music-apk` —, `tool/build.sh` (an `apk` build without `--flavor`
+  and `music-apk`), and CI's `build_apk` / `build_music_apk` jobs). A plain
+  `flutter build apk` is a *fat* APK: `libflutter.so` + `libapp.so` once per ABI (arm64-v8a,
+  armeabi-v7a, x86_64), stored uncompressed since minSdk ≥ 23, so BestToDo was 68 MB and
+  Best Music 67 MB, ~95 % of it binaries the phone never loads; arm64 only with the Dart
+  debug symbols written to `build/symbols/<flavor>` (only needed for `flutter symbolize` of a
+  native release stack trace) brings each to roughly a third. The AndroidX native libraries
+  (`libandroidx.graphics.path.so`, `libdatastore_shared_counter.so`) ship arm64 too. Not
+  `--split-per-abi` (three APKs; the updater takes a release's first `.apk` asset), not
+  `--obfuscate` (renames classes, so anything printing `runtimeType` changes). A 32-bit-only
+  phone would need a hand-built `--target-platform android-arm` APK. Same fix as Hally
+  Remote (its `docs/LESSONS_LEARNED.md` › APK size).
 - **CI (GitHub Actions, Flutter 3.29.2, Java 17):**
   - `build-apk.yml` (push/PR main+dev, manual; `contents: write`, push trigger
     `paths-ignore`s `docs/ci/**`): runs `flutter test --machine` **non-blocking** (a

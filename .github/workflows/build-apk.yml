@@ -97,7 +97,7 @@ jobs:
       shell: bash
       run: |
         start=$(date +%s)
-        flutter build apk --release --flavor todo
+        flutter build apk --release --flavor todo --target-platform android-arm64 --split-debug-info=build/symbols/todo
         echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
 
     - name: Stage APK with version in filename

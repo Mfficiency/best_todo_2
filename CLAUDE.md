@@ -106,8 +106,9 @@ file is the short operational guide.
   prefs through the package's `migrateLegacyUpdateState`. GitHub's rate limit pauses the
   automatic checks (package). Releases without an APK are never offered. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
   tap, progress only as passive text on the Changelog's `UpdateStatusCard` and the Check for
-  updates tile); when complete, Android's PackageInstaller confirm (the plugin's
-  `installApk`) is the only question — in the foreground, once per build and start; a
+  updates tile); when complete, Android's installer app (the plugin's `installApk`:
+  `ACTION_INSTALL_PACKAGE` to the installer, a PackageInstaller session as fallback) asks
+  the only question and ends with "App updated" + Open — in the foreground, once per build and start; a
   cancel leaves the slim `UpdateBanner` ("Update ready" + Install), a failed download one
   with Try again. Pull-down on the Changelog checks; tapping a version there offers it
   (older = rollback). `MainActivity`/the manifest have no update code (the plugin brings
