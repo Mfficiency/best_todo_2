@@ -35,7 +35,7 @@ file is the short operational guide.
   (tags `v<x.y.z>-<build>[-dev|-staging]` / `music-v…`), after committing both APKs to
   `github_releases/<channel>/` and pushing that commit (`[skip ci]`, so it doesn't trigger
   another build). A HEAD that only changes `github_releases/` builds the commit below it
-  (released already → nothing to do). All channels build the **same app** (one
+  (released already → nothing to do). Before building, `build.ps1 release` compares the source with the newest 20 releases of each app (BestToDo `v…`, Best Music `music-v…`), on every channel (`Find-ReleaseWithSameCode`: a fingerprint of all tracked files except the APK folders, screenshots, `.github/`, build history, test report and build-time changelog lines); the same code released already (a dev → staging → main merge) builds and publishes nothing, so the phone is never offered the same update twice. `FORCE_RELEASE=1` skips that check. All channels build the **same app** (one
   applicationId and name per app; the About page shows the channel next to the version), and
   the updater takes the highest build number over the releases of all channels.
   `BUILD_NUMBER` = minutes since 2020-01-01 UTC of the source commit's committer time

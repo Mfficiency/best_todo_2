@@ -422,6 +422,89 @@ function Invoke-BuildAll {
 # HEAD only changes github_releases/ (this script's own commit), the build is
 # for the commit below it (Get-SourceCommit). Exits non-zero if any app
 # failed.
+# Same code, other branch: merging dev -> staging -> main makes new commits
+# (so new build numbers) with the code that is released already. The phone is
+# one app that installs the highest build of any channel, so publishing those
+# would offer the same update up to three times. Before building, the release
+# looks for a release of this app, of any channel, whose commit has the same
+# source fingerprint: every tracked file except what differs between branches
+# without changing the app (APK folders, screenshots, CI files, build history,
+# build-time lines in changelogs). Found -> nothing is built or published.
+# FORCE_RELEASE=1 skips the check (e.g. to rebuild a release deleted by hand).
+$script:FingerprintExclude = '^(GitHub_Releases|github_releases)/|^\.github/|(^|/)docs/screenshots/|(^|/)SCREENSHOT_CHANGELOG\.md$|(^|/)build_history\.json$|(^|/)test_report\.json$'
+$script:BuildNoteLine = '^- (Local build|CI build|Build duration|APK size|Build size)\b'
+
+function Get-TextHash {
+  param([string]$Text)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text)) |
+      ForEach-Object { $_.ToString('x2') }) -join ''
+  } finally {
+    $hasher.Dispose()
+  }
+}
+
+function Get-SourceFingerprint {
+  param([string]$Commit)
+  $items = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($entry in (& git -c core.quotepath=off ls-tree -r --full-tree $Commit)) {
+    $tab = $entry.IndexOf("`t")
+    $path = $entry.Substring($tab + 1)
+    if ($path -match $script:FingerprintExclude) { continue }
+    $id = ($entry.Substring(0, $tab) -split ' ')[2]
+    if ($path -match '(^|/)CHANGELOG[^/]*\.md$') {
+      $id = Get-TextHash ((@(& git cat-file blob $id) |
+        Where-Object { $_ -notmatch $script:BuildNoteLine }) -join "`n")
+    }
+    $items.Add("$id $path")
+  }
+  return Get-TextHash ($items -join "`n")
+}
+
+# The newest release tag (of the newest $Limit matching $TagPattern, whose
+# group 1 is the build number) built from the same code as $Commit, or $null.
+function Find-ReleaseWithSameCode {
+  param([string]$Commit, [string]$TagPattern, [int]$Limit = 20)
+  if ("$env:FORCE_RELEASE" -eq '1') { return $null }
+  $saved = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $lines = @(& git ls-remote --tags origin 2> $null)
+    if ($LASTEXITCODE -ne 0) { throw "git ls-remote --tags origin failed ($LASTEXITCODE)" }
+    $commits = @{}
+    $builds = @{}
+    foreach ($line in $lines) {
+      $parts = $line -split "`t"
+      if ($parts.Count -ne 2 -or $parts[1] -notmatch '^refs/tags/(.+?)(\^\{\})?$') { continue }
+      $name = $Matches[1]
+      $peeled = $Matches[2] -ne $null -and $Matches[2] -ne ''
+      $m = [regex]::Match($name, $TagPattern)
+      if (-not $m.Success) { continue }
+      # An annotated tag lists its tag object and then (^{}) its commit.
+      if ($peeled -or -not $commits.ContainsKey($name)) { $commits[$name] = $parts[0] }
+      $builds[$name] = [long]$m.Groups[1].Value
+    }
+    $ours = $null
+    $newest = $builds.Keys | Sort-Object { $builds[$_] } -Descending | Select-Object -First $Limit
+    foreach ($name in $newest) {
+      $other = $commits[$name]
+      & git cat-file -e "$other^{commit}" 2> $null
+      if ($LASTEXITCODE -ne 0) { & git fetch -q --no-tags origin $other 2> $null }
+      & git cat-file -e "$other^{commit}" 2> $null
+      if ($LASTEXITCODE -ne 0) { continue }
+      if ($null -eq $ours) { $ours = Get-SourceFingerprint $Commit }
+      if ((Get-SourceFingerprint $other) -eq $ours) { return $name }
+    }
+    return $null
+  } catch {
+    Write-Warning "could not compare with earlier releases ($_); publishing as usual"
+    return $null
+  } finally {
+    $ErrorActionPreference = $saved
+  }
+}
+
 function Get-KeyProperties {
   $path = "android/key.properties"
   if (-not (Test-Path -LiteralPath $path)) {
@@ -495,6 +578,14 @@ function Invoke-ChannelRelease {
       }
       if ($status -ne 2) {
         throw "could not check for an existing $($app.Name) release (exit $status)"
+      }
+      # The same code is released already (another branch, or an earlier
+      # push): don't offer it as an update again.
+      $prefix = if ($app.Flavor -eq "music") { "music-v" } else { "v" }
+      $same = Find-ReleaseWithSameCode $sha ('^' + $prefix + '\d+\.\d+\.\d+-(\d+)(-dev|-staging)?$')
+      if ($same) {
+        Write-Host "    $($app.Name): same code as release $same -- skipping (FORCE_RELEASE=1 builds anyway)"
+        continue
       }
     }
     $todo += $app

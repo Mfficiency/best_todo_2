@@ -5014,6 +5014,16 @@ published).
     below it (`Get-SourceCommit`; `BUILD_NUMBER` is already that commit's): already released → nothing
     to do; a release that failed after the push, or a push the APK commit was rebased onto →
     built and released then (`publish_apk.dart --target` points the release at that commit).
+    **Same code, other branch:** before building an app, `Find-ReleaseWithSameCode` compares
+    the source commit with the newest 20 releases of that app (`v…` / `music-v…`, all
+    channels; tags read with `git ls-remote --tags`, each tag's commit fingerprinted): a
+    SHA-256 over every tracked file except `github_releases/`, `.github/`, `docs/screenshots/`,
+    `SCREENSHOT_CHANGELOG.md`, `build_history.json`, `test_report.json`, with the build-time
+    lines (`- Local build:` …) stripped from changelogs. A match (a dev → staging → main merge
+    makes new commits, so new build numbers, with code that is released already) skips that
+    app: nothing built or published, so the one app on the phone is never offered the same
+    code twice. `FORCE_RELEASE=1` skips the check; if the tags can't be read it warns and
+    publishes as before.
     Without `PUBLISH=1` it only builds (APKs in `github_releases/<channel>/`, not committed). GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
     workflow artifacts, no releases, no commit-backs.
   - **App side:** `UpdateService` reads `releases?per_page=30` (anonymous) and keeps its own
