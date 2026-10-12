@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.106] - 2026-10-12
+- Updates no longer take over the screen: every download (automatic, pull-down on the Changelog, Install, About's Download & install and Go back to) runs quietly in the background — no progress window, no notification. When it is complete you only see Android's own small "Update this app?" confirm (no extra "Update ready" question first). If you cancel it, a slim "Update ready" bar with Install stays until you install. While it downloads, the Changelog card and the About page just say "Downloading … 42%".
+
 ## [0.2.105] - 2026-10-12
 - New Changelog look: a card at the top shows your version and whether it is up to date, when it was downloaded and installed, a newer version that is downloaded and ready to install (with an Install button) and when updates were last checked; below it, one card per release with its date. Pulling down checks right away and downloads a new version quietly in the background — the app asks to install it once it is complete.
 

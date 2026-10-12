@@ -5081,22 +5081,40 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
     updater never reads `github_releases/`. `AutoUpdateChecker` polls every 15 minutes, and on resume
     only when the last check is 15+ minutes old (`checkIfDue`); a 403/429 makes the service
     skip requests until GitHub's reset time (`UpdateRateLimitedException`).
-  - **Silent download, then ask (0.2.103 / Best Music 0.3.21; same flow as BestCollage and
+  - **Silent download, then Android's confirm (0.2.103 / Best Music 0.3.21; every download
+    silent and no app dialog since 0.2.106 / Best Music 0.3.25; same flow as BestCollage and
     Hally Remote):** `AutoUpdateFlow` (`lib/ui/auto_update_dialog.dart`, one per app, wired in
-    `main.dart` / `main_music.dart`) downloads a build found by the poll silently
-    (`DownloadManager` with `silent: true` → `VISIBILITY_HIDDEN`, permission
-    `DOWNLOAD_WITHOUT_NOTIFICATION`). Only when the APK is complete does the app ask: an
-    "Update ready" dialog once per version and start (in the foreground, not over the
-    intro/pickers), then a banner that stays until it is installed. Nothing installs without a
-    tap: Install commits the APK to a PackageInstaller session (`ApkInstaller.kt` +
-    `InstallReceiver`), so Android's "Update this app?" is the only step; without the "install
-    unknown apps" switch that opens first and the install starts on resume. The finished APK is
-    remembered (`UpdateService.readyApk`, prefs `update_downloaded_apk`) and reused after a
-    restart; a failed silent download leaves a banner whose Install downloads in the foreground
-    and installs. **Pulling down on the Changelog** runs the same check right away
-    (`AutoUpdateFlow.current.checkNow`, only when that flow is the page's own app; off
-    Android just `checkForUpdate`): a newer build downloads silently and the "Update ready"
-    question follows once it is complete. The About page's "Check for updates" is unchanged.
+    `main.dart` / `main_music.dart`) downloads **every** update silently
+    (`DownloadManager` with `silent: true` — now the default of `startBackgroundDownload` /
+    `downloadInBackground` → `VISIBILITY_HIDDEN`, permission `DOWNLOAD_WITHOUT_NOTIFICATION`):
+    a build found by the poll, the Changelog's pull-down, the status card's Install and the
+    About page's "Download & install" / "Go back to" for a build that isn't downloaded yet,
+    and the failed-download banner's Retry. Never a progress dialog, sheet, blocking route,
+    system download notification or banner while it runs; a tap that starts one shows one
+    SnackBar (`updateDownloadingSnack`), and the only progress is passive text
+    (`AutoUpdateFlow.downloading`: the status card's "Downloading <x.y.z (build)>… 42%"
+    line, which hides its Install button meanwhile; the About page's "Downloading <version>
+    in the background… 42%" line). When the APK is complete the app hands it straight to a
+    PackageInstaller session (`installApk` → `ApkInstaller.kt` + `InstallReceiver`), so
+    Android's "Update this app?" is the **one** confirmation — the app's own "Update ready —
+    Install / Later" dialog is gone. Only in the foreground and not over the
+    intro/pickers (`canAsk`; a download that completes in the background opens it on the next
+    resume), and automatically once per version and start: after a cancelled confirm a slim
+    "Update ready · v<version>" `MaterialBanner` (`Key('update.banner.ready')`) stays, whose
+    Install reopens it; a later poll or resume doesn't. A build the user asked for
+    (`AutoUpdateFlow.install`: a tap on Install, an older version) opens the confirm as soon
+    as it is complete, also after an earlier cancel. Without the "install unknown apps"
+    switch, its settings screen opens first with a SnackBar saying why, and the install
+    starts on resume. The finished APK is remembered (`UpdateService.readyApk`, prefs
+    `update_downloaded_apk`) and reused after a restart; a failed silent download leaves a
+    banner (`Key('update.banner.failed')`) whose Retry downloads it silently again. No
+    banner exists before an APK is complete. **Pulling down on the Changelog** runs the same
+    check right away (`AutoUpdateFlow.current.checkNow`, only when that flow is the page's
+    own app; off Android just `checkForUpdate`). The About page (`UpdateSection`, both apps)
+    goes through the running app's flow when it is about the same `UpdateService`;
+    otherwise (tests, off the flow) it downloads silently itself and calls `installApk` once
+    complete. `PreUpdateBackup` (the snapshot of every data file before a new version's first
+    write) is unaffected.
   - **Legacy:** the `.apk` files directly in `github_releases/` stay because installs from
     before 0.2.101 still read them; current apps read GitHub releases. The laptop build's
     copies go into `github_releases/<channel>/` subfolders (`tool/build.sh` / `build.ps1 all`
@@ -5170,8 +5188,9 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   "Current version 0.2.105 (413) · Up to date" / "· Update available <x.y.z (build)>" /
   "· Checking…" (spinner as the leading icon; `verified` when up to date,
   `system_update` when an update exists, then the card turns `primaryContainer` and gets
-  an Install button → `AutoUpdateFlow.install`: the downloaded APK, or a foreground
-  download first). Subtitle lines, each part left out when unknown: "Downloaded <time> ·
+  an Install button → `AutoUpdateFlow.install`: the downloaded APK, or a silent
+  download first; while one runs a "Downloading <x.y.z (build)>… 42%" line replaces the
+  button). Subtitle lines, each part left out when unknown: "Downloaded <time> ·
   Installed <time>" (downloaded only when the running build is the one last downloaded),
   "<x.y.z (build)> downloaded <time> · ready to install" for a newer build waiting, and
   "Last checked <time> · Pull down to check for updates" ("Not checked yet" before the
@@ -5180,7 +5199,7 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   `lastDownload` — `ValueNotifier`s, so the background poll updates the card too);
   `lastCheckedAt` (prefs `update_last_checked`, ms) and `lastDownload` (prefs
   `update_last_download` = `{version, at}`, written by `markVersionDownloaded` when a
-  silent or foreground download completes) survive a restart (`loadUpdateStatus`).
+  download completes) survive a restart (`loadUpdateStatus`).
   `AutoUpdateFlow.ready` notifies when a build is ready. Best Music's page passes
   `MusicAboutPage.updateService`, so its card and pull-down are about Best Music's builds.
 - **Background downloads via DownloadManager (0.2.x):** both download paths —

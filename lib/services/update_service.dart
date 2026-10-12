@@ -560,10 +560,11 @@ class UpdateService {
   /// out a Wi-Fi/mobile handover, unlike a plain HTTP socket held open by the
   /// app. Progress is polled with [queryDownload]/[watchDownload].
   ///
-  /// [silent] (the automatic update) downloads without a notification; the
-  /// app asks to install once it is complete.
+  /// [silent] (every update download, the default) runs without a
+  /// notification (`VISIBILITY_HIDDEN`); Android's install confirm opens
+  /// once it is complete (`AutoUpdateFlow`).
   Future<int> startBackgroundDownload(UpdateInfo info,
-      {bool silent = false}) async {
+      {bool silent = true}) async {
     final url = info.apkUrl;
     if (url == null) {
       throw StateError('This release has no APK to download');
@@ -639,7 +640,7 @@ class UpdateService {
   Stream<DownloadProgress> downloadInBackground(
     UpdateInfo info, {
     Duration interval = const Duration(milliseconds: 700),
-    bool silent = false,
+    bool silent = true,
   }) async* {
     final id = await startBackgroundDownload(info, silent: silent);
     await _savePendingDownload(id, info.version);

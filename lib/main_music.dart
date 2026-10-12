@@ -94,7 +94,8 @@ class BestMusicApp extends StatefulWidget {
 class _BestMusicAppState extends State<BestMusicApp>
     with WidgetsBindingObserver {
   /// The automatic update, same as BestToDo's (`main.dart`): silent
-  /// download, then "Update ready" — for Best Music's own builds only.
+  /// download, then Android's install confirm — for Best Music's own builds
+  /// only.
   late final AutoUpdateFlow _updates = AutoUpdateFlow(
     navigatorKey: musicNavigatorKey,
     service: () => MusicAboutPage.updateService,
@@ -137,7 +138,7 @@ class _BestMusicAppState extends State<BestMusicApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // A download that finished while the app was away: ask now.
+    // A download that finished while the app was away: install now.
     _updates.onLifecycleChanged(state);
     if (state == AppLifecycleState.resumed) {
       unawaited(AutoUpdateChecker.instance.checkIfDue(_updates.onUpdateFound,
