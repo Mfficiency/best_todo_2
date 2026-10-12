@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.109] - 2026-10-12
+- Smaller download: BestToDo is now built for 64-bit phones only (every Android phone of the last several years), about a third of its old size. Updates: when an update is installed, Android shows "App updated" with an Open button again, so you are back in the app with one tap
+
 ## [0.2.108] - 2026-10-12
 - Updates also check when you come back to the app (if the last check is 15+ minutes old), and turning "Automatically update" back on checks right away. When GitHub limits update checks, the app says so and waits until the limit is over instead of retrying. A version whose download isn't published yet is no longer offered. During the welcome screens the install question waits until you are done (the download already runs in the background).
 

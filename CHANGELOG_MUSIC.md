@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.29] - 2026-10-12
+- Updates: when an update is installed, Android shows "App updated" with an Open button again, so you are back in the app with one tap
+
 ## [0.3.28] - 2026-10-12
 - Updates also check when you come back to the app (if the last check is 15+ minutes old). When GitHub limits update checks, the app says so and waits until the limit is over instead of retrying. A version whose download isn't published yet is no longer offered.
 

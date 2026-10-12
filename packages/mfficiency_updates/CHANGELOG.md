@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 - 2026-10-12
+
+- **Open after updating:** installs go through Android's installer app
+  again (`ACTION_INSTALL_PACKAGE`, addressed to that app directly, so no
+  chooser), which ends with "App updated" and an Open button. The APK is
+  shared read-only from `cache/updates/` by the plugin's `ApkProvider`
+  (authority `<applicationId>.mfficiency_updates.apk`); the manifest adds
+  a `<queries>` entry so the installer is visible on Android 11+. The
+  PackageInstaller session stays as the fallback. No Dart API change.
+
 ## 1.1.0 - 2026-10-12
 
 Everything the apps' adapters still did on their own is now the package's,

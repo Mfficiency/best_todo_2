@@ -1,10 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Installs downloaded updates through a PackageInstaller session. The
-         user turns on "install unknown apps" for the app once. -->
+    <!-- Installs downloaded updates. The user turns on "install unknown apps"
+         for the app once. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Finds Android's installer app (Android 11+ package visibility). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.INSTALL_PACKAGE" />
+            <data android:scheme="content" android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+    </queries>
+
     <application>
-        <!-- Install session status: opens Android's "Update this app?". -->
+        <!-- Shares the downloaded APK (cache/updates/) with the installer app,
+             which ends with "App updated" and Open. -->
+        <provider
+            android:name="ch.mfficiency.updates.ApkProvider"
+            android:authorities="${applicationId}.mfficiency_updates.apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+        <!-- Fallback install session status: opens Android's "Update this app?". -->
         <receiver
             android:name="ch.mfficiency.updates.InstallReceiver"
             android:exported="false" />
