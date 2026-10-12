@@ -180,6 +180,19 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               );
             },
           ),
+          // Same order as BestToDo's drawer: Home · Settings · app entries ·
+          // Changelog · About · App Logs · Startup Times.
+          ListTile(
+            leading: const Icon(Icons.home),
+            title: const Text('Home'),
+            onTap: () => Navigator.of(context).pop(), // the player is home
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Settings'),
+            onTap: () =>
+                _pushStandalonePage(() => const MusicSettingsPage()),
+          ),
           ListTile(
             leading: const Icon(Icons.download_outlined),
             title: const Text('MP3 Downloader'),
@@ -220,12 +233,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text('Settings'),
-            onTap: () =>
-                _pushStandalonePage(() => const MusicSettingsPage()),
-          ),
-          ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Changelog'),
             onTap: () => _pushStandalonePage(() => ChangelogPage(
@@ -236,10 +243,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 )),
           ),
           ListTile(
-            leading: const Icon(Icons.show_chart),
-            title: const Text('Startup Times'),
-            onTap: () =>
-                _pushStandalonePage(() => const StartupTimesPage()),
+            leading: const Icon(Icons.info),
+            title: const Text('About'),
+            onTap: () => _pushStandalonePage(() => const MusicAboutPage()),
           ),
           ListTile(
             leading: const Icon(Icons.list_alt),
@@ -247,9 +253,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             onTap: () => _pushStandalonePage(() => const AppLogsPage()),
           ),
           ListTile(
-            leading: const Icon(Icons.info),
-            title: const Text('About'),
-            onTap: () => _pushStandalonePage(() => const MusicAboutPage()),
+            leading: const Icon(Icons.show_chart),
+            title: const Text('Startup Times'),
+            onTap: () =>
+                _pushStandalonePage(() => const StartupTimesPage()),
           ),
         ],
       ),

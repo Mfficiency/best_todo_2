@@ -166,6 +166,10 @@ void main() {
         Track.local(filePath: '/does/not/matter/song.mp3', title: 'Song'),
       ];
 
+      // Tall enough for every drawer row to be built.
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(
           const MaterialApp(home: MusicPlayerPage(standalone: true)));
       await tester.pumpAndSettle();
@@ -173,12 +177,28 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Best Music v'), findsOneWidget);
+      expect(find.text('Home'), findsOneWidget);
       expect(find.text('MP3 Downloader'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
       expect(find.text('Changelog'), findsOneWidget);
       expect(find.text('Startup Times'), findsOneWidget);
       expect(find.text('App Logs'), findsOneWidget);
       expect(find.text('About'), findsOneWidget);
+      // BestToDo's menu order: Home · Settings · app entries · Changelog ·
+      // About · App Logs · Startup Times.
+      final ys = [
+        for (final label in const [
+          'Home',
+          'Settings',
+          'MP3 Downloader',
+          'Changelog',
+          'About',
+          'App Logs',
+          'Startup Times',
+        ])
+          tester.getCenter(find.text(label)).dy,
+      ];
+      expect(ys, orderedEquals([...ys]..sort()));
     });
 
     testWidgets('tapping Settings in the drawer opens MusicSettingsPage',

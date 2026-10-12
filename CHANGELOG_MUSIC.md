@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.23] - 2026-10-12
+- Menu: the same order as BestToDo — Home first (closes the menu), Settings, MP3 Downloader, Subscriptions, Songs by BPM, Wishlist, Sleep timer, then Changelog, About, App Logs and Startup Times
+
 ## [0.3.22] - 2026-10-12
 - Dev, Staging and regular builds are one app again ("Best Music"): it always updates to the newest build of any of them. The About page still shows where the installed build came from (e.g. "0.3.22+3600000 · dev"). If you installed "Best Music Dev" or "Best Music Staging", you can uninstall those.
 
