@@ -4073,8 +4073,9 @@ build number rather than resetting it, even though its `x.y.z` name can change f
 alongside `CHANGELOG.md` (`pubspec.yaml`'s `assets:`). `ChangelogPage` (§10.7) gained `assetPath`
 (default `CHANGELOG.md`) and `showStoryPoster` (default `true`) constructor params;
 `MusicPlayerPage`'s drawer entry passes `assetPath: 'CHANGELOG_MUSIC.md', showStoryPoster:
-false, hidePreamble: true` (the text view starts at the first `## ` release, hiding the file's
-title + developer intro via `stripChangelogPreamble`) — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
+false, updateService: MusicAboutPage.updateService` (the release cards start at the first
+`## ` release, so the file's title + developer intro never show; the `hidePreamble` flag and
+`stripChangelogPreamble` that did this for the old markdown view went away in 0.2.105) — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
 would be wrong to show under Best Music.
 
 **Tooling, both apps share the same scripts with a flag rather than forking them**:
@@ -4809,7 +4810,9 @@ trend, share of slow starts, outlier callout, first-launch-of-day cold-start com
 uses timestamped history with legacy fallback. **Changelog**: `ChangelogPage` renders a
 bundled markdown asset — CHANGELOG.md by default, or Best Music's own CHANGELOG_MUSIC.md
 via `assetPath`/`showStoryPoster` (`false` for Music: `changelogMilestones` below is
-BestToDo's own curated history — see §10.6i); an app-bar button toggles an update heatmap
+BestToDo's own curated history — see §10.6i) — as an update status card plus one card per
+release, pull down to check for updates (§11 "Changelog status card"); an app-bar button
+toggles an update heatmap
 — the file is parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd`
 headings + their bullets, wrapped lines joined, undated headings skipped) and drawn as a
 GitHub-style week grid (green shade = releases that day, Mon/Wed/Fri labels, month label
@@ -5036,7 +5039,9 @@ published).
     remembered (`UpdateService.readyApk`, prefs `update_downloaded_apk`) and reused after a
     restart; a failed silent download leaves a banner whose Install downloads in the foreground
     and installs. **Pulling down on the Changelog** runs the same check right away
-    (`AutoUpdateFlow.current.checkNow`). The About page's "Check for updates" is unchanged.
+    (`AutoUpdateFlow.current.checkNow`, only when that flow is the page's own app; off
+    Android just `checkForUpdate`): a newer build downloads silently and the "Update ready"
+    question follows once it is complete. The About page's "Check for updates" is unchanged.
   - **Legacy:** the `.apk` files directly in `github_releases/` stay because installs from
     before 0.2.101 still read them; current apps read GitHub releases. The laptop build's
     copies go into `github_releases/<channel>/` subfolders (`tool/build.sh` / `build.ps1 all`
@@ -5091,18 +5096,38 @@ published).
   (no `autoUpdateEnabledOnce: true` key — `toMap` always writes it), after which
   a user's "off" sticks again. Best Music still has no toggle; its poll always
   runs on Android.
-- **"Installed …" line on the Changelog (0.2.98 / Best Music 0.3.6):** the
-  text view of `ChangelogPage` (both apps) starts with a banner
-  (`Key('changelog-installed-since')`): "Installed v<versionWithBuild> ·
-  yyyy-MM-dd HH:mm (<n> min/hours/days ago)" (`formatInstalledAt`), so the user
-  can see when an automatic update landed. `InstallInfoService.load()`
+- **"Installed …" line on the Changelog (0.2.98 / Best Music 0.3.6; part of the status
+  card since 0.2.105):** `InstallInfoService.load()`
   (`lib/services/install_info_service.dart`) asks the native side first —
   `lastUpdateTime` on the `besttodo/update` channel returns
   `PackageInfo.lastUpdateTime` (epoch ms) from `MainActivity` — and falls back
   to the first time this version was seen running, which both `main()`s record
   after the first frame (`recordLaunch`, `shared_preferences` key
   `install_info_first_seen` = `{version, at}`, replaced when the version
-  changes). Hidden when neither source knows (e.g. version 'unknown').
+  changes). Unknown (e.g. version 'unknown') → the part is left out.
+- **Changelog status card (0.2.105 / Best Music 0.3.23; same look as Hally Remote and
+  BestCollage):** the text view of `ChangelogPage` (both apps) is a list of cards — first
+  `Key('changelog-update-status')`, then one per release (`changelog-release-<version>`:
+  version in bold, a filled check-circle on the installed version, date right-aligned in
+  the user's date format, the changes as bullets rendered with `MarkdownBody`, build
+  metadata lines (`isChangelogBuildNote`: Local/CI build, Build duration, APK/Build size) as
+  small chips; nothing above the first release heading is shown). The status card: title
+  "Current version 0.2.105 (413) · Up to date" / "· Update available <x.y.z (build)>" /
+  "· Checking…" (spinner as the leading icon; `verified` when up to date,
+  `system_update` when an update exists, then the card turns `primaryContainer` and gets
+  an Install button → `AutoUpdateFlow.install`: the downloaded APK, or a foreground
+  download first). Subtitle lines, each part left out when unknown: "Downloaded <time> ·
+  Installed <time>" (downloaded only when the running build is the one last downloaded),
+  "<x.y.z (build)> downloaded <time> · ready to install" for a newer build waiting, and
+  "Last checked <time> · Pull down to check for updates" ("Not checked yet" before the
+  first check). Times use `formatTimerDateTime` (Settings' date + 12/24 h format). The
+  state lives on the page's `UpdateService` (`lastCheck`, `checking`, `lastCheckedAt`,
+  `lastDownload` — `ValueNotifier`s, so the background poll updates the card too);
+  `lastCheckedAt` (prefs `update_last_checked`, ms) and `lastDownload` (prefs
+  `update_last_download` = `{version, at}`, written by `markVersionDownloaded` when a
+  silent or foreground download completes) survive a restart (`loadUpdateStatus`).
+  `AutoUpdateFlow.ready` notifies when a build is ready. Best Music's page passes
+  `MusicAboutPage.updateService`, so its card and pull-down are about Best Music's builds.
 - **Background downloads via DownloadManager (0.2.x):** both download paths —
   the auto-update Yes and the About page's "Download & install"/rollback
   buttons — go through `UpdateService.downloadInBackground()` instead of a
