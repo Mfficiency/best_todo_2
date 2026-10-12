@@ -439,8 +439,8 @@ class _ChangelogPageState extends State<ChangelogPage> {
   }
 
   /// Pull-down: checks for a newer build of this app (any channel) right away.
-  /// One that is found downloads in the background and the app asks to
-  /// install it when it is complete, like the automatic check
+  /// One that is found downloads silently in the background and Android's
+  /// install confirm opens when it is complete, like the automatic check
   /// ([AutoUpdateFlow]).
   Future<void> _checkForUpdates() async {
     final flow = _flow;
@@ -480,6 +480,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
         service.lastCheckedAt,
         service.lastDownload,
         if (flow != null) flow.ready,
+        if (flow != null) flow.downloading,
       ]),
       builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
@@ -512,6 +513,15 @@ class _ChangelogPageState extends State<ChangelogPage> {
             ? '${changelogVersionLabel(latest.version)} downloaded '
                 '${formatTimerDateTime(download!.at)} · ready to install'
             : null;
+        // A silent background download: passive text only, nothing pops up.
+        final active = flow?.downloading.value;
+        final percent = active == null ? null : updateDownloadPercent(active);
+        final downloadingLine = active == null
+            ? null
+            : [
+                'Downloading ${changelogVersionLabel(active.version)}…',
+                if (percent != null) percent,
+              ].join(' ');
         final checkedAt = service.lastCheckedAt.value;
         final checked = checkedAt == null
             ? 'Not checked yet'
@@ -532,10 +542,14 @@ class _ChangelogPageState extends State<ChangelogPage> {
             title: Text(title),
             subtitle: Text([
               if (times.isNotEmpty) times,
+              if (downloadingLine != null) downloadingLine,
               if (waiting != null) waiting,
               '$checked · Pull down to check for updates',
             ].join('\n')),
-            trailing: latest != null && latest.apkUrl != null && flow != null
+            trailing: latest != null &&
+                    latest.apkUrl != null &&
+                    flow != null &&
+                    !flow.isDownloading(latest.version)
                 ? FilledButton(
                     key: const Key('changelog-update-install'),
                     onPressed: () => unawaited(flow.install(latest)),

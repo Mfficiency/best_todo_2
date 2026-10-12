@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../main.dart';
 import '../services/update_service.dart';
+import 'auto_update_dialog.dart';
 import 'subpage_app_bar.dart';
 
 class AboutPage extends StatelessWidget {
@@ -71,16 +72,16 @@ enum _UpdatePhase {
   checking,
   upToDate,
   available,
-  downloading,
-  readyToInstall,
   error,
 }
 
-/// "Check for updates" → the two APKs kept in the repo's `github_releases/`
-/// folder → download one with a progress bar → hand it to the Android
-/// installer. The main button takes the newest build; a second button reinstalls
-/// the one kept for a rollback. On web/desktop (or a release without an APK
-/// asset) the buttons open the download page in the browser instead.
+/// "Check for updates" → this app's builds on GitHub (any channel) → the
+/// newest one, or one version back. Download & install / Go back to
+/// download **silently** in the background (one SnackBar says so, a line of
+/// passive text follows it here); once the APK is complete Android's own
+/// "Update this app?" is the only confirmation — through the running app's
+/// [AutoUpdateFlow] when there is one. On web/desktop (or a release without
+/// an APK asset) the buttons open the download page in the browser instead.
 ///
 /// [service] defaults to [UpdateService.instance] (BestToDo's own updates);
 /// Best Music's [MusicAboutPage] passes its own [UpdateService.forApp]
@@ -101,14 +102,26 @@ class _UpdateSectionState extends State<UpdateSection> {
   UpdateService get _service => widget.service ?? UpdateService.instance;
   _UpdatePhase _phase = _UpdatePhase.idle;
   UpdateCheck? _result;
-
-  /// The build currently being downloaded/installed — the newest one, or the
-  /// rollback build when that button was tapped.
-  UpdateInfo? _target;
-  String? _apkPath;
   String _note = '';
-  int _received = 0;
-  int? _total;
+
+  /// The download this page started itself when no [AutoUpdateFlow] runs
+  /// for [_service] (tests, an app without one).
+  final ValueNotifier<UpdateDownload?> _localDownload = ValueNotifier(null);
+
+  /// The running app's automatic update, when it is about [_service].
+  AutoUpdateFlow? get _flow {
+    final flow = AutoUpdateFlow.current;
+    return flow != null && identical(flow.service, _service) ? flow : null;
+  }
+
+  ValueListenable<UpdateDownload?> get _downloads =>
+      _flow?.downloading ?? _localDownload;
+
+  @override
+  void dispose() {
+    _localDownload.dispose();
+    super.dispose();
+  }
 
   bool _installsInPlace(UpdateInfo? info) =>
       !kIsWeb &&
@@ -137,6 +150,9 @@ class _UpdateSectionState extends State<UpdateSection> {
     }
   }
 
+  /// Downloads [info] silently in the background — no progress dialog, no
+  /// notification, one SnackBar — and opens Android's install confirm once
+  /// it is complete.
   Future<void> _downloadAndInstall(UpdateInfo? info,
       {bool rollback = false}) async {
     if (info == null) return;
@@ -145,11 +161,7 @@ class _UpdateSectionState extends State<UpdateSection> {
           mode: LaunchMode.externalApplication);
       return;
     }
-    _target = info;
     setState(() {
-      _phase = _UpdatePhase.downloading;
-      _received = 0;
-      _total = info.apkSizeBytes;
       // Android's package installer refuses to replace an app with an older
       // build, so say so up front rather than leaving the user with a bare
       // "App not installed" from the system UI.
@@ -159,12 +171,22 @@ class _UpdateSectionState extends State<UpdateSection> {
               'clears the app\'s data, so export a backup before you do.'
           : '';
     });
+    final flow = _flow;
+    if (flow != null) {
+      await flow.install(info);
+      return;
+    }
+    if (_localDownload.value?.version == info.version) return;
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text(updateDownloadingSnack)));
+    _localDownload.value =
+        (version: info.version, received: 0, total: info.apkSizeBytes);
     try {
       // Handed off to Android's DownloadManager (see UpdateService), so the
       // transfer keeps going even if this page — or the app — is backgrounded,
       // and rides out a Wi-Fi/mobile handover mid-download.
-      await for (final progress
-          in _service.downloadInBackground(info)) {
+      await for (final progress in _service.downloadInBackground(info)) {
         if (!mounted) return;
         if (progress.status == DownloadStatus.failed) {
           setState(() {
@@ -173,14 +195,16 @@ class _UpdateSectionState extends State<UpdateSection> {
           });
           return;
         }
-        setState(() {
-          _received = progress.bytesDownloaded;
-          _total = progress.bytesTotal ?? _total;
-        });
         if (progress.status == DownloadStatus.successful) {
-          _apkPath = progress.localPath;
-          setState(() => _phase = _UpdatePhase.readyToInstall);
-          await _install();
+          _localDownload.value = null;
+          final path = progress.localPath;
+          if (path != null) await _install(path);
+        } else {
+          _localDownload.value = (
+            version: info.version,
+            received: progress.bytesDownloaded,
+            total: progress.bytesTotal ?? info.apkSizeBytes,
+          );
         }
       }
     } catch (e) {
@@ -189,12 +213,12 @@ class _UpdateSectionState extends State<UpdateSection> {
         _phase = _UpdatePhase.error;
         _note = 'Download failed: $e';
       });
+    } finally {
+      if (mounted) _localDownload.value = null;
     }
   }
 
-  Future<void> _install() async {
-    final path = _apkPath;
-    if (path == null) return;
+  Future<void> _install(String path) async {
     try {
       final result = await _service.installApk(path);
       if (!mounted) return;
@@ -273,35 +297,6 @@ class _UpdateSectionState extends State<UpdateSection> {
         if (previous != null) {
           children.addAll(_rollbackControls(context, previous));
         }
-      case _UpdatePhase.downloading:
-        final total = _total;
-        final progress = (total != null && total > 0) ? _received / total : null;
-        children.add(Text(
-          total != null && total > 0
-              ? 'Downloading… ${((_received / total) * 100).toStringAsFixed(0)}%'
-              : 'Downloading…',
-          textAlign: TextAlign.center,
-        ));
-        children.add(const SizedBox(height: 8));
-        children.add(LinearProgressIndicator(value: progress));
-        children.add(const SizedBox(height: 8));
-        children.add(Text(
-          'Runs in the background — feel free to leave this page or the app, '
-          'it installs automatically once it\'s ready.',
-          style: Theme.of(context).textTheme.bodySmall,
-          textAlign: TextAlign.center,
-        ));
-      case _UpdatePhase.readyToInstall:
-        children.add(Text(
-          'Version ${_target?.version} downloaded.',
-          textAlign: TextAlign.center,
-        ));
-        children.add(const SizedBox(height: 8));
-        children.add(ElevatedButton.icon(
-          onPressed: _install,
-          icon: const Icon(Icons.install_mobile),
-          label: const Text('Install update'),
-        ));
       case _UpdatePhase.error:
         children.add(Text(
           _note,
@@ -315,8 +310,7 @@ class _UpdateSectionState extends State<UpdateSection> {
       children.add(Text(_note, textAlign: TextAlign.center));
     }
 
-    final busy =
-        _phase == _UpdatePhase.checking || _phase == _UpdatePhase.downloading;
+    final busy = _phase == _UpdatePhase.checking;
     return Column(
       children: [
         ElevatedButton.icon(
@@ -339,6 +333,25 @@ class _UpdateSectionState extends State<UpdateSection> {
         ),
         if (children.isNotEmpty) const SizedBox(height: 12),
         ...children,
+        // A running download: passive text only, nothing pops up.
+        ValueListenableBuilder<UpdateDownload?>(
+          valueListenable: _downloads,
+          builder: (context, download, _) {
+            if (download == null) return const SizedBox.shrink();
+            final percent = updateDownloadPercent(download);
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Downloading ${download.version} in the background'
+                '${percent == null ? '…' : '… $percent'}\n'
+                "You'll be asked to install it when it's ready.",
+                key: const Key('about.update.downloading'),
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            );
+          },
+        ),
       ],
     );
   }
