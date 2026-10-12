@@ -50,43 +50,34 @@ void main() {
   });
 
   group('channel releases', () {
-    test('tags, names and assets carry app and channel', () {
+    test('tags, names and assets carry the channel', () {
       const v = '0.2.101+12199';
       expect(publish_tool.releaseTagFor(v, channel: 'dev'), 'v0.2.101-12199-dev');
       expect(publish_tool.releaseTagFor(v, channel: 'staging'),
           'v0.2.101-12199-staging');
       expect(publish_tool.releaseTagFor(v), 'v0.2.101-12199');
-      expect(
-          publish_tool.releaseTagFor(v, app: publish_tool.musicApp),
-          'music-v0.2.101-12199');
-      expect(
-          publish_tool.releaseTagFor(v,
-              app: publish_tool.musicApp, channel: 'dev'),
-          'music-v0.2.101-12199-dev');
       expect(publish_tool.releaseNameFor(v, channel: 'dev'),
           'BestToDo 0.2.101+12199 (dev)');
-      expect(publish_tool.releaseNameFor(v, app: publish_tool.musicApp),
-          'Best Music 0.2.101+12199');
       expect(publish_tool.assetNameFor(v, channel: 'staging'),
           'BestToDo-0.2.101+12199-staging.apk');
-      expect(publish_tool.assetNameFor(v, app: publish_tool.musicApp),
-          'BestMusic-0.2.101+12199.apk');
+    });
+
+    test('only todo is a known --app', () {
+      expect(publish_tool.appFor('todo'), same(publish_tool.todoApp));
+      expect(publish_tool.appFor('music'), isNull);
     });
 
     test('tags round-trip through the in-app updater', () {
+      const app = UpdatesApp.todo;
       for (final channel in publish_tool.channels) {
-        for (final app in [publish_tool.todoApp, publish_tool.musicApp]) {
-          final tag = publish_tool.releaseTagFor('1.2.3+12345',
-              app: app, channel: channel);
-          // Each app's updater only accepts its own tag prefix.
-          final own = app.id == 'music' ? UpdatesApp.music : UpdatesApp.todo;
-          final other = own == UpdatesApp.music ? UpdatesApp.todo : UpdatesApp.music;
-          expect(matchesTagPrefix(tag, own.tagPrefix), isTrue);
-          expect(matchesTagPrefix(tag, other.tagPrefix), isFalse);
-          expect(releaseVersion(tag, prefix: own.tagPrefix), '1.2.3');
-          expect(releaseBuild(tag, prefix: own.tagPrefix), 12345);
-          expect(releaseChannel(tag), channel);
-        }
+        final tag = publish_tool.releaseTagFor('1.2.3+12345', channel: channel);
+        expect(matchesTagPrefix(tag, app.tagPrefix), isTrue);
+        expect(releaseVersion(tag, prefix: app.tagPrefix), '1.2.3');
+        expect(releaseBuild(tag, prefix: app.tagPrefix), 12345);
+        expect(releaseChannel(tag), channel);
+        // Best Music (now Mfficiency/BestMusic) may still publish
+        // `music-v…` releases here; BestToDo's prefix never matches them.
+        expect(matchesTagPrefix('music-$tag', app.tagPrefix), isFalse);
       }
     });
 

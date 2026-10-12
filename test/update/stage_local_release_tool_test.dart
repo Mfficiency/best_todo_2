@@ -167,20 +167,18 @@ void main() {
       expect(Directory('${temp.path}/github_releases').existsSync(), isFalse);
     });
 
-    // Best Music (SPEC.md §10.6f) stages into the same github_releases/
-    // folder as BestToDo, under a best_music_ prefix instead — pruning must
-    // never cross prefixes, or a prefix-blind prune could delete the wrong
-    // app's build purely by version-number coincidence.
-    test('staging a Best Music build never prunes BestToDo builds, or vice '
-        'versa', () async {
-      apk('build/app/outputs/flutter-apk/best_music_0.1.145+117.apk');
+    // Pruning never crosses prefixes: other APKs in the folder (e.g. the
+    // best_music_ ones left from before Best Music moved to its own repo)
+    // are never deleted, nor counted towards the newest two.
+    test('pruning only touches APKs with its own prefix', () async {
+      apk('build/app/outputs/flutter-apk/best_todo_0.1.145+117.apk');
       final dir = Directory('${temp.path}/github_releases')
         ..createSync(recursive: true);
+      File('${dir.path}/best_music_0.1.144+116.apk').writeAsStringSync('other');
+      File('${dir.path}/best_music_0.1.146+118.apk').writeAsStringSync('other');
       File('${dir.path}/best_todo_0.1.143+115.apk').writeAsStringSync('old');
-      File('${dir.path}/best_todo_0.1.145+117.apk')
-          .writeAsStringSync('current');
 
-      await tool.main(['--prefix', 'best_music']);
+      await tool.main([]);
 
       final names = dir
           .listSync()
@@ -188,25 +186,23 @@ void main() {
           .toList()
         ..sort();
       expect(names, [
-        'best_music_0.1.145+117.apk',
+        'best_music_0.1.144+116.apk',
+        'best_music_0.1.146+118.apk',
         'best_todo_0.1.143+115.apk',
         'best_todo_0.1.145+117.apk',
       ]);
     });
 
-    // Best Music versions independently of BestToDo now (its own
-    // MUSIC_VERSION file, CLAUDE.md/SPEC.md §10.6f) rather than sharing
-    // pubspec.yaml's version — --version lets a caller (tool/build.sh, CI)
-    // name the staged file explicitly instead of this tool re-reading
-    // pubspec.yaml, which would silently mis-tag a Music build whose real
-    // version has diverged from whatever pubspec.yaml currently says.
+    // --version lets a caller (tool/build.sh, CI) name the staged file
+    // explicitly instead of this tool re-reading pubspec.yaml, which may
+    // have moved on since the build.
     test('--version overrides the pubspec.yaml-derived name', () async {
-      apk('build/app/outputs/flutter-apk/best_music_0.2.80+371.apk');
+      apk('build/app/outputs/flutter-apk/best_todo_0.1.146+120.apk');
 
-      await tool.main(['--prefix', 'best_music', '--version', '0.2.80+371']);
+      await tool.main(['--version', '0.1.146+120']);
 
       expect(
-          File('${temp.path}/github_releases/best_music_0.2.80+371.apk')
+          File('${temp.path}/github_releases/best_todo_0.1.146+120.apk')
               .existsSync(),
           isTrue);
     });

@@ -11,13 +11,12 @@ import 'pre_update_backup.dart';
 
 export 'package:mfficiency_updates/mfficiency_updates.dart';
 
-/// The two apps built from this repo; each has its own release tags.
+/// The app built from this repo and its release tags. (Best Music, the
+/// other one until 0.2.111, moved to Mfficiency/BestMusic; its `music-v…`
+/// tags in this repo's releases are never offered here.)
 enum UpdatesApp {
   /// BestToDo (`lib/main.dart`): tags `v<x.y.z>-<build>[-dev|-staging]`.
-  todo('BestToDo', 'v'),
-
-  /// Best Music (`lib/main_music.dart`): tags `music-v<x.y.z>-<build>…`.
-  music('Best Music', 'music-v');
+  todo('BestToDo', 'v');
 
   const UpdatesApp(this.appName, this.tagPrefix);
   final String appName;
@@ -29,14 +28,12 @@ enum UpdatesApp {
 /// its README.md; never edit that copy). The behaviour (when to check, the
 /// resume check, the "check automatically" switch, GitHub's rate limit,
 /// silent download, install) is entirely the package's [UpdateController]
-/// with its defaults; this file only holds what is BestToDo's / Best
-/// Music's own:
+/// with its defaults; this file only holds what is BestToDo's own:
 ///
 /// * [config]: repo `Mfficiency/best_todo_2` (public, no token), the tag
-///   prefix (`v` / `music-v`), every 15 minutes while open (GitHub's
-///   anonymous limit is 60 requests/hour), BestToDo's "Automatically
-///   update" switch ([Config.autoUpdateCheckEnabled]; Best Music has none,
-///   it always checks);
+///   prefix `v`, every 15 minutes while open (GitHub's anonymous limit is
+///   60 requests/hour), the "Automatically update" switch
+///   ([Config.autoUpdateCheckEnabled]);
 /// * BestToDo's pre-update backup ([PreUpdateBackup.ensure]) as the
 ///   package's `beforeInstall`, and [promptAllowed] (false while the intro
 ///   or a first-start picker is open) as its `promptAllowed`;
@@ -75,9 +72,7 @@ class AppUpdates {
         channel: channel ?? Config.channel,
         githubRepo: githubRepo,
         tagPrefix: app.tagPrefix,
-        autoCheck: app == UpdatesApp.todo
-            ? () => Config.autoUpdateCheckEnabled
-            : () => true,
+        autoCheck: () => Config.autoUpdateCheckEnabled,
         checkInterval: interval,
         pollInterval: interval,
       );
@@ -123,8 +118,8 @@ class AppUpdates {
         strings: strings,
         log: _log,
         clock: clock,
-        promptAllowed: app == UpdatesApp.todo ? promptAllowed : null,
-        beforeInstall: app == UpdatesApp.todo ? _backupFirst : null,
+        promptAllowed: promptAllowed,
+        beforeInstall: _backupFirst,
       );
 
   /// Before the first frame: builds [controller] for [app] (reads the

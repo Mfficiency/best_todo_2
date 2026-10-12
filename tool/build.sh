@@ -11,30 +11,19 @@ if [ "$1" = "all" ]; then
   exec sh tool/build_all.sh "$@"
 fi
 
-# `music-apk` is a shorthand for building the Best Music flavor (Music
-# Player + MP3 Downloader, no to-do features — see lib/main_music.dart):
-#   sh tool/build.sh music-apk --release
-# is exactly sh tool/build.sh apk --release --flavor music -t lib/main_music.dart.
-if [ "$1" = "music-apk" ]; then
-  shift
-  # arm64 only + split debug info: ~20 MB instead of the 67 MB fat APK
-  # (same as tool/build.ps1's $musicSizeArgs).
-  exec sh tool/build.sh apk --flavor music -t lib/main_music.dart \
-    --target-platform android-arm64 --split-debug-info=build/symbols/music "$@"
-fi
-
 # No version bump here: tool/bump_version.dart requires an explicit
 # `<version> [changelog entry]` (see the "bump, sync and build" workflow), so
 # calling it argument-less only printed its usage line on every build. Bump
 # first, then build:  dart run tool/bump_version.dart 0.1.258 "what changed"
 
-# Which app is being built. android/app/build.gradle.kts defines the `todo`
-# (BestToDo, unchanged) and `music` (Best Music) product flavors; `apk` builds
-# now require an explicit --flavor, so default to `todo` here rather than
-# making every existing `sh tool/build.sh apk --release` caller pass one.
+# Which flavor is being built. android/app/build.gradle.kts defines the `todo`
+# (BestToDo) product flavor (Best Music, the former `music` flavor, moved to
+# its own repo, Mfficiency/BestMusic); `apk` builds require an explicit
+# --flavor, so default to `todo` here rather than making every existing
+# `sh tool/build.sh apk --release` caller pass one.
 # Renamed/staged artifact names key off FLAVOR too (best_<flavor>_<version>.apk
 # — see the Gradle createVersionedReleaseApk task), which is what
-# UpdateService's per-app folder filtering relies on.
+# UpdateService's folder filtering relies on.
 FLAVOR=""
 if [ "$1" = "apk" ]; then
   prev=""
@@ -44,24 +33,15 @@ if [ "$1" = "apk" ]; then
   done
   if [ -z "$FLAVOR" ]; then
     FLAVOR="todo"
-    # arm64 only + split debug info, like music-apk (SPEC.md §11 "APK size").
+    # arm64 only + split debug info (SPEC.md §11 "APK size").
     set -- "$@" --flavor todo --target-platform android-arm64 --split-debug-info=build/symbols/todo
   fi
 fi
 PREFIX="best_${FLAVOR:-todo}"
 
 # Extract the version string. Versioned release artifact names are the cache
-# key for deciding whether this build already exists. Best Music versions
-# independently of BestToDo (its own MUSIC_VERSION file, CLAUDE.md/SPEC.md
-# §10.6i) rather than pubspec.yaml, so this — and everything below that
-# writes a build-time note or stages a release — has to branch on FLAVOR.
-APP_ARG=""
-if [ "$FLAVOR" = "music" ]; then
-  VERSION=$(grep '^version:' MUSIC_VERSION | cut -d ' ' -f2)
-  APP_ARG="--app music"
-else
-  VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
-fi
+# key for deciding whether this build already exists.
+VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
 
 is_cacheable_release_build() {
   [ "$#" -gt 0 ] || return 1
@@ -140,12 +120,7 @@ if [ -n "$EXISTING_ARTIFACT" ]; then
       ;;
   esac
 
-  # tool/publish_apk.dart only ever publishes a BestToDo GitHub release (see
-  # its own header comment) -- Best Music's update check never looks at
-  # GitHub releases, only github_releases/ (UpdateService.checkReleases), so
-  # publishing there for a music build would just mislabel this APK as a
-  # BestToDo one.
-  if [ "$PUBLISH_APK" = "1" ] && [ "$FLAVOR" != "music" ]; then
+  if [ "$PUBLISH_APK" = "1" ]; then
     case "$EXISTING_ARTIFACT" in
       *.apk)
         dart run tool/publish_apk.dart --apk "$EXISTING_ARTIFACT"
@@ -178,9 +153,8 @@ flutter build "$@"
 BUILD_STATUS=$?
 BUILD_DURATION=$(( $(date +%s) - BUILD_START ))
 
-# Record when this build finished (and how long it took) in the app's own
-# changelog (CHANGELOG.md, or CHANGELOG_MUSIC.md for a music build -- see
-# APP_ARG above): a "- Local build: <time>" line, a "- Build duration
+# Record when this build finished (and how long it took) in
+# CHANGELOG.md: a "- Local build: <time>" line, a "- Build duration
 # (<target>): <time>" line and the APK/build size in this version's section, each updated in
 # place on repeat builds. Also appends a record to build_history.json
 # (committed, so build times are tracked across builds/machines over time).
@@ -203,9 +177,9 @@ if [ "$BUILD_STATUS" -eq 0 ]; then
       ;;
   esac
   if [ -n "$ARTIFACT" ]; then
-    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" --artifact "$ARTIFACT" $APP_ARG
+    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" --artifact "$ARTIFACT"
   else
-    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1" $APP_ARG
+    dart run tool/append_build_time.dart --duration "$BUILD_DURATION" --target "$1"
   fi
 else
   # Don't rename or stage artifacts left over from an earlier build.
@@ -222,13 +196,13 @@ rename_if_exists() {
 }
 
 # Android APK -> best_<flavor>_<version>.apk (Gradle's createVersionedReleaseApk
-# task already writes this file directly; this is a fallback for whichever of
-# the two names the Flutter/Gradle tooling actually produced).
+# task already writes this file directly; this is a fallback in case the
+# Flutter/Gradle tooling only produced app-<flavor>-release.apk).
 rename_if_exists "build/app/outputs/flutter-apk/app-${FLAVOR:-todo}-release.apk" \
   "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk"
 
-# Keep the last two APKs of each app in github_releases/ (newest + one version
-# back): the app's About/update-check reads that folder, filtered to its own
+# Keep the last two APKs in github_releases/ (newest + one version
+# back): the app's About/update-check reads that folder, filtered to its
 # best_<flavor>_ prefix (see UpdateService.apkPrefix). Commit the folder for
 # the build to reach the app.
 if [ -e "build/app/outputs/flutter-apk/${PREFIX}_${VERSION}.apk" ]; then
@@ -263,8 +237,7 @@ fi
 # "Check for updates" button looks for new versions. Opt-in:
 #   PUBLISH_APK=1 sh tool/build.sh apk --release
 # Needs a GitHub token (GITHUB_TOKEN / GH_TOKEN, or a logged-in gh CLI).
-# BestToDo only -- see the matching guard above for why.
-if [ "$PUBLISH_APK" = "1" ] && [ "$FLAVOR" != "music" ]; then
+if [ "$PUBLISH_APK" = "1" ]; then
   dart run tool/publish_apk.dart
 fi
 

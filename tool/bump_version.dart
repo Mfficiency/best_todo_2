@@ -1,15 +1,12 @@
 import 'dart:io';
 
-/// `--music` bumps Best Music's own MUSIC_VERSION + CHANGELOG_MUSIC.md
-/// instead of BestToDo's pubspec.yaml + CHANGELOG.md — the two apps version
-/// and changelog independently since the split (CLAUDE.md/SPEC.md §10.6i).
+/// Bumps pubspec.yaml's `version:` and prepends a CHANGELOG.md section.
 void main(List<String> args) {
-  final isMusic = args.contains('--music');
-  final positional = args.where((a) => a != '--music').toList();
+  final positional = args.toList();
 
   if (positional.isEmpty) {
     stderr.writeln(
-      'Usage: dart run tool/bump_version.dart <version>[+build] [changelog entry] [--music]',
+      'Usage: dart run tool/bump_version.dart <version>[+build] [changelog entry]',
     );
     exitCode = 64;
     return;
@@ -20,12 +17,8 @@ void main(List<String> args) {
       positional.length > 1 ? positional.sublist(1).join(' ').trim() : '';
   final versionOnly = rawVersion.split('+').first;
 
-  // BestToDo's version lives inside pubspec.yaml's `version:` line; Best
-  // Music's is the whole content of its own MUSIC_VERSION file, in the same
-  // `version: x.y.z+build` shape so the parsing/rewriting below is identical
-  // either way.
-  final versionFile = File(isMusic ? 'MUSIC_VERSION' : 'pubspec.yaml');
-  final changelogFile = File(isMusic ? 'CHANGELOG_MUSIC.md' : 'CHANGELOG.md');
+  final versionFile = File('pubspec.yaml');
+  final changelogFile = File('CHANGELOG.md');
 
   if (!versionFile.existsSync()) {
     stderr.writeln('${versionFile.path} not found.');
@@ -86,9 +79,9 @@ void main(List<String> args) {
   final newSection = '## [$versionOnly] - $date\n$entryLine\n';
 
   // Insert the new section right before the first existing `## [...]`
-  // release heading, so everything above it — the `# Changelog` title, and
-  // for CHANGELOG_MUSIC.md the explanatory preamble paragraph — is kept
-  // untouched instead of being collapsed down to a single header line.
+  // release heading, so everything above it — the `# Changelog` title and
+  // any preamble paragraph — is kept untouched instead of being collapsed
+  // down to a single header line.
   final firstReleaseHeading =
       RegExp(r'^##\s*\[', multiLine: true).firstMatch(changelog);
   final String updated;

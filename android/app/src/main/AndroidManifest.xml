@@ -6,9 +6,8 @@
     <!-- In-app updates: the install permission and the install-session
          receiver come from the mfficiency_updates plugin's own manifest
          (merged at build time); nothing about them here. -->
-    <!-- Tools -> MP3 Downloader: lets the user grant "All files access" so a
-         shared folder they pick (e.g. Music) is actually writable, instead
-         of always being redirected to the app's private storage. -->
+    <!-- "All files access" for the Wishlist's shared external-storage file
+         (lib/services/shared_wishlist_store.dart, its "Connect" banner). -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -32,12 +31,6 @@
     <!-- "run foreground service" / "control vibration" — capabilities the
          background alarm delivery path uses when it wakes the app. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Music Player: background playback foreground service + its media
-         notification/lock-screen controls (audio_service). -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- Best Music: keeps the background song-info search / BPM detection
-         running while other apps are open (BackgroundWorkService). -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Optional: the user explicitly grants Usage Access from the wellbeing
          dashboard. Android does not show a runtime permission dialog. -->
@@ -60,7 +53,7 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- singleTask (not singleTop) and the default task affinity (the
-             app's own package, so BestToDo and Best Music stay separate):
+             app's own package):
              there is only ever ONE MainActivity / Flutter engine. A launch
              from the home screen, the media notification, a widget, a
              besttodoalarm:// link or ShareActivity re-fronts that one
@@ -240,49 +233,6 @@
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
             android:exported="false" />
 
-        <!-- Music Player background playback: notification + lock-screen
-             media controls, headset buttons (audio_service). -->
-        <!-- The Music widgets' play button: asks "Play out loud?" over the
-             home screen when nothing is connected, else just plays
-             (MusicPlayGuardActivity). See-through, its own task, never in
-             Recents. -->
-        <activity
-            android:name=".MusicPlayGuardActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:taskAffinity=""
-            android:launchMode="singleInstance"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-        <!-- Best Music's background song-info search (MusicMetadataEnricher):
-             an ongoing "Filling in song info…" notification that keeps the
-             process alive while other apps are in front. specialUse because
-             no standard type fits (dataSync is capped at 6 h a day). -->
-        <service
-            android:name=".BackgroundWorkService"
-            android:foregroundServiceType="specialUse"
-            android:exported="false">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Looks up missing song metadata online and detects song tempo on the device, on the user's own music library" />
-        </service>
-        <service
-            android:name="com.ryanheise.audioservice.AudioService"
-            android:foregroundServiceType="mediaPlayback"
-            android:exported="true"
-            tools:ignore="Instantiatable">
-            <intent-filter>
-                <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
-        </service>
-        <receiver
-            android:name="com.ryanheise.audioservice.MediaButtonReceiver"
-            android:exported="true"
-            tools:ignore="Instantiatable">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

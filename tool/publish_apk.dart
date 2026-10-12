@@ -1,31 +1,36 @@
 // Uploads a release APK to a GitHub release of Mfficiency/best_todo_2, which
-// is where both apps' in-app updaters look for new versions
+// is where BestToDo's in-app updater looks for new versions
 // (the mfficiency_updates package, set up in lib/services/app_updates.dart,
 // reads the releases list, filtered by the app's tag prefix, every channel).
 //
-// Normally run by `tool\build.ps1 release` (the laptop builder, one call per
-// app); can also be run by hand after a release build.
+// Normally run by `tool\build.ps1 release` (the laptop builder); can also be
+// run by hand after a release build.
+//
+// Best Music, once published from here too, moved to its own repo
+// (Mfficiency/BestMusic). `music-v…` releases may still show up in this repo
+// (a one-time bridge for old installs, published from there); they aren't
+// BestToDo's, and the `v` tag prefix below never matches them.
 //
 // Usage:
-//   dart run tool/publish_apk.dart [--app todo|music] [--channel main|staging|dev]
+//   dart run tool/publish_apk.dart [--app todo] [--channel main|staging|dev]
 //       [--build-number N] [--apk <path>] [--duration <secs>] [--dry-run]
-//   dart run tool/publish_apk.dart --app music --channel dev --build-number N --exists
+//   dart run tool/publish_apk.dart --channel dev --build-number N --exists
 //       (exit 0 when that release already exists, 2 when it doesn't)
 //
-// Defaults: --app todo, --channel $BUILD_CHANNEL (else main), --build-number
-// $BUILD_NUMBER (else the build part of pubspec.yaml / MUSIC_VERSION).
+// Defaults: --app todo (the only app; the flag is kept for existing callers),
+// --channel $BUILD_CHANNEL (else main), --build-number $BUILD_NUMBER (else the
+// build part of pubspec.yaml).
 //
 // Auth: a GitHub token with repo write access, taken from the GITHUB_TOKEN or
 // GH_TOKEN environment variable, or from `gh auth token` when the GitHub CLI
 // is installed and logged in.
 //
 // Conventions (the in-app updater relies on the tags):
-//   tag      BestToDo   v<x.y.z>-<build>        (git tags can't carry '+')
-//            Best Music music-v<x.y.z>-<build>
+//   tag      v<x.y.z>-<build>                  (git tags can't carry '+')
 //            + `-dev` / `-staging` for those channels (prerelease)
 //   name     BestToDo 0.2.100+12199 (dev)      (no channel for main)
-//   asset    BestToDo-0.2.100+12199-dev.apk    / BestMusic-0.3.19+12199.apk
-//   body     the app's newest CHANGELOG section (user-facing bullets only)
+//   asset    BestToDo-0.2.100+12199-dev.apk
+//   body     the newest CHANGELOG.md section (user-facing bullets only)
 //            + a build footer (channel, commit, branch, time, duration, size)
 //
 // After a successful upload it prints one line for the laptop builder:
@@ -44,7 +49,7 @@ const String uploadsBase = 'https://uploads.github.com';
 
 const List<String> channels = ['main', 'staging', 'dev'];
 
-/// One of the two apps published from this repo.
+/// The app published from this repo (BestToDo — [todoApp]).
 class AppSpec {
   const AppSpec({
     required this.id,
@@ -55,7 +60,7 @@ class AppSpec {
     required this.changelogFile,
   });
 
-  /// `todo` / `music` — the Gradle flavor.
+  /// `todo` — the Gradle flavor.
   final String id;
   final String displayName;
   final String tagPrefix;
@@ -73,22 +78,12 @@ const AppSpec todoApp = AppSpec(
   changelogFile: 'CHANGELOG.md',
 );
 
-const AppSpec musicApp = AppSpec(
-  id: 'music',
-  displayName: 'Best Music',
-  tagPrefix: 'music-v',
-  assetPrefix: 'BestMusic',
-  versionFile: 'MUSIC_VERSION',
-  changelogFile: 'CHANGELOG_MUSIC.md',
-);
-
 AppSpec? appFor(String id) => switch (id) {
       'todo' => todoApp,
-      'music' => musicApp,
       _ => null,
     };
 
-/// `version: x.y.z+build` from a pubspec.yaml / MUSIC_VERSION body, or null.
+/// `version: x.y.z+build` from a pubspec.yaml body, or null.
 String? readPubspecVersion(String pubspec) {
   final m = RegExp(r'^version:\s*(\S+)', multiLine: true).firstMatch(pubspec);
   return m?.group(1);
@@ -96,8 +91,8 @@ String? readPubspecVersion(String pubspec) {
 
 String _channelSuffix(String channel) => channel == 'main' ? '' : '-$channel';
 
-/// Git-safe release tag: `0.1.132+104` → `v0.1.132-104` (BestToDo, main),
-/// `music-v0.3.19-12199-dev` (Best Music, dev).
+/// Git-safe release tag: `0.1.132+104` → `v0.1.132-104` (main),
+/// `v0.1.132-104-dev` (dev).
 String releaseTagFor(String version,
         {AppSpec app = todoApp, String channel = 'main'}) =>
     '${app.tagPrefix}${version.replaceAll('+', '-')}${_channelSuffix(channel)}';
@@ -201,7 +196,7 @@ Future<void> main(List<String> args) async {
   int? durationSeconds;
   var dryRun = false;
   var existsOnly = false;
-  const usage = 'Usage: dart run tool/publish_apk.dart [--app todo|music] '
+  const usage = 'Usage: dart run tool/publish_apk.dart [--app todo] '
       '[--channel main|staging|dev] [--build-number N] [--apk <path>] '
       '[--duration <secs>] [--target <commit>] [--exists] [--dry-run]';
   const valued = {
@@ -253,7 +248,8 @@ Future<void> main(List<String> args) async {
 
   final app = appFor(appId);
   if (app == null) {
-    stderr.writeln('--app must be todo or music (got "$appId")');
+    stderr.writeln('--app must be todo (got "$appId"; Best Music moved to '
+        'Mfficiency/BestMusic)');
     exitCode = 64;
     return;
   }
@@ -382,7 +378,7 @@ Future<void> main(List<String> args) async {
         name: name,
         body: body,
         prerelease: channel != 'main',
-        makeLatest: app.id == 'todo' && channel == 'main',
+        makeLatest: channel == 'main',
         commit: commit);
     final releaseId = release['id'];
     // Replace a leftover asset of the same name, so re-publishing a rebuilt
@@ -471,8 +467,8 @@ Future<Map<String, dynamic>> _findOrCreateRelease(
     'name': name,
     'body': body,
     'prerelease': prerelease,
-    // Only BestToDo's main channel is "Latest" (very old installs read
-    // releases/latest), never a prerelease or a Best Music build.
+    // Only the main channel is "Latest" (very old installs read
+    // releases/latest), never a prerelease.
     'make_latest': makeLatest ? 'true' : 'false',
     if (commit != null) 'target_commitish': commit,
   };

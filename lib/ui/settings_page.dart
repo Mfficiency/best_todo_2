@@ -2196,9 +2196,6 @@ class _SettingsPageState extends State<SettingsPage> {
   /// A daily Claude Code Remote routine (5pm, plus on demand) picks those up,
   /// implements the item and pushes straight to `dev` — see
   /// `.claude/notes/automation.md`.
-  /// Settings → MP3 Downloader: where Tools → MP3 Downloader saves audio.
-  /// The tool asks for this folder the first time it downloads something and
-  /// then never prompts again, so this is the only place to change it.
   Widget _buildWishlistBuildSection() {
     return _buildSection(
       index: 14,

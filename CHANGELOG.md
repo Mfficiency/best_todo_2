@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.111] - 2026-10-12
+- Best Music has moved to its own home on GitHub (Mfficiency/BestMusic); this repo now builds BestToDo only. Nothing changes in BestToDo, which is a little smaller now that it no longer carries Best Music's audio player libraries.
+
 ## [0.2.110] - 2026-10-12
 - New tool: PC Watcher (Tools → PC Watcher) shows what the build PC did — every build with when it ran, how long it took and the APK size, failed builds with their error and the end of the build output, and what is still pending (new commits waiting, builds running or queued). Filter the log by result or app. It reads the laptop's private build status, so it asks once for a read-only GitHub token.
 

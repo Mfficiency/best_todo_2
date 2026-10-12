@@ -7,8 +7,6 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.AudioManager
-import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -17,18 +15,14 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
 import android.view.WindowManager
-import com.ryanheise.audioservice.AudioServiceFragmentActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.content.pm.ApplicationInfo
 
-// AudioServiceFragmentActivity (not the plain FlutterFragmentActivity)
-// because the Music Player's background playback service (audio_service)
-// needs the activity to hand it the shared FlutterEngine it manages; it is
-// itself a FlutterFragmentActivity, so the health plugin's Health Connect
-// permission flow (which needs a FragmentActivity for its Activity Result
-// contract on Android 14+) keeps working unchanged.
-class MainActivity : AudioServiceFragmentActivity() {
+// FlutterFragmentActivity: the health plugin's Health Connect permission flow
+// needs a FragmentActivity for its Activity Result contract on Android 14+.
+class MainActivity : FlutterFragmentActivity() {
 
     // Content shared into the app (see ShareActivity), waiting for the Dart
     // side to collect it. On a cold start the queue fills before the Flutter
@@ -137,9 +131,7 @@ class MainActivity : AudioServiceFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        AudioPcmDecoder.register(flutterEngine.dartExecutor.binaryMessenger)
         CompassSensor.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
-        BackgroundWorkService.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/digital_wellbeing",
@@ -168,41 +160,6 @@ class MainActivity : AudioServiceFragmentActivity() {
                     } else {
                         result.success(queryUsageSessions(from, to))
                     }
-                }
-                else -> result.notImplemented()
-            }
-        }
-        // The phone's own media volume (STREAM_MUSIC) as 0..1. Best Music
-        // remembers one level for music and one for videos and switches the
-        // phone between them (lib/services/media_volume.dart).
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "besttodo/media_volume",
-        ).setMethodCallHandler { call, result ->
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            when (call.method) {
-                "get" -> result.success(
-                    if (max <= 0) null
-                    else audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                        .toDouble() / max
-                )
-                "set" -> {
-                    val volume = (call.argument<Double>("volume") ?: 0.0)
-                        .coerceIn(0.0, 1.0)
-                    val showUi = call.argument<Boolean>("showUi") ?: false
-                    try {
-                        if (max > 0 && !audioManager.isVolumeFixed) {
-                            audioManager.setStreamVolume(
-                                AudioManager.STREAM_MUSIC,
-                                Math.round(volume * max).toInt(),
-                                if (showUi) AudioManager.FLAG_SHOW_UI else 0,
-                            )
-                        }
-                    } catch (_: SecurityException) {
-                        // Do Not Disturb can refuse volume changes.
-                    }
-                    result.success(null)
                 }
                 else -> result.notImplemented()
             }
@@ -278,44 +235,6 @@ class MainActivity : AudioServiceFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "besttodo/media_scanner",
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                // Files this app writes with plain File I/O (the MP3
-                // downloader saving straight into a user-picked folder)
-                // never pass through MediaStore, so OEM media apps —
-                // Samsung's Music/My Files/Gallery included — don't know
-                // they exist until the next full device media scan, which
-                // on some OEMs only happens on reboot. Scanning the file
-                // right after it's written gets it indexed immediately.
-                "scanFile" -> {
-                    val path = call.argument<String>("path")
-                    if (path == null) {
-                        result.error("bad-args", "path missing", null)
-                        return@setMethodCallHandler
-                    }
-                    MediaScannerConnection.scanFile(
-                        applicationContext, arrayOf(path), null, null
-                    )
-                    result.success(null)
-                }
-                else -> result.notImplemented()
-            }
-        }
-        // Music Player's "play out loud?" check (SpeakerPlayGuard): is any
-        // audio output besides the phone's own speaker/earpiece connected —
-        // Bluetooth, wired/USB headphones, a car, HDMI, ...?
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "besttodo/audio_output",
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "isExternalOutputConnected" -> result.success(isExternalAudioOutputConnected())
-                else -> result.notImplemented()
-            }
-        }
         shareChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/share",
@@ -344,9 +263,6 @@ class MainActivity : AudioServiceFragmentActivity() {
             }
         }
     }
-
-    private fun isExternalAudioOutputConnected(): Boolean =
-        AudioOutputs.isExternalConnected(this)
 
     private fun openHealthDataSources(): Boolean {
         val attempts = listOf(

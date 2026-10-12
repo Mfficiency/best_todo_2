@@ -22,38 +22,16 @@ if (System.getenv("REQUIRE_RELEASE_KEY") == "1" && !hasReleaseKeystore) {
     throw GradleException("REQUIRE_RELEASE_KEY=1 but android/key.properties is missing or incomplete")
 }
 
-// Best Music versions independently of BestToDo (CLAUDE.md/SPEC.md §10.6i):
-// its own `version: x.y.z+build` line lives in MUSIC_VERSION at the repo
-// root (edited by `dart run tool/bump_version.dart <version> "<entry>"
-// --music`, mirroring pubspec.yaml's own `version:` line for BestToDo)
-// instead of piggybacking on pubspec.yaml's version like it did before the
-// split. Missing/unparseable file falls back to null, in which case the
-// `music` flavor below just keeps Flutter's own (BestToDo's) version so a
-// checkout without it still builds.
-val musicVersionFile = rootProject.file("../MUSIC_VERSION")
-val musicVersionFull = if (musicVersionFile.exists()) {
-    Regex("""^version:\s*(\S+)""", RegexOption.MULTILINE)
-        .find(musicVersionFile.readText())?.groupValues?.get(1)
-} else null
-val musicVersionName = musicVersionFull?.substringBefore("+")
-val musicVersionCode = musicVersionFull?.substringAfter("+")?.toIntOrNull()
-
 // Release channel (dev / staging / main) = the branch a laptop build came
 // from (BUILD_CHANNEL, set by tool\build.ps1 release). All three build the
 // SAME app: one applicationId and one name for every channel, so a phone has
-// one BestToDo (and one Best Music) that updates to the highest build number
-// of any channel. The channel only reaches Dart (--dart-define, shown next to
-// the version on the About pages); here it is just validated.
+// one BestToDo that updates to the highest build number of any channel. The
+// channel only reaches Dart (--dart-define, shown next to the version on the
+// About pages); here it is just validated.
 val buildChannel = (System.getenv("BUILD_CHANNEL") ?: "").trim().lowercase().ifEmpty { "main" }
 if (buildChannel !in setOf("main", "staging", "dev")) {
     throw GradleException("BUILD_CHANNEL must be dev, staging or main (got '$buildChannel')")
 }
-// Laptop builds pass BUILD_NUMBER (minutes since 2020-01-01 UTC of the built
-// commit's committer time, so it rises across all branches) as the
-// versionCode of BOTH apps; without it each app keeps its own version file's
-// build number.
-val envBuildNumber = System.getenv("BUILD_NUMBER")?.trim()?.toIntOrNull()
-
 android {
     namespace = "com.mfficiency.best_todo_2"
     compileSdk = flutter.compileSdkVersion
@@ -88,35 +66,15 @@ android {
         versionName = flutter.versionName
     }
 
-    // Two apps from one codebase, picked with `flutter build apk --flavor
-    // <name>` (default `todo` if a build script doesn't say — see
-    // tool/build.sh): `todo` is BestToDo itself (unchanged applicationId,
-    // same as before flavors existed), `music` is Best Music — the
-    // standalone music player + MP3 downloader app entered via
-    // lib/main_music.dart, installable side by side with BestToDo since it
-    // has its own applicationId. Both share every other Gradle setting
-    // (signing, minSdk, permissions, ...); only the app label
-    // (res/values/strings.xml `app_name`) and launcher icon
-    // (src/music/res/mipmap-*/ic_launcher.png) are overridden per flavor.
+    // One product flavor, `todo` (BestToDo; `--flavor todo`, which every
+    // build script and CI job passes). Best Music, the `music` flavor until
+    // 0.2.111, is its own repo now (Mfficiency/BestMusic).
     flavorDimensions += listOf("app")
     productFlavors {
         create("todo") {
             dimension = "app"
             // Launcher label (AndroidManifest android:label="${appLabel}").
             manifestPlaceholders["appLabel"] = "BestToDo"
-        }
-        create("music") {
-            dimension = "app"
-            applicationId = "com.mfficiency.best_music"
-            manifestPlaceholders["appLabel"] = "Best Music"
-            // Own versionCode/versionName, read from MUSIC_VERSION above —
-            // see that val's comment. versionCode in particular must never
-            // regress below whatever the last shipped Best Music build used,
-            // or Android refuses the install as a downgrade.
-            // A laptop channel build's BUILD_NUMBER wins over MUSIC_VERSION's.
-            if (envBuildNumber != null) versionCode = envBuildNumber
-            else if (musicVersionCode != null) versionCode = musicVersionCode
-            if (musicVersionName != null) versionName = musicVersionName
         }
     }
 
@@ -170,21 +128,14 @@ flutter {
 
 afterEvaluate {
     // Flutter names a flavored release APK app-<flavor>-release.apk; the
-    // renamed file's prefix is what tool/build.sh, tool/build.ps1 and
-    // UpdateService key their per-app filtering on (best_todo_/best_music_),
-    // so it must track the flavor that was actually built.
+    // renamed file's prefix (best_todo_) is what tool/build.sh and
+    // tool/build.ps1 look for.
     //
-    // There is ONE rename task per flavor, wired to that flavor's own
-    // assemble task, rather than a single task that sniffs the output
-    // directory for whichever app-<flavor>-release.apk exists. That sniffing
-    // was silently wrong: build/app/outputs/flutter-apk/ is never cleaned
-    // between builds, so once a BestToDo build had left app-todo-release.apk
-    // behind, every later `--flavor music` build matched *that* file first
-    // and re-copied the stale BestToDo APK as best_todo_<pubspec version>.apk
-    // — never producing best_music_<MUSIC_VERSION>.apk at all, which left the
-    // Best Music release build looking like it succeeded while staging
-    // nothing.
-    val flavorPrefixes = mapOf("todo" to "best_todo", "music" to "best_music")
+    // The rename task is wired to the flavor's own assemble task and reads
+    // that flavor's own app-<flavor>-release.apk, never whichever APK happens
+    // to sit in build/app/outputs/flutter-apk/ (it is never cleaned between
+    // builds; sniffing it once re-copied a stale APK of the other app).
+    val flavorPrefixes = mapOf("todo" to "best_todo")
 
     fun flutterFullVersion() =
         "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"
@@ -215,25 +166,15 @@ afterEvaluate {
                 }
 
                 // Full version: x.y.z+build (e.g. 0.1.117+87). versionName carries
-                // x.y.z, versionCode the build number, so recombine them. Best
-                // Music versions independently (MUSIC_VERSION, see the val above)
-                // — BestToDo still comes from pubspec.yaml via `flutter.*`.
-                val fullVersion = if (builtFlavor == "music" && musicVersionFull != null) {
-                    musicVersionFull
-                } else {
-                    flutterFullVersion()
-                }
+                // x.y.z, versionCode the build number, so recombine them.
+                val fullVersion = flutterFullVersion()
 
-                // versionCode 1 means the relevant version file lost its `+build`
-                // suffix: the APK would be rejected as a downgrade on any device
-                // holding an earlier build.
-                val effectiveVersionCode =
-                    if (builtFlavor == "music") musicVersionCode ?: flutter.versionCode
-                    else flutter.versionCode
-                if (effectiveVersionCode == 1) {
-                    val source = if (builtFlavor == "music") "MUSIC_VERSION" else "pubspec.yaml"
+                // versionCode 1 means pubspec.yaml lost its `+build` suffix: the
+                // APK would be rejected as a downgrade on any device holding an
+                // earlier build.
+                if (flutter.versionCode == 1) {
                     logger.warn(
-                        "[apk-rename] WARNING: versionCode is 1 — $source's `version:` is " +
+                        "[apk-rename] WARNING: versionCode is 1 — pubspec.yaml's `version:` is " +
                             "missing its +build suffix. Fix it before shipping this APK."
                     )
                 }

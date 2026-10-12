@@ -56,7 +56,7 @@ void main() {
 
     test('home_page.dart pulls in every suite it hosts', () {
       final c = tool.classify(['lib/ui/home_page.dart']);
-      expect(c.suites, {'home', 'projects', 'streaks', 'recurrence', 'music'});
+      expect(c.suites, {'home', 'projects', 'streaks', 'recurrence'});
     });
 
     test('a test/<area> file change maps straight to that suite', () {

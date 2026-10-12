@@ -2,10 +2,10 @@ name: Laptop build
 
 # Asks the laptop to pull and build this push right away: dispatches to
 # Mfficiency/laptop-builder (private), whose self-hosted runner on the laptop
-# runs `tool\build.ps1 release` for the pushed branch's channel (dev ->
-# "Dev" apps, staging -> "Staging" apps, main -> the normal apps) and
-# publishes one GitHub release per app (BestToDo + Best Music). Needs the secret LAPTOP_BUILD_TOKEN (fine-grained,
-# laptop-builder only, Contents: read and write); skips without it.
+# runs `tool\build.ps1 release` for the pushed branch's channel and publishes
+# BestToDo's GitHub release for it. Needs the secret LAPTOP_BUILD_TOKEN
+# (fine-grained, laptop-builder only, Contents: read and write); skips
+# without it.
 # Commits with [skip ci] (the build's own commits) don't trigger it.
 on:
   push:

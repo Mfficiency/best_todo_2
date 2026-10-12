@@ -57,6 +57,8 @@ void main() {
   });
 
   testWidgets('reports up to date when nothing newer exists', (tester) async {
+    // A `music-v…` release (Best Music, now Mfficiency/BestMusic, may still
+    // publish one here) is never BestToDo's update.
     github.releases = [release('v0.2.106-1000'), release('music-v9.9.9-9999')];
     await fakeController(github: github, downloader: downloader).init();
     await pumpAboutPage(tester);

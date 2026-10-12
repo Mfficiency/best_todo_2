@@ -206,20 +206,15 @@ class ChangelogPage extends StatefulWidget {
   }) : super(key: key);
 
   /// The updates the status card, the pull-down and a tap on a version are
-  /// about: the running app's ([AppUpdates.controller]: BestToDo's in
-  /// BestToDo, Best Music's in Best Music) unless a test passes one. None:
-  /// no status card, pulling down does nothing.
+  /// about: the running app's ([AppUpdates.controller]) unless a test
+  /// passes one. None: no status card, pulling down does nothing.
   final UpdateController? updates;
 
-  /// Bundled asset to render — BestToDo's own `CHANGELOG.md` by default, or
-  /// Best Music's `CHANGELOG_MUSIC.md` from [MusicPlayerPage]'s drawer (the
-  /// two apps changelog independently since the split, CLAUDE.md/SPEC.md
-  /// §10.6i).
+  /// Bundled asset to render (`CHANGELOG.md` by default).
   final String assetPath;
 
-  /// Whether the "development story" poster toggle is offered. Off for Best
-  /// Music: [changelogMilestones] is BestToDo's own curated history and
-  /// would be wrong to show under Best Music's changelog.
+  /// Whether the "development story" poster toggle
+  /// ([changelogMilestones]) is offered.
   final bool showStoryPoster;
 
   @override

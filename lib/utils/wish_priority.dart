@@ -2,8 +2,8 @@ import '../models/task.dart';
 
 /// Priority labels a wishlist item can carry inside [Task.label], ordered
 /// from lowest to highest. Shared by BestToDo's Wishlist tool
-/// (`wishlist_page.dart`) and Best Music's Wishlist tool
-/// (`music_wishlist_page.dart`) so a priority set by either app reads the
+/// (`wishlist_page.dart`) and Best Music's Wishlist (Mfficiency/BestMusic,
+/// the same tags) so a priority set by either app reads the
 /// same in the other — both write the identical [Task] JSON record.
 const List<String> wishPriorityLabels = <String>[
   'priority-low',

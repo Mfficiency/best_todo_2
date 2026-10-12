@@ -64,7 +64,7 @@ class AboutPage extends StatelessWidget {
   }
 }
 
-/// "Check for updates" on the About page (BestToDo's and Best Music's), on
+/// "Check for updates" on the About page, on
 /// the running app's [AppUpdates.controller] (the shared updates package):
 /// a tap checks GitHub (this app's builds of every channel, the highest
 /// build wins); a newer build downloads **silently** in the background (one

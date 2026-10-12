@@ -1,5 +1,5 @@
-/// Fakes for the updates package (`mfficiency_updates`) as BestToDo / Best
-/// Music use it: GitHub's releases list through [UpdateHttp.from], an
+/// Fakes for the updates package (`mfficiency_updates`) as BestToDo uses
+/// it: GitHub's releases list through [UpdateHttp.from], an
 /// in-memory APK downloader, [MemoryUpdateStore] and the plugin's
 /// `mfficiency_updates` method channel answered in Dart. Nothing touches
 /// the network or the disk, so it all runs inside `testWidgets`.

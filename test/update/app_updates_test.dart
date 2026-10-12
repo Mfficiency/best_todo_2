@@ -19,8 +19,8 @@ class _FakePathProvider extends PathProviderPlatform {
   Future<String?> getApplicationDocumentsPath() async => path;
 }
 
-/// BestToDo's and Best Music's side of the updates package
-/// (`lib/services/app_updates.dart`): which releases each app takes, the
+/// BestToDo's side of the updates package
+/// (`lib/services/app_updates.dart`): which releases it takes, the
 /// "Automatically update" switch, the state stored before the package, the
 /// pre-update backup before Android's installer opens and the held-back
 /// prompt. Everything else is the package's default behaviour (resume
@@ -57,34 +57,24 @@ void main() {
   }
 
   group('config', () {
-    test('one public repo, a tag prefix per app, every 15 minutes', () {
-      final todo =
+    test('one public repo, tag prefix v, every 15 minutes', () {
+      final c =
           AppUpdates.config(UpdatesApp.todo, version: '0.2.106', build: 9);
-      final music =
-          AppUpdates.config(UpdatesApp.music, version: '0.3.27', build: 9);
-      for (final c in [todo, music]) {
-        expect(c.githubRepo, 'Mfficiency/best_todo_2');
-        expect(c.privateRepo, isFalse, reason: 'no token: the repo is public');
-        expect(c.pollInterval, const Duration(minutes: 15));
-        expect(c.checkInterval, const Duration(minutes: 15));
-        expect(c.includePrereleases(), isTrue,
-            reason: 'dev/staging builds are prereleases of the same app');
-      }
-      expect(todo.tagPrefix, 'v');
-      expect(todo.appName, 'BestToDo');
-      expect(music.tagPrefix, 'music-v');
-      expect(music.appName, 'Best Music');
+      expect(c.githubRepo, 'Mfficiency/best_todo_2');
+      expect(c.privateRepo, isFalse, reason: 'no token: the repo is public');
+      expect(c.pollInterval, const Duration(minutes: 15));
+      expect(c.checkInterval, const Duration(minutes: 15));
+      expect(c.includePrereleases(), isTrue,
+          reason: 'dev/staging builds are prereleases of the same app');
+      expect(c.tagPrefix, 'v');
+      expect(c.appName, 'BestToDo');
     });
 
-    test("BestToDo's automatic checks follow its switch; Best Music has none",
-        () {
+    test('automatic checks follow the "Automatically update" switch', () {
       final todo = AppUpdates.config(UpdatesApp.todo, version: '1', build: 1);
-      final music =
-          AppUpdates.config(UpdatesApp.music, version: '1', build: 1);
       expect(todo.autoCheck(), isTrue);
       Config.autoUpdateCheckEnabled = false;
       expect(todo.autoCheck(), isFalse);
-      expect(music.autoCheck(), isTrue);
     });
 
     test("the package's behaviour is left at its defaults", () {
@@ -107,19 +97,11 @@ void main() {
           AppUpdates.config(UpdatesApp.todo, version: '1', build: 1)
               .httpUserAgent,
           'BestToDo-update-check');
-      expect(
-          AppUpdates.config(UpdatesApp.music, version: '1', build: 1)
-              .httpUserAgent,
-          'BestMusic-update-check');
     });
 
-    test("only BestToDo holds the install prompt back (its intro)", () {
+    test('the install prompt is held back while the intro is open', () {
       final todo = fakeController(github: github, downloader: downloader);
       expect(todo.promptAllowed, same(AppUpdates.promptAllowed));
-      todo.dispose();
-      final music = fakeController(
-          app: UpdatesApp.music, github: github, downloader: downloader);
-      expect(music.promptAllowed, isNull);
     });
 
     test('the running channel is only shown next to the version', () {
@@ -146,17 +128,6 @@ void main() {
       expect(r.channel, 'staging');
       expect(github.requests.single.toString(),
           'https://api.github.com/repos/Mfficiency/best_todo_2/releases?per_page=30');
-    });
-
-    test('Best Music takes only music-v tags, of every channel', () async {
-      github.releases = [
-        release('v9.9.9-9999999'),
-        release('music-v0.3.27-3600050-dev', prerelease: true),
-        release('music-v0.3.26-3600040'),
-      ];
-      final c = fakeController(
-          app: UpdatesApp.music, github: github, downloader: downloader);
-      expect((await c.check()).key, '0.3.27+3600050');
     });
 
     test('the build number decides, not x.y.z', () async {
@@ -284,12 +255,12 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'update_last_checked': DateTime(2026, 10, 11).millisecondsSinceEpoch,
     });
-    final c = await AppUpdates.create(UpdatesApp.music,
+    final c = await AppUpdates.create(UpdatesApp.todo,
         http: github.http, downloader: downloader);
     expect(AppUpdates.controller, same(c));
     expect(c.config.version, '0.2.106');
     expect(c.config.build, 3566146);
-    expect(c.config.tagPrefix, 'music-v');
+    expect(c.config.tagPrefix, 'v');
     expect(c.lastCheck, DateTime(2026, 10, 11));
     Config.resetVersionForTest();
   });

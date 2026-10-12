@@ -53,22 +53,20 @@ function Invoke-Checked {
   }
 }
 
-# Both apps ship arm64 only, with the Dart debug symbols written to
+# The APK ships arm64 only, with the Dart debug symbols written to
 # build/symbols/<flavor> instead of into libapp.so: the default fat APK
-# carries libflutter.so + libapp.so for three ABIs (BestToDo 68 MB, Best Music
-# 67 MB, ~95 % of it binaries the phone never loads); this is about a third.
+# carries libflutter.so + libapp.so for three ABIs (68 MB, ~95 % of it
+# binaries the phone never loads); this is about a third.
 # Not --split-per-abi (the updater takes a release's first .apk asset).
 # See SPEC.md §11 "APK size".
 $todoSizeArgs = @("--target-platform", "android-arm64", "--split-debug-info=build/symbols/todo")
-$musicSizeArgs = @("--target-platform", "android-arm64", "--split-debug-info=build/symbols/music")
 
-# Which app a set of `flutter build` arguments builds. android/app/build.gradle.kts
-# defines the `todo` (BestToDo) and `music` (Best Music — lib/main_music.dart,
-# SPEC.md §10.6f) product flavors, and an `apk` build now *requires* an explicit
-# --flavor, so default to `todo` here rather than making every existing
-# `build.ps1 apk --release` caller pass one. The returned flavor also drives the
-# artifact name (best_<flavor>_<version>.apk, the prefix UpdateService filters
-# the per-app update check on) and which version file/changelog is used.
+# Which flavor a set of `flutter build` arguments builds. android/app/build.gradle.kts
+# defines the `todo` (BestToDo) product flavor (Best Music, the former `music`
+# flavor, moved to its own repo, Mfficiency/BestMusic), and an `apk` build
+# *requires* an explicit --flavor, so default to `todo` here rather than making
+# every existing `build.ps1 apk --release` caller pass one. The returned flavor
+# also drives the artifact name (best_<flavor>_<version>.apk).
 function Get-FlavorArg {
   param([string[]]$ArgsForFlutter)
 
@@ -88,25 +86,6 @@ function Get-PubspecVersion {
     throw "Could not find version: in pubspec.yaml"
   }
   return (($versionLine.Line -split "\s+", 2)[1]).Trim()
-}
-
-# Best Music versions independently of BestToDo, out of its own MUSIC_VERSION
-# file rather than pubspec.yaml (CLAUDE.md / SPEC.md §10.6i).
-function Get-MusicVersion {
-  $versionLine = Select-String -Path "MUSIC_VERSION" -Pattern "^version:" | Select-Object -First 1
-  if ($null -eq $versionLine) {
-    throw "Could not find version: in MUSIC_VERSION"
-  }
-  return (($versionLine.Line -split "\s+", 2)[1]).Trim()
-}
-
-function Get-AppVersion {
-  param([string]$Flavor)
-
-  if ($Flavor -eq "music") {
-    return Get-MusicVersion
-  }
-  return Get-PubspecVersion
 }
 
 function Test-IsCacheableReleaseBuild {
@@ -202,7 +181,7 @@ function Invoke-SingleBuild {
   $appFlavor = if ([string]::IsNullOrWhiteSpace($flavor)) { "todo" } else { $flavor }
   $prefix = "best_$appFlavor"
 
-  $version = Get-AppVersion -Flavor $appFlavor
+  $version = Get-PubspecVersion
   $existingArtifact = Get-ExistingBuildArtifact -Version $version `
     -ArgsForFlutter $ArgsForFlutter -Prefix $prefix
   if ($null -ne $existingArtifact) {
@@ -214,11 +193,7 @@ function Invoke-SingleBuild {
         "--apk", $existingArtifact, "--prefix", $prefix, "--version", $version)
     }
 
-    # tool/publish_apk.dart only ever publishes a BestToDo GitHub release --
-    # Best Music's update check never looks at GitHub releases, only at
-    # github_releases/ (UpdateService.checkReleases), so publishing there for a
-    # music build would just mislabel this APK as a BestToDo one.
-    if ($env:PUBLISH_APK -eq "1" -and $appFlavor -ne "music") {
+    if ($env:PUBLISH_APK -eq "1") {
       if ($existingArtifact -like "*.apk") {
         Invoke-Checked "dart" @("run", "tool/publish_apk.dart", "--apk", $existingArtifact)
       } else {
@@ -240,11 +215,7 @@ function Invoke-SingleBuild {
   $buildDurationSeconds = [int][Math]::Round($buildStopwatch.Elapsed.TotalSeconds)
 
   if ($buildStatus -eq 0) {
-    # A music build notes its time in CHANGELOG_MUSIC.md instead of CHANGELOG.md.
     $appArgs = @()
-    if ($appFlavor -eq "music") {
-      $appArgs = @("--app", "music")
-    }
     # What was built, so its size is tracked too ("- APK size:" line and
     # build_history.json's sizeBytes).
     $artifact = $null
@@ -267,8 +238,8 @@ function Invoke-SingleBuild {
   }
 
   # Android APK -> best_<flavor>_<version>.apk (Gradle's createVersionedReleaseApk
-  # task already writes this file directly; this is a fallback for whichever of
-  # the two names the Flutter/Gradle tooling actually produced).
+  # task already writes this file directly; this is a fallback in case the
+  # Flutter/Gradle tooling only produced app-<flavor>-release.apk).
   Rename-IfExists `
     "build/app/outputs/flutter-apk/app-$appFlavor-release.apk" `
     "build/app/outputs/flutter-apk/${prefix}_$version.apk"
@@ -292,7 +263,7 @@ function Invoke-SingleBuild {
     "build/windows/x64/runner/Release/BestToDo.exe" `
     "build/windows/x64/runner/Release/BestToDo-$version.exe"
 
-  if ($env:PUBLISH_APK -eq "1" -and $appFlavor -ne "music") {
+  if ($env:PUBLISH_APK -eq "1") {
     Invoke-Checked "dart" @("run", "tool/publish_apk.dart")
   }
 }
@@ -306,21 +277,11 @@ function Invoke-BuildAll {
 
   $windowsStatus = "skipped"
   $androidStatus = "skipped"
-  $musicStatus = "skipped"
 
   if ($env:ANDROID -ne "0") {
     Write-Host "==> flutter build apk --flavor todo $($ArgsForTargets -join ' ')"
     Invoke-SingleBuild (@("apk", "--flavor", "todo") + $ArgsForTargets + $todoSizeArgs)
     $androidStatus = "ok"
-    $env:SKIP_PREFLIGHT = "1"
-  }
-
-  # Best Music ships from this same repo as its own APK (SPEC.md §10.6f), so
-  # "everything this project ships" includes it. MUSIC=0 skips it.
-  if ($env:ANDROID -ne "0" -and $env:MUSIC -ne "0") {
-    Write-Host "==> flutter build apk --flavor music $($ArgsForTargets -join ' ')"
-    Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $ArgsForTargets + $musicSizeArgs)
-    $musicStatus = "ok"
     $env:SKIP_PREFLIGHT = "1"
   }
 
@@ -350,12 +311,8 @@ function Invoke-BuildAll {
       throw "git rev-parse failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "==> syncing github_releases/ + changelogs on $branch"
+    Write-Host "==> syncing github_releases/ + changelog on $branch"
     Invoke-Checked "git" @("add", "github_releases", "CHANGELOG.md")
-    # Best Music's build time lands in its own changelog, not CHANGELOG.md.
-    if (Test-Path -LiteralPath "CHANGELOG_MUSIC.md") {
-      Invoke-Checked "git" @("add", "CHANGELOG_MUSIC.md")
-    }
     if (Test-Path -LiteralPath "build_history.json") {
       Invoke-Checked "git" @("add", "build_history.json")
     }
@@ -393,7 +350,6 @@ function Invoke-BuildAll {
   Write-Host ""
   Write-Host "=== build all ($version) ==="
   Write-Host "  android : $androidStatus"
-  Write-Host "  music   : $musicStatus"
   Write-Host "  windows : $windowsStatus"
 
   Get-ChildItem -Path "github_releases" -Filter "*.apk" -ErrorAction SilentlyContinue |
@@ -410,20 +366,21 @@ function Invoke-BuildAll {
 }
 
 # `build.ps1 release` -- the laptop builder's entry point (one dedicated clone
-# per branch, see SPEC.md section 11 "Laptop channel builds"). Builds BOTH apps' release
-# APKs for the channel in BUILD_CHANNEL (dev / staging / main; unset = main)
+# per branch, see SPEC.md section 11 "Laptop channel builds"). Builds the BestToDo
+# release APK for the channel in BUILD_CHANNEL (dev / staging / main; unset = main)
 # with versionCode BUILD_NUMBER (used as is: minutes since 2020-01-01 UTC of
 # the source commit, computed by the builder) into github_releases/<channel>/
-# (newest 2 per app kept). Every channel builds the same app (same id and
+# (newest 2 kept). Every channel builds the same app (same id and
 # name; only the tag, release and folder carry the channel). With PUBLISH=1
 # it commits and pushes that folder to the branch
-# ([skip ci], so it doesn't trigger another build), then publishes one GitHub
-# release per app (tool/publish_apk.dart). Nothing else is committed: no
-# version bumps, no changelog build notes. An app whose release for this
-# exact build already exists is skipped; the other one is still built. When
+# ([skip ci], so it doesn't trigger another build), then publishes the GitHub
+# release (tool/publish_apk.dart). Nothing else is committed: no
+# version bumps, no changelog build notes. If the release for this exact
+# build already exists, nothing is built. When
 # HEAD only changes github_releases/ (this script's own commit), the build is
-# for the commit below it (Get-SourceCommit). Exits non-zero if any app
-# failed.
+# for the commit below it (Get-SourceCommit). Exits non-zero if the build or
+# publish failed. (Best Music, once built here too, moved to its own repo,
+# Mfficiency/BestMusic; its music-v… tags are never treated as BestToDo's.)
 # Same code, other branch: merging dev -> staging -> main makes new commits
 # (so new build numbers) with the code that is released already. The phone is
 # one app that installs the highest build of any channel, so publishing those
@@ -561,8 +518,7 @@ function Invoke-ChannelRelease {
   $env:REQUIRE_RELEASE_KEY = "1"
 
   $apps = @(
-    @{ Flavor = "todo"; Name = "BestToDo"; Asset = "BestToDo"; VersionFile = "pubspec.yaml"; Args = @("--flavor", "todo") + $todoSizeArgs },
-    @{ Flavor = "music"; Name = "Best Music"; Asset = "BestMusic"; VersionFile = "MUSIC_VERSION"; Args = @("--flavor", "music", "-t", "lib/main_music.dart") + $musicSizeArgs }
+    @{ Flavor = "todo"; Name = "BestToDo"; Asset = "BestToDo"; VersionFile = "pubspec.yaml"; Args = @("--flavor", "todo") + $todoSizeArgs }
   )
   $numberArgs = @()
   if ($buildNumber -ne "") { $numberArgs = @("--build-number", $buildNumber) }
@@ -583,8 +539,7 @@ function Invoke-ChannelRelease {
       }
       # The same code is released already (another branch, or an earlier
       # push): don't offer it as an update again.
-      $prefix = if ($app.Flavor -eq "music") { "music-v" } else { "v" }
-      $same = Find-ReleaseWithSameCode $sha ('^' + $prefix + '\d+\.\d+\.\d+-(\d+)(-dev|-staging)?$')
+      $same = Find-ReleaseWithSameCode $sha '^v\d+\.\d+\.\d+-(\d+)(-dev|-staging)?$'
       if ($same) {
         Write-Host "    $($app.Name): same code as release $same -- skipping (FORCE_RELEASE=1 builds anyway)"
         continue
@@ -593,7 +548,7 @@ function Invoke-ChannelRelease {
     $todo += $app
   }
   if ($todo.Count -eq 0) {
-    Write-Host "==> nothing to do: every app's release for this build exists"
+    Write-Host "==> nothing to do: the release for this build exists"
     return
   }
 
@@ -630,8 +585,8 @@ function Invoke-ChannelRelease {
 
       # Every build lands in github_releases/<channel>/ (one folder per
       # channel, so merging dev -> staging -> main never conflicts there),
-      # named like its release asset. Only the newest $keep APKs per app
-      # stay; older ones remain on the GitHub releases.
+      # named like its release asset. Only the newest $keep APKs stay;
+      # older ones remain on the GitHub releases.
       $suffix = if ($channel -eq "main") { "" } else { "-$channel" }
       $line = Select-String -Path $app.VersionFile -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)' |
         Select-Object -First 1
@@ -694,11 +649,6 @@ if ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "release") {
   } else {
     Invoke-BuildAll $BuildArgs[1..($BuildArgs.Count - 1)]
   }
-} elseif ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "music-apk") {
-  # Shorthand for the Best Music flavor, matching `sh tool/build.sh music-apk`:
-  #   powershell -File tool\build.ps1 music-apk --release
-  $rest = if ($BuildArgs.Count -gt 1) { $BuildArgs[1..($BuildArgs.Count - 1)] } else { @() }
-  Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $rest + $musicSizeArgs)
 } else {
   Invoke-SingleBuild $BuildArgs
 }

@@ -93,29 +93,8 @@ final List<SuiteRule> suiteRules = [
   SuiteRule(['lib/ui/widget_previews_page.dart'], {'home', 'alarms', 'tools'}),
   SuiteRule(['lib/models/project.dart', 'lib/services/project_service.dart', 'lib/ui/projects_page.dart', 'lib/ui/project_board_page.dart'], {'projects'}),
   SuiteRule(['lib/services/recurrence_service.dart', 'lib/models/recurrence_config.dart', 'lib/ui/recurrence_editor.dart', 'lib/ui/recurrence_scope_dialog.dart'], {'recurrence', 'home'}),
-  SuiteRule(['lib/ui/home_page.dart', 'lib/ui/task_tile.dart', 'lib/ui/settings_page.dart', 'lib/ui/dice_timer_page.dart'], {'home', 'projects', 'streaks', 'recurrence', 'music'}),
-  SuiteRule([
-    'lib/models/track.dart', 'lib/models/music_playlist.dart', 'lib/services/music_library_service.dart',
-    'lib/services/music_playlist_service.dart', 'lib/services/music_audio_handler.dart', 'lib/services/music_player_service.dart',
-    'lib/services/music_widget_service.dart', 'lib/services/m3u_playlist_service.dart', 'lib/services/subsonic_client.dart',
-    'lib/utils/artist_utils.dart', 'lib/ui/music_player_page.dart', 'lib/ui/now_playing_page.dart', 'lib/ui/bpm_range_page.dart', 'lib/models/bpm_preset.dart',
-    'lib/ui/music_wishlist_page.dart', 'lib/services/music_download_library_sync.dart', 'lib/services/speaker_play_guard.dart', 'lib/services/music_youtube_fallback.dart', 'lib/services/youtube_search_api.dart',
-  ], {'music', 'home'}),
-  SuiteRule([
-    'lib/models/youtube_feed.dart', 'lib/services/youtube_feed_service.dart',
-    'lib/services/youtube_audio_source.dart', 'lib/services/sponsorblock_service.dart',
-    'lib/ui/youtube_feed_page.dart', 'lib/ui/youtube_channels_page.dart',
-    'lib/services/feed_search.dart', 'lib/services/media_volume.dart', 'lib/ui/volume_sheet.dart',
-    'lib/ui/estimated_progress_bar.dart', 'lib/services/video_audio_cache.dart',
-    'lib/services/bpm_detector.dart', 'lib/services/audio_pcm_decoder.dart',
-    'lib/services/music_online_metadata.dart', 'lib/services/music_metadata_enricher.dart',
-    'lib/services/id3_tag_writer.dart', 'lib/services/background_work.dart',
-    'lib/ui/best_music_logo.dart',
-    'lib/services/youtube_network_route.dart',
-    'lib/services/video_transcript_service.dart', 'lib/services/video_summary_service.dart',
-    'lib/services/obsidian_research_note.dart', 'lib/ui/video_transcript_page.dart',
-  ], {'music'}),
-  SuiteRule(['lib/services/shared_wishlist_store.dart'], {'music', 'tools'}),
+  SuiteRule(['lib/ui/home_page.dart', 'lib/ui/task_tile.dart', 'lib/ui/settings_page.dart', 'lib/ui/dice_timer_page.dart'], {'home', 'projects', 'streaks', 'recurrence'}),
+  SuiteRule(['lib/services/shared_wishlist_store.dart'], {'tools'}),
   SuiteRule(['lib/services/task_mutation_service.dart', 'lib/models/task_change_source.dart'], {'history', 'home'}),
   SuiteRule([
     'lib/services/streak_service.dart', 'lib/models/streak_kind.dart', 'lib/models/streak_goal.dart',
@@ -151,10 +130,10 @@ final List<SuiteRule> suiteRules = [
     'tool/publish_apk.dart', 'tool/stage_local_release.dart', 'tool/append_build_time.dart',
   ], {'update'}),
   // The updates adapter and the pages around the package's controller
-  // (both apps: About, Settings, the Changelog's status card).
+  // (About, Settings, the Changelog's status card).
   SuiteRule([
     'lib/services/app_updates.dart', 'lib/ui/about_page.dart',
-  ], {'update', 'home', 'music'}),
+  ], {'update', 'home'}),
   SuiteRule(['lib/utils/linkified_text.dart', 'lib/ui/task_detail_page.dart', 'lib/ui/task_info_dialog.dart'], {'home', 'tools'}),
   SuiteRule(['AlarmsWidgetProvider.kt'], {'alarms', 'home'}),
   SuiteRule(['SimpleWidgetProvider.kt'], {'home'}),

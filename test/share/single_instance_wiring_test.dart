@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Guards the platform wiring that keeps BestToDo/Best Music to ONE running
+/// Guards the platform wiring that keeps BestToDo to ONE running
 /// copy. File-content checks because the behaviour lives in the Android
 /// manifest and the Windows runner, which unit tests can't launch — and a
 /// regression (back to singleTop + taskAffinity="") is silent until a

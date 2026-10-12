@@ -1,6 +1,8 @@
 # CLAUDE.md — AI working guide for BestToDo
 
 Flutter to-do app (Android-first, Windows desktop used for tests/screenshots).
+Best Music, once a second app built from this repo, lives in its own repo
+since 0.2.111: `Mfficiency/BestMusic` (`D:\Code\BestMusic`).
 Read `SPEC.md` for the full rebuild-grade spec and development history — this
 file is the short operational guide.
 
@@ -10,7 +12,7 @@ file is the short operational guide.
 - Tests: `flutter test` runs everything (CI does this). Locally, run only the
   suites your change touches — `test/core/` always, plus the matching silo:
   `flutter test test/core test/<area>` where `<area>` is `alarms`, `projects`,
-  `home`, `share`, `sync`, `update`, `tools`, `recurrence` or `music`. See `test/README.md` for the file→suite map. Cross-cutting
+  `home`, `share`, `sync`, `update`, `tools` or `recurrence`. See `test/README.md` for the file→suite map. Cross-cutting
   changes (theme, navigation, pubspec) → full `flutter test`.
 - Smart test runner: `dart run tool/smart_test.dart` figures the above out for
   you — it looks at what's changed (working tree, or the last commit if
@@ -24,47 +26,39 @@ file is the short operational guide.
   `.smart_test_state.json`.
 - Screenshots: `flutter test integration_test/home_page_screenshot_test.dart -d windows`
   → PNGs in `build/e2e_screenshots/` (CI archives them to `docs/screenshots/home/` and
-  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main). Best Music has its own
-  suite: `flutter test integration_test/music_home_page_screenshot_test.dart -d windows`
-  → `build/e2e_screenshots_music/`, archived to `docs/screenshots/music/` the same way.
+  prepends `SCREENSHOT_CHANGELOG.md` on push to dev/staging/main). `docs/screenshots/music/`
+  is the archive of Best Music's screenshots from before it moved out.
 - **Releases come from the laptop builder only** (SPEC.md §11 "Laptop channel builds"):
   every push to `dev`/`staging`/`main` dispatches `laptop-build.yml` → the laptop runs
   `powershell -File tool\build.ps1 release` with `BUILD_CHANNEL` (dev/staging/main),
-  `BUILD_NUMBER` and `PUBLISH=1`: both APKs (BestToDo + Best Music) for that channel, signed
-  with the upload key (`android/key.properties`, required), one GitHub release per app
-  (tags `v<x.y.z>-<build>[-dev|-staging]` / `music-v…`), after committing both APKs to
+  `BUILD_NUMBER` and `PUBLISH=1`: BestToDo's APK for that channel, signed
+  with the upload key (`android/key.properties`, required), as a GitHub release
+  (tag `v<x.y.z>-<build>[-dev|-staging]`), after committing the APK to
   `github_releases/<channel>/` and pushing that commit (`[skip ci]`, so it doesn't trigger
   another build). A HEAD that only changes `github_releases/` builds the commit below it
-  (released already → nothing to do). Before building, `build.ps1 release` compares the source with the newest 20 releases of each app (BestToDo `v…`, Best Music `music-v…`), on every channel (`Find-ReleaseWithSameCode`: a fingerprint of all tracked files except the APK folders, screenshots, `.github/`, build history, test report and build-time changelog lines); the same code released already (a dev → staging → main merge) builds and publishes nothing, so the phone is never offered the same update twice. `FORCE_RELEASE=1` skips that check. All channels build the **same app** (one
-  applicationId and name per app; the About page shows the channel next to the version), and
+  (released already → nothing to do). Before building, `build.ps1 release` compares the source with the newest 20 `v…` releases, on every channel (`Find-ReleaseWithSameCode`: a fingerprint of all tracked files except the APK folders, screenshots, `.github/`, build history, test report and build-time changelog lines); the same code released already (a dev → staging → main merge) builds and publishes nothing, so the phone is never offered the same update twice. `FORCE_RELEASE=1` skips that check. All channels build the **same app** (one
+  applicationId and name; the About page shows the channel next to the version), and
   the updater takes the highest build number over the releases of all channels.
   `BUILD_NUMBER` = minutes since 2020-01-01 UTC of the source commit's committer time
   (computed by the builder, already skipping APK commits; used as is). Local test build without publishing: set `BUILD_CHANNEL=dev`,
   `BUILD_NUMBER=12345`, leave `PUBLISH` unset, run the same command. GitHub CI only builds
   (artifacts) — it no longer publishes or commits builds.
 - Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
-  keystore unless `android/key.properties` exists). `android/app/build.gradle.kts` defines two flavors — `todo` is BestToDo itself
-  (`tool/build.sh` defaults to it when `--flavor` is omitted); `music` is Best Music, a
-  separate standalone app from this same codebase (Music Player + MP3 Downloader only, no
-  to-do features — `lib/main_music.dart`, SPEC.md §10.6f). Build it with
-  `sh tool/build.sh music-apk --release` (or `powershell -ExecutionPolicy Bypass
-  -File tool\build.ps1 music-apk --release`). CI also builds it on every push to
-  main/staging/dev as a check (`build_music_apk` job in `build-apk.yml`, artifact only). The per-flavor rename to `best_<flavor>_<version>.apk` is done
-  by Gradle's `createVersioned<Flavor>ReleaseApk` task — one task per flavor, wired
-  to that flavor's own `assemble<Flavor>Release`, because
-  `build/app/outputs/flutter-apk/` is never cleaned between builds and anything
-  that infers the flavor by looking for an existing `app-<flavor>-release.apk`
-  picks up the *previous* app's leftover.
+  keystore unless `android/key.properties` exists). `android/app/build.gradle.kts` defines one
+  flavor, `todo` (`tool/build.sh` defaults to it when `--flavor` is omitted; the `music`
+  flavor is gone with Best Music). The rename to `best_todo_<version>.apk` is done by Gradle's
+  `createVersionedTodoReleaseApk` task, wired to `assembleTodoRelease` and reading that
+  flavor's own `app-todo-release.apk` (`build/app/outputs/flutter-apk/` is never cleaned
+  between builds, so guessing from whatever APK sits there once picked up a leftover).
 - Build everything + ship: `sh tool/build.sh all --release` (alias for
   `sh tool/build_all.sh --release`), or on Windows without Git Bash/WSL:
   `powershell -ExecutionPolicy Bypass -File tool\build.ps1 all --release`.
-  Builds the BestToDo APK, the Best Music APK **and** the Windows exe, stages both
-  APKs into `github_releases/`, then commits and pushes the current branch so the
-  apps can download them.
+  Builds the APK **and** the Windows exe, stages the APK into `github_releases/`, then
+  commits and pushes the current branch.
   Switches: `SYNC=0` (no git), `PUSH=0` (commit only), `WINDOWS=0`/`ANDROID=0`
-  (one target), `MUSIC=0` (skip the Best Music APK), `REQUIRE_WINDOWS=1` (a failing
+  (one target), `REQUIRE_WINDOWS=1` (a failing
   Windows build aborts instead of warning).
-- **Legacy:** `github_releases/` (last 2 APKs per app) is only read by installs older
+- **Legacy:** `github_releases/` (last 2 APKs) is only read by installs older
   than 0.2.101; current apps read GitHub releases. Keep the folder, don't rely on it.
   `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
@@ -83,12 +77,12 @@ file is the short operational guide.
   `build.ps1 release` puts build time/duration/size in the release notes instead.)
   Since CHANGELOG.md is bundled as an asset by that same build, the Changelog page
   only ever shows the *previous* build's time/duration — expected, not a bug.
-- Publish APK to GitHub: `dart run tool/publish_apk.dart [--app todo|music]
+- Publish APK to GitHub: `dart run tool/publish_apk.dart
   [--channel main|staging|dev] [--build-number N] [--apk <path>]` (what `build.ps1 release`
-  calls). Creates release `v<x.y.z>-<build>` (`music-v…` for Best Music, `-dev`/`-staging`
+  calls). Creates release `v<x.y.z>-<build>` (`-dev`/`-staging`
   suffix + prerelease for those channels); the About page "Check for updates" button
   downloads and installs it in-app. Token from `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
-- In-app updates (both apps; SPEC.md §11 "Shared updates package") are the shared
+- In-app updates (SPEC.md §11 "Shared updates package") are the shared
   `mfficiency_updates` package, **vendored** from flutter_app_template into
   `packages/mfficiency_updates` (path dependency; its README.md is the reference). **Never
   edit that copy**: change the package in the template, run its tests, then run the
@@ -96,12 +90,12 @@ file is the short operational guide.
   the copy + its `ORIGIN`; `test/updates_package_vendored_test.dart` fails on a hand edit.
   The behaviour is the package's defaults (same in every Mfficiency app); don't work around
   it in the app. `lib/services/app_updates.dart` (`AppUpdates`) only passes app-specific
-  config: one `UpdateController` per app (`AppUpdates.controllerFor`) made in `main()` /
-  `main_music.dart` (`UpdatesApp.todo` tag prefix `v`, `UpdatesApp.music` `music-v`; public
-  repo `Mfficiency/best_todo_2`, no token; checks every 15 minutes, also on resume when due;
-  BestToDo's "Automatically update" switch = `UpdateConfig.autoCheck`, Settings calls the
-  controller's `autoCheckChanged()`; Best Music always checks), started after the first
-  frame; BestToDo's `promptAllowed` (`AppUpdates.promptAllowed`, false while the
+  config: one `UpdateController` (`AppUpdates.controllerFor`) made in `main()`
+  (`UpdatesApp.todo`, tag prefix `v`; public repo `Mfficiency/best_todo_2`, no token; checks
+  every 15 minutes, also on resume when due; the "Automatically update" switch =
+  `UpdateConfig.autoCheck`, Settings calls the controller's `autoCheckChanged()`; `music-v…`
+  releases here are Best Music's bridge releases, never offered), started after the first
+  frame; `promptAllowed` (`AppUpdates.promptAllowed`, false while the
   intro/pickers are open) and `beforeInstall` = `PreUpdateBackup.ensure()`; the old update
   prefs through the package's `migrateLegacyUpdateState`. GitHub's rate limit pauses the
   automatic checks (package). Releases without an APK are never offered. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
@@ -123,8 +117,6 @@ file is the short operational guide.
   `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
   or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`.
-  Best Music versions and changelogs independently of BestToDo (SPEC.md §10.6i) — add
-  `--music` to bump `MUSIC_VERSION` + `CHANGELOG_MUSIC.md` instead
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 

@@ -10,8 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'update_fakes.dart';
 
-/// The automatic update as BestToDo and Best Music run it (the updates
-/// package through `AppUpdates`, wired in `main.dart` / `main_music.dart`):
+/// The automatic update as BestToDo runs it (the updates package through
+/// `AppUpdates`, wired in `main.dart`):
 /// every download is silent (no notification, dialog, sheet or progress
 /// bar), and once the APK is complete Android's own install confirm (the
 /// plugin's `installApk`, a PackageInstaller session) is the only question.

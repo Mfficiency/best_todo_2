@@ -13,7 +13,6 @@
 //   dart run tool/append_build_time.dart                     (called by tool/build.sh)
 //   dart run tool/append_build_time.dart --duration 102 --target apk
 //   dart run tool/append_build_time.dart --dry-run
-//   dart run tool/append_build_time.dart --app music --duration 102 --target apk
 //   dart run tool/append_build_time.dart --duration 102 --target apk \
 //       --artifact build/app/outputs/flutter-apk/best_todo_1.2.3+4.apk
 //   dart run tool/append_build_time.dart --source ci --duration 330 --target apk ...
@@ -30,14 +29,13 @@
 // mistaken for a local build. The history record gets `"source": "ci"`.
 //
 // Notes go into the section of the version being built (read from
-// pubspec.yaml / MUSIC_VERSION), falling back to the newest section — so a
+// pubspec.yaml), falling back to the newest section — so a
 // CI job that rebased onto a newer version bump can't mislabel it (CI also
 // passes `--version <built version>` explicitly for the same reason).
 //
-// `--app music` notes the build in Best Music's own CHANGELOG_MUSIC.md and
-// reads its version from MUSIC_VERSION instead of pubspec.yaml — the two
-// apps version and changelog independently since the split
-// (CLAUDE.md/SPEC.md §10.6i). Default (no `--app`) stays BestToDo.
+// History records carry `"app": "todo"`; older `"app": "music"` entries in
+// build_history.json date from before Best Music moved to its own repo
+// (Mfficiency/BestMusic).
 
 import 'dart:convert';
 import 'dart:io';
@@ -230,8 +228,8 @@ List<dynamic> readHistory(File file) {
   return <dynamic>[];
 }
 
-/// `version: x.y.z+build` read from [path] (pubspec.yaml or MUSIC_VERSION,
-/// both share that line shape), or null if it can't be found.
+/// `version: x.y.z+build` read from [path] (pubspec.yaml), or null if it
+/// can't be found.
 String? readVersionFrom(String path) {
   final file = File(path);
   if (!file.existsSync()) return null;
@@ -244,7 +242,6 @@ void main(List<String> args) {
   final dryRun = args.contains('--dry-run');
   int? durationSeconds;
   String? target;
-  String? app;
   String? artifact;
   String? versionArg;
   var source = 'local';
@@ -256,9 +253,6 @@ void main(List<String> args) {
         i++;
       case '--target' when value != null:
         target = value;
-        i++;
-      case '--app' when value != null:
-        app = value;
         i++;
       case '--artifact' when value != null:
         artifact = value;
@@ -273,10 +267,9 @@ void main(List<String> args) {
   }
   final hasDuration =
       durationSeconds != null && target != null && target.isNotEmpty;
-  final isMusic = app == 'music';
   final ci = source == 'ci';
 
-  final changelogPath = isMusic ? 'CHANGELOG_MUSIC.md' : 'CHANGELOG.md';
+  const changelogPath = 'CHANGELOG.md';
   final changelogFile = File(changelogPath);
   if (!changelogFile.existsSync()) {
     stderr.writeln('$changelogPath not found.');
@@ -284,7 +277,7 @@ void main(List<String> args) {
     return;
   }
 
-  final versionPath = isMusic ? 'MUSIC_VERSION' : 'pubspec.yaml';
+  const versionPath = 'pubspec.yaml';
   // --version: the version that was actually built, for a CI job that has
   // since rebased onto a newer version bump.
   final version = versionArg ?? readVersionFrom(versionPath);
@@ -348,7 +341,6 @@ void main(List<String> args) {
   final history = readHistory(historyFile);
   final record = historyRecord(
     version: version,
-    app: isMusic ? 'music' : 'todo',
     target: target,
     durationSeconds: durationSeconds,
     finishedAt: now,

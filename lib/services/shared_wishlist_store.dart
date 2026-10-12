@@ -16,12 +16,12 @@ import 'safe_file.dart';
 /// store reads/writes one file under public external storage instead, which
 /// both apps could technically reach since both already hold
 /// `MANAGE_EXTERNAL_STORAGE` (declared in the shared `AndroidManifest.xml`,
-/// requested at runtime the same way `MusicLibraryService.
-/// ensureFolderPermission` already does for the music folder). It briefly
+/// requested at runtime the same way Best Music does for its music
+/// folder). It briefly
 /// made a wishlist item genuinely the same record in both apps (0.2.78-
 /// 0.2.83), but that surprised users who didn't expect the two apps' lists
 /// to be the same list — checking an item off in Best Music also checked it
-/// off in BestToDo. Best Music's Wishlist ([music_wishlist_page.dart]) no
+/// off in BestToDo. Best Music's Wishlist (now in Mfficiency/BestMusic) no
 /// longer touches this store at all (0.2.84); only BestToDo's Wishlist does,
 /// via its own "Connect" banner.
 ///

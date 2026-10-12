@@ -11,16 +11,13 @@
 //                                          [--prefix <name>] [--version <x.y.z+build>]
 //                                          [--keep <n>] [--dry-run]
 //
-// `--prefix` (default `best_todo`) is BestToDo's own APKs; the Best Music
-// flavor (see lib/main_music.dart) stages under `best_music` instead, so the
-// two apps' builds are pruned independently and UpdateService can tell whose
-// APK is whose in the shared folder.
+// `--prefix` (default `best_todo`) names the staged APK and limits pruning to
+// files with that prefix, so anything else in the folder (e.g. leftover
+// `best_music_` APKs from before Best Music moved to Mfficiency/BestMusic) is
+// never touched.
 //
 // `--version` names the staged file explicitly; without it, the version is
-// read from pubspec.yaml, which is only correct for BestToDo — Best Music
-// versions independently in its own MUSIC_VERSION file (CLAUDE.md/SPEC.md
-// §10.6i), so `tool/build.sh`/CI always pass `--version` explicitly for a
-// `--prefix best_music` call rather than relying on this fallback.
+// read from pubspec.yaml.
 //
 // Commit the folder afterwards — the app downloads the APKs over HTTPS from
 // the branch (`UpdateService.releasesRef`), so a build only becomes installable
@@ -159,12 +156,9 @@ Future<void> main(List<String> args) async {
     File(apkPath).copySync(staged);
   }
 
-  // Pruning only ever looks at this app's own prefix: the folder holds both
-  // BestToDo's and Best Music's APKs, and a prefix-blind prune could delete
-  // the other app's build (or keep it instead of this one) purely by
-  // version-number coincidence — the two apps version independently now
-  // (see the --version note above), but even a shared number wasn't safe to
-  // assume before that.
+  // Pruning only ever looks at this prefix: a prefix-blind prune could delete
+  // another file in the folder (or keep it instead of this build) purely by
+  // version-number coincidence.
   final present = <String>{
     if (target.existsSync())
       for (final entry in target.listSync())

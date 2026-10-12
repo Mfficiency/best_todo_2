@@ -223,21 +223,21 @@ void main() {
     });
 
     testWidgets(
-        "loads Best Music's own changelog and hides BestToDo's story poster",
+        'loads another changelog asset and can hide the story poster',
         (tester) async {
       final bundle = _FakeBundle(_sampleChangelog);
       await tester.pumpWidget(MaterialApp(
         home: DefaultAssetBundle(
           bundle: bundle,
           child: const ChangelogPage(
-            assetPath: 'CHANGELOG_MUSIC.md',
+            assetPath: 'CHANGELOG_OTHER.md',
             showStoryPoster: false,
           ),
         ),
       ));
       await tester.pumpAndSettle();
 
-      expect(bundle.lastRequestedKey, 'CHANGELOG_MUSIC.md');
+      expect(bundle.lastRequestedKey, 'CHANGELOG_OTHER.md');
       expect(find.byTooltip('Show development story'), findsNothing);
       // The heatmap toggle is unaffected either way.
       expect(find.byTooltip('Show update heatmap'), findsOneWidget);
@@ -248,20 +248,17 @@ void main() {
         'and intro', (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: DefaultAssetBundle(
-          bundle: _FakeBundle('# Best Music Changelog\n\nIntro for developers.'
+          bundle: _FakeBundle('# BestToDo Changelog\n\nIntro for developers.'
               '\n\n$_sampleChangelog- APK size: 63.4 MB\n'),
-          child: const ChangelogPage(
-            assetPath: 'CHANGELOG_MUSIC.md',
-            showStoryPoster: false,
-          ),
+          child: const ChangelogPage(showStoryPoster: false),
         ),
       ));
       await tester.pumpAndSettle();
 
-      expect(find.text('Best Music Changelog'), findsNothing);
+      expect(find.text('BestToDo Changelog'), findsNothing);
       expect(find.textContaining('Intro for developers'), findsNothing);
       // No updates controller in this test (AppUpdates.controller is only
-      // made by main.dart / main_music.dart): no status card.
+      // made by main.dart): no status card.
       expect(find.byKey(const Key('changelog-update-status')), findsNothing);
       for (final version in ['0.2.0', '0.1.9', '0.1.8']) {
         expect(
