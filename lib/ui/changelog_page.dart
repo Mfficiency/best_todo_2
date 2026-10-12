@@ -395,7 +395,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
     );
   }
 
-  /// Pull-down: checks for a newer build of this app's channel right away.
+  /// Pull-down: checks for a newer build of this app (any channel) right away.
   /// One that is found downloads in the background and the app asks to
   /// install it when it is complete, like the automatic check
   /// ([AutoUpdateFlow]).

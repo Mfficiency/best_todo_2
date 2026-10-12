@@ -4976,18 +4976,21 @@ published).
   update-available and up-to-date states. The rollback warns that Android blocks
   downgrades for non-debuggable builds, so the install may need an uninstall first.
 - **Laptop channel builds (0.2.101 / Best Music 0.3.20) — supersedes the folder and
-  release flow above:** each of `dev`, `staging` and `main` is its own pair of installable
-  apps. `BUILD_CHANNEL` (env, read by `android/app/build.gradle.kts`) adds
-  `applicationIdSuffix` `.dev` / `.staging` to both flavors
-  (`com.mfficiency.best_todo_2.dev`, `com.mfficiency.best_music.staging`, …) and the launcher
-  label suffix " Dev" / " Staging" (manifest placeholder `${appLabel}`, set per flavor);
-  unset = `main` = the original ids/names, so `flutter run`, CI and old scripts are unchanged.
-  The FileProvider authority already uses `${applicationId}` and widgets/media receivers are
-  resolved via `context.packageName`, so channels install side by side. `BUILD_NUMBER` (the
-  builder uses 10000 + commit count) becomes the versionCode of **both** apps
-  (`--build-number`, and the `music` flavor prefers it over `MUSIC_VERSION`'s build); version
-  names stay `pubspec.yaml` / `MUSIC_VERSION`. Dart gets `--dart-define=BUILD_CHANNEL=…`
-  (`Config.channel`, shown on the About pages as `0.2.101+12199 · dev`).
+  release flow above:** `dev`, `staging` and `main` are release channels of the **same**
+  apps (one app on the phone since 0.2.104 / Best Music 0.3.22; 0.2.101–0.2.103 made each
+  channel its own app with a `.dev` / `.staging` id suffix and " Dev" / " Staging" label,
+  which is gone). `BUILD_CHANNEL` (env, validated by `android/app/build.gradle.kts`, must be
+  dev/staging/main, unset = `main`) no longer changes the applicationId
+  (`com.mfficiency.best_todo_2` / `com.mfficiency.best_music`) or the launcher label
+  (manifest placeholder `${appLabel}`, "BestToDo" / "Best Music"). `BUILD_NUMBER` becomes the
+  versionCode of **both** apps (`--build-number`, and the `music` flavor prefers it over
+  `MUSIC_VERSION`'s build): the builder sets it to the minutes since 2020-01-01 UTC of the
+  source commit's committer time (the newest commit that is not a `build: … [skip ci]` APK
+  commit), so it rises across all branches, the same commit always gets the same number, and
+  it is above every earlier versionCode (the old 10000 + commit count). `build.ps1` uses it as
+  is. Version names stay `pubspec.yaml` / `MUSIC_VERSION`. Dart gets
+  `--dart-define=BUILD_CHANNEL=…` (`Config.channel`, informational only, shown on the About
+  pages as `0.2.104+3600000 · dev`).
   - **Publisher:** only the laptop builder (Mfficiency/laptop-builder's self-hosted runner,
     dispatched by `.github/workflows/laptop-build.yml` on pushes to dev/staging/main with
     `client_payload[branch]`) publishes APKs, by running `tool\build.ps1 release` in a
@@ -5005,16 +5008,19 @@ published).
     assets, newest 2 per app kept) with `[skip ci]` and pushes that commit to the branch
     (`pull --rebase --autostash` first); nothing else is committed (no changelog build notes).
     When HEAD only changes `github_releases/` (that APK commit), the build is for the commit
-    below it, with that commit's build number (`Get-SourceCommit`): already released → nothing
+    below it (`Get-SourceCommit`; `BUILD_NUMBER` is already that commit's): already released → nothing
     to do; a release that failed after the push, or a push the APK commit was rebased onto →
     built and released then (`publish_apk.dart --target` points the release at that commit).
     Without `PUBLISH=1` it only builds (APKs in `github_releases/<channel>/`, not committed). GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
     workflow artifacts, no releases, no commit-backs.
-  - **App side:** `UpdateService` reads `releases?per_page=30` (anonymous) and keeps only its
-    own app's tags (`v` vs `music-v`, `ReleaseTag.parse`) of its own channel (a `main` build
-    also skips prereleases; drafts never count), newest by (x.y.z, build) first. `latest` is the
-    newest, `previous` (the "Go back to" rollback) the newest one older than the running build
-    — both from the same channel. `AutoUpdateChecker` polls every 15 minutes, and on resume
+  - **App side:** `UpdateService` reads `releases?per_page=30` (anonymous) and keeps its own
+    app's tags (`v` vs `music-v`, `ReleaseTag.parse`) of **all** channels (main, staging and
+    dev; prereleases count, drafts never), `appReleases` sorted by build number
+    (`compareBuilds`: build number, then x.y.z). `latest` is the highest build number, offered
+    when it is above the installed versionCode (`isNewerBuild`, the same rule Android applies);
+    `previous` (the "Go back to" rollback) is the highest one below the running build, whatever
+    its channel. So the phone always ends up on the newest built commit of any branch. The
+    updater never reads `github_releases/`. `AutoUpdateChecker` polls every 15 minutes, and on resume
     only when the last check is 15+ minutes old (`checkIfDue`); a 403/429 makes the service
     skip requests until GitHub's reset time (`UpdateRateLimitedException`).
   - **Silent download, then ask (0.2.103 / Best Music 0.3.21; same flow as BestCollage and

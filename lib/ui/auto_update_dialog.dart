@@ -132,9 +132,8 @@ class AutoUpdateFlow {
               path: progress.localPath);
           await service.clearPendingDownload();
           // Only if it is still newer than the running app.
-          if (UpdateService.compareVersions(
-                  version, await service.currentVersionWithBuild()) >
-              0) {
+          if (UpdateService.isNewerBuild(
+              version, await service.currentVersionWithBuild())) {
             _setReady(version, progress.localPath!);
           }
         } else if (progress.status == DownloadStatus.failed) {

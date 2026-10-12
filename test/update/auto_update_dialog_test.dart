@@ -43,7 +43,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    UpdateService.resetForTest(channel: 'main');
+    UpdateService.resetForTest();
     calls = [];
     installed = [];
     silent = [];

@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.22] - 2026-10-12
+- Dev, Staging and regular builds are one app again ("Best Music"): it always updates to the newest build of any of them. The About page still shows where the installed build came from (e.g. "0.3.22+3600000 · dev"). If you installed "Best Music Dev" or "Best Music Staging", you can uninstall those.
+
 ## [0.3.21] - 2026-10-11
 - Updates download quietly in the background; once a new version is complete the app asks whether to install it (Install or Later — Later keeps a banner until you install). Pull down on the Changelog to check right away.
 

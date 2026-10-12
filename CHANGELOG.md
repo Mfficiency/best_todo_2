@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.104] - 2026-10-12
+- Dev, Staging and regular builds are one app again ("BestToDo"): it always updates to the newest build of any of them. The About page still shows where the installed build came from (e.g. "0.2.104+3600000 · dev"). If you installed "BestToDo Dev" or "BestToDo Staging", you can uninstall those.
+
 ## [0.2.103] - 2026-10-11
 - Updates download quietly in the background; once a new version is complete the app asks whether to install it (Install or Later — Later keeps a banner until you install). Pull down on the Changelog to check right away. The install goes through Android's own "Update this app?" screen.
 
