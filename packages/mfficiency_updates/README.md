@@ -38,8 +38,13 @@ Android installer (other platforms: checks only, no install).
   dialog, sheet, notification or progress popup; progress only as state
   (`downloading`, `downloadProgress`) for passive text. A tap that starts a
   download shows one SnackBar.
-- **Install:** when complete, a PackageInstaller session; Android's "Update
-  this app?" is the only confirm. By itself only while the app is in the
+- **Install:** when complete, Android's installer app gets the APK
+  (`ACTION_INSTALL_PACKAGE` addressed to that app, so never a chooser or a
+  browser; the plugin's `ApkProvider` shares `cache/updates/` read-only).
+  Its "Update this app?" is the only confirm, and when the update is done
+  it shows "App updated" with **Open**, so the user is back in the app with
+  one more tap. Where no installer app takes the intent, a PackageInstaller
+  session asks the same question (no Open step). By itself only while the app is in the
   foreground, once per build per start and while `promptAllowed` (onboarding
   done, …) lets it, else as soon as it does; always after a tap.
   `beforeInstall` runs first (a backup; a throw doesn't stop the install). Without the

@@ -74,15 +74,22 @@ class MfficiencyUpdatesPlugin : FlutterPlugin, ActivityAware, MethodChannel.Meth
     }
 
     /**
-     * Installs a downloaded update APK through [ApkInstaller]: Android shows
-     * only its "Update this app?" dialog. Without the one-time "install
-     * unknown apps" permission it opens that switch for this app instead and
-     * answers "needs-permission".
+     * Installs a downloaded update APK. Android's installer app asks "Update
+     * this app?" and, when done, shows "App updated" with Open, so the user
+     * can go straight back into the app ([openInstaller]). Where no installer
+     * app takes it, a PackageInstaller session ([ApkInstaller]) asks the same
+     * question without the Open step. Without the one-time "install unknown
+     * apps" permission it opens that switch for this app instead and answers
+     * "needs-permission".
      */
     private fun installApk(path: String, result: MethodChannel.Result) {
         if (!canInstallApks()) {
             openInstallSettings()
             result.success("needs-permission")
+            return
+        }
+        if (openInstaller(File(path))) {
+            result.success("ok")
             return
         }
         Thread {
@@ -95,6 +102,23 @@ class MfficiencyUpdatesPlugin : FlutterPlugin, ActivityAware, MethodChannel.Meth
             }
             main.post { result.success(outcome) }
         }.start()
+    }
+
+    /**
+     * Hands the APK to Android's installer app (the one that handles
+     * ACTION_INSTALL_PACKAGE, addressed directly, so never a chooser, a file
+     * manager or a browser) through [ApkProvider]. False when there is none
+     * or the file isn't in cache/updates/; the caller then uses a session.
+     */
+    private fun openInstaller(file: File): Boolean {
+        if (!ApkProvider.serves(context, file)) return false
+        @Suppress("DEPRECATION")
+        val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+            .setDataAndType(ApkProvider.uriFor(context, file), ApkProvider.MIME)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val installer = intent.resolveActivity(context.packageManager) ?: return false
+        intent.component = installer
+        return start(intent)
     }
 
     /** True once the one-time "install unknown apps" switch is on for this app. */
