@@ -3,10 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
-import '../services/install_info_service.dart';
-import '../services/update_service.dart';
+import '../config.dart';
+import '../services/app_updates.dart';
 import '../utils/date_time_format.dart';
-import 'auto_update_dialog.dart';
 import 'subpage_app_bar.dart';
 
 /// One `## [version] - date` block of CHANGELOG.md.
@@ -203,12 +202,14 @@ class ChangelogPage extends StatefulWidget {
     Key? key,
     this.assetPath = 'CHANGELOG.md',
     this.showStoryPoster = true,
-    this.updateService,
+    this.updates,
   }) : super(key: key);
 
-  /// Whose builds pulling down checks for when no [AutoUpdateFlow] runs
-  /// (off Android): Best Music passes its own; default BestToDo's.
-  final UpdateService? updateService;
+  /// The updates the status card, the pull-down and a tap on a version are
+  /// about: the running app's ([AppUpdates.controller]: BestToDo's in
+  /// BestToDo, Best Music's in Best Music) unless a test passes one. None:
+  /// no status card, pulling down does nothing.
+  final UpdateController? updates;
 
   /// Bundled asset to render — BestToDo's own `CHANGELOG.md` by default, or
   /// Best Music's `CHANGELOG_MUSIC.md` from [MusicPlayerPage]'s drawer (the
@@ -239,30 +240,16 @@ class _ChangelogPageState extends State<ChangelogPage> {
   _ChangelogView _view = _ChangelogView.text;
   DateTime? _selectedDay;
 
-  /// The running `x.y.z+build` and when it was installed, for the status
-  /// card and the installed version's check mark; null until loaded.
+  /// The running `x.y.z` for the installed version's check mark; null
+  /// until loaded.
   String? _running;
-  InstallInfo? _installInfo;
 
-  /// Whose builds the status card and the pull-down are about: Best Music
-  /// passes its own; otherwise the running app's [AutoUpdateFlow], which
-  /// defaults to BestToDo's.
-  UpdateService get _service =>
-      widget.updateService ??
-      AutoUpdateFlow.current?.service ??
-      UpdateService.instance;
-
-  /// The running app's automatic update, when it is about [_service]; null
-  /// in tests and off Android.
-  AutoUpdateFlow? get _flow {
-    final flow = AutoUpdateFlow.current;
-    return flow != null && identical(flow.service, _service) ? flow : null;
-  }
+  UpdateController? get _updates => widget.updates ?? AppUpdates.controller;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_loadStatus());
+    unawaited(_loadVersion());
   }
 
   @override
@@ -272,16 +259,11 @@ class _ChangelogPageState extends State<ChangelogPage> {
     _changelog ??= DefaultAssetBundle.of(context).loadString(widget.assetPath);
   }
 
-  Future<void> _loadStatus() async {
-    final service = _service;
-    await service.loadUpdateStatus();
-    final running = await service.currentVersionWithBuild();
-    final installed = await InstallInfoService.load();
+  Future<void> _loadVersion() async {
+    final running = _updates?.config.version;
+    if (running == null) await Config.ensureVersionLoaded();
     if (!mounted) return;
-    setState(() {
-      _running = running;
-      _installInfo = installed;
-    });
+    setState(() => _running = running ?? Config.version);
   }
 
   @override
@@ -438,127 +420,24 @@ class _ChangelogPageState extends State<ChangelogPage> {
     );
   }
 
-  /// Pull-down: checks for a newer build of this app (any channel) right away.
-  /// One that is found downloads silently in the background and Android's
-  /// install confirm opens when it is complete, like the automatic check
-  /// ([AutoUpdateFlow]).
+  /// Pull-down: the same check as the automatic one (the updates package):
+  /// a newer build of this app (any channel) downloads silently and
+  /// Android's install confirm opens when it is complete. The status card
+  /// shows the result; nothing pops up.
   Future<void> _checkForUpdates() async {
-    final flow = _flow;
-    String message;
-    try {
-      final update = flow != null
-          ? await flow.checkNow()
-          : await _service.checkForUpdate();
-      message = update == null
-          ? 'You have the newest version.'
-          : flow == null
-              ? 'v${update.version} is out: About → Check for updates.'
-              : 'v${update.version} found: downloading in the background, '
-                  "you'll be asked to install it.";
-    } on UpdateRateLimitedException catch (e) {
-      message = e.toString();
-    } catch (e) {
-      message = 'Update check failed: $e';
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    await _updates?.refresh();
   }
 
-  /// The card at the top of the release list (same as Hally Remote and
-  /// BestCollage): the running version and whether it is up to date, when
-  /// it was downloaded and installed, a newer build waiting to be installed
-  /// and when GitHub was last checked. Follows the background poll too.
+  /// The card at the top of the release list (the package's, the same in
+  /// every app): the running version and whether it is up to date, when it
+  /// was downloaded and installed, a newer build downloading or waiting to
+  /// be installed, and when GitHub was last checked.
   Widget _buildStatusCard() {
-    final service = _service;
-    final flow = _flow;
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        service.checking,
-        service.lastCheck,
-        service.lastCheckedAt,
-        service.lastDownload,
-        if (flow != null) flow.ready,
-        if (flow != null) flow.downloading,
-      ]),
-      builder: (context, _) {
-        final scheme = Theme.of(context).colorScheme;
-        final running = _running;
-        final check = service.lastCheck.value;
-        final latest = check != null && check.hasUpdate ? check.latest : null;
-        final checking = service.checking.value;
-        final title = [
-          running == null
-              ? 'Current version'
-              : 'Current version ${changelogVersionLabel(running)}',
-          if (checking)
-            'Checking…'
-          else if (latest != null)
-            'Update available ${changelogVersionLabel(latest.version)}'
-          else if (check != null)
-            'Up to date',
-        ].join(' · ');
-        final download = service.lastDownload.value;
-        final installedAt = _installInfo?.installedAt;
-        // When the running build was downloaded and installed ...
-        final times = [
-          if (download != null && download.version == running)
-            'Downloaded ${formatTimerDateTime(download.at)}',
-          if (installedAt != null)
-            'Installed ${formatTimerDateTime(installedAt)}',
-        ].join(' · ');
-        // ... and a newer one that is downloaded and waiting.
-        final waiting = latest != null && download?.version == latest.version
-            ? '${changelogVersionLabel(latest.version)} downloaded '
-                '${formatTimerDateTime(download!.at)} · ready to install'
-            : null;
-        // A silent background download: passive text only, nothing pops up.
-        final active = flow?.downloading.value;
-        final percent = active == null ? null : updateDownloadPercent(active);
-        final downloadingLine = active == null
-            ? null
-            : [
-                'Downloading ${changelogVersionLabel(active.version)}…',
-                if (percent != null) percent,
-              ].join(' ');
-        final checkedAt = service.lastCheckedAt.value;
-        final checked = checkedAt == null
-            ? 'Not checked yet'
-            : 'Last checked ${formatTimerDateTime(checkedAt)}';
-        return Card(
-          key: const Key('changelog-update-status'),
-          margin: EdgeInsets.zero,
-          color: latest != null ? scheme.primaryContainer : null,
-          child: ListTile(
-            leading: checking
-                ? const SizedBox.square(
-                    dimension: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(latest != null
-                    ? Icons.system_update_outlined
-                    : Icons.verified_outlined),
-            title: Text(title),
-            subtitle: Text([
-              if (times.isNotEmpty) times,
-              if (downloadingLine != null) downloadingLine,
-              if (waiting != null) waiting,
-              '$checked · Pull down to check for updates',
-            ].join('\n')),
-            trailing: latest != null &&
-                    latest.apkUrl != null &&
-                    flow != null &&
-                    !flow.isDownloading(latest.version)
-                ? FilledButton(
-                    key: const Key('changelog-update-install'),
-                    onPressed: () => unawaited(flow.install(latest)),
-                    child: const Text('Install'),
-                  )
-                : null,
-          ),
-        );
-      },
+    final updates = _updates;
+    if (updates == null) return const SizedBox.shrink();
+    return KeyedSubtree(
+      key: const Key('changelog-update-status'),
+      child: UpdateStatusCard(controller: updates),
     );
   }
 
@@ -568,8 +447,8 @@ class _ChangelogPageState extends State<ChangelogPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final running = _running;
-    final installed =
-        running != null && running.split('+').first == release.version;
+    final installed = running != null && running == release.version;
+    final updates = _updates;
     final changes =
         release.entries.where((e) => !isChangelogBuildNote(e)).toList();
     final notes = release.entries.where(isChangelogBuildNote).toList();
@@ -583,10 +462,20 @@ class _ChangelogPageState extends State<ChangelogPage> {
           children: [
             Row(
               children: [
-                Text(
-                  release.version,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold),
+                // A tap on the version: the package's sheet for it — its
+                // download, an older one's with the downgrade note (going
+                // back), or "you are using this version".
+                InkWell(
+                  key: ValueKey('changelog-version-${release.version}'),
+                  onTap: updates == null
+                      ? null
+                      : () => unawaited(
+                          updates.onVersionTap(context, release.version)),
+                  child: Text(
+                    release.version,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 if (installed) ...[
                   const SizedBox(width: 8),

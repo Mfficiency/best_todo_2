@@ -11,8 +11,7 @@ import 'package:flutter/material.dart';
 
 import 'config.dart';
 import 'models/shared_payload.dart';
-import 'services/auto_update_checker.dart';
-import 'services/install_info_service.dart';
+import 'services/app_updates.dart';
 import 'services/mp3_download_manager.dart';
 import 'services/music_backup_service.dart';
 import 'services/music_download_library_sync.dart';
@@ -25,16 +24,14 @@ import 'services/music_share_link.dart';
 import 'services/share_intent_service.dart';
 import 'services/startup_time_service.dart';
 import 'services/youtube_feed_service.dart';
-import 'ui/auto_update_dialog.dart';
 import 'ui/mp3_downloader_page.dart';
-import 'ui/music_about_page.dart';
 import 'ui/music_mini_player_bar.dart';
 import 'ui/music_player_page.dart';
 import 'ui/music_theme.dart';
 
-/// Best Music's own navigator, so the background update poll can show its
-/// "New version available" dialog without a [BuildContext] on hand — same
-/// pattern as BestToDo's `appNavigatorKey` in `main.dart`.
+/// Best Music's own navigator (the mini player, shares and the updates'
+/// messages use its context) — same pattern as BestToDo's `appNavigatorKey`
+/// in `main.dart`.
 final GlobalKey<NavigatorState> musicNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> _initStep(String label, Future<void> Function() step) async {
@@ -64,12 +61,12 @@ Future<void> main() async {
   await _initStep('last played', MusicPlayerService.restoreLastSession);
   // Cached Subscriptions videos are kept a week after last play.
   unawaited(VideoAudioCache.instance.purgeExpired());
+  // In-app updates of Best Music's own builds (`music-v…` tags; the shared
+  // mfficiency_updates package, see AppUpdates). No network here.
+  await _initStep('updates', () => AppUpdates.create(UpdatesApp.music));
   runApp(const BestMusicApp());
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
-    // Fallback install time for the Changelog's "Installed …" line where
-    // Android's own lastUpdateTime isn't available.
-    unawaited(InstallInfoService.recordLaunch());
     // Local playback is this app's whole purpose, so ask for "All files
     // access" up front like other music apps do, rather than waiting for
     // the user to pick a folder and discover it silently finds nothing —
@@ -93,14 +90,6 @@ class BestMusicApp extends StatefulWidget {
 
 class _BestMusicAppState extends State<BestMusicApp>
     with WidgetsBindingObserver {
-  /// The automatic update, same as BestToDo's (`main.dart`): silent
-  /// download, then Android's install confirm — for Best Music's own builds
-  /// only.
-  late final AutoUpdateFlow _updates = AutoUpdateFlow(
-    navigatorKey: musicNavigatorKey,
-    service: () => MusicAboutPage.updateService,
-  );
-
   /// Shares waiting for the downloader screen, shown one at a time — same
   /// queue as `_MyAppState._pendingShares` in `main.dart`.
   final List<SharedPayload> _pendingShares = [];
@@ -122,27 +111,21 @@ class _BestMusicAppState extends State<BestMusicApp>
       ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
     }
-    // Settings → Updates → "Automatically update" applies to
-    // BestToDo's own build; Best Music has no such toggle yet, so this
-    // background poll (mirroring main.dart's) always runs. Points at
-    // MusicAboutPage's own UpdateService.forApp instance so it only ever
-    // offers Best Music's builds, never BestToDo's.
     if (!kIsWeb && Platform.isAndroid) {
-      AutoUpdateFlow.current = _updates;
       WidgetsBinding.instance.addObserver(this);
-      AutoUpdateChecker.instance
-          .start(_updates.onUpdateFound, service: MusicAboutPage.updateService);
-      unawaited(_updates.resumePending());
     }
+    // The automatic update, same as BestToDo's (`main.dart`): checks every
+    // 15 minutes while open (Best Music has no switch for it), a newer
+    // build downloads silently, then Android's own install confirm.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = musicNavigatorKey.currentContext;
+      if (context != null) AppUpdates.start(context);
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // A download that finished while the app was away: install now.
-    _updates.onLifecycleChanged(state);
     if (state == AppLifecycleState.resumed) {
-      unawaited(AutoUpdateChecker.instance.checkIfDue(_updates.onUpdateFound,
-          service: MusicAboutPage.updateService));
       unawaited(MusicBackupService.maybeRun());
     }
   }
@@ -150,8 +133,6 @@ class _BestMusicAppState extends State<BestMusicApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (AutoUpdateFlow.current == _updates) AutoUpdateFlow.current = null;
-    AutoUpdateChecker.instance.stop();
     ShareIntentService.instance.setOnSharedPayload(null);
     MusicDownloadLibrarySync.instance.detach();
     super.dispose();
@@ -232,6 +213,10 @@ class _BestMusicAppState extends State<BestMusicApp>
                     ],
                   ),
                 ),
+                // "Update ready" / a failed download's Try again; empty
+                // otherwise.
+                if (AppUpdates.controller case final updates?)
+                  UpdateBanner(controller: updates),
                 MusicMiniPlayerBar(navigatorKey: musicNavigatorKey),
               ],
             ),

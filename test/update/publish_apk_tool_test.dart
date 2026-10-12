@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:besttodo/services/update_service.dart';
+import 'package:besttodo/services/app_updates.dart';
 
 import '../../tool/publish_apk.dart' as publish_tool;
 
@@ -78,10 +78,14 @@ void main() {
         for (final app in [publish_tool.todoApp, publish_tool.musicApp]) {
           final tag = publish_tool.releaseTagFor('1.2.3+12345',
               app: app, channel: channel);
-          final parsed = ReleaseTag.parse(tag)!;
-          expect(parsed.version, '1.2.3+12345');
-          expect(parsed.channel, channel);
-          expect(parsed.music, app.id == 'music');
+          // Each app's updater only accepts its own tag prefix.
+          final own = app.id == 'music' ? UpdatesApp.music : UpdatesApp.todo;
+          final other = own == UpdatesApp.music ? UpdatesApp.todo : UpdatesApp.music;
+          expect(matchesTagPrefix(tag, own.tagPrefix), isTrue);
+          expect(matchesTagPrefix(tag, other.tagPrefix), isFalse);
+          expect(releaseVersion(tag, prefix: own.tagPrefix), '1.2.3');
+          expect(releaseBuild(tag, prefix: own.tagPrefix), 12345);
+          expect(releaseChannel(tag), channel);
         }
       }
     });

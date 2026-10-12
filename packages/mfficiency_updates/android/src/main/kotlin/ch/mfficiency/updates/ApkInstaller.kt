@@ -1,4 +1,4 @@
-package com.mfficiency.best_todo_2
+package ch.mfficiency.updates
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -12,8 +12,8 @@ import java.io.File
 /**
  * Installs an update APK through a PackageInstaller session, the way an app
  * store does: Android shows only its own "Do you want to update this app?"
- * with Update — no "open with", no file handler. The APK is copied into the
- * session, so no content provider is involved.
+ * with Update, no file picker, no browser, no "open with". The APK is copied
+ * into the session, so no content provider or file access is involved.
  */
 object ApkInstaller {
     /** Blocking (copies the APK); call off the main thread. */

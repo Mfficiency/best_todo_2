@@ -144,10 +144,32 @@ void main() {
       expect(ps1, contains('--build-number=\$buildNumber'));
     });
 
-    test('the manifest label and provider authority come from Gradle', () {
+    test('the manifest label comes from Gradle', () {
       final manifest = read('android/app/src/main/AndroidManifest.xml');
       expect(manifest, contains(r'android:label="${appLabel}"'));
-      expect(manifest, contains(r'android:authorities="${applicationId}.fileprovider"'));
+    });
+
+    test('in-app updates are the plugin\'s: no installer code of the app',
+        () {
+      // The mfficiency_updates plugin brings REQUEST_INSTALL_PACKAGES, its
+      // install receiver and the `mfficiency_updates` channel; both apps
+      // register it through Flutter's GeneratedPluginRegistrant.
+      expect(read('pubspec.yaml'),
+          contains('mfficiency_updates:\n    path: packages/mfficiency_updates'));
+      final manifest = read('android/app/src/main/AndroidManifest.xml');
+      for (final gone in [
+        'InstallReceiver',
+        'REQUEST_INSTALL_PACKAGES',
+        'DOWNLOAD_WITHOUT_NOTIFICATION',
+        'fileprovider',
+      ]) {
+        expect(manifest, isNot(contains(gone)), reason: gone);
+      }
+      const kotlin = 'android/app/src/main/kotlin/com/example/best_todo_2';
+      expect(File('$kotlin/ApkInstaller.kt').existsSync(), isFalse);
+      final activity = read('$kotlin/MainActivity.kt');
+      expect(activity, isNot(contains('besttodo/update')));
+      expect(activity, isNot(contains('DownloadManager')));
     });
 
     test('build.ps1 release builds both apps and refuses the debug key', () {

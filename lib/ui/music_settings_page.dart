@@ -8,16 +8,15 @@ import '../config.dart';
 import '../models/youtube_feed.dart';
 import '../services/music_backup_service.dart';
 import '../services/music_widget_service.dart';
+import '../services/app_updates.dart';
 import '../services/music_library_service.dart';
 import '../services/media_volume.dart';
 import '../services/music_sleep_timer.dart';
 import '../services/youtube_feed_service.dart';
-import 'music_about_page.dart';
 import 'music_theme.dart';
 import 'playback_speed_sheet.dart';
 import 'sleep_timer_sheet.dart';
 import 'subpage_app_bar.dart';
-import 'update_downloads_folder_tile.dart';
 import 'volume_sheet.dart';
 
 /// The sections of Best Music's Settings, in page order.
@@ -452,9 +451,16 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                         MusicSettingsSection.summaries, _summaryTiles()),
                     _buildSection(
                         MusicSettingsSection.backup, _backupTiles()),
+                    // "Check for updates" (the updates package; Best Music
+                    // checks every 15 minutes while open, no switch).
                     _buildSection(MusicSettingsSection.updates, [
-                      UpdateDownloadsFolderTile(
-                          updateService: MusicAboutPage.updateService),
+                      if (AppUpdates.controller case final updates?)
+                        UpdateCheckTile(controller: updates)
+                      else
+                        const ListTile(
+                          leading: Icon(Icons.system_update_outlined),
+                          title: Text('Updates are not available here'),
+                        ),
                     ]),
                   ],
                 ),

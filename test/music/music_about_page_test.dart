@@ -1,26 +1,44 @@
 import 'package:besttodo/config.dart';
+import 'package:besttodo/services/app_updates.dart';
 import 'package:besttodo/ui/best_music_logo.dart';
 import 'package:besttodo/ui/music_about_page.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Best Music's About page (SPEC.md §10.6f): same [UpdateSection] widget as
-/// BestToDo's own About page, wired to [MusicAboutPage.updateService] (an
-/// [UpdateService.forApp] instance) instead of the default
-/// [UpdateService.instance] — see about_page_update_test.dart for the shared
-/// widget's own check/download/rollback coverage.
+import '../update/update_fakes.dart';
+
+/// Best Music's About page (SPEC.md §10.6f): the same [UpdateSection] as
+/// BestToDo's About page, on Best Music's own controller (tag prefix
+/// `music-v`) — see update_flow_test.dart for the shared flow.
 void main() {
+  late FakeGithub github;
+  late FakeDownloader downloader;
+  late FakeInstaller installer;
+
   setUp(() {
     Config.resetVersionForTest();
+    github = FakeGithub();
+    downloader = FakeDownloader();
+    installer = FakeInstaller();
+  });
+  tearDown(() {
+    installer.dispose();
+    AppUpdates.controller?.dispose();
+    AppUpdates.controller = null;
   });
 
-  tearDown(() {
-    MusicAboutPage.updateService.fetchOverride = null;
-  });
+  Future<void> useMusicUpdates() => fakeController(
+          app: UpdatesApp.music,
+          github: github,
+          downloader: downloader,
+          version: '0.3.27',
+          build: 1000)
+      .init();
 
   testWidgets('shows Best Music branding and a Check for updates button',
       (tester) async {
+    await useMusicUpdates();
     await tester.pumpWidget(const MaterialApp(home: MusicAboutPage()));
     await tester.pump();
 
@@ -40,27 +58,24 @@ void main() {
   });
 
   testWidgets(
-      'Check for updates goes through MusicAboutPage.updateService, not '
-      "BestToDo's own instance", (tester) async {
-    MusicAboutPage.updateService.fetchOverride = (url) async => '[]';
-
+      "Check for updates only looks at Best Music's builds, not BestToDo's",
+      (tester) async {
+    github.releases = [
+      release('v9.9.9-999999'),
+      release('music-v0.3.27-1000'),
+    ];
+    await useMusicUpdates();
     await tester.pumpWidget(const MaterialApp(home: MusicAboutPage()));
     await tester.pump();
     await tester.ensureVisible(find.text('Check for updates'));
     await tester.pump();
     await tester.tap(find.text('Check for updates'));
-    // Awaits PackageInfo (a platform-channel call) before the fetchOverride
-    // result comes back — a fake-async `pump(duration)` never services that
-    // real await chain (see CLAUDE.md's testWidgets I/O note); give the real
-    // event loop a few slices instead, same as
-    // about_page_update_test.dart's tapCheck helper.
     for (var i = 0; i < 10; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 5)));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
     }
 
-    expect(find.textContaining('You are on the latest version'),
-        findsOneWidget);
+    expect(find.text('Up to date'), findsOneWidget);
+    expect(downloader.urls, isEmpty);
+    expect(installer.installs, isEmpty);
   });
 }

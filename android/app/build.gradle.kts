@@ -262,9 +262,10 @@ afterEvaluate {
 
 dependencies {
     implementation("androidx.annotation:annotation:1.7.1")
-    // FileProvider for the in-app APK update install (MainActivity's
-    // besttodo/update channel). Transitively present anyway, pinned explicitly
-    // so the manifest's <provider> never breaks on a dependency shuffle.
+    // androidx.core (NotificationCompat, ContextCompat, …): transitively
+    // present anyway, pinned explicitly so it never shifts on a dependency
+    // shuffle. (The in-app update installer is the mfficiency_updates
+    // plugin's; it needs no FileProvider.)
     implementation("androidx.core:core:1.13.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     testImplementation("junit:junit:4.13.2")
