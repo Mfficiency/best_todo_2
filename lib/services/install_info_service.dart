@@ -79,22 +79,3 @@ class InstallInfoService {
     return InstallInfo(version: version, installedAt: at);
   }
 }
-
-/// "2026-10-04 18:40 (2 hours ago)" — the Changelog's install line.
-String formatInstalledAt(DateTime at, {DateTime? now}) {
-  String two(int v) => v.toString().padLeft(2, '0');
-  final stamp = '${at.year}-${two(at.month)}-${two(at.day)} '
-      '${two(at.hour)}:${two(at.minute)}';
-  final diff = (now ?? DateTime.now()).difference(at);
-  String ago;
-  if (diff.inMinutes < 1) {
-    ago = 'just now';
-  } else if (diff.inHours < 1) {
-    ago = '${diff.inMinutes} min ago';
-  } else if (diff.inDays < 1) {
-    ago = '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
-  } else {
-    ago = '${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
-  }
-  return '$stamp ($ago)';
-}

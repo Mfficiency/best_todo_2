@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -247,6 +247,46 @@ class UpdateService {
   /// Back-off after a 403/429 that didn't say when the limit resets.
   static const Duration rateLimitBackoff = Duration(minutes: 15);
 
+  /// The newest finished check of this app (About, background poll or the
+  /// Changelog's pull-down); null until one finished this session. The
+  /// Changelog's status card shows it.
+  final ValueNotifier<UpdateCheck?> lastCheck = ValueNotifier(null);
+
+  /// True while a check runs (the status card shows a spinner).
+  final ValueNotifier<bool> checking = ValueNotifier(false);
+
+  /// When the last check succeeded, also from an earlier run
+  /// ([loadUpdateStatus]).
+  final ValueNotifier<DateTime?> lastCheckedAt = ValueNotifier(null);
+
+  /// The last APK that finished downloading and when, also from an earlier
+  /// run ([loadUpdateStatus]).
+  final ValueNotifier<({String version, DateTime at})?> lastDownload =
+      ValueNotifier(null);
+
+  static const String _lastCheckedPrefsKey = 'update_last_checked';
+  static const String _lastDownloadPrefsKey = 'update_last_download';
+
+  /// Reads [lastCheckedAt] and [lastDownload] from an earlier run, unless
+  /// this run already knows newer ones. Errors are swallowed.
+  Future<void> loadUpdateStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final checked = prefs.getInt(_lastCheckedPrefsKey);
+      if (checked != null && lastCheckedAt.value == null) {
+        lastCheckedAt.value = DateTime.fromMillisecondsSinceEpoch(checked);
+      }
+      final raw = prefs.getString(_lastDownloadPrefsKey);
+      if (raw != null && lastDownload.value == null) {
+        final saved = jsonDecode(raw) as Map<String, dynamic>;
+        lastDownload.value = (
+          version: saved['version'] as String,
+          at: DateTime.fromMillisecondsSinceEpoch(saved['at'] as int),
+        );
+      }
+    } catch (_) {}
+  }
+
   /// Numeric components of a version string, in order. `0.1.74+45` →
   /// [0, 1, 74, 45]. Unparseable strings ("unknown" in tests) yield [] and
   /// compare as all-zero, so any real release counts as newer.
@@ -380,19 +420,32 @@ class UpdateService {
       await Config.ensureVersionLoaded();
       current = Config.versionWithBuild;
     }
-    final builds = await fetchAppReleases();
-    UpdateInfo? previous;
-    for (final b in builds) {
-      if (buildNumberOf(b.version) < buildNumberOf(current)) {
-        previous = b;
-        break;
+    checking.value = true;
+    try {
+      final builds = await fetchAppReleases();
+      UpdateInfo? previous;
+      for (final b in builds) {
+        if (buildNumberOf(b.version) < buildNumberOf(current)) {
+          previous = b;
+          break;
+        }
       }
+      final check = UpdateCheck(
+        currentVersion: current,
+        latest: builds.isEmpty ? null : builds.first,
+        previous: previous,
+      );
+      lastCheck.value = check;
+      final now = DateTime.now();
+      lastCheckedAt.value = now;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt(_lastCheckedPrefsKey, now.millisecondsSinceEpoch);
+      } catch (_) {}
+      return check;
+    } finally {
+      checking.value = false;
     }
-    return UpdateCheck(
-      currentVersion: current,
-      latest: builds.isEmpty ? null : builds.first,
-      previous: previous,
-    );
   }
 
   /// The highest build when its build number is above [currentVersion]'s
@@ -428,13 +481,15 @@ class UpdateService {
         rethrow;
       }
     }
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
       return await _fetchWith(client, url).timeout(
         _fetchTimeout,
         onTimeout: () {
           client.close(force: true);
-          throw TimeoutException('GitHub update check timed out', _fetchTimeout);
+          throw TimeoutException(
+              'GitHub update check timed out', _fetchTimeout);
         },
       );
     } finally {
@@ -457,7 +512,8 @@ class UpdateService {
 
   Future<String> _fetchWith(HttpClient client, Uri url) async {
     final request = await client.getUrl(url);
-    request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    request.headers
+        .set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
     request.headers.set(HttpHeaders.userAgentHeader, 'BestToDo-update-check');
     final response = await request.close();
     final text = await response.transform(utf8.decoder).join();
@@ -529,8 +585,8 @@ class UpdateService {
         'queryDownload', {'downloadId': downloadId});
     final map = Map<Object?, Object?>.from(raw as Map);
     return DownloadProgress(
-      status: DownloadProgress.statusFromWire(
-          map['status'] as String? ?? 'failed'),
+      status:
+          DownloadProgress.statusFromWire(map['status'] as String? ?? 'failed'),
       bytesDownloaded: (map['bytesDownloaded'] as num?)?.toInt() ?? 0,
       bytesTotal: (map['bytesTotal'] as num?)?.toInt(),
       localPath: map['localPath'] as String?,
@@ -612,12 +668,22 @@ class UpdateService {
   /// Records that [version]'s APK was downloaded and handed to the
   /// installer, so [wasDownloaded] recognizes it on a later check even after
   /// [clearPendingDownload] has dropped the in-progress record.
-  Future<void> markVersionDownloaded(String version, {String? path}) async {
+  /// Also records when ([lastDownload], for the Changelog's status card).
+  Future<void> markVersionDownloaded(String version,
+      {String? path, DateTime? at}) async {
+    final download = (version: version, at: at ?? DateTime.now());
+    lastDownload.value = download;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_downloadedVersionPrefsKey, version);
+    await prefs.setString(
+        _lastDownloadPrefsKey,
+        jsonEncode({
+          'version': version,
+          'at': download.at.millisecondsSinceEpoch,
+        }));
     if (path != null) {
-      await prefs.setString(
-          _downloadedApkPrefsKey, jsonEncode({'version': version, 'path': path}));
+      await prefs.setString(_downloadedApkPrefsKey,
+          jsonEncode({'version': version, 'path': path}));
     }
   }
 

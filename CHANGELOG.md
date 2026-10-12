@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.105] - 2026-10-12
+- New Changelog look: a card at the top shows your version and whether it is up to date, when it was downloaded and installed, a newer version that is downloaded and ready to install (with an Install button) and when updates were last checked; below it, one card per release with its date. Pulling down checks right away and downloads a new version quietly in the background — the app asks to install it once it is complete.
+
 ## [0.2.104] - 2026-10-12
 - Dev, Staging and regular builds are one app again ("BestToDo"): it always updates to the newest build of any of them. The About page still shows where the installed build came from (e.g. "0.2.104+3600000 · dev"). If you installed "BestToDo Dev" or "BestToDo Staging", you can uninstall those.
 

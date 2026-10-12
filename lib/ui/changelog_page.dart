@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../services/install_info_service.dart';
 import '../services/update_service.dart';
+import '../utils/date_time_format.dart';
 import 'auto_update_dialog.dart';
 import 'subpage_app_bar.dart';
 
@@ -179,11 +182,20 @@ List<ChangelogRelease> parseChangelogReleases(String markdown) {
   return releases;
 }
 
-/// Drops everything before the first `## ` heading (title + intro). Returns
-/// [markdown] unchanged when it has no such heading.
-String stripChangelogPreamble(String markdown) {
-  final match = RegExp(r'^## ', multiLine: true).firstMatch(markdown);
-  return match == null ? markdown : markdown.substring(match.start);
+/// Build metadata written by `tool/append_build_time.dart` (and CI), e.g.
+/// `APK size: 64.6 MB`: shown as small chips under a release, not as changes.
+final RegExp _buildNote = RegExp(
+    r'^(Local build|CI build|Build duration \([^)]*\)|APK size|Build size \([^)]*\)):\s*\S');
+
+/// True when a changelog bullet is build metadata rather than a change.
+bool isChangelogBuildNote(String entry) => _buildNote.hasMatch(entry);
+
+/// `0.2.105+413` → `0.2.105 (413)`, the way the status card shows versions.
+String changelogVersionLabel(String version) {
+  final plus = version.indexOf('+');
+  return plus < 0
+      ? version
+      : '${version.substring(0, plus)} (${version.substring(plus + 1)})';
 }
 
 class ChangelogPage extends StatefulWidget {
@@ -191,7 +203,6 @@ class ChangelogPage extends StatefulWidget {
     Key? key,
     this.assetPath = 'CHANGELOG.md',
     this.showStoryPoster = true,
-    this.hidePreamble = false,
     this.updateService,
   }) : super(key: key);
 
@@ -210,12 +221,6 @@ class ChangelogPage extends StatefulWidget {
   /// would be wrong to show under Best Music's changelog.
   final bool showStoryPoster;
 
-  /// Whether the text view drops everything above the first `## ` release
-  /// heading (the file's `# Title` and intro paragraph). On for Best Music,
-  /// whose `CHANGELOG_MUSIC.md` keeps an explanatory preamble for developers
-  /// that users don't need to see.
-  final bool hidePreamble;
-
   @override
   State<ChangelogPage> createState() => _ChangelogPageState();
 }
@@ -231,16 +236,52 @@ class _ChangelogPageState extends State<ChangelogPage> {
 
   final ScrollController _heatmapScrollController = ScrollController();
   Future<String>? _changelog;
-  Future<InstallInfo?>? _installInfo;
   _ChangelogView _view = _ChangelogView.text;
   DateTime? _selectedDay;
+
+  /// The running `x.y.z+build` and when it was installed, for the status
+  /// card and the installed version's check mark; null until loaded.
+  String? _running;
+  InstallInfo? _installInfo;
+
+  /// Whose builds the status card and the pull-down are about: Best Music
+  /// passes its own; otherwise the running app's [AutoUpdateFlow], which
+  /// defaults to BestToDo's.
+  UpdateService get _service =>
+      widget.updateService ??
+      AutoUpdateFlow.current?.service ??
+      UpdateService.instance;
+
+  /// The running app's automatic update, when it is about [_service]; null
+  /// in tests and off Android.
+  AutoUpdateFlow? get _flow {
+    final flow = AutoUpdateFlow.current;
+    return flow != null && identical(flow.service, _service) ? flow : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadStatus());
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // DefaultAssetBundle falls back to rootBundle in the app; tests can swap it.
     _changelog ??= DefaultAssetBundle.of(context).loadString(widget.assetPath);
-    _installInfo ??= InstallInfoService.load();
+  }
+
+  Future<void> _loadStatus() async {
+    final service = _service;
+    await service.loadUpdateStatus();
+    final running = await service.currentVersionWithBuild();
+    final installed = await InstallInfoService.load();
+    if (!mounted) return;
+    setState(() {
+      _running = running;
+      _installInfo = installed;
+    });
   }
 
   @override
@@ -257,7 +298,8 @@ class _ChangelogPageState extends State<ChangelogPage> {
     });
   }
 
-  DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+  DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
 
   Map<DateTime, List<ChangelogRelease>> _releasesByDay(
     List<ChangelogRelease> releases,
@@ -368,24 +410,25 @@ class _ChangelogPageState extends State<ChangelogPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (_view == _ChangelogView.text) {
-            final text = widget.hidePreamble
-                ? stripChangelogPreamble(snapshot.data!)
-                : snapshot.data!;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildInstalledBanner(),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: _checkForUpdates,
-                    child: Markdown(
-                      data: text,
-                      selectable: true,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                    ),
+            // Anything above the first release (title, a developer intro)
+            // isn't a release and isn't shown.
+            final releases = parseChangelogReleases(snapshot.data!);
+            return RefreshIndicator(
+              onRefresh: _checkForUpdates,
+              child: SelectionArea(
+                child: ListView.builder(
+                  key: const Key('changelog-release-list'),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  itemCount: releases.length + 1,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: index == 0
+                        ? _buildStatusCard()
+                        : _buildReleaseCard(releases[index - 1]),
                   ),
                 ),
-              ],
+              ),
             );
           }
           if (_view == _ChangelogView.poster) return _buildStoryPoster();
@@ -400,13 +443,12 @@ class _ChangelogPageState extends State<ChangelogPage> {
   /// install it when it is complete, like the automatic check
   /// ([AutoUpdateFlow]).
   Future<void> _checkForUpdates() async {
-    final flow = AutoUpdateFlow.current;
+    final flow = _flow;
     String message;
     try {
       final update = flow != null
           ? await flow.checkNow()
-          : await (widget.updateService ?? UpdateService.instance)
-              .checkForUpdate();
+          : await _service.checkForUpdate();
       message = update == null
           ? 'You have the newest version.'
           : flow == null
@@ -424,36 +466,170 @@ class _ChangelogPageState extends State<ChangelogPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// "Installed v0.2.98+399 · 2026-10-04 18:40 (2 hours ago)" above the
-  /// changelog text, so it's clear when the latest (often automatic) update
-  /// came through. Hidden while loading or when the time isn't known.
-  Widget _buildInstalledBanner() {
-    return FutureBuilder<InstallInfo?>(
-      future: _installInfo,
-      builder: (context, snapshot) {
-        final info = snapshot.data;
-        if (info == null) return const SizedBox.shrink();
+  /// The card at the top of the release list (same as Hally Remote and
+  /// BestCollage): the running version and whether it is up to date, when
+  /// it was downloaded and installed, a newer build waiting to be installed
+  /// and when GitHub was last checked. Follows the background poll too.
+  Widget _buildStatusCard() {
+    final service = _service;
+    final flow = _flow;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        service.checking,
+        service.lastCheck,
+        service.lastCheckedAt,
+        service.lastDownload,
+        if (flow != null) flow.ready,
+      ]),
+      builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
-        return Container(
-          key: const Key('changelog-installed-since'),
-          color: scheme.secondaryContainer,
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-          child: Row(
-            children: [
-              Icon(Icons.system_update_alt,
-                  size: 18, color: scheme.onSecondaryContainer),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Installed v${info.version} · '
-                  '${formatInstalledAt(info.installedAt)}',
-                  style: TextStyle(color: scheme.onSecondaryContainer),
-                ),
-              ),
-            ],
+        final running = _running;
+        final check = service.lastCheck.value;
+        final latest = check != null && check.hasUpdate ? check.latest : null;
+        final checking = service.checking.value;
+        final title = [
+          running == null
+              ? 'Current version'
+              : 'Current version ${changelogVersionLabel(running)}',
+          if (checking)
+            'Checking…'
+          else if (latest != null)
+            'Update available ${changelogVersionLabel(latest.version)}'
+          else if (check != null)
+            'Up to date',
+        ].join(' · ');
+        final download = service.lastDownload.value;
+        final installedAt = _installInfo?.installedAt;
+        // When the running build was downloaded and installed ...
+        final times = [
+          if (download != null && download.version == running)
+            'Downloaded ${formatTimerDateTime(download.at)}',
+          if (installedAt != null)
+            'Installed ${formatTimerDateTime(installedAt)}',
+        ].join(' · ');
+        // ... and a newer one that is downloaded and waiting.
+        final waiting = latest != null && download?.version == latest.version
+            ? '${changelogVersionLabel(latest.version)} downloaded '
+                '${formatTimerDateTime(download!.at)} · ready to install'
+            : null;
+        final checkedAt = service.lastCheckedAt.value;
+        final checked = checkedAt == null
+            ? 'Not checked yet'
+            : 'Last checked ${formatTimerDateTime(checkedAt)}';
+        return Card(
+          key: const Key('changelog-update-status'),
+          margin: EdgeInsets.zero,
+          color: latest != null ? scheme.primaryContainer : null,
+          child: ListTile(
+            leading: checking
+                ? const SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(latest != null
+                    ? Icons.system_update_outlined
+                    : Icons.verified_outlined),
+            title: Text(title),
+            subtitle: Text([
+              if (times.isNotEmpty) times,
+              if (waiting != null) waiting,
+              '$checked · Pull down to check for updates',
+            ].join('\n')),
+            trailing: latest != null && latest.apkUrl != null && flow != null
+                ? FilledButton(
+                    key: const Key('changelog-update-install'),
+                    onPressed: () => unawaited(flow.install(latest)),
+                    child: const Text('Install'),
+                  )
+                : null,
           ),
         );
       },
+    );
+  }
+
+  /// One release: version (with a check mark on the installed one) and
+  /// date, its changes as bullets, build metadata as small chips.
+  Widget _buildReleaseCard(ChangelogRelease release) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final running = _running;
+    final installed =
+        running != null && running.split('+').first == release.version;
+    final changes =
+        release.entries.where((e) => !isChangelogBuildNote(e)).toList();
+    final notes = release.entries.where(isChangelogBuildNote).toList();
+    return Card(
+      key: ValueKey('changelog-release-${release.version}'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  release.version,
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                if (installed) ...[
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.check_circle,
+                    key: const Key('changelog-installed-version'),
+                    size: 18,
+                    color: scheme.primary,
+                    semanticLabel: 'Installed version',
+                  ),
+                ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    formatTimerDate(release.date),
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+            for (final entry in changes)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('•  ', style: theme.textTheme.bodyMedium),
+                    Expanded(child: MarkdownBody(data: entry)),
+                  ],
+                ),
+              ),
+            if (notes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final note in notes)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(note,
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: scheme.onSurfaceVariant)),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -480,21 +656,21 @@ class _ChangelogPageState extends State<ChangelogPage> {
                         color: scheme.primaryContainer,
                         borderRadius: BorderRadius.circular(99),
                       ),
-                      child: Text(
-                        '10 MILESTONES · 15 MONTHS',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelMedium
-                            ?.copyWith(
-                                color: scheme.onPrimaryContainer,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.1,
-                              )),
+                      child: Text('10 MILESTONES · 15 MONTHS',
+                          style:
+                              Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: scheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.1,
+                                  )),
                     ),
                     const SizedBox(height: 14),
                     Text('The story of BestToDo',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(
                               fontWeight: FontWeight.w900,
                               letterSpacing: -0.8,
                             )),
@@ -515,9 +691,10 @@ class _ChangelogPageState extends State<ChangelogPage> {
                     Icon(Icons.flag_rounded, color: scheme.primary, size: 30),
                     const SizedBox(height: 8),
                     Text('And the story keeps moving…',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            )),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                )),
                   ],
                 ),
               ),
@@ -557,7 +734,9 @@ class _ChangelogPageState extends State<ChangelogPage> {
                 ),
                 if (!isLast)
                   Expanded(
-                    child: Container(width: 3, color: milestone.color.withValues(alpha: .28)),
+                    child: Container(
+                        width: 3,
+                        color: milestone.color.withValues(alpha: .28)),
                   ),
               ],
             ),
@@ -572,7 +751,8 @@ class _ChangelogPageState extends State<ChangelogPage> {
                 color: scheme.surfaceContainerLow,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
-                  side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .65)),
+                  side: BorderSide(
+                      color: scheme.outlineVariant.withValues(alpha: .65)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -585,28 +765,36 @@ class _ChangelogPageState extends State<ChangelogPage> {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(milestone.date,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
                                     color: milestone.color,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1,
                                   )),
                           Text(milestone.version,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
                                     color: scheme.onSurfaceVariant,
                                   )),
                         ],
                       ),
                       const SizedBox(height: 7),
                       Text(milestone.title,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              )),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  )),
                       const SizedBox(height: 5),
                       Text(milestone.description,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                height: 1.35,
-                              )),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    height: 1.35,
+                                  )),
                     ],
                   ),
                 ),
@@ -728,7 +916,8 @@ class _ChangelogPageState extends State<ChangelogPage> {
                               children: List.generate(_daysPerWeek, (dayIndex) {
                                 final date = weekStarts[weekIndex]
                                     .add(Duration(days: dayIndex));
-                                return _buildDayCell(date, byDay[date] ?? const []);
+                                return _buildDayCell(
+                                    date, byDay[date] ?? const []);
                               }),
                             ),
                           );

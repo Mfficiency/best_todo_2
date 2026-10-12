@@ -52,17 +52,6 @@ Widget _wrap(
 }
 
 void main() {
-  group('stripChangelogPreamble', () {
-    test('drops everything above the first release heading', () {
-      expect(stripChangelogPreamble('# T\n\nIntro\n\n## [1.0.0] - 2026-01-01\n- x\n'),
-          '## [1.0.0] - 2026-01-01\n- x\n');
-    });
-
-    test('leaves text without a release heading unchanged', () {
-      expect(stripChangelogPreamble('# Only a title\n'), '# Only a title\n');
-    });
-  });
-
   group('parseChangelogReleases', () {
     test('parses versions, dates and bullet entries', () {
       final releases = parseChangelogReleases(_sampleChangelog);
@@ -95,7 +84,8 @@ void main() {
     });
 
     test('returns nothing when no release has a parsable date', () {
-      expect(parseChangelogReleases('# Changelog\n\n- stray bullet\n'), isEmpty);
+      expect(
+          parseChangelogReleases('# Changelog\n\n- stray bullet\n'), isEmpty);
     });
   });
 
@@ -150,7 +140,8 @@ void main() {
       expect(find.text('Added the heatmap button'), findsNothing);
     });
 
-    testWidgets('month labels carry the year on the first column and on a '
+    testWidgets(
+        'month labels carry the year on the first column and on a '
         'year switch', (tester) async {
       await tester.pumpWidget(_wrap('''
 # Changelog
@@ -252,16 +243,16 @@ void main() {
       expect(find.byTooltip('Show update heatmap'), findsOneWidget);
     });
 
-    testWidgets('hidePreamble drops the title and intro from the text view',
-        (tester) async {
+    testWidgets(
+        'the text view shows one card per release, not the title '
+        'and intro', (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: DefaultAssetBundle(
-          bundle: _FakeBundle(
-              '# Best Music Changelog\n\nIntro for developers.\n\n$_sampleChangelog'),
+          bundle: _FakeBundle('# Best Music Changelog\n\nIntro for developers.'
+              '\n\n$_sampleChangelog- APK size: 63.4 MB\n'),
           child: const ChangelogPage(
             assetPath: 'CHANGELOG_MUSIC.md',
             showStoryPoster: false,
-            hidePreamble: true,
           ),
         ),
       ));
@@ -269,7 +260,19 @@ void main() {
 
       expect(find.text('Best Music Changelog'), findsNothing);
       expect(find.textContaining('Intro for developers'), findsNothing);
-      expect(find.text('[0.2.0] - 2026-08-05'), findsOneWidget);
+      expect(find.byKey(const Key('changelog-update-status')), findsOneWidget);
+      for (final version in ['0.2.0', '0.1.9', '0.1.8']) {
+        expect(
+            find.byKey(ValueKey('changelog-release-$version')), findsOneWidget);
+      }
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('changelog-release-0.2.0')),
+              matching: find.text('05.08.26')),
+          findsOneWidget);
+      expect(find.text('Added the heatmap button'), findsOneWidget);
+      // Build metadata is a chip, not a bullet.
+      expect(find.text('APK size: 63.4 MB'), findsOneWidget);
     });
   });
 }

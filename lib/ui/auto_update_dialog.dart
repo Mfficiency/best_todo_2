@@ -54,6 +54,9 @@ class AutoUpdateFlow {
   /// The version that is downloaded and waiting for a tap, if any.
   String? get readyVersion => _ready?.version;
 
+  /// [readyVersion], for the Changelog's status card to follow.
+  final ValueNotifier<String?> ready = ValueNotifier(null);
+
   BuildContext? get _context => navigatorKey.currentContext;
 
   void onUpdateFound(UpdateInfo info) => unawaited(_downloadSilently(info));
@@ -149,7 +152,22 @@ class AutoUpdateFlow {
 
   void _setReady(String version, String path) {
     _ready = (version: version, path: path);
+    ready.value = version;
     askWhenReady();
+  }
+
+  /// The Changelog status card's Install: installs [info] when its APK is
+  /// downloaded (also by an earlier run), otherwise downloads it in the
+  /// foreground first, like the failed-download banner.
+  Future<void> install(UpdateInfo info) async {
+    if (_ready?.version != info.version) {
+      final earlier = await service.readyApk(info.version);
+      if (earlier == null) return _downloadAndInstall(info);
+      _ready = (version: info.version, path: earlier);
+      ready.value = info.version;
+    }
+    _askedVersion = info.version; // Install was tapped already: no dialog
+    await installReady();
   }
 
   /// Once per version and start, while the app is in the foreground: the
@@ -168,8 +186,8 @@ class AutoUpdateFlow {
       if (install == true) {
         await installReady();
       } else {
-        _showBanner(updateReadyBanner(
-            ready.version, () => unawaited(installReady())));
+        _showBanner(
+            updateReadyBanner(ready.version, () => unawaited(installReady())));
         _bannerVersion = ready.version;
       }
     }());
@@ -222,6 +240,7 @@ class AutoUpdateFlow {
     }
     _failedVersion = null;
     _ready = (version: info.version, path: path);
+    ready.value = info.version;
     _askedVersion = info.version; // Install was tapped already: no dialog
     await installReady();
   }
