@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:io' show Directory;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -256,9 +257,20 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
           Config.musicFolder.isNotEmpty ? Config.musicFolder : null,
     );
     if (directory == null) return;
+    final previous = Config.musicFolder;
+    // The old folder isn't on this phone (a restored backup, a renamed SD
+    // card): treat the pick as its new home so songs keep their BPM,
+    // metadata, favourites and playlist places — and their exclusions.
+    final moved = previous.isNotEmpty &&
+        previous != directory &&
+        !await Directory(previous).exists();
+    if (moved) {
+      await MusicBackupService.relocateLibrary(previous, directory);
+    }
+    if (!mounted) return;
     setState(() {
       Config.musicFolder = directory;
-      Config.musicExcludedSubfolders = [];
+      if (!moved) Config.musicExcludedSubfolders = [];
     });
     await Config.save();
     unawaited(MusicLibraryService.instance.rescan());

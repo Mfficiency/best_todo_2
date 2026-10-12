@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.30] - 2026-10-12
+- Backups now carry everything Best Music remembers — including where you left off in the last song or video — on top of your songs' analyzed details (BPM, genre, year…), play counts, favourites, playlists, subscriptions and watched videos. Restoring onto a phone whose music folder is somewhere else (a new phone, a different SD card) moves all of that over to this phone's folder instead of losing it at the next library scan; the same happens when you pick a new music folder because the old one is gone.
+
 ## [0.3.29] - 2026-10-12
 - Updates: when an update is installed, Android shows "App updated" with an Open button again, so you are back in the app with one tap
 
