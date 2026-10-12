@@ -51,6 +51,7 @@ import 'chronize_page.dart';
 import 'countdown_timer_page.dart';
 import 'f1_reminder_page.dart';
 import 'compass_page.dart';
+import 'pc_watcher_page.dart';
 import 'recurrence_editor.dart';
 import 'recurrence_scope_dialog.dart';
 import 'deleted_bin_page.dart';
@@ -1226,6 +1227,8 @@ class _HomePageState extends State<HomePage>
         return const F1ReminderPage();
       case 'compass':
         return const CompassPage();
+      case 'pc_watcher':
+        return const PcWatcherPage();
     }
     return null;
   }
@@ -3158,6 +3161,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('worklist', 'Worklist', Icons.checklist),
     _ToolEntry('f1_reminder', 'F1 Reminder', Icons.sports_score),
     _ToolEntry('compass', 'Compass', Icons.explore),
+    _ToolEntry('pc_watcher', 'PC Watcher', Icons.computer),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —

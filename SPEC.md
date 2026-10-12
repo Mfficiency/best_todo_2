@@ -4325,6 +4325,37 @@ magnetometer; sensors are registered only while the page listens. No sensor (or 
 e.g. Windows) → the stream errors and the page shows "No compass sensor on this device".
 `CompassPage(headings:)` takes an injected stream for tests (`test/tools/compass_page_test.dart`).
 
+### 10.6r PC Watcher (0.2.110)
+Tools → **PC Watcher** (feature/start-tool key `pc_watcher`, `Icons.computer`;
+`lib/ui/pc_watcher_page.dart`, `lib/services/pc_watcher_service.dart`,
+`lib/models/pc_watcher_status.dart`): what the laptop builder (Mfficiency/laptop-builder,
+§11 "Laptop channel builds") did, for every app it builds, not only BestToDo.
+- **Data:** `dev-build-watch.ps1` keeps `D:\LaptopBuilder\status\pc_watcher.json` and
+  force-pushes it as the only commit of laptop-builder's `status` branch: `machine`,
+  `lastCheckAt` (heartbeat, every run), `channels[]` (one per app + branch: `state`
+  idle/pending/queued/building/failed, `remoteHead`, `builtHead`, `since`, `lastError`) and
+  `builds[]` (newest 500: `app`, `branch`, `sha`, `buildNumber`, `trigger` push/catch-up/unknown,
+  `startedAt`, `finishedAt`, `durationSeconds`, `result` building/published/unchanged/failed,
+  `published[]` {app, version, channel, tag, repo, apkSizeBytes from the release's APK assets},
+  `error`, `log` = last 25 lines of a failed build's output). The first run backfills the
+  history from the builder's text logs (no `log`, trigger unknown).
+- **Reading:** laptop-builder is private, so the page asks once for a fine-grained token
+  (that repo only, Contents: Read-only; Actions: Read-only optional), stored in
+  SharedPreferences (`pc_watcher_token`) with the last download (`pc_watcher_cache`, shown
+  offline / when a refresh fails). `GET /repos/Mfficiency/laptop-builder/contents/pc_watcher.json?ref=status`
+  with `Accept: application/vnd.github.raw+json`; plus `actions/runs` → runs not completed
+  = jobs waiting/running on the runner (hidden with a note when the token can't read Actions).
+  401/403/404 map to readable errors (`PcWatcherException`).
+- **Page:** machine card (green Online if checked ≤ 20 min ago, orange Quiet < 3 h, grey
+  Offline; "Building X (branch) since …"), last-7-days stats (published, failed, average
+  published build time, total PC busy time), **Pending** (channels with `isPending` = state
+  not idle or a `lastError`, plus runner jobs), **Build log** (newest 200 after filtering;
+  chips All / Published / Failed / Already published + one per app). A row shows result icon,
+  "<app> <version> · <branch>", start, duration, APK size, the error for failures; tapping
+  opens a sheet with all fields and the output tail (Copy output). Pull down or Refresh
+  re-downloads; the key action edits/removes the token (`_TokenDialog` owns its controller).
+- Tests: `test/tools/pc_watcher_page_test.dart` (MockClient + mocked SharedPreferences).
+
 ### 10.6m Subscriptions feed — YouTube channels in Best Music (Best Music 0.2.92)
 A Tubular/NewPipe-style feed built in Dart on the existing `youtube_explode_dart` + player
 stack rather than by forking Tubular (a native Java app, GPL-3.0 — embedding it would mean

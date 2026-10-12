@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.110] - 2026-10-12
+- New tool: PC Watcher (Tools → PC Watcher) shows what the build PC did — every build with when it ran, how long it took and the APK size, failed builds with their error and the end of the build output, and what is still pending (new commits waiting, builds running or queued). Filter the log by result or app. It reads the laptop's private build status, so it asks once for a read-only GitHub token.
+
 ## [0.2.109] - 2026-10-12
 - Smaller download: BestToDo is now built for 64-bit phones only (every Android phone of the last several years), about a third of its old size. Updates: when an update is installed, Android shows "App updated" with an Open button again, so you are back in the app with one tap
 
