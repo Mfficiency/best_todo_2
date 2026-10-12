@@ -2345,8 +2345,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _setAutoUpdateCheckEnabled(bool value) async {
     setState(() => _autoUpdateCheckEnabled = value);
     Config.autoUpdateCheckEnabled = value;
-    // Turned on: the automatic checks start now, not at the next start.
-    AppUpdates.autoCheckChanged();
+    // The package's own handling: on, polling starts and a due check runs
+    // now; off, polling stops.
+    AppUpdates.controller?.autoCheckChanged();
     await Config.save();
     widget.onSettingsChanged?.call();
   }

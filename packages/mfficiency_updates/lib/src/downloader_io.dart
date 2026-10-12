@@ -18,7 +18,17 @@ class IoApkDownloader extends ApkDownloader {
     this.connectionTimeout = const Duration(seconds: 15),
     this.responseTimeout = const Duration(seconds: 30),
     this.idleTimeout = const Duration(seconds: 60),
+    this.userAgent,
   }) : _directory = directory;
+
+  /// Sent as `User-Agent` (null: dart:io's own).
+  final String? userAgent;
+
+  HttpClient _client() {
+    final client = HttpClient()..connectionTimeout = connectionTimeout;
+    if (userAgent case final ua?) client.userAgent = ua;
+    return client;
+  }
 
   final Future<String> Function()? _directory;
   final Duration connectionTimeout;
@@ -40,7 +50,7 @@ class IoApkDownloader extends ApkDownloader {
     String fileName, {
     void Function(double? fraction)? onProgress,
   }) async {
-    final client = HttpClient()..connectionTimeout = connectionTimeout;
+    final client = _client();
     try {
       final dir = await _dir();
       dir.createSync(recursive: true);
@@ -176,7 +186,7 @@ class IoApkDownloader extends ApkDownloader {
 
   @override
   Future<Uri?> signedAssetUrl(Uri assetApiUrl, String token) async {
-    final client = HttpClient()..connectionTimeout = connectionTimeout;
+    final client = _client();
     try {
       final request = await client.getUrl(assetApiUrl);
       request

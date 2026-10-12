@@ -21,10 +21,13 @@ class _FakePathProvider extends PathProviderPlatform {
 
 /// BestToDo's and Best Music's side of the updates package
 /// (`lib/services/app_updates.dart`): which releases each app takes, the
-/// "Automatically update" switch, the state stored before the package and
-/// the pre-update backup before Android's installer opens. The package's
-/// own flow (silent download, install once, banner) is tested in the
-/// template and, as the app uses it, in update_flow_test.dart.
+/// "Automatically update" switch, the state stored before the package, the
+/// pre-update backup before Android's installer opens and the held-back
+/// prompt. Everything else is the package's default behaviour (resume
+/// check, the switch turned on/off while running, GitHub's rate limit,
+/// User-Agent, channel order, APK-less releases), tested in the package
+/// (`packages/mfficiency_updates/test`); here only that the app keeps
+/// those defaults. The flow as the app shows it: update_flow_test.dart.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -42,6 +45,7 @@ void main() {
     installer.dispose();
     AppUpdates.controller?.dispose();
     AppUpdates.controller = null;
+    AppUpdates.promptAllowed.value = true;
     Config.autoUpdateCheckEnabled = true;
   });
 
@@ -81,6 +85,41 @@ void main() {
       Config.autoUpdateCheckEnabled = false;
       expect(todo.autoCheck(), isFalse);
       expect(music.autoCheck(), isTrue);
+    });
+
+    test("the package's behaviour is left at its defaults", () {
+      for (final app in UpdatesApp.values) {
+        final c = AppUpdates.config(app, version: '0.2.106', build: 9);
+        expect(c.checkOnResume, isTrue,
+            reason: 'back in the app after 15 minutes: a check');
+        expect(c.dueAfter, AppUpdates.interval);
+        expect(c.requireApk, isTrue,
+            reason: 'a release whose APK is still uploading is not offered');
+        expect(c.strictTags, isFalse);
+        expect(c.tagPattern, isNull);
+        expect(c.buildPrefix, '');
+        expect(c.rateLimitPause, const Duration(minutes: 30));
+        expect(c.userAgent, isNull);
+        expect(c.autoCheckChanges, isNull,
+            reason: 'Settings calls the controller\'s autoCheckChanged()');
+      }
+      expect(
+          AppUpdates.config(UpdatesApp.todo, version: '1', build: 1)
+              .httpUserAgent,
+          'BestToDo-update-check');
+      expect(
+          AppUpdates.config(UpdatesApp.music, version: '1', build: 1)
+              .httpUserAgent,
+          'BestMusic-update-check');
+    });
+
+    test("only BestToDo holds the install prompt back (its intro)", () {
+      final todo = fakeController(github: github, downloader: downloader);
+      expect(todo.promptAllowed, same(AppUpdates.promptAllowed));
+      todo.dispose();
+      final music = fakeController(
+          app: UpdatesApp.music, github: github, downloader: downloader);
+      expect(music.promptAllowed, isNull);
     });
 
     test('the running channel is only shown next to the version', () {
@@ -139,10 +178,14 @@ void main() {
       expect((await c.check()).status, UpdateStatus.upToDate);
     });
 
-    test("GitHub's anonymous rate limit (403) is a failed check", () async {
+    test("GitHub's anonymous rate limit (403) pauses the automatic checks",
+        () async {
       github.failStatus = 403;
       final c = fakeController(github: github, downloader: downloader);
-      expect((await c.check()).status, UpdateStatus.failed);
+      expect((await c.check()).status, UpdateStatus.rateLimited);
+      expect(c.rateLimited, isTrue);
+      expect(const UpdateStrings().rateLimited,
+          'GitHub is limiting update checks right now — try again later.');
     });
   });
 
@@ -260,14 +303,8 @@ void main() {
     await File('${dir.path}/tasks.json').writeAsString('[{"title":"keep"}]');
 
     github.releases = [release('v0.2.107-2000')];
-    final c = UpdateController(
-      config: AppUpdates.config(UpdatesApp.todo, version: '0.2.106', build: 1),
-      store: MemoryUpdateStore(),
-      http: github.http,
-      downloader: downloader,
-      platform: BackupFirstPlatform(supported: true),
-    );
-    addTearDown(c.dispose);
+    final c = fakeController(
+        github: github, downloader: downloader, build: 1, backup: true);
     await c.init();
     await c.check();
     await settle();
@@ -279,5 +316,22 @@ void main() {
         File('${dir.path}/${PreUpdateBackup.backupDirName}/tasks.json');
     expect(await backup.readAsString(), '[{"title":"keep"}]');
     PreUpdateBackup.resetForTest();
+  });
+
+  test("Android's dialog waits while BestToDo's intro is open", () async {
+    AppUpdates.promptAllowed.value = false;
+    github.releases = [release('v0.2.107-2000')];
+    final c = fakeController(github: github, downloader: downloader, build: 1);
+    await c.init();
+    await c.check();
+    await settle();
+    expect(c.ready.value, '0.2.107+2000');
+    expect(installer.installs, isEmpty);
+
+    AppUpdates.promptAllowed.value = true;
+    for (var i = 0; i < 50 && installer.installs.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(installer.installs, ['/cache/updates/BestToDo-0.2.107-2000.apk']);
   });
 }
