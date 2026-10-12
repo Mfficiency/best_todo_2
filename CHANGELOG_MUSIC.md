@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.25] - 2026-10-12
+- Settings → Backup: back up your playlists, library, Subscriptions (channels, watch progress, feed settings), download history, Wishlist and settings to one file, and restore it later — on a new phone or after a reinstall. Turn on Automatic backup (daily or weekly) to keep a fresh copy in a folder of your choice, just like BestToDo. Restoring keeps a copy of your current data first, and a BestToDo backup is recognised and refused instead of being half-applied.
+
 ## [0.3.24] - 2026-10-12
 - Smaller download: Best Music is now built for 64-bit phones only (every Android phone of the last several years), so the APK is about a third of its old size (around 23 MB instead of 67 MB) and updates download that much faster
 

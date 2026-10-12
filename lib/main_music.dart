@@ -14,6 +14,7 @@ import 'models/shared_payload.dart';
 import 'services/auto_update_checker.dart';
 import 'services/install_info_service.dart';
 import 'services/mp3_download_manager.dart';
+import 'services/music_backup_service.dart';
 import 'services/music_download_library_sync.dart';
 import 'services/music_library_service.dart';
 import 'services/music_metadata_enricher.dart';
@@ -78,6 +79,8 @@ Future<void> main() async {
     // detects BPM on device when those come up short) in the background —
     // nothing to tap, see MusicMetadataEnricher.
     if (!kIsWeb) unawaited(MusicMetadataEnricher.instance.start());
+    // Settings → Backup → Automatic backup (no-op while it's off).
+    if (!kIsWeb) unawaited(MusicBackupService.maybeRun());
   });
 }
 
@@ -139,6 +142,7 @@ class _BestMusicAppState extends State<BestMusicApp>
     if (state == AppLifecycleState.resumed) {
       unawaited(AutoUpdateChecker.instance.checkIfDue(_updates.onUpdateFound,
           service: MusicAboutPage.updateService));
+      unawaited(MusicBackupService.maybeRun());
     }
   }
 

@@ -65,6 +65,12 @@ class MusicLibraryService {
     } catch (_) {}
   }
 
+  /// Re-reads the cached library from disk (after a backup restore).
+  Future<void> reload() async {
+    _loaded = false;
+    await load();
+  }
+
   Future<void> _save() async {
     try {
       final file = await _getFile();

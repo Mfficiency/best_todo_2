@@ -4914,6 +4914,51 @@ published).
   `settings.json`.
 - Tests: `test/music/video_transcript_test.dart`.
 
+### 10.6q Best Music backup & restore (Best Music 0.3.25)
+
+Best Music's counterpart of BestToDo's Export Everything/Import + automatic
+backup (Settings → Backup). `MusicBackupService`
+(`lib/services/music_backup_service.dart`) writes one JSON file
+`best_music_backup_<yyyyMMdd_HHmmss>.json`:
+`{app: "best_music", export_version: 1, exported_at, settings: Config.toMap(),
+wishlist: [Task.toJson of the isWish items], stores: {<file name>: <decoded
+contents>}}`. `stores` carries the documents-dir files listed in
+`MusicBackupService.storeFiles` — `music_library.json`, `music_playlists.json`,
+`youtube_feed.json` (subscriptions, feed videos, feed settings incl.
+SponsorBlock, watch progress), `mp3_downloads.json`, `music_enrichment.json`
+— read straight from disk so a backup is complete without any page loaded. The
+playback resume point (`music_resume.json`) is left out on purpose.
+
+**Restore** (`restoreFile`/`restore`) refuses anything not tagged
+`app: "best_music"` (a BestToDo export — recognised by its `tasks_bundle` — gets
+"That is a BestToDo backup — restore it in BestToDo"). It first writes the
+current state to `music_pre_restore_backup.json` in the documents dir, then
+overwrites each store file present in the backup (stores the backup lacks are
+left alone), replaces the Wishlist items in `tasks.json` (non-wish items, if
+any, are kept), applies + saves the settings, and calls `reload()` on the
+affected singletons (`MusicLibraryService`, `MusicPlaylistService`,
+`YoutubeFeedService`, `Mp3DownloadManager`, `MusicMetadataEnricher` — each
+resets its `_loaded` guard and re-reads its file). `Mp3DownloadManager.reload`
+keeps downloads running right now on top and drops restored jobs that were
+still queued/running when the backup was taken (they can't resume). The
+Settings page re-syncs `MusicTheme.darkMode` after a restore.
+
+**Automatic backup** reuses `Config.autoBackupFrequency`/`autoBackupDirectory`
+(Best Music's settings.json is its own sandbox, so these keys are free there)
+and `AutoBackupService.isDue`, with its own marker file
+`last_music_backup.txt`. `MusicBackupService.maybeRun()` runs after the first
+frame in `main_music.dart` and on every app resume; no-op while off or without
+a folder.
+
+**UI** — `MusicSettingsSection.backup` ("Backup", between Transcripts &
+summaries and Updates): "Back up now" (into the backup folder, or a folder
+picked for that one backup when none is set; subtitle shows the last backup
+time), "Restore from backup" (JSON file picker → "Restore backup?" confirm
+dialog → snackbar with the result), "Automatic backup" Off/Daily/Weekly
+`SegmentedButton` (turning it on asks for a folder if none and backs up right
+away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
+`test/music/music_settings_page_test.dart`.
+
 ## 11. Build, versioning, CI
 
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z[+build]> ["changelog entry"]`
