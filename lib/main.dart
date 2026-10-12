@@ -187,7 +187,7 @@ Future<void> main() async {
   final showStartupChoice = Config.isDev ? false : !startupChoiceMade;
   // In-app updates (the shared mfficiency_updates package, see
   // AppUpdates): reads the version and the stored update state, no network.
-  // The checks start after the first frame (_startUpdatesWhenFree).
+  // The checks start after the first frame (_startUpdates).
   await _initStep('updates', () => AppUpdates.create(UpdatesApp.todo));
   runApp(MyApp(
     showIntro: showIntro,
@@ -253,19 +253,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   /// Whether the automatic update checks were started ([AppUpdates.start]).
   bool _updatesStarted = false;
 
-  /// The automatic update (silent download, then Android's own install
-  /// confirm) starts once the intro and pickers are out of the way, so
-  /// Android's dialog never opens over them.
-  void _startUpdatesWhenFree() {
-    if (_updatesStarted ||
-        _showWebDataChoice ||
+  /// The automatic update (checks, silent download, then Android's own
+  /// install confirm) starts after the first frame; Android's dialog is
+  /// held back ([AppUpdates.promptAllowed], the package's `promptAllowed`)
+  /// while the intro or a first-start picker is open, and opens once they
+  /// are closed.
+  void _startUpdates() {
+    final busy = _showWebDataChoice ||
         _showIntro ||
         _showModePicker ||
-        _showStartupChoice) {
-      return;
-    }
+        _showStartupChoice;
+    final start = !_updatesStarted;
     _updatesStarted = true;
+    if (!start && AppUpdates.promptAllowed.value == !busy) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppUpdates.promptAllowed.value = !busy;
+      if (!start) return;
       final context = appNavigatorKey.currentContext;
       if (context != null) AppUpdates.start(context);
     });
@@ -492,7 +495,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    _startUpdatesWhenFree();
+    _startUpdates();
     final updates = AppUpdates.controller;
     return MaterialApp(
       title: 'BestToDo',

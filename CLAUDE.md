@@ -94,13 +94,17 @@ file is the short operational guide.
   edit that copy**: change the package in the template, run its tests, then run the
   template's `tool/sync_updates_package.sh <this repo>` (`.ps1` on Windows), which rewrites
   the copy + its `ORIGIN`; `test/updates_package_vendored_test.dart` fails on a hand edit.
-  `lib/services/app_updates.dart` (`AppUpdates`) only adapts it: one `UpdateController`
-  per app made in `main()` / `main_music.dart` (`UpdatesApp.todo` tag prefix `v`,
-  `UpdatesApp.music` `music-v`; public repo `Mfficiency/best_todo_2`, no token; checks every
-  15 minutes; BestToDo's "Automatically update" switch = `UpdateConfig.autoCheck`, Best Music
-  always checks), started after the first frame (BestToDo: after the intro/pickers),
-  `PreUpdateBackup.ensure()` before BestToDo's install, the migration of the old update
-  prefs. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
+  The behaviour is the package's defaults (same in every Mfficiency app); don't work around
+  it in the app. `lib/services/app_updates.dart` (`AppUpdates`) only passes app-specific
+  config: one `UpdateController` per app (`AppUpdates.controllerFor`) made in `main()` /
+  `main_music.dart` (`UpdatesApp.todo` tag prefix `v`, `UpdatesApp.music` `music-v`; public
+  repo `Mfficiency/best_todo_2`, no token; checks every 15 minutes, also on resume when due;
+  BestToDo's "Automatically update" switch = `UpdateConfig.autoCheck`, Settings calls the
+  controller's `autoCheckChanged()`; Best Music always checks), started after the first
+  frame; BestToDo's `promptAllowed` (`AppUpdates.promptAllowed`, false while the
+  intro/pickers are open) and `beforeInstall` = `PreUpdateBackup.ensure()`; the old update
+  prefs through the package's `migrateLegacyUpdateState`. GitHub's rate limit pauses the
+  automatic checks (package). Releases without an APK are never offered. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
   tap, progress only as passive text on the Changelog's `UpdateStatusCard` and the Check for
   updates tile); when complete, Android's PackageInstaller confirm (the plugin's
   `installApk`) is the only question — in the foreground, once per build and start; a
@@ -108,7 +112,8 @@ file is the short operational guide.
   with Try again. Pull-down on the Changelog checks; tapping a version there offers it
   (older = rollback). `MainActivity`/the manifest have no update code (the plugin brings
   `REQUEST_INSTALL_PACKAGES`, its receiver and channel; registered by Flutter). Tests fake
-  it with `test/update/update_fakes.dart`.
+  it with `test/update/update_fakes.dart` (`fakeController` = `controllerFor` on fakes; the
+  real pre-update backup only with `backup: true`).
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

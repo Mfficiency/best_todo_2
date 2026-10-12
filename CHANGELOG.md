@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.108] - 2026-10-12
+- Updates also check when you come back to the app (if the last check is 15+ minutes old), and turning "Automatically update" back on checks right away. When GitHub limits update checks, the app says so and waits until the limit is over instead of retrying. A version whose download isn't published yet is no longer offered. During the welcome screens the install question waits until you are done (the download already runs in the background).
+
 ## [0.2.107] - 2026-10-12
 - Updates work the same as in the other Mfficiency apps now (one shared update module): a new version still downloads quietly in the background and Android's own "Update this app?" is the only question; a slim bar offers Install if you cancel, or Try again if a download fails. Settings → Updates and About have "Check for updates" (it shows the download progress), and tapping a version in the Changelog offers that version — that is how you go back to an older one (About → "Go back to an older version" opens the newest older one). The "Update downloads folder" setting is gone: updates now download into the app's cache. An update that was downloaded but not yet installed downloads once more.
 

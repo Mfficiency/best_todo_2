@@ -6,10 +6,18 @@ import 'platform_stub.dart' if (dart.library.io) 'platform_io.dart' as os;
 /// The Android side of the plugin (channel `mfficiency_updates`): installs
 /// through a PackageInstaller session, the "install unknown apps" switch,
 /// the install time. Off Android every call answers "not supported".
+///
+/// [openUrl] opens links (a release page, or the APK link off a phone);
+/// the default asks the Android plugin, so on the desktop or the web pass
+/// the app's own opener (e.g. url_launcher's `launchUrl`).
 class UpdatePlatform {
-  UpdatePlatform({bool? supported, MethodChannel? channel})
-      : isSupported = supported ?? (!kIsWeb && os.isAndroid),
-        _channel = channel ?? const MethodChannel(channelName);
+  UpdatePlatform({
+    bool? supported,
+    MethodChannel? channel,
+    Future<bool> Function(String url)? openUrl,
+  })  : isSupported = supported ?? (!kIsWeb && os.isAndroid),
+        _channel = channel ?? const MethodChannel(channelName),
+        _openUrl = openUrl;
 
   static const channelName = 'mfficiency_updates';
 
@@ -17,6 +25,7 @@ class UpdatePlatform {
   /// in widget tests: no automatic checks or downloads there.
   final bool isSupported;
   final MethodChannel _channel;
+  final Future<bool> Function(String url)? _openUrl;
 
   Future<T?> _call<T>(String method, [Map<String, Object?>? args]) async {
     try {
@@ -49,7 +58,18 @@ class UpdatePlatform {
     return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
-  /// Opens [url] in the browser (a release page without an APK).
-  Future<bool> openUrl(String url) async =>
-      await _call<bool>('openUrl', {'url': url}) ?? false;
+  /// Opens [url] in the browser (a release page without an APK, or any
+  /// update off a phone): the opener passed to the constructor, else the
+  /// Android plugin. False when it couldn't (or threw).
+  Future<bool> openUrl(String url) async {
+    final open = _openUrl;
+    if (open == null) {
+      return await _call<bool>('openUrl', {'url': url}) ?? false;
+    }
+    try {
+      return await open(url);
+    } on Object {
+      return false;
+    }
+  }
 }
