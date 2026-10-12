@@ -53,11 +53,13 @@ function Invoke-Checked {
   }
 }
 
-# Best Music ships arm64 only, with the Dart debug symbols written to
-# build/symbols/music instead of into libapp.so: the default fat APK carries
-# libflutter.so + libapp.so for three ABIs (67 MB, 97 % of it binaries the
-# phone never loads); this is ~20 MB. Not --split-per-abi (the updater takes
-# a release's first .apk asset). See SPEC.md §11 "APK size — Best Music".
+# Both apps ship arm64 only, with the Dart debug symbols written to
+# build/symbols/<flavor> instead of into libapp.so: the default fat APK
+# carries libflutter.so + libapp.so for three ABIs (BestToDo 68 MB, Best Music
+# 67 MB, ~95 % of it binaries the phone never loads); this is about a third.
+# Not --split-per-abi (the updater takes a release's first .apk asset).
+# See SPEC.md §11 "APK size".
+$todoSizeArgs = @("--target-platform", "android-arm64", "--split-debug-info=build/symbols/todo")
 $musicSizeArgs = @("--target-platform", "android-arm64", "--split-debug-info=build/symbols/music")
 
 # Which app a set of `flutter build` arguments builds. android/app/build.gradle.kts
@@ -194,7 +196,7 @@ function Invoke-SingleBuild {
     $flavor = Get-FlavorArg $ArgsForFlutter
     if ([string]::IsNullOrWhiteSpace($flavor)) {
       $flavor = "todo"
-      $ArgsForFlutter = $ArgsForFlutter + @("--flavor", "todo")
+      $ArgsForFlutter = $ArgsForFlutter + @("--flavor", "todo") + $todoSizeArgs
     }
   }
   $appFlavor = if ([string]::IsNullOrWhiteSpace($flavor)) { "todo" } else { $flavor }
@@ -308,7 +310,7 @@ function Invoke-BuildAll {
 
   if ($env:ANDROID -ne "0") {
     Write-Host "==> flutter build apk --flavor todo $($ArgsForTargets -join ' ')"
-    Invoke-SingleBuild (@("apk", "--flavor", "todo") + $ArgsForTargets)
+    Invoke-SingleBuild (@("apk", "--flavor", "todo") + $ArgsForTargets + $todoSizeArgs)
     $androidStatus = "ok"
     $env:SKIP_PREFLIGHT = "1"
   }
@@ -559,7 +561,7 @@ function Invoke-ChannelRelease {
   $env:REQUIRE_RELEASE_KEY = "1"
 
   $apps = @(
-    @{ Flavor = "todo"; Name = "BestToDo"; Asset = "BestToDo"; VersionFile = "pubspec.yaml"; Args = @("--flavor", "todo") },
+    @{ Flavor = "todo"; Name = "BestToDo"; Asset = "BestToDo"; VersionFile = "pubspec.yaml"; Args = @("--flavor", "todo") + $todoSizeArgs },
     @{ Flavor = "music"; Name = "Best Music"; Asset = "BestMusic"; VersionFile = "MUSIC_VERSION"; Args = @("--flavor", "music", "-t", "lib/main_music.dart") + $musicSizeArgs }
   )
   $numberArgs = @()

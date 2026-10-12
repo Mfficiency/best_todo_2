@@ -44,7 +44,8 @@ if [ "$1" = "apk" ]; then
   done
   if [ -z "$FLAVOR" ]; then
     FLAVOR="todo"
-    set -- "$@" --flavor todo
+    # arm64 only + split debug info, like music-apk (SPEC.md §11 "APK size").
+    set -- "$@" --flavor todo --target-platform android-arm64 --split-debug-info=build/symbols/todo
   fi
 fi
 PREFIX="best_${FLAVOR:-todo}"
