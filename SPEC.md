@@ -5082,8 +5082,11 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
     file) and `test/updates_package_vendored_test.dart`, which fails when a vendored file is
     edited by hand. **Never edit the copy**: change the template, run its tests, sync.
     `pubspec.yaml` has `mfficiency_updates: { path: packages/mfficiency_updates }`; its
-    README.md is the reference. The app only adapts it in `lib/services/app_updates.dart`
-    (`AppUpdates`):
+    README.md is the reference. Since 0.2.108 / Best Music 0.3.28 (package 1.1.0) the
+    update **behaviour** is entirely the package's defaults (the same in every Mfficiency
+    app); `lib/services/app_updates.dart` (`AppUpdates`) only passes the app-specific
+    config — repo, tag prefix, app name, interval, the switch, date format, log, the
+    pre-install backup and the held-back prompt — and the old-prefs migration's `read`:
     - `AppUpdates.create(UpdatesApp.todo | .music)` runs in `main()` / `main_music.dart`'s
       `main()` before `runApp` (reads `PackageInfo` and the prefs, no network) and sets
       `AppUpdates.controller`, one `UpdateController` per app: `UpdateConfig` with
@@ -5095,18 +5098,28 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
       stored key and value as before) / always on for Best Music (no switch); store =
       `SharedPreferencesUpdateStore`; strings = the package's English ones with the app's
       date format (`formatTimerDateTime` / `formatTimerDate`); log = `LogService`
-      (`update` source, debug events dropped).
-    - `AppUpdates.start(context)` after the first frame with the navigator's context:
-      BestToDo only once the intro / mode picker / startup chooser / web data chooser are
-      gone (`_startUpdatesWhenFree`, so Android's dialog never opens over them), Best Music
-      at once. Turning "Automatically update" on calls `AppUpdates.autoCheckChanged()`, which
-      starts the checks now (the package reads the switch at `start`); off, the next poll does
-      nothing.
-    - BestToDo's installer is `BackupFirstPlatform`: `PreUpdateBackup.ensure()` (the
-      snapshot of every data file, §4.2f) right before the plugin's `installApk`.
+      (`update` source, debug events dropped). Everything else stays at the package
+      default (`checkOnResume`, `requireApk`, non-strict tags, `rateLimitPause` 30 min,
+      User-Agent `BestToDo-update-check` / `BestMusic-update-check`); the controller is
+      built by `AppUpdates.controllerFor` (tests use it too, through `fakeController`).
+    - `AppUpdates.start(context)` after the first frame with the navigator's context, in
+      both apps at once (`_startUpdates` in `main.dart`). BestToDo holds back Android's
+      install dialog while the intro / mode picker / startup chooser / web data chooser is
+      open: `AppUpdates.promptAllowed` (a `ValueNotifier<bool>`, the package's
+      `promptAllowed`) is false then, and an APK that completed meanwhile is offered the
+      moment it turns true. Best Music has no gate. Turning "Automatically update" on or off
+      calls the controller's `autoCheckChanged()` (the package's: on, polling starts and a
+      due check runs now; off, polling stops).
+    - BestToDo's `beforeInstall` (the package hook) is `PreUpdateBackup.ensure()` (the
+      snapshot of every data file, §4.2f), right before the plugin's `installApk`; a
+      failure is logged and the install goes on.
     - **Behaviour (the package's):** checks on the first frame when the last check is 15+
-      minutes old, every 15 minutes while in the foreground, on pull-down in the Changelog
-      (`refresh`) and from "Check for updates" (`checkNow`). A newer build downloads
+      minutes old, every 15 minutes while in the foreground, **when the app comes back to
+      the foreground** and the last check is 15+ minutes old, when the switch is turned on,
+      on pull-down in the Changelog (`refresh`) and from "Check for updates" (`checkNow`).
+      Only releases of the app's tag prefix **with an APK asset** count (a release whose APK
+      is still uploading is never offered); equal build numbers: main before staging before
+      dev. Requests carry the User-Agent `<AppName>-update-check`. A newer build downloads
       **silently** with dart:io into `<cache>/updates/` (`.part`, renamed when complete,
       continued with a Range request after an interruption, reused after a restart): no
       dialog, sheet, notification or progress popup; a tap that starts one shows one
@@ -5116,8 +5129,11 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
       after a tap. Without "install unknown apps" its switch opens with a SnackBar and the
       install starts when the app is back. Cancelled: a slim `UpdateBanner` ("Update ready ·
       0.2.107 (3600000)" with Install) until installed; a failed download: "… couldn't be
-      downloaded" with Try again (silent again). A 403/429 (rate limit) is just a failed
-      check, retried at the next poll.
+      downloaded" with Try again (silent again). GitHub's rate limit (429, a 403 with
+      `x-ratelimit-remaining: 0` / `retry-after`, or any 403 — the app sends no token):
+      status "GitHub is limiting update checks right now — try again later.", and the
+      automatic checks pause until the reset GitHub names (else 30 minutes), also across a
+      restart (`state.updates.pausedUntil`); taps still check.
     - **Where it shows:** `UpdateBanner` below every screen (BestToDo: `MaterialApp.builder`
       under the page; Best Music: above the mini player). The Changelog (both apps) starts
       with the package's `UpdateStatusCard` (`Key('changelog-update-status')`: "Current
@@ -5136,8 +5152,9 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
       + the tile; Best Music: the tile). No controller (widget tests) = none of this UI.
     - **Stored state:** the package's keys `state.updates.lastCheck`,
       `state.updates.downloaded`, `state.updates.installedBuild`,
-      `state.updates.installedAt`. `AppUpdates.migrateLegacyState` moves the old records
-      once: `update_last_checked` → last check, `update_last_download` → downloaded,
+      `state.updates.installedAt`, `state.updates.pausedUntil`.
+      `AppUpdates.migrateLegacyState` (the package's `migrateLegacyUpdateState` with the
+      app's own `read`, since 0.2.108) moves the old records once: `update_last_checked` → last check, `update_last_download` → downloaded,
       `install_info_first_seen` (only for the running build) → installed; it drops the rest
       (`update_pending_download`, `update_downloaded_version`, `update_downloaded_apk`) and
       deletes the old DownloadManager folder (`<external files>/updates`). So an update that
@@ -5148,8 +5165,12 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
       gone from both apps' Settings; the MP3 downloader's own folder settings are
       unrelated), `ApkInstaller.kt` + `InstallReceiver`, the `besttodo/update` channel, the
       update `FileProvider` + `file_provider_paths.xml`, `DOWNLOAD_WITHOUT_NOTIFICATION`.
-    - **Tests:** `test/update/app_updates_test.dart` (config per app, tag filtering over all
-      channels, the switch, the stored-state migration, the backup before install),
+    - **Tests:** the behaviour itself is tested in the package
+      (`packages/mfficiency_updates/test`); `test/update/app_updates_test.dart` checks the
+      app's config per app (and that the package defaults are kept), tag filtering over all
+      channels, the switch, the rate-limit status, the stored-state migration, the backup
+      before install and the prompt held back while `promptAllowed` is false
+      (`fakeController` skips the real backup unless `backup: true`),
       `update_flow_test.dart` (silent download, no app dialog, installer when complete and
       in the foreground / on resume, cancel → banner, failed → Try again, a tap → one
       SnackBar, the Changelog card lines, pull-down, older version silently), the About

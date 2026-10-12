@@ -8,6 +8,8 @@ class UpdateStrings {
     this.needsToken = 'Add a GitHub token to check for updates',
     this.badToken =
         'GitHub refused the token. Check that it can read the repository.',
+    this.rateLimited =
+        'GitHub is limiting update checks right now — try again later.',
     this.available = _available,
     this.checking = 'Checking…',
     this.checkNow = 'Check for updates',
@@ -51,6 +53,9 @@ class UpdateStrings {
   final String failed;
   final String needsToken;
   final String badToken;
+
+  /// GitHub's rate limit hit: automatic checks pause until it resets.
+  final String rateLimited;
 
   /// "Version 1.2.0 (5) available".
   final String Function(String version) available;

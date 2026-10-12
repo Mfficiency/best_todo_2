@@ -8,11 +8,13 @@ abstract class ApkDownloader {
 
   /// The default, on dart:io (on the web: nothing to download).
   /// [directory]: where the APKs go (default: `<cache>/updates`).
+  /// [userAgent]: the `User-Agent` header.
   factory ApkDownloader.io({
     Future<String> Function()? directory,
     Duration connectionTimeout,
     Duration responseTimeout,
     Duration idleTimeout,
+    String? userAgent,
   }) = impl.IoApkDownloader;
 
   /// Downloads [url] as [fileName], replacing other builds' files. Returns

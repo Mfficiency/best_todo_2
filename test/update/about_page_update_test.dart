@@ -73,15 +73,17 @@ void main() {
     expect(find.text('Could not check for updates'), findsOneWidget);
   });
 
-  testWidgets('a release without an APK is not downloaded', (tester) async {
+  testWidgets(
+      'a release without an APK (still uploading) is never offered: up to '
+      'date', (tester) async {
     github.releases = [release('v0.2.107-2000', apk: false)];
     await fakeController(github: github, downloader: downloader).init();
     await pumpAboutPage(tester);
     await tapCheck(tester);
+    expect(find.text('Up to date'), findsOneWidget);
     expect(downloader.urls, isEmpty);
     expect(installer.installs, isEmpty);
-    // Opens the release page in the browser instead (the plugin's openUrl).
-    expect(installer.calls.map((c) => c.method), contains('openUrl'));
+    expect(installer.calls.map((c) => c.method), isNot(contains('openUrl')));
   });
 
   testWidgets('without a controller (no updates here) the section is empty',

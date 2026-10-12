@@ -250,11 +250,10 @@ void main() {
     });
   });
 
-  test('a public repo answering 403 (rate limit) failed, not badToken',
-      () async {
+  test('a public repo answering 403 is the rate limit, not badToken', () async {
     http.status = 403;
     final c = await controller();
-    expect((await c.check()).status, UpdateStatus.failed);
+    expect((await c.check()).status, UpdateStatus.rateLimited);
   });
 
   test('not configured', () async {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'config.dart';
@@ -33,14 +34,19 @@ UpdateStrings _english(BuildContext context) => const UpdateStrings();
 /// every app:
 ///
 /// * checks on the first frame when due, every [UpdateConfig.pollInterval]
-///   while in the foreground, on pull-down in the changelog and from "Check
-///   for updates";
+///   while in the foreground, when the app comes back to the foreground and
+///   the last check is older than [UpdateConfig.dueAfter], when the "check
+///   automatically" switch is turned on ([autoCheckChanged]), on pull-down
+///   in the changelog and from "Check for updates";
+/// * GitHub's rate limit pauses the automatic checks until it resets
+///   ([pausedUntil]); taps still check;
 /// * a newer build (highest build number of any channel) downloads
 ///   silently into the cache (`.part`, renamed when complete, continued
 ///   after an interruption, reused after a restart);
 /// * when complete, Android's own "Update this app?" opens (a
 ///   PackageInstaller session; the only confirm), by itself once per build
-///   and start and only in the foreground, always after a tap. Cancelled:
+///   and start, only in the foreground and only while [promptAllowed] lets
+///   it, always after a tap; [beforeInstall] runs first. Cancelled:
 ///   the [UpdateBanner] offers Install until it is installed;
 /// * records when the running build was downloaded and installed.
 ///
@@ -57,16 +63,22 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     void Function(BuildContext context, String text)? showMessage,
     UpdateLogger? log,
     DateTime Function()? clock,
-  })  : http = http ?? UpdateHttp.io(),
-        downloader = downloader ?? ApkDownloader.io(),
+    this.promptAllowed,
+    Future<void> Function(UpdateResult update, String apkPath)? beforeInstall,
+  })  : http = http ?? UpdateHttp.io(userAgent: config.httpUserAgent),
+        downloader =
+            downloader ?? ApkDownloader.io(userAgent: config.httpUserAgent),
         platform = platform ?? UpdatePlatform(),
         _strings = strings ?? _english,
         _show = showMessage ?? _snackBar,
         _log = log ?? _noLog,
-        _now = clock ?? DateTime.now {
+        _now = clock ?? DateTime.now,
+        _beforeInstall = beforeInstall {
     for (final n in _parts) {
       n.addListener(notifyListeners);
     }
+    config.autoCheckChanges?.addListener(autoCheckChanged);
+    promptAllowed?.addListener(_promptAllowedChanged);
   }
 
   List<Listenable> get _parts => [
@@ -85,6 +97,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   static const downloadedKey = 'state.updates.downloaded';
   static const installedBuildKey = 'state.updates.installedBuild';
   static const installedAtKey = 'state.updates.installedAt';
+  static const pausedUntilKey = 'state.updates.pausedUntil';
 
   final UpdateConfig config;
   final UpdateStore store;
@@ -95,6 +108,17 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   final void Function(BuildContext context, String text) _show;
   final UpdateLogger _log;
   final DateTime Function() _now;
+
+  /// False while the app is busy (onboarding, a picker, an unsaved
+  /// editor): Android's install dialog doesn't open by itself; when it
+  /// turns true and an APK is ready, it opens then. Taps always open it.
+  /// Null: always allowed.
+  final ValueListenable<bool>? promptAllowed;
+
+  /// Runs right before an APK goes to Android's installer (e.g. a backup
+  /// of the app's data). A throw is logged and the install goes on.
+  final Future<void> Function(UpdateResult update, String apkPath)?
+      _beforeInstall;
 
   /// The app's strings for [context].
   UpdateStrings stringsOf(BuildContext context) => _strings(context);
@@ -165,7 +189,14 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   BuildContext? _tapContext;
 
   Timer? _poll;
+  Timer? _firstCheck;
   bool _observing = false;
+
+  /// [start] ran on a device: the app is ready for automatic checks.
+  bool _started = false;
+
+  /// [UpdateConfig.autoCheck] as last seen by [autoCheckChanged].
+  bool? _autoOn;
   String? _token;
   Future<Map<String, UpdateResult>>? _versions;
 
@@ -181,10 +212,27 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? get lastCheck =>
       DateTime.tryParse(store.getString(lastCheckKey) ?? '');
 
-  ReleaseFilter get _filter => ReleaseFilter(
-        tagPrefix: config.tagPrefix,
-        includePrereleases: config.includePrereleases(),
+  /// GitHub's rate limit was hit: no automatic check before this time
+  /// (kept across restarts). Null when not paused.
+  DateTime? get pausedUntil {
+    final at = DateTime.tryParse(store.getString(pausedUntilKey) ?? '');
+    return at != null && _now().isBefore(at) ? at : null;
+  }
+
+  /// Automatic checks pause for GitHub's rate limit ([pausedUntil]).
+  bool get rateLimited => pausedUntil != null;
+
+  void _pauseUntil(DateTime? at) {
+    if (at == null && (store.getString(pausedUntilKey) ?? '').isEmpty) return;
+    unawaited(store.setString(pausedUntilKey, at?.toIso8601String() ?? ''));
+  }
+
+  ReleaseFilter _filter({bool prereleases = true}) => ReleaseFilter(
+        tagFormat: config.tagFormat,
+        includePrereleases: prereleases,
         legacyBuildLimit: config.legacyBuildLimit,
+        requireApk: config.requireApk,
+        assetPattern: config.assetPattern,
       );
 
   // ── Start ──────────────────────────────────────────────────────────────
@@ -264,11 +312,70 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       WidgetsBinding.instance.addObserver(this);
       _observing = true;
     }
-    if (!config.autoCheck() || !configured) return;
-    final last = lastCheck;
-    final due = last == null || _now().difference(last) >= config.checkInterval;
-    if (due) Future<void>.delayed(config.firstCheckDelay, check);
+    _started = true;
+    _autoOn = config.autoCheck();
+    if (!_autoOn! || !configured) return;
+    if (_isDue(config.checkInterval)) {
+      _firstCheck?.cancel();
+      _firstCheck = Timer(config.firstCheckDelay, _checkAutomatically);
+    }
     _startPolling();
+  }
+
+  bool _isDue(Duration interval) {
+    final last = lastCheck;
+    return last == null || _now().difference(last) >= interval;
+  }
+
+  /// A check nobody tapped for (start, poll, resume, switch turned on):
+  /// only on a device, with automatic checks on, a source, not while one
+  /// runs and not while GitHub's rate limit pauses them.
+  Future<void> _checkAutomatically() async {
+    if (!platform.isSupported ||
+        !config.autoCheck() ||
+        !configured ||
+        checking.value) {
+      return;
+    }
+    if (rateLimited) {
+      _log(UpdateLogLevel.debug, 'update.paused', {
+        'until': pausedUntil?.toIso8601String(),
+      });
+      return;
+    }
+    await check();
+  }
+
+  /// The "check automatically" switch ([UpdateConfig.autoCheck]) changed
+  /// (called by [UpdateConfig.autoCheckChanges], or by the app). On:
+  /// polling starts, a check runs when due and an update found meanwhile
+  /// downloads silently. Off: polling stops. Before [start]: nothing to do
+  /// yet, [start] reads the switch. Nothing happens unless the switch
+  /// really changed, so a [Listenable] that also notifies for other
+  /// settings is fine.
+  void autoCheckChanged() {
+    final on = config.autoCheck();
+    if (on == _autoOn) return;
+    _autoOn = on;
+    notifyListeners(); // the banners depend on the switch
+    if (!_started) return;
+    if (!on) {
+      _firstCheck?.cancel();
+      _stopPolling();
+      return;
+    }
+    if (!configured) return;
+    _startPolling();
+    if (_isDue(config.dueAfter)) {
+      unawaited(_checkAutomatically());
+    } else if (result.value case final r?) {
+      unawaited(_downloadInBackground(r));
+    }
+  }
+
+  void _promptAllowedChanged() {
+    if (promptAllowed?.value == false) return;
+    if (_readyUpdate case final done?) unawaited(_offerInstall(done));
   }
 
   Future<void> _loadInstallTime() async {
@@ -282,10 +389,15 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Back in the app: after the "install unknown apps" switch the install
-  /// starts; an APK completed while away opens Android's dialog now.
+  /// starts; an APK completed while away opens Android's dialog now; a
+  /// check runs when the last one is older than [UpdateConfig.dueAfter]
+  /// ([UpdateConfig.checkOnResume]).
   @visibleForTesting
   void handleResume() {
     _resumed.value++;
+    if (_started && config.checkOnResume && _isDue(config.dueAfter)) {
+      unawaited(_checkAutomatically());
+    }
     final r = _installOnResume;
     _installOnResume = null;
     final path = r == null ? null : _readyApk(r);
@@ -311,8 +423,8 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   /// Polls while the app is in the foreground only (no battery or data use
   /// in the background).
   void _pollTick() {
-    if (!config.autoCheck() || checking.value || !_inForeground) return;
-    unawaited(check());
+    if (!_inForeground) return;
+    unawaited(_checkAutomatically());
   }
 
   bool get _inForeground {
@@ -359,6 +471,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       final r =
           isNewer(latest) ? latest : const UpdateResult(UpdateStatus.upToDate);
       await store.setString(lastCheckKey, _now().toIso8601String());
+      _pauseUntil(null);
       _log(
         r.status == UpdateStatus.available
             ? UpdateLogLevel.info
@@ -375,6 +488,19 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       final status = e is UpdateHttpException ? e.status : null;
       final github = config.provider == UpdateProvider.github;
+      if (github &&
+          e is UpdateHttpException &&
+          e.isRateLimit(anonymous: _token == null)) {
+        // GitHub's rate limit: no automatic check until it resets.
+        final until =
+            e.rateLimitReset(_now()) ?? _now().add(config.rateLimitPause);
+        _pauseUntil(until);
+        _log(UpdateLogLevel.warning, 'update.rate_limited', {
+          'status': status,
+          'until': until.toIso8601String(),
+        });
+        return result.value = const UpdateResult(UpdateStatus.rateLimited);
+      }
       if (github &&
           (config.privateRepo || _token != null) &&
           (status == 401 || status == 403 || status == 404)) {
@@ -412,13 +538,13 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       headers: _githubHeaders,
     );
     // Every channel (main, staging, dev): the highest build wins.
-    final releases = _filter.sort(
+    final releases = _filter(prereleases: config.includePrereleases()).sort(
       (json as List).whereType<Map<String, Object?>>(),
     );
     if (releases.isEmpty) return const UpdateResult(UpdateStatus.upToDate);
     return releaseResult(
       releases.first,
-      tagPrefix: config.tagPrefix,
+      tagFormat: config.tagFormat,
       assetPattern: config.assetPattern,
       privateRepo: config.privateRepo,
     );
@@ -448,7 +574,12 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       UpdateStatus.upToDate => s.upToDate,
       UpdateStatus.needsToken => s.needsToken,
       UpdateStatus.badToken => s.badToken,
-      null => configured ? s.upToDate : s.notConfigured,
+      UpdateStatus.rateLimited => s.rateLimited,
+      null => !configured
+          ? s.notConfigured
+          : rateLimited
+              ? s.rateLimited
+              : s.upToDate,
     };
   }
 
@@ -601,7 +732,14 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     if (path == null) return;
     if (!user) {
       if (!_inForeground) return; // handleResume
-      if (_wantInstall != r.key && _asked.contains(r.key)) return;
+      // Install was tapped before the APK was complete: open it now.
+      final tapped = _wantInstall == r.key;
+      // Once per build and start; while the app is busy,
+      // _promptAllowedChanged opens it later.
+      if (!tapped &&
+          (_asked.contains(r.key) || promptAllowed?.value == false)) {
+        return;
+      }
     }
     _asked.add(r.key);
     _wantInstall = null;
@@ -625,6 +763,16 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   /// permission, its switch opens instead and the install starts when the
   /// user comes back.
   Future<String> _openInstaller(UpdateResult r, String path) async {
+    final hook = _beforeInstall;
+    if (hook != null) {
+      try {
+        await hook(r, path);
+      } on Object catch (e) {
+        _log(UpdateLogLevel.warning, 'update.before_install_failed', {
+          'error': e.runtimeType.toString(),
+        });
+      }
+    }
     final outcome = await platform.installApk(path);
     _log(UpdateLogLevel.info, 'update.install', {'outcome': outcome});
     if (outcome == 'needs-permission') _installOnResume = r;
@@ -644,7 +792,9 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       _log(UpdateLogLevel.info, 'update.open_download', {
         'version': r.version,
       });
-      final url = await _downloadUrl(r);
+      // Off a phone a private asset's signed link, else its github.com
+      // link (a browser that can't use the API, e.g. on the web).
+      final url = await _downloadUrl(r) ?? r.browserUrl;
       if (!context.mounted) return;
       if (url == null) {
         _show(context, s.downloadLinkFailed);
@@ -724,10 +874,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     );
     return releasesByVersion(
       (json as List).whereType<Map<String, Object?>>(),
-      ReleaseFilter(
-        tagPrefix: config.tagPrefix,
-        legacyBuildLimit: config.legacyBuildLimit,
-      ),
+      _filter(),
       assetPattern: config.assetPattern,
       privateRepo: config.privateRepo,
     );
@@ -743,6 +890,9 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _stopPolling();
+    _firstCheck?.cancel();
+    config.autoCheckChanges?.removeListener(autoCheckChanged);
+    promptAllowed?.removeListener(_promptAllowedChanged);
     if (_observing) WidgetsBinding.instance.removeObserver(this);
     // The notifiers stay usable: a download still running finishes quietly.
     for (final n in _parts) {

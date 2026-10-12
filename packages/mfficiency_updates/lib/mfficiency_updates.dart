@@ -6,6 +6,7 @@ export 'src/config.dart';
 export 'src/controller.dart';
 export 'src/downloader.dart';
 export 'src/http.dart';
+export 'src/legacy.dart';
 export 'src/platform.dart';
 export 'src/release.dart';
 export 'src/store.dart';
