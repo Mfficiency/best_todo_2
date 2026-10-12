@@ -251,8 +251,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final List<SharedPayload> _pendingShares = [];
   bool _shareScreenOpen = false;
 
-  /// The automatic update: silent download, then "Update ready" (see
-  /// [AutoUpdateFlow]). Asks only once the intro/pickers are out of the way.
+  /// The automatic update: silent download, then Android's install confirm
+  /// (see [AutoUpdateFlow]) — only once the intro/pickers are out of the way.
   late final AutoUpdateFlow _updates = AutoUpdateFlow(
     navigatorKey: appNavigatorKey,
     canAsk: () => !(_showIntro || _showModePicker || _showStartupChoice),
@@ -297,8 +297,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
       // Settings → Updates → "Automatically update" (on by default): poll
       // GitHub for a newer build of this channel every 15 minutes while the
-      // app is open; a newer one downloads silently and the app asks to
-      // install it once it is complete. Platform.isAndroid is false under
+      // app is open; a newer one downloads silently and Android's install
+      // confirm opens once it is complete. Platform.isAndroid is false under
       // `flutter test`'s host runner, so this never starts a real timer in
       // the test suite.
       AutoUpdateFlow.current = _updates;
@@ -329,7 +329,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // Re-check when the app comes back to the foreground, unless the last
     // check was under 15 minutes ago (GitHub's anonymous rate limit).
     if (kIsWeb || !Platform.isAndroid) return;
-    // A download that finished while the app was away: ask now.
+    // A download that finished while the app was away: install now.
     _updates.onLifecycleChanged(state);
     if (state == AppLifecycleState.resumed && Config.autoUpdateCheckEnabled) {
       unawaited(AutoUpdateChecker.instance.checkIfDue(_updates.onUpdateFound));

@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.26] - 2026-10-12
+- Updates no longer take over the screen: every download (automatic, pull-down on the Changelog, Install, About's Download & install and Go back to) runs quietly in the background — no progress window, no notification. When it is complete you only see Android's own small "Update this app?" confirm (no extra "Update ready" question first). If you cancel it, a slim "Update ready" bar with Install stays until you install. While it downloads, the Changelog card and the About page just say "Downloading … 42%".
+
 ## [0.3.25] - 2026-10-12
 - Settings → Backup: back up your playlists, library, Subscriptions (channels, watch progress, feed settings), download history, Wishlist and settings to one file, and restore it later — on a new phone or after a reinstall. Turn on Automatic backup (daily or weekly) to keep a fresh copy in a folder of your choice, just like BestToDo. Restoring keeps a copy of your current data first, and a BestToDo backup is recognised and refused instead of being half-applied.
 

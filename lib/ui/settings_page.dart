@@ -2360,7 +2360,7 @@ class _SettingsPageState extends State<SettingsPage> {
           subtitle: const Text(
               'Checks for a newer version every 15 minutes while the app is open '
               'and downloads it quietly in the background; once it is complete '
-              'the app asks whether to install it. Pulling down on the '
+              'Android asks once whether to install it. Pulling down on the '
               'Changelog and the About page\'s check always work regardless '
               'of this setting.'),
           value: _autoUpdateCheckEnabled,
