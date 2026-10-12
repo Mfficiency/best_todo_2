@@ -1,7 +1,7 @@
 // Uploads a release APK to a GitHub release of Mfficiency/best_todo_2, which
 // is where both apps' in-app updaters look for new versions
-// (lib/services/update_service.dart reads the releases list, filtered by app
-// and channel).
+// (the mfficiency_updates package, set up in lib/services/app_updates.dart,
+// reads the releases list, filtered by the app's tag prefix, every channel).
 //
 // Normally run by `tool\build.ps1 release` (the laptop builder, one call per
 // app); can also be run by hand after a release build.

@@ -2134,15 +2134,15 @@ without any status text, matching what the Kotlin provider actually draws.
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the main fix for OEM deep-sleep dropping alarms),
 `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (0.2.61 — the Music Player's
 background playback service, required alongside `FOREGROUND_SERVICE` when targeting SDK 34),
-`VIBRATE`, `REQUEST_INSTALL_PACKAGES` (in-app APK updates from the
-About page; the user still confirms every install) and `INTERNET` (0.1.139 — debug builds
+`VIBRATE` and `INTERNET` (0.1.139 — debug builds
 get it implicitly, so "Check for updates" worked in development and failed on every release
 APK until it was declared in the main manifest). Music folder access reuses the existing
-`MANAGE_EXTERNAL_STORAGE` grant (§10.6d) rather than adding `READ_MEDIA_AUDIO`. An
-`androidx.core.content.FileProvider`
-(authority `${applicationId}.fileprovider`, paths `@xml/file_provider_paths`: cache + files
-+ external-files dirs) shares the downloaded update APK with the system installer as a
-`content://` URI.
+`MANAGE_EXTERNAL_STORAGE` grant (§10.6d) rather than adding `READ_MEDIA_AUDIO`. In-app
+updates need nothing in the app's manifest since 0.2.107 / Best Music 0.3.27: the
+`mfficiency_updates` plugin's own manifest brings `REQUEST_INSTALL_PACKAGES` and its
+install-session receiver (merged at build time); the app's `FileProvider`
+(`${applicationId}.fileprovider`, `@xml/file_provider_paths`), the `InstallReceiver` and
+`DOWNLOAD_WITHOUT_NOTIFICATION` are gone (§11 "Shared updates package").
 
 **Receivers/services:** android_alarm_manager_plus `AlarmService` +
 **`AlarmBroadcastReceiver`** (its absence was the original "SMS never sent" root cause —
@@ -2183,22 +2183,14 @@ the `FlutterEngine` it manages; the health plugin's Health Connect flow (which n
 `FragmentActivity`) is unaffected, since `AudioServiceFragmentActivity` is itself one. It
 sets show-when-locked/turn-screen-on when launched by an alarm's
 full-screen intent and hosts the `besttodo/alarm_ring` MethodChannel
-(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI" — plus
-the `besttodo/update` channel: `installApk(path)` hands a downloaded APK to the package
-installer via the FileProvider (ACTION_VIEW, `application/vnd.android.package-archive`);
-when the one-time "install unknown apps" toggle is missing (O+,
-`canRequestPackageInstalls()` false) it opens that settings screen and returns
-`"needs-permission"` so the Dart side tells the user to grant it and retry. The same channel
-also hosts `startBackgroundDownload`/`queryDownload`/`cancelDownload` (0.2.x — see "Background
-downloads via DownloadManager" below), which hand the APK transfer to Android's
-`DownloadManager` instead of a Dart-side socket: it is enqueued into the app's
-`getExternalFilesDir(null)/updates/` (DownloadManager runs as a separate system process and
-cannot write into the app's *internal* `filesDir`, only its external one), with
-a notification titled `"<appDisplayName> update <x.y.z+build>"` (e.g. "Best Music update
-0.3.1+397", passed as the channel's `title` arg so the two apps' downloads are distinguishable),
-`VISIBILITY_VISIBLE_NOTIFY_COMPLETED` and both `NETWORK_WIFI`/`NETWORK_MOBILE` allowed so it
-keeps going across a Wi-Fi/mobile handover; `queryDownload` reads the `DownloadManager.Query`
-cursor back into a status/progress map.
+(`canUseFullScreenIntent`, `clearLockScreenFlags`) — see §5.2 "Full-screen ring UI". It has
+**no update code** since 0.2.107 / Best Music 0.3.27: the old `besttodo/update` channel
+(`installApk`, `lastUpdateTime`, the DownloadManager methods `startBackgroundDownload` /
+`queryDownload` / `cancelDownload` / `updateDownloadsDir`) and `ApkInstaller.kt` were
+replaced by the `mfficiency_updates` plugin (channel `mfficiency_updates`: `installApk`
+through a PackageInstaller session, `canInstallApks`, `openInstallSettings`, `installTime`,
+`openUrl`), which Flutter's `GeneratedPluginRegistrant` registers by itself (§11 "Shared
+updates package").
 
 **Single instance** (BestToDo 0.2.89, Best Music 0.2.90): only one copy of either
 app ever runs. Android: `MainActivity` is `launchMode="singleTask"` with the default task affinity
@@ -3022,8 +3014,7 @@ documents dir, so the planner has something to show offline before the next refr
 `GoogleCalendarService.eventsInRange` expands `RRULE` on demand for whatever date range is
 asked for — `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `COUNT`, `UNTIL`, and (`WEEKLY`
 only) `BYDAY`; `EXDATE` drops one occurrence (a date-only `EXDATE` excludes that whole day).
-Network access goes through `HttpClient` (same pattern as `UpdateService._fetch`, with a
-`fetchOverride` test hook). The plan itself stays date-less, so the Weekly Hours Planner page
+Network access goes through `HttpClient` (with a `fetchOverride` test hook). The plan itself stays date-less, so the Weekly Hours Planner page
 resolves the overlay against `_viewedWeekStart` (defaults to the current calendar week, moved
 by the chevrons above): `_viewedWeekStart` plus the column index gives each weekday column's
 real date, and `eventsInRange` is called per day (`_gcalEventsForDay`, timed events only —
@@ -3738,7 +3729,8 @@ vX") and at the top of the About page (96 px). BestToDo keeps its own icons; eve
 stays the single shared manifest, unused permissions in the Best Music APK included — a
 deliberate simplification since it is sideloaded, not Play-Store-distributed.
 
-**In-app updates**: `UpdateService` gained per-app instance config (`appDisplayName`,
+**In-app updates** (history; since 0.2.107 each app has its own `UpdateController` of the
+shared updates package with its own tag prefix, `AppUpdates` — §11): `UpdateService` gained per-app instance config (`appDisplayName`,
 `apkPrefix`, via `UpdateService.forApp(...)`; `UpdateService.instance` stays BestToDo's own
 `best_todo`/`BestToDo` default) so each app's folder/release lookup only ever considers its own
 prefix — a bare version-number regex over the whole `github_releases/` listing would otherwise
@@ -3850,7 +3842,8 @@ or an existing rule playlist's edit icon (`MusicPlaylistService.createRulePlayli
 `updateRulePlaylist`). Rule playlists are ordinary (non-system) playlists — deletable like any
 hand-built one.
 
-**Best Music's own background update poll**: `AutoUpdateChecker.start`/`checkOnce` gained an
+**Best Music's own background update poll** (history; the shared updates package's
+polling since Best Music 0.3.27, §11): `AutoUpdateChecker.start`/`checkOnce` gained an
 optional `service` parameter (defaults to `UpdateService.instance`, so BestToDo's own wiring in
 `main.dart` is unchanged) so the same checker class can drive a second app's update instance.
 `main_music.dart`'s `BestMusicApp` became a `StatefulWidget` that starts it (Android only,
@@ -4073,7 +4066,8 @@ build number rather than resetting it, even though its `x.y.z` name can change f
 alongside `CHANGELOG.md` (`pubspec.yaml`'s `assets:`). `ChangelogPage` (§10.7) gained `assetPath`
 (default `CHANGELOG.md`) and `showStoryPoster` (default `true`) constructor params;
 `MusicPlayerPage`'s drawer entry passes `assetPath: 'CHANGELOG_MUSIC.md', showStoryPoster:
-false, updateService: MusicAboutPage.updateService` (the release cards start at the first
+false` (its status card, pull-down and version taps are about the running app's
+`AppUpdates.controller`, i.e. Best Music's own builds; the release cards start at the first
 `## ` release, so the file's title + developer intro never show; the `hidePreamble` flag and
 `stripChangelogPreamble` that did this for the old markdown view went away in 0.2.105) — the story-poster view's `changelogMilestones` are BestToDo's own curated history and
 would be wrong to show under Best Music.
@@ -5071,19 +5065,101 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
     publishes as before.
     Without `PUBLISH=1` it only builds (APKs in `github_releases/<channel>/`, not committed). GitHub CI (`build-apk.yml`) is a build check only now: debug-signed APKs as
     workflow artifacts, no releases, no commit-backs.
-  - **App side:** `UpdateService` reads `releases?per_page=30` (anonymous) and keeps its own
-    app's tags (`v` vs `music-v`, `ReleaseTag.parse`) of **all** channels (main, staging and
-    dev; prereleases count, drafts never), `appReleases` sorted by build number
-    (`compareBuilds`: build number, then x.y.z). `latest` is the highest build number, offered
-    when it is above the installed versionCode (`isNewerBuild`, the same rule Android applies);
-    `previous` (the "Go back to" rollback) is the highest one below the running build, whatever
-    its channel. So the phone always ends up on the newest built commit of any branch. The
-    updater never reads `github_releases/`. `AutoUpdateChecker` polls every 15 minutes, and on resume
-    only when the last check is 15+ minutes old (`checkIfDue`); a 403/429 makes the service
-    skip requests until GitHub's reset time (`UpdateRateLimitedException`).
+  - **App side (since 0.2.107 / Best Music 0.3.27): the shared updates package** — see
+    "Shared updates package" right below. Its `ReleaseFilter` reads `releases?per_page=30`
+    (anonymous: the repo is public, no token) and keeps the app's own tags (`v` vs
+    `music-v`, the tag prefix) of **all** channels (main, staging and dev; prereleases
+    count, drafts never), highest build number first; the highest one is offered when it is
+    above the installed versionCode (the same rule Android applies), whatever its x.y.z or
+    channel. So the phone always ends up on the newest built commit of any branch. The
+    updater never reads `github_releases/`.
+  - **Shared updates package (0.2.107 / Best Music 0.3.27; the same code as Hally Remote,
+    BestCollage, Vesta Immo and the template):** `packages/mfficiency_updates` is a Flutter
+    plugin (Dart controller + widgets, Android installer) **vendored** from
+    `Mfficiency/flutter_app_template` (`packages/mfficiency_updates`, private, so no git
+    dependency): the template's `tool/sync_updates_package.sh <this repo>` (`.ps1` on
+    Windows) replaces the copy and writes its `ORIGIN` (template commit + sha256 of every
+    file) and `test/updates_package_vendored_test.dart`, which fails when a vendored file is
+    edited by hand. **Never edit the copy**: change the template, run its tests, sync.
+    `pubspec.yaml` has `mfficiency_updates: { path: packages/mfficiency_updates }`; its
+    README.md is the reference. The app only adapts it in `lib/services/app_updates.dart`
+    (`AppUpdates`):
+    - `AppUpdates.create(UpdatesApp.todo | .music)` runs in `main()` / `main_music.dart`'s
+      `main()` before `runApp` (reads `PackageInfo` and the prefs, no network) and sets
+      `AppUpdates.controller`, one `UpdateController` per app: `UpdateConfig` with
+      `appName` "BestToDo" / "Best Music" (APK file `<name>-<x.y.z>-<build>.apk`), the
+      running version and versionCode, `channel` (`Config.channel`, shown as "· dev"), repo
+      `Mfficiency/best_todo_2`, `tagPrefix` `v` / `music-v`, `checkInterval` and
+      `pollInterval` 15 minutes (GitHub's anonymous limit is 60 requests/hour), `autoCheck`
+      = BestToDo's "Automatically update" switch (`Config.autoUpdateCheckEnabled`, same
+      stored key and value as before) / always on for Best Music (no switch); store =
+      `SharedPreferencesUpdateStore`; strings = the package's English ones with the app's
+      date format (`formatTimerDateTime` / `formatTimerDate`); log = `LogService`
+      (`update` source, debug events dropped).
+    - `AppUpdates.start(context)` after the first frame with the navigator's context:
+      BestToDo only once the intro / mode picker / startup chooser / web data chooser are
+      gone (`_startUpdatesWhenFree`, so Android's dialog never opens over them), Best Music
+      at once. Turning "Automatically update" on calls `AppUpdates.autoCheckChanged()`, which
+      starts the checks now (the package reads the switch at `start`); off, the next poll does
+      nothing.
+    - BestToDo's installer is `BackupFirstPlatform`: `PreUpdateBackup.ensure()` (the
+      snapshot of every data file, §4.2f) right before the plugin's `installApk`.
+    - **Behaviour (the package's):** checks on the first frame when the last check is 15+
+      minutes old, every 15 minutes while in the foreground, on pull-down in the Changelog
+      (`refresh`) and from "Check for updates" (`checkNow`). A newer build downloads
+      **silently** with dart:io into `<cache>/updates/` (`.part`, renamed when complete,
+      continued with a Range request after an interruption, reused after a restart): no
+      dialog, sheet, notification or progress popup; a tap that starts one shows one
+      SnackBar, progress is passive text (the Changelog card, the Check for updates tile).
+      When complete, Android's own "Update this app?" (a PackageInstaller session) is the
+      only confirm — by itself only in the foreground and once per build and start, always
+      after a tap. Without "install unknown apps" its switch opens with a SnackBar and the
+      install starts when the app is back. Cancelled: a slim `UpdateBanner` ("Update ready ·
+      0.2.107 (3600000)" with Install) until installed; a failed download: "… couldn't be
+      downloaded" with Try again (silent again). A 403/429 (rate limit) is just a failed
+      check, retried at the next poll.
+    - **Where it shows:** `UpdateBanner` below every screen (BestToDo: `MaterialApp.builder`
+      under the page; Best Music: above the mini player). The Changelog (both apps) starts
+      with the package's `UpdateStatusCard` (`Key('changelog-update-status')`: "Current
+      version 0.2.107 (415) · Up to date", "Downloaded … · Installed …" for the running build
+      — installed = Android's `lastUpdateTime` through the plugin's `installTime`, else the
+      build's first start —, a newer build downloading or "downloaded … · ready to install"
+      with Install, "Last checked … · Pull down to check for updates"); pulling down runs
+      `refresh()`; tapping a release's version (`changelog-version-<x.y.z>`) opens the
+      package's version sheet (`onVersionTap`): the running one "You are using this
+      version", another its highest build's download — an older one with the downgrade note
+      (rollback; Android only installs it after an uninstall). About (both apps,
+      `UpdateSection`): the package's `UpdateCheckTile` ("Check for updates", subtitle =
+      current version or download progress) and "Go back to an older version" (the version
+      sheet for the highest x.y.z below the running one, from the releases list; a SnackBar
+      when there is none). Settings → Updates (BestToDo: the "Automatically update" switch
+      + the tile; Best Music: the tile). No controller (widget tests) = none of this UI.
+    - **Stored state:** the package's keys `state.updates.lastCheck`,
+      `state.updates.downloaded`, `state.updates.installedBuild`,
+      `state.updates.installedAt`. `AppUpdates.migrateLegacyState` moves the old records
+      once: `update_last_checked` → last check, `update_last_download` → downloaded,
+      `install_info_first_seen` (only for the running build) → installed; it drops the rest
+      (`update_pending_download`, `update_downloaded_version`, `update_downloaded_apk`) and
+      deletes the old DownloadManager folder (`<external files>/updates`). So an update that
+      was downloaded but not installed yet downloads once more (silently).
+    - **Removed:** `UpdateService`, `AutoUpdateChecker`, `InstallInfoService`,
+      `AutoUpdateFlow` (`lib/ui/auto_update_dialog.dart`), `UpdateDownloadsFolderTile`
+      (Settings' "Update downloads folder": updates now go to the app cache, so the row is
+      gone from both apps' Settings; the MP3 downloader's own folder settings are
+      unrelated), `ApkInstaller.kt` + `InstallReceiver`, the `besttodo/update` channel, the
+      update `FileProvider` + `file_provider_paths.xml`, `DOWNLOAD_WITHOUT_NOTIFICATION`.
+    - **Tests:** `test/update/app_updates_test.dart` (config per app, tag filtering over all
+      channels, the switch, the stored-state migration, the backup before install),
+      `update_flow_test.dart` (silent download, no app dialog, installer when complete and
+      in the foreground / on resume, cancel → banner, failed → Try again, a tap → one
+      SnackBar, the Changelog card lines, pull-down, older version silently), the About
+      and Settings tests; fakes in `test/update/update_fakes.dart` (`UpdateHttp.from`, an
+      in-memory `ApkDownloader`, `MemoryUpdateStore`, the mocked `mfficiency_updates`
+      channel).
   - **Silent download, then Android's confirm (0.2.103 / Best Music 0.3.21; every download
-    silent and no app dialog since 0.2.106 / Best Music 0.3.25; same flow as BestCollage and
-    Hally Remote):** `AutoUpdateFlow` (`lib/ui/auto_update_dialog.dart`, one per app, wired in
+    silent and no app dialog since 0.2.106 / Best Music 0.3.25 — history: the same
+    behaviour has been the shared package's since 0.2.107, the classes named here are
+    gone):** `AutoUpdateFlow` (`lib/ui/auto_update_dialog.dart`, one per app, wired in
     `main.dart` / `main_music.dart`) downloads **every** update silently
     (`DownloadManager` with `silent: true` — now the default of `startBackgroundDownload` /
     `downloadInBackground` → `VISIBILITY_HIDDEN`, permission `DOWNLOAD_WITHOUT_NOTIFICATION`):
@@ -5124,7 +5200,7 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   checked once per launch and, on finding a newer build, opened a confirm
   dialog that pushed `AboutPage` with its check pre-triggered — the user still
   had to tap "Download & install" there themselves.
-- **Background auto-update prompt (0.2.1):** `Config.autoUpdateCheckEnabled`
+- **Background auto-update prompt (0.2.1):** *(history — replaced by the shared updates package in 0.2.107 / Best Music 0.3.27, see above)* `Config.autoUpdateCheckEnabled`
   (Settings → Updates, **on by default**) now gates `AutoUpdateChecker`
   (`lib/services/auto_update_checker.dart`, singleton `.instance` like
   `UpdateService`), which polls `UpdateService.checkForUpdate()` on a
@@ -5152,7 +5228,7 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   straight from download into install before this and is unchanged (the
   `AboutPage(autoCheckForUpdate: ...)` pre-trigger the old flow used is gone,
   since nothing navigates there automatically anymore).
-- **Silent auto-update, both apps (0.2.98 / Best Music 0.3.6):** the
+- **Silent auto-update, both apps (0.2.98 / Best Music 0.3.6):** *(history — replaced by the shared updates package in 0.2.107 / Best Music 0.3.27, see above)* the
   "New version available" dialog and `showUpdateAvailableDialog` are gone.
   When the poll reports a build, `_maybeStartAutoUpdate` (in `main.dart` and,
   identically, `main_music.dart` against `MusicAboutPage.updateService`) skips
@@ -5170,7 +5246,7 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   a user's "off" sticks again. Best Music still has no toggle; its poll always
   runs on Android.
 - **"Installed …" line on the Changelog (0.2.98 / Best Music 0.3.6; part of the status
-  card since 0.2.105):** `InstallInfoService.load()`
+  card since 0.2.105):** *(history — replaced by the shared updates package in 0.2.107 / Best Music 0.3.27, see above)* `InstallInfoService.load()`
   (`lib/services/install_info_service.dart`) asks the native side first —
   `lastUpdateTime` on the `besttodo/update` channel returns
   `PackageInfo.lastUpdateTime` (epoch ms) from `MainActivity` — and falls back
@@ -5179,7 +5255,7 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   `install_info_first_seen` = `{version, at}`, replaced when the version
   changes). Unknown (e.g. version 'unknown') → the part is left out.
 - **Changelog status card (0.2.105 / Best Music 0.3.23; same look as Hally Remote and
-  BestCollage):** the text view of `ChangelogPage` (both apps) is a list of cards — first
+  BestCollage):** *(history — replaced by the shared updates package in 0.2.107 / Best Music 0.3.27, see above)* the text view of `ChangelogPage` (both apps) is a list of cards — first
   `Key('changelog-update-status')`, then one per release (`changelog-release-<version>`:
   version in bold, a filled check-circle on the installed version, date right-aligned in
   the user's date format, the changes as bullets rendered with `MarkdownBody`, build
@@ -5202,7 +5278,7 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   download completes) survive a restart (`loadUpdateStatus`).
   `AutoUpdateFlow.ready` notifies when a build is ready. Best Music's page passes
   `MusicAboutPage.updateService`, so its card and pull-down are about Best Music's builds.
-- **Background downloads via DownloadManager (0.2.x):** both download paths —
+- **Background downloads via DownloadManager (0.2.x):** *(history — replaced by the shared updates package in 0.2.107 / Best Music 0.3.27, see above)* both download paths —
   the auto-update Yes and the About page's "Download & install"/rollback
   buttons — go through `UpdateService.downloadInBackground()` instead of a
   Dart-side `HttpClient` socket. It calls the new `besttodo/update` methods
@@ -5223,7 +5299,7 @@ away), and "Backup folder". Tests: `test/music/music_backup_service_test.dart`,
   foreground at all. `UpdateService.downloadChannelOverride` is the test seam
   for the three new channel methods, mirroring `fetchOverride` for the
   release-JSON lookup.
-- **Update downloads folder in Settings (BestToDo 0.2.94, Best Music 0.2.97):**
+- **Update downloads folder in Settings (BestToDo 0.2.94, Best Music 0.2.97):** *(history — replaced by the shared updates package in 0.2.107 / Best Music 0.3.27, see above)*
   both apps' Settings (BestToDo: Settings → Updates; Best Music: the bottom of
   its Settings page) show an "Update downloads folder" row
   (`lib/ui/update_downloads_folder_tile.dart`, `UpdateDownloadsFolderTile`,

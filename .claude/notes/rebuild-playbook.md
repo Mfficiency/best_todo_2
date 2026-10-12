@@ -118,7 +118,7 @@ schedule interval (schemaVersion 2) → item-linked reminders
 facade → upgrade safety (SafeFile/PreUpdateBackup — if not done in stage 1) →
 streak → simple mode & feature switches → dice-timer alarm delivery →
 auto-backup → synced mode → in-app updates from GitHub releases
-(`UpdateService` + About page + `tool/publish_apk.dart`).
+(the vendored `mfficiency_updates` package via `lib/services/app_updates.dart` + About page + `tool/publish_apk.dart`).
 **Gate:** `flutter test test/streaks test/sync test/update` + the core upgrade-safety
 matrix (`test/core/upgrade_safety_test.dart` — it replays historical payloads
 from the no-uid era forward).
