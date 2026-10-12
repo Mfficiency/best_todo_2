@@ -104,15 +104,14 @@ void main() {
     expect(find.text('Open release page'), findsOneWidget);
   });
 
-  /// Several releases of this app's (main) channel, plus another channel's
-  /// and the other app's newer ones that must be ignored.
+  /// Several releases of this app, plus the other app's newer one that must
+  /// be ignored.
   String releasesJson(List<String> tags) => jsonEncode([
         for (final t in tags) release(t),
-        release('v9.9.9-99999-dev'),
         release('music-v9.9.9-99999'),
       ]);
 
-  testWidgets('offers the newest channel build plus one version back',
+  testWidgets('offers the highest build plus one version back',
       (tester) async {
     mockRunningVersion('0.1.143', '115');
     UpdateService.instance.fetchOverride = (url) async =>
@@ -128,7 +127,20 @@ void main() {
         find.textContaining('Reinstalls the previous build'), findsOneWidget);
   });
 
-  testWidgets('no rollback button without an older build in the channel',
+  testWidgets('the highest build of any channel is offered',
+      (tester) async {
+    mockRunningVersion('0.1.143', '115');
+    UpdateService.instance.fetchOverride = (url) async => releasesJson(
+        ['v0.1.144-116', 'v0.1.143-118-dev', 'v0.1.145-117-staging']);
+
+    await pumpAboutPage(tester);
+    await tapCheck(tester);
+
+    expect(find.text('Version 0.1.143+118 is available.'), findsOneWidget);
+    expect(find.textContaining('Download & install'), findsOneWidget);
+  });
+
+  testWidgets('no rollback button without a lower build',
       (tester) async {
     UpdateService.instance.fetchOverride =
         (url) async => releasesJson(['v0.1.143-115']);

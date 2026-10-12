@@ -120,20 +120,31 @@ void main() {
     });
   });
 
-  /// Laptop channel builds (SPEC.md §11): dev/staging/main install side by
-  /// side and a published build is never debug-signed.
+  /// Laptop channel builds (SPEC.md §11): dev/staging/main build the SAME
+  /// app (one id, one name) and a published build is never debug-signed.
   group('channel builds', () {
-    test('Gradle derives id suffix, label and versionCode from the env', () {
+    test('Gradle: one id and label for every channel, versionCode from env',
+        () {
       final gradle = read('android/app/build.gradle.kts');
       expect(gradle, contains('System.getenv("BUILD_CHANNEL")'));
-      expect(gradle, contains('applicationIdSuffix = channelIdSuffix'));
-      expect(gradle, contains(r'manifestPlaceholders["appLabel"] = "BestToDo$channelLabelSuffix"'));
-      expect(gradle, contains(r'manifestPlaceholders["appLabel"] = "Best Music$channelLabelSuffix"'));
+      expect(gradle, isNot(contains('applicationIdSuffix')));
+      expect(gradle, isNot(contains('channelLabelSuffix')));
+      expect(gradle, contains('manifestPlaceholders["appLabel"] = "BestToDo"'));
+      expect(gradle, contains('manifestPlaceholders["appLabel"] = "Best Music"'));
+      expect(gradle, contains('applicationId = "com.mfficiency.best_music"'));
       expect(gradle, contains('System.getenv("BUILD_NUMBER")'));
       expect(gradle, contains('REQUIRE_RELEASE_KEY'));
     });
 
-    test('the manifest label and provider authority follow the channel', () {
+    test('build.ps1 release uses BUILD_NUMBER as is', () {
+      // The builder already numbers the source commit below any APK
+      // commits (minutes since 2020), so no commit-count adjustment.
+      final ps1 = read('tool/build.ps1');
+      expect(ps1, isNot(contains('rev-list --count')));
+      expect(ps1, contains('--build-number=\$buildNumber'));
+    });
+
+    test('the manifest label and provider authority come from Gradle', () {
       final manifest = read('android/app/src/main/AndroidManifest.xml');
       expect(manifest, contains(r'android:label="${appLabel}"'));
       expect(manifest, contains(r'android:authorities="${applicationId}.fileprovider"'));

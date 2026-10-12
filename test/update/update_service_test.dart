@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:besttodo/config.dart';
 import 'package:besttodo/services/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -155,127 +156,158 @@ void main() {
     });
   });
 
-  group('channel filtering', () {
-    List<String> versions(String tagPrefix, String channel) =>
-        UpdateService.channelReleases(mixedReleases(),
-                tagPrefix: tagPrefix, channel: channel)
+  group('build numbers', () {
+    test('buildNumberOf reads the part after +, else 0', () {
+      expect(UpdateService.buildNumberOf('0.2.104+3600000'), 3600000);
+      expect(UpdateService.buildNumberOf('0.1.131'), 0);
+      expect(UpdateService.buildNumberOf('unknown'), 0);
+    });
+
+    test('isNewerBuild compares only the build number', () {
+      expect(UpdateService.isNewerBuild('0.1.0+3600001', '9.9.9+3600000'),
+          isTrue);
+      expect(UpdateService.isNewerBuild('9.9.9+3600000', '0.1.0+3600001'),
+          isFalse);
+      expect(UpdateService.isNewerBuild('0.3.0+5', '0.2.0+5'), isFalse);
+      expect(UpdateService.isNewerBuild('0.1.0+1', 'unknown'), isTrue);
+    });
+  });
+
+  /// dev, staging and main build the same app: the update check looks at
+  /// every channel's releases and takes the highest build number.
+  group('release selection over all channels', () {
+    List<String> versions(String tagPrefix) =>
+        UpdateService.appReleases(mixedReleases(), tagPrefix: tagPrefix)
             .map((b) => b.version)
             .toList();
 
-    test('BestToDo dev sees only its dev builds, newest first', () {
-      expect(versions('v', 'dev'), ['0.2.101+12210', '0.2.101+12200']);
+    test('BestToDo sees dev, staging and main builds, highest build first',
+        () {
+      expect(versions('v'), [
+        '0.2.101+12210', // dev
+        '0.2.101+12200', // dev
+        '0.2.100+12150', // staging
+        '0.2.99+12100', // main
+        '0.2.98+12050', // main
+        '0.2.97+300', // main, old scheme
+      ]);
     });
 
-    test('BestToDo staging and main see only their own', () {
-      expect(versions('v', 'staging'), ['0.2.100+12150']);
-      expect(versions('v', 'main'),
-          ['0.2.99+12100', '0.2.98+12050', '0.2.97+300']);
+    test('Best Music sees only music-v tags, of every channel', () {
+      expect(versions('music-v'),
+          ['0.1.20+12210', '0.1.19+12150', '0.1.18+12100']);
     });
 
-    test('Best Music sees only music-v tags of its channel', () {
-      expect(versions('music-v', 'dev'), ['0.1.20+12210']);
-      expect(versions('music-v', 'staging'), ['0.1.19+12150']);
-      expect(versions('music-v', 'main'), ['0.1.18+12100']);
-    });
-
-    test('main ignores prereleases and every channel ignores drafts', () {
+    test('prereleases count, drafts never do', () {
       final list = [
         rel('v0.3.0-13000', prerelease: true),
         rel('v0.3.1-13001', draft: true),
         rel('v0.3.1-13002-dev', prerelease: true, draft: true),
+        rel('v0.3.1-12500-staging', prerelease: true),
         rel('v0.2.0-12000'),
       ];
       expect(
-          UpdateService.channelReleases(list, tagPrefix: 'v', channel: 'main')
-              .map((b) => b.version),
-          ['0.2.0+12000']);
-      expect(
-          UpdateService.channelReleases(list, tagPrefix: 'v', channel: 'dev'),
-          isEmpty);
+          UpdateService.appReleases(list, tagPrefix: 'v').map((b) => b.version),
+          ['0.3.0+13000', '0.3.1+12500', '0.2.0+12000']);
     });
 
-    test('newer is (x.y.z, build) as numbers, not text', () {
+    test('the build number decides, not x.y.z (equal numbers: x.y.z)', () {
       final list = [
-        rel('v0.2.9-12999-dev'),
-        rel('v0.2.10-12001-dev'),
-        rel('v0.2.10-12000-dev'),
+        rel('v0.2.110-3600000-dev', prerelease: true),
+        rel('v0.2.104-3600100'),
+        rel('v0.2.9-12999'),
+        rel('v0.2.10-12999-staging', prerelease: true),
       ];
       expect(
-          UpdateService.channelReleases(list, tagPrefix: 'v', channel: 'dev')
-              .map((b) => b.version),
-          ['0.2.10+12001', '0.2.10+12000', '0.2.9+12999']);
+          UpdateService.appReleases(list, tagPrefix: 'v').map((b) => b.version),
+          ['0.2.104+3600100', '0.2.110+3600000', '0.2.10+12999', '0.2.9+12999']);
     });
   });
 
   group('checkReleases', () {
     test('queries the releases list, not releases/latest', () async {
       final requested = <String>[];
-      final dev = UpdateService.forApp(
-          appDisplayName: 'BestToDo', apkPrefix: 'best_todo', channel: 'dev');
-      dev.fetchOverride = (url) async {
+      final todo = UpdateService.forApp(
+          appDisplayName: 'BestToDo', apkPrefix: 'best_todo');
+      todo.fetchOverride = (url) async {
         requested.add(url.toString());
         return jsonEncode(mixedReleases());
       };
-      await dev.checkReleases(currentVersion: '0.1.1+1');
+      await todo.checkReleases(currentVersion: '0.1.1+1');
       expect(requested, [
         'https://api.github.com/repos/Mfficiency/best_todo_2/releases?per_page=30',
       ]);
     });
 
-    test('dev build: newest dev build is the update, older dev the rollback',
-        () async {
-      UpdateService.resetForTest(channel: 'dev');
+    test('a build from main is offered the newer dev build', () async {
       UpdateService.instance.fetchOverride =
           (url) async => jsonEncode(mixedReleases());
       final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.2.101+12205');
+          .checkReleases(currentVersion: '0.2.99+12100');
       expect(check.hasUpdate, isTrue);
       expect(check.latest!.version, '0.2.101+12210');
       expect(check.latest!.apkUrl,
           'https://example.com/v0.2.101-12210-dev.apk');
       expect(check.latest!.source, UpdateSource.githubRelease);
-      expect(check.rollback!.version, '0.2.101+12200');
-    });
-
-    test('never offers another channel even when it is newer', () async {
-      // A staging build running 0.2.100+12150: the dev releases are newer,
-      // but only staging's own (= the running one) may be offered.
-      UpdateService.resetForTest(channel: 'staging');
-      UpdateService.instance.fetchOverride =
-          (url) async => jsonEncode(mixedReleases());
-      final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.2.100+12150');
-      expect(check.hasUpdate, isFalse);
-      expect(check.latest!.version, '0.2.100+12150');
-      expect(check.rollback, isNull);
-    });
-
-    test('main: a channel build number above old versionCodes is newer',
-        () async {
-      UpdateService.resetForTest(channel: 'main');
-      UpdateService.instance.fetchOverride =
-          (url) async => jsonEncode(mixedReleases());
-      final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.2.97+300');
-      expect(check.hasUpdate, isTrue);
-      expect(check.latest!.version, '0.2.99+12100');
-      expect(check.previous, isNull);
-    });
-
-    test('up to date still offers a rollback to an older same-channel build',
-        () async {
-      UpdateService.resetForTest(channel: 'main');
-      UpdateService.instance.fetchOverride =
-          (url) async => jsonEncode(mixedReleases());
-      final check = await UpdateService.instance
-          .checkReleases(currentVersion: '0.2.99+12100');
-      expect(check.hasUpdate, isFalse);
       expect(check.rollback!.version, '0.2.98+12050');
     });
 
-    test('no release for this app/channel means no update', () async {
+    test('a build from dev is offered a newer staging or main build',
+        () async {
+      UpdateService.instance.fetchOverride = (url) async => jsonEncode([
+            rel('v0.2.105-3600000-dev', prerelease: true),
+            rel('v0.2.104-3600200-staging', prerelease: true),
+            rel('v0.2.104-3600100'),
+          ]);
+      final check = await UpdateService.instance
+          .checkReleases(currentVersion: '0.2.105+3600000');
+      expect(check.hasUpdate, isTrue);
+      // Lower x.y.z, but a higher build number: Android installs it.
+      expect(check.latest!.version, '0.2.104+3600200');
+      expect(check.latest!.apkUrl,
+          'https://example.com/v0.2.104-3600200-staging.apk');
+      expect(check.rollback, isNull);
+    });
+
+    test('a higher x.y.z with a lower build number is not an update',
+        () async {
+      UpdateService.instance.fetchOverride = (url) async => jsonEncode([
+            rel('v0.3.0-3600000-staging', prerelease: true),
+          ]);
+      final check = await UpdateService.instance
+          .checkReleases(currentVersion: '0.2.104+3600050');
+      expect(check.hasUpdate, isFalse);
+      expect(
+          await UpdateService.instance
+              .checkForUpdate(currentVersion: '0.2.104+3600050'),
+          isNull);
+    });
+
+    test('a new-scheme build number is above old versionCodes', () async {
+      UpdateService.instance.fetchOverride = (url) async => jsonEncode([
+            rel('v0.2.104-3600000-dev', prerelease: true),
+          ]);
+      final check = await UpdateService.instance
+          .checkReleases(currentVersion: '0.2.103+12199');
+      expect(check.hasUpdate, isTrue);
+      expect(check.latest!.version, '0.2.104+3600000');
+      expect(check.previous, isNull);
+    });
+
+    test('up to date still offers a rollback to the next lower build',
+        () async {
+      UpdateService.instance.fetchOverride =
+          (url) async => jsonEncode(mixedReleases());
+      final check = await UpdateService.instance
+          .checkReleases(currentVersion: '0.2.101+12210');
+      expect(check.hasUpdate, isFalse);
+      expect(check.latest!.version, '0.2.101+12210');
+      expect(check.rollback!.version, '0.2.101+12200');
+    });
+
+    test('no release for this app means no update', () async {
       final music = UpdateService.forApp(
-          appDisplayName: 'Best Music', apkPrefix: 'best_music', channel: 'dev');
+          appDisplayName: 'Best Music', apkPrefix: 'best_music');
       music.fetchOverride = (url) async => jsonEncode([rel('v9.9.9-99999-dev')]);
       final check = await music.checkReleases(currentVersion: '0.1.0+1');
       expect(check.latest, isNull);
@@ -311,14 +343,13 @@ void main() {
     });
 
     test('requests resume once the back-off has passed', () async {
-      UpdateService.resetForTest(channel: 'main');
       UpdateService.instance.rateLimitedUntil =
           DateTime.now().subtract(const Duration(seconds: 1));
       UpdateService.instance.fetchOverride =
           (url) async => jsonEncode(mixedReleases());
       final info = await UpdateService.instance
           .checkForUpdate(currentVersion: '0.2.98+12050');
-      expect(info!.version, '0.2.99+12100');
+      expect(info!.version, '0.2.101+12210');
       expect(UpdateService.instance.rateLimitedUntil, isNull);
     });
 
@@ -333,8 +364,9 @@ void main() {
   });
 
   group('channel of the running build', () {
-    test('defaults to main outside a laptop channel build', () {
-      expect(UpdateService.instance.channel, 'main');
+    test('defaults to main outside a laptop channel build; only shown', () {
+      expect(Config.channel, 'main');
+      expect(Config.versionWithChannel, Config.versionWithBuild);
       expect(UpdateService.instance.tagPrefix, 'v');
       expect(
           UpdateService.forApp(

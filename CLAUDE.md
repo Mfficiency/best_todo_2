@@ -35,9 +35,11 @@ file is the short operational guide.
   (tags `v<x.y.z>-<build>[-dev|-staging]` / `music-v…`), after committing both APKs to
   `github_releases/<channel>/` and pushing that commit (`[skip ci]`, so it doesn't trigger
   another build). A HEAD that only changes `github_releases/` builds the commit below it
-  (released already → nothing to do). Each channel is its own app
-  (`.dev`/`.staging` id suffix, "Dev"/"Staging" label) and updates only from its own
-  channel's releases. Local test build without publishing: set `BUILD_CHANNEL=dev`,
+  (released already → nothing to do). All channels build the **same app** (one
+  applicationId and name per app; the About page shows the channel next to the version), and
+  the updater takes the highest build number over the releases of all channels.
+  `BUILD_NUMBER` = minutes since 2020-01-01 UTC of the source commit's committer time
+  (computed by the builder, already skipping APK commits; used as is). Local test build without publishing: set `BUILD_CHANNEL=dev`,
   `BUILD_NUMBER=12345`, leave `PUBLISH` unset, run the same command. GitHub CI only builds
   (artifacts) — it no longer publishes or commits builds.
 - Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug

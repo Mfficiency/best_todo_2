@@ -69,11 +69,12 @@ class Config {
   /// Drops an explicit [hideDemoItems] choice, restoring the build's default.
   static void resetHideDemoItemsForTest() => _hideDemoItemsSet = null;
 
-  /// Release channel this build belongs to — `dev`, `staging` or `main` —
-  /// compiled in by the laptop builder (`--dart-define=BUILD_CHANNEL=...`,
-  /// see `tool/build.ps1 release`). Each channel is its own Android app
-  /// (`.dev` / `.staging` id suffix) that only ever updates from its own
-  /// channel's GitHub releases. Unset (`flutter run`, tests) = `main`.
+  /// Release channel (branch) this build came from — `dev`, `staging` or
+  /// `main` — compiled in by the laptop builder
+  /// (`--dart-define=BUILD_CHANNEL=...`, see `tool/build.ps1 release`). Only
+  /// informational: all channels build the same Android app, which updates
+  /// to the highest build number of any channel. Unset (`flutter run`,
+  /// tests) = `main`.
   static const String buildChannel = String.fromEnvironment(
     'BUILD_CHANNEL',
     defaultValue: 'main',

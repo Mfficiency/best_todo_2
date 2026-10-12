@@ -403,8 +403,11 @@ function Invoke-BuildAll {
 # `build.ps1 release` -- the laptop builder's entry point (one dedicated clone
 # per branch, see SPEC.md section 11 "Laptop channel builds"). Builds BOTH apps' release
 # APKs for the channel in BUILD_CHANNEL (dev / staging / main; unset = main)
-# with versionCode BUILD_NUMBER into github_releases/<channel>/ (newest 2 per
-# app kept), and with PUBLISH=1 commits and pushes that folder to the branch
+# with versionCode BUILD_NUMBER (used as is: minutes since 2020-01-01 UTC of
+# the source commit, computed by the builder) into github_releases/<channel>/
+# (newest 2 per app kept). Every channel builds the same app (same id and
+# name; only the tag, release and folder carry the channel). With PUBLISH=1
+# it commits and pushes that folder to the branch
 # ([skip ci], so it doesn't trigger another build), then publishes one GitHub
 # release per app (tool/publish_apk.dart). Nothing else is committed: no
 # version bumps, no changelog build notes. An app whose release for this
@@ -451,12 +454,10 @@ function Invoke-ChannelRelease {
   $publish = ($env:PUBLISH -eq "1")
   $sha = Get-SourceCommit "github_releases"
   $head = (& git rev-parse HEAD).Trim()
+  # BUILD_NUMBER is already the source commit's number (the builder skips
+  # these APK commits itself), so it is used as is.
   if ($sha -ne $head) {
     Write-Host "==> HEAD only changes github_releases/; building $($sha.Substring(0, 7)) below it"
-    # The builder's number is 10000 + HEAD's commit count; use the source's.
-    if ($buildNumber -ne "") {
-      $buildNumber = "$([int]$buildNumber - ([int](& git rev-list --count $head) - [int](& git rev-list --count $sha)))"
-    }
   }
   $branch = "$env:BUILD_BRANCH".Trim()
   if ($branch -eq "") { $branch = (& git rev-parse --abbrev-ref HEAD).Trim() }

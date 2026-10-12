@@ -38,22 +38,20 @@ val musicVersionFull = if (musicVersionFile.exists()) {
 val musicVersionName = musicVersionFull?.substringBefore("+")
 val musicVersionCode = musicVersionFull?.substringAfter("+")?.toIntOrNull()
 
-// Release channel (dev / staging / main), one installable app per branch so
-// all three can sit side by side on a phone: BUILD_CHANNEL comes from the
-// laptop builder (tool\build.ps1 release). Unset = main = the plain app id
-// and name, so `flutter run`, CI checks and old scripts behave as before.
+// Release channel (dev / staging / main) = the branch a laptop build came
+// from (BUILD_CHANNEL, set by tool\build.ps1 release). All three build the
+// SAME app: one applicationId and one name for every channel, so a phone has
+// one BestToDo (and one Best Music) that updates to the highest build number
+// of any channel. The channel only reaches Dart (--dart-define, shown next to
+// the version on the About pages); here it is just validated.
 val buildChannel = (System.getenv("BUILD_CHANNEL") ?: "").trim().lowercase().ifEmpty { "main" }
 if (buildChannel !in setOf("main", "staging", "dev")) {
     throw GradleException("BUILD_CHANNEL must be dev, staging or main (got '$buildChannel')")
 }
-val channelIdSuffix = if (buildChannel == "main") "" else ".$buildChannel"
-val channelLabelSuffix = when (buildChannel) {
-    "dev" -> " Dev"
-    "staging" -> " Staging"
-    else -> ""
-}
-// Laptop builds pass BUILD_NUMBER (10000 + commit count) as the versionCode of
-// BOTH apps; without it each app keeps its own version file's build number.
+// Laptop builds pass BUILD_NUMBER (minutes since 2020-01-01 UTC of the built
+// commit's committer time, so it rises across all branches) as the
+// versionCode of BOTH apps; without it each app keeps its own version file's
+// build number.
 val envBuildNumber = System.getenv("BUILD_NUMBER")?.trim()?.toIntOrNull()
 
 android {
@@ -88,8 +86,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // .dev / .staging, applied on top of both flavors' application ids.
-        if (channelIdSuffix.isNotEmpty()) applicationIdSuffix = channelIdSuffix
     }
 
     // Two apps from one codebase, picked with `flutter build apk --flavor
@@ -107,12 +103,12 @@ android {
         create("todo") {
             dimension = "app"
             // Launcher label (AndroidManifest android:label="${appLabel}").
-            manifestPlaceholders["appLabel"] = "BestToDo$channelLabelSuffix"
+            manifestPlaceholders["appLabel"] = "BestToDo"
         }
         create("music") {
             dimension = "app"
             applicationId = "com.mfficiency.best_music"
-            manifestPlaceholders["appLabel"] = "Best Music$channelLabelSuffix"
+            manifestPlaceholders["appLabel"] = "Best Music"
             // Own versionCode/versionName, read from MUSIC_VERSION above —
             // see that val's comment. versionCode in particular must never
             // regress below whatever the last shipped Best Music build used,

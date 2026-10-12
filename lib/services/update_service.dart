@@ -2,14 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 
 /// Where an [UpdateInfo] was found. Every build now comes from a published
-/// GitHub release of its own app + channel; [repoFolder] is the legacy
+/// GitHub release of its own app (any channel); [repoFolder] is the legacy
 /// `github_releases/` folder (still in the repo for old installs, no longer
 /// read or written by current builds).
 enum UpdateSource { repoFolder, githubRelease }
@@ -49,32 +49,34 @@ class UpdateInfo {
   final UpdateSource source;
 }
 
-/// The outcome of one update check: the newest build of this app's channel
-/// and the newest one older than the running build, so the About page can
-/// offer both an update and a rollback (both from the same channel).
+/// The outcome of one update check: this app's highest build number over
+/// every channel (main, staging, dev) and the highest one below the running
+/// build, so the About page can offer both an update and a rollback.
 class UpdateCheck {
   UpdateCheck({required this.currentVersion, this.latest, this.previous});
 
   /// The version the app is running, `x.y.z+build`.
   final String currentVersion;
 
-  /// Newest build found, whatever its version relative to [currentVersion].
+  /// Highest build found, whatever its build relative to [currentVersion].
   final UpdateInfo? latest;
 
-  /// Newest same-channel build older than the running one, if there is one.
+  /// Highest build below the running one (any channel), if there is one.
   final UpdateInfo? previous;
 
-  /// True when [latest] is actually newer than the running app.
+  /// True when [latest]'s build number (the versionCode) is above the running
+  /// app's, the same rule Android applies to the install.
   bool get hasUpdate =>
       latest != null &&
-      UpdateService.compareVersions(latest!.version, currentVersion) > 0;
+      UpdateService.isNewerBuild(latest!.version, currentVersion);
 
   /// The build to offer as "one version back": [previous], unless that is the
   /// version already running.
   UpdateInfo? get rollback {
     final candidate = previous;
     if (candidate == null) return null;
-    if (UpdateService.compareVersions(candidate.version, currentVersion) == 0) {
+    if (UpdateService.buildNumberOf(candidate.version) ==
+        UpdateService.buildNumberOf(currentVersion)) {
       return null;
     }
     return candidate;
@@ -182,10 +184,13 @@ class ReleaseTag {
 ///
 /// Source: the GitHub releases list of `Mfficiency/best_todo_2`
 /// ([releasesListUrl]), where the laptop builder publishes one release per
-/// app, channel and build. Only this app's own tags ([tagPrefix]) of this
-/// build's own channel ([channel], `Config.channel`) are ever considered —
-/// a dev build never offers a staging/main APK and vice versa, and BestToDo
-/// never offers a Best Music APK. Newer = (x.y.z, build) compared as numbers.
+/// app, channel and build. dev, staging and main builds are the same Android
+/// app, so the releases of all three channels count (prereleases included,
+/// drafts never): the one with the highest build number wins, whichever
+/// branch it came from. Only this app's own tags ([tagPrefix]) are ever
+/// considered — BestToDo never offers a Best Music APK and vice versa.
+/// Newer = higher build number (the versionCode: minutes since 2020 of the
+/// built commit, so it rises across all branches).
 ///
 /// The repo is public, so the lookup and the download are anonymous HTTPS
 /// (60 API requests/hour/IP): [AutoUpdateChecker] polls at most every 15
@@ -195,29 +200,20 @@ class ReleaseTag {
 /// read it, current builds neither read nor write it.
 class UpdateService {
   UpdateService._(
-      {this.appDisplayName = 'BestToDo',
-      this.apkPrefix = 'best_todo',
-      String? channel})
-      : channel = channel ?? Config.channel;
+      {this.appDisplayName = 'BestToDo', this.apkPrefix = 'best_todo'});
 
   static UpdateService instance = UpdateService._();
 
   /// A second app built from this same repo (Best Music) gets its own
   /// instance rather than reusing [instance], so its `appDisplayName` and
-  /// tags never leak into BestToDo's own update check. [channel] defaults to
-  /// the running build's (`Config.channel`); tests pass one explicitly.
+  /// tags never leak into BestToDo's own update check.
   static UpdateService forApp(
-          {required String appDisplayName,
-          required String apkPrefix,
-          String? channel}) =>
-      UpdateService._(
-          appDisplayName: appDisplayName,
-          apkPrefix: apkPrefix,
-          channel: channel);
+          {required String appDisplayName, required String apkPrefix}) =>
+      UpdateService._(appDisplayName: appDisplayName, apkPrefix: apkPrefix);
 
   /// Fresh instance per test, dropping any injected [fetchOverride].
-  static void resetForTest({String? channel}) {
-    instance = UpdateService._(channel: channel);
+  static void resetForTest() {
+    instance = UpdateService._();
   }
 
   /// Shown in release names and the background-download file name, e.g.
@@ -227,10 +223,6 @@ class UpdateService {
   /// Which app this is: `best_todo` (BestToDo) or `best_music` (Best Music).
   /// Picks the release tag family ([tagPrefix]).
   final String apkPrefix;
-
-  /// Release channel whose builds this instance offers: `main`, `staging`
-  /// or `dev`.
-  final String channel;
 
   /// `v` for BestToDo, `music-v` for Best Music.
   String get tagPrefix => apkPrefix == 'best_music' ? 'music-v' : 'v';
@@ -255,6 +247,46 @@ class UpdateService {
   /// Back-off after a 403/429 that didn't say when the limit resets.
   static const Duration rateLimitBackoff = Duration(minutes: 15);
 
+  /// The newest finished check of this app (About, background poll or the
+  /// Changelog's pull-down); null until one finished this session. The
+  /// Changelog's status card shows it.
+  final ValueNotifier<UpdateCheck?> lastCheck = ValueNotifier(null);
+
+  /// True while a check runs (the status card shows a spinner).
+  final ValueNotifier<bool> checking = ValueNotifier(false);
+
+  /// When the last check succeeded, also from an earlier run
+  /// ([loadUpdateStatus]).
+  final ValueNotifier<DateTime?> lastCheckedAt = ValueNotifier(null);
+
+  /// The last APK that finished downloading and when, also from an earlier
+  /// run ([loadUpdateStatus]).
+  final ValueNotifier<({String version, DateTime at})?> lastDownload =
+      ValueNotifier(null);
+
+  static const String _lastCheckedPrefsKey = 'update_last_checked';
+  static const String _lastDownloadPrefsKey = 'update_last_download';
+
+  /// Reads [lastCheckedAt] and [lastDownload] from an earlier run, unless
+  /// this run already knows newer ones. Errors are swallowed.
+  Future<void> loadUpdateStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final checked = prefs.getInt(_lastCheckedPrefsKey);
+      if (checked != null && lastCheckedAt.value == null) {
+        lastCheckedAt.value = DateTime.fromMillisecondsSinceEpoch(checked);
+      }
+      final raw = prefs.getString(_lastDownloadPrefsKey);
+      if (raw != null && lastDownload.value == null) {
+        final saved = jsonDecode(raw) as Map<String, dynamic>;
+        lastDownload.value = (
+          version: saved['version'] as String,
+          at: DateTime.fromMillisecondsSinceEpoch(saved['at'] as int),
+        );
+      }
+    } catch (_) {}
+  }
+
   /// Numeric components of a version string, in order. `0.1.74+45` →
   /// [0, 1, 74, 45]. Unparseable strings ("unknown" in tests) yield [] and
   /// compare as all-zero, so any real release counts as newer.
@@ -275,6 +307,28 @@ class UpdateService {
       if (x != y) return x.compareTo(y);
     }
     return 0;
+  }
+
+  /// The build number (versionCode) of an `x.y.z+build` string; 0 when it
+  /// has none ("unknown" in tests, a version without `+build`).
+  static int buildNumberOf(String version) {
+    final plus = version.indexOf('+');
+    if (plus < 0) return 0;
+    final m = RegExp(r'^\d+').firstMatch(version.substring(plus + 1).trim());
+    return m == null ? 0 : int.parse(m.group(0)!);
+  }
+
+  /// True when [candidate]'s build number is above [current]'s, which is what
+  /// makes a build an update: Android installs over the running app exactly
+  /// when the versionCode rises, whatever the x.y.z or the channel.
+  static bool isNewerBuild(String candidate, String current) =>
+      buildNumberOf(candidate) > buildNumberOf(current);
+
+  /// Orders builds by build number, then by x.y.z for equal numbers.
+  /// Returns <0, 0 or >0 like [Comparable.compareTo].
+  static int compareBuilds(String a, String b) {
+    final byNumber = buildNumberOf(a).compareTo(buildNumberOf(b));
+    return byNumber != 0 ? byNumber : compareVersions(a, b);
   }
 
   /// Release tag → pubspec version: `v0.1.74-45` → `0.1.74+45` (git tags
@@ -316,43 +370,39 @@ class UpdateService {
   }
 
   /// True when [release] (a releases-list entry) is a published build of
-  /// the app with [tagPrefix] (`v` / `music-v`) on [channel]. A main build
-  /// must also not be marked prerelease; drafts never count.
-  static bool isChannelRelease(Map<String, dynamic> release,
-      {required String tagPrefix, required String channel}) {
+  /// the app with [tagPrefix] (`v` / `music-v`), on any channel (main,
+  /// staging or dev; prereleases count). Drafts never count.
+  static bool isAppRelease(Map<String, dynamic> release,
+      {required String tagPrefix}) {
     if (release['draft'] == true) return false;
     final tag = ReleaseTag.parse(release['tag_name'] as String? ?? '');
     if (tag == null) return false;
-    if (tag.music != (tagPrefix == 'music-v')) return false;
-    if (tag.channel != channel) return false;
-    if (channel == 'main' && release['prerelease'] == true) return false;
-    return true;
+    return tag.music == (tagPrefix == 'music-v');
   }
 
-  /// This app's [channel] builds out of a releases-list payload, newest
-  /// (x.y.z, build) first.
-  static List<UpdateInfo> channelReleases(List<dynamic> releases,
-      {required String tagPrefix, required String channel}) {
+  /// This app's builds of every channel out of a releases-list payload,
+  /// highest build number first ([compareBuilds]).
+  static List<UpdateInfo> appReleases(List<dynamic> releases,
+      {required String tagPrefix}) {
     final builds = <UpdateInfo>[];
     for (final release in releases) {
       if (release is! Map<String, dynamic>) continue;
-      if (!isChannelRelease(release, tagPrefix: tagPrefix, channel: channel)) {
-        continue;
-      }
+      if (!isAppRelease(release, tagPrefix: tagPrefix)) continue;
       builds.add(releaseInfo(release));
     }
-    builds.sort((a, b) => compareVersions(b.version, a.version));
+    builds.sort((a, b) => compareBuilds(b.version, a.version));
     return builds;
   }
 
-  /// This app's own channel builds, newest first. Throws on network/parse
-  /// failures, and [UpdateRateLimitedException] while rate limited.
-  Future<List<UpdateInfo>> fetchChannelReleases() async {
+  /// This app's builds of all channels, highest build number first. Throws
+  /// on network/parse failures, and [UpdateRateLimitedException] while rate
+  /// limited.
+  Future<List<UpdateInfo>> fetchAppReleases() async {
     final decoded = jsonDecode(await _fetch(Uri.parse(releasesListUrl)));
     if (decoded is! List) {
       throw const FormatException('Unexpected releases payload');
     }
-    return channelReleases(decoded, tagPrefix: tagPrefix, channel: channel);
+    return appReleases(decoded, tagPrefix: tagPrefix);
   }
 
   /// The running app's `x.y.z+build`.
@@ -361,8 +411,8 @@ class UpdateService {
     return Config.versionWithBuild;
   }
 
-  /// Looks up the newest build of this app's channel plus the newest one
-  /// older than the running build (the rollback). Throws on network/parse
+  /// Looks up this app's highest build over all channels plus the highest
+  /// one below the running build (the rollback). Throws on network/parse
   /// failures — the About page shows the error, the background poll retries.
   Future<UpdateCheck> checkReleases({String? currentVersion}) async {
     var current = currentVersion;
@@ -370,23 +420,36 @@ class UpdateService {
       await Config.ensureVersionLoaded();
       current = Config.versionWithBuild;
     }
-    final builds = await fetchChannelReleases();
-    UpdateInfo? previous;
-    for (final b in builds) {
-      if (compareVersions(b.version, current) < 0) {
-        previous = b;
-        break;
+    checking.value = true;
+    try {
+      final builds = await fetchAppReleases();
+      UpdateInfo? previous;
+      for (final b in builds) {
+        if (buildNumberOf(b.version) < buildNumberOf(current)) {
+          previous = b;
+          break;
+        }
       }
+      final check = UpdateCheck(
+        currentVersion: current,
+        latest: builds.isEmpty ? null : builds.first,
+        previous: previous,
+      );
+      lastCheck.value = check;
+      final now = DateTime.now();
+      lastCheckedAt.value = now;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt(_lastCheckedPrefsKey, now.millisecondsSinceEpoch);
+      } catch (_) {}
+      return check;
+    } finally {
+      checking.value = false;
     }
-    return UpdateCheck(
-      currentVersion: current,
-      latest: builds.isEmpty ? null : builds.first,
-      previous: previous,
-    );
   }
 
-  /// The newest build when it is newer than [currentVersion] (defaults to the
-  /// running app's version), or null when the app is up to date.
+  /// The highest build when its build number is above [currentVersion]'s
+  /// (defaults to the running app's version), or null when up to date.
   Future<UpdateInfo?> checkForUpdate({String? currentVersion}) async {
     final check = await checkReleases(currentVersion: currentVersion);
     return check.hasUpdate ? check.latest : null;
@@ -418,13 +481,15 @@ class UpdateService {
         rethrow;
       }
     }
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
       return await _fetchWith(client, url).timeout(
         _fetchTimeout,
         onTimeout: () {
           client.close(force: true);
-          throw TimeoutException('GitHub update check timed out', _fetchTimeout);
+          throw TimeoutException(
+              'GitHub update check timed out', _fetchTimeout);
         },
       );
     } finally {
@@ -447,7 +512,8 @@ class UpdateService {
 
   Future<String> _fetchWith(HttpClient client, Uri url) async {
     final request = await client.getUrl(url);
-    request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    request.headers
+        .set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
     request.headers.set(HttpHeaders.userAgentHeader, 'BestToDo-update-check');
     final response = await request.close();
     final text = await response.transform(utf8.decoder).join();
@@ -519,8 +585,8 @@ class UpdateService {
         'queryDownload', {'downloadId': downloadId});
     final map = Map<Object?, Object?>.from(raw as Map);
     return DownloadProgress(
-      status: DownloadProgress.statusFromWire(
-          map['status'] as String? ?? 'failed'),
+      status:
+          DownloadProgress.statusFromWire(map['status'] as String? ?? 'failed'),
       bytesDownloaded: (map['bytesDownloaded'] as num?)?.toInt() ?? 0,
       bytesTotal: (map['bytesTotal'] as num?)?.toInt(),
       localPath: map['localPath'] as String?,
@@ -602,12 +668,22 @@ class UpdateService {
   /// Records that [version]'s APK was downloaded and handed to the
   /// installer, so [wasDownloaded] recognizes it on a later check even after
   /// [clearPendingDownload] has dropped the in-progress record.
-  Future<void> markVersionDownloaded(String version, {String? path}) async {
+  /// Also records when ([lastDownload], for the Changelog's status card).
+  Future<void> markVersionDownloaded(String version,
+      {String? path, DateTime? at}) async {
+    final download = (version: version, at: at ?? DateTime.now());
+    lastDownload.value = download;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_downloadedVersionPrefsKey, version);
+    await prefs.setString(
+        _lastDownloadPrefsKey,
+        jsonEncode({
+          'version': version,
+          'at': download.at.millisecondsSinceEpoch,
+        }));
     if (path != null) {
-      await prefs.setString(
-          _downloadedApkPrefsKey, jsonEncode({'version': version, 'path': path}));
+      await prefs.setString(_downloadedApkPrefsKey,
+          jsonEncode({'version': version, 'path': path}));
     }
   }
 
