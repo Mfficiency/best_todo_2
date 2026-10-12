@@ -99,6 +99,10 @@ class Config {
   /// Current application version, read from pubspec at runtime.
   static String get version => _appVersion;
 
+  /// The running build number (Android's versionCode) as read from the
+  /// platform; empty until [ensureVersionLoaded] finished (or off a device).
+  static String get buildNumber => _buildNumber;
+
   /// Current application version including build number when available.
   static String get versionWithBuild =>
       _buildNumber.isEmpty ? _appVersion : '$_appVersion+$_buildNumber';
@@ -745,8 +749,9 @@ class Config {
   static String subsonicPassword = '';
 
   /// If true, the app polls GitHub for a newer build every 15 minutes while it
-  /// is open (see `AutoUpdateChecker` in `main.dart`) and, the moment one
-  /// appears, downloads it and opens Android's installer with no question
+  /// is open (the updates package, `AppUpdates` in
+  /// `lib/services/app_updates.dart`) and, the moment one appears, downloads
+  /// it silently and opens Android's installer with no question of its own
   /// first — see Settings → Updates. On by default, and switched back on
   /// once for everyone when auto-updating became the default (0.2.98, see
   /// `autoUpdateEnabledOnce` in [load]); a manual check from the About page

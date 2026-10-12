@@ -148,10 +148,13 @@ final List<SuiteRule> suiteRules = [
   ], {'tools', 'home'}),
   SuiteRule(['lib/models/auto_tag_group.dart', 'lib/services/auto_tag_service.dart', 'lib/ui/auto_tag_rules_page.dart'], {'home', 'tools'}),
   SuiteRule([
-    'lib/services/update_service.dart', 'lib/services/auto_update_checker.dart', 'lib/ui/about_page.dart',
-    'lib/ui/auto_update_dialog.dart', 'tool/publish_apk.dart', 'tool/stage_local_release.dart', 'tool/append_build_time.dart',
+    'tool/publish_apk.dart', 'tool/stage_local_release.dart', 'tool/append_build_time.dart',
   ], {'update'}),
-  SuiteRule(['lib/ui/update_downloads_folder_tile.dart'], {'update', 'home', 'music'}),
+  // The updates adapter and the pages around the package's controller
+  // (both apps: About, Settings, the Changelog's status card).
+  SuiteRule([
+    'lib/services/app_updates.dart', 'lib/ui/about_page.dart',
+  ], {'update', 'home', 'music'}),
   SuiteRule(['lib/utils/linkified_text.dart', 'lib/ui/task_detail_page.dart', 'lib/ui/task_info_dialog.dart'], {'home', 'tools'}),
   SuiteRule(['AlarmsWidgetProvider.kt'], {'alarms', 'home'}),
   SuiteRule(['SimpleWidgetProvider.kt'], {'home'}),

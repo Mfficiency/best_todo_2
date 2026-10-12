@@ -1,0 +1,14 @@
+# No include: apps that vendor this package analyze it with their own
+# dependencies, and not all of them have flutter_lints.
+linter:
+  rules:
+    - avoid_print
+    - avoid_relative_lib_imports
+    - avoid_unnecessary_containers
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_final_fields
+    - prefer_single_quotes
+    - unawaited_futures
+    - use_build_context_synchronously
+    - use_key_in_widget_constructors

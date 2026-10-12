@@ -260,7 +260,9 @@ void main() {
 
       expect(find.text('Best Music Changelog'), findsNothing);
       expect(find.textContaining('Intro for developers'), findsNothing);
-      expect(find.byKey(const Key('changelog-update-status')), findsOneWidget);
+      // No updates controller in this test (AppUpdates.controller is only
+      // made by main.dart / main_music.dart): no status card.
+      expect(find.byKey(const Key('changelog-update-status')), findsNothing);
       for (final version in ['0.2.0', '0.1.9', '0.1.8']) {
         expect(
             find.byKey(ValueKey('changelog-release-$version')), findsOneWidget);

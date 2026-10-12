@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.2.106+414
+version: 0.2.107+415
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -39,6 +39,11 @@ dependencies:
   audio_service: ^0.18.15
   id3_codec: ^1.0.3
   crypto: ^3.0.3
+  # In-app updates (GitHub Releases, silent download, Android's installer):
+  # the shared package vendored from flutter_app_template — never edit it,
+  # refresh it with the template's tool/sync_updates_package.sh.
+  mfficiency_updates:
+    path: packages/mfficiency_updates
 
 dev_dependencies:
   flutter_test:
