@@ -4920,8 +4920,29 @@ contents>}}`. `stores` carries the documents-dir files listed in
 `MusicBackupService.storeFiles` — `music_library.json`, `music_playlists.json`,
 `youtube_feed.json` (subscriptions, feed videos, feed settings incl.
 SponsorBlock, watch progress), `mp3_downloads.json`, `music_enrichment.json`
-— read straight from disk so a backup is complete without any page loaded. The
-playback resume point (`music_resume.json`) is left out on purpose.
+and `music_resume.json` (the playback resume point; read once at startup, so a
+restored one applies on the next launch, Best Music 0.3.30) — read straight
+from disk so a backup is complete without any page loaded. The library entries
+carry the analyzed metadata (BPM, genre, year, …), play counts and manual
+edits; `music_enrichment.json` the online/on-device lookup results; the feed
+file the subscriptions, watch progress and feed settings. Everything else
+Best Music keeps (BPM presets, remembered phone volumes, …) is a `Config` key
+and rides in `settings`.
+
+**Path remap (Best Music 0.3.30).** Local songs are keyed by absolute path
+(`local:<path>` ids in the library, playlists' `trackIds`, the enrichment
+map's keys, the resume point; plain paths in `filePath`/download history).
+`MusicBackupService.remapRoot(json, oldRoot, newRoot)` rewrites every string
+and map key equal to or under `oldRoot` (bare or `local:`-prefixed, `/` or
+`\` separator; trailing separators ignored; `/old/Musicals` is not under
+`/old/Music`) to the same path under `newRoot`. A restore whose backup
+`settings.musicFolder` differs from this phone's non-empty `Config.musicFolder`
+keeps this phone's folder and remaps every store before writing it; with no
+folder set yet (fresh install) the backup's folder is adopted as is.
+`relocateLibrary(oldRoot, newRoot)` applies the same remap to the store files
+on disk and reloads the services; Settings → Library → Music folder calls it
+when the previously chosen folder no longer exists on the device (and then
+keeps the excluded subfolders, which are relative), before the rescan.
 
 **Restore** (`restoreFile`/`restore`) refuses anything not tagged
 `app: "best_music"` (a BestToDo export — recognised by its `tasks_bundle` — gets
