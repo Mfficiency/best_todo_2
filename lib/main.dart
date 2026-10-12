@@ -19,15 +19,13 @@ import 'ui/mode_select_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
 import 'ui/web_data_choice_page.dart';
-import 'ui/auto_update_dialog.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
 import 'services/alarm_ids.dart';
 import 'services/alarm_service.dart';
 import 'services/alarm_widget_service.dart';
 import 'services/food_diary_widget_service.dart';
-import 'services/auto_update_checker.dart';
-import 'services/install_info_service.dart';
+import 'services/app_updates.dart';
 import 'services/item_history_seeder.dart';
 import 'services/pre_update_backup.dart';
 import 'services/share_intent_service.dart';
@@ -187,6 +185,10 @@ Future<void> main() async {
     await prefs?.setBool('startup_choice_made', startupChoiceMade);
   }
   final showStartupChoice = Config.isDev ? false : !startupChoiceMade;
+  // In-app updates (the shared mfficiency_updates package, see
+  // AppUpdates): reads the version and the stored update state, no network.
+  // The checks start after the first frame (_startUpdatesWhenFree).
+  await _initStep('updates', () => AppUpdates.create(UpdatesApp.todo));
   runApp(MyApp(
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
@@ -196,9 +198,6 @@ Future<void> main() async {
   ));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     StartupTimeService.record();
-    // Fallback install time for the Changelog's "Installed …" line where
-    // Android's own lastUpdateTime isn't available.
-    unawaited(InstallInfoService.recordLaunch());
     // One-time backfill of the item-history journal from pre-journal data.
     // Deliberately a few seconds after the first frame so it never competes
     // with startup or the home page's initial load; once seeded it is a
@@ -251,12 +250,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final List<SharedPayload> _pendingShares = [];
   bool _shareScreenOpen = false;
 
-  /// The automatic update: silent download, then Android's install confirm
-  /// (see [AutoUpdateFlow]) — only once the intro/pickers are out of the way.
-  late final AutoUpdateFlow _updates = AutoUpdateFlow(
-    navigatorKey: appNavigatorKey,
-    canAsk: () => !(_showIntro || _showModePicker || _showStartupChoice),
-  );
+  /// Whether the automatic update checks were started ([AppUpdates.start]).
+  bool _updatesStarted = false;
+
+  /// The automatic update (silent download, then Android's own install
+  /// confirm) starts once the intro and pickers are out of the way, so
+  /// Android's dialog never opens over them.
+  void _startUpdatesWhenFree() {
+    if (_updatesStarted ||
+        _showWebDataChoice ||
+        _showIntro ||
+        _showModePicker ||
+        _showStartupChoice) {
+      return;
+    }
+    _updatesStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = appNavigatorKey.currentContext;
+      if (context != null) AppUpdates.start(context);
+    });
+  }
 
   @override
   void initState() {
@@ -295,21 +308,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // whatever was shared. See _queueSharedPayload.
       ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
       unawaited(ShareIntentService.instance.init().catchError((_) {}));
-      // Settings → Updates → "Automatically update" (on by default): poll
-      // GitHub for a newer build of this channel every 15 minutes while the
-      // app is open; a newer one downloads silently and Android's install
-      // confirm opens once it is complete. Platform.isAndroid is false under
-      // `flutter test`'s host runner, so this never starts a real timer in
-      // the test suite.
-      AutoUpdateFlow.current = _updates;
-      if (Config.autoUpdateCheckEnabled) {
-        AutoUpdateChecker.instance.start(_updates.onUpdateFound);
-      }
-      // A background update download from an earlier run may have kept
-      // going (or already finished) while the app was closed — it runs as
-      // an Android system service, not tied to this process. Pick it back
-      // up so the app still asks once it is complete.
-      unawaited(_updates.resumePending());
     }
   }
 
@@ -317,8 +315,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.setOnAlarmRing(null);
-    AutoUpdateChecker.instance.stop();
-    if (AutoUpdateFlow.current == _updates) AutoUpdateFlow.current = null;
     super.dispose();
   }
 
@@ -326,14 +322,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     SyncService.instance.onLifecycleChanged(state);
     TodoistSyncService.instance.onLifecycleChanged(state);
-    // Re-check when the app comes back to the foreground, unless the last
-    // check was under 15 minutes ago (GitHub's anonymous rate limit).
-    if (kIsWeb || !Platform.isAndroid) return;
-    // A download that finished while the app was away: install now.
-    _updates.onLifecycleChanged(state);
-    if (state == AppLifecycleState.resumed && Config.autoUpdateCheckEnabled) {
-      unawaited(AutoUpdateChecker.instance.checkIfDue(_updates.onUpdateFound));
-    }
+    // Updates follow the lifecycle themselves (the package's controller).
   }
 
   /// Queues a shared payload and, if the quick-add screen isn't already open
@@ -503,16 +492,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    _startUpdatesWhenFree();
+    final updates = AppUpdates.controller;
     return MaterialApp(
       title: 'BestToDo',
       navigatorKey: appNavigatorKey,
       builder: (context, child) {
+        final page = child ?? const SizedBox.shrink();
         return SafeArea(
           top: false,
           left: false,
           right: false,
           bottom: true,
-          child: child ?? const SizedBox.shrink(),
+          // The slim update banner ("Update ready · <version>" after
+          // Android's confirm was cancelled, or a failed download's Try
+          // again) sits below every screen; empty otherwise.
+          child: updates == null
+              ? page
+              : Column(
+                  children: [
+                    Expanded(child: page),
+                    UpdateBanner(controller: updates),
+                  ],
+                ),
         );
       },
       theme: Config.minimalistMode

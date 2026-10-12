@@ -1,25 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../config.dart';
-import '../services/update_service.dart';
 import 'about_page.dart';
 import 'best_music_logo.dart';
 import 'subpage_app_bar.dart';
 
 /// Best Music's About page — the same [UpdateSection] as BestToDo's
-/// [AboutPage], wired to its own [UpdateService.forApp] instance so the two
-/// apps' update checks never see each other's builds (see
-/// [UpdateService.checkReleases]'s doc comment).
+/// [AboutPage]. In Best Music the running app's controller
+/// ([AppUpdates.controller], made by `main_music.dart`) only knows Best
+/// Music's own release tags (`music-v…`), so it never offers BestToDo's
+/// builds.
 class MusicAboutPage extends StatelessWidget {
   const MusicAboutPage({super.key});
-
-  /// Public so tests can inject [UpdateService.fetchOverride]/
-  /// [UpdateService.downloadChannelOverride] the same way
-  /// `about_page_update_test.dart` does for [UpdateService.instance].
-  static final UpdateService updateService = UpdateService.forApp(
-    appDisplayName: 'Best Music',
-    apkPrefix: 'best_music',
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +47,7 @@ class MusicAboutPage extends StatelessWidget {
                 textAlign: TextAlign.left,
               ),
               const SizedBox(height: 24),
-              UpdateSection(service: updateService, appName: 'Best Music'),
+              const UpdateSection(),
             ],
           ),
         ),

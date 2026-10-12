@@ -68,9 +68,8 @@ file is the short operational guide.
   than 0.2.101; current apps read GitHub releases. Keep the folder, don't rely on it.
   `dart run tool/stage_local_release.dart` after a
   release build (`tool/build.sh` does it automatically). Copies the APK to
-  `github_releases/` and deletes the older ones; commit the folder — the app's About page
-  downloads the newest from there ("Download & install") and the other one for
-  "Go back to <version>" (`UpdateService.releasesRef` = the `dev` branch)
+  `github_releases/` and deletes the older ones; commit the folder. The current updater
+  never reads it (only GitHub releases); installs older than 0.2.101 did.
 - Build time, duration & size: `tool/build.sh`/`tool/build.ps1` time the
   `flutter build` call and, on success, run
   `dart run tool/append_build_time.dart --duration <secs> --target <apk|windows|...> --artifact <apk or Release dir>`,
@@ -89,12 +88,27 @@ file is the short operational guide.
   calls). Creates release `v<x.y.z>-<build>` (`music-v…` for Best Music, `-dev`/`-staging`
   suffix + prerelease for those channels); the About page "Check for updates" button
   downloads and installs it in-app. Token from `GITHUB_TOKEN`/`GH_TOKEN` or a logged-in `gh` CLI.
-- In-app updates (`AutoUpdateFlow`, `lib/ui/auto_update_dialog.dart`, both apps; SPEC.md
-  §11): **every** download is silent (DownloadManager `VISIBILITY_HIDDEN`, no progress
-  dialog/sheet/banner; a tap that starts one shows one SnackBar, progress is only passive
-  text on the Changelog status card and the About page). Once the APK is complete it goes
-  straight to Android's PackageInstaller confirm (`installApk`) — no app dialog — in the
-  foreground, once per version and start; a cancel leaves a slim "Update ready" banner.
+- In-app updates (both apps; SPEC.md §11 "Shared updates package") are the shared
+  `mfficiency_updates` package, **vendored** from flutter_app_template into
+  `packages/mfficiency_updates` (path dependency; its README.md is the reference). **Never
+  edit that copy**: change the package in the template, run its tests, then run the
+  template's `tool/sync_updates_package.sh <this repo>` (`.ps1` on Windows), which rewrites
+  the copy + its `ORIGIN`; `test/updates_package_vendored_test.dart` fails on a hand edit.
+  `lib/services/app_updates.dart` (`AppUpdates`) only adapts it: one `UpdateController`
+  per app made in `main()` / `main_music.dart` (`UpdatesApp.todo` tag prefix `v`,
+  `UpdatesApp.music` `music-v`; public repo `Mfficiency/best_todo_2`, no token; checks every
+  15 minutes; BestToDo's "Automatically update" switch = `UpdateConfig.autoCheck`, Best Music
+  always checks), started after the first frame (BestToDo: after the intro/pickers),
+  `PreUpdateBackup.ensure()` before BestToDo's install, the migration of the old update
+  prefs. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
+  tap, progress only as passive text on the Changelog's `UpdateStatusCard` and the Check for
+  updates tile); when complete, Android's PackageInstaller confirm (the plugin's
+  `installApk`) is the only question — in the foreground, once per build and start; a
+  cancel leaves the slim `UpdateBanner` ("Update ready" + Install), a failed download one
+  with Try again. Pull-down on the Changelog checks; tapping a version there offers it
+  (older = rollback). `MainActivity`/the manifest have no update code (the plugin brings
+  `REQUEST_INSTALL_PACKAGES`, its receiver and channel; registered by Flutter). Tests fake
+  it with `test/update/update_fakes.dart`.
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

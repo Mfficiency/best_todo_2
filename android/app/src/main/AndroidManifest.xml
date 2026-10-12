@@ -3,6 +3,9 @@
     <!-- Network access for the in-app update check (GitHub releases) in
          release builds; debug/profile get it implicitly via their manifests. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- In-app updates: the install permission and the install-session
+         receiver come from the mfficiency_updates plugin's own manifest
+         (merged at build time); nothing about them here. -->
     <!-- Tools -> MP3 Downloader: lets the user grant "All files access" so a
          shared folder they pick (e.g. Music) is actually writable, instead
          of always being redirected to the app's private storage. -->
@@ -36,13 +39,6 @@
          running while other apps are open (BackgroundWorkService). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- In-app updates (About page): lets the app hand a downloaded APK to
-         the system package installer. The user still confirms the install
-         and grants the one-time "install unknown apps" toggle. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- The automatic update downloads silently (DownloadManager,
-         VISIBILITY_HIDDEN); the app asks to install when it is complete. -->
-    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
     <!-- Optional: the user explicitly grants Usage Access from the wellbeing
          dashboard. Android does not show a runtime permission dialog. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -162,11 +158,6 @@
              alarm fires. It hands off to AlarmService to run the Dart callback.
              Without it, alarms fire in the OS but are never delivered to the app,
              so the daily SMS report never runs. -->
-        <!-- Install session status (ApkInstaller.kt): opens Android's
-             "update this app?" dialog. -->
-        <receiver
-            android:name="com.mfficiency.best_todo_2.InstallReceiver"
-            android:exported="false" />
         <receiver
             android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
             android:exported="false" />
@@ -292,19 +283,6 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
-
-        <!-- Shares the downloaded update APK (in the cache dir) with the
-             system package installer via a content:// URI — file:// URIs are
-             rejected since Android 7. -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_provider_paths" />
-        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

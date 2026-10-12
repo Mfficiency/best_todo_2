@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.27] - 2026-10-12
+- Updates work the same as in the other Mfficiency apps now (one shared update module): a new version still downloads quietly in the background and Android's own "Update this app?" is the only question; a slim bar offers Install if you cancel, or Try again if a download fails. Settings → Updates and About have "Check for updates" (it shows the download progress), and tapping a version in the Changelog offers that version — that is how you go back to an older one. The "Update downloads folder" setting is gone: updates now download into the app's cache. An update that was downloaded but not yet installed downloads once more.
+
 ## [0.3.26] - 2026-10-12
 - Updates no longer take over the screen: every download (automatic, pull-down on the Changelog, Install, About's Download & install and Go back to) runs quietly in the background — no progress window, no notification. When it is complete you only see Android's own small "Update this app?" confirm (no extra "Update ready" question first). If you cancel it, a slim "Update ready" bar with Install stays until you install. While it downloads, the Changelog card and the About page just say "Downloading … 42%".
 

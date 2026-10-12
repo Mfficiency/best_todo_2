@@ -238,7 +238,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             onTap: () => _pushStandalonePage(() => ChangelogPage(
                   assetPath: 'CHANGELOG_MUSIC.md',
                   showStoryPoster: false,
-                  updateService: MusicAboutPage.updateService,
                 )),
           ),
           ListTile(

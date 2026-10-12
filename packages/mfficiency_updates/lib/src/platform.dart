@@ -1,0 +1,55 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+import 'platform_stub.dart' if (dart.library.io) 'platform_io.dart' as os;
+
+/// The Android side of the plugin (channel `mfficiency_updates`): installs
+/// through a PackageInstaller session, the "install unknown apps" switch,
+/// the install time. Off Android every call answers "not supported".
+class UpdatePlatform {
+  UpdatePlatform({bool? supported, MethodChannel? channel})
+      : isSupported = supported ?? (!kIsWeb && os.isAndroid),
+        _channel = channel ?? const MethodChannel(channelName);
+
+  static const channelName = 'mfficiency_updates';
+
+  /// A phone that can download and install APKs. False in the browser and
+  /// in widget tests: no automatic checks or downloads there.
+  final bool isSupported;
+  final MethodChannel _channel;
+
+  Future<T?> _call<T>(String method, [Map<String, Object?>? args]) async {
+    try {
+      return await _channel.invokeMethod<T>(method, args);
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  /// Hands the APK to a PackageInstaller session: Android shows only its
+  /// "Update this app?". Returns "ok", "needs-permission" (the "install
+  /// unknown apps" switch was opened instead) or "failed".
+  Future<String> installApk(String path) async =>
+      await _call<String>('installApk', {'path': path}) ?? 'failed';
+
+  /// Whether the one-time "install unknown apps" switch is on for this app.
+  Future<bool> canInstallApks() async =>
+      await _call<bool>('canInstallApks') ?? false;
+
+  /// Opens the "install unknown apps" switch of this app.
+  Future<bool> openInstallSettings() async =>
+      await _call<bool>('openInstallSettings') ?? false;
+
+  /// When this build was installed or last updated (Android's
+  /// PackageInfo.lastUpdateTime); null off Android.
+  Future<DateTime?> installTime() async {
+    final ms = await _call<int>('installTime');
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  /// Opens [url] in the browser (a release page without an APK).
+  Future<bool> openUrl(String url) async =>
+      await _call<bool>('openUrl', {'url': url}) ?? false;
+}
