@@ -7,6 +7,7 @@ Map<String, Object?> release(
   String tag, {
   bool prerelease = false,
   bool draft = false,
+  bool apk = true,
 }) =>
     {
       'tag_name': tag,
@@ -15,21 +16,24 @@ Map<String, Object?> release(
       'html_url': 'https://github.com/o/app/releases/tag/$tag',
       'body': 'notes',
       'assets': [
-        {
-          'name': 'app.apk',
-          'url':
-              'https://api.github.com/repos/o/app/releases/assets/${tag.hashCode}',
-          'browser_download_url':
-              'https://github.com/o/app/download/$tag/app.apk',
-        },
+        if (apk)
+          {
+            'name': 'app.apk',
+            'url':
+                'https://api.github.com/repos/o/app/releases/assets/${tag.hashCode}',
+            'browser_download_url':
+                'https://github.com/o/app/download/$tag/app.apk',
+          },
       ],
     };
 
-/// Answers every request with [status] and [body]; records the requests.
+/// Answers every request with [status] and [body] (an error with
+/// [responseHeaders]); records the requests.
 class FakeHttp extends UpdateHttp {
   FakeHttp(this.body, {this.status = 200});
   Object? body;
   int status;
+  Map<String, String> responseHeaders = const {};
   final requests = <(Uri, Map<String, String>)>[];
 
   @override
@@ -39,7 +43,7 @@ class FakeHttp extends UpdateHttp {
     Duration? cacheFor,
   }) async {
     requests.add((url, headers));
-    if (status != 200) throw UpdateHttpException(status);
+    if (status != 200) throw UpdateHttpException(status, null, responseHeaders);
     return body;
   }
 }
@@ -50,6 +54,9 @@ class FakeDownloader extends ApkDownloader {
   final urls = <Uri>[];
   bool fail = false;
   final signed = <(Uri, String)>[];
+
+  /// What [signedAssetUrl] answers (null: GitHub refused, or the web).
+  Uri? signedUrl = Uri.parse('https://objects.example.com/apk?sig=1');
 
   @override
   Future<String?> download(
@@ -78,7 +85,7 @@ class FakeDownloader extends ApkDownloader {
   @override
   Future<Uri?> signedAssetUrl(Uri assetApiUrl, String token) async {
     signed.add((assetApiUrl, token));
-    return Uri.parse('https://objects.example.com/apk?sig=1');
+    return signedUrl;
   }
 }
 

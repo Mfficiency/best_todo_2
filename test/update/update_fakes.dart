@@ -8,6 +8,7 @@ library;
 import 'dart:async';
 
 import 'package:besttodo/services/app_updates.dart';
+import 'package:besttodo/services/pre_update_backup.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -125,8 +126,10 @@ class FakeInstaller {
           const MethodChannel(UpdatePlatform.channelName), null);
 }
 
-/// A controller for [app] the way `AppUpdates.create` builds it, on the
-/// fakes; also set as the running app's [AppUpdates.controller].
+/// A controller for [app] the way `AppUpdates.create` builds it
+/// ([AppUpdates.controllerFor]), on the fakes; also set as the running
+/// app's [AppUpdates.controller]. BestToDo's pre-update backup before an
+/// install is skipped (no disk) unless [backup] is set.
 UpdateController fakeController({
   UpdatesApp app = UpdatesApp.todo,
   required FakeGithub github,
@@ -135,14 +138,17 @@ UpdateController fakeController({
   String version = '0.2.106',
   int build = 1000,
   DateTime Function()? clock,
+  bool backup = false,
 }) {
-  final c = UpdateController(
-    config: AppUpdates.config(app, version: version, build: build),
+  if (!backup) PreUpdateBackup.skipForTest();
+  final c = AppUpdates.controllerFor(
+    app,
+    version: version,
+    build: build,
     store: store ?? MemoryUpdateStore(),
     http: github.http,
     downloader: downloader,
     platform: UpdatePlatform(supported: true),
-    strings: AppUpdates.strings,
     clock: clock,
   );
   AppUpdates.controller = c;

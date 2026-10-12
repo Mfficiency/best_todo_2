@@ -7,6 +7,7 @@ class IoApkDownloader extends ApkDownloader {
     Duration connectionTimeout = const Duration(seconds: 15),
     Duration responseTimeout = const Duration(seconds: 30),
     Duration idleTimeout = const Duration(seconds: 60),
+    String? userAgent,
   });
 
   @override

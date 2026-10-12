@@ -1,11 +1,7 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/widgets.dart';
 import 'package:mfficiency_updates/mfficiency_updates.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
@@ -30,37 +26,40 @@ enum UpdatesApp {
 
 /// The app's side of the shared updates package
 /// (`packages/mfficiency_updates`, vendored from flutter_app_template — see
-/// its README.md; never edit that copy). Everything about checking,
-/// downloading and installing is the package's [UpdateController]; this
-/// file only adapts it to BestToDo / Best Music:
+/// its README.md; never edit that copy). The behaviour (when to check, the
+/// resume check, the "check automatically" switch, GitHub's rate limit,
+/// silent download, install) is entirely the package's [UpdateController]
+/// with its defaults; this file only holds what is BestToDo's / Best
+/// Music's own:
 ///
-/// * [UpdateConfig] for the running app: repo `Mfficiency/best_todo_2`
-///   (public, no token), its tag prefix (`v` / `music-v`), checks every
-///   15 minutes while open (GitHub's anonymous limit is 60 requests/hour),
-///   BestToDo's "Automatically update" switch ([Config.autoUpdateCheckEnabled];
-///   Best Music has none, it always checks);
-/// * the app's stored update state from before the package
-///   ([migrateLegacyState]);
-/// * BestToDo's pre-update backup right before Android's installer opens
-///   ([BackupFirstPlatform]);
-/// * the app's date format and log ([LogService]);
-/// * the automatic checks start only once the intro/pickers are done
-///   ([start]), and again when the switch is turned on ([autoCheckChanged]).
+/// * [config]: repo `Mfficiency/best_todo_2` (public, no token), the tag
+///   prefix (`v` / `music-v`), every 15 minutes while open (GitHub's
+///   anonymous limit is 60 requests/hour), BestToDo's "Automatically
+///   update" switch ([Config.autoUpdateCheckEnabled]; Best Music has none,
+///   it always checks);
+/// * BestToDo's pre-update backup ([PreUpdateBackup.ensure]) as the
+///   package's `beforeInstall`, and [promptAllowed] (false while the intro
+///   or a first-start picker is open) as its `promptAllowed`;
+/// * the app's date format ([strings]) and log ([LogService]);
+/// * the update prefs from before the package ([migrateLegacyState]).
 class AppUpdates {
   AppUpdates._();
 
   static const String githubRepo = 'Mfficiency/best_todo_2';
 
   /// How often a running app checks (and how old the last check may be at
-  /// start): GitHub's anonymous API allows 60 requests/hour/IP.
+  /// start or when it comes back): GitHub's anonymous API allows 60
+  /// requests/hour/IP.
   static const Duration interval = Duration(minutes: 15);
 
   /// The running app's updates; null until [create] ran (tests set it,
   /// pages without one show no update UI).
   static UpdateController? controller;
 
-  /// The context [start] was called with (above every screen).
-  static BuildContext? _appContext;
+  /// BestToDo: false while the intro, the mode picker or another
+  /// first-start chooser is open (`main.dart`), so Android's install
+  /// dialog never opens over them; it opens once they are closed.
+  static final ValueNotifier<bool> promptAllowed = ValueNotifier(true);
 
   /// The running app's [UpdateConfig].
   static UpdateConfig config(
@@ -96,6 +95,38 @@ class AppUpdates {
     LogService.add('update', data.isEmpty ? event : '$event $data');
   }
 
+  /// BestToDo's data files are snapshotted before Android's "Update this
+  /// app?" opens, so whatever the next version does to them, this one's
+  /// copy survives.
+  static Future<void> _backupFirst(UpdateResult update, String apkPath) =>
+      PreUpdateBackup.ensure();
+
+  /// The [UpdateController] for [app] with everything app-specific;
+  /// [create] uses it, tests build theirs on fakes through it.
+  static UpdateController controllerFor(
+    UpdatesApp app, {
+    required String version,
+    required int build,
+    required UpdateStore store,
+    String? channel,
+    UpdateHttp? http,
+    ApkDownloader? downloader,
+    UpdatePlatform? platform,
+    DateTime Function()? clock,
+  }) =>
+      UpdateController(
+        config: config(app, version: version, build: build, channel: channel),
+        store: store,
+        http: http,
+        downloader: downloader,
+        platform: platform,
+        strings: strings,
+        log: _log,
+        clock: clock,
+        promptAllowed: app == UpdatesApp.todo ? promptAllowed : null,
+        beforeInstall: app == UpdatesApp.todo ? _backupFirst : null,
+      );
+
   /// Before the first frame: builds [controller] for [app] (reads the
   /// version, migrates the stored state, no network). The seams are for
   /// tests.
@@ -112,41 +143,24 @@ class AppUpdates {
     final build = int.tryParse(Config.buildNumber) ?? 0;
     prefs ??= await SharedPreferences.getInstance();
     await migrateLegacyState(prefs, version: version, build: build);
-    final c = UpdateController(
-      config: config(app, version: version, build: build),
+    final c = controllerFor(
+      app,
+      version: version,
+      build: build,
       store: SharedPreferencesUpdateStore(prefs),
       http: http,
       downloader: downloader,
-      platform: platform ??
-          (app == UpdatesApp.todo ? BackupFirstPlatform() : UpdatePlatform()),
-      strings: strings,
-      log: _log,
+      platform: platform,
       clock: clock,
     );
     await c.init();
-    _appContext = null;
     return controller = c;
   }
 
-  /// After the first frame, once nothing else owns the screen (BestToDo's
-  /// intro and pickers): Android's install time, the check when due,
-  /// polling. [context] is above every screen (the navigator's).
-  static void start(BuildContext context) {
-    final c = controller;
-    if (c == null) return;
-    _appContext = context;
-    c.start(context);
-  }
-
-  /// BestToDo's "Automatically update" was switched: turned on, the checks
-  /// and polling start now (the package reads the switch at [start]);
-  /// turned off, the next poll does nothing.
-  static void autoCheckChanged() {
-    final c = controller;
-    final context = _appContext;
-    if (c == null || context == null || !context.mounted) return;
-    if (Config.autoUpdateCheckEnabled) c.start(context);
-  }
+  /// After the first frame: Android's install time, the check when due,
+  /// polling and the resume check. [context] is above every screen (the
+  /// navigator's).
+  static void start(BuildContext context) => controller?.start(context);
 
   // ── State from before the package (0.2.106 and older) ────────────────
 
@@ -165,58 +179,50 @@ class AppUpdates {
     'update_downloaded_apk',
   ];
 
-  /// Moves what the old update code stored into the package's keys, once:
-  /// the last check time, the last downloaded build (for "Downloaded …")
-  /// and, for the running build, its first start (the "Installed …"
-  /// fallback). The rest (a DownloadManager download in flight, the path of
-  /// a finished APK) is dropped: an update downloaded before but not yet
-  /// installed downloads once more, silently, into the package's cache
-  /// folder. The old APK folder (`<external files>/updates`) is deleted.
+  /// The package's [migrateLegacyUpdateState] with the old update code's
+  /// keys: the last check time, the last downloaded build (for
+  /// "Downloaded …") and, for the running build, its first start (the
+  /// "Installed …" fallback). A DownloadManager download in flight and the
+  /// path of a finished APK are dropped (that update downloads once more,
+  /// silently); the old APK folder (`<external files>/updates`) is deleted.
   static Future<void> migrateLegacyState(
     SharedPreferences prefs, {
     required String version,
     required int build,
-  }) async {
-    if (!legacyKeys.any(prefs.containsKey)) return;
-    try {
-      final checked = prefs.getInt(_legacyLastChecked);
-      if (checked != null &&
-          prefs.getString(UpdateController.lastCheckKey) == null) {
-        await prefs.setString(UpdateController.lastCheckKey,
-            DateTime.fromMillisecondsSinceEpoch(checked).toIso8601String());
-      }
-      final download = _decode(prefs.getString(_legacyLastDownload));
-      final downloadedVersion = download?['version'];
-      final downloadedAt = download?['at'];
-      if (downloadedVersion is String &&
-          downloadedAt is int &&
-          prefs.getString(UpdateController.downloadedKey) == null) {
-        await prefs.setString(
-            UpdateController.downloadedKey,
-            jsonEncode({
-              'key': _key(downloadedVersion),
-              'label': _label(downloadedVersion),
-              'at': DateTime.fromMillisecondsSinceEpoch(downloadedAt)
-                  .toIso8601String(),
-            }));
-      }
-      final seen = _decode(prefs.getString(_legacyFirstSeen));
-      final seenAt = seen?['at'];
-      if (seen?['version'] == '$version+$build' &&
-          seenAt is int &&
-          prefs.getString(UpdateController.installedAtKey) == null) {
-        await prefs.setInt(UpdateController.installedBuildKey, build);
-        await prefs.setString(UpdateController.installedAtKey,
-            DateTime.fromMillisecondsSinceEpoch(seenAt).toIso8601String());
-      }
-    } catch (_) {
-      // Unreadable old state: the package starts fresh.
-    }
-    for (final key in legacyKeys) {
-      await prefs.remove(key);
-    }
-    unawaited(_deleteOldApkFolder());
-  }
+  }) =>
+      migrateLegacyUpdateState(
+        prefs,
+        legacyKeys: legacyKeys,
+        deleteExternalUpdatesFolder: true,
+        read: (p) {
+          final checked = p.getInt(_legacyLastChecked);
+          final download = _decode(p.getString(_legacyLastDownload));
+          final downloadedAt = download?['at'];
+          final downloaded = download?['version'] is String
+              ? parseLegacyVersion(download!['version'] as String)
+              : null;
+          final seen = _decode(p.getString(_legacyFirstSeen));
+          final seenAt = seen?['at'];
+          final thisBuild =
+              seen?['version'] == '$version+$build' && seenAt is int;
+          return LegacyUpdateRecords(
+            lastCheck: checked == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(checked),
+            downloaded: downloaded != null && downloadedAt is int
+                ? (
+                    version: downloaded.version,
+                    build: downloaded.build,
+                    at: DateTime.fromMillisecondsSinceEpoch(downloadedAt),
+                  )
+                : null,
+            installedBuild: thisBuild ? build : null,
+            installedAt: thisBuild
+                ? DateTime.fromMillisecondsSinceEpoch(seenAt)
+                : null,
+          );
+        },
+      );
 
   static Map<String, Object?>? _decode(String? raw) {
     if (raw == null) return null;
@@ -227,41 +233,5 @@ class AppUpdates {
       return null;
     }
   }
-
-  /// "0.2.106+414" (the old records) -> the package's key: the same.
-  static String _key(String version) =>
-      version.contains('+') ? version : '$version+0';
-
-  /// "0.2.106+414" -> "0.2.106 (414)", the package's label.
-  static String _label(String version) {
-    final plus = version.indexOf('+');
-    return plus < 0
-        ? version
-        : '${version.substring(0, plus)} (${version.substring(plus + 1)})';
-  }
-
-  /// Android's DownloadManager put the old update APKs into the app's
-  /// external files folder; the package downloads into its cache instead.
-  static Future<void> _deleteOldApkFolder() async {
-    if (kIsWeb || !Platform.isAndroid) return;
-    try {
-      final base = await getExternalStorageDirectory();
-      if (base == null) return;
-      final dir = Directory('${base.path}/updates');
-      if (await dir.exists()) await dir.delete(recursive: true);
-    } catch (_) {}
-  }
 }
 
-/// BestToDo's installer: the data files are snapshotted
-/// ([PreUpdateBackup.ensure]) before Android's "Update this app?" opens,
-/// so whatever the next version does to them, this one's copy survives.
-class BackupFirstPlatform extends UpdatePlatform {
-  BackupFirstPlatform({super.supported});
-
-  @override
-  Future<String> installApk(String path) async {
-    await PreUpdateBackup.ensure();
-    return super.installApk(path);
-  }
-}
