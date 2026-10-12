@@ -6,6 +6,9 @@ version number. Entries from before the split are still recorded in the
 shared history over in `CHANGELOG.md` (search it for "Music"/"Best Music");
 nothing has been copied over here.
 
+## [0.3.24] - 2026-10-12
+- Smaller download: Best Music is now built for 64-bit phones only (every Android phone of the last several years), so the APK is about a third of its old size (around 23 MB instead of 67 MB) and updates download that much faster
+
 ## [0.3.23] - 2026-10-12
 - Menu: the same order as BestToDo — Home first (closes the menu), Settings, MP3 Downloader, Subscriptions, Songs by BPM, Wishlist, Sleep timer, then Changelog, About, App Logs and Startup Times
 - New Changelog look: a card at the top shows your version and whether it is up to date, when it was downloaded and installed, a newer version that is downloaded and ready to install (with an Install button) and when updates were last checked; below it, one card per release with its date. Pulling down checks right away and downloads a new version quietly in the background — the app asks to install it once it is complete.

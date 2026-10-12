@@ -17,7 +17,10 @@ fi
 # is exactly sh tool/build.sh apk --release --flavor music -t lib/main_music.dart.
 if [ "$1" = "music-apk" ]; then
   shift
-  exec sh tool/build.sh apk --flavor music -t lib/main_music.dart "$@"
+  # arm64 only + split debug info: ~20 MB instead of the 67 MB fat APK
+  # (same as tool/build.ps1's $musicSizeArgs).
+  exec sh tool/build.sh apk --flavor music -t lib/main_music.dart \
+    --target-platform android-arm64 --split-debug-info=build/symbols/music "$@"
 fi
 
 # No version bump here: tool/bump_version.dart requires an explicit

@@ -170,7 +170,7 @@ jobs:
       shell: bash
       run: |
         start=$(date +%s)
-        flutter build apk --release --flavor music -t lib/main_music.dart
+        flutter build apk --release --flavor music -t lib/main_music.dart --target-platform android-arm64 --split-debug-info=build/symbols/music
         echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
 
     - name: Stage APK with version in filename

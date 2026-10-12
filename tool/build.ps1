@@ -53,6 +53,13 @@ function Invoke-Checked {
   }
 }
 
+# Best Music ships arm64 only, with the Dart debug symbols written to
+# build/symbols/music instead of into libapp.so: the default fat APK carries
+# libflutter.so + libapp.so for three ABIs (67 MB, 97 % of it binaries the
+# phone never loads); this is ~20 MB. Not --split-per-abi (the updater takes
+# a release's first .apk asset). See SPEC.md §11 "APK size — Best Music".
+$musicSizeArgs = @("--target-platform", "android-arm64", "--split-debug-info=build/symbols/music")
+
 # Which app a set of `flutter build` arguments builds. android/app/build.gradle.kts
 # defines the `todo` (BestToDo) and `music` (Best Music — lib/main_music.dart,
 # SPEC.md §10.6f) product flavors, and an `apk` build now *requires* an explicit
@@ -310,7 +317,7 @@ function Invoke-BuildAll {
   # "everything this project ships" includes it. MUSIC=0 skips it.
   if ($env:ANDROID -ne "0" -and $env:MUSIC -ne "0") {
     Write-Host "==> flutter build apk --flavor music $($ArgsForTargets -join ' ')"
-    Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $ArgsForTargets)
+    Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $ArgsForTargets + $musicSizeArgs)
     $musicStatus = "ok"
     $env:SKIP_PREFLIGHT = "1"
   }
@@ -470,7 +477,7 @@ function Invoke-ChannelRelease {
 
   $apps = @(
     @{ Flavor = "todo"; Name = "BestToDo"; Asset = "BestToDo"; VersionFile = "pubspec.yaml"; Args = @("--flavor", "todo") },
-    @{ Flavor = "music"; Name = "Best Music"; Asset = "BestMusic"; VersionFile = "MUSIC_VERSION"; Args = @("--flavor", "music", "-t", "lib/main_music.dart") }
+    @{ Flavor = "music"; Name = "Best Music"; Asset = "BestMusic"; VersionFile = "MUSIC_VERSION"; Args = @("--flavor", "music", "-t", "lib/main_music.dart") + $musicSizeArgs }
   )
   $numberArgs = @()
   if ($buildNumber -ne "") { $numberArgs = @("--build-number", $buildNumber) }
@@ -598,7 +605,7 @@ if ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq "release") {
   # Shorthand for the Best Music flavor, matching `sh tool/build.sh music-apk`:
   #   powershell -File tool\build.ps1 music-apk --release
   $rest = if ($BuildArgs.Count -gt 1) { $BuildArgs[1..($BuildArgs.Count - 1)] } else { @() }
-  Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $rest)
+  Invoke-SingleBuild (@("apk", "--flavor", "music", "-t", "lib/main_music.dart") + $rest + $musicSizeArgs)
 } else {
   Invoke-SingleBuild $BuildArgs
 }
