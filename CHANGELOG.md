@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.112] - 2026-10-14
+- Changelog: the version card shows the version and channel on top, then Downloaded, Installed and Last check with their dates lined up in one column; no icon and no pull-down hint
+
 ## [0.2.111] - 2026-10-12
 - Best Music has moved to its own home on GitHub (Mfficiency/BestMusic); this repo now builds BestToDo only. Nothing changes in BestToDo, which is a little smaller now that it no longer carries Best Music's audio player libraries.
 

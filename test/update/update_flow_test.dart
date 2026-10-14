@@ -268,6 +268,21 @@ void main() {
       of: find.byKey(const Key('changelog-update-status')),
       matching: find.textContaining(text));
 
+  /// The status card's time table as label -> time ("Installed:" ->
+  /// "11.10.26, 08:05"): the labels in one column, the times next to them.
+  Map<String, String> statusTimes(WidgetTester tester) {
+    final table = tester.widget<Table>(find.descendant(
+        of: find.byKey(const Key('changelog-update-status')),
+        matching: find.byType(Table)));
+    String textOf(Widget w) => w is Text
+        ? w.data!
+        : textOf((w as Padding).child!);
+    return {
+      for (final row in table.children)
+        textOf(row.children[0]): textOf(row.children[1]),
+    };
+  }
+
   testWidgets(
       'pulling down on the changelog checks and downloads silently; the '
       'status card follows', (tester) async {
@@ -275,10 +290,17 @@ void main() {
     await pumpApp(tester);
     updates.start(navigatorKey.currentContext!);
     await openChangelog(tester);
-    expect(statusText('Current version 0.2.106 (1000)'), findsOneWidget);
-    expect(statusText('Installed 11.10.26'), findsOneWidget);
-    expect(statusText('Not checked yet'), findsOneWidget);
-    expect(statusText('Pull down to check for updates'), findsOneWidget);
+    expect(statusText('Version 0.2.106 (1000) · main'), findsOneWidget);
+    var times = statusTimes(tester);
+    expect(times.keys, ['Installed:', 'Last check:']);
+    expect(times['Installed:'], startsWith('11.10.26'));
+    expect(times['Last check:'], 'Not checked yet');
+    expect(statusText('Pull down to check for updates'), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byKey(const Key('changelog-update-status')),
+            matching: find.byType(Icon)),
+        findsNothing);
 
     await tester.fling(find.byKey(const Key('changelog-release-list')),
         const Offset(0, 400), 1000);
@@ -291,7 +313,8 @@ void main() {
     expect(statusText('Version 0.2.107 (2000) available'), findsOneWidget);
     expect(statusText('0.2.107 (2000) downloaded 12.10.26'), findsOneWidget);
     expect(statusText('ready to install'), findsOneWidget);
-    expect(statusText('Last checked 12.10.26'), findsOneWidget);
+    times = statusTimes(tester);
+    expect(times['Last check:'], startsWith('12.10.26'));
     expect(statusText('null'), findsNothing);
     await tester.pump(const Duration(seconds: 5));
     disposeUpdates();
@@ -309,8 +332,10 @@ void main() {
     });
     await pumpApp(tester, store: store);
     await openChangelog(tester);
-    expect(statusText('Downloaded 11.10.26'), findsOneWidget);
-    expect(statusText('Installed 12.10.26'), findsOneWidget,
+    final times = statusTimes(tester);
+    expect(times.keys, ['Downloaded:', 'Installed:', 'Last check:']);
+    expect(times['Downloaded:'], startsWith('11.10.26'));
+    expect(times['Installed:'], startsWith('12.10.26'),
         reason: "off a phone: the build's first start");
 
     downloader.fail = true;

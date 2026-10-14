@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 - 2026-10-14
+
+- **Status card, easier to read:** the changelog's header card shows the
+  version and channel on top ("Version 1.2.0 (5) · dev", every channel
+  including main), then the times in two aligned columns (Downloaded:,
+  Installed:, Last check:). No icon and no "Pull down to check" hint any
+  more; a status line only appears when there is news (checking, an
+  update, a problem), "Up to date" is not repeated. New strings
+  `downloadedLabel`, `installedLabel`, `lastCheckLabel` (English
+  defaults); `pullToCheck` is no longer shown (kept for compatibility).
+
 ## 1.2.0 - 2026-10-12
 
 - **Open after updating:** installs go through Android's installer app

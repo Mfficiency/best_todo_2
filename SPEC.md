@@ -3378,11 +3378,15 @@ in App Logs → Todoist — onboarding has already finished by then.
       restart (`state.updates.pausedUntil`); taps still check.
     - **Where it shows:** `UpdateBanner` below every screen (BestToDo: `MaterialApp.builder`
       under the page; Best Music: above the mini player). The Changelog (both apps) starts
-      with the package's `UpdateStatusCard` (`Key('changelog-update-status')`: "Current
-      version 0.2.107 (415) · Up to date", "Downloaded … · Installed …" for the running build
-      — installed = Android's `lastUpdateTime` through the plugin's `installTime`, else the
-      build's first start —, a newer build downloading or "downloaded … · ready to install"
-      with Install, "Last checked … · Pull down to check for updates"); pulling down runs
+      with the package's `UpdateStatusCard` (`Key('changelog-update-status')`, since 0.2.112 /
+      package 1.3.0: "Version 0.2.112 (420) · dev" on top for every channel incl. main, a
+      status line under it only when not "Up to date" (Checking…, an update, a problem),
+      then a two-column table with the labels "Downloaded:" (the running build, when it was
+      the one last downloaded), "Installed:" (Android's `lastUpdateTime` through the
+      plugin's `installTime`, else the build's first start) and "Last check:" ("Not checked
+      yet" before the first) and their date-times lined up; no icon, no pull-down hint; a
+      newer build downloading or "downloaded … · ready to install" below, Install top
+      right when an update is there); pulling down runs
       `refresh()`; tapping a release's version (`changelog-version-<x.y.z>`) opens the
       package's version sheet (`onVersionTap`): the running one "You are using this
       version", another its highest build's download — an older one with the downgrade note

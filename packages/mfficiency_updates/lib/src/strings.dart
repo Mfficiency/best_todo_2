@@ -17,6 +17,9 @@ class UpdateStrings {
     this.downloadedAt = _downloadedAt,
     this.installedAt = _installedAt,
     this.downloadedReady = _downloadedReady,
+    this.downloadedLabel = 'Downloaded:',
+    this.installedLabel = 'Installed:',
+    this.lastCheckLabel = 'Last check:',
     this.neverChecked = 'Not checked yet',
     this.lastChecked = _lastChecked,
     this.pullToCheck = 'Pull down to check for updates',
@@ -65,18 +68,28 @@ class UpdateStrings {
   /// "Current version 1.2.0 (5)".
   final String Function(String version) currentVersion;
 
-  /// "Downloaded 12.10.2026 11:20" (the running build).
+  /// "Downloaded 12.10.2026 11:20" (the running build). The status card
+  /// uses [downloadedLabel] instead.
   final String Function(String time) downloadedAt;
 
-  /// "Installed 12.10.2026 11:25".
+  /// "Installed 12.10.2026 11:25". The status card uses [installedLabel].
   final String Function(String time) installedAt;
 
   /// "1.3.0 (6) downloaded 12.10.2026 11:20 · ready to install".
   final String Function(String version, String time) downloadedReady;
+
+  /// Labels of the status card's time column ("Downloaded:" 12.10.2026
+  /// 11:20); the times line up next to them.
+  final String downloadedLabel;
+  final String installedLabel;
+  final String lastCheckLabel;
   final String neverChecked;
 
   /// "Last checked 12.10.2026 11:20".
   final String Function(String date) lastChecked;
+
+  /// No longer shown (the status card dropped its pull-down hint); kept so
+  /// apps that pass it still compile.
   final String pullToCheck;
   final String install;
   final String retry;
