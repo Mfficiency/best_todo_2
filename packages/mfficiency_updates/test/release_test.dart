@@ -363,4 +363,77 @@ void main() {
       5,
     );
   });
+
+  group('build facts', () {
+    test('the laptop footer: built, duration, APK size from the asset', () {
+      final r = releaseResult({
+        ...rel('v1.2.0-7'),
+        'body': 'What changed\n\n---\n- Channel: main\n'
+            '- Built: 2026-10-15 14:02 in 3m 12s, APK 19.4 MB\n'
+            '- Built on the laptop',
+        'published_at': '2026-10-15T12:05:00Z',
+        'assets': [
+          {
+            'name': 'app.apk',
+            'size': 20342112,
+            'browser_download_url': 'https://github.com/o/r/download/a.apk',
+          },
+        ],
+      });
+      expect(r.builtAt, DateTime(2026, 10, 15, 14, 2));
+      expect(r.buildDuration, const Duration(minutes: 3, seconds: 12));
+      expect(r.apkSize, 20342112);
+      expect(r.hasBuildInfo, isTrue);
+    });
+
+    test('BestCollage: no dash, single-digit seconds', () {
+      const notes = 'x\n---\nChannel: dev\nBuilt: 2026-10-15 09:41 in 2m 5s\n'
+          'APK size: 21.0 MB\nBuilt on the laptop.';
+      expect(buildTime(notes), DateTime(2026, 10, 15, 9, 41));
+      expect(buildDuration(notes), const Duration(minutes: 2, seconds: 5));
+    });
+
+    test('BestToDo: UTC offset and a separate duration line', () {
+      const notes = '---\n- Built: 2026-10-15 14:02 UTC+02:00\n'
+          '- Build duration: 1h 03m\n- APK size: 19.4 MB';
+      expect(buildTime(notes), DateTime.utc(2026, 10, 15, 12, 2).toLocal());
+      expect(buildDuration(notes), const Duration(hours: 1, minutes: 3));
+      expect(
+        buildTime('- Built: 2026-10-15 08:00 UTC-05:00'),
+        DateTime.utc(2026, 10, 15, 13).toLocal(),
+      );
+    });
+
+    test('Vesta Immo: one line with | separators', () {
+      const notes = 'x\n\nChannel: **dev** | commit `abc1234` on `dev` | '
+          'built 2026-10-15 14:02 in 3m 12s | APK 19.4 MB | built on the laptop';
+      expect(buildTime(notes), DateTime(2026, 10, 15, 14, 2));
+      expect(buildDuration(notes), const Duration(minutes: 3, seconds: 12));
+      expect(buildTime('Built on the laptop'), isNull);
+    });
+
+    test('notes without a footer: published time, no duration', () {
+      final r = releaseResult({
+        ...rel('v1.2.0-7'),
+        'body': 'Built on the laptop',
+        'published_at': '2026-10-15T12:05:00Z',
+      });
+      expect(r.builtAt, DateTime.utc(2026, 10, 15, 12, 5).toLocal());
+      expect(r.buildDuration, isNull);
+      expect(r.apkSize, isNull);
+      expect(buildTime(null), isNull);
+      expect(manifestResult({'version': '1.0.0'}).hasBuildInfo, isFalse);
+    });
+
+    test('formats', () {
+      expect(parseBuildDuration('42s'), const Duration(seconds: 42));
+      expect(parseBuildDuration('3 min'), const Duration(minutes: 3));
+      expect(parseBuildDuration('soon'), isNull);
+      expect(formatBuildDuration(const Duration(seconds: 42)), '42s');
+      expect(formatBuildDuration(const Duration(seconds: 185)), '3m 05s');
+      expect(formatBuildDuration(const Duration(minutes: 63)), '1h 03m');
+      expect(formatApkSize(20342112), '19.4 MB');
+      expect(formatApkSize(831488), '812 KB');
+    });
+  });
 }

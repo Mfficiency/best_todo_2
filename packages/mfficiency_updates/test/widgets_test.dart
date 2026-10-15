@@ -192,6 +192,46 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
+  testWidgets('release build info: built, build time, APK size per version', (
+    tester,
+  ) async {
+    http = FakeHttp([
+      {
+        ...release('v1.2.0-12'),
+        'body': '- Built: 2026-10-15 14:02 in 3m 12s, APK 19.4 MB',
+        'assets': [
+          {
+            'name': 'app.apk',
+            'size': 20342112,
+            'browser_download_url': 'https://github.com/o/app/download/a.apk',
+          },
+        ],
+      },
+      release('v1.1.0-11'),
+    ]);
+    final c = await controller(tester);
+    await tester.pumpWidget(
+      host(
+        Column(
+          children: [
+            ReleaseBuildInfo(controller: c, version: '1.2.0'),
+            ReleaseBuildInfo(
+              controller: c,
+              version: '0.9.0',
+              fallback: const Text('from CHANGELOG.md'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Built 15.10.2026 14:02'), findsOneWidget);
+    expect(find.text('Build time 3m 12s'), findsOneWidget);
+    expect(find.text('APK 19.4 MB'), findsOneWidget);
+    expect(find.text('from CHANGELOG.md'), findsOneWidget,
+        reason: 'no release of 0.9.0');
+  });
+
   testWidgets('strings: the app\'s own', (tester) async {
     final c = UpdateController(
       config: const UpdateConfig(appName: 'A', version: '1.0.0', build: 1),

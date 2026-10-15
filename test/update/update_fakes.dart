@@ -12,16 +12,22 @@ import 'package:besttodo/services/pre_update_backup.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// One release of the app with [tag] as GitHub's releases list has it.
+/// One release of the app with [tag] as GitHub's releases list has it;
+/// [body] is its notes (the laptop builder's "- Built: …" footer, say) and
+/// [size] its APK asset's size in bytes.
 Map<String, Object?> release(String tag,
-        {bool prerelease = false, bool draft = false, bool apk = true}) =>
+        {bool prerelease = false,
+        bool draft = false,
+        bool apk = true,
+        String body = 'notes',
+        int? size}) =>
     {
       'tag_name': tag,
       'name': tag,
       'draft': draft,
       'prerelease': prerelease,
       'html_url': 'https://github.com/Mfficiency/best_todo_2/releases/tag/$tag',
-      'body': 'notes',
+      'body': body,
       'assets': [
         if (apk)
           {
@@ -31,6 +37,7 @@ Map<String, Object?> release(String tag,
             'browser_download_url':
                 'https://github.com/Mfficiency/best_todo_2/releases/download/'
                     '$tag/$tag.apk',
+            if (size != null) 'size': size,
           },
       ],
     };

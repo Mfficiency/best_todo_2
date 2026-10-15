@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.114] - 2026-10-15
+- Changelog: every version now shows when it was built, how long the build took and the size of its APK (taken from its GitHub release; versions without that keep the build lines the changelog already had). The update module is version 1.5.0.
+
 ## [0.2.113] - 2026-10-15
 - Long tasks show roughly how much time is left (hh:mm:ss remaining) below their spinner when they look like taking more than 30 seconds: Todoist sync (Settings → Todoist sync → Sync now), the Todoist import when you first connect (the welcome dialog, the browser's "Load real data" and the "Importing the rest of your tasks" bar on the home page), the Google Calendar import (Settings and the Weekly Hours Planner) and Fitness Activity's scan for personal bests. The estimate is based on how long the same job took last time; app update downloads show it too
 

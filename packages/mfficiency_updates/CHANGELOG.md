@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.0 - 2026-10-15
+
+- **Build facts per version:** `ReleaseBuildInfo(controller:, version:)`
+  shows under a changelog entry when that version was built, how long the
+  build took and the APK's size ("Built 15.10.2026 14:02", "Build time
+  3m 12s", "APK 19.4 MB"), read from its GitHub release (the highest
+  build of that x.y.z, from the same cached list as the older-versions
+  sheet). `fallback:` for the app's own CHANGELOG.md build lines while
+  the list loads or when the release says nothing.
+- `UpdateResult.builtAt` / `buildDuration` / `apkSize`: the release notes'
+  build footer in every app's variant ("Built: 2026-10-15 14:02 in 3m
+  12s, APK 19.4 MB", "Built: … UTC+02:00" + "Build duration: …",
+  Vesta Immo's "… | built 2026-10-15 14:02 in 3m 12s | APK …"), else
+  the release's publish time; the size is the APK asset's. Pure helpers
+  `buildTime`, `buildDuration`, `parseBuildDuration`,
+  `formatBuildDuration`, `formatApkSize`. New strings `releaseBuilt`,
+  `releaseBuildTime`, `releaseApkSize` (English defaults).
+
 ## 1.4.0 - 2026-10-15
 
 - **Time remaining:** a download that takes more than 30 s gets a second
