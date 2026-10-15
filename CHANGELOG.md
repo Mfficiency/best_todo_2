@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.113] - 2026-10-15
+- Long tasks show roughly how much time is left (hh:mm:ss remaining) below their spinner when they look like taking more than 30 seconds: Todoist sync (Settings → Todoist sync → Sync now), the Todoist import when you first connect (the welcome dialog, the browser's "Load real data" and the "Importing the rest of your tasks" bar on the home page), the Google Calendar import (Settings and the Weekly Hours Planner) and Fitness Activity's scan for personal bests. The estimate is based on how long the same job took last time; app update downloads show it too
+
 ## [0.2.112] - 2026-10-14
 - Changelog: the version card shows the version and channel on top, then Downloaded, Installed and Last check with their dates lined up in one column; no icon and no pull-down hint
 

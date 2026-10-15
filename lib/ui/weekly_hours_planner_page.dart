@@ -10,6 +10,7 @@ import '../services/google_calendar_service.dart';
 import '../services/weekly_hours_service.dart';
 import '../utils/date_time_format.dart';
 import 'subpage_app_bar.dart';
+import 'remaining_time_text.dart';
 
 /// Tools -> Weekly Hours Planner: a Monday-to-Friday template of two work
 /// blocks per day (a fixed half-hour lunch break sits in whatever gap is
@@ -348,6 +349,10 @@ class _WeeklyHoursPlannerPageState extends State<WeeklyHoursPlannerPage> {
                   child: Text('Syncing calendar…',
                       style: theme.textTheme.bodySmall),
                 ),
+              RemainingTimeText(
+                active: _gcalSyncing && Config.googleCalendarUrl.trim().isNotEmpty,
+                durationKey: 'google_calendar_refresh',
+              ),
             ],
           ),
         ),

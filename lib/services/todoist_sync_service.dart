@@ -197,6 +197,26 @@ class TodoistSyncService {
     }
   }
 
+  /// How long the newest successful run took (for the rough "time
+  /// remaining" under the sync spinners): first-launch imports and regular
+  /// syncs separately, falling back to the other kind when there is none
+  /// yet. Null with no successful run in the log.
+  Duration? typicalDuration({bool firstImport = false}) {
+    SyncLogEntry? same;
+    SyncLogEntry? other;
+    for (final e in entries.value) {
+      if (!e.success || e.durationMs <= 0) continue;
+      final isImport = e.trigger == 'first_launch_import';
+      if (isImport == firstImport) {
+        same ??= e;
+      } else {
+        other ??= e;
+      }
+    }
+    final pick = same ?? other;
+    return pick == null ? null : Duration(milliseconds: pick.durationMs);
+  }
+
   /// Runs one sync pass. Returns the recorded entry, or null when sync is
   /// off, no token is set, or a sync is already running. Never throws.
   Future<SyncLogEntry?> syncNow({String trigger = 'manual'}) async {

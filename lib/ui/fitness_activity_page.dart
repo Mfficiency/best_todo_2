@@ -6,6 +6,7 @@ import '../services/fitness_activity_service.dart';
 import '../services/health_tracking_service.dart';
 import '../utils/date_time_format.dart';
 import 'subpage_app_bar.dart';
+import 'remaining_time_text.dart';
 
 /// Trims a whole-number value down to no decimals, e.g. 72.0 -> "72" but
 /// 71.5 -> "71.5". Shared by the weight and personal-best displays/dialogs.
@@ -360,7 +361,19 @@ class _FitnessActivityPageState extends State<FitnessActivityPage>
             SizedBox(
                 width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             SizedBox(width: 12),
-            Text('Scanning your history for personal bests…'),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Scanning your history for personal bests…'),
+                  RemainingTimeText(
+                    active: true,
+                    durationKey: 'fitness_personal_bests',
+                  ),
+                ],
+              ),
+            ),
           ]),
         ),
       );

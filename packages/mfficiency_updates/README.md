@@ -142,6 +142,7 @@ Then show it:
 | changelog version tap | `updates.onVersionTap(context, '1.2.0')` (older-versions sheet) |
 | settings / about | `UpdateCheckTile(controller: updates)`, or your own tile with `checkTileTitle(context)`, `checkTileSubtitle(context)`, `checkSummary(context)` and `checkNow(context)` |
 | token saved/removed | `updates.reloadToken()` |
+| app's own long work | `RemainingTime()..start()`, then `label(done)` under its progress: "00:01:23 remaining" for work over 30 s |
 
 State to listen to: the controller itself (a `ChangeNotifier`) or
 `result`, `checking`, `downloading`, `downloadProgress`, `ready`, `failed`,

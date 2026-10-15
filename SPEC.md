@@ -1744,6 +1744,20 @@ instead of data — `tasks`/`projects` GET responses on v1 are also cursor-pagin
 (`{"results": [...], "next_cursor": ...}` rather than a bare array), which
 `TodoistApiClient._fetchAllPages` walks to completion.
 
+**Time remaining (0.2.113):** the Settings section shows a `RemainingTimeText`
+(`lib/ui/remaining_time_text.dart`) under the buttons while `syncing` is true, and so do the
+home page's "Importing the rest…" banner, the onboarding Todoist dialog and the web
+"Load real data" status. A sync can't say how far it is, so the estimate counts down from
+`TodoistSyncService.typicalDuration()` — the newest successful run in the `SyncLogEntry`
+history (first-launch imports and regular syncs separately, falling back to the other
+kind). The widget wraps the shared package's `RemainingTime`: nothing for the first 3 s
+and nothing unless the whole job looks longer than 30 s, then "hh:mm:ss remaining",
+refreshed every second. Without a `typical` it can take a `durationKey` and remembers the
+last run's duration itself (SharedPreferences `eta.<key>`): `google_calendar_refresh`
+(Settings' Calendar URL Import and the Weekly Hours Planner's "Syncing calendar…") and
+`fitness_personal_bests` (the Health Connect scan placeholder, §10). Short work (token
+tests, Send to Claude, local loads, CSV export) has no line.
+
 **Scope:** recurring tasks (parents and generated instances) are excluded —
 Todoist's own recurrence engine has no clean mapping onto this app's
 generated-instance model, so those stay local-only. Everything else syncs,
@@ -3915,7 +3929,9 @@ map (steps=blue walk icon, distance=orange route, calories=deep-orange flame,
 workout=teal dumbbell, sleep=indigo moon, heart rate=pink heart, resting heart
 rate=purple outlined heart), and is hidden entirely once loaded if history had
 no samples for any metric; while the year of history is still loading it shows
-a "Scanning your history for personal bests…" placeholder instead.
+a "Scanning your history for personal bests…" placeholder instead, with a rough
+"hh:mm:ss remaining" below it once the scan looks like taking more than 30 s (based on
+how long the last scan took; `RemainingTimeText`, §4.8).
 
 Manually-entered records stay exactly as before, kept separate from both the
 read-only Health Connect data and the auto-detected records.

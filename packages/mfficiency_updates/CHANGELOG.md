@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0 - 2026-10-15
+
+- **Time remaining:** a download that takes more than 30 s gets a second
+  line under its progress, "00:01:23 remaining" (`UpdateStrings.remaining`),
+  extrapolated from the progress so far; only an indication.
+- **`RemainingTime` / `formatHms`** (exported, pure): the same estimate
+  for the apps' own long work (uploads, syncs, imports). `start()`, then
+  `label(done)` with 0..1 (or `typical:` for work without a fraction);
+  nothing for work that looks no longer than 30 s in total
+  (`longerThan`), nor during the first 3 s while it settles.
+
 ## 1.3.0 - 2026-10-14
 
 - **Status card, easier to read:** the changelog's header card shows the

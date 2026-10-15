@@ -30,6 +30,7 @@ class UpdateStrings {
     this.downloadFailedBanner = _downloadFailedBanner,
     this.availableBanner = _availableBanner,
     this.downloading = _downloading,
+    this.remaining = _remaining,
     this.downloadingBackground = _downloadingBackground,
     this.installFailed =
         "The update couldn't be downloaded. Check the connection and try "
@@ -109,6 +110,9 @@ class UpdateStrings {
   /// the check tile; " 42 %" is appended).
   final String Function(String version) downloading;
 
+  /// "00:01:23 remaining", under the progress of a download over 30 s.
+  final String Function(String hms) remaining;
+
   /// The one SnackBar after a tap that starts a download.
   final String Function(String version) downloadingBackground;
   final String installFailed;
@@ -141,6 +145,7 @@ String _readyBanner(String v) => 'Update ready · $v';
 String _downloadFailedBanner(String v) => "Version $v couldn't be downloaded";
 String _availableBanner(String v) => 'Version $v is available';
 String _downloading(String v) => 'Downloading version $v…';
+String _remaining(String t) => '$t remaining';
 String _downloadingBackground(String v) =>
     "Downloading version $v in the background. You'll be asked to install it "
     "when it's ready.";
