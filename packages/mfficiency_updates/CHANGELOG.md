@@ -11,7 +11,8 @@
   the list loads or when the release says nothing.
 - `UpdateResult.builtAt` / `buildDuration` / `apkSize`: the release notes'
   build footer in every app's variant ("Built: 2026-10-15 14:02 in 3m
-  12s, APK 19.4 MB", "Built: … UTC+02:00" + "Build duration: …"), else
+  12s, APK 19.4 MB", "Built: … UTC+02:00" + "Build duration: …",
+  Vesta Immo's "… | built 2026-10-15 14:02 in 3m 12s | APK …"), else
   the release's publish time; the size is the APK asset's. Pure helpers
   `buildTime`, `buildDuration`, `parseBuildDuration`,
   `formatBuildDuration`, `formatApkSize`. New strings `releaseBuilt`,

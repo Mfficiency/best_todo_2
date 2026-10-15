@@ -375,13 +375,16 @@ UpdateResult releaseResult(
 //   Built: 2026-10-15 14:02 in 3m 5s
 //   - Built: 2026-10-15 14:02 UTC+02:00
 //   - Build duration: 3m 12s
+//   Channel: **dev** | commit `abc1234` on `dev` | built 2026-10-15 14:02 in 3m 12s | APK 19.4 MB
 final _builtLine = RegExp(
-  r'^[-*]?\s*Built:\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})'
-  r'(?:\s*(?:UTC|GMT)?\s*([+-])(\d{1,2}):?(\d{2}))?(?:\s+in\s+([^,\n]+))?',
+  r'(?:^[-*]?[ \t]*|\|[ \t]*)[Bb]uilt:?[ \t]*'
+  r'(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})'
+  r'(?:[ \t]*(?:UTC|GMT)?[ \t]*([+-])(\d{1,2}):?(\d{2}))?'
+  r'(?:[ \t]+in[ \t]+([^,|\n]+))?',
   multiLine: true,
 );
 final _durationLine = RegExp(
-  r'^[-*]?\s*Build duration[^:\n]*:\s*([^,\n]+)',
+  r'^[-*]?[ \t]*Build duration[^:\n]*:[ \t]*([^,|\n]+)',
   multiLine: true,
 );
 

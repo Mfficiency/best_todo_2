@@ -404,6 +404,14 @@ void main() {
       );
     });
 
+    test('Vesta Immo: one line with | separators', () {
+      const notes = 'x\n\nChannel: **dev** | commit `abc1234` on `dev` | '
+          'built 2026-10-15 14:02 in 3m 12s | APK 19.4 MB | built on the laptop';
+      expect(buildTime(notes), DateTime(2026, 10, 15, 14, 2));
+      expect(buildDuration(notes), const Duration(minutes: 3, seconds: 12));
+      expect(buildTime('Built on the laptop'), isNull);
+    });
+
     test('notes without a footer: published time, no duration', () {
       final r = releaseResult({
         ...rel('v1.2.0-7'),

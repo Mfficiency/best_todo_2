@@ -2,11 +2,11 @@
 # files: change packages/mfficiency_updates in the template and run its
 # tool/sync_updates_package.sh (or .ps1) with this app's folder.
 # test/updates_package_vendored_test.dart fails when a file here differs.
-commit: 4a124438df2ffd2ce0c81af0d111d127368c2a18
-date: 2026-10-15T10:17:02+00:00
+commit: f9bd08d469ffada19f641c481695aafab9f242ee
+date: 2026-10-15T10:32:55+00:00
 sha256 (CR bytes removed):
 a2f97f6af095d5dca6f13f857ad7cc6822ac9ab9742e5e44182be09e795c9804  .gitignore
-53481f25ca32ed7a14af510fb4dae5217e37e21af68c4d578b2c24fa1f3d9799  CHANGELOG.md
+b952553bf7b7c9329e78df6af44f4464c0a068bbd782a38228410e563d43b299  CHANGELOG.md
 53f48ef1f46d26d5286d5114a201b6dc94376d22fd01330d2dc4edde2969e570  README.md
 6c301ce76e90c1fb5f08288c6b5a9b296164c03b649d22110b1c777eb5560e79  analysis_options.yaml
 3015a3fe9e682b028c4cb227fd7ed48f7d56e23ce0ca6ad12a7f8b20e283ea63  android/build.gradle
@@ -30,7 +30,7 @@ c5d2464615a5c4156f40307538693416a8dbc7b1826beb5e0fe8dea8b2e1c1d2  lib/src/legacy
 55444e55941cbe16e1ed69978a6b7cb4fdb0b565f172d60392f03ea29c51d867  lib/src/platform.dart
 5f09429eaed90d4ee93a45901def729d2c69dd4a8cc7b353d59408b7e9db657d  lib/src/platform_io.dart
 b9bd05436268099d1be4c5ce6bd777535063e946d8339d5fae947e13d10d079e  lib/src/platform_stub.dart
-fd2a031e884fcf1c0b185359a20c80bfa654ed0be519f92c9747468795f52607  lib/src/release.dart
+dee27c1d1713c9d871fc06bd9bf98e6223e028c82ce6d3ca5a0a8a8f1cb4a154  lib/src/release.dart
 a16e19689f02621822e9a817a3062fc9dfbdc1821d102044fd61f682581fd383  lib/src/remaining_time.dart
 b2d238526139497dbde15a8b06c20962d28ed4fa446f2be914e86ca03f01a468  lib/src/store.dart
 6852a790c1b08c3c5f4d0e1cd48daa4e01ba0f0f3b807e1bb4a547256c16bbd3  lib/src/strings.dart
@@ -43,7 +43,7 @@ dfe59f4d9b9eb021aed455527e39eaa949ff68ea9b94e9b286449be550b9f2b3  test/behaviour
 ce452e8a85961b36245e31e4d6d47584954ece9b424a5053b2c36660d768d18e  test/fakes.dart
 0efc46fbaf9a943c0aad243fc18f2270c0c66d891a6b13eab450fb1016055fa1  test/http_test.dart
 faa9f83e05ce00d7984446bf250faac51e5886d12209d3db61f3f10273193fb0  test/legacy_test.dart
-072e2b636b46c9712c2fde2c91a4305681ac560af812a238e7359bd3e590305e  test/release_test.dart
+717e3d51dfc1611baedf912dcfa7580e3462ac14601e67bd6c2b54dd8a2f87a3  test/release_test.dart
 62e16cb38b8df0238cc04c5ec6944f3410a13f25fa1960a9e42a334d58bdb672  test/remaining_time_test.dart
 df4d61836fbdea350c9364fd327d77c2e026114b5dec8b6a2ed1ff08bf050d25  test/vendoring_test.dart
 a7768a68509b756ebe252d7cc199dc5121a2eaabfb033a487faee051d8071fdd  test/widgets_test.dart
