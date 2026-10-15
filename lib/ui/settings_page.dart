@@ -32,6 +32,7 @@ import 'fitness_activity_page.dart';
 import 'sms_report_log_page.dart';
 import 'streak_goal_dialog.dart';
 import 'subpage_app_bar.dart';
+import 'remaining_time_text.dart';
 
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
@@ -1910,6 +1911,13 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: RemainingTimeText(
+            active: _gcalImporting,
+            durationKey: 'google_calendar_refresh',
+          ),
+        ),
         const SizedBox(height: 8),
       ],
     );
@@ -2076,6 +2084,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ],
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: TodoistSyncService.instance.syncing,
+            builder: (context, syncing, _) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: RemainingTimeText(
+                active: syncing,
+                typical: TodoistSyncService.instance.typicalDuration(),
+              ),
             ),
           ),
           if (_todoistTestResult != null)

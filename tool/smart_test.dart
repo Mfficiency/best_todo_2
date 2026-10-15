@@ -115,6 +115,7 @@ final List<SuiteRule> suiteRules = [
     'lib/services/todoist_api_client.dart', 'lib/services/todoist_metadata_codec.dart', 'lib/models/sync_log_entry.dart',
     'lib/models/todoist_sync_map_entry.dart', 'lib/ui/waiting_approval_page.dart', 'lib/ui/app_logs_page.dart',
   ], {'sync', 'home'}),
+  SuiteRule(['lib/ui/remaining_time_text.dart'], {'sync', 'home', 'tools'}),
   SuiteRule(['lib/services/share_intent_service.dart', 'lib/models/shared_payload.dart', 'lib/ui/quick_add_share_page.dart',
     'ShareActivity.kt', 'MainActivity.kt'], {'share', 'home'}),
   SuiteRule([

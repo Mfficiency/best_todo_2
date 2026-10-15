@@ -5,6 +5,7 @@ import '../config.dart';
 import '../services/storage_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import 'remaining_time_text.dart';
 
 /// Shown first on every `flutter run -d chrome` dev session: pick between
 /// the dev seed data ("Demo data", what Chrome always showed before) and the
@@ -228,7 +229,22 @@ class _WebDataChoicePageState extends State<WebDataChoicePage> {
                                         strokeWidth: 2),
                                   ),
                                   const SizedBox(width: 12),
-                                  Text(_status!),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(_status!),
+                                        RemainingTimeText(
+                                          active: _busy,
+                                          typical: TodoistSyncService.instance
+                                              .typicalDuration(
+                                                  firstImport: true),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),

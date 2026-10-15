@@ -74,6 +74,7 @@ import 'weekly_hours_planner_page.dart';
 import 'widget_previews_page.dart';
 import 'wishlist_page.dart';
 import 'your_stats_page.dart';
+import 'remaining_time_text.dart';
 
 /// One entry of the drawer's Tools section: its feature/tool key, the label
 /// shown in the drawer and the icon in front of it.
@@ -3597,13 +3598,32 @@ class _HomePageState extends State<HomePage>
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          'Importing the rest of your tasks from Todoist…',
-                          style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onPrimaryContainer,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Importing the rest of your tasks from Todoist…',
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onPrimaryContainer,
+                              ),
+                            ),
+                            RemainingTimeText(
+                              active: true,
+                              typical: TodoistSyncService.instance
+                                  .typicalDuration(firstImport: true),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

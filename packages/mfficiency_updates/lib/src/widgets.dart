@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'controller.dart';
 import 'release.dart';
+import 'strings.dart';
 
 /// The slim banner above the app's screens. Nothing while an update
 /// downloads. Once complete and Android's dialog was cancelled: "Update
@@ -64,10 +65,11 @@ class UpdateBanner extends StatelessWidget {
       );
 }
 
-/// The changelog's header card: "Current version 1.2.0 (5) · Up to date",
-/// when this build was downloaded and installed, a newer one downloaded and
-/// ready (or its download progress), when it was last checked, and Install
-/// when an update is there.
+/// The changelog's header card: version and channel on top ("Version
+/// 1.2.0 (5) · main"), a status line only when there is news (checking, an
+/// update, a problem), then the times in two aligned columns (Downloaded,
+/// Installed, Last check), a newer build downloaded and ready (or its
+/// download progress), and Install when an update is there.
 class UpdateStatusCard extends StatelessWidget {
   const UpdateStatusCard({super.key, required this.controller});
   final UpdateController controller;
@@ -78,59 +80,167 @@ class UpdateStatusCard extends StatelessWidget {
         builder: (context, _) {
           final c = controller;
           final s = c.stringsOf(context);
-          final scheme = Theme.of(context).colorScheme;
+          final theme = Theme.of(context);
+          final scheme = theme.colorScheme;
           final r = c.result.value;
           final last = c.lastCheck;
           final available = r?.status == UpdateStatus.available;
-          final status = [
-            s.currentVersion(c.config.versionLabel),
-            if (c.checking.value) s.checking else c.statusLabel(s, r),
-          ].join(' · ');
+          final config = c.config;
+          final version = s.versionTitle(
+            '${config.version} (${config.build}) · ${config.channel}',
+          );
+          final label = c.statusLabel(s, r);
+          final status = c.checking.value
+              ? s.checking
+              : label == s.upToDate
+                  ? null
+                  : label;
           final d = c.downloaded.value;
           final installed = c.installedAt.value;
-          // When the running build was downloaded and installed ...
-          final times = [
+          // When the running build was downloaded and installed, and when
+          // the last check ran.
+          final rows = [
             if (d != null && c.isRunning(d.key))
-              s.downloadedAt(s.dateTime(d.at)),
-            if (installed != null) s.installedAt(s.dateTime(installed)),
-          ].join(' · ');
-          // ... and a newer one that is downloaded and waiting.
+              (s.downloadedLabel, s.dateTime(d.at)),
+            if (installed != null) (s.installedLabel, s.dateTime(installed)),
+            (s.lastCheckLabel, last == null ? s.neverChecked : s.dateTime(last)),
+          ];
+          // A newer build that is downloaded and waiting.
           final waiting =
               available && r!.key == c.ready.value && d?.key == r.key
                   ? s.downloadedReady(d!.label, s.dateTime(d.at))
                   : c.progressLabel(s);
-          final checked =
-              last == null ? s.neverChecked : s.lastChecked(s.dateTime(last));
+          final muted = theme.textTheme.bodyMedium
+              ?.copyWith(color: scheme.onSurfaceVariant);
           return Card(
             color: available ? scheme.primaryContainer : null,
-            child: ListTile(
-              leading: c.checking.value
-                  ? const SizedBox.square(
-                      dimension: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      available
-                          ? Icons.system_update_outlined
-                          : Icons.verified_outlined,
-                    ),
-              title: Text(status),
-              subtitle: Text(
-                [
-                  if (times.isNotEmpty) times,
-                  if (waiting != null) waiting,
-                  c.configured ? '$checked · ${s.pullToCheck}' : checked,
-                ].join('\n'),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(version,
+                            style: theme.textTheme.titleMedium),
+                      ),
+                      if (available)
+                        FilledButton(
+                          onPressed: () => c.install(context, r!),
+                          child: Text(s.install),
+                        ),
+                    ],
+                  ),
+                  if (status != null) Text(status, style: muted),
+                  const SizedBox(height: 8),
+                  Table(
+                    columnWidths: const {
+                      0: IntrinsicColumnWidth(),
+                      1: FlexColumnWidth(),
+                    },
+                    children: [
+                      for (final (name, time) in rows)
+                        TableRow(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Text(name, style: muted),
+                            ),
+                            Text(time, style: muted),
+                          ],
+                        ),
+                    ],
+                  ),
+                  if (waiting != null) ...[
+                    const SizedBox(height: 8),
+                    Text(waiting, style: muted),
+                  ],
+                ],
               ),
-              trailing: available
-                  ? FilledButton(
-                      onPressed: () => c.install(context, r!),
-                      child: Text(s.install),
-                    )
-                  : null,
             ),
           );
         },
+      );
+}
+
+/// A version's build facts for its changelog entry, read from its GitHub
+/// release (the highest build of that x.y.z): when it was built, how long
+/// the build took and the APK's size, as small chips ("Built 15.10.2026
+/// 14:02", "Build time 3m 12s", "APK 19.4 MB"). [fallback] (e.g. the
+/// build lines of the app's CHANGELOG.md) while the releases load or when
+/// the release says nothing; else an empty box. The release list is read
+/// once ([UpdateController.releasesByVersionList]) and again on pull-down.
+class ReleaseBuildInfo extends StatelessWidget {
+  const ReleaseBuildInfo({
+    super.key,
+    required this.controller,
+    required this.version,
+    this.fallback,
+    this.padding = const EdgeInsets.only(top: 12),
+  });
+  final UpdateController controller;
+
+  /// x.y.z as in the changelog heading.
+  final String version;
+  final Widget? fallback;
+
+  /// Around the chips (not around [fallback]).
+  final EdgeInsetsGeometry padding;
+
+  /// The facts as (icon, text), empty when the release says nothing.
+  static List<(IconData, String)> facts(UpdateStrings s, UpdateResult? r) => [
+        if (r?.builtAt case final at?)
+          (Icons.build_outlined, s.releaseBuilt(s.dateTime(at))),
+        if (r?.buildDuration case final d?)
+          (Icons.timer_outlined, s.releaseBuildTime(formatBuildDuration(d))),
+        if (r?.apkSize case final size?)
+          (Icons.sd_storage_outlined, s.releaseApkSize(formatApkSize(size))),
+      ];
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => FutureBuilder<Map<String, UpdateResult>>(
+          future: controller.releasesByVersionList(),
+          builder: (context, snap) {
+            final s = controller.stringsOf(context);
+            final facts = ReleaseBuildInfo.facts(s, snap.data?[version]);
+            if (facts.isEmpty) return fallback ?? const SizedBox.shrink();
+            final theme = Theme.of(context);
+            final scheme = theme.colorScheme;
+            final style = theme.textTheme.labelSmall
+                ?.copyWith(color: scheme.onSurfaceVariant);
+            return Padding(
+              padding: padding,
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (icon, text) in facts)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, size: 14, color: scheme.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Flexible(child: Text(text, style: style)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
       );
 }
 

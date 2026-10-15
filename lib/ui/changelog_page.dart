@@ -504,29 +504,57 @@ class _ChangelogPageState extends State<ChangelogPage> {
                   ],
                 ),
               ),
-            if (notes.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final note in notes)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(note,
-                          style: theme.textTheme.labelSmall
-                              ?.copyWith(color: scheme.onSurfaceVariant)),
-                    ),
-                ],
-              ),
-            ],
+            // When it was built, how long the build took and the APK size:
+            // from the version's GitHub release (the package's
+            // ReleaseBuildInfo, the same chip look), else the build lines
+            // CHANGELOG.md itself carries, never both.
+            if (updates != null)
+              ReleaseBuildInfo(
+                key: ValueKey('changelog-build-info-${release.version}'),
+                controller: updates,
+                version: _baseVersion(release.version),
+                padding: const EdgeInsets.only(top: 10),
+                fallback: _buildNoteChips(notes),
+              )
+            else if (_buildNoteChips(notes) case final chips?)
+              chips,
           ],
         ),
+      ),
+    );
+  }
+
+  /// `0.2.105+413` → `0.2.105`: GitHub releases are looked up by x.y.z.
+  static String _baseVersion(String version) {
+    final plus = version.indexOf('+');
+    return plus < 0 ? version : version.substring(0, plus);
+  }
+
+  /// CHANGELOG.md's own build lines ("Local build: …", "APK size: …") as
+  /// small chips; null without any.
+  Widget? _buildNoteChips(List<String> notes) {
+    if (notes.isEmpty) return null;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      key: const Key('changelog-build-notes'),
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final note in notes)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(note,
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: scheme.onSurfaceVariant)),
+            ),
+        ],
       ),
     );
   }

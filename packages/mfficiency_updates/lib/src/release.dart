@@ -29,6 +29,9 @@ class UpdateResult {
     this.notes,
     this.channel,
     this.browserUrl,
+    this.builtAt,
+    this.buildDuration,
+    this.apkSize,
   });
   final UpdateStatus status;
 
@@ -51,6 +54,21 @@ class UpdateResult {
   /// private repo), else the release page; null for a manifest. Opened
   /// off a phone when [url] can't be turned into a link a browser can use.
   final String? browserUrl;
+
+  /// When the APK was built (local time): the release notes' "Built:" line,
+  /// else when the release was published. Null for a manifest.
+  final DateTime? builtAt;
+
+  /// How long the build took (the release notes' "Built: … in 3m 12s" or
+  /// "Build duration: 3m 12s"); null when the notes don't say.
+  final Duration? buildDuration;
+
+  /// The APK's size in bytes (the release asset's size).
+  final int? apkSize;
+
+  /// Whether [builtAt], [buildDuration] or [apkSize] is known.
+  bool get hasBuildInfo =>
+      builtAt != null || buildDuration != null || apkSize != null;
 
   /// Identifies this exact build: many builds share one x.y.z.
   String get key => '$version+${build ?? 0}';
@@ -343,8 +361,87 @@ UpdateResult releaseResult(
     browserUrl: browserUrl,
     notes: r['body'] as String?,
     channel: tag.channel,
+    builtAt: buildTime(r['body'] as String?) ??
+        DateTime.tryParse('${r['published_at'] ?? r['created_at']}')
+            ?.toLocal(),
+    buildDuration: buildDuration(r['body'] as String?),
+    apkSize: (apk?['size'] as num?)?.toInt(),
   );
 }
+
+// The build footer the apps' tool/build.ps1 (or tool/publish_apk.dart)
+// writes into the release notes, in its variants:
+//   - Built: 2026-10-15 14:02 in 3m 12s, APK 19.4 MB
+//   Built: 2026-10-15 14:02 in 3m 5s
+//   - Built: 2026-10-15 14:02 UTC+02:00
+//   - Build duration: 3m 12s
+//   Channel: **dev** | commit `abc1234` on `dev` | built 2026-10-15 14:02 in 3m 12s | APK 19.4 MB
+final _builtLine = RegExp(
+  r'(?:^[-*]?[ \t]*|\|[ \t]*)[Bb]uilt:?[ \t]*'
+  r'(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})'
+  r'(?:[ \t]*(?:UTC|GMT)?[ \t]*([+-])(\d{1,2}):?(\d{2}))?'
+  r'(?:[ \t]+in[ \t]+([^,|\n]+))?',
+  multiLine: true,
+);
+final _durationLine = RegExp(
+  r'^[-*]?[ \t]*Build duration[^:\n]*:[ \t]*([^,|\n]+)',
+  multiLine: true,
+);
+
+/// When the release notes say the APK was built, in local time (a time
+/// with a UTC offset is converted; one without is the builder's local
+/// time, taken as is). Null when they don't say.
+DateTime? buildTime(String? notes) {
+  final m = notes == null ? null : _builtLine.firstMatch(notes);
+  if (m == null) return null;
+  int g(int i) => int.parse(m.group(i)!);
+  if (m.group(6) == null) return DateTime(g(1), g(2), g(3), g(4), g(5));
+  final offset = Duration(hours: g(7), minutes: g(8));
+  final utc = DateTime.utc(g(1), g(2), g(3), g(4), g(5));
+  return (m.group(6) == '-' ? utc.add(offset) : utc.subtract(offset))
+      .toLocal();
+}
+
+/// How long the build took, from the release notes ("in 3m 12s" on the
+/// "Built:" line, or a "Build duration:" line). Null when they don't say.
+Duration? buildDuration(String? notes) {
+  if (notes == null) return null;
+  final text = _builtLine.firstMatch(notes)?.group(9) ??
+      _durationLine.firstMatch(notes)?.group(1);
+  return text == null ? null : parseBuildDuration(text);
+}
+
+/// "1h 03m", "3m 12s", "42s" (also "3m 5s", "3 min") as a [Duration]; null
+/// for anything else.
+Duration? parseBuildDuration(String text) {
+  final parts = RegExp(r'(\d+)\s*(h|m|min|s|sec)\b').allMatches(text);
+  if (parts.isEmpty) return null;
+  var seconds = 0;
+  for (final p in parts) {
+    final n = int.parse(p.group(1)!);
+    seconds += switch (p.group(2)!) {
+      'h' => n * 3600,
+      'm' || 'min' => n * 60,
+      _ => n,
+    };
+  }
+  return Duration(seconds: seconds);
+}
+
+/// "45s", "3m 12s", "1h 03m".
+String formatBuildDuration(Duration d) {
+  final s = d.inSeconds < 0 ? 0 : d.inSeconds;
+  final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+  String two(int n) => n.toString().padLeft(2, '0');
+  if (h > 0) return '${h}h ${two(m)}m';
+  if (m > 0) return '${m}m ${two(sec)}s';
+  return '${sec}s';
+}
+
+/// "19.4 MB", "812 KB".
+String formatApkSize(int bytes) => bytes >= 1024 * 1024
+    ? '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB'
+    : '${(bytes / 1024).round()} KB';
 
 /// A JSON manifest `{"version", "build", "url", "notes"}` as an update.
 UpdateResult manifestResult(Map<String, Object?> json) => UpdateResult(
