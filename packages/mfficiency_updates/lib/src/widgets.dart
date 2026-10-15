@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'controller.dart';
 import 'release.dart';
+import 'strings.dart';
 
 /// The slim banner above the app's screens. Nothing while an update
 /// downloads. Once complete and Android's dialog was cancelled: "Update
@@ -160,6 +161,86 @@ class UpdateStatusCard extends StatelessWidget {
             ),
           );
         },
+      );
+}
+
+/// A version's build facts for its changelog entry, read from its GitHub
+/// release (the highest build of that x.y.z): when it was built, how long
+/// the build took and the APK's size, as small chips ("Built 15.10.2026
+/// 14:02", "Build time 3m 12s", "APK 19.4 MB"). [fallback] (e.g. the
+/// build lines of the app's CHANGELOG.md) while the releases load or when
+/// the release says nothing; else an empty box. The release list is read
+/// once ([UpdateController.releasesByVersionList]) and again on pull-down.
+class ReleaseBuildInfo extends StatelessWidget {
+  const ReleaseBuildInfo({
+    super.key,
+    required this.controller,
+    required this.version,
+    this.fallback,
+    this.padding = const EdgeInsets.only(top: 12),
+  });
+  final UpdateController controller;
+
+  /// x.y.z as in the changelog heading.
+  final String version;
+  final Widget? fallback;
+
+  /// Around the chips (not around [fallback]).
+  final EdgeInsetsGeometry padding;
+
+  /// The facts as (icon, text), empty when the release says nothing.
+  static List<(IconData, String)> facts(UpdateStrings s, UpdateResult? r) => [
+        if (r?.builtAt case final at?)
+          (Icons.build_outlined, s.releaseBuilt(s.dateTime(at))),
+        if (r?.buildDuration case final d?)
+          (Icons.timer_outlined, s.releaseBuildTime(formatBuildDuration(d))),
+        if (r?.apkSize case final size?)
+          (Icons.sd_storage_outlined, s.releaseApkSize(formatApkSize(size))),
+      ];
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => FutureBuilder<Map<String, UpdateResult>>(
+          future: controller.releasesByVersionList(),
+          builder: (context, snap) {
+            final s = controller.stringsOf(context);
+            final facts = ReleaseBuildInfo.facts(s, snap.data?[version]);
+            if (facts.isEmpty) return fallback ?? const SizedBox.shrink();
+            final theme = Theme.of(context);
+            final scheme = theme.colorScheme;
+            final style = theme.textTheme.labelSmall
+                ?.copyWith(color: scheme.onSurfaceVariant);
+            return Padding(
+              padding: padding,
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (icon, text) in facts)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, size: 14, color: scheme.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Flexible(child: Text(text, style: style)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
       );
 }
 

@@ -3166,7 +3166,8 @@ uses timestamped history with legacy fallback. **Changelog**: `ChangelogPage` re
 bundled markdown asset — CHANGELOG.md by default (`assetPath`; `showStoryPoster` offers
 the `changelogMilestones` poster below; Best Music, which rendered its own changelog with the
 poster off, has its own copy of this page since 0.2.111) — as an update status card plus one card per
-release, pull down to check for updates (§11 "Changelog status card"); an app-bar button
+release (with when it was built, the build time and the APK size, §11 "Where it
+shows"), pull down to check for updates (§11 "Changelog status card"); an app-bar button
 toggles an update heatmap
 — the file is parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd`
 headings + their bullets, wrapped lines joined, undated headings skipped) and drawn as a
@@ -3404,7 +3405,18 @@ in App Logs → Todoist — onboarding has already finished by then.
       `refresh()`; tapping a release's version (`changelog-version-<x.y.z>`) opens the
       package's version sheet (`onVersionTap`): the running one "You are using this
       version", another its highest build's download — an older one with the downgrade note
-      (rollback; Android only installs it after an uninstall). About (both apps,
+      (rollback; Android only installs it after an uninstall). **Build facts per version
+      (0.2.114, package 1.5.0):** under each release card's bullets the package's
+      `ReleaseBuildInfo` (`changelog-build-info-<version>`, looked up by x.y.z) shows chips
+      "Built 12.10.26, 09:41", "Build time 3m 12s", "APK 19.4 MB" from that version's GitHub
+      release (`UpdateResult.builtAt` — the notes' "- Built: …" footer, else the publish
+      time —, `buildDuration`, `apkSize` = the APK asset's size), all from the one cached
+      releases list (`releasesByVersionList`, refreshed on pull-down). While it loads, when
+      the release says nothing, and without a controller, the card shows CHANGELOG.md's own
+      build lines (`isChangelogBuildNote`: Local/CI build, Build duration, APK/Build size)
+      as the same chips instead — never both. The app passes no strings of its own (English
+      defaults `releaseBuilt`/`releaseBuildTime`/`releaseApkSize`, the app's date format).
+      About (both apps,
       `UpdateSection`): the package's `UpdateCheckTile` ("Check for updates", subtitle =
       current version or download progress) and "Go back to an older version" (the version
       sheet for the highest x.y.z below the running one, from the releases list; a SnackBar

@@ -48,6 +48,9 @@ class UpdateStrings {
         'Android installs an older version only after the current one is '
             'uninstalled, which removes its data. Export a backup first.',
     this.versionDownload = _versionDownload,
+    this.releaseBuilt = _releaseBuilt,
+    this.releaseBuildTime = _releaseBuildTime,
+    this.releaseApkSize = _releaseApkSize,
     this.dateTime = _dateTime,
     this.date = _date,
   });
@@ -127,6 +130,12 @@ class UpdateStrings {
   final String versionDowngradeNote;
   final String Function(String version) versionDownload;
 
+  /// The changelog's build facts of a version ([ReleaseBuildInfo]):
+  /// "Built 15.10.2026 14:02", "Build time 3m 12s", "APK 19.4 MB".
+  final String Function(String time) releaseBuilt;
+  final String Function(String duration) releaseBuildTime;
+  final String Function(String size) releaseApkSize;
+
   /// Date and time in the app's region format (default dd.MM.yyyy HH:mm).
   final String Function(DateTime time) dateTime;
 
@@ -153,6 +162,10 @@ String _versionTitle(String v) => 'Version $v';
 String _versionNotAvailable(String v) =>
     'Version $v is no longer available to download.';
 String _versionDownload(String v) => 'Download version $v';
+
+String _releaseBuilt(String t) => 'Built $t';
+String _releaseBuildTime(String d) => 'Build time $d';
+String _releaseApkSize(String s) => 'APK $s';
 
 String _two(int n) => n.toString().padLeft(2, '0');
 String _date(DateTime d) => '${_two(d.day)}.${_two(d.month)}.${d.year}';

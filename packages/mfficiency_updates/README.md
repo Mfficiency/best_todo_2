@@ -55,6 +55,9 @@ Android installer (other platforms: checks only, no install).
 - **Records** (in the app's store): when an APK completed (`downloaded`),
   when the running build was installed (`installedAt`: Android's
   `lastUpdateTime`, else the first start of the build), `lastCheck`.
+- **Build facts:** `ReleaseBuildInfo` shows under a changelog entry when
+  that version was built, how long the build took and the APK size, from
+  its GitHub release (the notes' "Built:" footer and the asset's size).
 - **Older versions:** tapping a version in the changelog lists the highest
   build of that x.y.z; its download is silent, then Android asks (rollback).
 - **Off a phone** (desktop, web): Install opens the APK link with the
