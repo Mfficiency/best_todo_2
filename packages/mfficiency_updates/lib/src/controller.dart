@@ -9,6 +9,7 @@ import 'downloader.dart';
 import 'http.dart';
 import 'platform.dart';
 import 'release.dart';
+import 'remaining_time.dart';
 import 'store.dart';
 import 'strings.dart';
 import 'widgets.dart' show showUpdateVersionSheet;
@@ -138,6 +139,10 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   /// 0..1 (null: size unknown). Only passive text shows it.
   final downloading = ValueNotifier(false);
   final downloadProgress = ValueNotifier<double?>(null);
+
+  /// Time left of the running download, shown under its progress when it
+  /// takes more than 30 s ([progressLabel]).
+  late final RemainingTime _remaining = RemainingTime(clock: _now);
 
   /// Build ([UpdateResult.key]) whose APK is complete: Android's own
   /// "Update this app?" opens right away (the only confirm); cancelled, the
@@ -584,15 +589,18 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// "Downloading version 1.2.0 (5)… 40 %" while an APK downloads
-  /// silently, else null.
+  /// silently, else null. When it takes more than 30 s, a second line says
+  /// roughly how long it still takes ("00:01:23 remaining").
   String? progressLabel(UpdateStrings s) {
     final r = downloadingUpdate;
     if (r == null) return null;
     final f = downloadProgress.value;
+    final left = _remaining.label(f, text: s.remaining);
     return [
-      s.downloading(r.label),
-      if (f != null) '${(f * 100).round()} %',
-    ].join(' ');
+      [s.downloading(r.label), if (f != null) '${(f * 100).round()} %']
+          .join(' '),
+      if (left != null) left,
+    ].join('\n');
   }
 
   // ── Download ───────────────────────────────────────────────────────────
@@ -652,6 +660,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     if (url == null) return null;
     _log(UpdateLogLevel.info, 'update.download', {'version': r.version});
     downloadProgress.value = null;
+    _remaining.start();
     downloading.value = true;
     final sw = Stopwatch()..start();
     final String? path;
@@ -662,6 +671,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
         onProgress: (f) => downloadProgress.value = f,
       );
     } finally {
+      _remaining.stop();
       downloading.value = false;
     }
     _log(UpdateLogLevel.info, 'update.downloaded', {

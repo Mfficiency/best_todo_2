@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import 'remaining_time_text.dart';
 
 /// Shown once, right after onboarding finishes on a brand-new install
 /// (never for an upgrade of an existing install — see the backfill logic in
@@ -233,6 +234,11 @@ class _TodoistImportDialogState extends State<_TodoistImportDialog> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ],
+            RemainingTimeText(
+              active: _busy,
+              typical: TodoistSyncService.instance
+                  .typicalDuration(firstImport: true),
+            ),
           ],
         ),
       ),

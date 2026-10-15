@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:besttodo/services/app_updates.dart';
 import 'package:besttodo/ui/about_page.dart';
 import 'package:besttodo/ui/changelog_page.dart';
+import 'package:besttodo/utils/date_time_format.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,11 +22,17 @@ import 'update_fakes.dart';
 /// clock.
 
 class _ChangelogBundle extends CachingAssetBundle {
+  _ChangelogBundle([this.text = _defaultChangelog]);
+
+  static const _defaultChangelog = '## [0.2.107] - 2026-10-12\n- new\n\n'
+      '## [0.2.106] - 2026-10-11\n- running\n\n'
+      '## [0.2.105] - 2026-10-10\n- older\n';
+
+  final String text;
+
   @override
-  Future<ByteData> load(String key) async => ByteData.sublistView(
-      Uint8List.fromList(utf8.encode('## [0.2.107] - 2026-10-12\n- new\n\n'
-          '## [0.2.106] - 2026-10-11\n- running\n\n'
-          '## [0.2.105] - 2026-10-10\n- older\n')));
+  Future<ByteData> load(String key) async =>
+      ByteData.sublistView(Uint8List.fromList(utf8.encode(text)));
 }
 
 void main() {
@@ -255,11 +262,12 @@ void main() {
   });
 
   /// Opens the changelog over [pumpApp]'s home.
-  Future<void> openChangelog(WidgetTester tester) async {
+  Future<void> openChangelog(WidgetTester tester, {String? text}) async {
     // A fresh bundle per test: rootBundle caches the load.
     navigatorKey.currentState!.push(MaterialPageRoute<void>(
         builder: (_) => DefaultAssetBundle(
-            bundle: _ChangelogBundle(), child: const ChangelogPage())));
+            bundle: text == null ? _ChangelogBundle() : _ChangelogBundle(text),
+            child: const ChangelogPage())));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('changelog-release-list')), findsOneWidget);
   }
@@ -268,6 +276,21 @@ void main() {
       of: find.byKey(const Key('changelog-update-status')),
       matching: find.textContaining(text));
 
+  /// The status card's time table as label -> time ("Installed:" ->
+  /// "11.10.26, 08:05"): the labels in one column, the times next to them.
+  Map<String, String> statusTimes(WidgetTester tester) {
+    final table = tester.widget<Table>(find.descendant(
+        of: find.byKey(const Key('changelog-update-status')),
+        matching: find.byType(Table)));
+    String textOf(Widget w) => w is Text
+        ? w.data!
+        : textOf((w as Padding).child!);
+    return {
+      for (final row in table.children)
+        textOf(row.children[0]): textOf(row.children[1]),
+    };
+  }
+
   testWidgets(
       'pulling down on the changelog checks and downloads silently; the '
       'status card follows', (tester) async {
@@ -275,10 +298,17 @@ void main() {
     await pumpApp(tester);
     updates.start(navigatorKey.currentContext!);
     await openChangelog(tester);
-    expect(statusText('Current version 0.2.106 (1000)'), findsOneWidget);
-    expect(statusText('Installed 11.10.26'), findsOneWidget);
-    expect(statusText('Not checked yet'), findsOneWidget);
-    expect(statusText('Pull down to check for updates'), findsOneWidget);
+    expect(statusText('Version 0.2.106 (1000) · main'), findsOneWidget);
+    var times = statusTimes(tester);
+    expect(times.keys, ['Installed:', 'Last check:']);
+    expect(times['Installed:'], startsWith('11.10.26'));
+    expect(times['Last check:'], 'Not checked yet');
+    expect(statusText('Pull down to check for updates'), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byKey(const Key('changelog-update-status')),
+            matching: find.byType(Icon)),
+        findsNothing);
 
     await tester.fling(find.byKey(const Key('changelog-release-list')),
         const Offset(0, 400), 1000);
@@ -291,7 +321,8 @@ void main() {
     expect(statusText('Version 0.2.107 (2000) available'), findsOneWidget);
     expect(statusText('0.2.107 (2000) downloaded 12.10.26'), findsOneWidget);
     expect(statusText('ready to install'), findsOneWidget);
-    expect(statusText('Last checked 12.10.26'), findsOneWidget);
+    times = statusTimes(tester);
+    expect(times['Last check:'], startsWith('12.10.26'));
     expect(statusText('null'), findsNothing);
     await tester.pump(const Duration(seconds: 5));
     disposeUpdates();
@@ -309,8 +340,10 @@ void main() {
     });
     await pumpApp(tester, store: store);
     await openChangelog(tester);
-    expect(statusText('Downloaded 11.10.26'), findsOneWidget);
-    expect(statusText('Installed 12.10.26'), findsOneWidget,
+    final times = statusTimes(tester);
+    expect(times.keys, ['Downloaded:', 'Installed:', 'Last check:']);
+    expect(times['Downloaded:'], startsWith('11.10.26'));
+    expect(times['Installed:'], startsWith('12.10.26'),
         reason: "off a phone: the build's first start");
 
     downloader.fail = true;
@@ -343,6 +376,51 @@ void main() {
     expect(find.textContaining('in the background'), findsOneWidget);
     await settle(tester);
     expect(installer.installs, ['/cache/updates/BestToDo-0.2.105-900.apk']);
+    expectNothingPoppedUp();
+  });
+
+  testWidgets(
+      "each version shows when it was built, the build time and the APK "
+      "size from its GitHub release; CHANGELOG.md's own build lines only "
+      'when the release has none', (tester) async {
+    github.releases = [
+      release('v0.2.107-2000-dev',
+          prerelease: true,
+          body: '- new\n\n---\n- Built: 2026-10-12 09:41\n'
+              '- Build duration: 3m 12s\n- Built on the laptop',
+          size: 20342112),
+      release('v0.2.106-1000'),
+    ];
+    await pumpApp(tester);
+    await openChangelog(tester,
+        text: '## [0.2.107] - 2026-10-12\n- new\n'
+            '- Local build: 2026-10-12 09:00\n- APK size: 18.0 MB\n\n'
+            '## [0.2.106] - 2026-10-11\n- running\n'
+            '- Local build: 2026-10-11 08:00\n- APK size: 17.5 MB\n');
+    Finder inRelease(String version, Finder finder) => find.descendant(
+        of: find.byKey(ValueKey('changelog-release-$version')),
+        matching: finder);
+
+    final built = 'Built ${formatTimerDateTime(DateTime(2026, 10, 12, 9, 41))}';
+    expect(inRelease('0.2.107', find.text(built)), findsOneWidget);
+    expect(inRelease('0.2.107', find.text('Build time 3m 12s')),
+        findsOneWidget);
+    expect(inRelease('0.2.107', find.text('APK 19.4 MB')), findsOneWidget);
+    expect(inRelease('0.2.107', find.textContaining('Local build')),
+        findsNothing,
+        reason: 'the release says it: not both');
+    expect(inRelease('0.2.107', find.textContaining('18.0 MB')), findsNothing);
+
+    // 0.2.106's release has no footer or size: CHANGELOG.md's lines.
+    expect(inRelease('0.2.106', find.text('Local build: 2026-10-11 08:00')),
+        findsOneWidget);
+    expect(inRelease('0.2.106', find.text('APK size: 17.5 MB')),
+        findsOneWidget);
+    expect(inRelease('0.2.106', find.textContaining('Build time')),
+        findsNothing);
+    expect(github.requests, hasLength(1),
+        reason: 'one cached releases list for every card');
+    expect(downloader.urls, isEmpty);
     expectNothingPoppedUp();
   });
 

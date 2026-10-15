@@ -55,6 +55,9 @@ Android installer (other platforms: checks only, no install).
 - **Records** (in the app's store): when an APK completed (`downloaded`),
   when the running build was installed (`installedAt`: Android's
   `lastUpdateTime`, else the first start of the build), `lastCheck`.
+- **Build facts:** `ReleaseBuildInfo` shows under a changelog entry when
+  that version was built, how long the build took and the APK size, from
+  its GitHub release (the notes' "Built:" footer and the asset's size).
 - **Older versions:** tapping a version in the changelog lists the highest
   build of that x.y.z; its download is silent, then Android asks (rollback).
 - **Off a phone** (desktop, web): Install opens the APK link with the
@@ -142,6 +145,7 @@ Then show it:
 | changelog version tap | `updates.onVersionTap(context, '1.2.0')` (older-versions sheet) |
 | settings / about | `UpdateCheckTile(controller: updates)`, or your own tile with `checkTileTitle(context)`, `checkTileSubtitle(context)`, `checkSummary(context)` and `checkNow(context)` |
 | token saved/removed | `updates.reloadToken()` |
+| app's own long work | `RemainingTime()..start()`, then `label(done)` under its progress: "00:01:23 remaining" for work over 30 s |
 
 State to listen to: the controller itself (a `ChangeNotifier`) or
 `result`, `checking`, `downloading`, `downloadProgress`, `ready`, `failed`,

@@ -1744,6 +1744,20 @@ instead of data — `tasks`/`projects` GET responses on v1 are also cursor-pagin
 (`{"results": [...], "next_cursor": ...}` rather than a bare array), which
 `TodoistApiClient._fetchAllPages` walks to completion.
 
+**Time remaining (0.2.113):** the Settings section shows a `RemainingTimeText`
+(`lib/ui/remaining_time_text.dart`) under the buttons while `syncing` is true, and so do the
+home page's "Importing the rest…" banner, the onboarding Todoist dialog and the web
+"Load real data" status. A sync can't say how far it is, so the estimate counts down from
+`TodoistSyncService.typicalDuration()` — the newest successful run in the `SyncLogEntry`
+history (first-launch imports and regular syncs separately, falling back to the other
+kind). The widget wraps the shared package's `RemainingTime`: nothing for the first 3 s
+and nothing unless the whole job looks longer than 30 s, then "hh:mm:ss remaining",
+refreshed every second. Without a `typical` it can take a `durationKey` and remembers the
+last run's duration itself (SharedPreferences `eta.<key>`): `google_calendar_refresh`
+(Settings' Calendar URL Import and the Weekly Hours Planner's "Syncing calendar…") and
+`fitness_personal_bests` (the Health Connect scan placeholder, §10). Short work (token
+tests, Send to Claude, local loads, CSV export) has no line.
+
 **Scope:** recurring tasks (parents and generated instances) are excluded —
 Todoist's own recurrence engine has no clean mapping onto this app's
 generated-instance model, so those stay local-only. Everything else syncs,
@@ -3152,7 +3166,8 @@ uses timestamped history with legacy fallback. **Changelog**: `ChangelogPage` re
 bundled markdown asset — CHANGELOG.md by default (`assetPath`; `showStoryPoster` offers
 the `changelogMilestones` poster below; Best Music, which rendered its own changelog with the
 poster off, has its own copy of this page since 0.2.111) — as an update status card plus one card per
-release, pull down to check for updates (§11 "Changelog status card"); an app-bar button
+release (with when it was built, the build time and the APK size, §11 "Where it
+shows"), pull down to check for updates (§11 "Changelog status card"); an app-bar button
 toggles an update heatmap
 — the file is parsed into releases (`parseChangelogReleases`: `## [version] - yyyy-mm-dd`
 headings + their bullets, wrapped lines joined, undated headings skipped) and drawn as a
@@ -3378,15 +3393,30 @@ in App Logs → Todoist — onboarding has already finished by then.
       restart (`state.updates.pausedUntil`); taps still check.
     - **Where it shows:** `UpdateBanner` below every screen (BestToDo: `MaterialApp.builder`
       under the page; Best Music: above the mini player). The Changelog (both apps) starts
-      with the package's `UpdateStatusCard` (`Key('changelog-update-status')`: "Current
-      version 0.2.107 (415) · Up to date", "Downloaded … · Installed …" for the running build
-      — installed = Android's `lastUpdateTime` through the plugin's `installTime`, else the
-      build's first start —, a newer build downloading or "downloaded … · ready to install"
-      with Install, "Last checked … · Pull down to check for updates"); pulling down runs
+      with the package's `UpdateStatusCard` (`Key('changelog-update-status')`, since 0.2.112 /
+      package 1.3.0: "Version 0.2.112 (420) · dev" on top for every channel incl. main, a
+      status line under it only when not "Up to date" (Checking…, an update, a problem),
+      then a two-column table with the labels "Downloaded:" (the running build, when it was
+      the one last downloaded), "Installed:" (Android's `lastUpdateTime` through the
+      plugin's `installTime`, else the build's first start) and "Last check:" ("Not checked
+      yet" before the first) and their date-times lined up; no icon, no pull-down hint; a
+      newer build downloading or "downloaded … · ready to install" below, Install top
+      right when an update is there); pulling down runs
       `refresh()`; tapping a release's version (`changelog-version-<x.y.z>`) opens the
       package's version sheet (`onVersionTap`): the running one "You are using this
       version", another its highest build's download — an older one with the downgrade note
-      (rollback; Android only installs it after an uninstall). About (both apps,
+      (rollback; Android only installs it after an uninstall). **Build facts per version
+      (0.2.114, package 1.5.0):** under each release card's bullets the package's
+      `ReleaseBuildInfo` (`changelog-build-info-<version>`, looked up by x.y.z) shows chips
+      "Built 12.10.26, 09:41", "Build time 3m 12s", "APK 19.4 MB" from that version's GitHub
+      release (`UpdateResult.builtAt` — the notes' "- Built: …" footer, else the publish
+      time —, `buildDuration`, `apkSize` = the APK asset's size), all from the one cached
+      releases list (`releasesByVersionList`, refreshed on pull-down). While it loads, when
+      the release says nothing, and without a controller, the card shows CHANGELOG.md's own
+      build lines (`isChangelogBuildNote`: Local/CI build, Build duration, APK/Build size)
+      as the same chips instead — never both. The app passes no strings of its own (English
+      defaults `releaseBuilt`/`releaseBuildTime`/`releaseApkSize`, the app's date format).
+      About (both apps,
       `UpdateSection`): the package's `UpdateCheckTile` ("Check for updates", subtitle =
       current version or download progress) and "Go back to an older version" (the version
       sheet for the highest x.y.z below the running one, from the releases list; a SnackBar
@@ -3911,7 +3941,9 @@ map (steps=blue walk icon, distance=orange route, calories=deep-orange flame,
 workout=teal dumbbell, sleep=indigo moon, heart rate=pink heart, resting heart
 rate=purple outlined heart), and is hidden entirely once loaded if history had
 no samples for any metric; while the year of history is still loading it shows
-a "Scanning your history for personal bests…" placeholder instead.
+a "Scanning your history for personal bests…" placeholder instead, with a rough
+"hh:mm:ss remaining" below it once the scan looks like taking more than 30 s (based on
+how long the last scan took; `RemainingTimeText`, §4.8).
 
 Manually-entered records stay exactly as before, kept separate from both the
 read-only Health Connect data and the auto-detected records.

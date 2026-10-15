@@ -98,10 +98,18 @@ void main() {
   testWidgets('status card: version, times, ready, last check', (tester) async {
     final c = await controller(tester, channel: 'dev');
     await tester.pumpWidget(host(UpdateStatusCard(controller: c)));
-    expect(find.textContaining('Current version 1.0.0 (10) · dev · Up to date'),
-        findsOneWidget);
-    expect(find.textContaining('Installed 12.10.2026 11:20'), findsOneWidget);
-    expect(find.textContaining('Not checked yet · Pull down'), findsOneWidget);
+    expect(find.text('Version 1.0.0 (10) · dev'), findsOneWidget);
+    expect(find.text('Up to date'), findsNothing);
+    expect(find.text('Installed:'), findsOneWidget);
+    expect(find.text('Last check:'), findsOneWidget);
+    expect(find.text('Not checked yet'), findsOneWidget);
+    expect(find.textContaining('Pull down'), findsNothing);
+    expect(find.byType(Icon), findsNothing);
+    // The times line up in one column.
+    expect(
+      tester.getTopLeft(find.text('12.10.2026 11:20')).dx,
+      tester.getTopLeft(find.text('Not checked yet')).dx,
+    );
     await c.check();
     await tester.pumpAndSettle();
     expect(
@@ -111,9 +119,14 @@ void main() {
           '99.0.0 (100) downloaded 12.10.2026 11:20 · ready to install'),
       findsOneWidget,
     );
-    expect(
-        find.textContaining('Last checked 12.10.2026 11:20'), findsOneWidget);
+    expect(find.text('12.10.2026 11:20'), findsNWidgets(2));
     expect(find.widgetWithText(FilledButton, 'Install'), findsOneWidget);
+  });
+
+  testWidgets('status card: main shows its channel too', (tester) async {
+    final c = await controller(tester);
+    await tester.pumpWidget(host(UpdateStatusCard(controller: c)));
+    expect(find.text('Version 1.0.0 (10) · main'), findsOneWidget);
   });
 
   testWidgets('status card without a source', (tester) async {
@@ -179,6 +192,46 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
+  testWidgets('release build info: built, build time, APK size per version', (
+    tester,
+  ) async {
+    http = FakeHttp([
+      {
+        ...release('v1.2.0-12'),
+        'body': '- Built: 2026-10-15 14:02 in 3m 12s, APK 19.4 MB',
+        'assets': [
+          {
+            'name': 'app.apk',
+            'size': 20342112,
+            'browser_download_url': 'https://github.com/o/app/download/a.apk',
+          },
+        ],
+      },
+      release('v1.1.0-11'),
+    ]);
+    final c = await controller(tester);
+    await tester.pumpWidget(
+      host(
+        Column(
+          children: [
+            ReleaseBuildInfo(controller: c, version: '1.2.0'),
+            ReleaseBuildInfo(
+              controller: c,
+              version: '0.9.0',
+              fallback: const Text('from CHANGELOG.md'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Built 15.10.2026 14:02'), findsOneWidget);
+    expect(find.text('Build time 3m 12s'), findsOneWidget);
+    expect(find.text('APK 19.4 MB'), findsOneWidget);
+    expect(find.text('from CHANGELOG.md'), findsOneWidget,
+        reason: 'no release of 0.9.0');
+  });
+
   testWidgets('strings: the app\'s own', (tester) async {
     final c = UpdateController(
       config: const UpdateConfig(appName: 'A', version: '1.0.0', build: 1),
@@ -187,14 +240,17 @@ void main() {
       downloader: downloader,
       platform: UpdatePlatform(supported: false),
       strings: (_) => UpdateStrings(
-        currentVersion: (v) => 'Aktuelle Version $v',
+        versionTitle: (v) => 'Version $v',
         notConfigured: 'Keine Quelle',
         neverChecked: 'Nie',
+        lastCheckLabel: 'Zuletzt geprüft:',
       ),
     );
     await c.init();
     await tester.pumpWidget(host(UpdateStatusCard(controller: c)));
-    expect(find.textContaining('Aktuelle Version 1.0.0 (1) · Keine Quelle'),
-        findsOneWidget);
+    expect(find.text('Version 1.0.0 (1) · main'), findsOneWidget);
+    expect(find.text('Keine Quelle'), findsOneWidget);
+    expect(find.text('Zuletzt geprüft:'), findsOneWidget);
+    expect(find.text('Nie'), findsOneWidget);
   });
 }

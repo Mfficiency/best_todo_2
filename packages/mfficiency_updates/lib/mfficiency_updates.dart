@@ -9,6 +9,7 @@ export 'src/http.dart';
 export 'src/legacy.dart';
 export 'src/platform.dart';
 export 'src/release.dart';
+export 'src/remaining_time.dart';
 export 'src/store.dart';
 export 'src/strings.dart';
 export 'src/widgets.dart';

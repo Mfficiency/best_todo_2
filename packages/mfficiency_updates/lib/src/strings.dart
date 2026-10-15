@@ -17,6 +17,9 @@ class UpdateStrings {
     this.downloadedAt = _downloadedAt,
     this.installedAt = _installedAt,
     this.downloadedReady = _downloadedReady,
+    this.downloadedLabel = 'Downloaded:',
+    this.installedLabel = 'Installed:',
+    this.lastCheckLabel = 'Last check:',
     this.neverChecked = 'Not checked yet',
     this.lastChecked = _lastChecked,
     this.pullToCheck = 'Pull down to check for updates',
@@ -27,6 +30,7 @@ class UpdateStrings {
     this.downloadFailedBanner = _downloadFailedBanner,
     this.availableBanner = _availableBanner,
     this.downloading = _downloading,
+    this.remaining = _remaining,
     this.downloadingBackground = _downloadingBackground,
     this.installFailed =
         "The update couldn't be downloaded. Check the connection and try "
@@ -44,6 +48,9 @@ class UpdateStrings {
         'Android installs an older version only after the current one is '
             'uninstalled, which removes its data. Export a backup first.',
     this.versionDownload = _versionDownload,
+    this.releaseBuilt = _releaseBuilt,
+    this.releaseBuildTime = _releaseBuildTime,
+    this.releaseApkSize = _releaseApkSize,
     this.dateTime = _dateTime,
     this.date = _date,
   });
@@ -65,18 +72,28 @@ class UpdateStrings {
   /// "Current version 1.2.0 (5)".
   final String Function(String version) currentVersion;
 
-  /// "Downloaded 12.10.2026 11:20" (the running build).
+  /// "Downloaded 12.10.2026 11:20" (the running build). The status card
+  /// uses [downloadedLabel] instead.
   final String Function(String time) downloadedAt;
 
-  /// "Installed 12.10.2026 11:25".
+  /// "Installed 12.10.2026 11:25". The status card uses [installedLabel].
   final String Function(String time) installedAt;
 
   /// "1.3.0 (6) downloaded 12.10.2026 11:20 · ready to install".
   final String Function(String version, String time) downloadedReady;
+
+  /// Labels of the status card's time column ("Downloaded:" 12.10.2026
+  /// 11:20); the times line up next to them.
+  final String downloadedLabel;
+  final String installedLabel;
+  final String lastCheckLabel;
   final String neverChecked;
 
   /// "Last checked 12.10.2026 11:20".
   final String Function(String date) lastChecked;
+
+  /// No longer shown (the status card dropped its pull-down hint); kept so
+  /// apps that pass it still compile.
   final String pullToCheck;
   final String install;
   final String retry;
@@ -96,6 +113,9 @@ class UpdateStrings {
   /// the check tile; " 42 %" is appended).
   final String Function(String version) downloading;
 
+  /// "00:01:23 remaining", under the progress of a download over 30 s.
+  final String Function(String hms) remaining;
+
   /// The one SnackBar after a tap that starts a download.
   final String Function(String version) downloadingBackground;
   final String installFailed;
@@ -109,6 +129,12 @@ class UpdateStrings {
   final String Function(String version) versionNotAvailable;
   final String versionDowngradeNote;
   final String Function(String version) versionDownload;
+
+  /// The changelog's build facts of a version ([ReleaseBuildInfo]):
+  /// "Built 15.10.2026 14:02", "Build time 3m 12s", "APK 19.4 MB".
+  final String Function(String time) releaseBuilt;
+  final String Function(String duration) releaseBuildTime;
+  final String Function(String size) releaseApkSize;
 
   /// Date and time in the app's region format (default dd.MM.yyyy HH:mm).
   final String Function(DateTime time) dateTime;
@@ -128,6 +154,7 @@ String _readyBanner(String v) => 'Update ready · $v';
 String _downloadFailedBanner(String v) => "Version $v couldn't be downloaded";
 String _availableBanner(String v) => 'Version $v is available';
 String _downloading(String v) => 'Downloading version $v…';
+String _remaining(String t) => '$t remaining';
 String _downloadingBackground(String v) =>
     "Downloading version $v in the background. You'll be asked to install it "
     "when it's ready.";
@@ -135,6 +162,10 @@ String _versionTitle(String v) => 'Version $v';
 String _versionNotAvailable(String v) =>
     'Version $v is no longer available to download.';
 String _versionDownload(String v) => 'Download version $v';
+
+String _releaseBuilt(String t) => 'Built $t';
+String _releaseBuildTime(String d) => 'Build time $d';
+String _releaseApkSize(String s) => 'APK $s';
 
 String _two(int n) => n.toString().padLeft(2, '0');
 String _date(DateTime d) => '${_two(d.day)}.${_two(d.month)}.${d.year}';
