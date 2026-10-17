@@ -218,7 +218,18 @@ void main() {
         find.text('BestTodo 0.2.109+3566383 · staging'), 200);
     expect(find.textContaining('8m 51s · 22.4 MB'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('Failed'), -200);
+    // By default the log leaves out runs that built nothing.
+    expect(find.text('BestCollage · main'), findsNothing);
+    // The filters start folded away.
+    expect(find.text('Failed'), findsNothing);
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('pc-watcher-filters-toggle')), -200);
+    await tester.tap(find.byKey(const Key('pc-watcher-filters-toggle')));
+    await tester.pump();
+    await tester.tap(find.text('Already published'));
+    await tester.pump();
+    expect(find.text('BestCollage · main'), findsOneWidget);
+    expect(find.text('Filters: Already published'), findsOneWidget);
     await tester.tap(find.text('Failed'));
     await tester.pump();
     expect(find.text('BestTodo 0.2.109+3566383 · staging'), findsNothing);
@@ -229,6 +240,29 @@ void main() {
     expect(find.text('End of the build output'), findsOneWidget);
     expect(find.text('FAILURE: Build failed with an exception.'),
         findsOneWidget);
+  });
+
+  testWidgets('stats live on their own page, linked at the bottom',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'pc_watcher_token': 'tok'});
+    await _pumpPage(tester, PcWatcherService(client: _client()));
+
+    // Machine card, then Pending, then the log — no stats up top.
+    expect(find.text('Last 7 days'), findsNothing);
+    expect(
+        tester.getTopLeft(find.text('DESKTOP-30LDPTO')).dy <
+            tester.getTopLeft(find.text('Pending (2)')).dy,
+        isTrue);
+    expect(
+        tester.getTopLeft(find.text('Pending (2)')).dy <
+            tester.getTopLeft(find.text('Build log')).dy,
+        isTrue);
+
+    await tester.scrollUntilVisible(find.text('Stats'), 200);
+    await tester.tap(find.text('Stats'));
+    await tester.pumpAndSettle();
+    expect(find.text('PC Watcher stats'), findsOneWidget);
+    expect(find.text('Last 7 days'), findsOneWidget);
   });
 
   testWidgets('a failed refresh keeps the last download', (tester) async {
