@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.115] - 2026-10-17
+- PC Watcher: the page now opens with the PC card, then Pending, then the build log. The log hides runs that built nothing because the code was already published (pick "Already published" or "All" to see them), and its filters are folded away behind a Filters button. The 7-day stats moved to their own page — tap Stats at the bottom.
+
 ## [0.2.114] - 2026-10-15
 - Changelog: every version now shows when it was built, how long the build took and the size of its APK (taken from its GitHub release; versions without that keep the build lines the changelog already had). The update module is version 1.5.0.
 

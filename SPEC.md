@@ -3146,11 +3146,16 @@ Tools → **PC Watcher** (feature/start-tool key `pc_watcher`, `Icons.computer`;
   with `Accept: application/vnd.github.raw+json`; plus `actions/runs` → runs not completed
   = jobs waiting/running on the runner (hidden with a note when the token can't read Actions).
   401/403/404 map to readable errors (`PcWatcherException`).
-- **Page:** machine card (green Online if checked ≤ 20 min ago, orange Quiet < 3 h, grey
-  Offline; "Building X (branch) since …"), last-7-days stats (published, failed, average
-  published build time, total PC busy time), **Pending** (channels with `isPending` = state
-  not idle or a `lastError`, plus runner jobs), **Build log** (newest 200 after filtering;
-  chips All / Published / Failed / Already published + one per app). A row shows result icon,
+- **Page** (top to bottom, 0.2.115): machine card (green Online if checked ≤ 20 min ago,
+  orange Quiet < 3 h, grey Offline; "Building X (branch) since …"), **Pending** (channels
+  with `isPending` = state not idle or a `lastError`, plus runner jobs), **Build log**
+  (newest 200 after filtering). The log's chips — Built (default: every run except
+  `unchanged`, i.e. hides "already published, nothing built") / Published / Failed /
+  Already published / All, + one per app — are folded away behind the header's "Filters"
+  toggle (`pc-watcher-filters-toggle`), which reads "Filters: <active>" while a non-default
+  filter or an app is picked. At the bottom a **Stats** row opens `_PcWatcherStatsPage`
+  ("PC Watcher stats": last-7-days published, failed, average published build time, total
+  PC busy time). A row shows result icon,
   "<app> <version> · <branch>", start, duration, APK size, the error for failures; tapping
   opens a sheet with all fields and the output tail (Copy output). Pull down or Refresh
   re-downloads; the key action edits/removes the token (`_TokenDialog` owns its controller).
