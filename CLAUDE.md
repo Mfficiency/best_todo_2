@@ -128,6 +128,12 @@ file is the short operational guide.
   `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
   or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`.
+- Wear OS companion (`wear/`, own Gradle build, never part of `android/`): see
+  `wear/README.md` (sync paths `/todo/today`, `/todo/alarms`, `/todo/command/complete`;
+  phone side `lib/services/wear_sync_service.dart`, `WearSync.kt`, `WearCommandService.kt`;
+  watch commands are queued natively and applied by the home page, never written to
+  tasks.json from Kotlin). `build.ps1 release` builds it after the phone (`WEAR=0` skips) and
+  publishes `wear-v…` releases. Pure watch logic: `./gradlew -p wear test`.
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 

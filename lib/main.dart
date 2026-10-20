@@ -120,11 +120,20 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   final id = uri.queryParameters['id'];
   if (id == null || id.isEmpty) return;
   if (uri.scheme == TaskWidgetService.scheme) {
-    if (uri.host != TaskWidgetService.hostToggle) return;
+    if (uri.host != TaskWidgetService.hostToggle &&
+        uri.host != TaskWidgetService.hostComplete) {
+      return;
+    }
     // Settings decide what the widget redraws afterwards (progress line,
     // checkbox rows), and this isolate has not loaded them.
     await Config.load();
-    await TaskWidgetService.toggleInStorage(id);
+    if (uri.host == TaskWidgetService.hostComplete) {
+      // The Wear OS companion's "done" while the app isn't running
+      // (WearCommandService.kt): complete only, never un-complete.
+      await TaskWidgetService.completeInStorage(id);
+    } else {
+      await TaskWidgetService.toggleInStorage(id);
+    }
     return;
   }
   if (uri.host == AlarmWidgetService.hostToggle) {
