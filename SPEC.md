@@ -2127,6 +2127,59 @@ Food Diary tasks exist yet, the same way `FoodDiaryPage` seeds its own copy on f
 The button-widget mock shares the same red/black logic as the full widget's mock, just
 without any status text, matching what the Kotlin provider actually draws.
 
+### 8.1 Wear OS companion (`wear/`, 0.2.116)
+
+BestToDo Watch: a Kotlin + Compose for Wear OS app in `wear/` (its own Gradle build, AGP
+8.9.1 / Kotlin 2.1.0 / Gradle 8.12 like the phone; **not** included in
+`android/settings.gradle.kts`, so `flutter build apk` never sees it). Same `applicationId`
+(`com.mfficiency.best_todo_2`) and same signing key as the phone (the Data Layer pairs only
+those), `namespace`/Kotlin package `com.mfficiency.best_todo_2.wear`, minSdk 30, targetSdk 34,
+`standalone=false`. Full design, build/install/test: `wear/README.md`.
+
+- **Screens:** main list = status line ("Phone connected" / "Phone not reachable · saved
+  hh:mm" / "Update BestToDo on your phone" / "Looking for your phone…"), **Today** (exactly
+  `TaskWidgetService.todayTasks`: the task widget's list, so every gate of §8's task widget
+  holds — deleted, waiting for approval, Food Diary/Research, the Worklist-only `mlr` tag,
+  the Home filtering rules), an **Alarms** chip (next ring) → read-only alarm screen,
+  **Tomorrow** (`TaskWidgetService.tomorrowTasks`, the same gates, due exactly tomorrow),
+  Refresh. Max 40 rows per list (`WearSyncService.maxRows`, `+N more on the phone`).
+  A task completes on a second tap within 4 s (no undo on the watch). No task creation,
+  no un-completing, no alarm editing in v1.
+- **Phone → watch:** `TaskWidgetService.sync` / `AlarmWidgetService.sync` end with
+  `WearSyncService.publishTasks` / `publishAlarms` (`lib/services/wear_sync_service.dart`):
+  JSON (`tasksPayload`: `{v, day, today[{id,title,done}], todayMore, tomorrow[…],
+  tomorrowMore}`; `alarmsPayload`: `{v, alarms[{id,time,name,sub,on,next}]}` soonest ring
+  first, off last) → method channel `besttodo/wear` `publish` (`MainActivity.kt`) →
+  `WearSync.publish` = `putDataItem` at `/todo/today` / `/todo/alarms` with `json` + `at`,
+  urgent. Android only, fire and forget, errors swallowed, an unchanged JSON is not re-sent
+  (per isolate; a failed send is retried on the next sync). The background isolate has no
+  such channel, so a widget-checkbox completion reaches the watch on the next in-app sync.
+  Capability `todo_phone` (`res/values/wear.xml`, `tools:keep`); dependency
+  `play-services-wearable:18.2.0` (phones without Play services: the Task just fails).
+- **Watch → phone:** message `/todo/command/complete` (task uid, UTF-8) →
+  `WearCommandService.kt` (`WearableListenerService`, `MESSAGE_RECEIVED`, `wear://*/todo/…`)
+  → `WearSync.enqueue` (`{"action":"complete","id","at"}` in its own SharedPreferences file
+  `best_todo_wear`, max 100) — **never** a tasks.json write from Kotlin. Then: engine
+  attached (`WearSync.channel`, set in `configureFlutterEngine`, cleared in
+  `cleanUpFlutterEngine`) → `wearCommandsPending` poke; else → the task widget's background
+  path `besttodotask://complete?id=` (`alarmWidgetBackgroundCallback` →
+  `TaskWidgetService.completeInStorage`: like `toggleInStorage` but complete-only, incl.
+  streak + widget re-sync). The primary home page (not Worklist) drains the queue
+  (`takeCommands`, pull-with-clear like the share channel) after `_loadTasks`, on every
+  resume (after `_reloadTasksFromStorage`/`_mergeWidgetCompletions`) and on the poke:
+  `_applyWearCommands` → `WearSyncService.completionsFor` (each existing, not deleted, still
+  open task once; done/unknown ignored, so the background path + the queued copy never
+  double-complete) → `isDone`/`completedAt` (= when the phone got it), `_trackTaskDoneState`,
+  `_recordStreakToggle`, one `_saveTasks` (history/undo, Todoist, widget → republish).
+  Recurring occurrences are plain tasks, so nothing else is needed for them.
+- **Watch side:** reads items on start, `DataClient` listener + a 30 s connection check only
+  while the activity is STARTED; caches the last JSON per path; "done" taps the phone has
+  not confirmed stay shown as done (`core/Pending`: settled by a newer `/todo/today` item,
+  undelivered ones resent on refresh, dropped after 24 h). Pure logic in `wear/app/src/
+  main/kotlin/…/core` (no Android imports), JUnit tests in `wear/app/src/test`.
+- **Release:** `tool\build.ps1 release` builds it after the phone APK (and, with PUBLISH=1,
+  after the phone release), see §11 "Laptop channel builds" › Watch.
+
 ## 9. Android platform config
 
 **Manifest permissions** (each exists for a reason): `POST_NOTIFICATIONS` (13+),
@@ -3662,6 +3715,21 @@ in App Logs → Todoist — onboarding has already finished by then.
     once a PR into `dev` merges, deletes its head branch via `actions/github-script`
     (`git.deleteRef`), skipping `dev`/`staging`/`main` themselves and tolerating a branch
     already gone (422/404, e.g. deleted by a squash-merge UI option).
+- **Watch (Wear OS companion, 0.2.116, §8.1):** `build.ps1 release`'s `Invoke-WearRelease`,
+  after the phone loop, for each phone build that did not fail (`WEAR=0` skips): writes
+  `wear\local.properties` from `android\local.properties`' `sdk.dir`, sets `JAVA_HOME` to
+  Android Studio's `jbr` if unset, runs `.\wear\gradlew.bat -p wear assembleRelease
+  -PbuildNumber=<build> -PversionName=<x.y.z> --no-daemon` with `REQUIRE_RELEASE_KEY=1`
+  (wear/app/build.gradle.kts reads `android/key.properties`, `storeFile` relative to
+  `android/app`), copies the APK to `build\wear\BestToDo-Watch-<x.y.z>-<build>[-channel].apk`
+  (never committed, never in `github_releases/`) and, with PUBLISH=1, publishes a separate
+  release `wear-v<x.y.z>-<build>[-channel]` with `gh release create` (`--latest=false`,
+  prerelease off main, same target sha, notes linking the phone release; an existing tag
+  gets its asset replaced). The whole step is in try/catch → `Write-Warning`; it prints
+  `WEAR_BUILD_RESULT …` and leaves the phone's exit code and `LAPTOP_BUILD_RESULT` alone.
+  `wear-…` tags never match the updater's `v` prefix (`matchesTagPrefix`: prefix then a
+  digit) nor `Find-ReleaseWithSameCode`'s `^v\d+…` pattern. `wear/` is tracked source, so a
+  watch-only change still counts for the fingerprint (it is a new release).
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
   `staging` → `main`. Releases are built from dev after a version bump. A feature branch's
   PR into `dev` has its branch auto-deleted on merge (`delete-merged-branch.yml` above).

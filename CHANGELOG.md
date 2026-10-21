@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.116] - 2026-10-20
+- New: BestToDo Watch, a companion app for Wear OS watches (made for the Galaxy Watch6 Classic). It shows today's tasks (the same list as the Due Tasks widget, so Worklist, Food Diary and not-yet-approved items stay off it), tomorrow's tasks and your alarms. Tap a task twice on the watch to complete it; the phone completes it like a tap in the app (also when BestToDo is closed). The watch says whether the phone is connected and keeps the last lists when it isn't. It is published as its own download (wear-v… releases) and installed with wireless ADB, see wear/README.md.
+
 ## [0.2.115] - 2026-10-17
 - PC Watcher: the page now opens with the PC card, then Pending, then the build log. The log hides runs that built nothing because the code was already published (pick "Already published" or "All" to see them), and its filters are folded away behind a Filters button. The 7-day stats moved to their own page — tap Stats at the bottom.
 

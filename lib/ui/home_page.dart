@@ -22,6 +22,7 @@ import '../models/view_filter_rules.dart';
 import '../services/alarm_service.dart';
 import '../services/auto_backup_service.dart';
 import '../services/auto_tag_service.dart';
+import '../services/wear_sync_service.dart';
 import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
@@ -1147,6 +1148,9 @@ class _HomePageState extends State<HomePage>
       // Lets the app shell reopen a live dice timer after its full-screen
       // alarm is stopped (see main.dart), with the task's actions ready.
       openRunningDiceTimer = _reopenRunningDiceTimer;
+      // "Done" taps on the Wear OS companion, queued natively; the running
+      // app is poked to apply them right away (see WearSyncService).
+      WearSyncService.setPendingHandler(_applyWearCommands);
     }
     // CI embeds its test results as a bundled asset; builds whose test run
     // had unacknowledged failures get a red dot on the Test Results drawer
@@ -1168,6 +1172,8 @@ class _HomePageState extends State<HomePage>
     // Some tools (Chronize, Productivity Stats, ...) render the task data, so
     // the configured start tool is only opened once loading finished.
     _loadTasks().then((_) {
+      _wearReady = true;
+      unawaited(_applyWearCommands());
       _maybeOpenStartTool();
       // A due automatic backup runs after startup, off the critical path.
       unawaited(AutoBackupService.maybeRun());
@@ -1331,12 +1337,57 @@ class _HomePageState extends State<HomePage>
   Future<void> _onResumed() async {
     await _reloadTasksFromStorage();
     await _mergeWidgetCompletions();
+    await _applyWearCommands();
+  }
+
+  /// Set once [_loadTasks] has filled [_tasks]; watch commands wait for it
+  /// (in the native queue) so none is taken against an empty list.
+  bool _wearReady = false;
+  bool _wearApplying = false;
+
+  /// Applies the "done" taps queued by the Wear OS companion
+  /// ([WearSyncService.takeCommands], drained here only: on start, on resume
+  /// and when the native side pokes the running app). Each still-open task is
+  /// completed like any other completion here — in memory, daily stats,
+  /// streak, then one [_saveTasks], whose widget sync republishes the list to
+  /// the watch. Only the primary home page does this (Worklist is a second
+  /// instance on the same storage).
+  Future<void> _applyWearCommands() async {
+    if (widget.tagFilter != null || !_wearReady || _wearApplying) return;
+    _wearApplying = true;
+    try {
+      final commands = await WearSyncService.takeCommands();
+      if (!mounted || commands.isEmpty) return;
+      final completions = WearSyncService.completionsFor(_tasks, commands);
+      if (completions.isEmpty) {
+        // Done already (the widget's background path got there first):
+        // still republish, the watch may be showing a stale list.
+        _updateHomeWidget();
+        return;
+      }
+      setState(() {
+        for (final c in completions) {
+          c.task.isDone = true;
+          c.task.completedAt = c.at ?? DateTime.now();
+        }
+      });
+      for (final c in completions) {
+        _trackTaskDoneState(c.task, false);
+        _recordStreakToggle(c.task, false);
+      }
+      _saveTasks();
+      LogService.add('HomePage._applyWearCommands',
+          'Completed ${completions.length} task(s) from the watch');
+    } finally {
+      _wearApplying = false;
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     ShareIntentService.instance.unregisterConsumer(_addSharedTask);
+    if (widget.tagFilter == null) WearSyncService.setPendingHandler(null);
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {
       openRunningDiceTimer = null;
     }
