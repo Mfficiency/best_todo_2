@@ -175,6 +175,11 @@ void main() {
     expect((await make()).looksFresh, isFalse);
     File('${docs.path}/tasks.json').deleteSync();
     expect((await make()).looksFresh, isTrue);
+    // Excluded folders don't count (an early log isn't data).
+    Directory('${support.path}/logs').createSync();
+    File('${support.path}/logs/app.log').writeAsStringSync('x');
+    expect((await make(excluded: {'logs'})).looksFresh, isTrue);
+    expect((await make()).looksFresh, isFalse);
   });
 
   test('beforeUpdate writes a backup', () async {

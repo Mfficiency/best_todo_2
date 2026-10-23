@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.2 - 2026-10-23
+
+- The new-install check skips `excluded` folders again (1.6.1 compared
+  paths wrongly, so e.g. an early log made an install look used).
+
 ## 1.6.1 - 2026-10-23
 
 - A new install is one with no SharedPreferences **and** no file in the

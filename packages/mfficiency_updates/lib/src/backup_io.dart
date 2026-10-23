@@ -33,7 +33,7 @@ bool anyFile(Map<String, String> roots, Set<String> excluded) {
   for (final root in roots.values) {
     final dir = Directory(root);
     if (!dir.existsSync()) continue;
-    final base = dir.absolute.path.replaceAll(r'', '/');
+    final base = dir.absolute.path.replaceAll(r'\', '/');
     bool walk(Directory d) {
       final List<FileSystemEntity> entries;
       try {
@@ -43,7 +43,7 @@ bool anyFile(Map<String, String> roots, Set<String> excluded) {
       }
       for (final e in entries) {
         final rel = e.absolute.path
-            .replaceAll(r'', '/')
+            .replaceAll(r'\', '/')
             .substring(base.length)
             .replaceFirst(RegExp('^/'), '');
         if (isExcluded(rel, excluded)) continue;
