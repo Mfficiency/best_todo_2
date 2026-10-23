@@ -169,6 +169,12 @@ void main() {
     expect((await make()).looksFresh, isFalse);
     SharedPreferences.setMockInitialValues({FullBackup.offeredKey: true});
     expect((await make()).looksFresh, isFalse);
+    // Data only in files (no preferences) is a used install too.
+    SharedPreferences.setMockInitialValues({});
+    File('${docs.path}/tasks.json').writeAsStringSync('[]');
+    expect((await make()).looksFresh, isFalse);
+    File('${docs.path}/tasks.json').deleteSync();
+    expect((await make()).looksFresh, isTrue);
   });
 
   test('beforeUpdate writes a backup', () async {

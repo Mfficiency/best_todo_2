@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.1 - 2026-10-23
+
+- A new install is one with no SharedPreferences **and** no file in the
+  app's folders (apps that keep everything in files no longer offer a
+  restore after an update).
+- The restore confirmation no longer claims every token stays out: only
+  those the app keeps in secure storage do.
+
 ## 1.6.0 - 2026-10-23
 
 - **Full backup:** `FullBackup` writes everything the app keeps (its

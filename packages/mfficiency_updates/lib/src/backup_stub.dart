@@ -41,5 +41,6 @@ Future<void> replaceRoots(
 }) async =>
     _unsupported();
 
+bool anyFile(Map<String, String> roots, Set<String> excluded) => _unsupported();
 void deletePath(String path) => _unsupported();
 int fileSize(String path) => _unsupported();

@@ -28,6 +28,36 @@ Future<String> scratchDir(String name) async {
   return dir.path;
 }
 
+/// True when a root holds any file outside [excluded] (stops at the first).
+bool anyFile(Map<String, String> roots, Set<String> excluded) {
+  for (final root in roots.values) {
+    final dir = Directory(root);
+    if (!dir.existsSync()) continue;
+    final base = dir.absolute.path.replaceAll(r'', '/');
+    bool walk(Directory d) {
+      final List<FileSystemEntity> entries;
+      try {
+        entries = d.listSync(followLinks: false);
+      } on FileSystemException {
+        return false;
+      }
+      for (final e in entries) {
+        final rel = e.absolute.path
+            .replaceAll(r'', '/')
+            .substring(base.length)
+            .replaceFirst(RegExp('^/'), '');
+        if (isExcluded(rel, excluded)) continue;
+        if (e is File) return true;
+        if (e is Directory && walk(e)) return true;
+      }
+      return false;
+    }
+
+    if (walk(dir)) return true;
+  }
+  return false;
+}
+
 /// What [writeArchive] wrote.
 class ArchiveStats {
   ArchiveStats(this.files, this.bytes);

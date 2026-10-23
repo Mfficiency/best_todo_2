@@ -3,7 +3,7 @@ description: >-
   In-app updates from GitHub Releases for the Mfficiency Flutter apps: silent
   download, Android's own install dialog, rollback to older versions, and a
   full backup to Downloads before every update.
-version: 1.6.0
+version: 1.6.1
 publish_to: 'none'
 
 # The lowest constraint of the apps that vendor this package.

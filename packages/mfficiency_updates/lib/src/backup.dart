@@ -176,11 +176,17 @@ class FullBackup {
   bool _keep(String key) => !_prefixes.any(key.startsWith);
 
   /// Call before the app writes anything at start (before runApp): notes
-  /// whether this looks like a new install, for [offerRestore].
+  /// whether this looks like a new install (no SharedPreferences and no
+  /// file in the app's folders), for [offerRestore].
   Future<void> init() async {
     if (!isSupported) return;
     if (_prefs.getBool(offeredKey) ?? false) return;
-    _freshAtStart = !_prefs.getKeys().any(_keep);
+    if (_prefs.getKeys().any(_keep)) return;
+    try {
+      _freshAtStart = !io.anyFile(await _roots(), config.excluded);
+    } on Object {
+      _freshAtStart = false;
+    }
   }
 
   /// Writes a full backup to Downloads. Throws when it can't (the caller
@@ -474,8 +480,9 @@ class FullBackupStrings {
         'Replaces all data in this app with a backup file, then restarts it.',
     this.restoreConfirm =
         'Everything in this app is replaced by the backup you pick (a backup '
-            'of the current data is made first). Tokens and passwords are not '
-            'in backups: enter them again afterwards.',
+            'of the current data is made first). Passwords and tokens the app '
+            'keeps in secure storage are not in backups: enter them again '
+            'afterwards.',
     this.restoreAction = 'Pick backup',
     this.cancel = 'Cancel',
     this.saved = _saved,
