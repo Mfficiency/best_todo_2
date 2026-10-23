@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.117] - 2026-10-23
+- New: a full backup of everything BestToDo keeps (tasks, alarms, projects, labels, wishlist, deleted items, history, attachments, settings and preferences) is saved to Download/BestToDo/Backups before every update. That folder stays when the app is uninstalled, so after a reinstall BestToDo offers to restore it. Settings → Backup has "Back up everything" and "Restore from a backup" (restore backs up the current data first, then restarts the app). Android only. The update module is version 1.6.0.
+
 ## [0.2.116] - 2026-10-20
 - New: BestToDo Watch, a companion app for Wear OS watches (made for the Galaxy Watch6 Classic). It shows today's tasks (the same list as the Due Tasks widget, so Worklist, Food Diary and not-yet-approved items stay off it), tomorrow's tasks and your alarms. Tap a task twice on the watch to complete it; the phone completes it like a tap in the app (also when BestToDo is closed). The watch says whether the phone is connected and keeps the last lists when it isn't. It is published as its own download (wear-v… releases) and installed with wireless ADB, see wear/README.md.
 

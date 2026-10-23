@@ -214,6 +214,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Export Settings', 11, 'backup save json'),
     _SettingsSearchEntry('Export Everything', 11, 'backup save json'),
     _SettingsSearchEntry('Import', 11, 'restore backup load json'),
+    _SettingsSearchEntry('Back up everything', 12,
+        'full backup downloads update uninstall reinstall all data'),
+    _SettingsSearchEntry('Restore from a backup', 12,
+        'full backup downloads import reinstall all data'),
     _SettingsSearchEntry('Automatic backup', 12,
         'daily weekly schedule export save everything off'),
     _SettingsSearchEntry('Backup folder', 12, 'directory location path choose'),
@@ -1675,6 +1679,10 @@ class _SettingsPageState extends State<SettingsPage> {
       index: 12,
       title: 'Backup',
       children: [
+        // Everything to Download/BestToDo/Backups (also before every
+        // update), and restore from such a file. Android only.
+        if (AppUpdates.backup case final backup?)
+          FullBackupTiles(backup: backup),
         ListTile(
           title: const Text('Automatic backup'),
           subtitle: Text(switch (_autoBackupFrequency) {

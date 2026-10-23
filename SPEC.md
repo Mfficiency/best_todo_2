@@ -3425,9 +3425,26 @@ in App Logs → Todoist — onboarding has already finished by then.
       moment it turns true. Best Music has no gate. Turning "Automatically update" on or off
       calls the controller's `autoCheckChanged()` (the package's: on, polling starts and a
       due check runs now; off, polling stops).
-    - BestToDo's `beforeInstall` (the package hook) is `PreUpdateBackup.ensure()` (the
-      snapshot of every data file, §4.2f), right before the plugin's `installApk`; a
-      failure is logged and the install goes on.
+    - BestToDo's `beforeInstall` (the package hook) is the package's **full backup**
+      (`FullBackup.beforeUpdate`, since 0.2.117), right before the plugin's `installApk`; a
+      failure is logged and the install goes on. `AppUpdates.backup` is built by
+      `AppUpdates.createBackup` as the first step of `main()` (before anything writes
+      SharedPreferences, so a new install is recognised) with `appName: 'BestToDo'` and
+      `excluded: {'pre_update_backup'}`. Each backup is one
+      `Download/BestToDo/Backups/BestToDo-<date>-<x.y.z>+<build>.tar.gz` (MediaStore, kept
+      when the app is uninstalled, newest 10 kept) holding every file in the documents
+      (`app_flutter`: tasks.json, alarms, projects, labels, wishlist, deleted items,
+      item_events.jsonl, attachments/, settings.json incl. its tokens, logs …), support
+      (`files`) and app-specific external folders, plus FlutterSharedPreferences. Not in
+      it: user-chosen folders (sync folder, automatic-backup folder, the shared wishlist
+      file in `BestToDo/` on shared storage; the user's own files), caches, and the native
+      SharedPreferences of home_widget / flutter_local_notifications / the Wear command
+      queue (rebuilt from the data). Settings → Backup starts with `FullBackupTiles`
+      ("Back up everything", "Restore from a backup"); after the first frame a new install
+      is offered a restore once (`offerRestore`, `_startUpdates`). Restore checks the
+      applicationId, backs up the current data first, replaces it all and restarts.
+      Android only. `PreUpdateBackup` (§4.2f) still runs before a new version's first
+      write.
     - **Behaviour (the package's):** checks on the first frame when the last check is 15+
       minutes old, every 15 minutes while in the foreground, **when the app comes back to
       the foreground** and the last check is 15+ minutes old, when the switch is turned on,

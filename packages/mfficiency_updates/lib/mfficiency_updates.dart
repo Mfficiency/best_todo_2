@@ -2,6 +2,7 @@
 /// download, Android's own install dialog, rollback. See README.md.
 library;
 
+export 'src/backup.dart';
 export 'src/config.dart';
 export 'src/controller.dart';
 export 'src/downloader.dart';

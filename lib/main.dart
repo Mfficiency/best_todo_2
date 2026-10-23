@@ -158,6 +158,10 @@ Future<void> _initStep(String label, Future<void> Function() step) async {
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
+  // The full backup (Download/BestToDo/Backups, before every update) first:
+  // it tells a new install (nothing in SharedPreferences yet) to offer a
+  // restore after the first frame.
+  await _initStep('backup', AppUpdates.createBackup);
   await _initStep('config', Config.load);
   await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
@@ -279,7 +283,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       AppUpdates.promptAllowed.value = !busy;
       if (!start) return;
       final context = appNavigatorKey.currentContext;
-      if (context != null) AppUpdates.start(context);
+      if (context == null) return;
+      AppUpdates.start(context);
+      // A new install asks once whether to restore a full backup.
+      unawaited(AppUpdates.backup?.offerRestore(context));
     });
   }
 

@@ -34,9 +34,10 @@ enum UpdatesApp {
 ///   prefix `v`, every 15 minutes while open (GitHub's anonymous limit is
 ///   60 requests/hour), the "Automatically update" switch
 ///   ([Config.autoUpdateCheckEnabled]);
-/// * BestToDo's pre-update backup ([PreUpdateBackup.ensure]) as the
-///   package's `beforeInstall`, and [promptAllowed] (false while the intro
-///   or a first-start picker is open) as its `promptAllowed`;
+/// * the package's [FullBackup] ([backup], `Download/BestToDo/Backups`)
+///   before every update as its `beforeInstall`, and [promptAllowed] (false
+///   while the intro or a first-start picker is open) as its
+///   `promptAllowed`;
 /// * the app's date format ([strings]) and log ([LogService]);
 /// * the update prefs from before the package ([migrateLegacyState]).
 class AppUpdates {
@@ -52,6 +53,22 @@ class AppUpdates {
   /// The running app's updates; null until [create] ran (tests set it,
   /// pages without one show no update UI).
   static UpdateController? controller;
+
+  /// The running app's full backup (the package's [FullBackup]): every
+  /// file in the app's folders plus its SharedPreferences, in one file in
+  /// `Download/BestToDo/Backups` that stays when the app is uninstalled;
+  /// made before every update and from Settings → Backup, restored from
+  /// there too. Null until [createBackup] ran (tests). Android only.
+  static FullBackup? backup;
+
+  /// [backup]'s settings. `pre_update_backup/` ([PreUpdateBackup], the
+  /// once-per-install copy of the data files) is left out as a duplicate.
+  /// Everything else BestToDo keeps is a file in its own folders or a
+  /// SharedPreferences key, so there are no `extras`.
+  static const FullBackupConfig backupConfig = FullBackupConfig(
+    appName: 'BestToDo',
+    excluded: {PreUpdateBackup.backupDirName},
+  );
 
   /// BestToDo: false while the intro, the mode picker or another
   /// first-start chooser is open (`main.dart`), so Android's install
@@ -90,11 +107,29 @@ class AppUpdates {
     LogService.add('update', data.isEmpty ? event : '$event $data');
   }
 
-  /// BestToDo's data files are snapshotted before Android's "Update this
-  /// app?" opens, so whatever the next version does to them, this one's
-  /// copy survives.
-  static Future<void> _backupFirst(UpdateResult update, String apkPath) =>
-      PreUpdateBackup.ensure();
+  /// First thing in `main()`, before anything writes SharedPreferences (so
+  /// [FullBackup.offerRestore] can tell a new install): builds [backup].
+  /// The seams are for tests.
+  static Future<FullBackup> createBackup({
+    SharedPreferences? prefs,
+    UpdatePlatform? platform,
+    Future<Map<String, String>> Function()? roots,
+    Future<String> Function(String name)? scratch,
+  }) async {
+    await Config.ensureVersionLoaded();
+    final b = FullBackup(
+      config: backupConfig,
+      version: Config.version,
+      build: int.tryParse(Config.buildNumber) ?? 0,
+      prefs: prefs ?? await SharedPreferences.getInstance(),
+      platform: platform,
+      roots: roots,
+      scratch: scratch,
+      log: (event, data) => LogService.add('backup', '$event $data'),
+    );
+    await b.init();
+    return backup = b;
+  }
 
   /// The [UpdateController] for [app] with everything app-specific;
   /// [create] uses it, tests build theirs on fakes through it.
@@ -108,6 +143,7 @@ class AppUpdates {
     ApkDownloader? downloader,
     UpdatePlatform? platform,
     DateTime Function()? clock,
+    FullBackup? backup,
   }) =>
       UpdateController(
         config: config(app, version: version, build: build, channel: channel),
@@ -119,12 +155,13 @@ class AppUpdates {
         log: _log,
         clock: clock,
         promptAllowed: promptAllowed,
-        beforeInstall: _backupFirst,
+        // Everything, to Downloads, before Android's "Update this app?".
+        beforeInstall: backup?.beforeUpdate,
       );
 
   /// Before the first frame: builds [controller] for [app] (reads the
-  /// version, migrates the stored state, no network). The seams are for
-  /// tests.
+  /// version, migrates the stored state, no network), with [backup] (from
+  /// [createBackup]) before every install. The seams are for tests.
   static Future<UpdateController> create(
     UpdatesApp app, {
     SharedPreferences? prefs,
@@ -145,8 +182,9 @@ class AppUpdates {
       store: SharedPreferencesUpdateStore(prefs),
       http: http,
       downloader: downloader,
-      platform: platform,
+      platform: platform ?? backup?.platform,
       clock: clock,
+      backup: backup,
     );
     await c.init();
     return controller = c;

@@ -107,7 +107,11 @@ file is the short operational guide.
   `UpdateConfig.autoCheck`, Settings calls the controller's `autoCheckChanged()`; `music-v…`
   releases here are Best Music's bridge releases, never offered), started after the first
   frame; `promptAllowed` (`AppUpdates.promptAllowed`, false while the
-  intro/pickers are open) and `beforeInstall` = `PreUpdateBackup.ensure()`; the old update
+  intro/pickers are open) and `beforeInstall` = the package's `FullBackup.beforeUpdate`
+  (`AppUpdates.backup`, made first thing in `main()` by `AppUpdates.createBackup`: every
+  file in the app's folders + SharedPreferences to `Download/BestToDo/Backups/*.tar.gz`,
+  kept across uninstalls, `pre_update_backup/` excluded; Settings → Backup shows
+  `FullBackupTiles`, a new install gets `offerRestore` after the first frame); the old update
   prefs through the package's `migrateLegacyUpdateState`. GitHub's rate limit pauses the
   automatic checks (package). Releases without an APK are never offered. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
   tap, progress only as passive text on the Changelog's `UpdateStatusCard` and the Check for
@@ -119,7 +123,7 @@ file is the short operational guide.
   (older = rollback). `MainActivity`/the manifest have no update code (the plugin brings
   `REQUEST_INSTALL_PACKAGES`, its receiver and channel; registered by Flutter). Tests fake
   it with `test/update/update_fakes.dart` (`fakeController` = `controllerFor` on fakes; the
-  real pre-update backup only with `backup: true`).
+  full backup only when a `FullBackup` is passed as `backup:`).
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0 - 2026-10-23
+
+- **Full backup:** `FullBackup` writes everything the app keeps (its
+  documents, support and external folders, SharedPreferences, `extras`)
+  to one `.tar.gz` in `Download/<appName>/Backups/`, which survives
+  uninstalling; `beforeUpdate` for `beforeInstall` makes one before every
+  update. Restore picks a file, checks the applicationId, backs up the
+  current data first and restarts the app. `FullBackupTiles` for
+  Settings, `offerRestore` once on a new install, `FullBackupStrings`
+  (English defaults). Native: `appId`, `saveToDownloads` (MediaStore),
+  `pickFile`, `restartApp`; `WRITE_EXTERNAL_STORAGE` up to Android 9 only.
+
 ## 1.5.0 - 2026-10-15
 
 - **Build facts per version:** `ReleaseBuildInfo(controller:, version:)`

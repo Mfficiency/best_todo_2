@@ -6,23 +6,14 @@ import 'package:besttodo/services/app_updates.dart';
 import 'package:besttodo/services/pre_update_backup.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'update_fakes.dart';
 
-class _FakePathProvider extends PathProviderPlatform {
-  _FakePathProvider(this.path);
-  final String path;
-
-  @override
-  Future<String?> getApplicationDocumentsPath() async => path;
-}
-
 /// BestToDo's side of the updates package
 /// (`lib/services/app_updates.dart`): which releases it takes, the
 /// "Automatically update" switch, the state stored before the package, the
-/// pre-update backup before Android's installer opens and the held-back
+/// full backup before Android's installer opens and the held-back
 /// prompt. Everything else is the package's default behaviour (resume
 /// check, the switch turned on/off while running, GitHub's rate limit,
 /// User-Agent, channel order, APK-less releases), tested in the package
@@ -265,28 +256,56 @@ void main() {
     Config.resetVersionForTest();
   });
 
-  test("BestToDo's data files are snapshotted before Android's installer opens",
-      () async {
-    final dir = await Directory.systemTemp.createTemp('pre_update');
+  test(
+      'everything is backed up to Download/BestToDo/Backups before '
+      "Android's installer opens", () async {
+    final dir = await Directory.systemTemp.createTemp('full_backup');
     addTearDown(() => dir.delete(recursive: true));
-    PathProviderPlatform.instance = _FakePathProvider(dir.path);
-    PreUpdateBackup.resetForTest();
-    await File('${dir.path}/tasks.json').writeAsString('[{"title":"keep"}]');
+    final docs = Directory('${dir.path}/docs')..createSync();
+    File('${docs.path}/tasks.json').writeAsStringSync('[{"title":"keep"}]');
+    File('${docs.path}/attachments/a1/photo.jpg')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('jpeg bytes');
+    File('${docs.path}/${PreUpdateBackup.backupDirName}/tasks.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('old copy');
+    SharedPreferences.setMockInitialValues({'intro_shown': true});
+    var scratches = 0;
+    final backup = await AppUpdates.createBackup(
+      prefs: await SharedPreferences.getInstance(),
+      platform: UpdatePlatform(supported: true),
+      roots: () async => {'documents': docs.path},
+      scratch: (name) async =>
+          (Directory('${dir.path}/scratch${scratches++}')..createSync()).path,
+    );
+    addTearDown(() => AppUpdates.backup = null);
+    expect(AppUpdates.backup, same(backup));
+    expect(backup.folder, 'Download/BestToDo/Backups');
+    expect(backup.looksFresh, isFalse);
 
     github.releases = [release('v0.2.107-2000')];
     final c = fakeController(
-        github: github, downloader: downloader, build: 1, backup: true);
+        github: github, downloader: downloader, build: 1, backup: backup);
     await c.init();
     await c.check();
     await settle();
-    for (var i = 0; i < 50 && installer.installs.isEmpty; i++) {
+    for (var i = 0; i < 100 && installer.installs.isEmpty; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
     expect(installer.installs, ['/cache/updates/BestToDo-0.2.107-2000.apk']);
-    final backup =
-        File('${dir.path}/${PreUpdateBackup.backupDirName}/tasks.json');
-    expect(await backup.readAsString(), '[{"title":"keep"}]');
-    PreUpdateBackup.resetForTest();
+    // The backup was handed to Downloads before the installer was called.
+    final methods = installer.calls.map((c) => c.method).toList();
+    expect(methods.indexOf('saveToDownloads'),
+        lessThan(methods.indexOf('installApk')));
+    expect(installer.downloads.keys.single,
+        startsWith('Download/BestToDo/Backups/BestToDo-'));
+    final tar = utf8.decode(gzip.decode(installer.downloads.values.single),
+        allowMalformed: true);
+    expect(tar, contains('[{"title":"keep"}]'));
+    expect(tar, contains('jpeg bytes'));
+    expect(tar, contains('intro_shown'));
+    expect(tar, isNot(contains('old copy')));
+    expect(backup.last.value?.reason, 'before-update');
   });
 
   test("Android's dialog waits while BestToDo's intro is open", () async {
