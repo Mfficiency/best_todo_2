@@ -12,7 +12,7 @@ import 'markdown_backup_service.dart';
 import 'project_service.dart';
 import 'storage_service.dart';
 
-/// Scheduled full backups to a folder the user picked in Settings → Backup.
+/// Scheduled full backups to a folder the user picked in Settings → Backup & data.
 ///
 /// Each backup is one timestamped JSON file with the exact "Export
 /// Everything" shape (settings + task bundle + countdown timers), so any
