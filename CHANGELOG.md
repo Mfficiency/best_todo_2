@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.122] - 2026-10-25
+- Watch: BestToDo Watch's app icon is now the BestToDo logo (black on a white circle), so it is easy to spot in the watch's app list instead of a plain blue check mark
+- Notifications show the BestToDo logo in the status bar and on the watch instead of a blank square
+
 ## [0.2.121] - 2026-10-25
 - Settings → Updates has a new "GitHub token (optional)" row. Only needed if BestToDo's GitHub repo is ever made private: paste a read-only token there and the app keeps updating itself. Without a token updates work exactly as before. The token is stored encrypted on this phone, is never shown again, and can be replaced or removed from the same row. The update module is version 1.6.3.
 

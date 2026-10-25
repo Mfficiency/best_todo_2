@@ -16,6 +16,65 @@ def resize_and_save(src, dest, size):
     img.save(dest, format="PNG")
     print(f"Saved {dest} ({size}x{size})")
 
+def save_watch_icon(src, dest, size):
+    """Watch launcher icon: the logo on a white disc, shrunk to stay inside
+    the circle the watch's app list crops icons to."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    img = Image.open(src).convert("RGBA")
+    # Centre on the dark glyph, not on the canvas (the logo sits off-centre).
+    glyph = img.convert("L").point(lambda v: 255 if v < 200 else 0).getbbox()
+    logo = img.crop(glyph)
+    scale = size * 0.62 / max(logo.size)
+    logo = logo.resize((max(1, round(logo.width * scale)),
+                        max(1, round(logo.height * scale))), Image.LANCZOS)
+    out = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+    out.alpha_composite(logo, ((size - logo.width) // 2,
+                               (size - logo.height) // 2))
+    out.save(dest, format="PNG")
+    print(f"Saved {dest} ({size}x{size})")
+
+def watch_icons():
+    # Wear OS companion (wear/): same logo, so the watch shows BestToDo's.
+    wear = 'wear/app/src/main/res'
+    for size, folder in [
+        (48, 'mipmap-mdpi'),
+        (72, 'mipmap-hdpi'),
+        (96, 'mipmap-xhdpi'),
+        (144, 'mipmap-xxhdpi'),
+        (192, 'mipmap-xxxhdpi'),
+    ]:
+        save_watch_icon(SOURCE_ICON, f'{wear}/{folder}/ic_launcher.png', size)
+
+def save_notification_icon(src, dest, size):
+    """Status-bar icon: Android draws only its alpha, so the logo becomes a
+    white glyph on transparent (the launcher PNG would be a white square)."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    img = Image.open(src).convert("RGBA")
+    dark = img.convert("L").point(lambda v: 255 - v)
+    glyph = dark.point(lambda v: 255 if v > 55 else 0).getbbox()
+    alpha = dark.crop(glyph)
+    scale = size * 0.92 / max(alpha.size)
+    alpha = alpha.resize((max(1, round(alpha.width * scale)),
+                          max(1, round(alpha.height * scale))), Image.LANCZOS)
+    out = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    white = Image.new("RGBA", alpha.size, (255, 255, 255, 255))
+    white.putalpha(alpha)
+    out.alpha_composite(white, ((size - alpha.width) // 2,
+                                (size - alpha.height) // 2))
+    out.save(dest, format="PNG")
+    print(f"Saved {dest} ({size}x{size})")
+
+def notification_icons():
+    android = 'android/app/src/main/res'
+    for size, folder in [
+        (24, 'drawable-mdpi'),
+        (36, 'drawable-hdpi'),
+        (48, 'drawable-xhdpi'),
+        (72, 'drawable-xxhdpi'),
+        (96, 'drawable-xxxhdpi'),
+    ]:
+        save_notification_icon(SOURCE_ICON, f'{android}/{folder}/ic_stat_notification.png', size)
+
 def main():
     # Web icons
     resize_and_save(SOURCE_ICON, "web/icons/Icon-512.png", 512)
@@ -80,6 +139,9 @@ def main():
         sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
     )
     print(f"Saved {ico} (16-256px)")
+
+    notification_icons()
+    watch_icons()
 
     print("All icons generated from existing PNGs.")
 
