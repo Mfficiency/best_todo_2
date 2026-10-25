@@ -551,8 +551,8 @@ function Invoke-WearRelease {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "gh CLI not found: watch APK not published" }
     $repoUrl = "https://github.com/Mfficiency/best_todo_2"
     $notes = "Wear OS companion for BestToDo [$phoneTag]($repoUrl/releases/tag/$phoneTag) " +
-      "(same version and signature; install both). Install on the watch with wireless ADB: " +
-      "``adb -s <ip>:<port> install -r $assetName`` (see wear/README.md)."
+      "(same version and signature; install both). First install on the watch with wireless ADB: " +
+      "``adb -s <ip>:<port> install -r $assetName``; afterwards the watch updates itself (wear/README.md, Updates)."
     $title = if ($Channel -eq "main") { "BestToDo Watch $Version+$Number" } else { "BestToDo Watch $Version+$Number ($Channel)" }
     if ((Test-Native "gh" @("release", "view", $wearTag, "--repo", "Mfficiency/best_todo_2")) -eq 0) {
       Invoke-Checked "gh" @("release", "upload", $wearTag, $out, "--clobber", "--repo", "Mfficiency/best_todo_2")

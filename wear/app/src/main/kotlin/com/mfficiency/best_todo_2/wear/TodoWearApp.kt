@@ -1,5 +1,6 @@
 package com.mfficiency.best_todo_2.wear
 
+import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -55,7 +58,11 @@ import com.mfficiency.best_todo_2.wear.core.Connection
 import com.mfficiency.best_todo_2.wear.core.Labels
 import com.mfficiency.best_todo_2.wear.core.Pending
 import com.mfficiency.best_todo_2.wear.core.TaskRow
+import com.mfficiency.best_todo_2.wear.update.UpdateState
+import com.mfficiency.best_todo_2.wear.update.UpdateStatus
+import com.mfficiency.best_todo_2.wear.update.WatchUpdater
 import java.time.ZoneId
+import java.util.Date
 import kotlinx.coroutines.delay
 
 // The phone app's seed blue (lib/main.dart _seedColor 0xFF005FDD), lifted
@@ -74,7 +81,7 @@ private val TodoColors = Colors(
 private const val CONFIRM_MS = 4_000L
 
 @Composable
-fun TodoWearApp(viewModel: TodoViewModel) {
+fun TodoWearApp(viewModel: TodoViewModel, onCheckUpdates: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     MaterialTheme(colors = TodoColors) {
         val nav = rememberSwipeDismissableNavController()
@@ -85,6 +92,7 @@ fun TodoWearApp(viewModel: TodoViewModel) {
                     onComplete = viewModel::complete,
                     onRefresh = viewModel::refresh,
                     onAlarms = { nav.navigate("alarms") },
+                    onCheckUpdates = onCheckUpdates,
                 )
             }
             composable("alarms") {
@@ -118,6 +126,7 @@ private fun MainScreen(
     onComplete: (String) -> Unit,
     onRefresh: () -> Unit,
     onAlarms: () -> Unit,
+    onCheckUpdates: () -> Unit,
 ) {
     // First tap arms a row, a second tap within CONFIRM_MS completes it (no
     // undo on the watch, so a brush of the screen must not finish a task).
@@ -186,6 +195,7 @@ private fun MainScreen(
             }
         }
         item { RefreshChip(state.loading, onRefresh) }
+        item { Updates(onCheckUpdates) }
     }
 }
 
@@ -384,6 +394,52 @@ private fun RefreshChip(loading: Boolean, onClick: () -> Unit) {
         },
         colors = ChipDefaults.secondaryChipColors(),
     )
+}
+
+/** "Check for updates" and one line: the version, or what the updater does. */
+@Composable
+private fun Updates(onCheck: () -> Unit) {
+    val update by WatchUpdater.state.collectAsState()
+    val busy = update.status in setOf(UpdateStatus.CHECKING, UpdateStatus.DOWNLOADING, UpdateStatus.INSTALLING)
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+        CompactChip(
+            onClick = onCheck,
+            enabled = !busy,
+            label = {
+                Text(stringResource(if (update.status == UpdateStatus.CONFIRM) R.string.update_install else R.string.update_check))
+            },
+            colors = ChipDefaults.secondaryChipColors(),
+        )
+        Text(
+            text = updateLine(update),
+            style = MaterialTheme.typography.caption3,
+            color = if (update.status == UpdateStatus.FAILED) MaterialTheme.colors.error else MaterialTheme.colors.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 24.dp),
+        )
+    }
+}
+
+@Composable
+private fun updateLine(update: UpdateState): String {
+    val running = stringResource(R.string.update_running, BuildConfig.VERSION_NAME)
+    val next = update.version
+    return when (update.status) {
+        UpdateStatus.IDLE -> running
+        UpdateStatus.CHECKING -> stringResource(R.string.update_checking)
+        UpdateStatus.DOWNLOADING -> stringResource(R.string.update_downloading, next)
+        UpdateStatus.INSTALLING -> stringResource(R.string.update_installing, next)
+        UpdateStatus.CONFIRM -> stringResource(R.string.update_confirm, next)
+        UpdateStatus.NOT_CONFIGURED -> running
+        UpdateStatus.NO_PERMISSION -> stringResource(R.string.update_no_permission, next)
+        UpdateStatus.FAILED -> stringResource(R.string.update_failed)
+        UpdateStatus.UP_TO_DATE -> if (update.checkedAt > 0) {
+            val at = DateFormat.getTimeFormat(LocalContext.current).format(Date(update.checkedAt))
+            stringResource(R.string.update_up_to_date, BuildConfig.VERSION_NAME, at)
+        } else {
+            running
+        }
+    }
 }
 
 @Composable
