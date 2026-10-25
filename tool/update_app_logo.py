@@ -24,7 +24,7 @@ def save_watch_icon(src, dest, size):
     # Centre on the dark glyph, not on the canvas (the logo sits off-centre).
     glyph = img.convert("L").point(lambda v: 255 if v < 200 else 0).getbbox()
     logo = img.crop(glyph)
-    scale = size * 0.62 / max(logo.size)
+    scale = size * 0.74 / max(logo.size)
     logo = logo.resize((max(1, round(logo.width * scale)),
                         max(1, round(logo.height * scale))), Image.LANCZOS)
     out = Image.new("RGBA", (size, size), (255, 255, 255, 255))

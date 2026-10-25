@@ -2149,7 +2149,7 @@ BestToDo Watch: a Kotlin + Compose for Wear OS app in `wear/` (its own Gradle bu
 those), `namespace`/Kotlin package `com.mfficiency.best_todo_2.wear`, minSdk 30, targetSdk 34,
 `standalone=false`. Full design, build/install/test: `wear/README.md`.
 Launcher icon (0.2.122): `@mipmap/ic_launcher` (also `roundIcon`), BestToDo's own logo on
-a white disc, shrunk to 62 % so the watch's circular crop never clips it; generated from
+a white disc, at 74 % so the watch's circular crop never clips it; generated from
 `web/icons/Icon-512.png` by `tool/update_app_logo.py` (`watch_icons`) with the phone's icons.
 The phone's notifications (alarms/reminders, also mirrored to the watch) use
 `@drawable/ic_stat_notification`, the logo as a white glyph on transparent
