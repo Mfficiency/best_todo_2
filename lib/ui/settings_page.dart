@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
@@ -70,13 +71,13 @@ class _SettingsPageState extends State<SettingsPage> {
     'Dice timer',
     'SMS report',
     'Widget',
-    'Updates',
     'Todoist sync',
     'Sync & export',
-    'Backup',
     'Weekly Hours Planner',
     'Wishlist build',
     'Claude Routine',
+    'Updates',
+    'Backup & data',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -95,7 +96,7 @@ class _SettingsPageState extends State<SettingsPage> {
         return Config.isFeatureEnabled('dice_timer');
       case 7:
         return Config.isFeatureEnabled('sms_report');
-      case 13:
+      case 11:
         return Config.isFeatureEnabled('weekly_hours_planner');
       default:
         return true;
@@ -123,8 +124,9 @@ class _SettingsPageState extends State<SettingsPage> {
     for (var i = 0; i < _sectionTitles.length; i++) i,
   };
 
-  static const double _tabsHeaderHeight = 60;
+  static const double _tabsHeaderHeight = 64;
   static const double _sectionActivationOffset = 56;
+  static const double _contentMaxWidth = 820;
   double _lastScrollOffset = 0;
 
   // Search over the settings entries themselves (independent from the task
@@ -206,46 +208,46 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Message template', 7, 'sms tokens text'),
     _SettingsSearchEntry('Sent message history', 7, 'sms log'),
     _SettingsSearchEntry('Send test now', 7, 'sms report'),
-    _SettingsSearchEntry('Synced mode', 11,
+    _SettingsSearchEntry('Synced mode', 10,
         'sync offline folder background quit backup automatic tasks'),
-    _SettingsSearchEntry('Sync folder', 11, 'sync directory location choose'),
-    _SettingsSearchEntry('Sync now', 11, 'sync manual run last synced'),
-    _SettingsSearchEntry('Export Tasks', 11, 'backup save json'),
-    _SettingsSearchEntry('Export Settings', 11, 'backup save json'),
-    _SettingsSearchEntry('Export Everything', 11, 'backup save json'),
-    _SettingsSearchEntry('Import', 11, 'restore backup load json'),
-    _SettingsSearchEntry('Back up everything', 12,
+    _SettingsSearchEntry('Sync folder', 10, 'sync directory location choose'),
+    _SettingsSearchEntry('Sync now', 10, 'sync manual run last synced'),
+    _SettingsSearchEntry('Export Tasks', 10, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 10, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 10, 'backup save json'),
+    _SettingsSearchEntry('Import', 10, 'restore backup load json'),
+    _SettingsSearchEntry('Back up everything', 15,
         'full backup downloads update uninstall reinstall all data'),
-    _SettingsSearchEntry('Restore from a backup', 12,
+    _SettingsSearchEntry('Restore from a backup', 15,
         'full backup downloads import reinstall all data'),
-    _SettingsSearchEntry('Automatic backup', 12,
+    _SettingsSearchEntry('Automatic backup', 15,
         'daily weekly schedule export save everything off'),
-    _SettingsSearchEntry('Backup folder', 12, 'directory location path choose'),
-    _SettingsSearchEntry('Back up now', 12, 'manual backup export run'),
+    _SettingsSearchEntry('Backup folder', 15, 'directory location path choose'),
+    _SettingsSearchEntry('Back up now', 15, 'manual backup export run'),
     _SettingsSearchEntry(
-        'Enable Todoist sync', 10, 'two-way api key token integration'),
-    _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
-    _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
-    _SettingsSearchEntry('Automatically update', 9,
+        'Enable Todoist sync', 9, 'two-way api key token integration'),
+    _SettingsSearchEntry('Todoist API token', 9, 'key integration secret'),
+    _SettingsSearchEntry('Sync with Todoist now', 9, 'manual run two-way'),
+    _SettingsSearchEntry('Automatically update', 14,
         'auto update version release new build startup prompt install about'),
-    _SettingsSearchEntry('Check for updates', 9,
+    _SettingsSearchEntry('Check for updates', 14,
         'update version release new build download install now'),
     _SettingsSearchEntry('GitHub token (optional)', 9,
         'update private repository key secret access'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
         'deleted bin hide show tag exclude include only filter built in'),
-    _SettingsSearchEntry('Google Calendar URL', 13,
+    _SettingsSearchEntry('Google Calendar URL', 11,
         'ics import feed link sync events weekly hours planner overlay calendar'),
-    _SettingsSearchEntry('Weekly Hours Planner start hour', 13,
+    _SettingsSearchEntry('Weekly Hours Planner start hour', 11,
         'grid hour range day begin flexitime'),
-    _SettingsSearchEntry('Weekly Hours Planner end hour', 13,
+    _SettingsSearchEntry('Weekly Hours Planner end hour', 11,
         'grid hour range day end flexitime'),
-    _SettingsSearchEntry('GitHub token', 14,
+    _SettingsSearchEntry('GitHub token', 12,
         'wishlist build automation issue pat personal access token next build'),
-    _SettingsSearchEntry('Routine fire URL', 15,
+    _SettingsSearchEntry('Routine fire URL', 13,
         'claude code routine send to claude session cloud trigger api'),
-    _SettingsSearchEntry('Routine token', 15,
+    _SettingsSearchEntry('Routine token', 13,
         'claude code routine send to claude session cloud trigger api key'),
   ];
 
@@ -828,7 +830,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final collapsed = _collapsedSections.contains(index);
     return Container(
       key: _sectionKeys[index],
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 4),
       child: Card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -861,6 +863,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             if (!collapsed) ...children,
+            if (!collapsed) const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1517,7 +1520,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildExportSection() {
     return _buildSection(
-      index: 11,
+      index: 10,
       title: 'Sync & export',
       children: [
         SwitchListTile(
@@ -1683,8 +1686,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildBackupSection() {
     final folderChosen = _autoBackupDirectory.isNotEmpty;
     return _buildSection(
-      index: 12,
-      title: 'Backup',
+      index: 15,
+      title: 'Backup & data',
       children: [
         // Everything to Download/BestToDo/Backups (also before every
         // update), and restore from such a file. Android only.
@@ -1813,7 +1816,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildWeeklyHoursPlannerSection() {
     return _buildSection(
-      index: 13,
+      index: 11,
       title: 'Weekly Hours Planner',
       children: [
         Padding(
@@ -2013,7 +2016,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildTodoistSyncSection() {
     return _buildSection(
-      index: 10,
+      index: 9,
       title: 'Todoist sync',
       children: [
         SwitchListTile(
@@ -2231,7 +2234,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// `.claude/notes/automation.md`.
   Widget _buildWishlistBuildSection() {
     return _buildSection(
-      index: 14,
+      index: 12,
       title: 'Wishlist build',
       children: [
         const Padding(
@@ -2314,7 +2317,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// generated URL and token here.
   Widget _buildClaudeRoutineSection() {
     return _buildSection(
-      index: 15,
+      index: 13,
       title: 'Claude Routine',
       children: [
         const Padding(
@@ -2414,7 +2417,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildUpdatesSection() {
     return _buildSection(
-      index: 9,
+      index: 14,
       title: 'Updates',
       children: [
         SwitchListTile(
@@ -2809,6 +2812,8 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final showSearchResults = _searchActive && _searchQuery.trim().isNotEmpty;
+    final sidePadding = math.max(
+        12.0, (MediaQuery.sizeOf(context).width - _contentMaxWidth) / 2);
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
@@ -2859,8 +2864,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
+          // Content centred at most [_contentMaxWidth] wide, as in the
+          // other apps; padding (not a box around the list) keeps the
+          // SliverList lazy, which [_jumpToSection] relies on.
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+            padding: EdgeInsets.fromLTRB(sidePadding, 12, sidePadding, 16),
             sliver: SliverList(
               delegate: SliverChildListDelegate(
                 showSearchResults
@@ -3316,14 +3324,16 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        _buildUpdatesSection(),
                         _buildTodoistSyncSection(),
                         _buildExportSection(),
-                        _buildBackupSection(),
-                        if (_isSectionVisible(13))
+                        if (_isSectionVisible(11))
                           _buildWeeklyHoursPlannerSection(),
                         _buildWishlistBuildSection(),
                         _buildClaudeRoutineSection(),
+                        _buildUpdatesSection(),
+                        _buildBackupSection(),
+                        // Room so the last section can scroll to the top.
+                        const SizedBox(height: 200),
                       ],
               ),
             ),

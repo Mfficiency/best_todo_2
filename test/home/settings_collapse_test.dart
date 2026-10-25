@@ -83,4 +83,43 @@ void main() {
 
     expect(find.text('Simple mode'), findsOneWidget);
   });
+
+  testWidgets(
+      'sections run Appearance first, Updates second to last, '
+      'Backup & data last', (tester) async {
+    await pumpSettings(tester);
+
+    // The chip row lists the sections in page order.
+    final chips = tester
+        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+        .map((c) => (c.label as Text).data)
+        .toList();
+    expect(chips.first, 'Appearance');
+    expect(chips[chips.length - 2], 'Updates');
+    expect(chips.last, 'Backup & data');
+    expect(chips, isNot(contains('Backup')));
+
+    // The cards themselves come in the same order.
+    final list = find
+        .descendant(
+            of: find.byType(CustomScrollView),
+            matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(
+        find.byTooltip('Expand Backup & data'), 300,
+        scrollable: list);
+    await tester.pumpAndSettle();
+    double top(String title) =>
+        tester.getTopLeft(find.byTooltip('Expand $title')).dy;
+    expect(top('Claude Routine'), lessThan(top('Updates')));
+    expect(top('Updates'), lessThan(top('Backup & data')));
+
+    // The jump from the chip lands on the renamed section and opens it.
+    final backupChip = find.widgetWithText(ChoiceChip, 'Backup & data');
+    await tester.ensureVisible(backupChip);
+    await tester.pumpAndSettle();
+    await tester.tap(backupChip);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Collapse Backup & data'), findsOneWidget);
+  });
 }

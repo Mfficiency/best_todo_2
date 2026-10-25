@@ -108,7 +108,7 @@ class AppUpdates {
   /// The running app's full backup (the package's [FullBackup]): every
   /// file in the app's folders plus its SharedPreferences, in one file in
   /// `Download/BestToDo/Backups` that stays when the app is uninstalled;
-  /// made before every update and from Settings → Backup, restored from
+  /// made before every update and from Settings → Backup & data, restored from
   /// there too. Null until [createBackup] ran (tests). Android only.
   static FullBackup? backup;
 

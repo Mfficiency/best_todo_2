@@ -272,7 +272,7 @@ Everything use `export_version: 1` (two version namespaces — intentional). Imp
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
 
-**Automatic backup (0.1.130):** Settings → Backup schedules the Everything export
+**Automatic backup (0.1.130):** Settings → Backup & data schedules the Everything export
 (`AutoBackupService`, `lib/services/auto_backup_service.dart`): frequency off/daily/weekly
 (`Config.autoBackupFrequency`, default off) into a user-picked folder
 (`Config.autoBackupDirectory`), checked after the home page loads and on every app resume
@@ -1118,6 +1118,19 @@ token (0.2.31) so it stays filterable via Settings → Filtering rules; see §4.
 tag" note.
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
+
+**Section order and frame (0.2.118, the layout shared by every Mfficiency app, Vesta Immo's
+Settings page):** Appearance, Mode & features, Filtering rules, Notifications, Tasks, Streak,
+Dice timer, SMS report, Widget, Todoist sync, Sync & export, Weekly Hours Planner, Wishlist
+build, Claude Routine, **Updates** (second to last) and **Backup & data** (last; it was
+"Backup"). The order of `_sectionTitles` is the page order: section indexes, the search
+registry, the visibility switch, the chip row and the scroll tracking all go by it, so a new
+section is inserted before Updates and the indexes after it shift. Cards have a 4 px gap
+(`margin: bottom 4`), end with `SizedBox(height: 8)` when open, the pinned chip header is 64
+high (padding 12/10), the content is centred at most 820 wide (`_contentMaxWidth`, through
+the `SliverPadding`'s side padding so the list stays lazy) and ends with `SizedBox(height:
+200)` so the last section can scroll to the top. `settings_collapse_test.dart` checks the
+order.
 
 Appearance: dark mode, minimalist mode (0.1.101, default off: swaps both themes for a
 monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pure greys
@@ -3388,7 +3401,7 @@ in App Logs → Todoist — onboarding has already finished by then.
     above the installed versionCode (the same rule Android applies), whatever its x.y.z or
     channel. So the phone always ends up on the newest built commit of any branch. The
     updater never reads `github_releases/`.
-  - **Optional GitHub token (0.2.118, package 1.6.3):** Settings → Updates → "GitHub token
+  - **Optional GitHub token (0.2.119, package 1.6.3):** Settings → Updates → "GitHub token
     (optional)" ("Only needed if this app's repo is private") pastes, replaces or removes a
     read-only token (fine-grained, `Mfficiency/best_todo_2` only, Contents: read). It lives in
     `flutter_secure_storage` (key `updates.github_token`, Android Keystore-encrypted, never in
@@ -3449,7 +3462,7 @@ in App Logs → Todoist — onboarding has already finished by then.
       it: user-chosen folders (sync folder, automatic-backup folder, the shared wishlist
       file in `BestToDo/` on shared storage; the user's own files), caches, and the native
       SharedPreferences of home_widget / flutter_local_notifications / the Wear command
-      queue (rebuilt from the data). Settings → Backup starts with `FullBackupTiles`
+      queue (rebuilt from the data). Settings → Backup & data starts with `FullBackupTiles`
       ("Back up everything", "Restore from a backup"); after the first frame a new install
       is offered a restore once (`offerRestore`, `_startUpdates`). Restore checks the
       applicationId, backs up the current data first, replaces it all and restarts.
