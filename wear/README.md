@@ -92,10 +92,61 @@ truth); undelivered taps are resent; taps older than 24 h are dropped.
 Pure logic (payload parsing, pending taps, labels) is in `core/`, without
 Android imports, unit-tested on the JVM.
 
-Battery: no services, alarms, wakelocks or background work on the watch. The
+Battery: no services, alarms or wakelocks on the watch. The
 Data Layer listener and a connection check every 30 s run only while the app
 is on screen (`repeatOnLifecycle(STARTED)`). Black background, R8 + resource
-shrinking on release.
+shrinking on release. The one background job is the daily update check, and
+it runs only while the watch charges.
+
+## Updates (the watch updates itself)
+
+The watch app installs its own new builds from this repo's `wear-v…`
+releases (`update_repo` in `app/src/main/res/values/updates.xml`,
+hand-written: `Mfficiency/best_todo_2`; empty = off), with no phone and no
+computer involved. Code: `core/WatchUpdate.kt` (pure, unit-tested: picks the
+build), `update/WatchUpdater.kt` + `update/UpdateWorker.kt` (check,
+download, install), ported from flutter_app_template.
+
+- **When:** once a day while the watch **charges and is online**
+  (WorkManager, `UpdateWorker`), when the app is opened and the last check
+  is a day old, and on **Check for updates** at the bottom of the main list.
+- **Which:** the highest build number above the running versionCode (the
+  phone's build number), any channel (`update_prereleases` false = main
+  only), equal numbers main first. Read from the asset name
+  `BestToDo-Watch-<x.y.z>-<build>[-dev|-staging].apk`.
+- **Install:** downloaded into `cache/updates/` through the GitHub asset API,
+  checked to be this applicationId at that build, then installed by a
+  PackageInstaller session **without asking** (a self-update with
+  `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, Android 12+). The app restarts as
+  the new version. If Android still asks, the confirmation opens on screen,
+  or the chip reads **Install update** next time.
+- **The line under the chip:** "Watch app 0.2.120 · up to date (03:12)",
+  "Downloading 0.2.121…", "0.2.121 is out: allow installs once with adb"
+  (the permission below is missing), "Update check failed, tries again later".
+
+A watch update must carry the installed watch app's signature: laptop
+releases (release key) update laptop installs; a debug-key install can't
+take them (the install fails and the line says so).
+
+### Once per watch (with the first adb install)
+
+```bash
+adb -s <watch> install -r BestToDo-Watch-….apk
+# 1. Let the app install updates (Wear OS has no screen for this switch):
+adb -s <watch> shell appops set com.mfficiency.best_todo_2 REQUEST_INSTALL_PACKAGES allow
+# 2. Open the app once (that schedules the daily check).
+```
+
+The repo is public, so no token is needed (60 checks an hour per IP are
+plenty). Should it ever turn private: give the watch its own fine-grained
+token (that repo only, Contents: Read-only) once over adb; an empty token
+removes it. It stays in the app's private preferences and goes only to
+api.github.com. Only adb and the system can send it (the receiver needs
+`android.permission.DUMP`):
+
+```bash
+adb -s <watch> shell am broadcast -n com.mfficiency.best_todo_2/com.mfficiency.best_todo_2.wear.update.TokenReceiver --es token github_pat_…
+```
 
 ## Build
 
@@ -161,13 +212,15 @@ releases are never offered to phones and never stop a phone build.
 5. `adb -s <ip>:<port> install -r BestToDo-Watch-<version>.apk`
 
 Get the APK from the `wear-v…` GitHub release (Mfficiency/best_todo_2
-releases) or `build\wear\` on the laptop. The phone needs a BestToDo with the
+releases) or `build\wear\` on the laptop. Then the once-per-watch step in
+**Updates**; afterwards the watch installs new builds itself. The phone needs a BestToDo with the
 watch sync (0.2.116 or later) from the same kind of build (see signature
 above).
 
 ## Test
 
-- Unit tests: `./gradlew -p wear test` (Payloads, Pending, Labels in `core/`).
+- Unit tests: `./gradlew -p wear test` (Payloads, Pending, Labels,
+  WatchUpdate in `core/`).
   The phone side: `flutter test test/home/wear_sync_test.dart` (payloads,
   the gates incl. `mlr`, the command queue, complete-only background path,
   channel publish/dedupe).

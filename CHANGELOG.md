@@ -1,7 +1,10 @@
 # Changelog
 
-## [0.2.119] - 2026-10-25
+## [0.2.121] - 2026-10-25
 - Settings → Updates has a new "GitHub token (optional)" row. Only needed if BestToDo's GitHub repo is ever made private: paste a read-only token there and the app keeps updating itself. Without a token updates work exactly as before. The token is stored encrypted on this phone, is never shown again, and can be replaced or removed from the same row. The update module is version 1.6.3.
+
+## [0.2.120] - 2026-10-25
+- BestToDo Watch updates itself: once a day while the watch charges (and when you tap Check for updates at the bottom of its list) it installs the newest watch build from GitHub without asking. Set it up once per watch with adb when you first install it (one command, see wear/README.md › Updates); after that, no more adb installs for the watch.
 
 ## [0.2.118] - 2026-10-24
 - Settings: same layout as the other apps — Appearance first, Updates and Backup & data at the bottom, less space between sections. "Backup" is now called "Backup & data".

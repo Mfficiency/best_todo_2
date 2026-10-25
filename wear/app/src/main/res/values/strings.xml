@@ -27,4 +27,14 @@
     <string name="word_tomorrow">Tomorrow</string>
     <string name="error_send">Couldn\'t reach the phone; will retry</string>
     <string name="error_read">Couldn\'t read the phone\'s data</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_install">Install update</string>
+    <string name="update_running">Watch app %1$s</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_downloading">Downloading %1$s…</string>
+    <string name="update_installing">Installing %1$s…</string>
+    <string name="update_confirm">%1$s is ready: tap Install update</string>
+    <string name="update_no_permission">%1$s is out: allow installs once with adb</string>
+    <string name="update_failed">Update check failed, tries again later</string>
+    <string name="update_up_to_date">Watch app %1$s · up to date (%2$s)</string>
 </resources>

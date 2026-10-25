@@ -2192,6 +2192,18 @@ those), `namespace`/Kotlin package `com.mfficiency.best_todo_2.wear`, minSdk 30,
   main/kotlin/…/core` (no Android imports), JUnit tests in `wear/app/src/test`.
 - **Release:** `tool\build.ps1 release` builds it after the phone APK (and, with PUBLISH=1,
   after the phone release), see §11 "Laptop channel builds" › Watch.
+- **Self-update (0.2.120):** the watch installs its own new builds from this repo's
+  `wear-v…` releases (`update/WatchUpdater.kt`, `update/UpdateWorker.kt`, pure picking in
+  `core/WatchUpdate.kt`; ported from flutter_app_template). WorkManager once a day while
+  charging + online, on app open when the last check is >24 h old, and the **Check for
+  updates** chip + one status line at the bottom of the main list. Picks the highest build
+  above the running versionCode from the asset name `BestToDo-Watch-<x.y.z>-<build>[-channel].apk`
+  (any channel; equal builds prefer main), downloads via the GitHub asset API into
+  `cache/updates/`, checks package + versionCode, installs with a PackageInstaller session
+  (`USER_ACTION_NOT_REQUIRED`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION`). Repo/prerelease switch
+  in `wear/app/src/main/res/values/updates.xml` (hand-written). Once per watch:
+  `appops set com.mfficiency.best_todo_2 REQUEST_INSTALL_PACKAGES allow` over adb. The repo
+  is public, so no token; a DUMP-guarded `TokenReceiver` still accepts one over adb.
 
 ## 9. Android platform config
 
@@ -3401,7 +3413,7 @@ in App Logs → Todoist — onboarding has already finished by then.
     above the installed versionCode (the same rule Android applies), whatever its x.y.z or
     channel. So the phone always ends up on the newest built commit of any branch. The
     updater never reads `github_releases/`.
-  - **Optional GitHub token (0.2.119, package 1.6.3):** Settings → Updates → "GitHub token
+  - **Optional GitHub token (0.2.121, package 1.6.3):** Settings → Updates → "GitHub token
     (optional)" ("Only needed if this app's repo is private") pastes, replaces or removes a
     read-only token (fine-grained, `Mfficiency/best_todo_2` only, Contents: read). It lives in
     `flutter_secure_storage` (key `updates.github_token`, Android Keystore-encrypted, never in
