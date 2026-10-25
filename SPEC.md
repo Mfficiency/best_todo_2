@@ -3382,12 +3382,22 @@ in App Logs → Todoist — onboarding has already finished by then.
     workflow artifacts, no releases, no commit-backs.
   - **App side (since 0.2.107 / Best Music 0.3.27): the shared updates package** — see
     "Shared updates package" right below. Its `ReleaseFilter` reads `releases?per_page=30`
-    (anonymous: the repo is public, no token) and keeps the app's own tags (`v` vs
+    (anonymous: the repo is public; with the optional token below, authenticated) and keeps the app's own tags (`v` vs
     `music-v`, the tag prefix) of **all** channels (main, staging and dev; prereleases
     count, drafts never), highest build number first; the highest one is offered when it is
     above the installed versionCode (the same rule Android applies), whatever its x.y.z or
     channel. So the phone always ends up on the newest built commit of any branch. The
     updater never reads `github_releases/`.
+  - **Optional GitHub token (0.2.118, package 1.6.3):** Settings → Updates → "GitHub token
+    (optional)" ("Only needed if this app's repo is private") pastes, replaces or removes a
+    read-only token (fine-grained, `Mfficiency/best_todo_2` only, Contents: read). It lives in
+    `flutter_secure_storage` (key `updates.github_token`, Android Keystore-encrypted, never in
+    SharedPreferences/settings.json/the full backup/the log); `AppUpdates.readToken` is the
+    package's `tokenProvider`, `AppUpdates.saveToken` stores/removes it and calls the
+    controller's `reloadToken()` (checks at once). `privateRepo` stays **false**: without a
+    token everything is anonymous exactly as before; with one, checks send it and (package
+    1.6.3) the APK downloads through the asset API, so updates keep working if the repo is
+    made private later. The row shows only "Saved on this phone (••••••••)", never the value.
   - **Shared updates package (0.2.107 / Best Music 0.3.27; the same code as Hally Remote,
     BestCollage, Vesta Immo and the template):** `packages/mfficiency_updates` is a Flutter
     plugin (Dart controller + widgets, Android installer) **vendored** from
@@ -3462,7 +3472,7 @@ in App Logs → Todoist — onboarding has already finished by then.
       install starts when the app is back. Cancelled: a slim `UpdateBanner` ("Update ready ·
       0.2.107 (3600000)" with Install) until installed; a failed download: "… couldn't be
       downloaded" with Try again (silent again). GitHub's rate limit (429, a 403 with
-      `x-ratelimit-remaining: 0` / `retry-after`, or any 403 — the app sends no token):
+      `x-ratelimit-remaining: 0` / `retry-after`, or any 403 without a token):
       status "GitHub is limiting update checks right now — try again later.", and the
       automatic checks pause until the reset GitHub names (else 30 minutes), also across a
       restart (`state.updates.pausedUntil`); taps still check.

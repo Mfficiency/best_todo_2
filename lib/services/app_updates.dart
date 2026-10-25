@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mfficiency_updates/mfficiency_updates.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -30,10 +32,13 @@ enum UpdatesApp {
 /// silent download, install) is entirely the package's [UpdateController]
 /// with its defaults; this file only holds what is BestToDo's own:
 ///
-/// * [config]: repo `Mfficiency/best_todo_2` (public, no token), the tag
+/// * [config]: repo `Mfficiency/best_todo_2` (public), the tag
 ///   prefix `v`, every 15 minutes while open (GitHub's anonymous limit is
 ///   60 requests/hour), the "Automatically update" switch
 ///   ([Config.autoUpdateCheckEnabled]);
+/// * the optional GitHub token ([readToken]/[saveToken], Settings →
+///   Updates) in secure storage, so updates keep working if the repo turns
+///   private; without one everything works as before (anonymous API);
 /// * the package's [FullBackup] ([backup], `Download/BestToDo/Backups`)
 ///   before every update as its `beforeInstall`, and [promptAllowed] (false
 ///   while the intro or a first-start picker is open) as its
@@ -44,6 +49,52 @@ class AppUpdates {
   AppUpdates._();
 
   static const String githubRepo = 'Mfficiency/best_todo_2';
+
+  // ── Optional GitHub token ────────────────────────────────────────────
+
+  /// Secure-storage key of the optional GitHub token (read access to
+  /// [githubRepo]). Never in SharedPreferences, settings.json, the full
+  /// backup or the log.
+  static const String tokenKey = 'updates.github_token';
+
+  /// Where the token lives: Android's Keystore-encrypted storage (the
+  /// platform's secure store elsewhere). `resetOnError`: a value restored
+  /// from Android's cloud backup onto another device can't be decrypted;
+  /// it is dropped instead of failing every read. Tests use
+  /// `FlutterSecureStorage.setMockInitialValues`.
+  static const FlutterSecureStorage secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+      resetOnError: true,
+    ),
+  );
+
+  /// The saved token, or null (none, or secure storage unavailable). The
+  /// package's `tokenProvider`: with a token, checks and downloads go
+  /// through GitHub's API with it (works for a public and a private repo);
+  /// without, anonymously as before.
+  static Future<String?> readToken() async {
+    try {
+      final t = (await secureStorage.read(key: tokenKey))?.trim();
+      return t == null || t.isEmpty ? null : t;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Saves [token] (trimmed), or removes it when null/empty, then has the
+  /// running [controller] read it again (`reloadToken`, which checks at
+  /// once). Errors from secure storage propagate (Settings shows them).
+  static Future<void> saveToken(String? token) async {
+    final t = token?.trim() ?? '';
+    if (t.isEmpty) {
+      await secureStorage.delete(key: tokenKey);
+    } else {
+      await secureStorage.write(key: tokenKey, value: t);
+    }
+    final c = controller;
+    if (c != null) unawaited(c.reloadToken());
+  }
 
   /// How often a running app checks (and how old the last check may be at
   /// start or when it comes back): GitHub's anonymous API allows 60
@@ -88,6 +139,10 @@ class AppUpdates {
         build: build,
         channel: channel ?? Config.channel,
         githubRepo: githubRepo,
+        // Public: privateRepo stays false (true without a token would stop
+        // updates). With a token, package 1.6.3+ downloads through the
+        // asset API too, so a repo turned private keeps updating.
+        tokenProvider: readToken,
         tagPrefix: app.tagPrefix,
         autoCheck: () => Config.autoUpdateCheckEnabled,
         checkInterval: interval,

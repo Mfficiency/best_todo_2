@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.118] - 2026-10-24
+- Settings → Updates has a new "GitHub token (optional)" row. Only needed if BestToDo's GitHub repo is ever made private: paste a read-only token there and the app keeps updating itself. Without a token updates work exactly as before. The token is stored encrypted on this phone, is never shown again, and can be replaced or removed from the same row. The update module is version 1.6.3.
+
 ## [0.2.117] - 2026-10-23
 - New: a full backup of everything BestToDo keeps (tasks, alarms, projects, labels, wishlist, deleted items, history, attachments, settings and preferences) is saved to Download/BestToDo/Backups before every update. That folder stays when the app is uninstalled, so after a reinstall BestToDo offers to restore it. Settings → Backup has "Back up everything" and "Restore from a backup" (restore backs up the current data first, then restarts the app). Android only. The update module is version 1.6.0.
 

@@ -230,6 +230,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'auto update version release new build startup prompt install about'),
     _SettingsSearchEntry('Check for updates', 9,
         'update version release new build download install now'),
+    _SettingsSearchEntry('GitHub token (optional)', 9,
+        'update private repository key secret access'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
         'deleted bin hide show tag exclude include only filter built in'),
@@ -310,6 +312,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _githubTesting = false;
   String? _githubTestResult;
   bool _githubTestSucceeded = false;
+
+  /// A GitHub token for the updater is saved (secure storage; the value
+  /// itself is never kept here). Loaded in [initState].
+  bool _updateTokenSet = false;
   final TextEditingController _claudeRoutineUrlController =
       TextEditingController(text: Config.claudeRoutineUrl);
   final TextEditingController _claudeRoutineTokenController =
@@ -386,6 +392,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadSmsConfig();
     _loadLastAutoBackup();
     _loadGoogleCalendarStatus();
+    _loadUpdateToken();
     // Lazy, fire-and-forget: the "Sync now" tile shows the last sync from the
     // persisted history once it arrives.
     unawaited(SyncService.instance.ensureLoaded());
@@ -2375,6 +2382,36 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  Future<void> _loadUpdateToken() async {
+    final set = await AppUpdates.readToken() != null;
+    if (!mounted) return;
+    setState(() => _updateTokenSet = set);
+  }
+
+  /// Settings → Updates → GitHub token: paste, replace or remove the
+  /// updater's token (secure storage), then the controller reads it again.
+  Future<void> _editUpdateToken() async {
+    final result = await showDialog<_UpdateTokenAction>(
+      context: context,
+      builder: (_) => _UpdateTokenDialog(hasToken: _updateTokenSet),
+    );
+    if (result == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await AppUpdates.saveToken(result.token);
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('Could not save the token: $e')));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _updateTokenSet = result.token != null);
+    messenger.showSnackBar(SnackBar(
+        content: Text(result.token != null
+            ? 'GitHub token saved; checking for updates'
+            : 'GitHub token removed')));
+  }
+
   Widget _buildUpdatesSection() {
     return _buildSection(
       index: 9,
@@ -2394,6 +2431,16 @@ class _SettingsPageState extends State<SettingsPage> {
         // Checks now; a newer build downloads silently, then Android asks.
         if (AppUpdates.controller case final updates?)
           UpdateCheckTile(controller: updates),
+        ListTile(
+          leading: const Icon(Icons.key),
+          title: const Text('GitHub token (optional)'),
+          subtitle: Text(_updateTokenSet
+              ? 'Saved on this phone (••••••••). Only needed if this '
+                  "app's repo is private."
+              : "Only needed if this app's repo is private."),
+          trailing: Text(_updateTokenSet ? 'Replace' : 'Add'),
+          onTap: _editUpdateToken,
+        ),
       ],
     );
   }
@@ -3325,5 +3372,93 @@ class _SettingsTabsHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _SettingsTabsHeaderDelegate oldDelegate) {
     return oldDelegate.height != height || oldDelegate.child != child;
+  }
+}
+
+/// What [_UpdateTokenDialog] returns: a token to save, or null to remove.
+class _UpdateTokenAction {
+  const _UpdateTokenAction(this.token);
+  final String? token;
+}
+
+/// Paste / replace / remove the updater's GitHub token. Owns its controller
+/// (disposing one right after `showDialog` returns breaks the exit
+/// animation). The saved value is never shown; the field starts empty.
+class _UpdateTokenDialog extends StatefulWidget {
+  const _UpdateTokenDialog({required this.hasToken});
+  final bool hasToken;
+
+  @override
+  State<_UpdateTokenDialog> createState() => _UpdateTokenDialogState();
+}
+
+class _UpdateTokenDialogState extends State<_UpdateTokenDialog> {
+  final TextEditingController _controller = TextEditingController();
+  bool _obscured = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final t = _controller.text.trim();
+    if (t.isEmpty) return;
+    Navigator.of(context).pop(_UpdateTokenAction(t));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('GitHub token (optional)'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Only needed if this app's repo is private. Create a "
+            'fine-grained token at github.com/settings/tokens with access to '
+            '${AppUpdates.githubRepo} only and "Contents" set to Read-only. '
+            'It is stored encrypted on this phone.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            obscureText: _obscured,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: widget.hasToken
+                  ? 'New token (replaces the saved one)'
+                  : 'Token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip: _obscured ? 'Show token' : 'Hide token',
+                icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscured = !_obscured),
+              ),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ],
+      ),
+      actions: [
+        if (widget.hasToken)
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(const _UpdateTokenAction(null)),
+            child: const Text('Remove'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
   }
 }

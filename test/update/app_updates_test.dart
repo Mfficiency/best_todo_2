@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/services/app_updates.dart';
 import 'package:besttodo/services/pre_update_backup.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -230,6 +231,105 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       await AppUpdates.migrateLegacyState(prefs, version: '1.0.0', build: 1);
       expect(prefs.getKeys(), isEmpty);
+    });
+  });
+
+  group('optional GitHub token (Settings → Updates)', () {
+    const apiAsset = 'https://api.github.com/repos/Mfficiency/best_todo_2/';
+
+    /// A controller whose GitHub records the headers of every request.
+    UpdateController withHeaders(List<Map<String, String>> sent) {
+      final c = AppUpdates.controllerFor(
+        UpdatesApp.todo,
+        version: '0.2.106',
+        build: 1000,
+        store: MemoryUpdateStore(),
+        http: UpdateHttp.from((url, headers, cacheFor) async {
+          sent.add(headers);
+          return [release('v0.2.107-3600010')];
+        }),
+        downloader: downloader,
+        platform: UpdatePlatform(supported: true),
+      );
+      return AppUpdates.controller = c;
+    }
+
+    test('none saved: the provider gives null, the repo stays public', () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final c = AppUpdates.config(UpdatesApp.todo, version: '1', build: 1);
+      expect(await c.tokenProvider!(), isNull);
+      expect(c.privateRepo, isFalse,
+          reason: 'privateRepo without a token would stop every update');
+    });
+
+    test('saved: the provider gives it (trimmed); removed: null again',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final c = AppUpdates.config(UpdatesApp.todo, version: '1', build: 1);
+      await AppUpdates.saveToken('  github_pat_abc  ');
+      expect(await c.tokenProvider!(), 'github_pat_abc');
+      expect(await AppUpdates.secureStorage.read(key: AppUpdates.tokenKey),
+          'github_pat_abc',
+          reason: 'kept in secure storage under its key');
+      await AppUpdates.saveToken(null);
+      expect(await c.tokenProvider!(), isNull);
+      await AppUpdates.saveToken('x');
+      await AppUpdates.saveToken('   ');
+      expect(await c.tokenProvider!(), isNull, reason: 'empty = remove');
+    });
+
+    test('never in SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+      await AppUpdates.saveToken('github_pat_secret');
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in prefs.getKeys()) {
+        expect('${prefs.get(k)}', isNot(contains('github_pat_secret')));
+      }
+    });
+
+    test('without a token: anonymous checks, the public download link',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final sent = <Map<String, String>>[];
+      final c = withHeaders(sent);
+      await c.init();
+      expect(c.hasToken, isFalse);
+      expect(c.configured, isTrue);
+      final r = await c.check();
+      expect(r.status, UpdateStatus.available);
+      expect(sent.single.containsKey('Authorization'), isFalse);
+      expect(r.url, startsWith('https://github.com/'));
+    });
+
+    test('with a token: sent with every check, the APK through the API',
+        () async {
+      FlutterSecureStorage.setMockInitialValues(
+          {AppUpdates.tokenKey: 'github_pat_abc'});
+      final sent = <Map<String, String>>[];
+      final c = withHeaders(sent);
+      await c.init();
+      expect(c.hasToken, isTrue);
+      final r = await c.check();
+      expect(sent.single['Authorization'], 'Bearer github_pat_abc');
+      expect(r.url, startsWith(apiAsset),
+          reason: 'still works once the repo is private (package 1.6.3)');
+    });
+
+    test('saveToken has the running controller read it again', () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final sent = <Map<String, String>>[];
+      final c = withHeaders(sent);
+      await c.init();
+      expect(c.hasToken, isFalse);
+      await AppUpdates.saveToken('github_pat_new');
+      await settle();
+      expect(c.hasToken, isTrue);
+      expect(sent.last['Authorization'], 'Bearer github_pat_new');
+      await AppUpdates.saveToken(null);
+      await settle();
+      expect(c.hasToken, isFalse);
+      expect(sent.last.containsKey('Authorization'), isFalse);
     });
   });
 

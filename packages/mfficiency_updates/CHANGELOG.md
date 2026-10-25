@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.3 - 2026-10-24
+
+- A public repo with a token downloads through the asset API too, so an
+  app with a token keeps updating when its repo turns private.
+
 ## 1.6.2 - 2026-10-23
 
 - The new-install check skips `excluded` folders again (1.6.1 compared

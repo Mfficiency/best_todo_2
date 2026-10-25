@@ -156,7 +156,7 @@ updates.start(context);
 | `tagPattern` | null | own RegExp, named groups `version`, `build`, `channel` |
 | `assetPattern` | first `.apk` | which asset is the APK |
 | `requireApk` | `true` | releases without an APK are never offered; false = offered with the release page |
-| `privateRepo`, `tokenProvider` | `false`, null | token for a private repo |
+| `privateRepo`, `tokenProvider` | `false`, null | token for a private repo; a public one with a token also downloads with it (ready to turn private) |
 | `autoCheck` | always on | the user's switch |
 | `autoCheckChanges` | null | `Listenable` that fires when the switch may have changed |
 | `includePrereleases` | on | |

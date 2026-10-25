@@ -102,7 +102,10 @@ file is the short operational guide.
   The behaviour is the package's defaults (same in every Mfficiency app); don't work around
   it in the app. `lib/services/app_updates.dart` (`AppUpdates`) only passes app-specific
   config: one `UpdateController` (`AppUpdates.controllerFor`) made in `main()`
-  (`UpdatesApp.todo`, tag prefix `v`; public repo `Mfficiency/best_todo_2`, no token; checks
+  (`UpdatesApp.todo`, tag prefix `v`; public repo `Mfficiency/best_todo_2`, `privateRepo` false;
+  optional read-only token from Settings → Updates in `flutter_secure_storage` via
+  `AppUpdates.readToken`/`saveToken` = `tokenProvider` + `reloadToken()`, so a repo turned
+  private keeps updating; checks
   every 15 minutes, also on resume when due; the "Automatically update" switch =
   `UpdateConfig.autoCheck`, Settings calls the controller's `autoCheckChanged()`; `music-v…`
   releases here are Best Music's bridge releases, never offered), started after the first
