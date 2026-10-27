@@ -7,6 +7,7 @@ import '../models/view_filter_rules.dart';
 import 'item_views.dart';
 import 'storage_service.dart';
 import 'streak_service.dart';
+import 'wear_sync_service.dart';
 
 /// Bridges today's task list to the Android home-screen widget
 /// (`SimpleWidgetProvider`).
@@ -43,6 +44,7 @@ class TaskWidgetService {
   /// URI scheme of the clicks coming back from the widget.
   static const String scheme = 'besttodotask';
   static const String hostToggle = 'toggle';
+  static const String hostComplete = 'complete';
 
   /// Today's list as the widget shows it: everything due today or earlier,
   /// open tasks first (in list order) so a full slate still shows what is
@@ -60,6 +62,27 @@ class TaskWidgetService {
     List<Task> tasks, {
     DateTime? now,
     ViewFilterRules? rules,
+  }) =>
+      _homeDay(tasks, now: now, rules: rules, include: (diff) => diff <= 0);
+
+  /// Tomorrow's tasks (the Tomorrow tab: due exactly one day after today),
+  /// through the same gates and in the same order as [todayTasks]. Only the
+  /// Wear OS companion shows them ([WearSyncService]).
+  static List<Task> tomorrowTasks(
+    List<Task> tasks, {
+    DateTime? now,
+    ViewFilterRules? rules,
+  }) =>
+      _homeDay(tasks, now: now, rules: rules, include: (diff) => diff == 1);
+
+  /// The widget's gate (deleted, [ItemViews.isVisibleInMainViews] incl. the
+  /// Worklist-only `mlr` tag, the Home filter rules) for the tasks whose due
+  /// day is [include]d by its distance in days from today; open ones first.
+  static List<Task> _homeDay(
+    List<Task> tasks, {
+    DateTime? now,
+    ViewFilterRules? rules,
+    required bool Function(int diff) include,
   }) {
     final current = now ?? DateTime.now();
     final today = DateTime(current.year, current.month, current.day);
@@ -71,8 +94,11 @@ class TaskWidgetService {
         return false;
       }
       if (t.dueDate == null) return false;
-      final d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      return !d.isAfter(today);
+      // Calendar days in UTC, so a DST switch can't make a 23 h "day".
+      final d = t.dueDate!;
+      return include(DateTime.utc(d.year, d.month, d.day)
+          .difference(DateTime.utc(today.year, today.month, today.day))
+          .inDays);
     }).toList()
       ..sort((a, b) =>
           (a.listRanking ?? 1 << 31).compareTo(b.listRanking ?? 1 << 31));
@@ -138,13 +164,28 @@ class TaskWidgetService {
       await HomeWidget.updateWidget(
           iOSName: iOSWidgetName, androidName: androidWidgetName);
     } catch (_) {}
+    // The Wear OS companion shows the same list (and tomorrow's).
+    WearSyncService.publishTasks(tasks, now: now);
   }
 
   /// Flips one task's done state straight in storage. Runs in the widget's
   /// background isolate (the app may not even be running), so it works against
   /// the files rather than any in-memory list, and pushes the fresh payload
   /// back to the widget afterwards.
-  static Future<void> toggleInStorage(String uid, {DateTime? now}) async {
+  static Future<void> toggleInStorage(String uid, {DateTime? now}) =>
+      _setDoneInStorage(uid, null, now: now);
+
+  /// Completes one task straight in storage (never un-completes it): the
+  /// Wear OS companion's "done" when the app isn't running
+  /// (`besttodotask://complete?id=`, fired by `WearCommandService.kt`), so a
+  /// stale watch can't flip back a task finished on the phone. Same isolate
+  /// and same steps as [toggleInStorage].
+  static Future<void> completeInStorage(String uid, {DateTime? now}) =>
+      _setDoneInStorage(uid, true, now: now);
+
+  /// [done] null toggles.
+  static Future<void> _setDoneInStorage(String uid, bool? done,
+      {DateTime? now}) async {
     final storage = StorageService();
     final tasks = await storage.loadTaskList();
     final index = tasks.indexWhere((t) => t.uid == uid);
@@ -156,6 +197,10 @@ class TaskWidgetService {
     }
     final task = tasks[index];
     final at = now ?? DateTime.now();
+    if (done != null && task.isDone == done) {
+      await sync(tasks, now: at);
+      return;
+    }
     task.toggleDone();
     task.completedAt = task.isDone ? at : null;
     await storage.saveTaskList(tasks);

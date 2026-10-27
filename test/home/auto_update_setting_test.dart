@@ -4,6 +4,7 @@ import 'package:besttodo/config.dart';
 import 'package:besttodo/services/app_updates.dart';
 import 'package:besttodo/ui/settings_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
@@ -129,5 +130,68 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'check for updates');
     await tester.pump();
     expect(find.text('Check for updates'), findsOneWidget);
+  });
+
+  testWidgets(
+      'GitHub token (optional): paste, replace and remove, masked, '
+      'kept in secure storage', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final github = FakeGithub();
+    final c = fakeController(github: github, downloader: FakeDownloader());
+    await pumpSettings(tester);
+    await openSection(tester, 'Updates');
+    final row = find.text('GitHub token (optional)');
+    await tester.scrollUntilVisible(row, 80,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text("Only needed if this app's repo is private."),
+        findsOneWidget);
+
+    Future<void> settle() async {
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    // Paste.
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    final field = find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField));
+    await tester.enterText(field, ' github_pat_one ');
+    expect(tester.widget<TextField>(field).obscureText, isTrue);
+    await tester.tap(find.text('Save'));
+    await settle();
+    expect(await AppUpdates.readToken(), 'github_pat_one');
+    expect(c.hasToken, isTrue, reason: 'reloadToken ran');
+    expect(find.textContaining('github_pat_one'), findsNothing,
+        reason: 'the value is never shown');
+    expect(find.textContaining('Saved on this phone'), findsOneWidget);
+
+    // Replace.
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty,
+        reason: 'the saved token is not put back into the field');
+    await tester.enterText(field, 'github_pat_two');
+    await tester.tap(find.text('Save'));
+    await settle();
+    expect(await AppUpdates.readToken(), 'github_pat_two');
+
+    // Remove.
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
+    await settle();
+    expect(await AppUpdates.readToken(), isNull);
+    expect(c.hasToken, isFalse);
+    expect(find.text("Only needed if this app's repo is private."),
+        findsOneWidget);
+    // Saving a token started polling (a periodic timer): stop it here, the
+    // fake-async zone checks for pending timers before tearDown runs.
+    c.dispose();
+    AppUpdates.controller = null;
   });
 }

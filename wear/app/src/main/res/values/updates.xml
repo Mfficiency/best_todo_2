@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The watch updates itself from this repo's wear-… GitHub Releases
+     (update/WatchUpdater.kt, README.md › Updates). Hand-written: nothing
+     generates the watch's resources in this repo. update_repo empty = updates
+     off; update_prereleases false = main-channel builds only. The repo is
+     public, so no token is needed (the adb TokenReceiver still accepts one). -->
+<resources>
+    <string name="update_repo" translatable="false">Mfficiency/best_todo_2</string>
+    <bool name="update_prereleases">true</bool>
+</resources>

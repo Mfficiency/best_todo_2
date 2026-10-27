@@ -551,7 +551,9 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       releases.first,
       tagFormat: config.tagFormat,
       assetPattern: config.assetPattern,
-      privateRepo: config.privateRepo,
+      // With a token, a public repo downloads the same way: it can turn
+      // private later without an app update.
+      privateRepo: config.privateRepo || _token != null,
     );
   }
 
@@ -886,7 +888,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       (json as List).whereType<Map<String, Object?>>(),
       _filter(),
       assetPattern: config.assetPattern,
-      privateRepo: config.privateRepo,
+      privateRepo: config.privateRepo || _token != null,
     );
   }
 

@@ -69,7 +69,7 @@ Future<void> initialize() async {
   await _ensureTimezone();
 
   const settings = InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    android: AndroidInitializationSettings('ic_stat_notification'),
     iOS: DarwinInitializationSettings(),
   );
   try {

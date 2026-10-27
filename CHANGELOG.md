@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.122] - 2026-10-25
+- Watch: BestToDo Watch's app icon is now the BestToDo logo (black on a white circle), so it is easy to spot in the watch's app list instead of a plain blue check mark
+- Notifications show the BestToDo logo in the status bar and on the watch instead of a blank square
+
+## [0.2.121] - 2026-10-25
+- Settings → Updates has a new "GitHub token (optional)" row. Only needed if BestToDo's GitHub repo is ever made private: paste a read-only token there and the app keeps updating itself. Without a token updates work exactly as before. The token is stored encrypted on this phone, is never shown again, and can be replaced or removed from the same row. The update module is version 1.6.3.
+
+## [0.2.120] - 2026-10-25
+- BestToDo Watch updates itself: once a day while the watch charges (and when you tap Check for updates at the bottom of its list) it installs the newest watch build from GitHub without asking. Set it up once per watch with adb when you first install it (one command, see wear/README.md › Updates); after that, no more adb installs for the watch.
+
+## [0.2.118] - 2026-10-24
+- Settings: same layout as the other apps — Appearance first, Updates and Backup & data at the bottom, less space between sections. "Backup" is now called "Backup & data".
+
+## [0.2.117] - 2026-10-23
+- New: a full backup of everything BestToDo keeps (tasks, alarms, projects, labels, wishlist, deleted items, history, attachments, settings and preferences) is saved to Download/BestToDo/Backups before every update. That folder stays when the app is uninstalled, so after a reinstall BestToDo offers to restore it. Settings → Backup has "Back up everything" and "Restore from a backup" (restore backs up the current data first, then restarts the app). Android only. The update module is version 1.6.0.
+
+## [0.2.116] - 2026-10-20
+- New: BestToDo Watch, a companion app for Wear OS watches (made for the Galaxy Watch6 Classic). It shows today's tasks (the same list as the Due Tasks widget, so Worklist, Food Diary and not-yet-approved items stay off it), tomorrow's tasks and your alarms. Tap a task twice on the watch to complete it; the phone completes it like a tap in the app (also when BestToDo is closed). The watch says whether the phone is connected and keeps the last lists when it isn't. It is published as its own download (wear-v… releases) and installed with wireless ADB, see wear/README.md.
+
+## [0.2.115] - 2026-10-17
+- PC Watcher: the page now opens with the PC card, then Pending, then the build log. The log hides runs that built nothing because the code was already published (pick "Already published" or "All" to see them), and its filters are folded away behind a Filters button. The 7-day stats moved to their own page — tap Stats at the bottom.
+
 ## [0.2.114] - 2026-10-15
 - Changelog: every version now shows when it was built, how long the build took and the size of its APK (taken from its GitHub release; versions without that keep the build lines the changelog already had). The update module is version 1.5.0.
 
