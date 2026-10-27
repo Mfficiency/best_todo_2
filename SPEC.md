@@ -717,6 +717,51 @@ never swept at day rollover (`StorageService.loadTaskList` and
 undo). The add dialog's category defaults to "Automatic" = the category that
 item had last time (`GroceryList.rememberedCategory`), else Other.
 
+**Obsidian pages and research rounds (0.2.124)** —
+`lib/services/voice_inbox_service.dart` (`VoiceInboxService`). One routine
+(Settings → Claude Routine → *Voice inbox routine fire URL/token*,
+`Config.voiceInboxRoutineUrl`/`voiceInboxRoutineToken`; `isConfigured` also
+needs Todoist sync, the routine's only way back) is fired through
+`ClaudeRoutineService` with `MODE: write-page | research-questions |
+research-answers` and the item as JSON (`buildPayload`: `todoistTaskId` from the
+sync map, title, description, note, labels, kind, state, project, transcript,
+source, `qa`). Every fire runs `TodoistSyncService.syncNow` first, so the
+approval is pushed (and an app-made item gets its Todoist task) before the
+routine looks. The routine answers through the item's Todoist **comments**
+(`TodoistApiClient.fetchComments`/`addComment`, `TodoistSyncService.commentsFor`/
+`addCommentFor`): `[Questions]` + numbered lines, `[Done] <link>`; the app posts
+`[Answers]` (`formatAnswers`). `parseReplies` reads the newest of each;
+`refresh(task)` applies them. The `[Done]` comment is the robust copy of the
+link: a local edit that wins a sync conflict rewrites the description and would
+drop an `[Obsidian:]` line — which is why step 3 of `_runSyncBody` also harvests
+that line from the remote before pushing.
+
+Each request is split into a synchronous `mark…` (stamps the task, the page
+saves) and an async `fire…` that never touches the task, so the page's save and
+the sync's own save of `tasks.json` never interleave; `runFire` undoes the mark
+(in memory and on the stored copy) on failure and returns a SnackBar text, and
+the pages reload their list afterwards (the sync may have pulled changes).
+- **Write page:** approving a Backlog item in Waiting for Approval
+  (`_approveToState` queues it in `_pendingFires`, run by `_saveThenFire` after
+  the save — after the single final save for "Approve selected"), or an
+  expanded wish's **Create Obsidian page** button (only when configured and
+  there's no link; then "Claude is writing the Obsidian page…").
+  `Task.obsidianRequestedAt`; the Wishlist checks the `[Done]` reply for waiting
+  items when it opens (`_checkObsidianReplies`).
+- **Research round** (`Task.researchStage`: `ResearchStages` requested →
+  questions → answered → ready, `Task.researchQuestions`): moving a research item
+  to Active (Research page "Move to", or approving it straight into Active)
+  starts it when configured and it has none yet; an Active item without one
+  shows **Start research with Claude**. The card line shows "Claude is preparing
+  questions…", an **Answer N questions** button
+  (`lib/ui/research_questions_page.dart`: one field + mic per question, empty =
+  skipped, **Send answers** → `sendAnswers` comment + second fire), "Claude is
+  writing the research page…", then the tile's Open in Obsidian. The page checks
+  waiting items when it opens and from the app bar's **Check Claude's replies**.
+
+The routine's setup, the vault Action step and the four-mode prompt:
+`docs/proposals/voice-inbox-routine.md`.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**

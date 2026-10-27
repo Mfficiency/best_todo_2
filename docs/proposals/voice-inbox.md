@@ -1,10 +1,12 @@
 # Voice inbox — speak it, Claude sorts it, you approve it
 
-**Status: phases 1–3 built (app side) in 0.2.123** — as-built in `SPEC.md`
-§4.2j; the routine's prompt and setup are in `voice-inbox-routine.md`. Still to
-build: phase 4 (the app firing the routine after a Backlog approval so it
-writes the Obsidian page — the app already shows the `[Obsidian:]` link once it
-arrives) and phase 5 (Research "Active" Q&A). Agreed with the owner on
+**Status: all five phases built on the app side (0.2.123 sorting, 0.2.124
+Obsidian pages + research rounds)** — as-built in `SPEC.md` §4.2j. What's left
+is outside this repo: the routine, the vault Action step and the app settings,
+all in `voice-inbox-routine.md`. One change from §7/§8 below: the routine
+answers through Todoist comments (`[Questions]`, `[Done] <link>`) as well as
+the `[Obsidian:]` description line, and there is no separate hourly watcher —
+the app checks for replies when the Wishlist/Research page opens. Agreed with the owner on
 2026-10-27 from a whiteboard sketch plus several rounds of Q&A. Deviations
 while building: grocery categories are edited from the Groceries page ("Edit
 categories"), not Settings; the Approval page keeps "By conversation" as a

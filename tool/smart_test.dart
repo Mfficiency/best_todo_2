@@ -122,7 +122,9 @@ final List<SuiteRule> suiteRules = [
   SuiteRule(['lib/models/home_contexts.dart'], {'home', 'sync'}),
   SuiteRule(['lib/services/grocery_category_service.dart', 'lib/ui/groceries_page.dart'],
       {'tools', 'sync', 'home'}),
-  SuiteRule(['lib/ui/obsidian_link_button.dart', 'lib/ui/research_page.dart'], {'tools', 'home'}),
+  SuiteRule(['lib/ui/obsidian_link_button.dart', 'lib/ui/research_page.dart',
+      'lib/ui/research_questions_page.dart'], {'tools', 'home'}),
+  SuiteRule(['lib/services/voice_inbox_service.dart'], {'sync', 'tools', 'home'}),
   SuiteRule(['lib/services/share_intent_service.dart', 'lib/models/shared_payload.dart', 'lib/ui/quick_add_share_page.dart',
     'ShareActivity.kt', 'MainActivity.kt'], {'share', 'home'}),
   SuiteRule([

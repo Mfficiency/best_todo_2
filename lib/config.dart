@@ -677,6 +677,13 @@ class Config {
   static String claudeRoutineUrl = '';
   static String claudeRoutineToken = '';
 
+  /// The voice inbox's routine (`docs/proposals/voice-inbox-routine.md`):
+  /// fire URL + bearer token of the Claude Code Routine that writes Obsidian
+  /// pages for approved Backlog items and runs Research "Active" sessions.
+  /// Separate from [claudeRoutineUrl] — that one is "Send to Claude".
+  static String voiceInboxRoutineUrl = '';
+  static String voiceInboxRoutineToken = '';
+
   /// If true, the app polls GitHub for a newer build every 15 minutes while it
   /// is open (the updates package, `AppUpdates` in
   /// `lib/services/app_updates.dart`) and, the moment one appears, downloads
@@ -776,6 +783,8 @@ class Config {
       'githubWishlistToken': githubWishlistToken,
       'claudeRoutineUrl': claudeRoutineUrl,
       'claudeRoutineToken': claudeRoutineToken,
+      'voiceInboxRoutineUrl': voiceInboxRoutineUrl,
+      'voiceInboxRoutineToken': voiceInboxRoutineToken,
       'autoUpdateCheckEnabled': autoUpdateCheckEnabled,
       'autoUpdateEnabledOnce': true,
       'deletedItemsRetentionDays': deletedItemsRetentionDays,
@@ -925,6 +934,10 @@ class Config {
     claudeRoutineUrl = data['claudeRoutineUrl'] as String? ?? claudeRoutineUrl;
     claudeRoutineToken =
         data['claudeRoutineToken'] as String? ?? claudeRoutineToken;
+    voiceInboxRoutineUrl =
+        data['voiceInboxRoutineUrl'] as String? ?? voiceInboxRoutineUrl;
+    voiceInboxRoutineToken =
+        data['voiceInboxRoutineToken'] as String? ?? voiceInboxRoutineToken;
     // Settings files from before automatic checks existed have no key. Use
     // the product default explicitly rather than whatever mutable value is
     // currently in memory, while still respecting a saved opt-out.

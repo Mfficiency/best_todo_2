@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.124] - 2026-10-27
+- Voice inbox, part 2: approving a Backlog item now asks Claude to write its Obsidian page (or tap Create Obsidian page on an expanded wish), and the item gets an Open in Obsidian button once it's there. Moving a Research item to Active starts a research round: Claude asks a few questions, you answer them in the app (Answer questions, with the mic), and it writes the full research page into Obsidian. Set it up under Settings → Claude Routine → Voice inbox routine (needs Todoist sync on).
+
 ## [0.2.123] - 2026-10-27
 - Voice inbox: Waiting for Approval now sorts items into Todo, Migros, Lemmon, Backlog, Research, Groceries and Other (pick another view under Group by). Each group swipes to its own destinations: a day for Todo/Migros/Lemmon, Active / Next / Someday for Backlog and Research, Add to list for Groceries; swiping an Other item asks where it belongs. Claude's suggested destination shows as → Tomorrow and is what the countdown picks. Long-press an item and drag it onto another group to fix its category; multi-select is now the Select button at the top. Food from a voice note goes straight into the Food Diary, with a blue dot when it needs a check (editing the entry clears it). Items Claude linked to an Obsidian page get an Open in Obsidian button.
 - Home: the menu's Home row has an arrow that folds out Todo, MLR and Lemmon switches, so the home list can show regular items, MLR items, Lemmon items or any mix. It starts as before (regular items only) and remembers your choice.

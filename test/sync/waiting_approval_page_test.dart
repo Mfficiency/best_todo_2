@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
+import 'package:besttodo/services/voice_inbox_service.dart';
 import 'package:besttodo/ui/waiting_approval_page.dart';
 import 'package:besttodo/utils/label_utils.dart';
 import 'package:flutter/material.dart';
@@ -975,4 +976,55 @@ void main() {
       expect(pasta['groceryCategory'], 'Pasta & rice');
     });
   });
+
+  testWidgets(
+      'with the voice-inbox routine set up, approving a Backlog item asks it '
+      'to write the Obsidian page', (tester) async {
+    Config.todoistSyncEnabled = true;
+    Config.todoistApiToken = 't';
+    Config.voiceInboxRoutineUrl = 'https://x/fire';
+    Config.voiceInboxRoutineToken = 'r';
+    final fakeService = _FakeVoiceInbox();
+    VoiceInboxService.instance = fakeService;
+    addTearDown(() {
+      Config.todoistSyncEnabled = false;
+      Config.todoistApiToken = '';
+      Config.voiceInboxRoutineUrl = '';
+      Config.voiceInboxRoutineToken = '';
+      VoiceInboxService.instance = VoiceInboxService();
+    });
+
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+            title: 'Big idea',
+            label: waitingApprovalToken,
+            approvalGroup: 'backlog'),
+      ],
+      marker: 'Big idea',
+    );
+    await tester.drag(find.text('Big idea'), const Offset(300, 0));
+    await tester.pump();
+    await tester.tap(find.text('Next'));
+    await tester.pump();
+    await settleWrites(tester);
+
+    expect(fakeService.calls, ['write-page:Big idea']);
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['obsidianRequestedAt'], isNotNull);
+    expect(saved.single['isWish'], isTrue);
+  });
+}
+
+class _FakeVoiceInbox extends VoiceInboxService {
+  final List<String> calls = [];
+
+  @override
+  Future<void> fireWritePage(Task task) async =>
+      calls.add('write-page:${task.title}');
+
+  @override
+  Future<void> fireResearchQuestions(Task task) async =>
+      calls.add('research-questions:${task.title}');
 }

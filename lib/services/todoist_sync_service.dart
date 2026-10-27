@@ -627,6 +627,19 @@ class TodoistSyncService {
       }
       handledTodoistIds.add(entry.todoistId);
 
+      // An `[Obsidian: …]` link the voice-inbox routine put on the Todoist
+      // side is kept even when a local edit wins below (and the push then
+      // rewrites the description without it).
+      final remoteMarkers = parseVoiceMarkers(TodoistMetadataCodec.parse(
+        remoteTask['description'] as String? ?? '',
+      ).visible)
+          .$2;
+      if (remoteMarkers.obsidian != null &&
+          task.obsidianLink != remoteMarkers.obsidian) {
+        task.obsidianLink = remoteMarkers.obsidian;
+        changeCount++;
+      }
+
       final remoteFp = _remoteFingerprintForRemote(
         remoteTask,
         todoistToLocalProject,
@@ -760,6 +773,41 @@ class TodoistSyncService {
         .saveItems(allLocal, source: TaskChangeSource.sync);
     await _persistState();
     return changeCount;
+  }
+
+  /// The Todoist comments on the task mapped to [localUid], oldest first —
+  /// null when sync is off or the task has never been synced.
+  Future<List<Map<String, dynamic>>?> commentsFor(String localUid) async {
+    await ensureLoaded();
+    final token = Config.todoistApiToken.trim();
+    final entry = entryForLocalUid(localUid);
+    if (!Config.todoistSyncEnabled || token.isEmpty || entry == null) {
+      return null;
+    }
+    final client = _newClient(token);
+    try {
+      return await client.fetchComments(entry.todoistId);
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Posts [content] as a comment on the task mapped to [localUid]. Returns
+  /// false when sync is off or the task has never been synced.
+  Future<bool> addCommentFor(String localUid, String content) async {
+    await ensureLoaded();
+    final token = Config.todoistApiToken.trim();
+    final entry = entryForLocalUid(localUid);
+    if (!Config.todoistSyncEnabled || token.isEmpty || entry == null) {
+      return false;
+    }
+    final client = _newClient(token);
+    try {
+      await client.addComment(entry.todoistId, content);
+      return true;
+    } finally {
+      client.close();
+    }
   }
 
   /// Key [_projectMap] is cached under for wishlist tasks — never a real

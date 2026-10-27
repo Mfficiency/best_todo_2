@@ -15,6 +15,7 @@ import '../services/item_views.dart';
 import '../services/log_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/todoist_sync_service.dart';
+import '../services/voice_inbox_service.dart';
 import '../utils/label_style.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
@@ -195,6 +196,31 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// list is written once at the end instead of once per item.
   bool _batching = false;
 
+  /// Routine fires queued by an approval, run once the approval is saved
+  /// (each one syncs first, and the sync must see the saved approval).
+  final List<Future<String?> Function()> _pendingFires = [];
+
+  /// Saves, then runs [_pendingFires] one by one. A failed fire shows a
+  /// SnackBar; afterwards the list is reloaded, since the syncs inside the
+  /// fires may have pulled changes into tasks.json.
+  Future<void> _saveThenFire() async {
+    if (_batching) return;
+    await _save();
+    if (_pendingFires.isEmpty) return;
+    final fires = List.of(_pendingFires);
+    _pendingFires.clear();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    for (final fire in fires) {
+      final error = await fire();
+      if (error != null) {
+        messenger?.showSnackBar(SnackBar(content: Text(error)));
+      }
+    }
+    final reloaded = await _repository.loadItems();
+    if (!mounted) return;
+    setState(() => _tasks = reloaded);
+  }
+
   Future<void> _save() async {
     if (_batching) return;
     await _repository.saveItems(_tasks);
@@ -344,17 +370,37 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// Research tool, in [state] (Active / Next / Someday). Any other
   /// category approved this way (e.g. from "Approve selected") goes to the
   /// Wishlist.
+  ///
+  /// With the voice-inbox routine set up, a Backlog approval also asks it to
+  /// write the item's Obsidian page, and a Research item approved straight
+  /// into Active starts its research round — fired after the save (see
+  /// [_saveThenFire]).
   void _approveToState(Task task, String state) {
+    final research = _categoryOf(task) == ApprovalGroups.research;
     setState(() {
       _liftGate(task);
-      if (_categoryOf(task) == ApprovalGroups.research) {
+      if (research) {
         task.isResearch = true;
       } else {
         task.isWish = true;
       }
       setBacklogState(task, state);
     });
-    _save();
+    if (VoiceInboxService.isConfigured) {
+      final service = VoiceInboxService.instance;
+      if (!research) {
+        VoiceInboxService.markObsidianRequested(task);
+        _pendingFires.add(() => service.runFire(task,
+            () => service.fireWritePage(task),
+            (t) => t.obsidianRequestedAt = null));
+      } else if (state == BacklogStates.active) {
+        VoiceInboxService.markResearchRequested(task);
+        _pendingFires.add(() => service.runFire(task,
+            () => service.fireResearchQuestions(task),
+            (t) => t.researchStage = null));
+      }
+    }
+    _saveThenFire();
     LogService.add('WaitingApprovalPage._approve',
         'Approved "${task.title}" as ${BacklogStates.title(state)}');
   }
@@ -560,7 +606,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       _selectedUids.clear();
       _selectionMode = false;
     });
-    _save();
+    _saveThenFire();
     LogService.add(
         'WaitingApprovalPage._approve', 'Approved ${targets.length} item(s)');
   }

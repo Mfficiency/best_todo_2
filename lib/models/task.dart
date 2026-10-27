@@ -62,6 +62,21 @@ class Task {
   /// verify" dot until the entry is edited or confirmed.
   bool needsVerification;
 
+  /// When the app last asked the voice-inbox routine to write this item's
+  /// Obsidian page (a Backlog approval, or the tile's "Create Obsidian page").
+  /// Until [obsidianLink] arrives, the Wishlist checks the item's Todoist
+  /// comments for the routine's `[Done] <link>` reply.
+  DateTime? obsidianRequestedAt;
+
+  /// Where an Active research item is in the two-run Claude research
+  /// (`ResearchStages`): requested → questions → answered → ready. Null for
+  /// an item whose research was never started.
+  String? researchStage;
+
+  /// The questions the research routine asked (its `[Questions]` comment),
+  /// shown on the Research page's Q&A sheet.
+  List<String> researchQuestions;
+
   /// How this task came into existence — one of [TaskChangeSource]'s
   /// constants: `user` (typed in the app), `sync` (pulled in from Todoist,
   /// i.e. the Waiting for Approval path), `share` (Android share sheet) or
@@ -252,6 +267,9 @@ class Task {
     this.transcriptPath,
     this.obsidianLink,
     this.needsVerification = false,
+    this.obsidianRequestedAt,
+    this.researchStage,
+    List<String>? researchQuestions,
     this.origin,
     this.approvedAt,
     this.completedAt,
@@ -293,6 +311,7 @@ class Task {
         recurrenceWeekdays = recurrenceWeekdays ?? [],
         recurrenceExceptionDates = recurrenceExceptionDates ?? [],
         stomachSymptomTypes = stomachSymptomTypes ?? [],
+        researchQuestions = researchQuestions ?? [],
         attachments = attachments ?? <Attachment>[],
         // An explicit interval wins; a plain dueDate is a deadline
         // (start == end), matching what every existing caller means.
@@ -343,6 +362,12 @@ class Task {
       transcriptPath: json['transcriptPath'] as String?,
       obsidianLink: json['obsidianLink'] as String?,
       needsVerification: json['needsVerification'] as bool? ?? false,
+      obsidianRequestedAt:
+          DateTime.tryParse(json['obsidianRequestedAt'] as String? ?? ''),
+      researchStage: json['researchStage'] as String?,
+      researchQuestions: (json['researchQuestions'] as List?)
+          ?.whereType<String>()
+          .toList(),
       origin: json['origin'] as String?,
       approvedAt: DateTime.tryParse(json['approvedAt'] as String? ?? ''),
       completedAt: json['completedAt'] != null
@@ -422,6 +447,10 @@ class Task {
         if (transcriptPath != null) 'transcriptPath': transcriptPath,
         if (obsidianLink != null) 'obsidianLink': obsidianLink,
         if (needsVerification) 'needsVerification': needsVerification,
+        if (obsidianRequestedAt != null)
+          'obsidianRequestedAt': obsidianRequestedAt!.toIso8601String(),
+        if (researchStage != null) 'researchStage': researchStage,
+        if (researchQuestions.isNotEmpty) 'researchQuestions': researchQuestions,
         if (origin != null) 'origin': origin,
         if (approvedAt != null) 'approvedAt': approvedAt!.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),

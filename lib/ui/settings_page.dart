@@ -323,6 +323,11 @@ class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController _claudeRoutineTokenController =
       TextEditingController(text: Config.claudeRoutineToken);
   bool _claudeRoutineTokenObscured = true;
+  final TextEditingController _voiceInboxUrlController =
+      TextEditingController(text: Config.voiceInboxRoutineUrl);
+  final TextEditingController _voiceInboxTokenController =
+      TextEditingController(text: Config.voiceInboxRoutineToken);
+  bool _voiceInboxTokenObscured = true;
   int _weeklyHoursStartHour = Config.weeklyHoursStartHour;
   int _weeklyHoursEndHour = Config.weeklyHoursEndHour;
   final TextEditingController _googleCalendarUrlController =
@@ -380,6 +385,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _githubTokenController.text = Config.githubWishlistToken;
     _claudeRoutineUrlController.text = Config.claudeRoutineUrl;
     _claudeRoutineTokenController.text = Config.claudeRoutineToken;
+    _voiceInboxUrlController.text = Config.voiceInboxRoutineUrl;
+    _voiceInboxTokenController.text = Config.voiceInboxRoutineToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
     _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
     _weeklyHoursStartHour = Config.weeklyHoursStartHour;
@@ -2220,6 +2227,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _saveClaudeRoutine() async {
     Config.claudeRoutineUrl = _claudeRoutineUrlController.text.trim();
     Config.claudeRoutineToken = _claudeRoutineTokenController.text.trim();
+    Config.voiceInboxRoutineUrl = _voiceInboxUrlController.text.trim();
+    Config.voiceInboxRoutineToken = _voiceInboxTokenController.text.trim();
     await Config.save();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2358,6 +2367,48 @@ class _SettingsPageState extends State<SettingsPage> {
                     : Icons.visibility_off),
                 onPressed: () => setState(() =>
                     _claudeRoutineTokenObscured = !_claudeRoutineTokenObscured),
+              ),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Text(
+            'Voice inbox routine (optional): the routine that writes Obsidian '
+            'pages for approved Backlog items and runs Research "Active" '
+            'question rounds. It answers through Todoist, so Todoist sync '
+            'must be on too. See docs/proposals/voice-inbox-routine.md.',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _voiceInboxUrlController,
+            decoration: const InputDecoration(
+              labelText: 'Voice inbox routine fire URL',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _voiceInboxTokenController,
+            obscureText: _voiceInboxTokenObscured,
+            decoration: InputDecoration(
+              labelText: 'Voice inbox routine token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip: _voiceInboxTokenObscured
+                    ? 'Show voice inbox token'
+                    : 'Hide voice inbox token',
+                icon: Icon(_voiceInboxTokenObscured
+                    ? Icons.visibility
+                    : Icons.visibility_off),
+                onPressed: () => setState(() =>
+                    _voiceInboxTokenObscured = !_voiceInboxTokenObscured),
               ),
             ),
             onSubmitted: (_) => _saveClaudeRoutine(),
@@ -2801,6 +2852,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _githubTokenController.dispose();
     _claudeRoutineUrlController.dispose();
     _claudeRoutineTokenController.dispose();
+    _voiceInboxUrlController.dispose();
+    _voiceInboxTokenController.dispose();
     _jevApiKeyController.dispose();
     _googleCalendarUrlController.dispose();
     for (final controller in _filterTagControllers.values) {
